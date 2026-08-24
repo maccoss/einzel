@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Sweeps</RootNamespace>
+    <Description>
+      Tolerance Monte Carlo, sensitivity ranking, and optimisation drivers.
+      Operates on the declared parameter surface of a model; knows nothing about
+      what any parameter means.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+  </ItemGroup>
+
+</Project>
