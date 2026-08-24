@@ -1,7 +1,7 @@
 using Einzel.Core.Geometry;
 using Einzel.Core.Units;
 
-namespace Einzel.Transport.Fields;
+namespace Einzel.Fields;
 
 /// <summary>
 /// Field-free on one side of a plane, uniform and retarding on the other.

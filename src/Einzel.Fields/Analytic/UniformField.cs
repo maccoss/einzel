@@ -1,7 +1,7 @@
 using Einzel.Core.Geometry;
 using Einzel.Core.Units;
 
-namespace Einzel.Transport.Fields;
+namespace Einzel.Fields;
 
 /// <summary>
 /// A uniform electric field filling all space.

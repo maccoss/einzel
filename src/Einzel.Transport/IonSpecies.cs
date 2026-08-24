@@ -1,3 +1,4 @@
+using Einzel.Core.Model;
 using Einzel.Core.Units;
 
 namespace Einzel.Transport;
@@ -80,6 +81,16 @@ public readonly record struct IonSpecies
         var charge = Quantity.From(chargeNumber, "e");
 
         return new IonSpecies(mass.SiValue, charge.SiValue);
+    }
+
+    /// <summary>Creates the species described by a validated model.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>The species.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    public static IonSpecies FromModel(CompiledModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return new IonSpecies(model.MassSi, model.ChargeSi);
     }
 
     /// <summary>The mass, as a quantity.</summary>

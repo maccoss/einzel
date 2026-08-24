@@ -1,6 +1,6 @@
 using Einzel.Core.Geometry;
 
-namespace Einzel.Transport;
+namespace Einzel.Fields;
 
 /// <summary>
 /// A static electric field the transport engine can integrate through.

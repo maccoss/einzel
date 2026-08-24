@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
     <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
+    <ProjectReference Include="..\Einzel.Fields\Einzel.Fields.csproj" />
   </ItemGroup>
 
 </Project>

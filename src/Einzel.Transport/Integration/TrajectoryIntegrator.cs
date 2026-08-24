@@ -1,5 +1,6 @@
 using Einzel.Core.Geometry;
 using Einzel.Core.Numerics;
+using Einzel.Fields;
 
 namespace Einzel.Transport.Integration;
 

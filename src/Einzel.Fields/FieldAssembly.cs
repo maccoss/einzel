@@ -2,7 +2,7 @@ using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Core.Units;
 
-namespace Einzel.Transport.Fields;
+namespace Einzel.Fields;
 
 /// <summary>
 /// Several field elements acting at once, summed.
@@ -178,18 +178,5 @@ public static class FieldAssembly
             1 => elements[0],
             _ => new SuperposedField(elements),
         };
-    }
-
-    /// <summary>Builds the ion species described by a compiled model.</summary>
-    /// <param name="model">The validated model.</param>
-    /// <returns>The species.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
-    public static IonSpecies BuildSpecies(CompiledModel model)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-
-        return IonSpecies.Create(
-            Quantity.Si(model.MassSi, Dimension.MassDimension),
-            Quantity.Si(model.ChargeSi, Dimension.Charge));
     }
 }

@@ -1,6 +1,6 @@
 using Einzel.Core.Geometry;
 
-namespace Einzel.Transport.Fields;
+namespace Einzel.Fields;
 
 /// <summary>
 /// Empty space. The field is identically zero everywhere.

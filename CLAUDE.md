@@ -6,12 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The goal is to **build the software described in the specification**. The near-term proof of concept is to model the instrument in the companion memo — a compact 15–20k multi-reflection TOF on a Stellar front end — end to end in the platform being written here.
 
-**Where the work is:** Stages 0 and 1 are complete.
+**Where the work is:** Stages 0 through 3 are complete.
 
 - **Stage 0** — solution, CI, and the three foundational types in `Einzel.Core` that cannot be retrofitted: `Quantity`/`Dimension` (units), `Measured` (the GRD-1 envelope), `EinzelError` (AGT-3).
 - **Stage 1** — `Einzel.Transport`: Dormand–Prince 5(4) with per-step error control, Neumaier-compensated time accumulation, analytic field-free drift, exact landing on stop surfaces and declared field discontinuities, and analytic fields (field-free, uniform, retarding half-space). **ACC-1 is demonstrated at ~1e-10 relative against the closed-form single-stage reflectron, four orders inside the 1 ppm budget**, and first-order energy focusing (total field-free path = 4 × penetration depth) is reproduced.
 - **Stage 2** — the vertical slice, end to end: model schema v0.1 (`Einzel.Core/Model`), JSON and VTU (`Einzel.Io`), project layout and run manifests (`Einzel.Project`), command objects (`Einzel.Commands`), and the `einzel` CLI. `einzel init` → edit text → `einzel run --vtu` reproduces the analytic 10.1805 µs, writes a manifest, and emits a ParaView trajectory. Cold start ~80 ms against PERF-8's 500 ms.
-- **Stage 3 is next**: 2D Cartesian multigrid solver, tricubic interpolation, grid-convergence harness, basis superposition — cross-checked against Stage 1's analytic reflectron.
+- **Stage 3** — `Einzel.Fields`: geometric multigrid on a 2D Cartesian grid (red-black Gauss-Seidel, full-weighting restriction, bilinear prolongation, V-cycles), bicubic C¹ interpolation, basis superposition, and `SolvedField2D`. Observed convergence order **1.996–2.000** against the nominal 2 for a five-point stencil; multigrid cycle count is **grid-independent** (8→7→7→7 from 32 to 256 intervals). The solved mirror reproduces the analytic reflectron to **1.3e-13** — the same 10.180505718 µs by two independent routes.
+- **Stage 4 is next**: the memo's actual mirror pair — parametric stripe electrodes, the folded six-oscillation track, Class T analysis (R from a fitted peak, TOF focusing-order coefficients), and the energy-acceptance scan across m/z 200–2000.
 
 Two findings from Stage 1 that bear on the spec:
 
@@ -41,7 +42,10 @@ einzel run models/reflectron.json --vtu       # run; --vtu writes a ParaView tra
 einzel run models/reflectron.json --json      # machine-readable, for the agent loop
 ```
 
-**A known architecture deviation:** the analytic fields (`FieldFreeSpace`, `UniformField`, `HalfSpaceUniformField`) and `IElectrostaticField` live in `Einzel.Transport`, but per §6 they belong in `Einzel.Fields`. That assembly does not exist yet; create it in Stage 3 when the multigrid solver lands and move them then, with `Einzel.Transport` referencing it.
+**Two numerical rules that cost real accuracy when broken**, both found by tests that failed for the right reason:
+
+- **A four-by-four interpolation stencil must extrapolate at grid boundaries, never clamp.** Clamping repeats the edge node, which makes the interpolant non-linear in the boundary cell even when the field is exactly linear. An ion enters and leaves a mirror through that cell twice per reflection; a clamped stencil put **7.5 ppm** into a flight time whose exact solution is a pure ramp — over the whole ACC-1 budget. Linear extrapolation of the ghost node took it to 1.9e-10.
+- **Measure the interpolant against a *sampled* exact field, never a solved one.** A solved field carries its own O(h²) discretization error, and on a coarse grid that error is larger than the interpolation error it is supposed to be a backdrop for. Comparing against a solved field measures the solver and reports it as the interpolant's — it initially made bicubic look 60× *worse* than bilinear.
 
 `global.json` pins SDK 10.0.400 (`rollForward: latestFeature`), which matters because 8, 9, and 10 are all installed on this machine and the repo must not silently build on an out-of-support runtime. Toolchain per the spec: **C# / .NET 10 (LTS)**, vendored CPython for extensions, ILGPU for GPU paths, WPF (Windows-only) for the shell, everything else cross-platform.
 

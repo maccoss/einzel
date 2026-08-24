@@ -5,7 +5,7 @@ using Einzel.Core.Model;
 using Einzel.Io;
 using Einzel.Project;
 using Einzel.Transport;
-using Einzel.Transport.Fields;
+using Einzel.Fields;
 using Einzel.Transport.Integration;
 
 namespace Einzel.Commands;
@@ -158,7 +158,7 @@ public static class RunCommand
         var model = ModelValidator.Validate(document).Model!;
 
         var field = FieldAssembly.Build(model);
-        var species = FieldAssembly.BuildSpecies(model);
+        var species = IonSpecies.FromModel(model);
 
         var launch = new PhaseState(
             model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());

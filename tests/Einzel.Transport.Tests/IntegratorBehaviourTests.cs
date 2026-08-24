@@ -2,7 +2,7 @@ using Einzel.Core.Geometry;
 using Einzel.Core.Results;
 using Einzel.Core.Units;
 using Einzel.Transport;
-using Einzel.Transport.Fields;
+using Einzel.Fields;
 using Einzel.Transport.Integration;
 
 namespace Einzel.Transport.Tests;
