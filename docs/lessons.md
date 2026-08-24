@@ -129,6 +129,25 @@ whose first-order term is not actually cancelled, the same profile gives
 R = 320,548. A three-order-of-magnitude error that looked exactly like a physics
 result.
 
+## A residual of exactly zero is not success
+
+The FLD-1 spike reported a potential residual of **0.000E+000** for a sub-cell
+geometry perturbation, and the obvious reading — perfect linearity — was exactly
+backwards. The plate had moved less than one mesh cell, so the rasterised
+geometry occupied identical nodes, the perturbed solve came back bit-identical,
+and the derivative was identically zero. A tolerance study on that would have
+concluded the parameter did not matter.
+
+Exact zeros in a numerical result deserve suspicion rather than satisfaction.
+They usually mean a quantity was never computed rather than computed to be zero,
+and the two are indistinguishable in the number itself. The guard is now an
+error, because there is no correct value to return.
+
+The neighbouring case makes the same point from the other side: at 0.1% and 0.3%
+perturbation an earlier fixture returned residuals of 0.2297 and 0.2297 —
+identical to four figures. A residual that does not move when its input moves is
+not measuring its input.
+
 ## Two arithmetic slips, for completeness
 
 **Velocity fraction is not energy fraction.** v ∝ √E, so a fractional energy

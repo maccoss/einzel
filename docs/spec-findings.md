@@ -167,6 +167,97 @@ favourable and the validation implication is not.
 
 ---
 
+## FLD-1 sensitivity fields do not work on a rasterised boundary
+
+**Spec §10** caches the partial derivative of potential with respect to each
+perturbation channel by finite difference over a full re-solve, then builds every
+perturbed geometry by superposition. **FLD-2** gates the study on a stratified
+validation subset: if the residual exceeds ACC-1 the sweep is void. **§23**
+recommends spiking the linearity assumption before Phase 2 commits, at an
+estimated two weeks.
+
+The spike was run. **It fails, and not for the reason the specification
+anticipates.**
+
+Measured on a plate inside a fixed domain with 0.469 mm cells, at a nominal
+position of 40 mm:
+
+| half-width | % of nominal | cells moved | potential residual | within 1 ppm |
+| --- | --- | --- | --- | --- |
+| 0.10 mm | 0.25% | 0.2 | **0.000E+000** | "yes" |
+| 0.50 mm | 1.25% | 1.1 | 1.93e-2 | no |
+| 2.50 mm | 6.25% | 5.3 | 5.62e-2 | no |
+
+Two failures, and the first is worse than the second.
+
+**Below one cell, the perturbation is invisible.** An electrode is rasterised
+onto grid nodes, so moving it less than a cell changes which nodes it occupies
+not at all. The perturbed solve returns bit-identical to the nominal, the
+difference is exactly zero, and the derivative field is identically zero. A
+tolerance study built on that reports the parameter as having **no influence** —
+the opposite of the truth, arrived at silently. And sub-cell is exactly where
+machining tolerances live: the memo's channels are 100 to 300 µm.
+
+**Above one cell, the residual is percent-level** — four orders over the ACC-1
+budget FLD-2 gates on. The premise §10 argues from is that 100–300 µm against a
+10 mm standoff is a 1–3% perturbation and therefore linear. The *physics* is
+plausibly linear there. The **discretisation is not**: a rasterised boundary
+moves in steps, so the discrete operator is a staircase function of the
+parameter, and its finite difference measures the staircase.
+
+So the assumption that fails is not "the field responds linearly to a small
+geometry change". It is the unstated one underneath: *that the discrete problem
+varies smoothly with the geometry parameter at all.*
+
+### What this changes
+
+FLD-1 as written cannot support a geometry tolerance study on a staircase mesh,
+at any perturbation size: too small and it reports zero, large enough and it
+reports the rasterisation. That is not a tuning problem with a step size in
+between — the two failure modes meet.
+
+Three routes, none of them small:
+
+- **Body-fitted or deformable mesh**, so the boundary moves continuously with the
+  parameter and the discrete operator moves with it.
+- **Cut-cell or immersed-boundary discretisation**, where a boundary between
+  nodes is represented sub-cell, so the operator varies smoothly with its
+  position. This is the smallest change that keeps the Cartesian multigrid.
+- **Analytic shape derivatives**, which sidesteps finite differencing entirely
+  and is the largest change.
+
+Recommend §10 and §23 be rewritten around this. The two-week spike was the right
+call and it returned a negative result, which is what a spike is for.
+
+**In the meantime the guard is an error, not a warning.** A channel whose
+perturbation leaves the rasterised geometry unchanged is refused outright, because
+there is no correct number to return and silently reporting zero sensitivity is
+the single most damaging thing this code could do.
+
+Note the contrast that makes the diagnosis clean: a **voltage** channel linearises
+to 1.5e-14, and superposition reproduces a re-solve to 2.3e-11 V on 1150 V. The
+machinery is right. It is the moving boundary that the mesh cannot represent.
+
+---
+
+## Interior electrodes make sensitivity campaigns expensive
+
+A consequence of the coarsening limitation above, and it did not become visible
+until sweeps existed. FLD-1's economic argument is that one solve campaign of
+`2 × channels + 1` solves replaces a thousand. That holds only if each solve is
+cheap — and on interior-electrode geometry the coarsening limit leaves few
+multigrid levels, so it is not. A campaign over a 513 × 257 grid **brought down
+the test host**.
+
+Measured against it: 500 linearised draws cost 25 ms where a single solve costs
+142 ms, so the superposition side of the argument is sound. The campaign side is
+what needs the solver fixed.
+
+This raises the priority of Galerkin coarsening from a tidy-up to a prerequisite:
+geometry sweeps are not usable on real devices without it.
+
+---
+
 ## Notes on the companion memo
 
 **Memo §6 item 1** asks for the six-oscillation mirror pair at 20,000 across

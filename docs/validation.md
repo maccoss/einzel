@@ -108,6 +108,10 @@ covering everything.
   a release metric the specification asks for and nothing measures.
 - **Interior-electrode multigrid is mitigated, not solved** — see
   [Numerics](numerics.md).
+- **Geometry sensitivity fields do not work** on a rasterised mesh — see
+  [Spec findings](spec-findings.md). Voltage channels are fine; a tolerance study
+  over electrode *positions* is not yet possible, and the code refuses rather than
+  returning a plausible zero.
 - **Resolving powers quoted are energy-aberration only.** No spatial or angular
   spread, no turn-around time, no detector response.
 
