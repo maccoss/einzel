@@ -94,10 +94,20 @@ public enum EdgeCondition
 /// </para>
 /// <para>
 /// The mask coarsens by injection for multigrid: a coarse node is fixed when the
-/// fine node it sits on is fixed. That is exact where electrodes are grid-aligned
-/// and thicker than the coarsest spacing, which is the case for stripe
-/// electrodes, and degrades to slower convergence rather than a wrong answer
-/// where it is not.
+/// fine node it sits on is fixed. That is exact while an electrode is still
+/// several coarse cells across, and it is why the solver stops coarsening at a
+/// floor rather than descending to a three-by-three grid — see
+/// <c>PoissonSolver2D.CoarsestNodesPerSide</c>. Past that floor an interior
+/// electrode dissolves, and a coarse grid with no electrode in it does not
+/// approximate the fine problem, it replaces it.
+/// </para>
+/// <para>
+/// Agglomerating instead — taking a coarse node as fixed if anything in its
+/// three-by-three block is — was tried and is worse. It is stable, because
+/// growing the Dirichlet set only damps the correction, but it grows the
+/// electrode by a cell at every level: measured against injection on four rods in
+/// a box, the convergence factor went from 0.075 to 0.31 at 64 intervals and from
+/// 0.15 to 0.47 at 128.
 /// </para>
 /// </remarks>
 public sealed class DirichletMask
@@ -118,6 +128,30 @@ public sealed class DirichletMask
 
     /// <summary>The grid this mask covers.</summary>
     public Grid2D Grid { get; }
+
+    /// <summary>How many nodes hold a fixed potential.</summary>
+    /// <remarks>
+    /// Used to decide how far a V-cycle may usefully coarsen. Coarsening halves
+    /// each dimension, so a two-dimensional region of fixed nodes should lose
+    /// about three quarters of them per level. Losing more than that means the
+    /// geometry is dissolving rather than being represented more coarsely.
+    /// </remarks>
+    public int FixedCount { get; private set; }
+
+    /// <summary>
+    /// How many fixed nodes lie away from the domain edge.
+    /// </summary>
+    /// <remarks>
+    /// The number that decides how far a V-cycle may coarsen, and the distinction
+    /// matters because the two kinds of geometry behave oppositely. A boundary
+    /// curve keeps about half its nodes per level and survives coarsening to a
+    /// handful of cells, so a domain pinned only on its edges may coarsen freely.
+    /// An interior electrode is a region: its node count falls by four per level,
+    /// exactly the rate a total-count test would call healthy, right up to the
+    /// level where it vanishes altogether. Counting only the interior separates
+    /// the case that must be limited from the case that must not be.
+    /// </remarks>
+    public int InteriorFixedCount { get; private set; }
 
     /// <summary>Condition on the x = minimum edge.</summary>
     public EdgeCondition LeftEdge { get; set; } = EdgeCondition.Dirichlet;
@@ -150,6 +184,17 @@ public sealed class DirichletMask
     public void Fix(int i, int j, double potential)
     {
         var index = Grid.Index(i, j);
+
+        if (!_fixed[index])
+        {
+            FixedCount++;
+
+            if (i > 0 && j > 0 && i < Grid.CountX - 1 && j < Grid.CountY - 1)
+            {
+                InteriorFixedCount++;
+            }
+        }
+
         _fixed[index] = true;
         _value[index] = potential;
     }

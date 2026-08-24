@@ -6,58 +6,6 @@ using Einzel.Transport.Integration;
 
 namespace Einzel.Library;
 
-/// <summary>
-/// A field reflected through a plane normal to x.
-/// </summary>
-/// <remarks>
-/// The second mirror of a pair is the first one turned around, so it is built by
-/// reflection rather than solved again. That is not only cheaper: it makes the
-/// two halves identical by construction, so a difference between the inbound and
-/// outbound legs of a trajectory cannot come from the two mirrors having been
-/// meshed differently.
-/// </remarks>
-public sealed class ReflectedField(IElectrostaticField inner, double planeX) : IElectrostaticField
-{
-    private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-
-    private Vec3 Reflect(in Vec3 position) => new((2.0 * planeX) - position.X, position.Y, position.Z);
-
-    /// <inheritdoc/>
-    public Vec3 ElectricFieldAt(in Vec3 position)
-    {
-        var mirrored = Reflect(in position);
-        var field = _inner.ElectricFieldAt(in mirrored);
-
-        // x flips with the coordinate; y and z do not.
-        return new Vec3(-field.X, field.Y, field.Z);
-    }
-
-    /// <inheritdoc/>
-    public double PotentialAt(in Vec3 position)
-    {
-        var mirrored = Reflect(in position);
-        return _inner.PotentialAt(in mirrored);
-    }
-
-    /// <inheritdoc/>
-    public double FieldFreeRunLength(in Vec3 position, in Vec3 direction)
-    {
-        var mirrored = Reflect(in position);
-        var mirroredDirection = new Vec3(-direction.X, direction.Y, direction.Z);
-        return _inner.FieldFreeRunLength(in mirrored, in mirroredDirection);
-    }
-
-    /// <inheritdoc/>
-    public double SignedDistanceToDiscontinuity(in Vec3 position)
-    {
-        var mirrored = Reflect(in position);
-        return _inner.SignedDistanceToDiscontinuity(in mirrored);
-    }
-
-    /// <inheritdoc/>
-    public double ResolutionLength => _inner.ResolutionLength;
-}
-
 /// <summary>The outcome of flying one ion through a mirror pair.</summary>
 /// <param name="Arrived">Whether the ion reached the detector.</param>
 /// <param name="FlightTimeSeconds">Elapsed flight time.</param>

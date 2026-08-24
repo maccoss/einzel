@@ -5,6 +5,12 @@
     <Description>Device templates as data, plus a parameterization API. The only assembly that knows what a reflectron is (LIB-1).</Description>
   </PropertyGroup>
 
+  <!-- LIB-1: templates are data. Embedded so a template ships with the engine
+       that reads it and cannot drift from the schema version it was written for. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\**\*.json" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
     <ProjectReference Include="..\Einzel.Fields\Einzel.Fields.csproj" />

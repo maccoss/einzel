@@ -62,6 +62,12 @@ public sealed record CompiledModel
     /// <summary>Trajectory sampling interval, in seconds.</summary>
     public required double SampleIntervalSi { get; init; }
 
+    /// <summary>
+    /// The resolved parameter surface this model was compiled from. What a sweep
+    /// perturbs and an optimiser searches.
+    /// </summary>
+    public required ParameterSurface Parameters { get; init; }
+
     /// <summary>The ion's launch speed, in metres per second.</summary>
     /// <returns>The speed after acceleration, including the energy offset.</returns>
     /// <remarks>
@@ -86,6 +92,12 @@ public enum CompiledFieldKind
 
     /// <summary>Field-free on one side of a plane, uniform and retarding on the other.</summary>
     HalfSpaceUniform,
+
+    /// <summary>
+    /// A field solved from a Dirichlet geometry given in the document. The element
+    /// that lets a device be a template rather than a class (LIB-1).
+    /// </summary>
+    Solved2D,
 }
 
 /// <summary>A validated field element, in SI.</summary>
@@ -108,4 +120,7 @@ public sealed record CompiledField
 
     /// <summary>Half-space only: the turning depth the gradient was derived from, in metres.</summary>
     public double TurningDepthSi { get; init; }
+
+    /// <summary>Solved only: the geometry to solve.</summary>
+    public CompiledSolvedField? Solve { get; init; }
 }

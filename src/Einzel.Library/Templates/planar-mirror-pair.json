@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "0.2",
+  "name": "planar-mirror-pair",
+  "description": "Two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair. Stripe electrodes run along the drift direction, so the potential is independent of it and a two-dimensional solve is exact away from the ends. The second mirror is the first reflected about the mid-plane, so both halves are the same solve by construction. Vary firstStageFraction to move between a single-stage ramp and the Mamyrin two-stage arrangement, and capToCap to tune the first-order energy focus.",
+
+  "parameters": {
+    "boardGap": {
+      "value": 30.0, "unit": "mm",
+      "minimum": 5.0, "maximum": 80.0,
+      "description": "Distance between the facing printed boards."
+    },
+    "mirrorDepth": {
+      "value": 90.0, "unit": "mm",
+      "minimum": 20.0, "maximum": 300.0,
+      "description": "Depth of the printed mirror, from entrance plane to cap."
+    },
+    "capPotential": {
+      "value": 4800.0, "unit": "V",
+      "minimum": 100.0, "maximum": 20000.0,
+      "description": "Potential at the deepest stripe. Must exceed the ion energy in volts or the ion is not turned."
+    },
+    "firstStageFraction": {
+      "value": 0.35, "unit": "1",
+      "minimum": 0.0, "maximum": 0.9,
+      "description": "Depth of the first, steeper stage as a fraction of the total. Zero gives a single-stage mirror."
+    },
+    "firstStagePotential": {
+      "value": 2800.0, "unit": "V",
+      "description": "Potential at the end of the first stage."
+    },
+    "capToCap": {
+      "value": 767.0, "unit": "mm",
+      "minimum": 50.0, "maximum": 3000.0,
+      "description": "Distance between the two mirror entrance planes. The knob that cancels the first-order energy term."
+    },
+    "ionEnergy": {
+      "value": 4000.0, "unit": "V",
+      "description": "Accelerating potential the ion arrives with."
+    },
+
+    "firstStageDepth": { "expression": "mirrorDepth * firstStageFraction", "unit": "mm" },
+    "halfGap": { "expression": "boardGap / 2", "unit": "mm" },
+    "midPlane": { "expression": "capToCap / 2", "unit": "mm" },
+    "cellSize": { "expression": "boardGap / 32", "unit": "mm" }
+  },
+
+  "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+
+  "source": {
+    "position": { "value": [0, 0, 0], "unit": "mm" },
+    "direction": { "value": [1, 0, 0] },
+    "accelerationPotential": { "expression": "ionEnergy", "unit": "V" }
+  },
+
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": { "expression": "-mirrorDepth", "unit": "mm" },
+        "minY": { "expression": "-halfGap", "unit": "mm" },
+        "maxX": { "expression": "midPlane", "unit": "mm" },
+        "maxY": { "expression": "halfGap", "unit": "mm" },
+        "cellSize": { "expression": "cellSize", "unit": "mm" },
+        "rightEdge": "neumann",
+        "boundaryIsDiscontinuous": false,
+        "reflectAboutX": { "expression": "midPlane", "unit": "mm" },
+        "electrodes": [
+          {
+            "name": "topBoard", "shape": "edgeProfile", "edge": "top",
+            "profile": [
+              { "at": { "expression": "-mirrorDepth", "unit": "mm" }, "potential": { "expression": "capPotential", "unit": "V" } },
+              { "at": { "expression": "-firstStageDepth", "unit": "mm" }, "potential": { "expression": "firstStagePotential", "unit": "V" } },
+              { "at": { "value": 0, "unit": "mm" }, "potential": { "value": 0, "unit": "V" } },
+              { "at": { "expression": "midPlane", "unit": "mm" }, "potential": { "value": 0, "unit": "V" } }
+            ]
+          },
+          {
+            "name": "bottomBoard", "shape": "edgeProfile", "edge": "bottom",
+            "profile": [
+              { "at": { "expression": "-mirrorDepth", "unit": "mm" }, "potential": { "expression": "capPotential", "unit": "V" } },
+              { "at": { "expression": "-firstStageDepth", "unit": "mm" }, "potential": { "expression": "firstStagePotential", "unit": "V" } },
+              { "at": { "value": 0, "unit": "mm" }, "potential": { "value": 0, "unit": "V" } },
+              { "at": { "expression": "midPlane", "unit": "mm" }, "potential": { "value": 0, "unit": "V" } }
+            ]
+          },
+          {
+            "name": "cap", "shape": "rectangle",
+            "minX": { "expression": "-mirrorDepth", "unit": "mm" },
+            "maxX": { "expression": "-mirrorDepth", "unit": "mm" },
+            "minY": { "expression": "-halfGap", "unit": "mm" },
+            "maxY": { "expression": "halfGap", "unit": "mm" },
+            "potential": { "expression": "capPotential", "unit": "V" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "detector": {
+    "planePoint": { "value": [0, 0, 0], "unit": "mm" },
+    "normal": { "value": [1, 0, 0] }
+  },
+
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": { "value": 1, "unit": "ms" },
+    "sampleInterval": { "value": 50, "unit": "ns" }
+  }
+}

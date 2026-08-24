@@ -26,6 +26,49 @@ namespace Einzel.Core.Model;
 /// </remarks>
 public sealed record QuantityValue(double Value, string Unit)
 {
+    /// <summary>
+    /// An arithmetic expression over the model's parameters, evaluated in place of
+    /// <see cref="Value"/>. Spec section 9: "Every placement is a parametric
+    /// expression, never a baked number."
+    /// </summary>
+    public string? Expression { get; init; }
+
+    /// <summary>
+    /// Converts to SI, evaluating an expression against the parameter surface when
+    /// one is present.
+    /// </summary>
+    /// <param name="path">JSON Pointer to this value, for the error object.</param>
+    /// <param name="expected">The dimension this field requires.</param>
+    /// <param name="parameters">Resolved parameters the expression may name.</param>
+    /// <returns>The quantity, in SI.</returns>
+    /// <exception cref="EinzelException">
+    /// The expression is malformed, or the result has the wrong dimension.
+    /// </exception>
+    public Quantity ToQuantity(
+        string path, Dimension expected, IReadOnlyDictionary<string, Quantity> parameters)
+    {
+        if (Expression is null)
+        {
+            return ToQuantity(path, expected);
+        }
+
+        var value = ExpressionEvaluator.Evaluate(Expression, parameters, path);
+
+        if (value.Dimension != expected)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.UnitsIncompatible,
+                Path = path,
+                Constraint = $"this field requires a quantity of dimension {expected}",
+                Observed = new ObservedValue(value.SiValue, value.Dimension.ToString()),
+                Suggestion = $"the expression '{Expression}' produces dimension {value.Dimension}",
+            });
+        }
+
+        return value;
+    }
+
     /// <summary>Converts to SI, reporting failures against a document path.</summary>
     /// <param name="path">JSON Pointer to this value, for the error object.</param>
     /// <param name="expected">The dimension this field requires.</param>

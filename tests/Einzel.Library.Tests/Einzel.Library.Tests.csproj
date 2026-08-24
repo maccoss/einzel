@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Einzel.Library\Einzel.Library.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Analysis\Einzel.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\Einzel.Io\Einzel.Io.csproj" />
   </ItemGroup>
 
 </Project>

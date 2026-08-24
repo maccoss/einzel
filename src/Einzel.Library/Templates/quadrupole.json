@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "0.2",
+  "name": "quadrupole",
+  "description": "A quadrupole cross-section: four round rods, alternating potential, solved in the plane normal to the axis. Present as the second, unrelated device of spec section 21 phase 5 — it shares no code with the mirror, only the three electrode primitives. Rod radius is set to 1.1468 times the inscribed radius, the ratio that best approximates a hyperbolic field with round rods. Near the axis the potential should go as (x^2 - y^2) and the restoring force should be linear, which is what makes it a mass filter once the potential is made to oscillate.",
+
+  "parameters": {
+    "inscribedRadius": {
+      "value": 5.0, "unit": "mm", "minimum": 1.0, "maximum": 50.0,
+      "description": "Distance from the axis to the nearest rod surface, conventionally r0."
+    },
+    "rodRatio": {
+      "value": 1.1468, "unit": "1",
+      "description": "Rod radius as a multiple of the inscribed radius. 1.1468 is the classical optimum for round rods."
+    },
+    "rodPotential": {
+      "value": 100.0, "unit": "V",
+      "description": "Applied to the x-pair; the y-pair takes its negative."
+    },
+    "rodRadius": { "expression": "inscribedRadius * rodRatio", "unit": "mm" },
+    "rodCentre": { "expression": "inscribedRadius + rodRadius", "unit": "mm" },
+    "domainHalfWidth": { "expression": "rodCentre + rodRadius * 1.6", "unit": "mm" },
+    "cellSize": { "expression": "inscribedRadius / 16", "unit": "mm" }
+  },
+
+  "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+
+  "source": {
+    "position": { "value": [-4, 0, 0], "unit": "mm" },
+    "direction": { "value": [1, 0, 0] },
+    "accelerationPotential": { "value": 10, "unit": "V" }
+  },
+
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": { "expression": "-domainHalfWidth", "unit": "mm" },
+        "minY": { "expression": "-domainHalfWidth", "unit": "mm" },
+        "maxX": { "expression": "domainHalfWidth", "unit": "mm" },
+        "maxY": { "expression": "domainHalfWidth", "unit": "mm" },
+        "cellSize": { "expression": "cellSize", "unit": "mm" },
+        "electrodes": [
+          {
+            "name": "rodXPlus", "shape": "disc",
+            "centreX": { "expression": "rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "potential": { "expression": "rodPotential", "unit": "V" }
+          },
+          {
+            "name": "rodXMinus", "shape": "disc",
+            "centreX": { "expression": "-rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "potential": { "expression": "rodPotential", "unit": "V" }
+          },
+          {
+            "name": "rodYPlus", "shape": "disc",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "potential": { "expression": "-rodPotential", "unit": "V" }
+          },
+          {
+            "name": "rodYMinus", "shape": "disc",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "-rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "potential": { "expression": "-rodPotential", "unit": "V" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "detector": {
+    "planePoint": { "value": [4, 0, 0], "unit": "mm" },
+    "normal": { "value": [-1, 0, 0] }
+  },
+
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": { "value": 1, "unit": "ms" }
+  }
+}

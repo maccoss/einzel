@@ -187,6 +187,12 @@ public static class FieldAssembly
                         Quantity.Si(element.PotentialGradientSi, Dimension.ElectricField)));
                     break;
 
+                case CompiledFieldKind.Solved2D:
+                    // The solve happens here, once per build. Nothing about what
+                    // the electrodes add up to is known at this level.
+                    elements.Add(Solved.GeometryBuilder.Build(element.Solve!).Field);
+                    break;
+
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(model), element.Kind, "unhandled field element kind");

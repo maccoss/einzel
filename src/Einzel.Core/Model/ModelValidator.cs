@@ -35,7 +35,18 @@ public static class ModelValidator
     /// <param name="document">The document to validate.</param>
     /// <returns>The compiled model, or the errors that prevented it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
-    public static ModelValidation Validate(ModelDocument document)
+    public static ModelValidation Validate(ModelDocument document) => Validate(document, overrides: null);
+
+    /// <summary>Validates and compiles a document with parameter overrides applied.</summary>
+    /// <param name="document">The document to validate.</param>
+    /// <param name="overrides">
+    /// Replacement values for free parameters, as a sweep or optimiser supplies.
+    /// Derived parameters re-evaluate against them.
+    /// </param>
+    /// <returns>The compiled model, or the errors that prevented it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
+    public static ModelValidation Validate(
+        ModelDocument document, IReadOnlyDictionary<string, Quantity>? overrides)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -43,11 +54,20 @@ public static class ModelValidator
 
         ValidateSchemaVersion(document, errors);
 
-        var (mass, charge) = ValidateIon(document.Ion, errors);
-        var source = ValidateSource(document.Source, errors);
-        var fields = ValidateFields(document.Fields, errors);
-        var detector = ValidateDetector(document.Detector, errors);
-        var transport = ValidateTransport(document.Transport, errors);
+        var surface = ParameterSurface.Resolve(document.Parameters, overrides, errors);
+
+        if (surface is null)
+        {
+            return new ModelValidation(null, errors);
+        }
+
+        var p = surface.Values();
+
+        var (mass, charge) = ValidateIon(document.Ion, p, errors);
+        var source = ValidateSource(document.Source, p, errors);
+        var fields = ValidateFields(document.Fields, p, errors);
+        var detector = ValidateDetector(document.Detector, p, errors);
+        var transport = ValidateTransport(document.Transport, p, errors);
 
         if (errors.Count > 0 || mass is null || charge is null
             || source is null || detector is null || transport is null)
@@ -71,6 +91,7 @@ public static class ModelValidator
             RelativeTolerance = transport.RelativeTolerance,
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
+            Parameters = surface,
         };
 
         ValidateGeometryConsistency(model, errors);
@@ -100,7 +121,7 @@ public static class ModelValidator
         }
     }
 
-    private static (double? Mass, double? Charge) ValidateIon(IonDocument? ion, List<EinzelError> errors)
+    private static (double? Mass, double? Charge) ValidateIon(IonDocument? ion, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (ion is null)
         {
@@ -128,7 +149,7 @@ public static class ModelValidator
             return (null, null);
         }
 
-        var massToCharge = TryQuantity(ion.MassToCharge, "/ion/massToCharge", Dimension.MassDimension, errors);
+        var massToCharge = TryQuantity(ion.MassToCharge, "/ion/massToCharge", Dimension.MassDimension, p, errors);
 
         if (massToCharge is null || ion.ChargeNumber == 0)
         {
@@ -156,7 +177,7 @@ public static class ModelValidator
 
     private sealed record SourceValues(Vec3 Position, Vec3 Direction, double Potential, double EnergyFraction);
 
-    private static SourceValues? ValidateSource(SourceDocument? source, List<EinzelError> errors)
+    private static SourceValues? ValidateSource(SourceDocument? source, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (source is null)
         {
@@ -165,10 +186,10 @@ public static class ModelValidator
             return null;
         }
 
-        var position = TryVector(source.Position, "/source/position", Dimension.LengthDimension, errors);
+        var position = TryVector(source.Position, "/source/position", Dimension.LengthDimension, p, errors);
         var direction = TryDirection(source.Direction, "/source/direction", errors);
         var potential = TryQuantity(
-            source.AccelerationPotential, "/source/accelerationPotential", Dimension.ElectricPotential, errors);
+            source.AccelerationPotential, "/source/accelerationPotential", Dimension.ElectricPotential, p, errors);
 
         if (source.EnergyFraction <= -1.0 || !double.IsFinite(source.EnergyFraction))
         {
@@ -205,7 +226,7 @@ public static class ModelValidator
     }
 
     private static List<CompiledField> ValidateFields(
-        IReadOnlyList<FieldDocument>? fields, List<EinzelError> errors)
+        IReadOnlyList<FieldDocument>? fields, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (fields is null || fields.Count == 0)
         {
@@ -218,7 +239,7 @@ public static class ModelValidator
 
         for (var i = 0; i < fields.Count; i++)
         {
-            var element = CompileField(fields[i], $"/fields/{i}", errors);
+            var element = CompileField(fields[i], $"/fields/{i}", p, errors);
 
             if (element is not null)
             {
@@ -229,7 +250,7 @@ public static class ModelValidator
         return compiled;
     }
 
-    private static CompiledField? CompileField(FieldDocument field, string path, List<EinzelError> errors)
+    private static CompiledField? CompileField(FieldDocument field, string path, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         switch (field.Type)
         {
@@ -238,7 +259,7 @@ public static class ModelValidator
 
             case "uniform":
             {
-                var vector = TryVector(field.Field, $"{path}/field", Dimension.ElectricField, errors);
+                var vector = TryVector(field.Field, $"{path}/field", Dimension.ElectricField, p, errors);
                 return vector is null ? null : new CompiledField
                 {
                     Kind = CompiledFieldKind.Uniform,
@@ -248,10 +269,10 @@ public static class ModelValidator
 
             case "halfSpaceUniform":
             {
-                var point = TryVector(field.PlanePoint, $"{path}/planePoint", Dimension.LengthDimension, errors);
+                var point = TryVector(field.PlanePoint, $"{path}/planePoint", Dimension.LengthDimension, p, errors);
                 var normal = TryDirection(field.InwardNormal, $"{path}/inwardNormal", errors);
-                var cap = TryQuantity(field.CapPotential, $"{path}/capPotential", Dimension.ElectricPotential, errors);
-                var depth = TryQuantity(field.TurningDepth, $"{path}/turningDepth", Dimension.LengthDimension, errors);
+                var cap = TryQuantity(field.CapPotential, $"{path}/capPotential", Dimension.ElectricPotential, p, errors);
+                var depth = TryQuantity(field.TurningDepth, $"{path}/turningDepth", Dimension.LengthDimension, p, errors);
 
                 if (point is null || normal is null || cap is null || depth is null)
                 {
@@ -281,12 +302,16 @@ public static class ModelValidator
                 };
             }
 
+            case "solved2d":
+                return CompileSolvedField(field.Solve, $"{path}/solve", p, errors);
+
             default:
                 errors.Add(new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/type",
-                    Constraint = "a field element must declare one of: fieldFree, uniform, halfSpaceUniform",
+                    Constraint =
+                        "a field element must declare one of: fieldFree, uniform, halfSpaceUniform, solved2d",
                     Observed = new ObservedValue(0.0, field.Type ?? "null"),
                     Suggestion = "use \"halfSpaceUniform\" for an ideal single-stage ion mirror",
                 });
@@ -294,7 +319,274 @@ public static class ModelValidator
         }
     }
 
-    private static (Vec3 Point, Vec3 Normal)? ValidateDetector(DetectorDocument? detector, List<EinzelError> errors)
+    private static CompiledField? CompileSolvedField(
+        SolvedFieldDocument? solve, string path, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    {
+        if (solve is null)
+        {
+            errors.Add(Missing(path, "a solved field must declare its domain and electrodes",
+                "add a \"solve\" object with bounds, cellSize, and electrodes"));
+            return null;
+        }
+
+        var length = Dimension.LengthDimension;
+        var minX = TryQuantity(solve.MinX, $"{path}/minX", length, p, errors);
+        var minY = TryQuantity(solve.MinY, $"{path}/minY", length, p, errors);
+        var maxX = TryQuantity(solve.MaxX, $"{path}/maxX", length, p, errors);
+        var maxY = TryQuantity(solve.MaxY, $"{path}/maxY", length, p, errors);
+        var cell = TryQuantity(solve.CellSize, $"{path}/cellSize", length, p, errors);
+
+        if (minX is null || minY is null || maxX is null || maxY is null || cell is null)
+        {
+            return null;
+        }
+
+        if (maxX.Value.SiValue <= minX.Value.SiValue || maxY.Value.SiValue <= minY.Value.SiValue)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = path,
+                Constraint = "the solve domain must have positive extent in both directions",
+                Suggestion = "check that maxX exceeds minX and maxY exceeds minY",
+            });
+            return null;
+        }
+
+        if (cell.Value.SiValue <= 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/cellSize",
+                Constraint = "the cell size must be positive",
+                Observed = new ObservedValue(cell.Value.SiValue, "m"),
+                Suggestion = "about a thirtieth of the smallest feature is a reasonable start",
+            });
+            return null;
+        }
+
+        if (solve.Electrodes is null || solve.Electrodes.Count == 0)
+        {
+            errors.Add(Missing($"{path}/electrodes", "a solved field needs at least one electrode",
+                "add an electrode with a shape and a potential"));
+            return null;
+        }
+
+        var electrodes = new List<CompiledElectrode>();
+
+        for (var i = 0; i < solve.Electrodes.Count; i++)
+        {
+            var electrode = CompileElectrode(solve.Electrodes[i], $"{path}/electrodes/{i}", p, errors);
+
+            if (electrode is not null)
+            {
+                electrodes.Add(electrode);
+            }
+        }
+
+        var reflect = solve.ReflectAboutX is null
+            ? (double?)null
+            : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
+
+        var left = Boundary(solve.LeftEdge, $"{path}/leftEdge", errors);
+        var right = Boundary(solve.RightEdge, $"{path}/rightEdge", errors);
+        var bottom = Boundary(solve.BottomEdge, $"{path}/bottomEdge", errors);
+        var top = Boundary(solve.TopEdge, $"{path}/topEdge", errors);
+
+        if (errors.Count > 0)
+        {
+            return null;
+        }
+
+        return new CompiledField
+        {
+            Kind = CompiledFieldKind.Solved2D,
+            Solve = new CompiledSolvedField
+            {
+                MinX = minX.Value.SiValue,
+                MinY = minY.Value.SiValue,
+                MaxX = maxX.Value.SiValue,
+                MaxY = maxY.Value.SiValue,
+                CellSize = cell.Value.SiValue,
+                LeftEdge = left,
+                RightEdge = right,
+                BottomEdge = bottom,
+                TopEdge = top,
+                Electrodes = electrodes,
+                BoundaryIsDiscontinuous = solve.BoundaryIsDiscontinuous,
+                Tolerance = solve.Tolerance,
+                ReflectAboutX = reflect,
+            },
+        };
+    }
+
+    private static BoundaryKind Boundary(string? declared, string path, List<EinzelError> errors)
+    {
+        switch (declared)
+        {
+            case null or "dirichlet":
+                return BoundaryKind.Dirichlet;
+
+            case "neumann":
+                return BoundaryKind.Neumann;
+
+            default:
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = path,
+                    Constraint = "an edge condition must be 'dirichlet' or 'neumann'",
+                    Observed = new ObservedValue(0.0, declared),
+                    Suggestion = "'neumann' is a symmetry plane; omit the field for 'dirichlet'",
+                });
+                return BoundaryKind.Dirichlet;
+        }
+    }
+
+    private static CompiledElectrode? CompileElectrode(
+        ElectrodeDocument electrode, string path, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    {
+        var length = Dimension.LengthDimension;
+        var volt = Dimension.ElectricPotential;
+        var name = electrode.Name ?? "electrode";
+
+        switch (electrode.Shape)
+        {
+            case "rectangle":
+            {
+                var minX = TryQuantity(electrode.MinX, $"{path}/minX", length, p, errors);
+                var minY = TryQuantity(electrode.MinY, $"{path}/minY", length, p, errors);
+                var maxX = TryQuantity(electrode.MaxX, $"{path}/maxX", length, p, errors);
+                var maxY = TryQuantity(electrode.MaxY, $"{path}/maxY", length, p, errors);
+                var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
+
+                return minX is null || minY is null || maxX is null || maxY is null || potential is null
+                    ? null
+                    : new CompiledElectrode
+                    {
+                        Name = name,
+                        Shape = ElectrodeShape.Rectangle,
+                        MinX = minX.Value.SiValue,
+                        MinY = minY.Value.SiValue,
+                        MaxX = maxX.Value.SiValue,
+                        MaxY = maxY.Value.SiValue,
+                        Potential = potential.Value.SiValue,
+                    };
+            }
+
+            case "disc":
+            {
+                var centreX = TryQuantity(electrode.CentreX, $"{path}/centreX", length, p, errors);
+                var centreY = TryQuantity(electrode.CentreY, $"{path}/centreY", length, p, errors);
+                var radius = TryQuantity(electrode.Radius, $"{path}/radius", length, p, errors);
+                var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
+
+                if (centreX is null || centreY is null || radius is null || potential is null)
+                {
+                    return null;
+                }
+
+                if (radius.Value.SiValue <= 0.0)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/radius",
+                        Constraint = "a disc electrode must have positive radius",
+                        Observed = new ObservedValue(radius.Value.SiValue, "m"),
+                        Suggestion = "supply a positive radius",
+                    });
+                    return null;
+                }
+
+                return new CompiledElectrode
+                {
+                    Name = name,
+                    Shape = ElectrodeShape.Disc,
+                    CentreX = centreX.Value.SiValue,
+                    CentreY = centreY.Value.SiValue,
+                    Radius = radius.Value.SiValue,
+                    Potential = potential.Value.SiValue,
+                };
+            }
+
+            case "edgeProfile":
+            {
+                if (electrode.Profile is null || electrode.Profile.Count < 2)
+                {
+                    errors.Add(Missing($"{path}/profile",
+                        "an edge profile needs at least two points to interpolate between",
+                        "add a list of {at, potential} pairs"));
+                    return null;
+                }
+
+                var edge = electrode.Edge switch
+                {
+                    "left" => GridEdge.Left,
+                    "right" => GridEdge.Right,
+                    "bottom" => GridEdge.Bottom,
+                    "top" => GridEdge.Top,
+                    _ => (GridEdge?)null,
+                };
+
+                if (edge is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/edge",
+                        Constraint = "an edge profile must name one of: left, right, bottom, top",
+                        Observed = new ObservedValue(0.0, electrode.Edge ?? "null"),
+                        Suggestion = "'top' and 'bottom' are the facing boards of a planar geometry",
+                    });
+                    return null;
+                }
+
+                var points = new List<(double At, double Potential)>(electrode.Profile.Count);
+
+                for (var k = 0; k < electrode.Profile.Count; k++)
+                {
+                    var at = TryQuantity(electrode.Profile[k].At, $"{path}/profile/{k}/at", length, p, errors);
+                    var potential = TryQuantity(
+                        electrode.Profile[k].Potential, $"{path}/profile/{k}/potential", volt, p, errors);
+
+                    if (at is not null && potential is not null)
+                    {
+                        points.Add((at.Value.SiValue, potential.Value.SiValue));
+                    }
+                }
+
+                if (points.Count != electrode.Profile.Count)
+                {
+                    return null;
+                }
+
+                points.Sort((a, b) => a.At.CompareTo(b.At));
+
+                return new CompiledElectrode
+                {
+                    Name = name,
+                    Shape = ElectrodeShape.EdgeProfile,
+                    Edge = edge.Value,
+                    Profile = points,
+                };
+            }
+
+            default:
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{path}/shape",
+                    Constraint = "an electrode must declare one of: rectangle, disc, edgeProfile",
+                    Observed = new ObservedValue(0.0, electrode.Shape ?? "null"),
+                    Suggestion = "'disc' is a rod in cross-section; 'edgeProfile' is a printed board",
+                });
+                return null;
+        }
+    }
+
+    private static (Vec3 Point, Vec3 Normal)? ValidateDetector(DetectorDocument? detector, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (detector is null)
         {
@@ -303,7 +595,7 @@ public static class ModelValidator
             return null;
         }
 
-        var point = TryVector(detector.PlanePoint, "/detector/planePoint", Dimension.LengthDimension, errors);
+        var point = TryVector(detector.PlanePoint, "/detector/planePoint", Dimension.LengthDimension, p, errors);
         var normal = TryDirection(detector.Normal, "/detector/normal", errors);
 
         return point is null || normal is null ? null : (point.Value, normal.Value);
@@ -312,7 +604,7 @@ public static class ModelValidator
     private sealed record TransportValues(
         string Mode, double RelativeTolerance, double MaximumFlightTime, double SampleInterval);
 
-    private static TransportValues? ValidateTransport(TransportDocument? transport, List<EinzelError> errors)
+    private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (transport is null)
         {
@@ -358,7 +650,7 @@ public static class ModelValidator
         }
 
         var ceiling = TryQuantity(
-            transport.MaximumFlightTime, "/transport/maximumFlightTime", Dimension.TimeDimension, errors);
+            transport.MaximumFlightTime, "/transport/maximumFlightTime", Dimension.TimeDimension, p, errors);
 
         if (ceiling is null)
         {
@@ -383,7 +675,7 @@ public static class ModelValidator
         if (transport.SampleInterval is not null)
         {
             var declared = TryQuantity(
-                transport.SampleInterval, "/transport/sampleInterval", Dimension.TimeDimension, errors);
+                transport.SampleInterval, "/transport/sampleInterval", Dimension.TimeDimension, p, errors);
 
             if (declared is null)
             {
@@ -450,7 +742,8 @@ public static class ModelValidator
     }
 
     private static Quantity? TryQuantity(
-        QuantityValue? value, string path, Dimension expected, List<EinzelError> errors)
+        QuantityValue? value, string path, Dimension expected,
+        IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (value is null)
         {
@@ -461,7 +754,7 @@ public static class ModelValidator
 
         try
         {
-            return value.ToQuantity(path, expected);
+            return value.ToQuantity(path, expected, p);
         }
         catch (EinzelException failure)
         {
@@ -470,7 +763,9 @@ public static class ModelValidator
         }
     }
 
-    private static Vec3? TryVector(VectorValue? value, string path, Dimension expected, List<EinzelError> errors)
+    private static Vec3? TryVector(
+        VectorValue? value, string path, Dimension expected,
+        IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
         if (value is null)
         {

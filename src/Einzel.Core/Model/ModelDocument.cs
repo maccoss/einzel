@@ -36,6 +36,12 @@ public sealed record ModelDocument
     /// <summary>Prose description, carried through to results and figures.</summary>
     public string? Description { get; init; }
 
+    /// <summary>
+    /// The declared parameter surface (LIB-1). Names, units, bounds, and derived
+    /// expressions; what a sweep varies and an optimiser searches.
+    /// </summary>
+    public IReadOnlyDictionary<string, ParameterDocument>? Parameters { get; init; }
+
     /// <summary>The ion being tracked.</summary>
     public IonDocument? Ion { get; init; }
 
@@ -66,6 +72,7 @@ public sealed record ModelDocument
     /// </remarks>
     public bool Equals(ModelDocument? other) =>
         other is not null
+        && ParametersEqual(Parameters, other.Parameters)
         && string.Equals(SchemaVersion, other.SchemaVersion, StringComparison.Ordinal)
         && string.Equals(Name, other.Name, StringComparison.Ordinal)
         && string.Equals(Description, other.Description, StringComparison.Ordinal)
@@ -93,7 +100,39 @@ public sealed record ModelDocument
             hash.Add(field);
         }
 
+        foreach (var parameter in (Parameters ?? new Dictionary<string, ParameterDocument>())
+            .OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            hash.Add(parameter.Key, StringComparer.Ordinal);
+            hash.Add(parameter.Value);
+        }
+
         return hash.ToHashCode();
+    }
+
+    private static bool ParametersEqual(
+        IReadOnlyDictionary<string, ParameterDocument>? left,
+        IReadOnlyDictionary<string, ParameterDocument>? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null || left.Count != right.Count)
+        {
+            return false;
+        }
+
+        foreach (var (name, value) in left)
+        {
+            if (!right.TryGetValue(name, out var other) || !Equals(value, other))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 
@@ -101,10 +140,10 @@ public sealed record ModelDocument
 public static class ModelSchema
 {
     /// <summary>The schema version this build writes.</summary>
-    public const string CurrentVersion = "0.1";
+    public const string CurrentVersion = "0.2";
 
     /// <summary>Versions this build can read.</summary>
-    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1"];
+    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -155,9 +194,13 @@ public sealed record SourceDocument
 public sealed record FieldDocument
 {
     /// <summary>
-    /// One of <c>fieldFree</c>, <c>uniform</c>, or <c>halfSpaceUniform</c>.
+    /// One of <c>fieldFree</c>, <c>uniform</c>, <c>halfSpaceUniform</c>, or
+    /// <c>solved2d</c>.
     /// </summary>
     public string? Type { get; init; }
+
+    /// <summary>Solved only: the domain, electrodes, and boundary conditions.</summary>
+    public SolvedFieldDocument? Solve { get; init; }
 
     /// <summary>Uniform only: the field vector.</summary>
     public VectorValue? Field { get; init; }

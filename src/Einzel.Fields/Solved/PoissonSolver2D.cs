@@ -47,6 +47,32 @@ public sealed record SolveReport(
 /// </remarks>
 public static class PoissonSolver2D
 {
+    /// <summary>
+    /// How much of the fixed set a coarsening may lose before it is refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A V-cycle is only useful while the coarse grid still poses the same
+    /// problem. Interior electrodes — a rod, an aperture — occupy a fixed physical
+    /// size, so each coarsening halves how many nodes represent them, and past a
+    /// few levels they stop being represented at all. The coarse grid then
+    /// computes a correction for a domain with no electrodes in it: not a worse
+    /// approximation but a different one, and prolonging it back drives the
+    /// iteration apart. Four discs in a box reached 1e134 V that way.
+    /// </para>
+    /// <para>
+    /// The rule applies only to interior electrodes, and only they need it. A
+    /// domain pinned on its edges alone coarsens all the way down safely — the
+    /// manufactured-solution tests hold 8, 7, 7, 7 cycles from 32 to 256 intervals
+    /// doing exactly that — so limiting every geometry would cost those cases
+    /// their multigrid for nothing. Note that a total-node test does not work
+    /// here: a disc loses three quarters of its nodes per level, which is
+    /// precisely the rate healthy coarsening produces, so the ratio stays flat
+    /// until the rod disappears and then it is too late.
+    /// </para>
+    /// </remarks>
+    private const int MinimumInteriorFixedNodes = 128;
+
     private const int PreSmooth = 2;
     private const int PostSmooth = 2;
     private const int CoarseSmooth = 60;
@@ -121,12 +147,21 @@ public static class PoissonSolver2D
             return;
         }
 
+        var coarseMask = mask.Coarsen();
+
+        // Refuse a coarsening that would dissolve interior electrodes rather than
+        // represent them more coarsely.
+        if (mask.InteriorFixedCount > 0 && coarseMask.InteriorFixedCount < MinimumInteriorFixedNodes)
+        {
+            Smooth(potential, rightHandSide, mask, CoarseSmooth);
+            return;
+        }
+
         Smooth(potential, rightHandSide, mask, PreSmooth);
 
         var residual = new ScalarField2D(grid);
         Residual(potential, rightHandSide, mask, residual);
 
-        var coarseMask = mask.Coarsen();
         var coarseRhs = Restrict(residual, coarseMask);
         var coarseCorrection = new ScalarField2D(coarseMask.Grid);
 
