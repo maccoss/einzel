@@ -68,6 +68,17 @@ public sealed record IntegrationSettings
     /// </summary>
     public bool UseAnalyticDrift { get; init; } = true;
 
+    /// <summary>
+    /// How many of the field's own resolution lengths a single step may cover.
+    /// Zero disables the cap.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="Fields.IElectrostaticField.ResolutionLength"/>. Four cells
+    /// is loose enough not to dominate the step count in a smooth region and
+    /// tight enough that a field feature one cell wide cannot be stepped over.
+    /// </remarks>
+    public double ResolutionCellsPerStep { get; init; } = 4.0;
+
     /// <summary>Ceiling on accepted steps, as a runaway guard.</summary>
     public int MaximumSteps { get; init; } = 20_000_000;
 

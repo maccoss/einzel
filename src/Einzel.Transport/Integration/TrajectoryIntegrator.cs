@@ -115,14 +115,34 @@ public static class TrajectoryIntegrator
         var derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
         fieldEvaluations++;
 
-        var step = InitialStep(settings, in derivative, characteristicSpeed);
+        // A step may not outrun the field's own resolution. Computed once: the
+        // resolution is a property of the field, not of where the ion is.
+        var resolutionStep = settings.ResolutionCellsPerStep > 0.0 && characteristicSpeed > 0.0
+            ? settings.ResolutionCellsPerStep * field.ResolutionLength / characteristicSpeed
+            : double.PositiveInfinity;
+
+        var step = Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep);
         var outcome = TrajectoryOutcome.MaximumStepsExceeded;
+
+        // A stopping surface is not armed until the flight has been on its
+        // positive side. An ion launched exactly on the surface — which is the
+        // normal case when one leg of a periodic flight ends where the next
+        // begins — would otherwise either stop immediately or, if round-off put
+        // it a hair past, never stop at all.
+        var armed = stopWhenNegative is null || stopWhenNegative(in state) > 0.0;
 
         while (accepted < settings.MaximumSteps)
         {
+            if (!armed && stopWhenNegative!(in state) > 0.0)
+            {
+                armed = true;
+            }
+
+            var activeStop = armed ? stopWhenNegative : null;
+
             if (settings.UseAnalyticDrift
                 && TryAnalyticDrift(
-                    ref state, ref time, field, settings, stopWhenNegative,
+                    ref state, ref time, field, settings, activeStop,
                     recorder, ref analyticDistance, out var stoppedOnDrift))
             {
                 derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
@@ -143,7 +163,7 @@ public static class TrajectoryIntegrator
                 continue;
             }
 
-            step = ApplyStepCaps(step, settings, in state, in derivative, characteristicSpeed);
+            step = ApplyStepCaps(step, settings, in state, in derivative, characteristicSpeed, resolutionStep);
             step = Math.Min(step, settings.MaximumFlightTime - time.Total);
 
             if (step < settings.MinimumStep)
@@ -178,7 +198,7 @@ public static class TrajectoryIntegrator
 
             var stopStep = StopLandingStep(
                 in state, in derivative, in candidate, step, field, chargeToMass,
-                stopWhenNegative, ref fieldEvaluations);
+                activeStop, ref fieldEvaluations);
 
             if (double.IsFinite(stopStep) && stopStep <= boundaryStep)
             {
@@ -402,9 +422,10 @@ public static class TrajectoryIntegrator
         IntegrationSettings settings,
         in PhaseState state,
         in PhaseDerivative derivative,
-        double characteristicSpeed)
+        double characteristicSpeed,
+        double resolutionStep)
     {
-        step = Math.Min(step, settings.MaximumStep);
+        step = Math.Min(step, Math.Min(settings.MaximumStep, resolutionStep));
 
         if (settings.TurningPointStepFactor <= 0.0)
         {
@@ -470,9 +491,16 @@ public static class TrajectoryIntegrator
 
         if (double.IsPositiveInfinity(run))
         {
-            // Unbounded field-free flight with no ceiling. The caller was required
-            // to supply a stop condition, so bracket against it instead.
-            run = BracketUnboundedDrift(in state, in direction, speed, stopWhenNegative!);
+            if (stopWhenNegative is null)
+            {
+                // Field-free forever, no ceiling, and the stopping surface is not
+                // yet armed. Integrating is always correct, only slower.
+                return false;
+            }
+
+            // Unbounded field-free flight with no ceiling. Bracket against the
+            // stopping surface instead.
+            run = BracketUnboundedDrift(in state, in direction, speed, stopWhenNegative);
         }
 
         if (stopWhenNegative is not null)

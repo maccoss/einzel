@@ -65,6 +65,27 @@ public sealed class SuperposedField : IElectrostaticField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The finest member governs. A sum is resolved no better than its
+    /// least-resolved term, and a step that outruns any one element's grid is
+    /// stepping over structure that element holds.
+    /// </remarks>
+    public double ResolutionLength
+    {
+        get
+        {
+            var finest = double.PositiveInfinity;
+
+            foreach (var element in _elements)
+            {
+                finest = Math.Min(finest, element.ResolutionLength);
+            }
+
+            return finest;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// A run is field-free only where every element is, so the shortest run
     /// governs. Returning less than the true run length is always safe; returning
     /// more would advance an ion in a straight line through a region where it

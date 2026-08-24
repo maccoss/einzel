@@ -29,6 +29,7 @@ public sealed class SolvedField2D : IElectrostaticField
     private readonly IFieldInterpolant _interpolant;
     private readonly Grid2D _grid;
     private readonly double _outsidePotential;
+    private readonly bool _boundaryIsDiscontinuous;
 
     /// <summary>Creates a field from a solved potential.</summary>
     /// <param name="potential">The solved potential, in volts.</param>
@@ -41,6 +42,12 @@ public sealed class SolvedField2D : IElectrostaticField
     /// Escape hatch for the tests that measure what a forbidden interpolant costs.
     /// Never set this in a model run.
     /// </param>
+    /// <param name="boundaryIsDiscontinuous">
+    /// Whether the field actually jumps at the edge of the solved box. True where
+    /// the solve is cut off while the field is still finite — the entrance plane
+    /// of a mirror, say. False where the domain was drawn wide enough that the
+    /// field has already decayed, so there is nothing to land on.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException">
     /// The interpolant does not have continuous first derivatives and the escape
@@ -50,7 +57,8 @@ public sealed class SolvedField2D : IElectrostaticField
         ScalarField2D potential,
         IFieldInterpolant interpolant,
         double outsidePotential = 0.0,
-        bool allowDiscontinuousDerivatives = false)
+        bool allowDiscontinuousDerivatives = false,
+        bool boundaryIsDiscontinuous = true)
     {
         ArgumentNullException.ThrowIfNull(potential);
         ArgumentNullException.ThrowIfNull(interpolant);
@@ -67,10 +75,15 @@ public sealed class SolvedField2D : IElectrostaticField
         _interpolant = interpolant;
         _grid = potential.Grid;
         _outsidePotential = outsidePotential;
+        _boundaryIsDiscontinuous = boundaryIsDiscontinuous;
     }
 
     /// <summary>The grid the potential was solved on.</summary>
     public Grid2D Grid => _grid;
+
+    /// <inheritdoc/>
+    /// <remarks>The node spacing: nothing finer was solved for.</remarks>
+    public double ResolutionLength => _grid.Spacing;
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)
@@ -107,8 +120,29 @@ public sealed class SolvedField2D : IElectrostaticField
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// Declaring a boundary that is not really discontinuous is not merely
+    /// wasteful, it is actively harmful. Two such phantom surfaces a few microns
+    /// apart — which is what two abutting solve domains produce — cannot be
+    /// resolved by a superposition that tracks the product of their signs, so a
+    /// step crossing both is treated as crossing neither, and it straddles them
+    /// with the full field discontinuity error. That cost an ion 2.6e-4 of its
+    /// energy in a mirror pair whose domains met at the mid-plane, four orders
+    /// above the ACC-4 budget, and it presented as an intermittent transmission
+    /// loss rather than as anything resembling a numerical fault.
+    /// </para>
+    /// <para>
+    /// So a field that has decayed at its own edge should say so.
+    /// </para>
+    /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
+        if (!_boundaryIsDiscontinuous)
+        {
+            return double.PositiveInfinity;
+        }
+
         // Positive inside the box, negative outside, zero on it. Only x and y
         // matter: the field is invariant along z, so the box is a slab.
         var dx = Math.Min(position.X - _grid.OriginX, _grid.MaxX - position.X);

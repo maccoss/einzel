@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Library</RootNamespace>
+    <Description>Device templates as data, plus a parameterization API. The only assembly that knows what a reflectron is (LIB-1).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Fields\Einzel.Fields.csproj" />
+    <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

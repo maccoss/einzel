@@ -87,4 +87,27 @@ public interface IElectrostaticField
     /// </para>
     /// </remarks>
     double SignedDistanceToDiscontinuity(in Vec3 position) => double.PositiveInfinity;
+
+    /// <summary>
+    /// The length scale on which this field is resolved. Infinite for a field
+    /// given in closed form.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A gridded field carries no information below its node spacing, so a step
+    /// that crosses many cells at once is integrating a function it has not
+    /// looked at. The integrator caps the step to a few of these, which bounds
+    /// the error by the resolution rather than by the smoothness the error
+    /// estimator infers from samples it happened to take.
+    /// </para>
+    /// <para>
+    /// Without it an adaptive controller can be fooled badly. Launch an ion in
+    /// the field-free middle of a mirror pair and the local acceleration is
+    /// almost zero, so the step-size heuristic proposes an enormous step, the
+    /// embedded error estimate agrees it was accurate — correctly, for a straight
+    /// line — and the ion sails through both mirrors without ever sampling them.
+    /// The step was not inaccurate; it was uninformed.
+    /// </para>
+    /// </remarks>
+    double ResolutionLength => double.PositiveInfinity;
 }
