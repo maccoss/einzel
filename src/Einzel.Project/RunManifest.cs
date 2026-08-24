@@ -1,0 +1,122 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Einzel.Project;
+
+/// <summary>
+/// The record that fully determines a run.
+/// </summary>
+/// <remarks>
+/// <para>
+/// PRJ-3: "A run manifest fully determines its run. Model hash, seeds, engine
+/// version, transport mode, solver settings, extension identities. Results are
+/// therefore regenerable rather than precious."
+/// </para>
+/// <para>
+/// That property is what makes the rest of spec section 3 work. It is why
+/// <c>.einzel/</c> can be discarded without losing anything, why version control
+/// is optional rather than required, and why GRD-10 can detect drift in both
+/// directions — a stored result can be checked against both the current model and
+/// the currently installed engine, on a network share or a plain folder, with no
+/// repository involved.
+/// </para>
+/// <para>
+/// <see cref="SolverBehaviourVersion"/> is separate from
+/// <see cref="EngineVersion"/> on purpose. FLD-3 makes it part of the field-cache
+/// key and calls it "not optional, since after an engine update a cache computed
+/// by the previous solver is silently wrong and nothing else would catch it". It
+/// changes only when numerical behaviour changes, so a release that alters
+/// nothing physical does not invalidate every cache in every project.
+/// </para>
+/// </remarks>
+public sealed record RunManifest
+{
+    /// <summary>Content hash of the model document, as <c>sha256:</c> and 64 hex characters.</summary>
+    public required string ModelHash { get; init; }
+
+    /// <summary>The model's declared schema version.</summary>
+    public required string SchemaVersion { get; init; }
+
+    /// <summary>The engine build that produced the run.</summary>
+    public required string EngineVersion { get; init; }
+
+    /// <summary>
+    /// Bumped only when numerical behaviour changes, independently of the engine
+    /// version. Part of the field-cache key (FLD-3).
+    /// </summary>
+    public required int SolverBehaviourVersion { get; init; }
+
+    /// <summary>The transport mode used.</summary>
+    public required string TransportMode { get; init; }
+
+    /// <summary>The compute path: scalar, SIMD, or GPU.</summary>
+    public required string ComputePath { get; init; }
+
+    /// <summary>Random seeds. Empty for a deterministic single-ion run.</summary>
+    public IReadOnlyList<long> Seeds { get; init; } = [];
+
+    /// <summary>Extension identities and versions. Empty when none were used (GRD-6).</summary>
+    public IReadOnlyList<string> Extensions { get; init; } = [];
+
+    /// <summary>
+    /// The machine the run happened on. Recorded because spec section 8 requires
+    /// run-to-run reproducibility on one machine but explicitly does not require
+    /// bit-reproducibility across machines, so a comparison that crosses machines
+    /// needs to know it did.
+    /// </summary>
+    public required string Machine { get; init; }
+
+    /// <summary>When the run happened, in ISO 8601 UTC.</summary>
+    public required string CreatedUtc { get; init; }
+
+    /// <summary>Serialiser options: stable, diffable, newline terminated.</summary>
+    public static JsonSerializerOptions JsonOptions { get; } = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = true,
+        NewLine = "\n",
+    };
+
+    /// <summary>Serialises the manifest.</summary>
+    /// <returns>The manifest text, newline terminated.</returns>
+    public string ToJson() => JsonSerializer.Serialize(this, JsonOptions) + "\n";
+
+    /// <summary>Parses a manifest.</summary>
+    /// <param name="json">The manifest text.</param>
+    /// <returns>The manifest, or null when the text is not one.</returns>
+    public static RunManifest? FromJson(string json) =>
+        JsonSerializer.Deserialize<RunManifest>(json, JsonOptions);
+}
+
+/// <summary>Content hashing for model documents and referenced artifacts.</summary>
+/// <remarks>
+/// PRJ-2: large artifacts are referenced by content hash, never embedded. The
+/// same hash identifies a model in its manifest, which is what GRD-10 compares
+/// against to detect that a model has moved on since a result was computed.
+/// </remarks>
+public static class ContentHash
+{
+    /// <summary>Hashes text as UTF-8, ignoring line-ending style.</summary>
+    /// <param name="text">The text to hash.</param>
+    /// <returns>The hash, as <c>sha256:</c> followed by 64 lowercase hex characters.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="text"/> is null.</exception>
+    /// <remarks>
+    /// Line endings are normalised before hashing. A model that round-trips
+    /// through a Windows editor is the same model, and a hash that said otherwise
+    /// would make GRD-10 report drift that did not happen — which is worse than
+    /// useless, because a drift warning nobody believes is a drift warning nobody
+    /// reads.
+    /// </remarks>
+    public static string OfText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var normalised = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(normalised));
+
+        return "sha256:" + Convert.ToHexStringLower(digest);
+    }
+}

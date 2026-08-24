@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Commands</RootNamespace>
+    <Description>Command objects: validate, apply, diff, undo, journal, attribution. Every operation a serializable object, so the CLI, MCP server, and shell are peers over one implementation (AGT-2).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Io\Einzel.Io.csproj" />
+    <ProjectReference Include="..\Einzel.Project\Einzel.Project.csproj" />
+    <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

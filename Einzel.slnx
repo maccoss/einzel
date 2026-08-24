@@ -1,10 +1,16 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Einzel.Cli/Einzel.Cli.csproj" />
+    <Project Path="src/Einzel.Commands/Einzel.Commands.csproj" />
     <Project Path="src/Einzel.Core/Einzel.Core.csproj" />
+    <Project Path="src/Einzel.Io/Einzel.Io.csproj" />
+    <Project Path="src/Einzel.Project/Einzel.Project.csproj" />
     <Project Path="src/Einzel.Transport/Einzel.Transport.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Einzel.Cli.Tests/Einzel.Cli.Tests.csproj" />
     <Project Path="tests/Einzel.Core.Tests/Einzel.Core.Tests.csproj" />
+    <Project Path="tests/Einzel.Io.Tests/Einzel.Io.Tests.csproj" />
     <Project Path="tests/Einzel.Transport.Tests/Einzel.Transport.Tests.csproj" />
   </Folder>
 </Solution>

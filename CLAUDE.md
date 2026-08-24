@@ -10,7 +10,8 @@ The goal is to **build the software described in the specification**. The near-t
 
 - **Stage 0** — solution, CI, and the three foundational types in `Einzel.Core` that cannot be retrofitted: `Quantity`/`Dimension` (units), `Measured` (the GRD-1 envelope), `EinzelError` (AGT-3).
 - **Stage 1** — `Einzel.Transport`: Dormand–Prince 5(4) with per-step error control, Neumaier-compensated time accumulation, analytic field-free drift, exact landing on stop surfaces and declared field discontinuities, and analytic fields (field-free, uniform, retarding half-space). **ACC-1 is demonstrated at ~1e-10 relative against the closed-form single-stage reflectron, four orders inside the 1 ppm budget**, and first-order energy focusing (total field-free path = 4 × penetration depth) is reproduced.
-- **Stage 2 is next**: model schema, project layout, manifests, `einzel init/validate/run --json`, VTU trajectory export — the thin end-to-end slice.
+- **Stage 2** — the vertical slice, end to end: model schema v0.1 (`Einzel.Core/Model`), JSON and VTU (`Einzel.Io`), project layout and run manifests (`Einzel.Project`), command objects (`Einzel.Commands`), and the `einzel` CLI. `einzel init` → edit text → `einzel run --vtu` reproduces the analytic 10.1805 µs, writes a manifest, and emits a ParaView trajectory. Cold start ~80 ms against PERF-8's 500 ms.
+- **Stage 3 is next**: 2D Cartesian multigrid solver, tricubic interpolation, grid-convergence harness, basis superposition — cross-checked against Stage 1's analytic reflectron.
 
 Two findings from Stage 1 that bear on the spec:
 
@@ -32,7 +33,15 @@ dotnet test                                   # all tests
 dotnet test --filter FullyQualifiedName~MeasuredApiSurfaceTests   # one class
 dotnet test --filter "FullyQualifiedName~QuantityTests.RoundTripsThroughANamedUnit"  # one test
 start <file>.html                             # preview a design document
+
+# The CLI, once built (src/Einzel.Cli/bin/Debug/net10.0/einzel.exe)
+einzel init <dir> [--vcs git]                 # create a project
+einzel validate models/reflectron.json        # units, bounds, regime validity
+einzel run models/reflectron.json --vtu       # run; --vtu writes a ParaView trajectory
+einzel run models/reflectron.json --json      # machine-readable, for the agent loop
 ```
+
+**A known architecture deviation:** the analytic fields (`FieldFreeSpace`, `UniformField`, `HalfSpaceUniformField`) and `IElectrostaticField` live in `Einzel.Transport`, but per §6 they belong in `Einzel.Fields`. That assembly does not exist yet; create it in Stage 3 when the multigrid solver lands and move them then, with `Einzel.Transport` referencing it.
 
 `global.json` pins SDK 10.0.400 (`rollForward: latestFeature`), which matters because 8, 9, and 10 are all installed on this machine and the repo must not silently build on an out-of-support runtime. Toolchain per the spec: **C# / .NET 10 (LTS)**, vendored CPython for extensions, ILGPU for GPU paths, WPF (Windows-only) for the shell, everything else cross-platform.
 

@@ -59,6 +59,11 @@ public static class TrajectoryIntegrator
     /// Optional stopping surface. When null, <see cref="IntegrationSettings.MaximumFlightTime"/>
     /// must be finite.
     /// </param>
+    /// <param name="recorder">
+    /// Optional trajectory sampler for rendering and export (TRJ-1). Supplying
+    /// one makes the run allocate in proportion to the sample count; omitting it
+    /// keeps the inner loop allocation-free.
+    /// </param>
     /// <returns>The trajectory outcome.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="field"/> or <paramref name="settings"/> is null.</exception>
     /// <exception cref="ArgumentException">The run is unbounded: no stop condition and no flight-time ceiling.</exception>
@@ -67,7 +72,8 @@ public static class TrajectoryIntegrator
         IonSpecies species,
         IElectrostaticField field,
         IntegrationSettings settings,
-        TrajectoryStopFunction? stopWhenNegative = null)
+        TrajectoryStopFunction? stopWhenNegative = null,
+        TrajectoryRecorder? recorder = null)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(settings);
@@ -103,6 +109,8 @@ public static class TrajectoryIntegrator
             ? Math.Sqrt(2.0 * energyScale / species.MassSi)
             : state.Speed;
 
+        recorder?.Offer(0.0, in state, force: true);
+
         var derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
         fieldEvaluations++;
 
@@ -114,7 +122,7 @@ public static class TrajectoryIntegrator
             if (settings.UseAnalyticDrift
                 && TryAnalyticDrift(
                     ref state, ref time, field, settings, stopWhenNegative,
-                    ref analyticDistance, out var stoppedOnDrift))
+                    recorder, ref analyticDistance, out var stoppedOnDrift))
             {
                 derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
                 fieldEvaluations++;
@@ -181,6 +189,7 @@ public static class TrajectoryIntegrator
                 time.Add(stopStep);
                 state = landed;
                 accepted++;
+                recorder?.Offer(time.Total, in state, force: true);
                 TrackEnergyDrift(
                     in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
                 outcome = TrajectoryOutcome.StopConditionMet;
@@ -197,6 +206,7 @@ public static class TrajectoryIntegrator
                 time.Add(boundaryStep);
                 state = onBoundary;
                 accepted++;
+                recorder?.Offer(time.Total, in state, force: true);
                 TrackEnergyDrift(
                     in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
 
@@ -211,6 +221,7 @@ public static class TrajectoryIntegrator
             state = candidate;
             derivative = candidateDerivative;
             accepted++;
+            recorder?.Offer(time.Total, in state, force: false);
 
             TrackEnergyDrift(
                 in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
@@ -422,6 +433,7 @@ public static class TrajectoryIntegrator
         IElectrostaticField field,
         IntegrationSettings settings,
         TrajectoryStopFunction? stopWhenNegative,
+        TrajectoryRecorder? recorder,
         ref double analyticDistance,
         out bool stopped)
     {
@@ -475,9 +487,15 @@ public static class TrajectoryIntegrator
             }
         }
 
+        // Both ends of a straight segment, so a figure keeps its endpoints even
+        // when the whole drift is a single advance.
+        recorder?.Offer(time.Total, in state, force: true);
+
         state = Drift(in state, in direction, run);
         time.Add(run / speed);
         analyticDistance += run;
+
+        recorder?.Offer(time.Total, in state, force: true);
         return true;
     }
 
