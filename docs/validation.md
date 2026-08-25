@@ -21,9 +21,19 @@ cross-code tier is unavailable — see below.
 | Energy drift in a static field | 1e-9 to 1e-15 against ACC-4's 1e-6 |
 | First-order energy focusing, L = 4d | dT/dv vanishes; reappears at the predicted magnitude when detuned |
 | Quadrupole field | Φ(x) = −Φ(y) exactly; Ex/x constant to 0.17% |
+| Parallel-plate gap, boundary swept sub-cell | 3.1e-10 of applied, at every offset |
+| Coaxial log potential around a rod | Second order, 1.5e-5 at h = 0.156 mm |
+| Shape derivative dV/dL against −1000x/L² | 6.5e-6 relative at a 0.11-cell step |
 
 The detuned reflectron matters more than it looks: without it, a bug that simply
 returned a constant flight time would pass the focusing test.
+
+The last three are what a cut-cell boundary bought. The coaxial check in
+particular was not available before: §19 asks for it, but a rasterised circle is
+a staircase, and the comparison would have measured the staircase rather than the
+solver. Driving the outer boundary with the same analytic potential A ln r + B
+makes that solution exact over the whole annulus, so the residue is the
+discretisation and nothing else.
 
 ### Convergence
 
@@ -106,12 +116,15 @@ covering everything.
 - **No agent acceptance suite.** Scripted prose tasks run against an agent given
   only a project directory and the CLI, scored on whether it acts on warnings, is
   a release metric the specification asks for and nothing measures.
-- **Interior-electrode multigrid is mitigated, not solved** — see
-  [Numerics](numerics.md).
-- **Geometry sensitivity fields do not work** on a rasterised mesh — see
-  [Spec findings](spec-findings.md). Voltage channels are fine; a tolerance study
-  over electrode *positions* is not yet possible, and the code refuses rather than
-  returning a plausible zero.
+- **The solve domain may not be the declared domain.** `Grid2D.OverBox` rounds
+  the y interval count up to a power of two, so a box whose aspect ratio does not
+  suit can be solved as much as fifty per cent taller than asked for, silently.
+  The shipped templates are within half a cell; nothing checks. See
+  [Spec findings](spec-findings.md).
+- **Geometry sensitivity fields are limited by second-order physics**, not by
+  the mesh: the linearisation error is (δ/L)², so a 1 ppm gate holds to about
+  δ/L = 10⁻³ and the memo's 100–300 µm channels linearise to 1e-5, not 1e-6. See
+  [Spec findings](spec-findings.md). Voltage channels linearise to 1.5e-14.
 - **Resolving powers quoted are energy-aberration only.** No spatial or angular
   spread, no turn-around time, no detector response.
 

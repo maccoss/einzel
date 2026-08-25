@@ -140,13 +140,43 @@ concluded the parameter did not matter.
 
 Exact zeros in a numerical result deserve suspicion rather than satisfaction.
 They usually mean a quantity was never computed rather than computed to be zero,
-and the two are indistinguishable in the number itself. The guard is now an
-error, because there is no correct value to return.
+and the two are indistinguishable in the number itself.
+
+The underlying cause is fixed — the boundary now moves sub-cell, and the same
+measurement returns a proper quadratic Taylor remainder — but the guard stays,
+because what it detects is "the model never saw the perturbation", and that can
+be true for reasons other than the one that prompted it.
 
 The neighbouring case makes the same point from the other side: at 0.1% and 0.3%
 perturbation an earlier fixture returned residuals of 0.2297 and 0.2297 —
 identical to four figures. A residual that does not move when its input moves is
 not measuring its input.
+
+## A boundary condition that moves when you coarsen
+
+A Dirichlet domain edge was implemented as a ghost node one cell outside the
+grid, held at zero, with the edge node itself solved. On a single grid that is
+perfectly self-consistent, and it had been right for months.
+
+It is wrong the moment there is more than one grid. The ghost sits one cell out
+at the fine level, two at the next, four at the next — so every level of a
+V-cycle solves a slightly *larger domain* than the one above it, and the
+correction it computes is for a different problem. A cap plate in a grounded box
+diverged to **1e50 V**.
+
+Two things about how it stayed hidden are worth more than the bug itself. First,
+another limitation was masking it: the interior-electrode coarsening floor
+stopped these geometries before they reached a second level, so the solver
+silently fell back on plain Gauss–Seidel and reported a convergence factor of
+0.83. Poor, but not obviously a bug — and "poor convergence" is exactly the sort
+of number one shrugs at. Removing one limitation exposed the other, which is the
+usual order of events.
+
+Second, the diagnosis came from a two-by-two table rather than from reading the
+code. Cut cells were the new thing and the obvious suspect; running the same
+geometry with cuts on and off, and with Dirichlet and Neumann edges, showed the
+divergence in the cut-free rows and in none of the Neumann rows. That is four
+solves and it eliminated the entire feature that had just been written.
 
 ## Two arithmetic slips, for completeness
 
@@ -174,3 +204,6 @@ actually caught them were:
   refinement, or a cycle count that grows with it, is diagnostic on its own.
 - **Exact invariants.** The maximum principle — no potential may exceed the
   applied value — is a tolerance-free check that a solve has not diverged.
+- **Factorial experiments over code reading.** Two binary switches and four runs
+  localised a divergence to a feature nobody suspected, faster than reading the
+  diff would have.

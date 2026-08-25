@@ -88,7 +88,165 @@ public static class GeometryBuilder
             }
         }
 
+        PinDirichletEdges(mask, grid);
+        AddCuts(solve, grid, mask, potentialOf);
+
         return mask;
+    }
+
+    /// <summary>
+    /// Grounds every node on a Dirichlet domain edge that no electrode has already
+    /// claimed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A Dirichlet edge has to mean the potential is zero <em>on the edge</em>. The
+    /// alternative reading — a ghost node one cell outside the grid held at zero,
+    /// with the edge node itself solved — is self-consistent on any single grid,
+    /// and it was what the solver did. It is wrong the moment there is more than
+    /// one grid: the ghost sits one cell out, so the boundary is one cell out at
+    /// the fine level, two at the next, four at the next. Every level of a V-cycle
+    /// then solves a slightly larger domain than the one above it, and a coarse
+    /// correction computed on the wrong domain does not correct anything.
+    /// </para>
+    /// <para>
+    /// It diverged rather than merely converging slowly: 1e50 V on a cap plate in
+    /// a grounded box. The reason it went unnoticed is that the coarsening limit
+    /// happened to stop these geometries before they reached a second level, so
+    /// the solver fell back on plain Gauss-Seidel and reported a convergence
+    /// factor of 0.84 — poor, but not obviously a bug.
+    /// </para>
+    /// <para>
+    /// Electrodes are rasterised first and are not overwritten, so a plate that
+    /// reaches the edge of the domain still holds the edge.
+    /// </para>
+    /// </remarks>
+    private static void PinDirichletEdges(DirichletMask mask, Grid2D grid)
+    {
+        for (var i = 0; i < grid.CountX; i++)
+        {
+            if (mask.BottomEdge == EdgeCondition.Dirichlet && !mask.IsFixed(i, 0))
+            {
+                mask.Fix(i, 0, 0.0);
+            }
+
+            if (mask.TopEdge == EdgeCondition.Dirichlet && !mask.IsFixed(i, grid.CountY - 1))
+            {
+                mask.Fix(i, grid.CountY - 1, 0.0);
+            }
+        }
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            if (mask.LeftEdge == EdgeCondition.Dirichlet && !mask.IsFixed(0, j))
+            {
+                mask.Fix(0, j, 0.0);
+            }
+
+            if (mask.RightEdge == EdgeCondition.Dirichlet && !mask.IsFixed(grid.CountX - 1, j))
+            {
+                mask.Fix(grid.CountX - 1, j, 0.0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Records where each electrode surface crosses between nodes, so the solver
+    /// can place the boundary where it is rather than at the nearest node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately independent of which nodes were rasterised. Asking "is my
+    /// neighbour a fixed node?" would tie the sub-cell boundary back to the
+    /// staircase it exists to remove, and would miss an electrode thinner than a
+    /// cell entirely — which is every coarse multigrid level of a thin plate.
+    /// Asking the geometry directly finds the surface whether or not any node
+    /// happens to lie behind it.
+    /// </para>
+    /// <para>
+    /// A node may be cut by more than one electrode in the same direction, at a
+    /// gap between two plates narrower than a cell. The nearest one wins, because
+    /// it is the one the stencil can see; the far one is in shadow behind a
+    /// conductor.
+    /// </para>
+    /// </remarks>
+    private static void AddCuts(
+        CompiledSolvedField solve, Grid2D grid, DirichletMask mask, Func<CompiledElectrode, double>? potentialOf)
+    {
+        var cuts = new CutLinks(grid);
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                if (mask.IsFixed(i, j))
+                {
+                    continue;
+                }
+
+                CutTowards(solve, grid, cuts, potentialOf, i, j, 1, 0, StencilDirection.East);
+                CutTowards(solve, grid, cuts, potentialOf, i, j, -1, 0, StencilDirection.West);
+                CutTowards(solve, grid, cuts, potentialOf, i, j, 0, 1, StencilDirection.North);
+                CutTowards(solve, grid, cuts, potentialOf, i, j, 0, -1, StencilDirection.South);
+            }
+        }
+
+        mask.Cuts = cuts.HasCuts ? cuts : null;
+    }
+
+    private static void CutTowards(
+        CompiledSolvedField solve,
+        Grid2D grid,
+        CutLinks cuts,
+        Func<CompiledElectrode, double>? potentialOf,
+        int i,
+        int j,
+        int di,
+        int dj,
+        StencilDirection direction)
+    {
+        var ni = i + di;
+        var nj = j + dj;
+
+        if (ni < 0 || nj < 0 || ni >= grid.CountX || nj >= grid.CountY)
+        {
+            return;
+        }
+
+        var fromX = grid.X(i);
+        var fromY = grid.Y(j);
+        var toX = grid.X(ni);
+        var toY = grid.Y(nj);
+
+        var nearest = 1.0;
+        var potential = 0.0;
+        var found = false;
+
+        foreach (var electrode in solve.Electrodes)
+        {
+            if (electrode.FirstEntry(fromX, fromY, toX, toY) is not { } entry || entry >= nearest)
+            {
+                continue;
+            }
+
+            // A surface at zero would put the node itself on the conductor, where
+            // rasterisation should already have fixed it. Ignoring it keeps a
+            // rounding disagreement between the two from producing a stencil with
+            // no extent at all.
+            if (entry <= 0.0)
+            {
+                continue;
+            }
+
+            nearest = entry;
+            potential = potentialOf?.Invoke(electrode) ?? electrode.Potential;
+            found = true;
+        }
+
+        if (found)
+        {
+            cuts.Cut(i, j, direction, nearest, potential);
+        }
     }
 
     private static EdgeCondition Translate(BoundaryKind kind) =>
@@ -191,7 +349,8 @@ public static class GeometryBuilder
 
         var grid = BuildGrid(solve);
         var mask = BuildMask(solve, grid);
-        var (potential, report) = PoissonSolver2D.Solve(mask, solve.Tolerance, maximumCycles: 400);
+        var (potential, report) = PoissonSolver2D.Solve(
+            mask, solve.Tolerance, maximumCycles: 400, coarsen: coarse => BuildMask(solve, coarse));
 
         IElectrostaticField field = new SolvedField2D(
             potential,

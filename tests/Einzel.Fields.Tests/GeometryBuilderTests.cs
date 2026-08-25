@@ -9,6 +9,11 @@ namespace Einzel.Fields.Tests;
 /// </summary>
 public sealed class GeometryBuilderTests
 {
+    /// <remarks>
+    /// Every edge is Neumann so that these tests see the electrodes and nothing
+    /// else. A Dirichlet edge grounds the nodes along it, which is right for the
+    /// solve and noise for a test about rasterisation; it has its own test below.
+    /// </remarks>
     private static CompiledSolvedField Field(params CompiledElectrode[] electrodes) => new()
     {
         MinX = -0.01,
@@ -16,6 +21,10 @@ public sealed class GeometryBuilderTests
         MaxX = 0.01,
         MaxY = 0.01,
         CellSize = 0.0005,
+        LeftEdge = BoundaryKind.Neumann,
+        RightEdge = BoundaryKind.Neumann,
+        BottomEdge = BoundaryKind.Neumann,
+        TopEdge = BoundaryKind.Neumann,
         Electrodes = electrodes,
         Tolerance = 1e-12,
         BoundaryIsDiscontinuous = true,
@@ -196,6 +205,57 @@ public sealed class GeometryBuilderTests
 
         Assert.Equal(1.0, basis.ValueAt(insideA, middle));
         Assert.Equal(0.0, basis.ValueAt(insideB, middle));
+    }
+
+    [Fact]
+    public void ADirichletEdgeGroundsTheEdgeItselfRatherThanAGhostOutsideIt()
+    {
+        // Where the boundary is has to be the same at every level of a V-cycle,
+        // and that is what forces this convention. Holding a ghost node one cell
+        // outside the grid at zero is perfectly consistent on one grid, and it is
+        // what the solver used to do; but the ghost is one cell out on the fine
+        // grid, two on the next, four on the next, so each coarse level solves a
+        // slightly larger domain than the one above it. The correction it computes
+        // is then for a different problem. It diverged to 1e50 V.
+        var solve = new CompiledSolvedField
+        {
+            MinX = -0.01, MinY = -0.01, MaxX = 0.01, MaxY = 0.01,
+            CellSize = 0.0005,
+            Tolerance = 1e-12,
+            Electrodes =
+            [
+                new CompiledElectrode
+                {
+                    Name = "cap", Shape = ElectrodeShape.Rectangle,
+                    MinX = -0.01, MaxX = -0.0095, MinY = -0.01, MaxY = 0.01, Potential = 1000.0,
+                },
+            ],
+        };
+
+        var grid = GeometryBuilder.BuildGrid(solve);
+        var mask = GeometryBuilder.BuildMask(solve, grid);
+
+        // The cap reaches the left edge and keeps it; the other three are grounded.
+        Assert.True(mask.IsFixed(0, grid.CountY / 2));
+        Assert.Equal(1000.0, mask.ValueAt(0, grid.CountY / 2));
+
+        Assert.True(mask.IsFixed(grid.CountX - 1, grid.CountY / 2));
+        Assert.Equal(0.0, mask.ValueAt(grid.CountX - 1, grid.CountY / 2));
+        Assert.Equal(0.0, mask.ValueAt(grid.CountX / 2, 0));
+        Assert.Equal(0.0, mask.ValueAt(grid.CountX / 2, grid.CountY - 1));
+
+        var (_, report) = PoissonSolver2D.Solve(
+            mask, solve.Tolerance, maximumCycles: 400, coarsen: c => GeometryBuilder.BuildMask(solve, c));
+
+        Assert.True(report.Converged, $"the solve did not converge: {report}");
+
+        // A working V-cycle, not Gauss-Seidel wearing one. Before the fix this
+        // geometry could not coarsen at all and took 148 cycles at a factor of
+        // 0.83; a ghost-node edge that was allowed to coarsen diverged outright.
+        Assert.True(
+            report.Cycles < 20,
+            $"took {report.Cycles} cycles at a convergence factor of {report.ConvergenceFactor:F3}, which is "
+            + "smoothing rather than multigrid");
     }
 
     [Fact]

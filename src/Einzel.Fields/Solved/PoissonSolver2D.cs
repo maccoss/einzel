@@ -87,6 +87,12 @@ public static class PoissonSolver2D
     /// Optional starting field. A previous solve on the same geometry makes a good
     /// one; otherwise the fixed potentials are smoothed into a zero interior.
     /// </param>
+    /// <param name="coarsen">
+    /// Optional factory that rebuilds the mask for a coarser grid from the
+    /// geometry itself. Strongly preferred over the default, which projects the
+    /// fine mask down and loses sub-cell boundaries as it goes: rebuilding keeps
+    /// an electrode present, with its true surface position, at every level.
+    /// </param>
     /// <returns>The solved potential and a report on how it was reached.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="mask"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The tolerance or cycle ceiling is not positive.</exception>
@@ -94,7 +100,8 @@ public static class PoissonSolver2D
         DirichletMask mask,
         double tolerance = 1e-10,
         int maximumCycles = 200,
-        ScalarField2D? initialGuess = null)
+        ScalarField2D? initialGuess = null,
+        Func<Grid2D, DirichletMask>? coarsen = null)
     {
         ArgumentNullException.ThrowIfNull(mask);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tolerance);
@@ -120,7 +127,7 @@ public static class PoissonSolver2D
 
         for (; cycles < maximumCycles; cycles++)
         {
-            VCycle(potential, rightHandSide, mask);
+            VCycle(potential, rightHandSide, mask, coarsen);
             current = Residual(potential, rightHandSide, mask, residual);
 
             if (current <= tolerance * initial)
@@ -137,7 +144,11 @@ public static class PoissonSolver2D
         return (potential, new SolveReport(current <= tolerance * initial, cycles, initial, current, factor));
     }
 
-    private static void VCycle(ScalarField2D potential, ScalarField2D rightHandSide, DirichletMask mask)
+    private static void VCycle(
+        ScalarField2D potential,
+        ScalarField2D rightHandSide,
+        DirichletMask mask,
+        Func<Grid2D, DirichletMask>? coarsen)
     {
         var grid = potential.Grid;
 
@@ -147,11 +158,18 @@ public static class PoissonSolver2D
             return;
         }
 
-        var coarseMask = mask.Coarsen();
+        // Rebuilding from geometry keeps the surface where it is at every level;
+        // projecting the fine mask down is what let electrodes dissolve.
+        var coarseMask = coarsen is not null ? coarsen(grid.Coarsen()) : mask.Coarsen();
 
         // Refuse a coarsening that would dissolve interior electrodes rather than
-        // represent them more coarsely.
-        if (mask.InteriorFixedCount > 0 && coarseMask.InteriorFixedCount < MinimumInteriorFixedNodes)
+        // represent them more coarsely. A mask rebuilt from the geometry keeps its
+        // surfaces wherever they are, at any spacing, so it needs only to still
+        // have them; a mask projected down from the fine one loses a quarter of an
+        // electrode's nodes per level and needs the far more cautious floor.
+        var minimum = coarsen is not null ? 1 : MinimumInteriorFixedNodes;
+
+        if (mask.InteriorGeometryCount > 0 && coarseMask.InteriorGeometryCount < minimum)
         {
             Smooth(potential, rightHandSide, mask, CoarseSmooth);
             return;
@@ -165,7 +183,12 @@ public static class PoissonSolver2D
         var coarseRhs = Restrict(residual, coarseMask);
         var coarseCorrection = new ScalarField2D(coarseMask.Grid);
 
-        VCycle(coarseCorrection, coarseRhs, coarseMask);
+        // The coarse problem solves for the error, which is zero on every
+        // conductor, so its cut links carry zero potential rather than the
+        // electrode's.
+        coarseMask.ZeroCutPotentials();
+
+        VCycle(coarseCorrection, coarseRhs, coarseMask, coarsen);
 
         Prolong(coarseCorrection, potential, mask);
         Smooth(potential, rightHandSide, mask, PostSmooth);
@@ -181,7 +204,16 @@ public static class PoissonSolver2D
         ScalarField2D potential, ScalarField2D rightHandSide, DirichletMask mask, int sweeps)
     {
         var grid = potential.Grid;
-        var h2 = grid.Spacing * grid.Spacing;
+
+        // The stencil is carried in cell units, so its coefficients stay of order
+        // one whatever the spacing and whatever a cut fraction does to them, and
+        // the mesh enters exactly once, here. Folding one over h squared into the
+        // stencil instead would scale every term by millions while leaving the
+        // quantity actually wanted - the difference between them - unchanged, and
+        // spend the precision on nothing. In cell units the uniform case reduces
+        // to the old five-point arithmetic exactly, halves and quarters being
+        // exact in binary, so the change carries no rounding of its own.
+        var halfH2 = 0.5 * grid.Spacing * grid.Spacing;
 
         for (var sweep = 0; sweep < sweeps; sweep++)
         {
@@ -196,8 +228,8 @@ public static class PoissonSolver2D
                             continue;
                         }
 
-                        var (sum, weight) = Neighbours(potential, mask, i, j);
-                        potential[i, j] = (sum - (h2 * rightHandSide[i, j])) / weight;
+                        Stencil(potential, mask, i, j, out var sum, out var weight);
+                        potential[i, j] = (sum - (halfH2 * rightHandSide[i, j])) / weight;
                     }
                 }
             }
@@ -205,35 +237,89 @@ public static class PoissonSolver2D
     }
 
     /// <summary>
-    /// The five-point neighbour sum, with Neumann edges handled by reflection.
+    /// The Shortley-Weller stencil: a second-derivative approximation on unequal
+    /// spacings, so a conductor surface may sit between nodes.
     /// </summary>
     /// <remarks>
-    /// A zero-derivative edge is a mirror plane, so the ghost node outside it
-    /// equals its reflection inside, which shows up as the interior neighbour
-    /// counted twice. That keeps the stencil second-order at the edge rather than
-    /// dropping to first, and the difference matters: a one-sided first-order edge
-    /// would put a first-order error into an otherwise second-order solve and cap
-    /// the convergence order the whole grid can show.
+    /// <para>
+    /// For spacings h- and h+ either side of a node, the second derivative is
+    /// 2/(h- + h+) [ f-/h- + f+/h+ - f0 (1/h- + 1/h+) ]. With every spacing equal
+    /// to h this is exactly the familiar five-point formula, so the uniform case
+    /// costs nothing and is not a separate code path.
+    /// </para>
+    /// <para>
+    /// What it buys is that the coefficients vary *continuously* with the surface
+    /// position. A rasterised boundary snaps to the nearest node, so the operator
+    /// is a staircase function of where an electrode sits; here it moves smoothly,
+    /// which is what makes a shape derivative mean anything and what recovers
+    /// second-order accuracy at a curved boundary.
+    /// </para>
+    /// <para>
+    /// A Neumann edge is a mirror plane, so the ghost node outside it equals its
+    /// reflection inside, which appears as the interior neighbour counted twice at
+    /// the same spacing.
+    /// </para>
     /// </remarks>
-    private static (double Sum, double Weight) Neighbours(
-        ScalarField2D potential, DirichletMask mask, int i, int j)
+    private static void Stencil(
+        ScalarField2D potential, DirichletMask mask, int i, int j, out double sum, out double weight)
+    {
+        var cuts = mask.Cuts;
+
+        Arm(potential, mask, cuts, i, j, 1, 0, StencilDirection.East, out var east, out var fEast);
+        Arm(potential, mask, cuts, i, j, -1, 0, StencilDirection.West, out var west, out var fWest);
+        Arm(potential, mask, cuts, i, j, 0, 1, StencilDirection.North, out var north, out var fNorth);
+        Arm(potential, mask, cuts, i, j, 0, -1, StencilDirection.South, out var south, out var fSouth);
+
+        var alongX = 1.0 / (fWest + fEast);
+        var alongY = 1.0 / (fSouth + fNorth);
+
+        sum = (alongX * ((west / fWest) + (east / fEast)))
+            + (alongY * ((south / fSouth) + (north / fNorth)));
+
+        weight = (alongX * ((1.0 / fWest) + (1.0 / fEast)))
+            + (alongY * ((1.0 / fSouth) + (1.0 / fNorth)));
+    }
+
+    /// <summary>
+    /// One arm of the stencil: the value it reaches, and how far away that is as a
+    /// fraction of a cell.
+    /// </summary>
+    private static void Arm(
+        ScalarField2D potential,
+        DirichletMask mask,
+        CutLinks? cuts,
+        int i,
+        int j,
+        int di,
+        int dj,
+        StencilDirection direction,
+        out double value,
+        out double fraction)
     {
         var grid = potential.Grid;
-        var sum = 0.0;
+        var ni = i + di;
+        var nj = j + dj;
 
-        sum += i > 0 ? potential[i - 1, j]
-            : mask.LeftEdge == EdgeCondition.Neumann ? potential[i + 1, j] : 0.0;
+        if (ni < 0 || nj < 0 || ni >= grid.CountX || nj >= grid.CountY)
+        {
+            // Off the grid. A Neumann edge reflects; a Dirichlet edge that no node
+            // holds falls back to zero a full cell away, which the geometry builder
+            // avoids by pinning the edge itself.
+            var neumann = di > 0 ? mask.RightEdge == EdgeCondition.Neumann
+                : di < 0 ? mask.LeftEdge == EdgeCondition.Neumann
+                : dj > 0 ? mask.TopEdge == EdgeCondition.Neumann
+                : mask.BottomEdge == EdgeCondition.Neumann;
 
-        sum += i < grid.CountX - 1 ? potential[i + 1, j]
-            : mask.RightEdge == EdgeCondition.Neumann ? potential[i - 1, j] : 0.0;
+            value = neumann ? potential[i - di, j - dj] : 0.0;
+            fraction = 1.0;
+            return;
+        }
 
-        sum += j > 0 ? potential[i, j - 1]
-            : mask.BottomEdge == EdgeCondition.Neumann ? potential[i, j + 1] : 0.0;
+        fraction = cuts?.Fraction(i, j, direction) ?? 1.0;
 
-        sum += j < grid.CountY - 1 ? potential[i, j + 1]
-            : mask.TopEdge == EdgeCondition.Neumann ? potential[i, j - 1] : 0.0;
-
-        return (sum, 4.0);
+        // A cut surface is nearer than the neighbouring node, so it is what the
+        // arm reaches.
+        value = fraction < 1.0 ? cuts!.Potential(i, j, direction) : potential[ni, nj];
     }
 
     /// <summary>Computes the residual and returns its root-mean-square norm.</summary>
@@ -241,7 +327,7 @@ public static class PoissonSolver2D
         ScalarField2D potential, ScalarField2D rightHandSide, DirichletMask mask, ScalarField2D residual)
     {
         var grid = potential.Grid;
-        var inverseH2 = 1.0 / (grid.Spacing * grid.Spacing);
+        var inverseHalfH2 = 2.0 / (grid.Spacing * grid.Spacing);
         var sum = 0.0;
         var count = 0;
 
@@ -255,8 +341,8 @@ public static class PoissonSolver2D
                     continue;
                 }
 
-                var (neighbours, weight) = Neighbours(potential, mask, i, j);
-                var laplacian = (neighbours - (weight * potential[i, j])) * inverseH2;
+                Stencil(potential, mask, i, j, out var neighbours, out var weight);
+                var laplacian = (neighbours - (weight * potential[i, j])) * inverseHalfH2;
                 var value = rightHandSide[i, j] - laplacian;
 
                 residual[i, j] = value;

@@ -129,6 +129,13 @@ public sealed class DirichletMask
     /// <summary>The grid this mask covers.</summary>
     public Grid2D Grid { get; }
 
+    /// <summary>
+    /// Where conductor surfaces cut between nodes, when the geometry was built
+    /// with sub-cell boundaries. Absent for a mask assembled node by node, which
+    /// then uses the ordinary uniform stencil.
+    /// </summary>
+    public CutLinks? Cuts { get; set; }
+
     /// <summary>How many nodes hold a fixed potential.</summary>
     /// <remarks>
     /// Used to decide how far a V-cycle may usefully coarsen. Coarsening halves
@@ -152,6 +159,18 @@ public sealed class DirichletMask
     /// the case that must be limited from the case that must not be.
     /// </remarks>
     public int InteriorFixedCount { get; private set; }
+
+    /// <summary>
+    /// How much interior geometry the mask carries, counting both pinned nodes and
+    /// sub-cell surface crossings.
+    /// </summary>
+    /// <remarks>
+    /// What the coarsening limit should actually measure. A cut-cell electrode
+    /// keeps its surface in the right place long after it has stopped containing
+    /// any node, so a fixed-node count alone declares it gone while it is still
+    /// perfectly well represented.
+    /// </remarks>
+    public int InteriorGeometryCount => InteriorFixedCount + (Cuts?.InteriorCutCount ?? 0);
 
     /// <summary>Condition on the x = minimum edge.</summary>
     public EdgeCondition LeftEdge { get; set; } = EdgeCondition.Dirichlet;
@@ -279,6 +298,45 @@ public sealed class DirichletMask
         }
 
         return coarse;
+    }
+
+    /// <summary>
+    /// Zeroes the potential every cut link holds, leaving the geometry alone.
+    /// </summary>
+    /// <remarks>
+    /// A coarse grid in the correction scheme solves for the error, which is zero
+    /// on every conductor. Its cut links must therefore place a zero at the
+    /// surface, not the electrode's potential — carrying the potential down would
+    /// re-apply the boundary condition at every level and the correction would
+    /// fight the solution instead of improving it.
+    /// </remarks>
+    public void ZeroCutPotentials()
+    {
+        if (Cuts is null)
+        {
+            return;
+        }
+
+        var zeroed = new CutLinks(Grid);
+
+        for (var j = 0; j < Grid.CountY; j++)
+        {
+            for (var i = 0; i < Grid.CountX; i++)
+            {
+                foreach (var direction in (ReadOnlySpan<StencilDirection>)
+                    [StencilDirection.East, StencilDirection.West, StencilDirection.North, StencilDirection.South])
+                {
+                    var fraction = Cuts.Fraction(i, j, direction);
+
+                    if (fraction < 1.0)
+                    {
+                        zeroed.Cut(i, j, direction, fraction, 0.0);
+                    }
+                }
+            }
+        }
+
+        Cuts = zeroed;
     }
 
     /// <summary>Writes the fixed potentials into a field, leaving free nodes alone.</summary>

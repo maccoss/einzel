@@ -81,8 +81,13 @@ public sealed class SensitivityFieldTests(ITestOutputHelper output)
                             Name = "ground", Shape = "rectangle",
                             MinX = new QuantityValue(0.0, "mm"),
                             MaxX = new QuantityValue(0.0, "mm"),
-                            MinY = new QuantityValue(-10.0, "mm"),
-                            MaxY = new QuantityValue(10.0, "mm"),
+                            // Both electrodes overhang the domain in y, so the gap
+                            // between them is one-dimensional and its potential is
+                            // a straight ramp. Without that the field goes round
+                            // the end of the plate and there is no closed form to
+                            // measure a linearisation against.
+                            MinY = new QuantityValue(-50.0, "mm"),
+                            MaxY = new QuantityValue(50.0, "mm"),
                             Potential = new QuantityValue(0.0, "V"),
                         },
                         new ElectrodeDocument
@@ -90,8 +95,8 @@ public sealed class SensitivityFieldTests(ITestOutputHelper output)
                             Name = "plate", Shape = "rectangle",
                             MinX = new QuantityValue(0.0, "mm") { Expression = "plateX - halfThickness" },
                             MaxX = new QuantityValue(0.0, "mm") { Expression = "plateX + halfThickness" },
-                            MinY = new QuantityValue(-10.0, "mm"),
-                            MaxY = new QuantityValue(10.0, "mm"),
+                            MinY = new QuantityValue(-50.0, "mm"),
+                            MaxY = new QuantityValue(50.0, "mm"),
                             Potential = new QuantityValue(0.0, "V") { Expression = "applied" },
                         },
                     ],
@@ -153,59 +158,109 @@ public sealed class SensitivityFieldTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void ASubCellPerturbationIsRefusedRatherThanReportedAsZeroSensitivity()
+    public void ASubCellPerturbationMovesTheBoundaryRatherThanNothing()
     {
-        // The most dangerous thing this code could do, and it is silent. The mesh
-        // here is 0.94 mm; a 0.2 mm plate move changes which nodes the rasterised
-        // plate occupies not at all, so the perturbed solve is bit-identical to
-        // the nominal and the derivative is exactly zero. Measured before the
-        // guard existed: residual 0.000E+000, which reads as perfect linearity and
-        // means the model never saw the perturbation.
-        var failure = Assert.Throws<ArgumentException>(() =>
-            SensitivityFields.Build(Model(), [Channel("plateX", 0.2, "mm")]));
+        // This measurement used to be the most dangerous thing in the codebase,
+        // and it was silent. The mesh here is 0.94 mm; a 0.2 mm plate move changed
+        // which nodes the rasterised plate occupied not at all, so the perturbed
+        // solve came back bit-identical to the nominal and the derivative was
+        // exactly zero. Residual 0.000E+000 — which reads as perfect linearity and
+        // means the model never saw the perturbation. A tolerance study built on
+        // it would have reported the parameter as having no influence.
+        //
+        // With a cut-cell boundary the surface is where the geometry says it is,
+        // at any fraction of a cell, so a fifth of a cell is a fifth of a cell.
+        var step = 0.1e-3;
+        var (nominal, fields) = SensitivityFields.Build(Model(), [Channel("plateX", 0.2, "mm")]);
+        var derivative = fields[0].Derivative;
 
-        Assert.Contains("changed nothing", failure.Message, StringComparison.Ordinal);
-        Assert.Contains("mesh spacing", failure.Message, StringComparison.Ordinal);
+        // The gap is a ramp from the grounded plane at x = 0 to the plate face at
+        // 39 mm, so V = 1000 x / L and dV/dL = -1000 x / L squared. Nothing here is
+        // fitted: it is the closed form for the geometry.
+        const double Gap = 39e-3;
+        var worst = 0.0;
+        var probes = 0;
+
+        for (var i = 1; i < nominal.Grid.CountX; i++)
+        {
+            var x = nominal.Grid.X(i);
+
+            if (x >= Gap - nominal.Grid.Spacing)
+            {
+                break;
+            }
+
+            var expected = -1000.0 * x / (Gap * Gap);
+            worst = Math.Max(worst, Math.Abs(derivative[i, nominal.Grid.CountY / 2] - expected) / Math.Abs(expected));
+            probes++;
+        }
+
+        output.WriteLine(
+            $"step {step * 1e3:F2} mm = {step / nominal.Grid.Spacing:F2} cells; "
+            + $"worst relative error in dV/dplateX over {probes} probes: {worst:E3}");
+
+        Assert.True(probes > 20, $"only {probes} probes; the sweep is not measuring much");
+        Assert.True(
+            worst < 5e-3,
+            $"the shape derivative is off by {worst:E3} of its closed form, on a geometry whose derivative "
+            + "is exactly -1000 x / L squared");
     }
 
     [Fact]
-    public void GeometryLinearisationFailsTheOnePartPerMillionBudget()
+    public void GeometryLinearisationIsSecondOrderInThePerturbation()
     {
-        // The FLD-1 spike §23 asks for, and its answer is negative. Once a
-        // perturbation is large enough for the mesh to see it at all, the
-        // rasterised boundary moves in steps rather than continuously, and the
-        // residual is percent-level — four orders over the ACC-1 budget FLD-2
-        // gates on. The failure is not that the physics stops being linear; it is
-        // that the discretisation does not vary smoothly with the parameter.
-        output.WriteLine("half-width   as % of 40 mm   cells moved   potential residual   within 1 ppm");
+        // The FLD-1 spike §23 asks for, run again now that the boundary moves
+        // continuously. The answer has changed shape completely.
+        //
+        // Before, there was no step size that worked: below one cell the residual
+        // was exactly zero because nothing moved, above one cell it was
+        // percent-level because a rasterised boundary moves in whole cells, and
+        // the two failure modes met with nothing in between. The residual did not
+        // even grow smoothly — it was a staircase.
+        //
+        // Now it is an ordinary Taylor remainder. The potential in the gap goes as
+        // 1/L, so the second-order term is (delta/L) squared, and that is what the
+        // measurement should show: quadratic in the perturbation, which means
+        // halving the tolerance quarters the error and there is a step size for
+        // any budget.
+        output.WriteLine("half-width   delta/L    residual    ratio to previous   within 1 ppm");
 
-        var results = new List<(double Fraction, double Residual, bool Passed)>();
+        var results = new List<(double Delta, double Residual, bool Passed)>();
 
-        foreach (var halfWidthMm in new[] { 2.5, 7.5 })
+        foreach (var halfWidthMm in new[] { 0.05, 0.1, 0.2, 0.4 })
         {
             var channels = new[] { Channel("plateX", halfWidthMm, "mm") };
             var (nominal, fields) = SensitivityFields.Build(Model(), channels);
             var check = SensitivityFields.Check(Model(), channels, nominal, fields, budget: 1e-6, draws: 3);
 
-            output.WriteLine(
-                $"{halfWidthMm,8:F2} mm   {halfWidthMm / 40.0,12:P2}   "
-                + $"{halfWidthMm / (nominal.Grid.Spacing * 1e3),11:F1}   "
-                + $"{check.WorstRelativeResidual,17:E3}   {check.Passed}");
+            var ratio = results.Count == 0 ? double.NaN : check.WorstRelativeResidual / results[^1].Residual;
 
-            results.Add((halfWidthMm / 40.0, check.WorstRelativeResidual, check.Passed));
+            output.WriteLine(
+                $"{halfWidthMm,8:F2} mm   {halfWidthMm / 39.0,7:E1}   {check.WorstRelativeResidual,9:E3}   "
+                + $"{ratio,17:F2}   {check.Passed}");
+
+            results.Add((halfWidthMm / 39.0, check.WorstRelativeResidual, check.Passed));
         }
 
-        // Nothing that the mesh can resolve stays inside the budget.
-        Assert.All(results, r => Assert.False(
-            r.Passed,
-            $"a {r.Fraction:P2} geometry perturbation linearised to {r.Residual:E3}, inside 1 ppm, which would "
-            + "mean the gate is not binding on anything"));
+        // Doubling the perturbation should roughly quadruple the residual. A
+        // staircase does not do that, and neither does a discretisation error that
+        // has nothing to do with the parameter.
+        for (var k = 1; k < results.Count; k++)
+        {
+            var ratio = results[k].Residual / results[k - 1].Residual;
 
-        // And the residual grows with the perturbation, so what is being measured
-        // really is the departure from linearity rather than a fixed offset.
-        Assert.True(
-            results[^1].Residual > results[0].Residual,
-            $"residual did not grow with perturbation: {results[0].Residual:E3} then {results[^1].Residual:E3}");
+            Assert.InRange(ratio, 3.0, 5.5);
+        }
+
+        // And the leading coefficient is the physics, not the mesh: the remainder
+        // of 1/L about L is (delta/L) squared to leading order.
+        var predicted = results[^1].Delta * results[^1].Delta;
+
+        output.WriteLine(
+            $"closed-form second-order term at the largest perturbation: {predicted:E3}, "
+            + $"measured {results[^1].Residual:E3}");
+
+        Assert.InRange(results[^1].Residual / predicted, 0.3, 3.0);
     }
 
     [Fact]

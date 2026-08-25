@@ -111,22 +111,36 @@ The requirement earned its keep as a design check, not as documentation.
 
 ---
 
-## Multigrid does not coarsen safely with interior electrodes
+## Multigrid with interior electrodes needs more than §10 implies
 
 **Spec §10** chooses finite-difference multigrid for Phase 1, on the grounds that
 it is straightforward to implement correctly. That holds for boundary-value
 geometries and **not** for interior electrodes — a rod, an aperture — which every
 device except a planar mirror has.
 
-An electrode occupies a fixed physical size, so each coarsening halves how many
-nodes represent it and past a few levels it is not represented at all. The coarse
-grid then solves a different problem and its correction drives the fine iteration
-apart: four discs in a box reached 1e134 V.
+An electrode occupies a fixed physical size, so each coarsening halved how many
+nodes represented it and past a few levels it was not represented at all. The
+coarse grid then solved a different problem and its correction drove the fine
+iteration apart: four discs in a box reached 1e134 V. Limiting the coarsening
+kept it stable at the cost of the thing multigrid is for — two levels and a
+convergence factor of 0.55, which is smoothing wearing a V-cycle.
 
-Mitigated by limiting coarsening while interior electrodes are present; not
-solved. A real fix is Galerkin coarsening or operator-dependent interpolation.
-Recommend §10 note it, because "straightforward to implement correctly" is true
-of the textbook case and misleading about the general one.
+**Resolved by cut cells**, which is not the fix §10 or the textbooks point at
+(Galerkin coarsening, operator-dependent interpolation) but is the one that
+turned out to matter. A sub-cell surface has a position at any spacing, so the
+coarse mask can be rebuilt from the geometry instead of projected down from the
+fine one, and an electrode too small to contain a coarse node still cuts the
+links around it. The same geometry now runs 7–8 cycles at 0.019–0.023, flat under
+refinement.
+
+A second, unrelated defect was hiding behind the same limit: a Dirichlet domain
+edge was implemented as a ghost node one cell outside the grid, so the boundary
+moved outward at every level and a cap plate in a grounded box diverged to 1e50 V
+once coarsening was allowed to proceed. Grounding the edge node itself fixes it.
+
+Recommend §10 note that a Cartesian multigrid solver needs a boundary
+representation that survives coarsening, because "straightforward to implement
+correctly" is true of the textbook case and misleading about the general one.
 
 ---
 
@@ -167,7 +181,7 @@ favourable and the validation implication is not.
 
 ---
 
-## FLD-1 sensitivity fields do not work on a rasterised boundary
+## FLD-1 rests on an assumption the specification does not state
 
 **Spec §10** caches the partial derivative of potential with respect to each
 perturbation channel by finite difference over a full re-solve, then builds every
@@ -176,85 +190,128 @@ validation subset: if the residual exceeds ACC-1 the sweep is void. **§23**
 recommends spiking the linearity assumption before Phase 2 commits, at an
 estimated two weeks.
 
-The spike was run. **It fails, and not for the reason the specification
-anticipates.**
+The spike was run twice. The first run failed, and not for the reason §10
+anticipates; the second, after the discretisation was changed, passes.
 
-Measured on a plate inside a fixed domain with 0.469 mm cells, at a nominal
-position of 40 mm:
+### What failed
+
+Measured on a plate inside a fixed domain with a 0.94 mm mesh, at a nominal
+position of 40 mm, with the boundary rasterised onto nodes:
 
 | half-width | % of nominal | cells moved | potential residual | within 1 ppm |
 | --- | --- | --- | --- | --- |
-| 0.10 mm | 0.25% | 0.2 | **0.000E+000** | "yes" |
-| 0.50 mm | 1.25% | 1.1 | 1.93e-2 | no |
-| 2.50 mm | 6.25% | 5.3 | 5.62e-2 | no |
+| 0.20 mm | 0.50% | 0.2 | **0.000E+000** | "yes" |
+| 2.50 mm | 6.25% | 2.7 | 5.37e-2 | no |
+| 7.50 mm | 18.75% | 8.0 | 1.03e-1 | no |
 
-Two failures, and the first is worse than the second.
+Two failures, and the first is worse than the second. Below one cell the
+perturbation was **invisible**: moving an electrode less than a cell changed
+which nodes it occupied not at all, the perturbed solve returned bit-identical to
+the nominal, and the derivative field was identically zero. A tolerance study
+built on that reports the parameter as having **no influence** — the opposite of
+the truth, arrived at silently. Sub-cell is exactly where machining tolerances
+live. Above one cell the residual was percent-level, four orders over the budget
+FLD-2 gates on. There was no step size in between: the two failure modes met.
 
-**Below one cell, the perturbation is invisible.** An electrode is rasterised
-onto grid nodes, so moving it less than a cell changes which nodes it occupies
-not at all. The perturbed solve returns bit-identical to the nominal, the
-difference is exactly zero, and the derivative field is identically zero. A
-tolerance study built on that reports the parameter as having **no influence** —
-the opposite of the truth, arrived at silently. And sub-cell is exactly where
-machining tolerances live: the memo's channels are 100 to 300 µm.
+The premise §10 argues from is that 100–300 µm against a 10 mm standoff is a
+1–3% perturbation and therefore linear. The *physics* is linear there. The
+**discretisation was not**. So the assumption that failed is not "the field
+responds linearly to a small geometry change" — it is the unstated one
+underneath: *that the discrete problem varies smoothly with the geometry
+parameter at all.*
 
-**Above one cell, the residual is percent-level** — four orders over the ACC-1
-budget FLD-2 gates on. The premise §10 argues from is that 100–300 µm against a
-10 mm standoff is a 1–3% perturbation and therefore linear. The *physics* is
-plausibly linear there. The **discretisation is not**: a rasterised boundary
-moves in steps, so the discrete operator is a staircase function of the
-parameter, and its finite difference measures the staircase.
+### What fixed it
 
-So the assumption that fails is not "the field responds linearly to a small
-geometry change". It is the unstated one underneath: *that the discrete problem
-varies smoothly with the geometry parameter at all.*
+A cut-cell (Shortley–Weller) discretisation, which was the smallest of the three
+routes and the only one that keeps the Cartesian multigrid. Same fixture, same
+mesh, boundary now placed sub-cell:
 
-### What this changes
+| half-width | δ/L | potential residual | ratio to previous |
+| --- | --- | --- | --- |
+| 0.05 mm | 1.3e-3 | 1.11e-6 | |
+| 0.10 mm | 2.6e-3 | 4.46e-6 | 4.00 |
+| 0.20 mm | 5.1e-3 | 1.79e-5 | 4.01 |
+| 0.40 mm | 1.0e-2 | 7.16e-5 | 4.01 |
 
-FLD-1 as written cannot support a geometry tolerance study on a staircase mesh,
-at any perturbation size: too small and it reports zero, large enough and it
-reports the rasterisation. That is not a tuning problem with a step size in
-between — the two failure modes meet.
+That is an ordinary Taylor remainder: quadratic in the perturbation, to three
+figures, over an order of magnitude in step size. The potential in the gap goes
+as 1/L, so the second-order term is (δ/L)²; at the largest step the closed form
+gives 1.05e-4 against a measured 7.16e-5, which is the right size and correctly
+a little under.
 
-Three routes, none of them small:
+The shape derivative itself is now right rather than merely non-zero. At a step
+of **0.11 cells** — previously literally invisible — dV/dL matches its closed
+form −1000·x/L² to **6.5e-6** relative across forty probe points.
 
-- **Body-fitted or deformable mesh**, so the boundary moves continuously with the
-  parameter and the discrete operator moves with it.
-- **Cut-cell or immersed-boundary discretisation**, where a boundary between
-  nodes is represented sub-cell, so the operator varies smoothly with its
-  position. This is the smallest change that keeps the Cartesian multigrid.
-- **Analytic shape derivatives**, which sidesteps finite differencing entirely
-  and is the largest change.
+### What this changes for the specification
 
-Recommend §10 and §23 be rewritten around this. The two-week spike was the right
-call and it returned a negative result, which is what a spike is for.
+FLD-1 is usable, with a stated and predictable limit rather than an unstated one.
+The linearisation error is (δ/L)², so:
 
-**In the meantime the guard is an error, not a warning.** A channel whose
-perturbation leaves the rasterised geometry unchanged is refused outright, because
-there is no correct number to return and silently reporting zero sensitivity is
-the single most damaging thing this code could do.
+- 1 ppm holds out to δ/L ≈ 10⁻³ — about 40 µm on a 39 mm standoff.
+- A 100 µm tolerance linearises to ≈ 7e-6; 300 µm to ≈ 6e-5.
 
-Note the contrast that makes the diagnosis clean: a **voltage** channel linearises
-to 1.5e-14, and superposition reproduces a re-solve to 2.3e-11 V on 1150 V. The
-machinery is right. It is the moving boundary that the mesh cannot represent.
+So the memo's 100–300 µm channels do **not** meet a 1 ppm gate, and FLD-2 will
+correctly refuse them. That is now a legible engineering trade with a formula
+attached — refine the mesh, narrow the channel, or accept a 1e-5 linearisation —
+rather than a discretisation artefact that could not be reasoned about.
+
+Recommend §10 state the discretisation requirement explicitly: sensitivity fields
+need a boundary representation that varies continuously with the parameter, and
+a node-by-node one does not. Recommend §23 record that the two-week spike was the
+right call: it returned a negative result first, which is what a spike is for.
+
+Note the contrast that made the diagnosis clean throughout: a **voltage** channel
+linearises to 1.5e-14, and superposition reproduces a re-solve to 6.4e-12 V on
+1150 V. The machinery was always right. It was the moving boundary the mesh could
+not represent.
 
 ---
 
-## Interior electrodes make sensitivity campaigns expensive
+## Interior electrodes made sensitivity campaigns expensive
 
 A consequence of the coarsening limitation above, and it did not become visible
 until sweeps existed. FLD-1's economic argument is that one solve campaign of
 `2 × channels + 1` solves replaces a thousand. That holds only if each solve is
-cheap — and on interior-electrode geometry the coarsening limit leaves few
-multigrid levels, so it is not. A campaign over a 513 × 257 grid **brought down
-the test host**.
+cheap — and while the coarsening limit was in force it was not. A campaign over a
+513 × 257 grid **brought down the test host**.
 
-Measured against it: 500 linearised draws cost 25 ms where a single solve costs
-142 ms, so the superposition side of the argument is sound. The campaign side is
-what needs the solver fixed.
+Measured against it: 500 linearised draws cost 25 ms where a single solve cost
+142 ms, so the superposition side of the argument was always sound. It was the
+campaign side that needed the solver fixed, and cut cells fixed it — the
+`Einzel.Sweeps` suite went from 2 m 15 s to 4 s.
 
-This raises the priority of Galerkin coarsening from a tidy-up to a prerequisite:
-geometry sweeps are not usable on real devices without it.
+Worth keeping as a record of the shape of the mistake: an economic argument that
+looks like it is about algorithms can rest entirely on a numerical property
+nobody wrote down.
+
+---
+
+## The solve domain is not the domain that was declared
+
+`Grid2D.OverBox` takes the interval count along x and derives the count along y
+by rounding to a power of two, so both directions coarsen together. The spacing
+comes from x. Nothing constrains the result to land on the declared `maxY`, and
+nothing reports that it did not.
+
+The overshoot depends entirely on the aspect ratio. The shipped templates are
+fine — `quadrupole` is exact, `planar-mirror-pair` is 0.4 mm short on a 0.92 mm
+cell, well under half a cell. But a 60 × 20 mm box at a 1 mm cell needs 21.3
+intervals in y, rounds to 32, and **solves a 60 × 30 mm box**: fifty per cent
+taller than asked for, silently.
+
+That is not a rounding detail, it is a different problem. It was found because a
+test fixture's plate was declared to span the domain in y and then did not, so
+the field went round the end of it and a closed form that should have applied did
+not. The physics changed and nothing said so.
+
+Recommend the model format either refuse a box whose aspect ratio cannot be
+meshed with square cells at power-of-two counts — with the achievable cell sizes
+named, in the AGT-3 style — or the grid gain independent spacings per axis, which
+the Shortley–Weller stencil already supports since it carries a spacing per arm.
+The second is more work and the better answer.
+
+**Not yet fixed.**
 
 ---
 

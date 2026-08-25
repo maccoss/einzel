@@ -97,9 +97,9 @@ the flight time is at machine precision with 6 steps and marginally *worse* with
 
 ## Field solving
 
-Geometric multigrid on a uniform Cartesian grid: five-point stencil, red-black
-Gauss–Seidel smoothing, full-weighting restriction, bilinear prolongation,
-V-cycles, correction scheme.
+Geometric multigrid on a uniform Cartesian grid: a Shortley–Weller stencil,
+red-black Gauss–Seidel smoothing, full-weighting restriction, bilinear
+prolongation, V-cycles, correction scheme.
 
 Red-black rather than lexicographic ordering because each colour sweep is
 internally independent, and the architecture puts a SIMD and GPU dispatch layer
@@ -132,28 +132,130 @@ solve-per-iteration problem into arithmetic, which every sweep and optimiser
 depends on. It breaks the moment geometry changes, which is why tolerance work
 needs sensitivity fields rather than more superposition.
 
-### Interior electrodes: a real limitation
+## Cut cells
 
-Coarsening assumes it preserves the problem. That holds for boundary-only
-Dirichlet geometries and **fails for interior electrodes** — a rod, an aperture.
-An electrode occupies a fixed physical size, so each coarsening halves how many
-nodes represent it, and past a few levels it is not represented at all. The
-coarse grid then solves a different problem, and prolonging its correction back
-drives the iteration apart. Four discs in a box reached **1e134 V** that way.
+A conductor surface almost never lands on a grid node. Deciding node by node
+whether each one is inside or outside — rasterising — is the obvious thing to do
+and it costs two quite different things.
 
-Convergence factors with interior electrodes degrade with refinement rather than
-holding steady: 0.075 at 64 intervals and 0.153 at 128, against a flat ~0.03 for
-boundary-only geometries.
+**Accuracy.** The boundary is placed at the nearest node, so it is wrong by up to
+half a cell. That is a first-order error, on an otherwise second-order scheme,
+sitting exactly where the field is usually most interesting.
 
-**This is mitigated, not solved.** `PoissonSolver2D` refuses a coarsening that
-would leave fewer than 128 interior fixed nodes, which is enough for the shipped
-templates; `InteriorElectrodeSolveTests` asserts the maximum principle, that no
-potential anywhere may exceed the applied value, which is an exact check rather
-than a tolerance and the cheapest possible detector of divergence. A real fix is
-Galerkin coarsening or operator-dependent interpolation, and it should happen
-before anyone solves a large rod geometry.
+**Differentiability.** The discrete operator becomes a staircase function of
+electrode position. Move an electrode by a fifth of a cell and *nothing* changes;
+move it by a cell and everything does. Shape derivatives then measure the
+staircase rather than the physics, which is what made the FLD-1 spike fail.
 
-Two approaches were tried and rejected, recorded so they are not re-tried:
+The fix is the Shortley–Weller stencil: a second difference on unequal spacings,
+
+    d2f/dx2 = 2/(h- + h+) [ f-/h- + f+/h+ - f0 (1/h- + 1/h+) ]
+
+so an arm of the stencil may stop at a conductor surface partway to the next
+node. With every spacing equal it reduces to the familiar five-point formula, so
+there is no separate uniform code path and no arithmetic cost where there is no
+cut. `CompiledElectrode.FirstEntry` gives the crossing in closed form per
+primitive, and `CutLinks` stores, per node and per direction, how far the surface
+is as a fraction of a cell and what potential it holds there.
+
+Two details that are not incidental:
+
+- **Entry, not straddling.** A crossing is found by asking where a segment first
+  enters a conductor, not by testing whether its two endpoints are on opposite
+  sides. An electrode thinner than a cell lies wholly *between* two nodes, so a
+  straddle test reports nothing and the electrode disappears — which is every
+  coarse level of a multigrid hierarchy, and is where geometry used to dissolve.
+- **Cell units.** The stencil is carried with coefficients of order one and the
+  mesh applied exactly once. Folding 1/h² into the neighbour sum scales every
+  term by millions while leaving the difference between them — the quantity
+  actually wanted — unchanged, and spends precision for nothing.
+
+### Measured
+
+**A planar boundary is where it says it is.** A 20 mm parallel-plate gap on a
+0.625 mm mesh, with the plate face swept across a whole cell in twenty steps. The
+exact potential is a straight ramp, which any consistent second-difference
+stencil reproduces exactly, so the residue is a direct measure of where the
+solver thinks the boundary is:
+
+| | worst error over the sweep |
+| --- | --- |
+| Cut cells | **3.1e-10** of the applied potential — solver tolerance |
+| Snapped to the nearest node | up to 1.6e-2 |
+
+A factor of fifty million, and more to the point the error no longer depends on
+where in the cell the boundary fell. The second differences of a probe potential
+across the sweep run 5.4e-3 to 6.2e-3 V and vary monotonically; a staircase shows
+up there as alternating spikes.
+
+**A curved boundary converges at second order.** A rod of 5 mm radius in a
+40 mm box whose edges carry the analytic coaxial potential A ln r + B, which is
+then the exact solution over the whole annulus:
+
+| Intervals | h | Max error | Observed order | Cycles | Factor |
+| --- | --- | --- | --- | --- | --- |
+| 64 | 0.625 mm | 2.30e-4 | | 7 | 0.019 |
+| 128 | 0.3125 mm | 5.76e-5 | 2.00 | 8 | 0.022 |
+| 256 | 0.1562 mm | 1.49e-5 | 1.95 | 8 | 0.023 |
+
+Section 19 asks for coaxial fields against closed form. That check was not
+available before, because a rasterised circle is a staircase and the comparison
+would have measured the staircase rather than the solver.
+
+### The one approximation left
+
+A surface passing arbitrarily close to a node gives an arbitrarily small spacing
+on one side of the stencil, and the coefficient grows as its reciprocal. Nothing
+breaks mathematically — the operator stays an M-matrix and Gauss–Seidel still
+converges — but a single node carrying a coefficient millions of times its
+neighbours' dominates the residual norm, and a convergence test measured against
+that norm stops describing the rest of the grid.
+
+So `CutLinks.MinimumFraction` floors the fraction at 1e-3, and the price is a
+boundary knowingly moved by at most a thousandth of a cell. In the parallel-plate
+sweep above, a floor of 0.05 cost 3.0e-4 of the applied potential when a face
+landed 0.04 cells from a node; at 1e-3 the same case costs at most 3.1e-5, and
+every position outside that window solves to 1e-11. The window is a thousandth
+of a cell wide, so it is not where a shape derivative usually finds itself.
+
+It has not been removed altogether because doing so trades a small bounded
+geometric error for an unbounded numerical one, which is the worse of the two.
+
+## Interior electrodes
+
+Coarsening assumes it preserves the problem, and with a rasterised boundary that
+**failed for interior electrodes** — a rod, an aperture. An electrode occupies a
+fixed physical size, so each coarsening halved how many nodes represented it, and
+past a few levels it was not represented at all. The coarse grid then solved a
+different problem and prolonging its correction back drove the iteration apart:
+four discs in a box reached **1e134 V**.
+
+Cut cells fix this, because they change what "represented" means. A surface has a
+position at any spacing, whether or not a node happens to fall behind it, so the
+coarse mask is *rebuilt from the geometry* rather than projected down from the
+fine one — `PoissonSolver2D.Solve` takes a `coarsen` factory for exactly that.
+An electrode too small to contain a coarse node still cuts the links around it.
+
+Measured on the coaxial rod above, where the old coarsening limit allowed two
+levels:
+
+| | Cycles | Factor |
+| --- | --- | --- |
+| Limited coarsening (projected mask) | 43–47 | 0.52–0.55 |
+| Full coarsening (rebuilt mask) | 7–8 | 0.019–0.023 |
+
+Grid-independent, on interior-electrode geometry, which is what it was supposed
+to be all along. The `Einzel.Sweeps` test suite went from 2 m 15 s to 4 s on the
+same machine as a direct consequence.
+
+The old floor of 128 interior fixed nodes still applies to a mask that has no
+geometry to rebuild from — one assembled node by node, as `BasisFieldSet` does —
+because such a mask really does lose a quarter of an electrode per level.
+`InteriorElectrodeSolveTests` asserts the maximum principle, that no potential
+anywhere may exceed the applied value, which is an exact check rather than a
+tolerance and the cheapest possible detector of divergence.
+
+Three approaches were tried and rejected, recorded so they are not re-tried:
 
 - **Agglomerating the mask** (a coarse node is fixed if anything in its 3×3 block
   is) is stable, because growing the Dirichlet set only damps the correction, but
@@ -165,6 +267,29 @@ Two approaches were tried and rejected, recorded so they are not re-tried:
   quarters of its nodes per level, exactly the rate healthy coarsening produces,
   so the ratio stays flat until the rod disappears and then it is too late. Only
   counting *interior* fixed nodes separates the two cases.
+
+## Domain edges
+
+A Dirichlet domain edge means the potential is zero **on the edge**, and
+`GeometryBuilder` grounds those nodes unless an electrode has already claimed
+them. The alternative reading — a ghost node one cell outside the grid held at
+zero, with the edge node itself solved — is self-consistent on any single grid,
+and it is what the solver did.
+
+It is wrong as soon as there is more than one grid. The ghost sits one cell out
+at the fine level, two at the next, four at the next, so every level of a V-cycle
+solves a slightly larger domain than the one above it and the correction it
+computes is for a different problem. A cap plate in a grounded box diverged to
+**1e50 V**.
+
+It went unnoticed because the interior-electrode coarsening limit stopped these
+geometries before they reached a second level. The solver fell back on plain
+Gauss–Seidel and reported a convergence factor of 0.83 — poor, but not obviously
+a bug. Grounding the edge takes the same case to 9 cycles at 0.039.
+
+A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
+equals its reflection inside, which is exact at any spacing and coarsens
+faithfully.
 
 ## Interpolation
 

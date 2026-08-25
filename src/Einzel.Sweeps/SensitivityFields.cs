@@ -97,7 +97,11 @@ public static class SensitivityFields
 
         var grid = GeometryBuilder.BuildGrid(element.Solve);
         var mask = GeometryBuilder.BuildMask(element.Solve, grid);
-        var (potential, _) = PoissonSolver2D.Solve(mask, element.Solve.Tolerance, maximumCycles: 400);
+        var (potential, _) = PoissonSolver2D.Solve(
+            mask,
+            element.Solve.Tolerance,
+            maximumCycles: 400,
+            coarsen: coarse => GeometryBuilder.BuildMask(element.Solve, coarse));
 
         return (potential, element.Solve);
     }
