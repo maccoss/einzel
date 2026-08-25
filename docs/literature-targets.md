@@ -199,6 +199,65 @@ target 1, because a radial-ejection trap's behaviour is RF behaviour.
 
 ---
 
+## 3. The segmented quadrupole driven by rectangular waveforms
+
+**Schrader, Anderson and Russell**, *Increasing Isolation Efficiency Using a
+Segmented Quadrupole Mass Filter Operated with Rectangular Waveforms*, J. Am. Soc.
+Mass Spectrom. **35** (2024) 1237-1244.
+
+A switching drive rather than a resonant one. That is not an engineering
+convenience: it changes the equation of motion from Mathieu's to Meissner's and
+moves the stability boundaries with it. It also removes the DC supply, because an
+asymmetric duty cycle carries its own mean and that mean enters the equation
+exactly where a DC offset would.
+
+### Reproduced
+
+| Quantity | Reported | Einzel |
+| --- | --- | --- |
+| Square-wave low-mass cut-off | q = 0.712 | **0.71113** |
+| Sinusoidal cut-off, for scale | q = 0.908 | 0.90684 |
+| Effective a at 61.15/38.85 duty, q = 0.5897 | a = -0.2640 | **0.2630** |
+
+Three independent numbers, none of which comes from this code. The duty-cycle one
+is the most satisfying: a = 2q(2d - 1) is arithmetic that can be checked against
+the paper before writing any simulation at all, and it agrees to a part in
+250 - which says the digital working point is being placed where the authors place
+it.
+
+### Geometry and operating point
+
+| | |
+| --- | --- |
+| Quadrupoles | Thermo 4 mm r0 (203 mm total) and 5.25 mm r0, both segmented |
+| Segmentation | 22 mm prefilter, 159 mm main section, 22 mm postfilter |
+| Coupling | 4000 pF capacitors, giving the prefilter q = 0.5897, a = -0.2640 |
+| Drive | Rectangular, 150 V zero-to-peak, 500 kHz (4 mm) or 381 kHz (5.25 mm) |
+| Duty cycles | 60.95/39.05, 61.1/38.9, 61.18/38.82 |
+| Pressures | funnel 1.1 Torr, q0 0.27 Torr, mass filter 8e-4 Torr |
+| Ion energy | ~4.25 +/- 0.5 eV, 1.5 mm beam, 5 degree half-angle |
+| RF cycles in the filter | 88 (4 mm) and 67 (5.25 mm) |
+
+### Still out of reach, and why
+
+- **Isolation efficiency** - approximately 100% at 50 m/z peak width, 20% at
+  5 m/z, and 90% for the larger r0. Needs the *segmented* geometry: three axial
+  sections at different working points, with ions passing between them. That is a
+  three-dimensional problem, and every solve here is two-dimensional.
+- **Peak splitting**, which the authors reproduce only once aperture losses are
+  applied. Needs an aperture at the exit and an ion cloud with the stated energy
+  spread and divergence - the cloud exists, the aperture does not.
+- **The pressure stages.** Phase 3, like everything else involving gas.
+
+### Worth noting
+
+The authors used **SIMION 8.1**. That is the second target in this file whose
+results live in software the reader cannot run - the Ion Processor was simulated
+in an in-house package - and it is the project thesis restated as a fact rather
+than as an argument.
+
+---
+
 ## Candidates not yet worked up
 
 - **Reflectron and MR-TOF geometries** with published resolving powers, to check

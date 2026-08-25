@@ -25,6 +25,9 @@ cross-code tier is unavailable — see below.
 | Parallel-plate gap, boundary swept sub-cell | 3.1e-10 of applied, at every offset |
 | Coaxial log potential around a rod | Second order, 1.5e-5 at h = 0.156 mm |
 | Shape derivative dV/dL against −1000x/L² | 6.5e-6 relative at a 0.11-cell step |
+| Mathieu stability boundary, sinusoidal drive | q = 0.90684 against a tabulated 0.90804 |
+| Meissner boundary, square-wave drive | q = 0.71113 against a published 0.712 |
+| Digital working point from duty cycle | a = 0.2630 against a published 0.2640 |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
 | Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |
 
@@ -114,8 +117,12 @@ covering everything.
   most valuable missing tier. Targets are worked up in
   [Literature targets](literature-targets.md); the nearest is the Ion Processor's
   turn-around time, which is a DC problem and needs only two additions.
-- **No RF anything.** No time-domain RF, no Mathieu stability diagram, which is the
-  single best test that an RF path is correct.
+- **RF exists but only as an analytic field.** Time-domain integration through a
+  driven field works and recovers the stability diagram for both sinusoidal and
+  rectangular drives, which §19 calls the single best test that an RF path is
+  correct. What does not exist: RF on a *solved* geometry (the basis fields make
+  it nearly free, but nothing wires it), the model format cannot declare a drive,
+  and there is no sequencer, so a trap cannot be operated in stages.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
 - **No 3D.** Every solve is two-dimensional with translational invariance.

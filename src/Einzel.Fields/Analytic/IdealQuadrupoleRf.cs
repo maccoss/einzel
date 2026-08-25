@@ -31,24 +31,37 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     private readonly double _inscribedRadiusSquared;
 
     private IdealQuadrupoleRf(
-        double directVolts, double amplitudeVolts, double angularFrequency, double inscribedRadius)
+        double directVolts,
+        double amplitudeVolts,
+        double angularFrequency,
+        double inscribedRadius,
+        RfWaveform waveform)
     {
         DirectVolts = directVolts;
         AmplitudeVolts = amplitudeVolts;
         AngularFrequency = angularFrequency;
         InscribedRadiusM = inscribedRadius;
+        Waveform = waveform;
         _inscribedRadiusSquared = inscribedRadius * inscribedRadius;
     }
+
+    /// <summary>The shape of the drive. A sinusoid unless another is given.</summary>
+    public RfWaveform Waveform { get; }
 
     /// <summary>Creates a driven quadrupole.</summary>
     /// <param name="direct">The DC component applied to the x pair.</param>
     /// <param name="amplitude">The RF amplitude, zero to peak.</param>
     /// <param name="frequency">The drive frequency.</param>
     /// <param name="inscribedRadius">Axis to nearest electrode surface, conventionally r0.</param>
+    /// <param name="waveform">The drive shape. A sinusoid when omitted.</param>
     /// <returns>The field.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The frequency or the radius is not positive.</exception>
     public static IdealQuadrupoleRf Create(
-        Quantity direct, Quantity amplitude, Quantity frequency, Quantity inscribedRadius)
+        Quantity direct,
+        Quantity amplitude,
+        Quantity frequency,
+        Quantity inscribedRadius,
+        RfWaveform? waveform = null)
     {
         var hertz = frequency.In("Hz");
         var radius = inscribedRadius.In("m");
@@ -57,7 +70,11 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(radius);
 
         return new IdealQuadrupoleRf(
-            direct.In("V"), amplitude.In("V"), 2.0 * Math.PI * hertz, radius);
+            direct.In("V"),
+            amplitude.In("V"),
+            2.0 * Math.PI * hertz,
+            radius,
+            waveform ?? new RfWaveform.Sinusoid());
     }
 
     /// <summary>
@@ -70,6 +87,7 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// <param name="charge">The ion's charge.</param>
     /// <param name="frequency">The drive frequency.</param>
     /// <param name="inscribedRadius">Axis to nearest electrode surface.</param>
+    /// <param name="waveform">The drive shape. A sinusoid when omitted.</param>
     /// <returns>The field.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The frequency or the radius is not positive.</exception>
     /// <remarks>
@@ -86,7 +104,13 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// </para>
     /// </remarks>
     public static IdealQuadrupoleRf FromMathieu(
-        double a, double q, Quantity mass, Quantity charge, Quantity frequency, Quantity inscribedRadius)
+        double a,
+        double q,
+        Quantity mass,
+        Quantity charge,
+        Quantity frequency,
+        Quantity inscribedRadius,
+        RfWaveform? waveform = null)
     {
         var hertz = frequency.In("Hz");
         var radius = inscribedRadius.In("m");
@@ -100,7 +124,8 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
         var omega = 2.0 * Math.PI * hertz;
         var scale = mass.In("kg") * omega * omega * radius * radius / Math.Abs(charge.In("C"));
 
-        return new IdealQuadrupoleRf(a * scale / 8.0, q * scale / 4.0, omega, radius);
+        return new IdealQuadrupoleRf(
+            a * scale / 8.0, q * scale / 4.0, omega, radius, waveform ?? new RfWaveform.Sinusoid());
     }
 
     /// <summary>The DC component on the x pair, in volts.</summary>
@@ -126,7 +151,40 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// <param name="timeSeconds">The instant.</param>
     /// <returns>The potential.</returns>
     public double DriveAt(double timeSeconds) =>
-        DirectVolts + (AmplitudeVolts * Math.Cos(AngularFrequency * timeSeconds));
+        DirectVolts + (AmplitudeVolts * Waveform.At(AngularFrequency * timeSeconds / (2.0 * Math.PI)));
+
+    /// <summary>
+    /// The Mathieu a a given drive produces, including any the waveform's own mean
+    /// contributes.
+    /// </summary>
+    /// <param name="mass">The ion's mass.</param>
+    /// <param name="charge">The ion's charge.</param>
+    /// <returns>The a parameter.</returns>
+    /// <remarks>
+    /// A rectangular wave off half duty carries a mean of 2d - 1, which enters the
+    /// equation of motion exactly where a DC offset would. Reporting it here keeps
+    /// the two sources of a in one place: a digital filter with no DC supply still
+    /// has an a, and it is set by switching times.
+    /// </remarks>
+    public double MathieuA(Quantity mass, Quantity charge)
+    {
+        var scale = mass.In("kg") * AngularFrequency * AngularFrequency
+            * InscribedRadiusM * InscribedRadiusM / Math.Abs(charge.In("C"));
+
+        return 8.0 * (DirectVolts + (AmplitudeVolts * Waveform.Mean)) / scale;
+    }
+
+    /// <summary>The Mathieu q a given drive produces.</summary>
+    /// <param name="mass">The ion's mass.</param>
+    /// <param name="charge">The ion's charge.</param>
+    /// <returns>The q parameter.</returns>
+    public double MathieuQ(Quantity mass, Quantity charge)
+    {
+        var scale = mass.In("kg") * AngularFrequency * AngularFrequency
+            * InscribedRadiusM * InscribedRadiusM / Math.Abs(charge.In("C"));
+
+        return 4.0 * AmplitudeVolts / scale;
+    }
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)

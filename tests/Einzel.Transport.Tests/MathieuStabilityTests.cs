@@ -310,3 +310,160 @@ public sealed class RfIntegrationTests(ITestOutputHelper output)
         Assert.False(double.IsNaN(result.MaximumRelativeEnergyDrift));
     }
 }
+
+/// <summary>
+/// A rectangular drive, against Schrader, Anderson and Russell (JASMS 2024).
+/// </summary>
+/// <remarks>
+/// <para>
+/// "Increasing Isolation Efficiency Using a Segmented Quadrupole Mass Filter
+/// Operated with Rectangular Waveforms", J. Am. Soc. Mass Spectrom. 35 (2024)
+/// 1237-1244. A switching drive rather than a resonant one, which changes the
+/// equation of motion from Mathieu's to Meissner's and moves the stability
+/// boundaries with it.
+/// </para>
+/// <para>
+/// Two numbers from the paper are checkable here and neither comes from this code.
+/// The low-mass cut-off moves from q = 0.908 to <b>q = 0.712</b>. And an
+/// asymmetric duty cycle supplies its own a: at 61.15/38.85 and q = 0.5897 the
+/// paper quotes a = -0.2640, which is the waveform's mean doing the job a DC
+/// supply would.
+/// </para>
+/// <para>
+/// The authors simulated this in SIMION 8.1. That is the project thesis restated
+/// as a fact for the second time in these targets - the Ion Processor was
+/// simulated in an in-house package nobody outside the group can run, and this one
+/// in software behind a licence.
+/// </para>
+/// </remarks>
+public sealed class RectangularWaveformTests(ITestOutputHelper output)
+{
+    /// <summary>The square-wave low-mass cut-off the paper quotes.</summary>
+    private const double SquareBoundary = 0.712;
+
+    private static IonSpecies Peptide => IonSpecies.FromMassToCharge(500.0, 1);
+
+    private static bool IsStable(double a, double q, RfWaveform waveform, int cycles)
+    {
+        var species = Peptide;
+        var radius = Quantity.From(4.0, "mm");
+
+        var field = IdealQuadrupoleRf.FromMathieu(
+            a, q, species.Mass(), species.Charge(), Quantity.From(1.0, "MHz"), radius, waveform);
+
+        var start = new PhaseState(new Vec3(0.1e-3, 0.1e-3, 0.0), new Vec3(0.0, 0.0, 0.0));
+        var aperture = radius.In("m");
+
+        TrajectoryStopFunction inside = (in PhaseState s) =>
+            aperture - Math.Max(Math.Abs(s.Position.X), Math.Abs(s.Position.Y));
+
+        var result = TrajectoryIntegrator.Integrate(
+            start,
+            species,
+            field,
+            new IntegrationSettings
+            {
+                RelativeTolerance = 1e-9,
+                MaximumFlightTime = cycles * field.ShortestPeriodSeconds,
+            },
+            inside);
+
+        return result.Outcome == TrajectoryOutcome.MaximumFlightTimeReached;
+    }
+
+    [Fact]
+    public void ASquareWaveMovesTheCutOffToSevenOneTwo()
+    {
+        // The headline check. A switching drive is not a cosmetic change to a
+        // sinusoidal one: the boundary moves by more than twenty per cent, and an
+        // implementation that treated the waveform as a detail would land on 0.908
+        // and look fine.
+        const double Low = 0.4;
+        const double High = 1.0;
+        var tolerance = (High - Low) / 500.0;
+
+        var waveform = new RfWaveform.Rectangular(0.5);
+        var low = Low;
+        var high = High;
+
+        Assert.True(IsStable(0.0, low, waveform, 200), "the scan should start inside the stable region");
+        Assert.False(IsStable(0.0, high, waveform, 200), "the scan should end outside it");
+
+        while (high - low > tolerance)
+        {
+            var mid = 0.5 * (low + high);
+
+            if (IsStable(0.0, mid, waveform, 200))
+            {
+                low = mid;
+            }
+            else
+            {
+                high = mid;
+            }
+        }
+
+        var boundary = 0.5 * (low + high);
+
+        output.WriteLine($"square wave cut-off  q = {boundary:F5}");
+        output.WriteLine($"paper quotes         q = {SquareBoundary}");
+        output.WriteLine($"sinusoid, for scale  q = 0.90804");
+        output.WriteLine($"difference           {Math.Abs(boundary - SquareBoundary):F5}");
+
+        // The paper quotes three figures, so three figures is what can be checked.
+        Assert.True(
+            Math.Abs(boundary - SquareBoundary) < 0.005,
+            $"square-wave cut-off came out at {boundary:F5} against a published {SquareBoundary}");
+    }
+
+    [Fact]
+    public void AnAsymmetricDutyCycleSuppliesItsOwnDc()
+    {
+        // The trick that makes a digital filter work without a DC supply. The
+        // paper's prefilter runs at 61.15/38.85 and q = 0.5897, and quotes
+        // a = -0.2640; the mean of the waveform is 2d - 1, which enters the
+        // equation of motion exactly where a DC offset would.
+        var species = Peptide;
+        const double Duty = 0.6115;
+        const double Q = 0.5897;
+
+        var field = IdealQuadrupoleRf.FromMathieu(
+            0.0, Q, species.Mass(), species.Charge(),
+            Quantity.From(1.0, "MHz"), Quantity.From(4.0, "mm"),
+            new RfWaveform.Rectangular(Duty));
+
+        var a = field.MathieuA(species.Mass(), species.Charge());
+        var q = field.MathieuQ(species.Mass(), species.Charge());
+
+        output.WriteLine($"duty {Duty:P2} at q = {q:F4} gives a = {a:F4}");
+        output.WriteLine($"paper quotes a = -0.2640 for the same working point (sign by pair)");
+
+        Assert.Equal(Q, q, 1e-9);
+
+        // a = 2q(2d - 1), which for this duty and q is 0.263.
+        Assert.Equal(2.0 * Q * ((2.0 * Duty) - 1.0), a, 1e-9);
+        Assert.Equal(0.2640, Math.Abs(a), 0.002);
+    }
+
+    [Fact]
+    public void ABalancedSquareWaveHasNoMeanAndAnOffsetOneDoes()
+    {
+        // The mechanism, isolated from any trajectory. If the mean were wrong the
+        // stability results would be wrong by a shifted working point and would
+        // still look self-consistent.
+        Assert.Equal(0.0, new RfWaveform.Sinusoid().Mean);
+        Assert.Equal(0.0, new RfWaveform.Rectangular(0.5).Mean, 1e-15);
+        Assert.Equal(0.223, new RfWaveform.Rectangular(0.6115).Mean, 1e-3);
+
+        // And the shape itself: high for the duty fraction, low for the rest.
+        var wave = new RfWaveform.Rectangular(0.6115);
+
+        Assert.Equal(1.0, wave.At(0.0));
+        Assert.Equal(1.0, wave.At(0.61));
+        Assert.Equal(-1.0, wave.At(0.62));
+        Assert.Equal(-1.0, wave.At(0.99));
+
+        // Phase arrives from an accumulated flight time and will not be tidy.
+        Assert.Equal(wave.At(0.3), wave.At(7.3), 1e-15);
+    }
+}
