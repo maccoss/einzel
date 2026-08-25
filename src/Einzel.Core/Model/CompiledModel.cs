@@ -68,6 +68,11 @@ public sealed record CompiledModel
     /// </summary>
     public required ParameterSurface Parameters { get; init; }
 
+    /// <summary>
+    /// How wide a cloud the source launches. A single ion on the axis by default.
+    /// </summary>
+    public IonCloudSettings Cloud { get; init; } = new();
+
     /// <summary>The ion's launch speed, in metres per second.</summary>
     /// <returns>The speed after acceleration, including the energy offset.</returns>
     /// <remarks>

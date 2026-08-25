@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.2",
+  "schemaVersion": "0.3",
   "name": "quadrupole",
   "description": "A quadrupole cross-section: four round rods, alternating potential, solved in the plane normal to the axis. Present as the second, unrelated device of spec section 21 phase 5 — it shares no code with the mirror, only the three electrode primitives. Rod radius is set to 1.1468 times the inscribed radius, the ratio that best approximates a hyperbolic field with round rods. Near the axis the potential should go as (x^2 - y^2) and the restoring force should be linear, which is what makes it a mass filter once the potential is made to oscillate.",
 

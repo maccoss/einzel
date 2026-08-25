@@ -140,10 +140,16 @@ public sealed record ModelDocument
 public static class ModelSchema
 {
     /// <summary>The schema version this build writes.</summary>
-    public const string CurrentVersion = "0.2";
+    /// <remarks>
+    /// 0.3 adds the source cloud. Additive, so every 0.2 document still reads, but
+    /// a document that declares a cloud genuinely is not a 0.2 document and saying
+    /// so is cheaper than an older build rejecting it with a schema error that
+    /// names the wrong cause.
+    /// </remarks>
+    public const string CurrentVersion = "0.3";
 
     /// <summary>Versions this build can read.</summary>
-    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2"];
+    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -182,6 +188,58 @@ public sealed record SourceDocument
     /// default; the memo asks for plus or minus 3 to 5 percent.
     /// </summary>
     public double EnergyFraction { get; init; }
+
+    /// <summary>
+    /// How wide a cloud of ions to launch. Omit for a single ion on the axis.
+    /// </summary>
+    public CloudDocument? Cloud { get; init; }
+}
+
+/// <summary>
+/// The spread of a launched ion cloud, as it appears in a model document.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Without this every result is an answer about one ion rather than about an
+/// instrument, which is why every resolving power in this project has carried the
+/// same caveat: energy aberration only, no spatial spread, no angular spread, no
+/// turn-around time.
+/// </para>
+/// <para>
+/// There is deliberately no angular-divergence setting. A thermal cloud already
+/// has one - an ion with sideways thermal velocity is an ion launched at an
+/// angle - and offering both would let a document say two things about the same
+/// physics and be believed twice.
+/// </para>
+/// </remarks>
+public sealed record CloudDocument
+{
+    /// <summary>How many ions to launch.</summary>
+    public int Ions { get; init; } = 1;
+
+    /// <summary>Seed for the draw, so a run is regenerable.</summary>
+    public int Seed { get; init; } = 1;
+
+    /// <summary>
+    /// Source temperature. Sets the thermal velocity, and with it the turn-around
+    /// time that limits a pulsed extraction.
+    /// </summary>
+    public QuantityValue? Temperature { get; init; }
+
+    /// <summary>Gaussian width of the cloud across the direction of travel.</summary>
+    public QuantityValue? TransverseSpread { get; init; }
+
+    /// <summary>Gaussian width of the cloud along the direction of travel.</summary>
+    public QuantityValue? LongitudinalSpread { get; init; }
+
+    /// <summary>
+    /// Gaussian width of the acceleration energy, as a fraction of nominal.
+    /// </summary>
+    /// <remarks>
+    /// Supply ripple rather than temperature: it varies the energy without varying
+    /// the direction, which a temperature cannot express.
+    /// </remarks>
+    public double EnergyFractionSpread { get; init; }
 }
 
 /// <summary>A field element. The discriminator is <see cref="Type"/>.</summary>

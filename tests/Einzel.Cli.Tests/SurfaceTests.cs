@@ -65,7 +65,7 @@ public sealed class SurfaceTests : IDisposable
         using var schema = JsonDocument.Parse(stdout);
         var root = schema.RootElement;
 
-        Assert.Equal("0.2", root.GetProperty("x-schemaVersion").GetString());
+        Assert.Equal("0.3", root.GetProperty("x-schemaVersion").GetString());
         Assert.Equal("object", root.GetProperty("type").GetString());
 
         var properties = root.GetProperty("properties");

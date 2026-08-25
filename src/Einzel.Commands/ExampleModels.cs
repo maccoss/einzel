@@ -81,7 +81,7 @@ public static class ExampleModels
     public const string SingleStageReflectron =
         """
         {
-          "schemaVersion": "0.2",
+          "schemaVersion": "0.3",
           "name": "single-stage-reflectron",
           "description": "Ideal single-stage reflectron at the first-order energy focus, where the total field-free path is four penetration depths. Analytic flight time 10.1805 us for m/z 500 at 4 keV. Arrival time is flat to first order in energy, so sweeping the energy acceptance moves the flight time by only the second-order term. The mirror depth and the cap potential are declared parameters, so this model can be swept and optimised as it stands.",
 

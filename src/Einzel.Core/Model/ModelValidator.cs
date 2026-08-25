@@ -82,6 +82,7 @@ public static class ModelValidator
             ChargeSi = charge.Value,
             SourcePosition = source.Position,
             SourceDirection = source.Direction,
+            Cloud = source.Cloud,
             AccelerationPotentialSi = source.Potential,
             EnergyFraction = source.EnergyFraction,
             Fields = fields,
@@ -175,7 +176,8 @@ public static class ModelValidator
         return (mass, charge);
     }
 
-    private sealed record SourceValues(Vec3 Position, Vec3 Direction, double Potential, double EnergyFraction);
+    private sealed record SourceValues(
+        Vec3 Position, Vec3 Direction, double Potential, double EnergyFraction, IonCloudSettings Cloud);
 
     private static SourceValues? ValidateSource(SourceDocument? source, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
@@ -222,7 +224,124 @@ public static class ModelValidator
             return null;
         }
 
-        return new SourceValues(position.Value, direction.Value, potential.Value.SiValue, source.EnergyFraction);
+        var cloud = ValidateCloud(source.Cloud, p, errors);
+
+        return cloud is null
+            ? null
+            : new SourceValues(
+                position.Value, direction.Value, potential.Value.SiValue, source.EnergyFraction, cloud);
+    }
+
+    /// <summary>
+    /// Reads the source cloud, or returns the single-ion default when none is
+    /// declared.
+    /// </summary>
+    /// <remarks>
+    /// Every spread is optional and every default is zero, so a model that says
+    /// nothing about a cloud launches exactly what it launched before. That is not
+    /// only backward compatibility: a spread that appeared by default would change
+    /// every existing result silently, and a resolving power quietly getting worse
+    /// is indistinguishable from a bug.
+    /// </remarks>
+    private static IonCloudSettings? ValidateCloud(
+        CloudDocument? cloud, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    {
+        if (cloud is null)
+        {
+            return new IonCloudSettings();
+        }
+
+        if (cloud.Ions < 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/source/cloud/ions",
+                Constraint = "a cloud launches at least one ion",
+                Observed = new ObservedValue(cloud.Ions, "1"),
+                Suggestion = "ACC-5 wants a transmission interval within one per cent at 95%, which needs of "
+                    + "order a thousand ions; fewer gives an honest error bar too wide to design against",
+            });
+
+            return null;
+        }
+
+        if (cloud.EnergyFractionSpread < 0.0 || !double.IsFinite(cloud.EnergyFractionSpread))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/source/cloud/energyFractionSpread",
+                Constraint = "an energy spread is a non-negative fraction of the nominal energy",
+                Observed = new ObservedValue(cloud.EnergyFractionSpread, "1"),
+                Suggestion = "use 0.01 for one per cent, or omit it for a monoenergetic cloud",
+            });
+
+            return null;
+        }
+
+        var temperature = Optional(
+            cloud.Temperature, "/source/cloud/temperature", Dimension.TemperatureDimension, p, errors);
+
+        var transverse = Optional(
+            cloud.TransverseSpread, "/source/cloud/transverseSpread", Dimension.LengthDimension, p, errors);
+
+        var longitudinal = Optional(
+            cloud.LongitudinalSpread, "/source/cloud/longitudinalSpread", Dimension.LengthDimension, p, errors);
+
+        if (temperature is null || transverse is null || longitudinal is null)
+        {
+            return null;
+        }
+
+        foreach (var (value, path) in new[]
+        {
+            (temperature.Value, "/source/cloud/temperature"),
+            (transverse.Value, "/source/cloud/transverseSpread"),
+            (longitudinal.Value, "/source/cloud/longitudinalSpread"),
+        })
+        {
+            if (value < 0.0)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = path,
+                    Constraint = "a spread cannot be negative",
+                    Observed = new ObservedValue(value, "SI"),
+                    Suggestion = "omit it for zero",
+                });
+
+                return null;
+            }
+        }
+
+        return new IonCloudSettings
+        {
+            Ions = cloud.Ions,
+            Seed = cloud.Seed,
+            TemperatureK = temperature.Value,
+            TransverseSpreadM = transverse.Value,
+            LongitudinalSpreadM = longitudinal.Value,
+            EnergyFractionSpread = cloud.EnergyFractionSpread,
+        };
+    }
+
+    /// <summary>A quantity that may be absent, reading as zero when it is.</summary>
+    private static double? Optional(
+        QuantityValue? value,
+        string path,
+        Dimension expected,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (value is null)
+        {
+            return 0.0;
+        }
+
+        var quantity = TryQuantity(value, path, expected, p, errors);
+        return quantity?.SiValue;
     }
 
     private static List<CompiledField> ValidateFields(
