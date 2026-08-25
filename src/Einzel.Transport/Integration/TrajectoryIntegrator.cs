@@ -234,6 +234,21 @@ public static class TrajectoryIntegrator
                 step, stepSettings, in state, in derivative, characteristicSpeed, resolutionStep);
             step = Math.Min(Math.Min(step, settings.MaximumFlightTime - time.Total), periodStep);
 
+            // A sequencer switches state at known times, and a step that spans one
+            // averages two different fields into a single answer. Unlike a boundary
+            // in space this needs no root-find - the time is known - so the step is
+            // simply cut to land on it. The next step then starts in the new state,
+            // with the derivative recomputed there.
+            if (driven is not null)
+            {
+                var switchAt = driven.NextSwitchAfter(time.Total);
+
+                if (double.IsFinite(switchAt))
+                {
+                    step = Math.Min(step, switchAt - time.Total);
+                }
+            }
+
             if (step < settings.MinimumStep)
             {
                 outcome = time.Total >= settings.MaximumFlightTime

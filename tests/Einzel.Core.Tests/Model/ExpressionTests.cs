@@ -160,4 +160,25 @@ public sealed class ExpressionTests
     {
         Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Evaluate("mod(3, 0)"));
     }
+
+    [Theory]
+    [InlineData("-gap", -0.030)]
+    [InlineData("-gap / 2", -0.015)]
+    [InlineData("0 - ratio", -0.35)]
+    public void UnaryMinusWorksOnDimensionedQuantities(string expression, double expected)
+    {
+        // A placement on the far side of the origin is written with a leading minus,
+        // and every template does it. Worth pinning, because the alternative -
+        // writing "0 - gap" - is refused, and correctly: the literal zero is
+        // dimensionless and subtracting a length from it is the units error the
+        // evaluator exists to catch. The dimensionless-zero exception applies to
+        // what a field requires, not to arithmetic inside the expression.
+        Assert.Equal(expected, Evaluate(expression).SiValue, Math.Abs(expected) * 1e-12 + 1e-18);
+    }
+
+    [Fact]
+    public void SubtractingALengthFromALiteralZeroIsStillAUnitsError()
+    {
+        Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Evaluate("0 - gap"));
+    }
 }

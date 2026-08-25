@@ -144,6 +144,10 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     public double ShortestPeriodSeconds => 2.0 * Math.PI / AngularFrequency;
 
     /// <inheritdoc/>
+    /// <remarks>Never: an analytic drive runs one way for the whole flight.</remarks>
+    public double NextSwitchAfter(double timeSeconds) => double.PositiveInfinity;
+
+    /// <inheritdoc/>
     /// <remarks>An analytic field is defined everywhere and resolves everything.</remarks>
     public double ResolutionLength => double.PositiveInfinity;
 

@@ -232,6 +232,48 @@ Nothing is re-solved as the drive swings: electrodes sharing a time dependence
 share one basis solve, and a quadrupole's two pairs are exact negatives, so four
 rods reduce to one. See [Numerics](numerics.md).
 
+## Operating a geometry through stages
+
+The sequencer the architecture calls a timed state machine. A trap fills,
+isolates, then extracts, and the electrode potentials differ in each:
+
+```json
+"solve": {
+  "stages": [
+    { "name": "fill",    "duration": { "value": 200, "unit": "us" } },
+    { "name": "isolate", "duration": { "value": 50,  "unit": "us" },
+      "set": { "rfAmplitude": { "value": 300, "unit": "V" } } },
+    { "name": "extract", "duration": { "value": 10,  "unit": "us" },
+      "set": { "rfAmplitude": { "value": 0, "unit": "V" },
+               "pushPotential": { "value": 1000, "unit": "V" } } }
+  ],
+  ...
+}
+```
+
+**A stage sets parameters, not electrode settings**, and that is the whole design.
+Electrode potentials are already expressions over parameters, so setting one moves
+everything that depends on it at once - including *derived* parameters. Listing
+electrode settings instead would let a stage change an amplitude while leaving the
+quantity it was derived from behind, and the two would disagree silently.
+
+It also costs no new vocabulary: the same override mechanism a sweep or an
+optimiser uses to *perturb* a design is what a sequence uses to *operate* one.
+
+Anything a stage does not name keeps the value it has outside the sequence, and
+after the last stage ends the last state holds - an instrument left alone stays
+where it was put. A field that switched off at the end of the declared sequence
+would make every ion still in flight suddenly coast, which is a physics change
+disguised as a bookkeeping one.
+
+**A stage may change what an electrode holds, not where it is.** Moving metal
+between stages would change the mask, so each stage would need its own solve and
+its own grid - and the field would still be computed, and it would be wrong in a
+way nothing else catches. It is refused, naming the electrode and the stage.
+
+A sequence needs no drive: a pulsed extraction is DC that switches, and a solve
+with stages and no `drive` block is exactly that.
+
 ## Repeating an electrode
 
 A stack of rings is one ring, written once:

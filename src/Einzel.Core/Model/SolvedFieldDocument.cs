@@ -419,6 +419,17 @@ public sealed record SolvedFieldDocument
     public QuantityValue? MaxY { get; init; }
 
     /// <summary>
+    /// A timed sequence of states this geometry is operated through, if any.
+    /// </summary>
+    /// <remarks>
+    /// The sequencer the architecture diagram calls a timed state machine. A trap
+    /// fills, isolates, then extracts, and the electrode potentials are different
+    /// in each - so a geometry that can only be driven one way for a whole run
+    /// cannot describe a trap at all, whatever else it can do.
+    /// </remarks>
+    public IReadOnlyList<StageDocument>? Stages { get; init; }
+
+    /// <summary>
     /// The RF drive this geometry is operated with, if any. Static when omitted.
     /// </summary>
     /// <remarks>
@@ -505,6 +516,39 @@ public sealed record RepeatDocument
 }
 
 /// <summary>
+/// One state of a timed sequence, as it appears in a model document.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A stage says what changes and for how long, and what changes is expressed as
+/// <em>parameter values</em> rather than as electrode settings. That is the whole
+/// design: electrode potentials are already expressions over parameters, so setting
+/// a parameter moves everything that depends on it at once, coherently, including
+/// derived parameters and geometry. Listing electrodes instead would let a stage
+/// change an amplitude while leaving the thing it was derived from behind.
+/// </para>
+/// <para>
+/// It also means a stage costs no new vocabulary. The same override mechanism a
+/// sweep or an optimiser uses to perturb a design is what a sequence uses to
+/// operate one.
+/// </para>
+/// </remarks>
+public sealed record StageDocument
+{
+    /// <summary>What this stage is for, in a word. Used in reporting.</summary>
+    public string? Name { get; init; }
+
+    /// <summary>How long the stage lasts.</summary>
+    public QuantityValue? Duration { get; init; }
+
+    /// <summary>
+    /// Parameter values that hold during this stage, with units. Everything not
+    /// named keeps the value it has outside the sequence.
+    /// </summary>
+    public IReadOnlyDictionary<string, QuantityValue>? Set { get; init; }
+}
+
+/// <summary>
 /// An RF drive, as it appears in a model document.
 /// </summary>
 public sealed record DriveDocument
@@ -536,6 +580,13 @@ public sealed record DriveDocument
     public double? DutyCycle { get; init; }
 }
 
+/// <summary>One state of a timed sequence, validated and reduced to SI.</summary>
+/// <param name="Name">What the stage is for.</param>
+/// <param name="DurationSeconds">How long it lasts.</param>
+/// <param name="Electrodes">The electrodes as they stand during it.</param>
+public sealed record CompiledStage(
+    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode> Electrodes);
+
 /// <summary>A two-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField
 {
@@ -559,6 +610,18 @@ public sealed record CompiledSolvedField
 
     /// <summary>The drive this geometry is operated with, or null when static.</summary>
     public CompiledDrive? Drive { get; init; }
+
+    /// <summary>
+    /// The timed sequence this geometry is operated through, or empty when it holds
+    /// one state for the whole run.
+    /// </summary>
+    /// <remarks>
+    /// Each stage carries its own compiled electrodes, because a stage changes
+    /// parameters and parameters reach everything - so what differs between stages
+    /// is not a list of settings but the whole geometry as it stands during that
+    /// stage. The geometry itself must not actually move; that is checked.
+    /// </remarks>
+    public IReadOnlyList<CompiledStage> Stages { get; init; } = [];
 
     /// <summary>Condition on the x-minimum edge.</summary>
     public BoundaryKind LeftEdge { get; init; }

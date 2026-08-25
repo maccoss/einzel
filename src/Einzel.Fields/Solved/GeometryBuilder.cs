@@ -374,7 +374,7 @@ public static class GeometryBuilder
     {
         ArgumentNullException.ThrowIfNull(solve);
 
-        if (solve.Drive is not null)
+        if (solve.Drive is not null || solve.Stages.Count > 0)
         {
             return BuildDriven(solve);
         }
@@ -430,9 +430,18 @@ public static class GeometryBuilder
     private static (IElectrostaticField Field, SolveReport Report) BuildDriven(CompiledSolvedField solve)
     {
         var grid = BuildGrid(solve);
-        var drive = solve.Drive!;
+        var drive = solve.Drive;
 
-        var groups = Channels(solve.Electrodes);
+        // Every stage's electrodes go into the decomposition together, so a pattern
+        // that appears in two stages is solved once and simply weighted differently
+        // in each. A trap that fills and then extracts usually shares most of its
+        // patterns between the two, and paying for them twice would be paying for
+        // the sequencer rather than for the physics.
+        var states = solve.Stages.Count > 0
+            ? solve.Stages.Select(stage => stage.Electrodes).ToList()
+            : [solve.Electrodes];
+
+        var groups = Channels([.. states.SelectMany(e => e)]);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
@@ -481,14 +490,80 @@ public static class GeometryBuilder
             }
         }
 
-        RfWaveform waveform = drive.Waveform == DriveWaveform.Rectangular
+        RfWaveform waveform = drive is { Waveform: DriveWaveform.Rectangular }
             ? new RfWaveform.Rectangular(drive.DutyCycle)
             : new RfWaveform.Sinusoid();
 
-        var field = new DrivenSolvedField(
-            channels, direct, harmonics, drive.FrequencyHz, waveform);
+        // A sequence with no drive still switches; it just switches between states
+        // that do not oscillate. The frequency is then only a scale for the phase
+        // argument, which nothing uses, so any positive number will do and one
+        // hertz keeps the step cap out of the way.
+        var frequency = drive?.FrequencyHz ?? 1.0;
 
-        return (field, worst);
+        if (solve.Stages.Count == 0)
+        {
+            return (new DrivenSolvedField(channels, direct, harmonics, frequency, waveform), worst);
+        }
+
+        var boundaries = new List<double>(solve.Stages.Count);
+        var stageDirect = new List<IReadOnlyList<double>>(solve.Stages.Count);
+        var stageHarmonics =
+            new List<IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>>>(solve.Stages.Count);
+
+        var elapsed = 0.0;
+
+        foreach (var stage in solve.Stages)
+        {
+            elapsed += stage.DurationSeconds;
+            boundaries.Add(elapsed);
+
+            // The same channels, re-weighted for this stage. Every pattern already
+            // has a solve; what a stage changes is only how much of each is on.
+            var weights = Weigh(groups, stage.Electrodes);
+
+            stageDirect.Add(weights.Direct);
+            stageHarmonics.Add(weights.Harmonics);
+        }
+
+        var sequenced = new DrivenSolvedField(
+            channels, direct, harmonics, frequency, waveform, boundaries, stageDirect, stageHarmonics);
+
+        return (sequenced, worst);
+    }
+
+    /// <summary>
+    /// The weight each already-solved channel carries during one stage.
+    /// </summary>
+    /// <remarks>
+    /// The stage is decomposed the same way the whole geometry was, and its
+    /// supplies are matched back onto the existing patterns. A supply whose pattern
+    /// is not among them cannot happen - the patterns were gathered from every
+    /// stage - so a miss would be a defect rather than a document error, and it is
+    /// left to throw rather than quietly contributing nothing.
+    /// </remarks>
+    private static (List<double> Direct, List<IReadOnlyList<(double Amplitude, double Phase)>> Harmonics)
+        Weigh(List<Channel> channels, IReadOnlyList<CompiledElectrode> electrodes)
+    {
+        var direct = new List<double>(new double[channels.Count]);
+
+        var harmonics = new List<IReadOnlyList<(double Amplitude, double Phase)>>(
+            Enumerable.Range(0, channels.Count)
+                .Select(_ => (IReadOnlyList<(double Amplitude, double Phase)>)[]));
+
+        foreach (var group in Channels(electrodes))
+        {
+            var index = channels.FindIndex(c => SamePattern(c.Pattern, group.Pattern));
+
+            if (index < 0)
+            {
+                continue;
+            }
+
+            direct[index] += group.Direct;
+            harmonics[index] = [.. harmonics[index], .. group.Harmonics];
+        }
+
+        return (direct, harmonics);
     }
 
     /// <summary>

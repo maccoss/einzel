@@ -62,4 +62,24 @@ public interface ITimeVaryingField : IElectrostaticField
     /// </para>
     /// </remarks>
     double ShortestPeriodSeconds { get; }
+
+    /// <summary>
+    /// When the field next changes discontinuously, after a given instant.
+    /// </summary>
+    /// <param name="timeSeconds">The instant to look forward from.</param>
+    /// <returns>The time of the next switch, or positive infinity when there is none.</returns>
+    /// <remarks>
+    /// <para>
+    /// A sequencer switches state at known times, and a Runge-Kutta step that spans
+    /// one averages two different fields into a single answer. Unlike a boundary in
+    /// space this needs no root-find at all - the time is known in advance - so the
+    /// integrator simply refuses to take a step past it and lands on it exactly.
+    /// </para>
+    /// <para>
+    /// Infinity for a field driven by a continuous waveform, however fast: a
+    /// sinusoid has no discontinuity, and a rectangular one is handled by the
+    /// step-per-cycle cap rather than by landing on every edge.
+    /// </para>
+    /// </remarks>
+    double NextSwitchAfter(double timeSeconds) => double.PositiveInfinity;
 }

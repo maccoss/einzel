@@ -38,6 +38,7 @@ cross-code tier is unavailable — see below.
 | Total energy across an einzel lens | 6.4e-10 |
 | Low-mass cut-off on **solved** round rods, against tabulated Mathieu | q = 0.90525 against 0.90804, 0.31% |
 | Funnel basis solves against ring count (8 / 24 / 48 rings) | 2 / 2 / 2 |
+| Sequenced run against the same flight stitched from two runs | 1.3e-9 relative |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
@@ -145,10 +146,9 @@ covering everything.
   the Ion Processor now has both figures of merit it needs — turn-around time and
   emittance — but not the trap geometry to measure them on, and the segmented
   quadrupole needs three dimensions.
-- **No sequencer.** RF works on analytic *and* solved geometry, and the model
-  format declares a drive - but only one, applied for the whole run. A trap that
-  fills, isolates, then extracts needs the drive to change partway through, and
-  there is no way to say so.
+- **No waveform library.** A drive is a sinusoid or a rectangular wave; there is no
+  way to declare an arbitrary waveform, which spec section 9 lists as one of the
+  excitations an electrode may carry, and no multi-notch isolation waveform.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
 - **No 3D.** Every solve is two-dimensional - translational or axisymmetric. This

@@ -329,6 +329,40 @@ A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
 equals its reflection inside, which is exact at any spacing and coarsens
 faithfully.
 
+## Landing on a switch
+
+A sequencer switches state at known times, and a Runge-Kutta step that spans one
+averages two different fields into a single answer - plausible, and wrong.
+
+Unlike a boundary in space this needs **no root-find at all**, because the time is
+known in advance. The integrator asks the field when it next switches and refuses
+to take a step past it, so it lands on the boundary exactly and the next step
+starts in the new state with the derivative recomputed there. `NextSwitchAfter`
+returns infinity for a continuously driven field, however fast: a sinusoid has no
+discontinuity, and a rectangular one is handled by the steps-per-cycle cap rather
+than by landing on every edge.
+
+### Measured
+
+The check is that a sequenced run equals the same flight computed as **two separate
+runs stitched together** - the same physics written two ways, needing no closed
+form to compare against.
+
+| Integrator tolerance | Disagreement, relative |
+| --- | --- |
+| 1e-8 | 1.0e-8 |
+| 1e-10 | 4.6e-8 |
+| 1e-12 | 1.3e-9 |
+
+Parts per billion at every tolerance, which is round-off between two different step
+sequences rather than the parts per thousand a straddled switch would leave. It is
+not monotone, because which steps each route happens to take is luck rather than a
+trend - what matters is that the disagreement is at round-off from the start, not
+that it shrinks.
+
+Stages that share a spatial pattern share their solve, so a trap that holds at one
+voltage and pushes at another costs one basis field, not three.
+
 ## RF on solved geometry
 
 Driving a real geometry costs almost nothing beyond solving it once, because

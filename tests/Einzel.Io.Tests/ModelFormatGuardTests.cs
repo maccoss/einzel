@@ -23,6 +23,8 @@ public sealed class ModelFormatGuardTests
           "name": "t",
           "parameters": {
             "gap": { "value": 4, "unit": "mm" },
+            "span": { "value": 4, "unit": "mm" },
+            "volts": { "value": 300, "unit": "V" },
             "tilt": { "value": 0, "unit": "1" },
             "drift": { "expression": "gap * 3", "unit": "mm" }
           },
@@ -62,6 +64,110 @@ public sealed class ModelFormatGuardTests
 
         Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
         Assert.Equal(0.012, validation.Model!.DetectorPoint.X, 1e-15);
+    }
+
+    private const string StagedSolve =
+        """
+          "fields": [{
+            "type": "solved2d",
+            "solve": {
+              "minX": { "value": -5, "unit": "mm" }, "minY": { "value": -5, "unit": "mm" },
+              "maxX": { "value": 5, "unit": "mm" }, "maxY": { "value": 5, "unit": "mm" },
+              "cellSize": { "value": 0.5, "unit": "mm" },
+              "stages": [
+                { "name": "hold", "duration": { "value": 100, "unit": "us" } },
+                { "name": "push", "duration": { "value": 10, "unit": "us" },
+                  "set": { "gap": { "value": 8, "unit": "mm" } } }
+              ],
+              "electrodes": [{
+                "name": "plate", "shape": "rectangle",
+                "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 2, "unit": "mm" },
+                "minY": { "value": 1, "unit": "mm" }, "maxY": { "value": 2, "unit": "mm" },
+                "potential": { "expression": "volts * drift / span", "unit": "V" }
+              }]
+            }
+          }],
+        """;
+
+    private const string MovingSolve =
+        """
+          "fields": [{
+            "type": "solved2d",
+            "solve": {
+              "minX": { "value": -5, "unit": "mm" }, "minY": { "value": -5, "unit": "mm" },
+              "maxX": { "value": 5, "unit": "mm" }, "maxY": { "value": 5, "unit": "mm" },
+              "cellSize": { "value": 0.5, "unit": "mm" },
+              "stages": [
+                { "name": "before", "duration": { "value": 1, "unit": "us" } },
+                { "name": "moved", "duration": { "value": 1, "unit": "us" },
+                  "set": { "gap": { "value": 8, "unit": "mm" } } }
+              ],
+              "electrodes": [{
+                "name": "plate", "shape": "rectangle",
+                "minX": { "expression": "span - gap", "unit": "mm" },
+                "maxX": { "expression": "span", "unit": "mm" },
+                "minY": { "value": 1, "unit": "mm" }, "maxY": { "value": 2, "unit": "mm" },
+                "potential": { "value": 100, "unit": "V" }
+              }]
+            }
+          }],
+        """;
+
+    [Fact]
+    public void AStageSetsParametersForATime()
+    {
+        // The sequencer, as a document says it. A stage names parameter values and
+        // a duration, and because electrode potentials are already expressions over
+        // parameters, setting one moves everything that depends on it at once -
+        // including the derived parameters, which is what listing electrode
+        // settings instead could not do.
+        var validation = Validate(StagedSolve, OnAxis);
+
+        Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+
+        var stages = validation.Model!.Fields[0].Solve!.Stages;
+
+        Assert.Equal(2, stages.Count);
+        Assert.Equal("hold", stages[0].Name);
+        Assert.Equal(1e-4, stages[0].DurationSeconds, 15);
+        Assert.Equal(1e-5, stages[1].DurationSeconds, 15);
+
+        // The potential is written in terms of drift, which is *derived* from gap.
+        // Setting gap to 8 mm therefore has to move drift to 24 mm and the potential
+        // with it - 900 V to 1800 V - which is the whole reason a stage sets
+        // parameters rather than listing electrode settings.
+        Assert.Equal(900.0, stages[0].Electrodes[0].Potential, 9);
+        Assert.Equal(1800.0, stages[1].Electrodes[0].Potential, 9);
+    }
+
+    [Fact]
+    public void AStageThatMovesMetalIsRefused()
+    {
+        // A stage may change what an electrode holds, not where it is. Moving a
+        // plate would change the mask, so every stage would need its own solve and
+        // its own grid - and the field would still be computed, and it would be
+        // wrong in a way nothing else catches.
+        var validation = Validate(MovingSolve, OnAxis);
+
+        Assert.False(validation.IsValid);
+
+        Assert.Contains(
+            validation.Errors,
+            e => e.Constraint!.Contains("moves electrode 'plate'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AStageNeedsAPositiveDuration()
+    {
+        var validation = Validate(
+            StagedSolve.Replace(
+                """{ "value": 100, "unit": "us" }""",
+                """{ "value": 0, "unit": "us" }""",
+                StringComparison.Ordinal),
+            OnAxis);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Errors, e => e.Constraint!.Contains("positive time", StringComparison.Ordinal));
     }
 
     [Fact]

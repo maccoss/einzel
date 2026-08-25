@@ -72,7 +72,34 @@ public static class ModelValidator
         // ModelValidation promises errors in document order and /source precedes
         // /fields.
         var fieldErrors = new List<EinzelError>();
-        var fields = ValidateFields(document.Fields, p, fieldErrors);
+
+        // A stage sets parameters, so resolving one means resolving the whole
+        // surface again with those values layered on - derived parameters and all.
+        // Passed as a closure because only the solve branch needs it, and threading
+        // the declared parameters through every field kind to reach it would put
+        // the sequencer in the signature of things that have nothing to do with it.
+        IReadOnlyDictionary<string, Quantity>? Restage(
+            IReadOnlyDictionary<string, Quantity> set, List<EinzelError> into)
+        {
+            var merged = new Dictionary<string, Quantity>(StringComparer.Ordinal);
+
+            if (overrides is not null)
+            {
+                foreach (var (name, value) in overrides)
+                {
+                    merged[name] = value;
+                }
+            }
+
+            foreach (var (name, value) in set)
+            {
+                merged[name] = value;
+            }
+
+            return ParameterSurface.Resolve(document.Parameters, merged, into)?.Values();
+        }
+
+        var fields = ValidateFields(document.Fields, p, Restage, fieldErrors);
 
         // A field that failed to compile is not evidence that nothing can
         // accelerate the ion, it is evidence that we cannot tell. Saying otherwise
@@ -425,7 +452,10 @@ public static class ModelValidator
     }
 
     private static List<CompiledField> ValidateFields(
-        IReadOnlyList<FieldDocument>? fields, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+        IReadOnlyList<FieldDocument>? fields,
+        IReadOnlyDictionary<string, Quantity> p,
+        StageResolver restage,
+        List<EinzelError> errors)
     {
         if (fields is null || fields.Count == 0)
         {
@@ -438,7 +468,7 @@ public static class ModelValidator
 
         for (var i = 0; i < fields.Count; i++)
         {
-            var element = CompileField(fields[i], $"/fields/{i}", p, errors);
+            var element = CompileField(fields[i], $"/fields/{i}", p, restage, errors);
 
             if (element is not null)
             {
@@ -449,7 +479,19 @@ public static class ModelValidator
         return compiled;
     }
 
-    private static CompiledField? CompileField(FieldDocument field, string path, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    /// <summary>Resolves the parameter surface as it stands during one stage.</summary>
+    /// <param name="set">The values the stage holds, with units.</param>
+    /// <param name="into">Where to report a value that does not resolve.</param>
+    /// <returns>The surface, or null when the stage could not be resolved.</returns>
+    internal delegate IReadOnlyDictionary<string, Quantity>? StageResolver(
+        IReadOnlyDictionary<string, Quantity> set, List<EinzelError> into);
+
+    private static CompiledField? CompileField(
+        FieldDocument field,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        StageResolver restage,
+        List<EinzelError> errors)
     {
         switch (field.Type)
         {
@@ -502,7 +544,7 @@ public static class ModelValidator
             }
 
             case "solved2d":
-                return CompileSolvedField(field.Solve, $"{path}/solve", p, errors);
+                return CompileSolvedField(field.Solve, $"{path}/solve", p, restage, errors);
 
             default:
                 errors.Add(new EinzelError
@@ -518,8 +560,181 @@ public static class ModelValidator
         }
     }
 
+    /// <summary>
+    /// Compiles the stages a solve is operated through, checking that they only
+    /// change what a sequence is allowed to change.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A stage sets parameters, and parameters reach everything - which is what
+    /// makes them the right vocabulary and also what makes a check necessary. Move
+    /// a plate between stages and the mask changes, so every stage would need its
+    /// own basis solves and its own grid; the field would still be computed, and it
+    /// would be wrong in a way nothing else would catch.
+    /// </para>
+    /// <para>
+    /// So the rule is exact and stated: a stage may change what an electrode
+    /// <em>holds</em> - its potential, its drive amplitude, its phase - and nothing
+    /// about where it is. Anything else is refused, naming the electrode and the
+    /// stage.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// An empty surface, for values that are literals rather than expressions.
+    /// </summary>
+    /// <remarks>
+    /// A stage duration is a wall-clock time, not a design dimension, so it does
+    /// not name parameters - and giving it the surface would let it name one that
+    /// the stage itself is about to change.
+    /// </remarks>
+    private static readonly Dictionary<string, Quantity> NoParameters = new(StringComparer.Ordinal);
+
+    private static readonly Dictionary<string, QuantityValue> NoOverrides = new(StringComparer.Ordinal);
+
+    private static List<CompiledStage> CompileStages(
+        SolvedFieldDocument solve,
+        string path,
+        IReadOnlyList<CompiledElectrode> baseline,
+        StageResolver restage,
+        List<EinzelError> errors)
+    {
+        var stages = new List<CompiledStage>();
+
+        if (solve.Stages is not { Count: > 0 } declared || solve.Electrodes is not { } declaredElectrodes)
+        {
+            return stages;
+        }
+
+        for (var k = 0; k < declared.Count; k++)
+        {
+            var stage = declared[k];
+            var stagePath = $"{path}/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            var name = stage.Name ?? $"stage {k}";
+
+            var duration = TryQuantity(
+                stage.Duration,
+                $"{stagePath}/duration",
+                Dimension.TimeDimension,
+                NoParameters,
+                errors);
+
+            if (duration is null || duration.Value.SiValue <= 0.0)
+            {
+                if (duration is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{stagePath}/duration",
+                        Constraint = "a stage must last a positive time",
+                        Observed = new ObservedValue(duration.Value.SiValue, "s"),
+                        Suggestion = "give the stage a duration, for example {\"value\": 100, \"unit\": \"us\"}",
+                    });
+                }
+
+                continue;
+            }
+
+            var set = new Dictionary<string, Quantity>(StringComparer.Ordinal);
+
+            foreach (var (parameter, value) in stage.Set ?? NoOverrides)
+            {
+                try
+                {
+                    set[parameter] = Quantity.From(value.Value, value.Unit);
+                }
+                catch (EinzelException failure)
+                {
+                    errors.Add(failure.Error with { Path = $"{stagePath}/set/{parameter}" });
+                }
+            }
+
+            var surface = restage(set, errors);
+
+            if (surface is null)
+            {
+                continue;
+            }
+
+            var electrodes = new List<CompiledElectrode>();
+
+            for (var i = 0; i < declaredElectrodes.Count; i++)
+            {
+                Expand(declaredElectrodes[i], $"{stagePath}/electrodes/{i}", surface, electrodes, errors);
+            }
+
+            if (!SameGeometry(baseline, electrodes, name, stagePath, errors))
+            {
+                continue;
+            }
+
+            stages.Add(new CompiledStage(name, duration.Value.SiValue, electrodes));
+        }
+
+        return stages;
+    }
+
+    /// <summary>Whether two compilations put the same metal in the same places.</summary>
+    private static bool SameGeometry(
+        IReadOnlyList<CompiledElectrode> baseline,
+        List<CompiledElectrode> staged,
+        string stage,
+        string path,
+        List<EinzelError> errors)
+    {
+        if (baseline.Count != staged.Count)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/set",
+                Constraint =
+                    $"stage '{stage}' changes how many electrodes there are, from {baseline.Count} to {staged.Count}",
+                Observed = new ObservedValue(staged.Count, "electrodes"),
+                Suggestion = "a stage may change what an electrode holds, not whether it exists",
+            });
+
+            return false;
+        }
+
+        for (var i = 0; i < baseline.Count; i++)
+        {
+            var a = baseline[i];
+            var b = staged[i];
+
+            var moved = a.Shape != b.Shape
+                || a.MinX != b.MinX || a.MaxX != b.MaxX
+                || a.MinY != b.MinY || a.MaxY != b.MaxY
+                || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.Radius != b.Radius;
+
+            if (moved)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/set",
+                    Constraint =
+                        $"stage '{stage}' moves electrode '{a.Name}', and a sequence may only change "
+                        + "what an electrode holds, not where it is",
+                    Observed = new ObservedValue(0.0, a.Name),
+                    Suggestion =
+                        "set only the parameters that reach potentials, amplitudes and phases; a stage that "
+                        + "moves metal would need its own solve and its own grid",
+                });
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static CompiledField? CompileSolvedField(
-        SolvedFieldDocument? solve, string path, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+        SolvedFieldDocument? solve,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        StageResolver restage,
+        List<EinzelError> errors)
     {
         if (solve is null)
         {
@@ -584,6 +799,7 @@ public static class ModelValidator
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
 
         var drive = Drive(solve.Drive, $"{path}/drive", p, errors);
+        var stages = CompileStages(solve, $"{path}/stages", electrodes, restage, errors);
 
         var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
 
@@ -646,6 +862,7 @@ public static class ModelValidator
                 CellSize = cell.Value.SiValue,
                 Symmetry = symmetry,
                 Drive = drive,
+                Stages = stages,
                 LeftEdge = left,
                 RightEdge = right,
                 BottomEdge = bottom,
