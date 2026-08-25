@@ -489,3 +489,143 @@ public sealed class VerifyTests : IDisposable
         Assert.Contains("no stored results", stdout, StringComparison.Ordinal);
     }
 }
+
+/// <summary>
+/// A project's tests: expected results with assertion tolerances.
+/// </summary>
+/// <remarks>
+/// EX-1 asks the corpus for "a prose description, expected results, and assertion
+/// tolerances". What this really provides is the thing that separates editing a
+/// model from guessing at one: an agent can establish that a change did not break
+/// something.
+/// </remarks>
+public sealed class ProjectTestTests : IDisposable
+{
+    private readonly string _root = Path.Combine(
+        Path.GetTempPath(), "einzel-projtest", Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            return (Program.Main(args), stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(previousOut);
+            Console.SetError(previousError);
+        }
+    }
+
+    [Fact]
+    public void AFreshProjectShipsATestThatPasses()
+    {
+        // init to test with nothing in between. The expected value is a closed
+        // form rather than something this engine produced once, so passing it
+        // means the physics is right and not merely unchanged.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var (exitCode, stdout, _) = Run("test", _root, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("allPassed").GetBoolean());
+
+        var assertion = root.GetProperty("tests")[0].GetProperty("assertions")[0];
+
+        Assert.Equal("flightTime", assertion.GetProperty("figureOfMerit").GetString());
+        Assert.Equal("us", assertion.GetProperty("unit").GetString());
+        Assert.Equal(10.180505718, assertion.GetProperty("observed").GetDouble(), 1e-5);
+
+        // ACC-1 is one part per million and this clears it by orders.
+        Assert.True(assertion.GetProperty("relativeError").GetDouble() < 1e-8);
+    }
+
+    [Fact]
+    public void BreakingTheGeometryBreaksTheTest()
+    {
+        // The assertion that matters about a test suite: that it fails.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var model = Path.Combine(_root, "models", "reflectron.json");
+        File.WriteAllText(model, File.ReadAllText(model).Replace(
+            "\"value\": 50, \"unit\": \"mm\", \"minimum\": 5",
+            "\"value\": 52, \"unit\": \"mm\", \"minimum\": 5",
+            StringComparison.Ordinal));
+
+        var (exitCode, _, stderr) = Run("test", _root);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("FAIL", stderr, StringComparison.Ordinal);
+        Assert.Contains("flightTime", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ATestThatAssertsNothingIsATestThatFails()
+    {
+        // A green tick standing for no evidence is worse than a red one. An empty
+        // expectation list would otherwise pass trivially and forever.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        File.WriteAllText(
+            Path.Combine(_root, "tests", "empty.json"),
+            """{ "model": "../models/reflectron.json", "expect": [] }""");
+
+        var (exitCode, _, stderr) = Run("test", _root);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("asserts nothing", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnExpectationInTheWrongDimensionIsARefusalNotAFailure()
+    {
+        // A flight time expected in millimetres is not a wrong answer, it is a
+        // wrong question, and reporting it as a failed assertion would send
+        // someone looking at the physics.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        File.WriteAllText(
+            Path.Combine(_root, "tests", "wrong-unit.json"),
+            """
+            {
+              "model": "../models/reflectron.json",
+              "expect": [{ "figureOfMerit": "flightTime", "value": 10.18, "unit": "mm", "tolerance": 1e-6 }]
+            }
+            """);
+
+        var (exitCode, _, stderr) = Run("test", _root);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("dimension", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AProjectWithNoTestsSaysSoRatherThanReportingSuccess()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        File.Delete(Path.Combine(_root, "tests", "reflectron.json"));
+
+        var (exitCode, stdout, _) = Run("test", _root);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("no tests", stdout, StringComparison.Ordinal);
+    }
+}

@@ -100,6 +100,7 @@ public static class Program
             "run" => Run(options),
             "sweep" => Sweep(options),
             "optimise" or "optimize" => Optimise(options),
+            "test" => Test(options),
             "verify" => Verify(options),
             "export" => Export(options),
             "schema" => Schema(options),
@@ -511,6 +512,68 @@ public static class Program
         return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 
+    private static int Test(CommandLine options)
+    {
+        var root = options.Value("project")
+            ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+
+        var outcome = TestCommand.Execute(root);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.AllPassed ? ExitCode.Success : ExitCode.ValidationFailure);
+        }
+
+        if (outcome.Tests.Count == 0)
+        {
+            // Not a failure, but worth saying plainly. A test run that asserts
+            // nothing and reports success is a green tick standing for no
+            // evidence at all.
+            Console.Out.WriteLine($"no tests under {Path.Combine(outcome.Root, "tests")}");
+            return (int)ExitCode.Success;
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        foreach (var test in outcome.Tests)
+        {
+            var mark = test.Passed ? "ok  " : "FAIL";
+            var stream = test.Passed ? Console.Out : Console.Error;
+            stream.WriteLine($"{mark} {test.Name}");
+
+            if (test.Failure is { } failure)
+            {
+                Console.Error.WriteLine($"       {failure}");
+                continue;
+            }
+
+            foreach (var assertion in test.Assertions)
+            {
+                if (assertion.Observed is not { } observed)
+                {
+                    Console.Error.WriteLine(string.Create(
+                        invariant,
+                        $"       {assertion.FigureOfMerit}: nothing arrived, so there is no value to compare"));
+
+                    continue;
+                }
+
+                var line = string.Create(
+                    invariant,
+                    $"       {assertion.FigureOfMerit} {observed:G8} {assertion.Unit}, expected "
+                    + $"{assertion.Expected:G8}, off by {assertion.RelativeError:E2} of "
+                    + $"{assertion.Tolerance:E2} allowed");
+
+                (assertion.Passed ? Console.Out : Console.Error).WriteLine(line);
+            }
+        }
+
+        Console.Out.WriteLine();
+        Console.Out.WriteLine($"{outcome.Passed} of {outcome.Tests.Count} tests passed");
+
+        return (int)(outcome.AllPassed ? ExitCode.Success : ExitCode.ValidationFailure);
+    }
+
     private static int Verify(CommandLine options)
     {
         var root = options.Value("project")
@@ -813,6 +876,7 @@ public static class Program
           estimate <model.json>         what a run will cost, without running it
           solve <model.json>            solve the fields only, and report how they went
           run <model.json> [--vtu]      run a model; --vtu also writes a ParaView trajectory
+          test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           optimise <study.json>         search the declared parameters for a better design

@@ -81,6 +81,14 @@ public static class InitCommand
             created.Add(Path.GetRelativePath(project.Root, examplePath));
         }
 
+        var testPath = Path.Combine(project.Tests, "reflectron.json");
+
+        if (!File.Exists(testPath))
+        {
+            File.WriteAllText(testPath, ExampleModels.SingleStageReflectronTest);
+            created.Add(Path.GetRelativePath(project.Root, testPath));
+        }
+
         if (!File.Exists(project.AgentsFile))
         {
             File.WriteAllText(project.AgentsFile, AgentsFile.Generate());

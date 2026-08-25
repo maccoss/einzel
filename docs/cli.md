@@ -56,6 +56,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel run <model.json>` | Run; writes a manifest and a result |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel optimise <study.json>` | Search the declared parameters for a better design |
+| `einzel test [dir]` | Run the project's tests |
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
@@ -68,7 +69,44 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--vtu` | `run` only: also write the trajectory for ParaView |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
-Not yet built: `preview`, `test`, `render`, `ext`, `self-update`.
+Not yet built: `preview`, `render`, `ext`, `self-update`.
+
+### Tests
+
+A test is a file in `tests/` naming a model and what it should produce. `init`
+ships one, so a fresh project has something to run from the first minute:
+
+```json
+{
+  "name": "reflectron-analytic-flight-time",
+  "description": "An ideal single-stage reflectron at the first-order energy focus has a closed-form flight time...",
+  "model": "../models/reflectron.json",
+  "expect": [
+    { "figureOfMerit": "flightTime", "value": 10.180505718, "unit": "us", "tolerance": 1e-6 }
+  ]
+}
+```
+
+```
+ok   reflectron-analytic-flight-time
+       flightTime 10.180506 us, expected 10.180506, off by 1.14E-010 of 1.00E-006 allowed
+```
+
+The expected value is a **closed form**, not a number this engine produced once
+and then enshrined. A test whose expectation came from the code it tests
+establishes that the code has not changed, which is a different and much weaker
+claim than that it is right.
+
+Tolerances are relative, because that is how the accuracy budget is written: ACC-1
+is one part in a million of a flight time, not a number of nanoseconds. A tolerance
+stated absolutely stops meaning the same thing the moment the geometry is scaled.
+
+Two failures are deliberately not treated as failed assertions. A test with no
+expectations is refused rather than passed - a green tick standing for no evidence
+is worse than a red one. And an expectation in the wrong dimension is a refusal:
+a flight time expected in millimetres is not a wrong answer, it is a wrong
+question, and reporting it as a failed assertion would send someone looking at the
+physics.
 
 ### What `verify` checks, and what it does not
 

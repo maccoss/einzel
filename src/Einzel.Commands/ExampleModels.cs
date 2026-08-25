@@ -34,6 +34,41 @@ public static class ExampleModels
     public static string Read(string name) => All[name];
 
     /// <summary>
+    /// A test for the shipped reflectron, asserting its closed-form flight time.
+    /// </summary>
+    /// <remarks>
+    /// A fresh project has something to run from the first minute, and it is the
+    /// right something: the expected value is a closed form rather than a number
+    /// this engine produced once and then enshrined. A test whose expectation came
+    /// from the code it tests establishes that the code has not changed, which is
+    /// a different and much weaker claim than that it is right.
+    /// </remarks>
+    public const string SingleStageReflectronTest =
+        """
+        {
+          "schemaVersion": "0.1",
+          "name": "reflectron-analytic-flight-time",
+          "description": "An ideal single-stage reflectron at the first-order energy focus has a closed-form flight time: 2L/v for the field-free path plus 2v/a for the turnaround. For m/z 500 at 4 keV with a 50 mm penetration depth and 100 mm of drift each way, that is 10.180505718 us. The tolerance is ACC-1's one part per million.",
+          "model": "../models/reflectron.json",
+          "expect": [
+            {
+              "figureOfMerit": "flightTime",
+              "value": 10.180505718,
+              "unit": "us",
+              "tolerance": 1e-6
+            },
+            {
+              "figureOfMerit": "energyDrift",
+              "value": 0,
+              "unit": "1",
+              "tolerance": 1e-6
+            }
+          ]
+        }
+
+        """;
+
+    /// <summary>
     /// An ideal single-stage reflectron at the first-order energy focus.
     /// </summary>
     /// <remarks>
