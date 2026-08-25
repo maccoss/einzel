@@ -82,8 +82,11 @@ public sealed class SolvedField2D : IElectrostaticField
     public Grid2D Grid => _grid;
 
     /// <inheritdoc/>
-    /// <remarks>The node spacing: nothing finer was solved for.</remarks>
-    public double ResolutionLength => _grid.Spacing;
+    /// <remarks>
+    /// The finer of the two node spacings: nothing below it was solved for, and a
+    /// step limit has to believe the smaller number.
+    /// </remarks>
+    public double ResolutionLength => _grid.MinimumSpacing;
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)

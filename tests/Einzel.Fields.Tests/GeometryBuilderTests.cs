@@ -40,8 +40,8 @@ public sealed class GeometryBuilderTests
         var grid = GeometryBuilder.BuildGrid(solve);
 
         Assert.True(
-            grid.Spacing <= solve.CellSize,
-            $"requested {solve.CellSize} m but got {grid.Spacing} m");
+            grid.SpacingX <= solve.CellSize && grid.SpacingY <= solve.CellSize,
+            $"requested {solve.CellSize} m but got {grid.SpacingX} by {grid.SpacingY} m");
 
         Assert.True(int.IsPow2(grid.CountX - 1), $"{grid.CountX} nodes is not a power of two plus one");
     }
@@ -110,8 +110,9 @@ public sealed class GeometryBuilderTests
             }
         }
 
-        // A disc of radius five cells should cover roughly pi r squared nodes.
-        var expected = Math.PI * Math.Pow(0.0025 / grid.Spacing, 2);
+        // A disc of radius five cells should cover roughly pi r squared nodes,
+        // counted in cells of whatever shape this grid has.
+        var expected = Math.PI * 0.0025 * 0.0025 / (grid.SpacingX * grid.SpacingY);
         Assert.InRange(mask.FixedCount, expected * 0.85, expected * 1.15);
     }
 
@@ -199,8 +200,8 @@ public sealed class GeometryBuilderTests
 
         var basis = GeometryBuilder.BuildMask(solve, grid, e => e.Name == "a" ? 1.0 : 0.0);
 
-        var insideA = (int)Math.Round((-0.0085 - grid.OriginX) / grid.Spacing);
-        var insideB = (int)Math.Round((0.0085 - grid.OriginX) / grid.Spacing);
+        var insideA = (int)Math.Round((-0.0085 - grid.OriginX) / grid.SpacingX);
+        var insideB = (int)Math.Round((0.0085 - grid.OriginX) / grid.SpacingX);
         var middle = grid.CountY / 2;
 
         Assert.Equal(1.0, basis.ValueAt(insideA, middle));

@@ -45,7 +45,11 @@ asserted against nominal rather than assumed.
   polynomial, since the stencil is exact up to quadratics and a polynomial would
   report machine precision at every refinement.
 - Multigrid cycle count grid-independent for boundary-value geometries: 8, 7, 7, 7
-  from 32 to 256 intervals.
+  from 32 to 256 intervals; 7, 8, 8 for a cut-cell rod, which used to be the case
+  that could not coarsen at all.
+- The same harmonic solution on a deliberately 2:1 stretched grid: **2.00, 2.00,
+  2.00**. A wrong anisotropy factor is a wrong Laplacian, and it converges
+  contentedly to the wrong answer — only an order measurement catches it.
 - Flight time reported through `FlightTimeStudy`, which integrates at three
   tolerances and derives an interval and an observed order — a single run has no
   honest uncertainty to quote.
@@ -116,11 +120,9 @@ covering everything.
 - **No agent acceptance suite.** Scripted prose tasks run against an agent given
   only a project directory and the CLI, scored on whether it acts on warnings, is
   a release metric the specification asks for and nothing measures.
-- **The solve domain may not be the declared domain.** `Grid2D.OverBox` rounds
-  the y interval count up to a power of two, so a box whose aspect ratio does not
-  suit can be solved as much as fifty per cent taller than asked for, silently.
-  The shipped templates are within half a cell; nothing checks. See
-  [Spec findings](spec-findings.md).
+- **Anisotropy beyond two to one is not handled.** Nothing can currently produce
+  it, but a point smoother damps error poorly along a stretched axis, and a grid
+  built by hand at, say, 8:1 would converge slowly with nothing to say so.
 - **Geometry sensitivity fields are limited by second-order physics**, not by
   the mesh: the linearisation error is (δ/L)², so a 1 ppm gate holds to about
   δ/L = 10⁻³ and the memo's 100–300 µm channels linearise to 1e-5, not 1e-6. See

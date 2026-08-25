@@ -28,22 +28,54 @@ namespace Einzel.Fields.Solved;
 /// </remarks>
 public sealed class Grid2D
 {
-    /// <summary>Creates a grid.</summary>
+    /// <summary>Creates a grid with square cells.</summary>
     /// <param name="originX">x of node 0, in metres.</param>
     /// <param name="originY">y of node 0, in metres.</param>
-    /// <param name="spacing">Node spacing, in metres.</param>
+    /// <param name="spacing">Node spacing along both axes, in metres.</param>
     /// <param name="countX">Node count along x; at least 3.</param>
     /// <param name="countY">Node count along y; at least 3.</param>
     /// <exception cref="ArgumentOutOfRangeException">A count is below 3, or the spacing is not positive.</exception>
     public Grid2D(double originX, double originY, double spacing, int countX, int countY)
+        : this(originX, originY, spacing, spacing, countX, countY)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(spacing);
+    }
+
+    /// <summary>Creates a grid with independent spacings.</summary>
+    /// <param name="originX">x of node 0, in metres.</param>
+    /// <param name="originY">y of node 0, in metres.</param>
+    /// <param name="spacingX">Node spacing along x, in metres.</param>
+    /// <param name="spacingY">Node spacing along y, in metres.</param>
+    /// <param name="countX">Node count along x; at least 3.</param>
+    /// <param name="countY">Node count along y; at least 3.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A count is below 3, or a spacing is not positive.</exception>
+    /// <remarks>
+    /// <para>
+    /// Cells need not be square. The Shortley-Weller stencil already carries a
+    /// spacing per arm, so anisotropy costs it nothing, and it is what lets a
+    /// declared solve domain be meshed exactly rather than rounded to whatever
+    /// box a square cell happens to reach.
+    /// </para>
+    /// <para>
+    /// Anisotropy is not free for the <em>solver</em>, though: point smoothing
+    /// damps error poorly along the direction with the larger spacing, so a
+    /// strongly stretched grid wants line smoothing or semi-coarsening. Ratios up
+    /// to two to one are fine, and that is all
+    /// <see cref="OverBox(double, double, double, double, int, int?)"/> can
+    /// produce, since each axis rounds its interval count up to a power of two
+    /// from the same requested cell size.
+    /// </para>
+    /// </remarks>
+    public Grid2D(double originX, double originY, double spacingX, double spacingY, int countX, int countY)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(spacingX);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(spacingY);
         ArgumentOutOfRangeException.ThrowIfLessThan(countX, 3);
         ArgumentOutOfRangeException.ThrowIfLessThan(countY, 3);
 
         OriginX = originX;
         OriginY = originY;
-        Spacing = spacing;
+        SpacingX = spacingX;
+        SpacingY = spacingY;
         CountX = countX;
         CountY = countY;
     }
@@ -57,15 +89,30 @@ public sealed class Grid2D
     /// <param name="maxX">Upper x bound, in metres.</param>
     /// <param name="maxY">Upper y bound, in metres.</param>
     /// <param name="intervalsX">Intervals along x; must be a positive power of two.</param>
-    /// <returns>The grid, with square cells.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">The box is degenerate, or the interval count is not a power of two.</exception>
+    /// <param name="intervalsY">
+    /// Intervals along y; must be a positive power of two. When omitted it follows
+    /// from the aspect ratio at the x spacing, rounded up so the cells are never
+    /// coarser along y than along x.
+    /// </param>
+    /// <returns>The grid, spanning exactly the box it was given.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The box is degenerate, or an interval count is not a power of two.</exception>
     /// <remarks>
-    /// The y interval count follows from the aspect ratio, rounded to a power of
-    /// two, so cells stay square. Anisotropic cells are representable by the
-    /// five-point stencil but degrade multigrid convergence, and squareness is
-    /// cheaper to keep than to diagnose.
+    /// <para>
+    /// The grid spans the declared box exactly. It used to derive the y interval
+    /// count from the aspect ratio, round that up to a power of two, and keep the
+    /// x spacing - which meant the top of the grid landed wherever that count put
+    /// it. For a box whose aspect ratio did not suit, that was a long way from
+    /// where it was asked to be: a 60 by 20 mm box at a 1 mm cell needs 21.3
+    /// intervals in y, rounds to 32, and was solved as a 60 by 30 mm box. Fifty
+    /// per cent taller than declared, silently, and nothing checked.
+    /// </para>
+    /// <para>
+    /// Deriving the y spacing from the box instead makes the extent exact and
+    /// pushes the compromise into cell shape, where it is bounded and visible.
+    /// </para>
     /// </remarks>
-    public static Grid2D OverBox(double minX, double minY, double maxX, double maxY, int intervalsX)
+    public static Grid2D OverBox(
+        double minX, double minY, double maxX, double maxY, int intervalsX, int? intervalsY = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(intervalsX);
 
@@ -75,18 +122,23 @@ public sealed class Grid2D
                 nameof(intervalsX), intervalsX, "interval counts must be a power of two so coarsening is exact");
         }
 
+        if (intervalsY is { } declared && (declared <= 0 || !int.IsPow2(declared)))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(intervalsY), declared, "interval counts must be a power of two so coarsening is exact");
+        }
+
         if (maxX <= minX || maxY <= minY)
         {
             throw new ArgumentOutOfRangeException(nameof(maxX), "the box must have positive extent");
         }
 
-        var spacing = (maxX - minX) / intervalsX;
-        var intervalsY = Math.Max(2, (int)Math.Round((maxY - minY) / spacing));
+        var spacingX = (maxX - minX) / intervalsX;
 
-        // Round up to the next power of two so both directions coarsen together.
-        intervalsY = (int)BitOperations.RoundUpToPowerOf2((uint)intervalsY);
+        var countY = intervalsY ?? (int)BitOperations.RoundUpToPowerOf2(
+            (uint)Math.Max(2, (int)Math.Ceiling((maxY - minY) / spacingX)));
 
-        return new Grid2D(minX, minY, spacing, intervalsX + 1, intervalsY + 1);
+        return new Grid2D(minX, minY, spacingX, (maxY - minY) / countY, intervalsX + 1, countY + 1);
     }
 
     /// <summary>x of node 0, in metres.</summary>
@@ -95,8 +147,35 @@ public sealed class Grid2D
     /// <summary>y of node 0, in metres.</summary>
     public double OriginY { get; }
 
-    /// <summary>Node spacing, in metres.</summary>
-    public double Spacing { get; }
+    /// <summary>Node spacing along x, in metres.</summary>
+    public double SpacingX { get; }
+
+    /// <summary>Node spacing along y, in metres.</summary>
+    public double SpacingY { get; }
+
+    /// <summary>
+    /// The finer of the two spacings, in metres.
+    /// </summary>
+    /// <remarks>
+    /// What a step-size limit or a resolution claim should use. A field carries no
+    /// information below its node spacing in either direction, and the smaller one
+    /// is the one that has to be believed.
+    /// </remarks>
+    public double MinimumSpacing => Math.Min(SpacingX, SpacingY);
+
+    /// <summary>Whether the cells are square.</summary>
+    public bool IsSquare => SpacingX == SpacingY;
+
+    /// <summary>
+    /// The squared ratio of the x spacing to the y spacing.
+    /// </summary>
+    /// <remarks>
+    /// The factor that scales the y half of a second-difference stencil when the
+    /// operator is carried in x cell units. Exactly one for a square grid, and
+    /// multiplying by one is exact, so an isotropic solve is unaffected to the
+    /// last bit by the fact that anisotropy is supported at all.
+    /// </remarks>
+    public double AspectSquared => (SpacingX / SpacingY) * (SpacingX / SpacingY);
 
     /// <summary>Node count along x.</summary>
     public int CountX { get; }
@@ -108,20 +187,20 @@ public sealed class Grid2D
     public int NodeCount => CountX * CountY;
 
     /// <summary>Upper x bound, in metres.</summary>
-    public double MaxX => OriginX + ((CountX - 1) * Spacing);
+    public double MaxX => OriginX + ((CountX - 1) * SpacingX);
 
     /// <summary>Upper y bound, in metres.</summary>
-    public double MaxY => OriginY + ((CountY - 1) * Spacing);
+    public double MaxY => OriginY + ((CountY - 1) * SpacingY);
 
     /// <summary>x of a node.</summary>
     /// <param name="i">Node index along x.</param>
     /// <returns>The coordinate, in metres.</returns>
-    public double X(int i) => OriginX + (i * Spacing);
+    public double X(int i) => OriginX + (i * SpacingX);
 
     /// <summary>y of a node.</summary>
     /// <param name="j">Node index along y.</param>
     /// <returns>The coordinate, in metres.</returns>
-    public double Y(int j) => OriginY + (j * Spacing);
+    public double Y(int j) => OriginY + (j * SpacingY);
 
     /// <summary>Row-major index of a node.</summary>
     /// <param name="i">Node index along x.</param>
@@ -151,12 +230,17 @@ public sealed class Grid2D
                 $"a {CountX} by {CountY} grid cannot be coarsened further");
         }
 
-        return new Grid2D(OriginX, OriginY, Spacing * 2.0, ((CountX - 1) / 2) + 1, ((CountY - 1) / 2) + 1);
+        return new Grid2D(
+            OriginX, OriginY, SpacingX * 2.0, SpacingY * 2.0, ((CountX - 1) / 2) + 1, ((CountY - 1) / 2) + 1);
     }
 
     /// <inheritdoc/>
     public override string ToString() =>
-        string.Create(
-            System.Globalization.CultureInfo.InvariantCulture,
-            $"{CountX}x{CountY} at h={Spacing:G6} m");
+        IsSquare
+            ? string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"{CountX}x{CountY} at h={SpacingX:G6} m")
+            : string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"{CountX}x{CountY} at hx={SpacingX:G6} m, hy={SpacingY:G6} m");
 }

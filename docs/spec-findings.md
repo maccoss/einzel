@@ -287,31 +287,41 @@ nobody wrote down.
 
 ---
 
-## The solve domain is not the domain that was declared
+## The solve domain was not the domain that was declared
 
-`Grid2D.OverBox` takes the interval count along x and derives the count along y
-by rounding to a power of two, so both directions coarsen together. The spacing
-comes from x. Nothing constrains the result to land on the declared `maxY`, and
-nothing reports that it did not.
+`Grid2D.OverBox` took the interval count along x, derived the count along y by
+rounding the aspect ratio to a power of two, and kept the x spacing for both — so
+cells stayed square and both directions coarsened together. Nothing constrained
+the result to land on the declared `maxY`, and nothing reported that it had not.
 
-The overshoot depends entirely on the aspect ratio. The shipped templates are
-fine — `quadrupole` is exact, `planar-mirror-pair` is 0.4 mm short on a 0.92 mm
-cell, well under half a cell. But a 60 × 20 mm box at a 1 mm cell needs 21.3
-intervals in y, rounds to 32, and **solves a 60 × 30 mm box**: fifty per cent
-taller than asked for, silently.
+The overshoot depended entirely on the aspect ratio. The shipped templates were
+fine: `quadrupole` exact, `planar-mirror-pair` 0.4 mm short on a 0.92 mm cell,
+well under half a cell. But a 60 × 20 mm box at a 1 mm cell needs 21.3 intervals
+in y, rounds to 32, and **was solved as a 60 × 30 mm box** — fifty per cent taller
+than asked for, silently.
 
 That is not a rounding detail, it is a different problem. It was found because a
 test fixture's plate was declared to span the domain in y and then did not, so
 the field went round the end of it and a closed form that should have applied did
 not. The physics changed and nothing said so.
 
-Recommend the model format either refuse a box whose aspect ratio cannot be
-meshed with square cells at power-of-two counts — with the achievable cell sizes
-named, in the AGT-3 style — or the grid gain independent spacings per axis, which
-the Shortley–Weller stencil already supports since it carries a spacing per arm.
-The second is more work and the better answer.
+**Fixed by giving the grid independent spacings per axis.** Each axis rounds its
+own interval count up to a power of two from the same requested cell size, so
+both spacings lie in (cellSize/2, cellSize]: the extent is exact, neither
+direction is ever coarser than requested, and the cost lands on cell shape rather
+than on extent. The Shortley–Weller stencil carries a spacing per arm already, so
+the y half is scaled by (hx/hy)² and nothing else changes — exactly one on a
+square grid, and multiplying by one is exact, so isotropic solves are unaffected
+to the last bit.
 
-**Not yet fixed.**
+The worst anisotropy this can produce is two to one, which a point smoother
+handles. It is worth being explicit that the compromise did not disappear, it
+moved: from a domain error that was unbounded and invisible to a cell-shape error
+that is bounded and printed in the grid's own description.
+
+Recommend §10 say what a cell size means when the box does not divide by it. The
+specification is silent, and the two readings — keep the cells square, or keep
+the domain — differ by fifty per cent on an ordinary geometry.
 
 ---
 

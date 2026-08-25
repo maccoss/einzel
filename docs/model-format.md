@@ -163,7 +163,7 @@ appear below the template library.
 | Key | Meaning |
 | --- | --- |
 | `minX`…`maxY` | The solve domain |
-| `cellSize` | Requested node spacing; interval counts round **up** to a power of two, so the actual spacing is never coarser than asked |
+| `cellSize` | Requested node spacing. Each axis rounds its interval count **up** to a power of two independently, so the spacing is never coarser than asked in either direction and the grid spans exactly the declared box. Cells need not be square; the worst ratio is two to one |
 | `leftEdge`, `rightEdge`, `bottomEdge`, `topEdge` | `dirichlet` (default) or `neumann`, a symmetry plane |
 | `boundaryIsDiscontinuous` | Whether the field genuinely jumps at the domain edge. **Set false when the domain was drawn wide enough that the field has decayed** — see below |
 | `reflectAboutX` | Reflect the solved field through a plane and superpose, for a symmetric pair |

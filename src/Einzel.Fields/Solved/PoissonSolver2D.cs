@@ -213,7 +213,8 @@ public static class PoissonSolver2D
         // spend the precision on nothing. In cell units the uniform case reduces
         // to the old five-point arithmetic exactly, halves and quarters being
         // exact in binary, so the change carries no rounding of its own.
-        var halfH2 = 0.5 * grid.Spacing * grid.Spacing;
+        var halfH2 = 0.5 * grid.SpacingX * grid.SpacingX;
+        var aspectSquared = grid.AspectSquared;
 
         for (var sweep = 0; sweep < sweeps; sweep++)
         {
@@ -228,7 +229,7 @@ public static class PoissonSolver2D
                             continue;
                         }
 
-                        Stencil(potential, mask, i, j, out var sum, out var weight);
+                        Stencil(potential, mask, i, j, aspectSquared, out var sum, out var weight);
                         potential[i, j] = (sum - (halfH2 * rightHandSide[i, j])) / weight;
                     }
                 }
@@ -261,7 +262,13 @@ public static class PoissonSolver2D
     /// </para>
     /// </remarks>
     private static void Stencil(
-        ScalarField2D potential, DirichletMask mask, int i, int j, out double sum, out double weight)
+        ScalarField2D potential,
+        DirichletMask mask,
+        int i,
+        int j,
+        double aspectSquared,
+        out double sum,
+        out double weight)
     {
         var cuts = mask.Cuts;
 
@@ -270,8 +277,12 @@ public static class PoissonSolver2D
         Arm(potential, mask, cuts, i, j, 0, 1, StencilDirection.North, out var north, out var fNorth);
         Arm(potential, mask, cuts, i, j, 0, -1, StencilDirection.South, out var south, out var fSouth);
 
+        // Both halves are in cell units of their own axis, so the y half is scaled
+        // by (hx/hy) squared to bring it into the x units the caller works in.
+        // That factor is exactly one on a square grid, and multiplying by one is
+        // exact, so nothing about an isotropic solve changes by a single bit.
         var alongX = 1.0 / (fWest + fEast);
-        var alongY = 1.0 / (fSouth + fNorth);
+        var alongY = aspectSquared / (fSouth + fNorth);
 
         sum = (alongX * ((west / fWest) + (east / fEast)))
             + (alongY * ((south / fSouth) + (north / fNorth)));
@@ -327,7 +338,8 @@ public static class PoissonSolver2D
         ScalarField2D potential, ScalarField2D rightHandSide, DirichletMask mask, ScalarField2D residual)
     {
         var grid = potential.Grid;
-        var inverseHalfH2 = 2.0 / (grid.Spacing * grid.Spacing);
+        var inverseHalfH2 = 2.0 / (grid.SpacingX * grid.SpacingX);
+        var aspectSquared = grid.AspectSquared;
         var sum = 0.0;
         var count = 0;
 
@@ -341,7 +353,7 @@ public static class PoissonSolver2D
                     continue;
                 }
 
-                Stencil(potential, mask, i, j, out var neighbours, out var weight);
+                Stencil(potential, mask, i, j, aspectSquared, out var neighbours, out var weight);
                 var laplacian = (neighbours - (weight * potential[i, j])) * inverseHalfH2;
                 var value = rightHandSide[i, j] - laplacian;
 

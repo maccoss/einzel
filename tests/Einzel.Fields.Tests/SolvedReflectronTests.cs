@@ -169,7 +169,7 @@ public sealed class SolvedReflectronTests(ITestOutputHelper output)
             var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
             var relative = Math.Abs(result.FlightTimeSeconds - exact) / exact;
 
-            output.WriteLine($"{intervals,4} intervals (h = {potential.Grid.Spacing * 1e3:F4} mm): {relative:E3}");
+            output.WriteLine($"{intervals,4} intervals (h = {potential.Grid.SpacingX * 1e3:F4} mm): {relative:E3}");
 
             Assert.True(
                 relative < 1e-6,

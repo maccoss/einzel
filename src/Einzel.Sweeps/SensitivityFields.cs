@@ -193,7 +193,7 @@ public static class SensitivityFields
                 }
             }
 
-            RequireTheGeometryMoved(moved, channel, step, nominal.Grid.Spacing);
+            RequireTheGeometryMoved(moved, channel, step, nominal.Grid.MinimumSpacing);
 
             derivatives.Add(new SensitivityField(
                 channel.Parameter, derivative, Quantity.Si(step, dimension)));
@@ -395,11 +395,14 @@ public static class SensitivityFields
         var a = nominal.Grid;
         var b = perturbed.Grid;
 
+        var tolerance = a.MinimumSpacing * 1e-12;
+
         var moved = b.CountX != a.CountX
             || b.CountY != a.CountY
-            || Math.Abs(b.Spacing - a.Spacing) > a.Spacing * 1e-12
-            || Math.Abs(b.OriginX - a.OriginX) > a.Spacing * 1e-12
-            || Math.Abs(b.OriginY - a.OriginY) > a.Spacing * 1e-12;
+            || Math.Abs(b.SpacingX - a.SpacingX) > tolerance
+            || Math.Abs(b.SpacingY - a.SpacingY) > tolerance
+            || Math.Abs(b.OriginX - a.OriginX) > tolerance
+            || Math.Abs(b.OriginY - a.OriginY) > tolerance;
 
         if (moved)
         {

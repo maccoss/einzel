@@ -268,6 +268,44 @@ Three approaches were tried and rejected, recorded so they are not re-tried:
   so the ratio stays flat until the rod disappears and then it is too late. Only
   counting *interior* fixed nodes separates the two cases.
 
+## Independent spacings per axis
+
+A grid carries `SpacingX` and `SpacingY`, and they need not be equal. The
+Shortley–Weller stencil already holds a spacing per arm, so the y half is scaled
+by (hx/hy)² to bring it into the x cell units the rest of the operator works in.
+On a square grid that factor is exactly one, and multiplying by one is exact, so
+an isotropic solve is unchanged to the last bit.
+
+The reason to want it is that the alternative was worse. Keeping cells square
+meant deriving the y interval count from the aspect ratio, rounding it up to a
+power of two, and accepting whatever box that reached — so a 60 × 20 mm domain at
+a 1 mm cell needed 21.3 intervals in y, rounded to 32, and was **solved as
+60 × 30 mm**. Fifty per cent taller than declared, silently, and nothing checked.
+
+Now each axis rounds its own interval count up to a power of two from the same
+requested cell size. Both spacings therefore lie in (cellSize/2, cellSize], which
+means the extent is exact, neither direction is ever coarser than asked, and the
+worst cell aspect ratio is two to one.
+
+Two to one is comfortable for a point smoother. Well beyond it, error damps
+poorly along the coarse direction and the fix is line smoothing or
+semi-coarsening — but nothing here can produce that, by construction.
+
+Measured on a deliberately 2:1 grid against the manufactured harmonic solution:
+
+| Grid | hx | hy | Max error | Observed order |
+| --- | --- | --- | --- | --- |
+| 17×17 | 6.250 mm | 3.125 mm | 32.03 V | |
+| 33×33 | 3.125 mm | 1.562 mm | 8.026 V | 2.00 |
+| 65×65 | 1.562 mm | 0.781 mm | 2.010 V | 2.00 |
+| 129×129 | 0.781 mm | 0.391 mm | 0.503 V | 2.00 |
+
+That measurement is the point of the exercise rather than a formality: a wrong
+aspect factor is a wrong Laplacian, the solve converges perfectly happily to the
+wrong answer, and only an order measurement notices. A cut boundary running
+across y on a stretched grid — the arrangement that would go unnoticed if the
+factor were applied to the wrong half — solves to 1.1e-16 of applied.
+
 ## Domain edges
 
 A Dirichlet domain edge means the potential is zero **on the edge**, and

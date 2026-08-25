@@ -98,16 +98,16 @@ public sealed class BicubicInterpolant : IFieldInterpolant
             columnDerivative[n] = CatmullRomDerivative(row, tx);
         }
 
-        dx = CatmullRom(columnDerivative, ty) / _field.Grid.Spacing;
-        dy = CatmullRomDerivative(column, ty) / _field.Grid.Spacing;
+        dx = CatmullRom(columnDerivative, ty) / _field.Grid.SpacingX;
+        dy = CatmullRomDerivative(column, ty) / _field.Grid.SpacingY;
     }
 
     private void Locate(double x, double y, out int i, out int j, out double tx, out double ty)
     {
         var grid = _field.Grid;
 
-        var fx = (x - grid.OriginX) / grid.Spacing;
-        var fy = (y - grid.OriginY) / grid.Spacing;
+        var fx = (x - grid.OriginX) / grid.SpacingX;
+        var fy = (y - grid.OriginY) / grid.SpacingY;
 
         i = (int)Math.Floor(fx);
         j = (int)Math.Floor(fy);
@@ -254,18 +254,18 @@ public sealed class BilinearInterpolant : IFieldInterpolant
         var v10 = _field[i + 1, j];
         var v01 = _field[i, j + 1];
         var v11 = _field[i + 1, j + 1];
-        var h = _field.Grid.Spacing;
+        var grid = _field.Grid;
 
-        dx = (((1 - ty) * (v10 - v00)) + (ty * (v11 - v01))) / h;
-        dy = (((1 - tx) * (v01 - v00)) + (tx * (v11 - v10))) / h;
+        dx = (((1 - ty) * (v10 - v00)) + (ty * (v11 - v01))) / grid.SpacingX;
+        dy = (((1 - tx) * (v01 - v00)) + (tx * (v11 - v10))) / grid.SpacingY;
     }
 
     private void Locate(double x, double y, out int i, out int j, out double tx, out double ty)
     {
         var grid = _field.Grid;
 
-        var fx = (x - grid.OriginX) / grid.Spacing;
-        var fy = (y - grid.OriginY) / grid.Spacing;
+        var fx = (x - grid.OriginX) / grid.SpacingX;
+        var fy = (y - grid.OriginY) / grid.SpacingY;
 
         i = Math.Clamp((int)Math.Floor(fx), 0, grid.CountX - 2);
         j = Math.Clamp((int)Math.Floor(fy), 0, grid.CountY - 2);

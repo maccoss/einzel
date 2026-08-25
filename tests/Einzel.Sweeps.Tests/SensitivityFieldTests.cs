@@ -185,7 +185,7 @@ public sealed class SensitivityFieldTests(ITestOutputHelper output)
         {
             var x = nominal.Grid.X(i);
 
-            if (x >= Gap - nominal.Grid.Spacing)
+            if (x >= Gap - nominal.Grid.SpacingX)
             {
                 break;
             }
@@ -196,7 +196,7 @@ public sealed class SensitivityFieldTests(ITestOutputHelper output)
         }
 
         output.WriteLine(
-            $"step {step * 1e3:F2} mm = {step / nominal.Grid.Spacing:F2} cells; "
+            $"step {step * 1e3:F2} mm = {step / nominal.Grid.SpacingX:F2} cells; "
             + $"worst relative error in dV/dplateX over {probes} probes: {worst:E3}");
 
         Assert.True(probes > 20, $"only {probes} probes; the sweep is not measuring much");

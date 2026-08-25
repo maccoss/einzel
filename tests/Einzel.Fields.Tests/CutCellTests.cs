@@ -88,7 +88,7 @@ public sealed class CutCellTests(ITestOutputHelper output)
                 mask, solve.Tolerance, maximumCycles: 400, coarsen: c => GeometryBuilder.BuildMask(solve, c));
 
             Assert.True(report.Converged, $"the solve did not converge at faceX = {faceX * 1e3:F2} mm");
-            spacingMm ??= grid.Spacing * 1e3;
+            spacingMm ??= grid.SpacingX * 1e3;
 
             var worst = 0.0;
             var j = grid.CountY / 2;
@@ -115,7 +115,7 @@ public sealed class CutCellTests(ITestOutputHelper output)
                 : double.NaN;
 
             output.WriteLine(
-                $"{faceX * 1e3,7:F2}  {faceX / grid.Spacing,6:F2}   {worst,11:E3}   "
+                $"{faceX * 1e3,7:F2}  {faceX / grid.SpacingX,6:F2}   {worst,11:E3}   "
                 + $"{potential[probeI, j],9:F5}   {second,10:E2}");
         }
 
@@ -246,7 +246,7 @@ public sealed class CutCellTests(ITestOutputHelper output)
                     // A node within a cell of the rod is compared against a
                     // boundary the clamp on tiny cut fractions may have moved;
                     // everywhere else the exact solution is exact.
-                    if (r < InnerRadius + grid.Spacing)
+                    if (r < InnerRadius + grid.MinimumSpacing)
                     {
                         continue;
                     }
@@ -259,7 +259,7 @@ public sealed class CutCellTests(ITestOutputHelper output)
             previous = worst;
 
             output.WriteLine(
-                $"{intervals,9}   {grid.Spacing * 1e3,10:F4}   {worst,11:E3}   {report.Cycles,6}   "
+                $"{intervals,9}   {grid.SpacingX * 1e3,10:F4}   {worst,11:E3}   {report.Cycles,6}   "
                 + $"{report.ConvergenceFactor,6:F3}   {order,5:F2}");
         }
 

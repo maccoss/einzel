@@ -72,7 +72,7 @@ public sealed class InterpolationTests(ITestOutputHelper output)
             var bilinearError = RelativeError(withBilinear.FlightTimeSeconds, exact.FlightTimeSeconds);
 
             output.WriteLine(
-                $"{intervals,9}   {0.08 / grid.Spacing,12:F0}   {bicubicError,14:E3}   {bilinearError,14:E3}"
+                $"{intervals,9}   {0.08 / grid.SpacingX,12:F0}   {bicubicError,14:E3}   {bilinearError,14:E3}"
                 + $"   {bilinearError / bicubicError,7:F1}x");
 
             bicubicErrors.Add((intervals, bicubicError));

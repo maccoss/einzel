@@ -23,23 +23,39 @@ public static class GeometryBuilder
 {
     /// <summary>Builds the grid a declared domain calls for.</summary>
     /// <param name="solve">The declared geometry.</param>
-    /// <returns>The grid, with square cells and power-of-two interval counts.</returns>
+    /// <returns>The grid, spanning the declared box with power-of-two interval counts.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="solve"/> is null.</exception>
     /// <remarks>
-    /// The requested cell size is honoured as closely as the multigrid coarsening
-    /// allows: interval counts are rounded up to a power of two, so the actual
-    /// spacing is at least as fine as asked for and never coarser.
+    /// <para>
+    /// Each axis gets its own interval count, from the same requested cell size,
+    /// rounded up to a power of two so coarsening is exact. Two consequences,
+    /// both wanted. The spacing is at least as fine as asked for in <em>both</em>
+    /// directions and never coarser. And the grid spans exactly the declared box,
+    /// rather than whatever box a single spacing happened to reach.
+    /// </para>
+    /// <para>
+    /// The cost is that cells need not be square. Since both spacings lie in the
+    /// half-open interval from half the requested cell size to the cell size, the
+    /// worst anisotropy is two to one - fine for a point smoother, and much
+    /// cheaper than the alternative, which was silently solving a different
+    /// domain.
+    /// </para>
     /// </remarks>
     public static Grid2D BuildGrid(CompiledSolvedField solve)
     {
         ArgumentNullException.ThrowIfNull(solve);
 
-        var width = solve.MaxX - solve.MinX;
-        var intervalsX = (int)BitOperations.RoundUpToPowerOf2(
-            (uint)Math.Max(4, (int)Math.Ceiling(width / solve.CellSize)));
-
-        return Grid2D.OverBox(solve.MinX, solve.MinY, solve.MaxX, solve.MaxY, intervalsX);
+        return Grid2D.OverBox(
+            solve.MinX,
+            solve.MinY,
+            solve.MaxX,
+            solve.MaxY,
+            Intervals(solve.MaxX - solve.MinX, solve.CellSize),
+            Intervals(solve.MaxY - solve.MinY, solve.CellSize));
     }
+
+    private static int Intervals(double extent, double cellSize) =>
+        (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(4, (int)Math.Ceiling(extent / cellSize)));
 
     /// <summary>Rasterises the declared electrodes onto a mask.</summary>
     /// <param name="solve">The declared geometry.</param>
@@ -258,10 +274,10 @@ public static class GeometryBuilder
         // Half-open in index space but inclusive in coordinate space: a node lying
         // on the boundary of the rectangle belongs to it, so two abutting
         // electrodes share their contact nodes rather than leaving a gap.
-        var i0 = (int)Math.Ceiling((electrode.MinX - grid.OriginX) / grid.Spacing);
-        var i1 = (int)Math.Floor((electrode.MaxX - grid.OriginX) / grid.Spacing);
-        var j0 = (int)Math.Ceiling((electrode.MinY - grid.OriginY) / grid.Spacing);
-        var j1 = (int)Math.Floor((electrode.MaxY - grid.OriginY) / grid.Spacing);
+        var i0 = (int)Math.Ceiling((electrode.MinX - grid.OriginX) / grid.SpacingX);
+        var i1 = (int)Math.Floor((electrode.MaxX - grid.OriginX) / grid.SpacingX);
+        var j0 = (int)Math.Ceiling((electrode.MinY - grid.OriginY) / grid.SpacingY);
+        var j1 = (int)Math.Floor((electrode.MaxY - grid.OriginY) / grid.SpacingY);
 
         mask.FixRectangle(i0, j0, i1, j1, potential);
     }
@@ -271,12 +287,12 @@ public static class GeometryBuilder
     {
         var radiusSquared = electrode.Radius * electrode.Radius;
 
-        var i0 = Math.Max(0, (int)Math.Floor((electrode.CentreX - electrode.Radius - grid.OriginX) / grid.Spacing));
+        var i0 = Math.Max(0, (int)Math.Floor((electrode.CentreX - electrode.Radius - grid.OriginX) / grid.SpacingX));
         var i1 = Math.Min(grid.CountX - 1,
-            (int)Math.Ceiling((electrode.CentreX + electrode.Radius - grid.OriginX) / grid.Spacing));
-        var j0 = Math.Max(0, (int)Math.Floor((electrode.CentreY - electrode.Radius - grid.OriginY) / grid.Spacing));
+            (int)Math.Ceiling((electrode.CentreX + electrode.Radius - grid.OriginX) / grid.SpacingX));
+        var j0 = Math.Max(0, (int)Math.Floor((electrode.CentreY - electrode.Radius - grid.OriginY) / grid.SpacingY));
         var j1 = Math.Min(grid.CountY - 1,
-            (int)Math.Ceiling((electrode.CentreY + electrode.Radius - grid.OriginY) / grid.Spacing));
+            (int)Math.Ceiling((electrode.CentreY + electrode.Radius - grid.OriginY) / grid.SpacingY));
 
         for (var j = j0; j <= j1; j++)
         {
