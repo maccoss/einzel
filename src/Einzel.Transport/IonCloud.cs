@@ -31,10 +31,23 @@ public static class IonCloud
     /// <param name="nominal">The state a single ion would have started in.</param>
     /// <param name="species">The ion, whose mass sets the thermal velocity.</param>
     /// <param name="settings">How wide the cloud is.</param>
+    /// <param name="axis">
+    /// Which way is "along" when the nominal state is at rest. Ignored otherwise,
+    /// since a moving ion says so itself.
+    /// </param>
     /// <returns>One state per ion, in draw order.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="settings"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The ion count or a spread is negative.</exception>
-    public static PhaseState[] Draw(in PhaseState nominal, IonSpecies species, IonCloudSettings settings)
+    /// <remarks>
+    /// The axis matters for a packet at rest, which is what a pulsed extraction
+    /// trap holds. Longitudinal and transverse spread mean nothing without one, and
+    /// they are not interchangeable: the spread along the extraction direction
+    /// converts to an energy spread and then to arrival time, while the spread
+    /// across it does not. Falling back to the x axis would silently swap the two
+    /// for any instrument that extracts in another direction.
+    /// </remarks>
+    public static PhaseState[] Draw(
+        in PhaseState nominal, IonSpecies species, IonCloudSettings settings, Vec3? axis = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentOutOfRangeException.ThrowIfLessThan(settings.Ions, 1);
@@ -47,7 +60,10 @@ public static class IonCloud
         var random = new Random(settings.Seed);
 
         var speed = nominal.Velocity.Length;
-        var along = speed > 0.0 ? nominal.Velocity * (1.0 / speed) : new Vec3(1.0, 0.0, 0.0);
+
+        var along = speed > 0.0
+            ? nominal.Velocity * (1.0 / speed)
+            : (axis is { } declared && declared.Length > 0.0 ? declared.Normalized() : new Vec3(1.0, 0.0, 0.0));
         var (acrossA, acrossB) = Perpendiculars(along);
 
         // Each velocity component of a Maxwell-Boltzmann distribution is Gaussian

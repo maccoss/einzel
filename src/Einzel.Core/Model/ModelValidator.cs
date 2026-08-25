@@ -64,8 +64,12 @@ public static class ModelValidator
         var p = surface.Values();
 
         var (mass, charge) = ValidateIon(document.Ion, p, errors);
-        var source = ValidateSource(document.Source, p, errors);
         var fields = ValidateFields(document.Fields, p, errors);
+
+        // Passed in because whether a source may start at rest depends on whether
+        // anything else can accelerate it. A beam carries its own energy; a
+        // trapped packet is accelerated by the instrument.
+        var source = ValidateSource(document.Source, p, errors, CanAccelerate(fields));
         var detector = ValidateDetector(document.Detector, p, errors);
         var transport = ValidateTransport(document.Transport, p, errors);
 
@@ -179,7 +183,21 @@ public static class ModelValidator
     private sealed record SourceValues(
         Vec3 Position, Vec3 Direction, double Potential, double EnergyFraction, IonCloudSettings Cloud);
 
-    private static SourceValues? ValidateSource(SourceDocument? source, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    /// <summary>
+    /// Whether any declared field could put energy into an ion that starts at rest.
+    /// </summary>
+    /// <remarks>
+    /// Field-free space cannot, and a model with nothing else is the one case where
+    /// a source at rest is genuinely a mistake rather than a pulsed extraction.
+    /// </remarks>
+    private static bool CanAccelerate(IReadOnlyList<CompiledField>? fields) =>
+        fields is not null && fields.Any(f => f.Kind != CompiledFieldKind.FieldFree);
+
+    private static SourceValues? ValidateSource(
+        SourceDocument? source,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors,
+        bool canAccelerate)
     {
         if (source is null)
         {
@@ -211,15 +229,24 @@ public static class ModelValidator
             return null;
         }
 
-        if (potential.Value.SiValue == 0.0)
+        // Zero is legal when the instrument does the accelerating. A pulsed
+        // extraction trap holds its packet at rest and then switches a field on,
+        // which is the entire mechanism, and a model that cannot say so cannot
+        // describe one. It stays an error when nothing in the model could move
+        // the ion, because then it really does sit there.
+        if (potential.Value.SiValue == 0.0 && !canAccelerate)
         {
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.ValueOutOfBounds,
                 Path = "/source/accelerationPotential",
-                Constraint = "the accelerating potential must be non-zero, or the ion never moves",
+                Constraint =
+                    "the accelerating potential may only be zero when a field can accelerate the ion, "
+                    + "and this model declares none that can",
                 Observed = new ObservedValue(source.AccelerationPotential!.Value, source.AccelerationPotential.Unit),
-                Suggestion = "supply a non-zero potential, for example {\"value\": 4, \"unit\": \"kV\"}",
+                Suggestion =
+                    "supply a non-zero potential, for example {\"value\": 4, \"unit\": \"kV\"}, "
+                    + "or declare a field that accelerates the ion from rest",
             });
             return null;
         }
@@ -911,7 +938,7 @@ public static class ModelValidator
 
         try
         {
-            return value.ToVec3(path, expected);
+            return value.ToVec3(path, expected, p);
         }
         catch (EinzelException failure)
         {

@@ -54,7 +54,7 @@ public sealed record QuantityValue(double Value, string Unit)
 
         var value = ExpressionEvaluator.Evaluate(Expression, parameters, path);
 
-        if (value.Dimension != expected)
+        if (!Components.Matches(value, expected))
         {
             throw new EinzelException(new EinzelError
             {
@@ -127,6 +127,77 @@ public sealed record QuantityValue(double Value, string Unit)
 /// <param name="Unit">The unit symbol.</param>
 public sealed record VectorValue(IReadOnlyList<double> Value, string Unit)
 {
+    /// <summary>
+    /// Three arithmetic expressions over the model's parameters, evaluated in place
+    /// of <see cref="Value"/>. Spec section 9: "Every placement is a parametric
+    /// expression, never a baked number."
+    /// </summary>
+    /// <remarks>
+    /// One expression per component, because the components are independent: a
+    /// detector sits at a derived distance along one axis and on the axis in the
+    /// other two, and a single expression could not say that. When present the unit
+    /// is not consulted - each expression carries its own dimension, exactly as a
+    /// scalar expression does.
+    /// </remarks>
+    public IReadOnlyList<string>? Expression { get; init; }
+
+    /// <summary>
+    /// Converts to an SI vector, evaluating expressions against the parameter
+    /// surface when they are present.
+    /// </summary>
+    /// <param name="path">JSON Pointer to this value, for the error object.</param>
+    /// <param name="expected">The dimension this field requires.</param>
+    /// <param name="parameters">Resolved parameters the expressions may name.</param>
+    /// <returns>The vector, in SI.</returns>
+    /// <exception cref="EinzelException">
+    /// There are not exactly three expressions, one is malformed, or one produces
+    /// the wrong dimension.
+    /// </exception>
+    public Vec3 ToVec3(
+        string path, Dimension expected, IReadOnlyDictionary<string, Quantity> parameters)
+    {
+        if (Expression is null)
+        {
+            return ToVec3(path, expected);
+        }
+
+        if (Expression is not { Count: 3 })
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = path,
+                Constraint = "a vector expression must have exactly three components",
+                Observed = new ObservedValue(Expression.Count, "expressions"),
+                Suggestion = "supply [\"x\", \"y\", \"z\"], using \"0\" for a component that is on axis",
+            });
+        }
+
+        var components = new double[3];
+
+        for (var i = 0; i < 3; i++)
+        {
+            var component = ExpressionEvaluator.Evaluate(
+                Expression[i], parameters, path + "/expression/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+            if (!Components.Matches(component, expected))
+            {
+                throw new EinzelException(new EinzelError
+                {
+                    Code = ErrorCodes.UnitsIncompatible,
+                    Path = path + "/expression/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Constraint = $"this field requires a vector of dimension {expected}",
+                    Observed = new ObservedValue(component.SiValue, component.Dimension.ToString()),
+                    Suggestion = $"the expression '{Expression[i]}' produces dimension {component.Dimension}",
+                });
+            }
+
+            components[i] = component.SiValue;
+        }
+
+        return new Vec3(components[0], components[1], components[2]);
+    }
+
     /// <summary>Element-wise equality.</summary>
     /// <param name="other">The value to compare against.</param>
     /// <returns><see langword="true"/> when the components and unit match.</returns>
@@ -139,10 +210,12 @@ public sealed record VectorValue(IReadOnlyList<double> Value, string Unit)
     public bool Equals(VectorValue? other) =>
         other is not null
         && string.Equals(Unit, other.Unit, StringComparison.Ordinal)
-        && Components.SequenceEqual(Value, other.Value);
+        && Components.SequenceEqual(Value, other.Value)
+        && Components.SequenceEqual(Expression, other.Expression);
 
     /// <inheritdoc/>
-    public override int GetHashCode() => Components.HashOf(Value, Unit);
+    public override int GetHashCode() =>
+        HashCode.Combine(Components.HashOf(Value, Unit), Components.HashOf(Expression));
 
     /// <summary>Converts to an SI vector, reporting failures against a document path.</summary>
     /// <param name="path">JSON Pointer to this value, for the error object.</param>
@@ -278,6 +351,69 @@ internal static class Components
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Whether an evaluated expression carries the dimension a field requires.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Exact, with one exception: a dimensionless <em>zero</em> satisfies any
+    /// dimension. The grammar has no unit literals, so a bare 0 in an expression is
+    /// dimensionless and there is otherwise no way to write "on axis" - which every
+    /// placement off the origin needs for its other two components.
+    /// </para>
+    /// <para>
+    /// Safe because zero is the one value whose unit conversion is the identity:
+    /// nothing is being guessed, and the ambiguity that makes units mandatory here
+    /// - is 4000 volts or kilovolts - does not exist at zero. It is narrow on
+    /// purpose. A dimensionless expression with any other value is still refused,
+    /// and a misspelled parameter fails as an unknown name long before it could
+    /// reach this.
+    /// </para>
+    /// </remarks>
+    internal static bool Matches(Quantity value, Dimension expected) =>
+        value.Dimension == expected
+        || (value.SiValue == 0.0 && value.Dimension == Dimension.Dimensionless);
+
+    internal static bool SequenceEqual(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left is null || right is null || left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (!string.Equals(left[i], right[i], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    internal static int HashOf(IReadOnlyList<string>? expressions)
+    {
+        if (expressions is null)
+        {
+            return 0;
+        }
+
+        var hash = default(HashCode);
+
+        foreach (var expression in expressions)
+        {
+            hash.Add(expression, StringComparer.Ordinal);
+        }
+
+        return hash.ToHashCode();
     }
 
     internal static int HashOf(IReadOnlyList<double>? components, string? unit)

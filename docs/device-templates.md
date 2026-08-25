@@ -13,15 +13,49 @@ physics or the abstraction is wrong, and almost always the second.
 | --- | --- |
 | `planar-mirror-pair` | Two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair |
 | `quadrupole` | Four round rods in cross-section, alternating potential |
+| `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
 
-They **share no code at all**. Both name the same three electrode primitives in
+They **share no code at all**. All three name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
-which is which. Adding a third device is a fourth file.
+which is which. Adding a device is a new file.
 
 ```csharp
-DeviceTemplates.Names();          // ["planar-mirror-pair", "quadrupole"]
+DeviceTemplates.Names();          // ["planar-mirror-pair", "quadrupole", "rectilinear-trap"]
 DeviceTemplates.Read("quadrupole");
 ```
+
+Templates are discovered by an embedded-resource glob, so a new JSON file under
+`Templates/` registers itself - it appears in `einzel templates`, in
+`einzel new --from-template`, and in `DeviceTemplates.Names()` with no code
+touched anywhere. That is LIB-1 being true rather than merely intended.
+
+### What the third device cost
+
+Spec section 21 phase 5 sets the test of generality as "a second, unrelated
+instrument modelled by someone who did not write the code". The rectilinear trap
+is the third, and it needed **no change below `Einzel.Library`** - but it did
+force three additions to the *model format*, each of which was an assumption about
+beams that a trap does not meet:
+
+- **A source may start at rest.** The accelerating potential was required to be
+  non-zero, "or the ion never moves". True of a beam; false of a pulsed extraction
+  trap, whose packet sits still until the instrument switches a field on. Zero is
+  now legal when a field is declared that could accelerate it, and still refused
+  when nothing could.
+- **A vector placement may be parametric.** Spec section 9 says every placement is
+  an expression rather than a baked number, and scalars always were. Vectors were
+  not, so a detector anywhere but the origin had to bake coordinates - which the
+  mirror and the quadrupole both did, because both happened to be symmetric about
+  something convenient. `planePoint` now takes `["drift", "0", "0"]`.
+- **A dimensionless zero satisfies any dimension.** A consequence of the second:
+  the expression grammar has no unit literals, so a bare `0` is dimensionless and
+  there was no way to write "on axis". Narrow on purpose - zero is the only value
+  whose unit conversion is the identity, and a dimensionless *one* is still
+  refused.
+
+None of these is device-specific, which is the useful part. The trap did not need
+the format bent toward traps; it needed three places where the format had quietly
+assumed a beam.
 
 ## Writing one
 
@@ -73,6 +107,89 @@ device is, what varying each parameter does, and what result to expect. The
 shipped templates state their expected behaviour explicitly — the quadrupole's
 says the potential should go as (x² − y²) near the axis and the restoring force
 should be linear.
+
+## The rectilinear trap, and what solving it bought
+
+Four flat plates around a square aperture at r0 = 2 mm, the front one split by a
+1 mm extraction slot, with corner gaps so adjacent plates are not shorted. It is
+the cross-section of the Ion Processor
+([Literature targets](literature-targets.md)), and it carries two configurations
+in one file: set the side plates against the front and back and it is a trap, set
+the back plate high and it extracts.
+
+**As a trap, flat plates are a crude quadrupole.** Measured the same way as the
+round-rod device, on the same quantity, so the comparison means something:
+
+| | 12-pole / quadrupole |
+| --- | --- |
+| Round rods at the classical 1.1468 | 2.41e-5 |
+| Flat plates | 7.12e-3 |
+
+**296 times worse**, and not a defect. A rectilinear trap is chosen because flat
+plates are easy to make, easy to align, and easy to cut a slot in; the field
+quality is what it pays. The number is what turns that from a remark into a
+design input.
+
+**As an extractor, the closed form is wrong by 19%.** Turn-around time is
+2sqrt(2 ln 2) sqrt(mkT) / qE, and the question is what to use for E. Assuming
+V / 2 r0 gives 3.448 ns; the field the geometry actually produces is 81.8% of that,
+giving 4.215 ns, against 4.243 ns measured by flying the packet.
+
+| | m/z 500, 300 K, 1 kV push |
+| --- | --- |
+| Closed form at the naive field | 3.448 ns, **18.8% low** |
+| Closed form at the solved field | 4.215 ns, **0.7% low** |
+| Measured through the geometry | 4.243 ns |
+
+This is the same lesson as the mirror's four-penetration-depth rule being wrong by
+10 mm. The formula is right; the number fed into it is not, and only the solve
+knows the difference.
+
+**And turn-around is the least of what sets the peak.** Three properties of the
+packet reach the arrival time, and switching them on one at a time separates them:
+
+| Contribution | FWHM |
+| --- | --- |
+| Thermal velocity (turn-around) | 4.28 ns |
+| Depth, 0.2 mm along the extraction | 231.9 ns |
+| Width, 0.2 mm across it | 87.2 ns |
+| All three, measured | 248.3 ns |
+| The three in quadrature | 247.8 ns |
+
+Quadrature agreeing to 0.2% says these really are three independent mechanisms
+rather than one counted three times. Turn-around is **1.7%** of the total, which
+matters when reading a published number: a figure near a nanosecond cannot be the
+arrival spread of a packet this deep.
+
+There is also **no useful space focus**. A single-stage extraction should have a
+Wiley-McLaren focus at twice the source depth - about 6 mm here - where the ion
+that started deeper catches the one in front. Scanning the drift from 2 to 11 mm
+the spread grows monotonically at 20.7 ns/mm, so the focus is at essentially zero
+drift and any usable detector is far past it. That is what a field varying by a
+factor of two across the packet does to a condition derived for a uniform one, and
+it is why a real instrument adds a second acceleration stage rather than moving the
+detector.
+
+### What it does not model
+
+**Electrodes do not stop ions.** Nothing in transport tests whether a trajectory
+has entered a conductor, so ions pass through the front plate as readily as
+through the slot and transmission reads 100% regardless. For this device that is
+the difference between a modelled aperture and a decorative one, and it is the
+single most important gap the template exposed. The machinery to fix it exists -
+`CompiledElectrode.FirstEntry` already finds where a segment enters a conductor in
+closed form, and the integrator already lands exactly on declared events - so it
+is wiring rather than new numerics.
+
+Until it is wired, **treat every transmission figure from this template as
+meaningless** and read only the arrival-time and emittance results, which are
+computed over ions that would have got through anyway.
+
+**The auxiliary DC electrodes are not here.** The Ion Processor's are diagonal
+wedges and horizontal pairs that impose a gradient *along* the trap axis. Every
+solve here is a cross-section with translational invariance along that axis, so an
+axial field cannot be represented at all. That needs three dimensions, not another
+rectangle.
 
 ## The quadrupole, as a worked example
 

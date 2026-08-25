@@ -84,6 +84,22 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
 - `planar-mirror-pair.json` — 11 parameters, an edge-profile board pair, a cap, and a declared reflection.
 - `quadrupole.json` — four discs. **Shares no code with the mirror at all**, which is the point: adding a device is a new file, not a new class. Verified against the analytic form — Φ(x) = −Φ(y) exactly, and Ex/x constant to **0.17%** across the central 45% of r₀, i.e. a linear restoring force. Ratio to the ideal hyperbolic field is 0.926, the expected round-rod approximation.
+- `rectilinear-trap.json` — four flat plates round a square aperture at r₀ = 2 mm, the front one split by a 1 mm extraction slot, with corner gaps. The Ion Processor cross-section, carrying both configurations: side plates against front and back and it is a trap, back plate high and it extracts.
+
+**The third device needed no change below `Einzel.Library` — and three in the model format**, each an assumption about beams that a trap does not meet. A source may now **start at rest** (§9 required a non-zero accelerating potential "or the ion never moves"; a pulsed extraction trap's packet sits still until the instrument switches a field on — and §12 already asked for turn-around time from exactly such a device, so two sections of the spec contradicted each other and neither was wrong alone). A **vector placement may be parametric** (§9 says every placement is an expression; scalars always were, vectors were not, and both earlier templates hid it by being symmetric about something convenient). And a **dimensionless zero satisfies any dimension**, because the grammar has no unit literals and there was otherwise no way to write "on axis" — narrow on purpose, a dimensionless *one* is still refused.
+
+  What the solve bought, all in `docs/device-templates.md`:
+
+  | | |
+  | --- | --- |
+  | 12-pole fraction, flat plates vs round rods | 7.12e-3 vs 2.41e-5 — **296× worse**, and not a defect |
+  | Turn-around from the naive V/2r₀ | 3.448 ns, **18.8% low** |
+  | Turn-around from the solved field | 4.215 ns, **0.7% low** |
+  | Measured through the geometry | 4.243 ns |
+
+  Same lesson as the mirror's four-penetration-depth rule being 10 mm out: the formula is right, the number fed into it is not. And **turn-around is only 1.7% of the arrival spread** — decomposing a 0.2 mm packet gives 4.28 ns thermal, 231.9 ns depth, 87.2 ns width, closing to 0.2% in quadrature. There is also no useful space focus: the spread grows monotonically at 20.7 ns/mm from 2 to 11 mm, because a field varying 2× across the packet destroys a focusing condition derived for a uniform one.
+
+  **The gap this exposed matters more than the numbers: electrodes do not stop ions.** Nothing in transport tests whether a trajectory entered a conductor, so ions pass through the front plate as readily as through the slot and transmission reads 100% regardless. Every transmission figure from this template is meaningless until it is wired, and ACC-5's "transmission itemised by loss surface" has no loss surfaces. `CompiledElectrode.FirstEntry` already finds the entry point in closed form and the integrator already lands exactly on declared events, so it is wiring rather than new numerics.
 
 Adding an einzel lens or a funnel should need only a fourth file. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

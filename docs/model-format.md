@@ -173,10 +173,53 @@ and offering both would let a document say two things about the same physics and
 be believed twice. Energy spread *is* separate, because supply ripple varies the
 energy without varying the direction, which a temperature cannot express.
 
+**A packet may start at rest.** `accelerationPotential` of zero used to be a
+validation error - "or the ion never moves" - which is true of a beam and false of
+a pulsed extraction trap, where the packet sits still until the instrument
+switches a field on. Zero is accepted when the model declares a field that could
+accelerate the ion, and still refused when nothing could.
+
+For a packet at rest the `direction` is doing more work than usual. A moving ion
+says which way is downstream by moving; a stationary one does not, so the declared
+direction is what orients `longitudinalSpread` against `transverseSpread` - and
+those are not interchangeable. Spread along the extraction converts to an energy
+spread and then to arrival time; spread across it does not.
+
 A declared cloud is what makes the emittance figures available. `transverseSpread`
 and `temperature` are the two widths whose product the emittance is, so a cloud
 with one and not the other has an emittance of exactly zero — correctly, since
 every ion is then parallel — and a cloud with neither has no packet to measure.
+
+## Placements are expressions, including vectors
+
+Spec section 9: every placement is a parametric expression, never a baked number.
+Scalars take `expression` in place of `value`; vectors take three of them, one per
+component, because the components are independent.
+
+```json
+"detector": {
+  "planePoint": { "expression": ["plateOuter + driftLength", "0", "0"], "unit": "mm" },
+  "normal": { "value": [-1, 0, 0] }
+}
+```
+
+When expressions are present the `unit` is not consulted - each expression carries
+its own dimension, exactly as a scalar expression does.
+
+**A dimensionless zero satisfies any dimension.** The grammar has no unit literals,
+so a bare `0` is dimensionless and there would otherwise be no way to write "on
+axis" for the two components that are. This is the one safe exception: zero is the
+only value whose unit conversion is the identity, and the ambiguity that makes
+units mandatory here - is 4000 volts or kilovolts - does not exist at zero. A
+dimensionless *one* is still refused, with the offending component named:
+
+```
+UNITS_INCOMPATIBLE
+  at         /detector/planePoint/expression/1
+  constraint this field requires a vector of dimension m
+  observed   1 1
+  try        the expression '1' produces dimension 1
+```
 
 ## Fields
 

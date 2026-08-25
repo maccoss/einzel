@@ -244,7 +244,9 @@ public static class FiguresOfMerit
         ArgumentNullException.ThrowIfNull(model);
 
         var (nominal, species, field, settings, detector) = Setup(model);
-        var cloud = IonCloud.Draw(in nominal, species, model.Cloud);
+        // The declared direction, so a packet at rest still knows which way is
+        // downstream. For a moving ion it is redundant and ignored.
+        var cloud = IonCloud.Draw(in nominal, species, model.Cloud, model.SourceDirection);
 
         var arrivals = new List<double>(cloud.Length);
         var arrived = new List<PhaseState>(cloud.Length);

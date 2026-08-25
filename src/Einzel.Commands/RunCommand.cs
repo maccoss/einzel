@@ -266,13 +266,25 @@ public static class RunCommand
         var turnAround = FiguresOfMerit.Evaluator("turnAroundTime")(model) ?? 0.0;
 
         var species = IonSpecies.FromModel(model);
-        var charge = SpaceCharge.Estimate(model.Cloud, species, model.AccelerationPotentialSi);
 
-        var limit = charge.EffectiveRadiusM > 0.0
+        // The acceleration potential is a declaration of the flight energy, and for
+        // a beam it is the right scale. A pulsed extraction trap declares none -
+        // its packet starts at rest and the instrument does the accelerating - so
+        // the scale has to be measured instead, from the energy the ions actually
+        // arrived with. Measured only when nothing was declared, so no existing
+        // result moves and the estimate stays independent of transmission losses
+        // wherever a source states its own energy.
+        var flightPotential = model.AccelerationPotentialSi != 0.0
+            ? model.AccelerationPotentialSi
+            : MeanArrivalPotential(flight.Arrived, species);
+
+        var charge = SpaceCharge.Estimate(model.Cloud, species, flightPotential);
+
+        var limit = charge.EffectiveRadiusM > 0.0 && flightPotential != 0.0
             ? SpaceCharge.PopulationLimit(
                 Quantity.Si(charge.EffectiveRadiusM, Quantity.From(1.0, "m").Dimension),
                 species,
-                model.AccelerationPotentialSi,
+                flightPotential,
                 AccuracyBudget)
             : 0.0;
 
@@ -305,6 +317,32 @@ public static class RunCommand
             // not-a-number in a document format that cannot represent one.
             PacketTwissAlpha = packet is { Wider.GeometricM: > 0.0 } p ? p.Wider.TwissAlpha : null,
         };
+    }
+
+    /// <summary>
+    /// The potential the arriving packet flew at, in volts, from its kinetic energy.
+    /// </summary>
+    /// <remarks>
+    /// Zero when nothing arrived, which leaves the space-charge fractions
+    /// unreported rather than divided by zero.
+    /// </remarks>
+    private static double MeanArrivalPotential(IReadOnlyList<PhaseState> arrived, IonSpecies species)
+    {
+        if (arrived.Count == 0)
+        {
+            return 0.0;
+        }
+
+        var sum = 0.0;
+
+        foreach (var state in arrived)
+        {
+            sum += state.Velocity.LengthSquared;
+        }
+
+        // Mean kinetic energy over charge, which is the potential an equivalent
+        // beam source would have declared.
+        return 0.5 * species.MassSi * (sum / arrived.Count) / Math.Abs(species.ChargeSi);
     }
 
     /// <summary>The flight-time budget ACC-1 sets, as a fraction.</summary>

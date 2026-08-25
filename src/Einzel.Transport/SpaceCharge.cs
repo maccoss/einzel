@@ -101,7 +101,12 @@ public static class SpaceCharge
 
         var radius = Math.Sqrt(5.0 / 3.0) * rootMeanSquare;
 
-        if (population <= 1 || radius <= 0.0)
+        // No energy to be a fraction of. A packet at rest has a real self-potential
+        // and a real effective radius, and reporting those is useful, but the
+        // conversion to a fractional energy error divides by the beam energy - so
+        // that step is skipped rather than performed against zero. Doing it anyway
+        // produces an infinity, which is not a large number, it is an absent one.
+        if (population <= 1 || radius <= 0.0 || accelerationPotentialVolts == 0.0)
         {
             return new SpaceChargeEstimate(population, radius, 0.0, 0.0, 0.0);
         }

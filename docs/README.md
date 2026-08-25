@@ -16,7 +16,7 @@ states the intent and these pages state the reality; both are noted.
 | --- | --- |
 | [Architecture](architecture.md) | Assemblies, layering, the four invariants, and why each exists |
 | [Model format](model-format.md) | Schema 0.3 in full: parameters, expressions, fields, electrodes, source clouds |
-| [Device templates](device-templates.md) | Writing a new device as data, and the two shipped examples |
+| [Device templates](device-templates.md) | Writing a new device as data, and the three shipped examples |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
 | [Agent acceptance](agent-acceptance.md) | The prose-task suite, what it measures, and what gates a release |

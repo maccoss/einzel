@@ -29,6 +29,8 @@ cross-code tier is unavailable — see below.
 | Meissner boundary, square-wave drive | q = 0.71113 against a published 0.712 |
 | Digital working point from duty cycle | a = 0.2630 against a published 0.2640 |
 | Thermal packet emittance, sigma_x sqrt(kT/m) / v | 0.77% at 6,000 ions |
+| Turn-around through a solved trap, against the closed form at the solved field | 0.7% |
+| Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
 | Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |
 
@@ -139,7 +141,19 @@ covering everything.
   and there is no sequencer, so a trap cannot be operated in stages.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
-- **No 3D.** Every solve is two-dimensional with translational invariance.
+- **No 3D.** Every solve is two-dimensional with translational invariance. This
+  is what stops the Ion Processor's auxiliary DC electrodes being modelled: they
+  impose a gradient along the trap axis, which is the direction the solve is
+  invariant in.
+- **Electrodes do not stop ions.** Nothing in transport tests whether a trajectory
+  has entered a conductor, so an ion passes through a plate as readily as through
+  the aperture next to it and every transmission figure is an upper bound of
+  exactly 100%. It has not mattered until now because the mirror and the
+  quadrupole are open geometries; the rectilinear trap has a slot, and a slot that
+  does not block anything is decorative. `CompiledElectrode.FirstEntry` already
+  finds the entry point in closed form and the integrator already lands exactly on
+  declared events, so this is wiring rather than new numerics - but until it is
+  wired, ACC-5's "transmission itemised by loss surface" has no loss surfaces.
 - **Space charge is screened, not modelled.** Ions do not push on each other. A run
   reports the flight-time error the packet's own charge implies and warns
   non-suppressibly past the budget, but the trajectories ignore it. A real

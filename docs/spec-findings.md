@@ -406,3 +406,41 @@ mm cap-to-cap with 1378 mm of drift, against the shoebox the memo argues for.
 First-order focus lands at 290.4 mm, not the 300.0 mm the rule predicts, because
 the fringe field shifts it. Small, but it is exactly the sort of discrepancy that
 would appear on a built instrument as unexplained resolution loss.
+
+## The source model assumed a beam
+
+**Spec section 9** describes a source as a position, a direction, and an
+accelerating potential, and the validator enforced that the potential be non-zero
+"or the ion never moves". That is correct for every device the specification
+worked through in detail - a reflectron, an MR-TOF, a quadrupole - because in all
+of them the source hands the ion its energy before the instrument sees it.
+
+It is wrong for the whole class of devices in section 1's table that *trap* and
+then release: linear and 3D traps, orthogonal accelerators, and the pulsed
+extraction trap that section 12 names explicitly when it asks for "turn-around
+time and packet emittance for extraction traps and orthogonal accelerators". Those
+hold a packet at rest and the instrument does the accelerating. Asking for a
+turn-around time from a source that cannot be at rest is asking for the one
+quantity the model forbids.
+
+Fixed by narrowing rather than removing the check: zero is legal when a declared
+field could accelerate the ion, and still an error when none could. The interesting
+part is that **section 12 already required the capability that section 9 made
+impossible**, and neither section is wrong on its own.
+
+## Vector placements were not parametric
+
+Section 9 is unambiguous - "every placement is a parametric expression, never a
+baked number" - and section 13's entire tolerance apparatus rests on it. Scalars
+honoured it. Vectors did not: `VectorValue` carried components and a unit and no
+way to derive either.
+
+It went unnoticed because both shipped devices are symmetric about something
+convenient, so both could put their detector at the origin or at a hand-written
+coordinate. The third device could not, and the gap surfaced immediately.
+
+Worth recording as a pattern rather than a bug: **the format was general in the
+places the first two devices exercised and specific in the places they did not**,
+and no amount of reading the specification would have found it. That is precisely
+the argument section 21 phase 5 makes for validating generality with an unrelated
+instrument rather than by inspection.

@@ -119,6 +119,46 @@ cannot be computed cannot disagree with anything.
 | Repetition rate | 200 Hz |
 | Pressure gradient | ~one order of magnitude between regions |
 
+### Measured, now that the cross-section exists
+
+The rectilinear cross-section is a device template
+([Device templates](device-templates.md)), so the DC half of this target can be
+computed rather than argued about. At r0 = 2 mm, a 1 kV transversal push, 300 K:
+
+| m/z | Turn-around FWHM |
+| --- | --- |
+| 195 | 2.65 ns |
+| 500 | 4.24 ns |
+| 2722 | 9.90 ns |
+
+**Two things follow, and both bear on the reported 0.8-1.2 ns.**
+
+The modelled range spans **3.74x**, which is exactly sqrt(2722/195). It has to:
+thermal turn-around goes as the square root of mass, and no choice of field or
+temperature changes that. The reported range spans **1.5x**. So the published row
+cannot be a raw turn-around FWHM plotted against m/z - the scaling is wrong in a
+way that no parameter fixes.
+
+Divide the modelled figures by sqrt(m/z) and they are **0.190, 0.190, 0.190** -
+flat to three figures. A quantity normalised that way would look "roughly
+constant" across the range, which is what the paper reports. That is a plausible
+reading of what "corrected" means in that row, and it is an inference rather than
+a finding: settle it against the source before quoting either agreement or
+disagreement.
+
+Separately, the magnitudes are 2 to 8 times the reported ones. Reaching 1 ns at
+m/z 500 needs about 8.6e5 V/m, roughly 3.4 kV across the 4 mm gap - above the
+500-1000 V transversal pulse the paper states, though inside its 1-4 kV "lift and
+extraction". So either the extraction field is stronger than the transversal
+figure alone implies, or the packet is colder than 300 K, or the row is normalised.
+
+**Turn-around is also not what limits the peak.** Decomposing the arrival spread
+of a 0.2 mm packet in this geometry gives 4.28 ns from temperature, 231.9 ns from
+depth along the extraction, and 87.2 ns from width across it. Turn-around is 1.7%
+of the total. A published Delta-t near a nanosecond therefore describes either a
+far tighter packet, a space-focused geometry, or a corrected quantity - and this
+model can now tell those apart once the trap geometry is filled in further.
+
 ### What is reproducible now
 
 More than it first appears, because **the extraction itself is a DC problem**.
@@ -126,10 +166,11 @@ Once the RF is switched off and the extraction pulse applied, ions fly in a stat
 field, and the resulting time spread is governed by the ion cloud's spatial and
 thermal velocity distribution — not by the RF that produced it.
 
-- **The rectilinear cross-section as a solved field.** Flat electrodes are
-  `rectangle` primitives; the auxiliary DC electrodes are more rectangles. The
-  existing 2D solver with translational invariance along the trap axis handles the
-  cross-section directly.
+- ~~**The rectilinear cross-section as a solved field.**~~ **Done** - the
+  `rectilinear-trap` template. One correction to the note that used to sit here:
+  the auxiliary DC electrodes are *not* more rectangles in this plane. They impose
+  a gradient along the trap axis, which is exactly the direction the 2D solve is
+  invariant in, so they cannot be represented at all without three dimensions.
 - **The static extraction field**, including the auxiliary DC contribution.
 - **Δt\*, the turn-around time**, given an initial cloud with a spatial extent and
   a thermal velocity spread. This is the headline number and the most valuable
@@ -184,8 +225,12 @@ So the 84% extraction efficiency and the ion-capacity figure are Phase 3 targets
 
 1. ~~Add turn-around time and packet emittance to `Einzel.Analysis`~~ — done
 2. ~~Add ensemble launching from a spatial and thermal distribution~~ — done
-3. Build the rectilinear cross-section as a template, DC only — **next, and now
-   the only thing between here and Δt\***
+3. ~~Build the rectilinear cross-section as a template, DC only~~ — done, and it
+   moved the answer: the closed form at the naive field is 19% wrong, at the solved
+   field 0.7% wrong
+4. **Make electrodes stop ions**, without which the slot is decorative and every
+   transmission figure from this template is meaningless. This is now the binding
+   item - it is also what ACC-5 and the 84% extraction efficiency both need
 4. Reproduce Δt\* = 0.8–1.2 ns across m/z 195–2722 — a strong test, because the
    mass dependence of turn-around time is a sharp signature
 5. Defer efficiency, capacity, and the pressure gradient to Phase 3
