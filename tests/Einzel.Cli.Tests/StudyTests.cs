@@ -769,6 +769,8 @@ public sealed class CloudRunTests : IDisposable
         }
     }
 
+    private const string TwoHundredIons = "{ \"ions\": 200, \"seed\": 4 }";
+
     private string WithCloud(string cloud)
     {
         Assert.Equal(0, Run("init", _root).ExitCode);
@@ -1088,6 +1090,64 @@ public sealed class CloudRunTests : IDisposable
 
         // The packet still has a size; it is only the area that vanished.
         Assert.True(ensemble.GetProperty("packetRadiusMm").GetDouble() > 0.0);
+    }
+
+    [Fact]
+    public void LossesAreItemisedByNamedSurface()
+    {
+        // ACC-5: "Transmission itemized by loss surface and mechanism, with
+        // intervals. Never 92 percent." The rectilinear trap is the device that
+        // makes this checkable, because it has a slot the beam has to get through
+        // and plates on either side of it that the rest lands on.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var model = Path.Combine(_root, "models", "trap.json");
+        Assert.Equal(0, Run("new", model, "--from-template", "rectilinear-trap").ExitCode);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        var launched = ensemble.GetProperty("launched").GetInt32();
+        var arrived = ensemble.GetProperty("arrived").GetInt32();
+
+        var losses = ensemble.GetProperty("losses").EnumerateArray().ToList();
+
+        // The aperture has to lose something, or it is decorative and every
+        // transmission figure from this device means nothing.
+        Assert.NotEmpty(losses);
+
+        // Every ion accounted for: through, or on a named surface. An itemisation
+        // that does not add up is worse than none, because it reads as complete.
+        Assert.Equal(launched, arrived + losses.Sum(l => l.GetProperty("ions").GetInt32()));
+
+        // Named, not numbered. "frontPlateLeft" is a thing to move; "surface 3" is
+        // not, and neither is 51 per cent.
+        Assert.Contains(
+            losses,
+            l => l.GetProperty("surface").GetString()!.StartsWith("frontPlate", StringComparison.Ordinal));
+
+        // Deterministic ordering (CLI-5): largest first.
+        var counts = losses.Select(l => l.GetProperty("ions").GetInt32()).ToList();
+        Assert.Equal(counts.OrderByDescending(c => c), counts);
+    }
+
+    [Fact]
+    public void AModelWithNoLossesReportsAnEmptyItemisation()
+    {
+        // Empty is a statement, not an omission: this instrument lost nothing, as
+        // against this instrument was not asked. The shipped reflectron has no
+        // electrodes at all, so there is nothing to strike.
+        var model = WithCloud(TwoHundredIons);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+
+        Assert.Empty(document.RootElement.GetProperty("ensemble").GetProperty("losses").EnumerateArray());
     }
 
     [Fact]

@@ -12,8 +12,26 @@ namespace Einzel.Fields;
 /// outbound legs of a trajectory cannot come from the two mirrors having been
 /// meshed differently.
 /// </remarks>
-public sealed class ReflectedField(IElectrostaticField inner, double planeX) : IElectrostaticField
+public sealed class ReflectedField(IElectrostaticField inner, double planeX)
+    : IElectrostaticField, IConductorBounded
 {
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The inner geometry seen through the mirror, so an electrode in the original
+    /// half has a solid twin in the reflected one. Leaving this out would make a
+    /// reflected mirror pair solid on one side and transparent on the other, which
+    /// is worse than transparent on both.
+    /// </remarks>
+    public double SignedDistanceToConductor(in Vec3 position) =>
+        inner is IConductorBounded bounded
+            ? bounded.SignedDistanceToConductor(Reflect(in position))
+            : double.PositiveInfinity;
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position) =>
+        inner is IConductorBounded bounded ? bounded.ConductorAt(Reflect(in position)) : null;
+
+
     private readonly IElectrostaticField _inner = inner ?? throw new ArgumentNullException(nameof(inner));
 
     private Vec3 Reflect(in Vec3 position) => new((2.0 * planeX) - position.X, position.Y, position.Z);

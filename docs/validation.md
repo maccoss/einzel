@@ -31,6 +31,8 @@ cross-code tier is unavailable — see below.
 | Thermal packet emittance, sigma_x sqrt(kT/m) / v | 0.77% at 6,000 ions |
 | Turn-around through a solved trap, against the closed form at the solved field | 0.7% |
 | Drift-scan slope under mesh refinement (20 to 40 cells/r0) | 20.7 ns/mm at both, points within 0.1% |
+| Transmission through a slit, against erf(a / sigma sqrt 2) | 0.95 sigma at 20,000 ions |
+| Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
 | Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |
@@ -87,6 +89,9 @@ Checks with no tolerance at all, which are the strongest kind available.
   integration went wrong, not the instrument.
 - **Superposition linearity**: doubling an electrode's potential doubles its basis
   field.
+- **Conservation of ions**: every launched ion either reaches the detector or is
+  named on a loss surface, and the two sum to the launch count. An itemisation
+  that does not add up is worse than none, because it reads as complete.
 - **Liouville's theorem**: a conservative force cannot change phase-space area. A
   field-free drift to a plane preserves the emittance to **1.5e-14** and an ideal
   thin lens to **8.1e-15**, while the same lens given a cubic term — spherical
@@ -146,15 +151,10 @@ covering everything.
   is what stops the Ion Processor's auxiliary DC electrodes being modelled: they
   impose a gradient along the trap axis, which is the direction the solve is
   invariant in.
-- **Electrodes do not stop ions.** Nothing in transport tests whether a trajectory
-  has entered a conductor, so an ion passes through a plate as readily as through
-  the aperture next to it and every transmission figure is an upper bound of
-  exactly 100%. It has not mattered until now because the mirror and the
-  quadrupole are open geometries; the rectilinear trap has a slot, and a slot that
-  does not block anything is decorative. `CompiledElectrode.FirstEntry` already
-  finds the entry point in closed form and the integrator already lands exactly on
-  declared events, so this is wiring rather than new numerics - but until it is
-  wired, ACC-5's "transmission itemised by loss surface" has no loss surfaces.
+- **Electrodes are solid, with no way to say otherwise.** Real instruments use
+  mesh and grid electrodes that pass most of the beam. There is no way to declare
+  one, and a mesh cannot be modelled as its wires either, because the wires run
+  along the invariant axis of a 2D solve.
 - **Space charge is screened, not modelled.** Ions do not push on each other. A run
   reports the flight-time error the packet's own charge implies and warns
   non-suppressibly past the budget, but the trajectories ignore it. A real

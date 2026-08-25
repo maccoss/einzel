@@ -371,7 +371,8 @@ public static class GeometryBuilder
         IElectrostaticField field = new SolvedField2D(
             potential,
             new BicubicInterpolant(potential),
-            boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous);
+            boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous,
+            conductors: solve.Electrodes);
 
         if (solve.ReflectAboutX is { } plane)
         {

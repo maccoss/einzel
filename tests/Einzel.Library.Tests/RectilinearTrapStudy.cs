@@ -363,8 +363,16 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
             $"turn-around is {thermal * 1e9:F2} ns of a total {everything * 1e9:F2} ns, which is a larger share "
             + "than this geometry should give and suggests one of the other spreads did not apply");
 
-        // Independent contributions add in quadrature. Agreement says the three
-        // really are separate mechanisms rather than one mechanism counted thrice.
+        // Independent contributions add in quadrature, and these are nearly but not
+        // quite independent. The aperture selects on the joint distribution - which
+        // ions survive depends on depth and width together - so the population that
+        // arrives with all three spreads on is not the population either pair-wise
+        // run measured. The residual is that coupling, and it is a property of
+        // having a real aperture rather than an error.
+        output.WriteLine(
+            $"  quadrature is {(quadrature / everything) - 1.0:P1} of the measured total, and the "
+            + "gap is the aperture coupling the two spatial spreads");
+
         Assert.InRange(quadrature / everything, 0.9, 1.1);
     }
 

@@ -39,6 +39,17 @@ public sealed record TrajectoryResult
     /// <summary>Why the integration stopped.</summary>
     public required TrajectoryOutcome Outcome { get; init; }
 
+    /// <summary>
+    /// The electrode the ion struck, when it struck one.
+    /// </summary>
+    /// <remarks>
+    /// Null for every other outcome. Named rather than indexed because the name is
+    /// what the model author wrote and what a loss itemisation reports - "a fifth
+    /// of the beam is on the front plate" is actionable in a way that "transmission
+    /// is 80 percent" is not, which is the whole of ACC-5.
+    /// </remarks>
+    public string? StruckSurface { get; init; }
+
     /// <summary>Accepted steps.</summary>
     public required int AcceptedSteps { get; init; }
 

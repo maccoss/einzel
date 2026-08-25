@@ -21,7 +21,7 @@ namespace Einzel.Fields;
 /// <see cref="SignedDistanceToDiscontinuity"/>.
 /// </para>
 /// </remarks>
-public sealed class SuperposedField : IElectrostaticField
+public sealed class SuperposedField : IElectrostaticField, IConductorBounded
 {
     private readonly IElectrostaticField[] _elements;
 
@@ -36,6 +36,56 @@ public sealed class SuperposedField : IElectrostaticField
 
     /// <summary>The elements being summed.</summary>
     public IReadOnlyList<IElectrostaticField> Elements => _elements;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The nearest conductor over every element that has any. Potentials
+    /// superpose; solid bodies do not, they simply coexist, so this is a union
+    /// rather than a sum - which is why it cannot ride on the same loop as the
+    /// field itself.
+    /// </remarks>
+    public double SignedDistanceToConductor(in Vec3 position)
+    {
+        var nearest = double.PositiveInfinity;
+
+        foreach (var element in _elements)
+        {
+            if (element is IConductorBounded bounded)
+            {
+                var distance = bounded.SignedDistanceToConductor(in position);
+
+                if (distance < nearest)
+                {
+                    nearest = distance;
+                }
+            }
+        }
+
+        return nearest;
+    }
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position)
+    {
+        string? nearestName = null;
+        var nearest = double.PositiveInfinity;
+
+        foreach (var element in _elements)
+        {
+            if (element is IConductorBounded bounded)
+            {
+                var distance = bounded.SignedDistanceToConductor(in position);
+
+                if (distance < nearest)
+                {
+                    nearest = distance;
+                    nearestName = bounded.ConductorAt(in position);
+                }
+            }
+        }
+
+        return nearestName;
+    }
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)

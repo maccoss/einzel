@@ -115,4 +115,15 @@ public enum TrajectoryOutcome
     /// the field did not declare, or a tolerance tighter than round-off allows.
     /// </summary>
     StepSizeUnderflow,
+
+    /// <summary>
+    /// The ion struck an electrode and was absorbed.
+    /// </summary>
+    /// <remarks>
+    /// A real outcome rather than a failure: this is what an aperture is for, and
+    /// what makes a transmission figure mean something. The surface it struck is
+    /// named on the result, because ACC-5 asks for losses itemised by surface and
+    /// refuses a bare percentage.
+    /// </remarks>
+    StruckElectrode,
 }

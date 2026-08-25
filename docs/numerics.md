@@ -329,6 +329,50 @@ A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
 equals its reflection inside, which is exact at any spacing and coarsens
 faithfully.
 
+## Electrodes stop ions
+
+An electrode used to be a boundary condition on the potential and nothing else, so
+an ion flew through a plate as readily as through the hole beside it. That made
+every aperture scenery and every transmission figure 100% by construction.
+
+A field that has conductors declares them through `IConductorBounded` as a
+**signed distance**, negative inside. That choice is the whole design: an impact is
+then the zero of a scalar function along the step, which is the same kind of event
+as a stopping surface and is found by the same bracketed root-find - so an ion
+lands *on* the surface rather than a step short of it or a step inside it, and
+there is no second event mechanism with its own edge cases.
+
+Three things make it sound rather than approximate.
+
+**The chord is safe because the step is already capped.** A gridded field limits
+the step to its own cell spacing, so a trajectory cannot arc into an electrode and
+back out between two samples: an electrode is many cells thick and the chord and
+the arc differ by far less. The cap was added for a different reason - an ion in a
+field-free region proposing an enormous step - and it turns out to be what makes
+this safe too.
+
+**Order matters.** An electrode is checked ahead of the detector, because an ion
+that hits metal on the way did not arrive; and behind a declared field
+discontinuity, because an electrode cannot be on the far side of a surface the ion
+has not crossed yet.
+
+**A source inside a conductor is refused rather than flown.** Otherwise it reads as
+an instrument that loses everything, rather than a model with its source in the
+metal.
+
+### Measured
+
+| | |
+| --- | --- |
+| Transmission through a slit, against erf(a / sigma sqrt 2) | 0.95 sigma at 20,000 ions |
+| Impact point against the surface struck | below 1e-8 m |
+| Ions accounted for (through, or on a named surface) | exact |
+
+The slit test is the sharp one: with every electrode grounded the field is
+identically zero, so the ions fly straight and the fraction that gets through is
+the fraction of the launch distribution inside the opening - an error function, and
+nothing to do with this code.
+
 ## Emittance
 
 The phase-space area a packet occupies, reported per transverse plane about the

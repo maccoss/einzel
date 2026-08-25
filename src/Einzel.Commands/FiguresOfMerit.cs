@@ -250,6 +250,7 @@ public static class FiguresOfMerit
 
         var arrivals = new List<double>(cloud.Length);
         var arrived = new List<PhaseState>(cloud.Length);
+        var losses = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var start in cloud)
         {
@@ -259,11 +260,31 @@ public static class FiguresOfMerit
             {
                 arrivals.Add(result.FlightTimeSeconds);
                 arrived.Add(result.FinalState);
+                continue;
             }
+
+            // Named by surface where a surface is known, and by mechanism where it
+            // is not - an ion that ran out of flight time was lost as surely as one
+            // that hit metal, and ACC-5 asks for both.
+            var channel = result.Outcome switch
+            {
+                TrajectoryOutcome.StruckElectrode => result.StruckSurface ?? "an electrode",
+                TrajectoryOutcome.MaximumFlightTimeReached => "still in flight at the time limit",
+                TrajectoryOutcome.MaximumStepsExceeded => "step limit reached",
+                TrajectoryOutcome.StepSizeUnderflow => "step size underflow",
+                _ => "unknown",
+            };
+
+            losses[channel] = losses.GetValueOrDefault(channel) + 1;
         }
 
         return new CloudFlight(
-            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions), [.. arrived]);
+            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions),
+            [.. arrived],
+            [.. losses
+                .OrderByDescending(pair => pair.Value)
+                .ThenBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new LossChannel(pair.Key, pair.Value))]);
     }
 
     /// <summary>

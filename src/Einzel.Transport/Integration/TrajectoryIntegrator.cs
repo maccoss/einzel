@@ -91,8 +91,50 @@ public static class TrajectoryIntegrator
         // spec section 11 forbids.
         var boundarySurface = BoundarySurfaceFor(field);
 
+        // Conductors, when the field has any. Expressed as a stopping surface
+        // because that is exactly what an electrode is - the ion stops on it - and
+        // reusing the machinery means it lands on the surface rather than a step
+        // short of it or a step inside it.
+        //
+        // Sound because a gridded field already caps the step at its own cell
+        // spacing, so a step cannot arc into an electrode and back out again
+        // between two samples: the chord and the arc differ by far less than an
+        // electrode is thick.
+        var conductors = field as IConductorBounded;
+
+        TrajectoryStopFunction? conductorSurface = conductors is null
+            ? null
+            : (in PhaseState state) =>
+            {
+                var position = state.Position;
+                return conductors.SignedDistanceToConductor(in position);
+            };
+
         var chargeToMass = species.ChargeToMassSi;
         var state = initialState;
+
+        // A source inside an electrode has nowhere to go, and reporting it as a
+        // zero-length flight would look like an instrument that loses everything
+        // rather than a model that puts its source in the metal.
+        if (conductorSurface is not null && conductorSurface(in state) < 0.0)
+        {
+            var launchPoint = state.Position;
+
+            return new TrajectoryResult
+            {
+                FinalState = state,
+                FlightTimeSeconds = 0.0,
+                TimeCompensation = 0.0,
+                Outcome = TrajectoryOutcome.StruckElectrode,
+                StruckSurface = conductors!.ConductorAt(in launchPoint),
+                AcceptedSteps = 0,
+                RejectedSteps = 0,
+                FieldEvaluations = 0,
+                AnalyticDriftDistance = 0.0,
+                MaximumRelativeEnergyDrift = 0.0,
+            };
+        }
+
         var time = default(CompensatedSum);
         long fieldEvaluations = 0;
         var analyticDistance = 0.0;
@@ -139,6 +181,7 @@ public static class TrajectoryIntegrator
         var step = Math.Min(
             Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep), periodStep);
         var outcome = TrajectoryOutcome.MaximumStepsExceeded;
+        string? struckSurface = null;
 
         // A stopping surface is not armed until the flight has been on its
         // positive side. An ion launched exactly on the surface — which is the
@@ -214,10 +257,10 @@ public static class TrajectoryIntegrator
                 continue;
             }
 
-            // The step is accurate enough. Two surfaces can still cut it short,
-            // and the earlier one wins: the field's own discontinuity, which the
-            // ion must land on so that no step straddles it, and the stopping
-            // surface, which ends the flight.
+            // The step is accurate enough. Three surfaces can still cut it short,
+            // and the earliest wins: the field's own discontinuity, which the ion
+            // must land on so that no step straddles it; an electrode, which
+            // absorbs it; and the stopping surface, which ends the flight.
             var boundaryStep = BoundaryLandingStep(
                 in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
                 boundarySurface, ref fieldEvaluations);
@@ -225,6 +268,33 @@ public static class TrajectoryIntegrator
             var stopStep = StopLandingStep(
                 in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
                 activeStop, ref fieldEvaluations);
+
+            var conductorStep = StopLandingStep(
+                in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
+                conductorSurface, ref fieldEvaluations);
+
+            // Ordered ahead of the detector because an ion that hits metal on the
+            // way to a detector did not reach it. Behind the field boundary,
+            // because an electrode cannot be on the far side of a discontinuity
+            // the ion has not crossed yet.
+            if (double.IsFinite(conductorStep) && conductorStep <= boundaryStep
+                && !(double.IsFinite(stopStep) && stopStep < conductorStep))
+            {
+                DormandPrince54.Step(
+                    in state, in derivative, conductorStep, field, chargeToMass,
+                    out var absorbed, out _, out _, out _, time.Total);
+                fieldEvaluations += 6;
+
+                time.Add(conductorStep);
+                state = absorbed;
+                accepted++;
+                recorder?.Offer(time.Total, in state, force: true);
+
+                var impact = state.Position;
+                struckSurface = conductors!.ConductorAt(in impact);
+                outcome = TrajectoryOutcome.StruckElectrode;
+                break;
+            }
 
             if (double.IsFinite(stopStep) && stopStep <= boundaryStep)
             {
@@ -292,6 +362,7 @@ public static class TrajectoryIntegrator
             FlightTimeSeconds = time.Total,
             TimeCompensation = time.Compensation,
             Outcome = outcome,
+            StruckSurface = struckSurface,
             AcceptedSteps = accepted,
             RejectedSteps = rejected,
             FieldEvaluations = fieldEvaluations,

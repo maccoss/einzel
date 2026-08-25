@@ -154,11 +154,17 @@ figure alone implies, or the packet is colder than 300 K, or the row is normalis
 
 **Turn-around is also not what limits the peak.** Decomposing the arrival spread
 of a 0.2 mm packet in this geometry gives 4.28 ns from temperature, 231.9 ns from
-depth along the extraction, and 87.2 ns from width across it. Turn-around is 1.7%
-of the total. The width figure is an upper bound until electrodes stop ions - a
-0.2 mm cloud through a 1 mm slot puts a tail across the front plate, and those
-ions currently coast through the metal rather than being lost. The thermal and
-depth figures involve no transverse excursion and are unaffected. A published Delta-t near a nanosecond therefore describes either a
+depth along the extraction, and 12.3 ns from width across it - so turn-around is
+1.8% of the total, and depth is almost all of it. A published figure near a
+nanosecond therefore describes either a far tighter packet, a space-focused
+geometry, or a corrected quantity.
+
+**And extraction efficiency is now measurable in principle.** The shipped
+parameters give 50.7% through a 1 mm slot, itemised as 25.5% on one half of the
+front plate and 23.3% on the other. That is not yet a comparison with the paper's
+~84% at m/z 1522 - the slot width, packet size and the second acceleration stage
+would all have to match - but it is the first time the quantity exists at all
+rather than reading 100% by construction. A published Delta-t near a nanosecond therefore describes either a
 far tighter packet, a space-focused geometry, or a corrected quantity - and this
 model can now tell those apart once the trap geometry is filled in further.
 
@@ -231,9 +237,11 @@ So the 84% extraction efficiency and the ion-capacity figure are Phase 3 targets
 3. ~~Build the rectilinear cross-section as a template, DC only~~ — done, and it
    moved the answer: the closed form at the naive field is 19% wrong, at the solved
    field 0.7% wrong
-4. **Make electrodes stop ions**, without which the slot is decorative and every
-   transmission figure from this template is meaningless. This is now the binding
-   item - it is also what ACC-5 and the 84% extraction efficiency both need
+4. ~~Make electrodes stop ions~~ — done. Transmission is a measured quantity
+   itemised by named surface, checked against erf for a slit at 0.95 sigma
+5. **Match the paper's extraction geometry** - slot width, packet size, and the
+   second acceleration stage its 1-4 kV lift implies - and compare the ~84%
+   efficiency at m/z 1522 directly
 4. Reproduce Δt\* = 0.8–1.2 ns across m/z 195–2722 — a strong test, because the
    mass dependence of turn-around time is a sharp signature
 5. Defer efficiency, capacity, and the pressure gradient to Phase 3

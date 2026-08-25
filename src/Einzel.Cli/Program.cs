@@ -1003,6 +1003,16 @@ public static class Program
                 + $"{(ensemble.ResolvingPower.Uncertainty.Upper - ensemble.ResolvingPower.Uncertainty.Lower) / 2.0:G3}"
                 + $" (from the central half)"));
 
+            // ACC-5: never a bare percentage. A named surface says which one to
+            // move; "transmission is 51 percent" says only that something is wrong.
+            foreach (var loss in ensemble.Losses)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"  lost        {loss.Ions:N0} on {loss.Surface} "
+                    + $"({(double)loss.Ions / ensemble.Launched:P1})"));
+            }
+
             if (ensemble.EmittanceMmMrad is { } major)
             {
                 Console.Out.WriteLine(string.Create(

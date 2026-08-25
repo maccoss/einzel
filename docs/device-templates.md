@@ -175,14 +175,24 @@ packet reach the arrival time, and switching them on one at a time separates the
 | --- | --- |
 | Thermal velocity (turn-around) | 4.28 ns |
 | Depth, 0.2 mm along the extraction | 231.9 ns |
-| Width, 0.2 mm across it | 87.2 ns |
-| All three, measured | 248.3 ns |
-| The three in quadrature | 247.8 ns |
+| Width, 0.2 mm across it | 12.3 ns |
+| All three, measured | 241.4 ns |
+| The three in quadrature | 232.3 ns |
 
-Quadrature agreeing to 0.2% says these really are three independent mechanisms
-rather than one counted three times. Turn-around is **1.7%** of the total, which
-matters when reading a published number: a figure near a nanosecond cannot be the
-arrival spread of a packet this deep.
+Turn-around is **1.8%** of the total, which matters when reading a published
+number: a figure near a nanosecond cannot be the arrival spread of a packet this
+deep.
+
+Quadrature closes to 3.8% rather than exactly, and the gap is informative. Adding
+an aperture makes the three contributions *not quite* independent, because which
+ions survive depends on depth and width together — the population that arrives
+with all three spreads on is not the population either pair-wise run measured.
+That coupling is a property of having a real aperture.
+
+> These figures moved once electrodes started stopping ions. The width row was
+> **87.2 ns** when a fifth of the cloud flew through the front plate rather than
+> being lost on it; with the plate solid it is 12.3 ns. The thermal and depth rows
+> did not move, since neither involves a transverse excursion.
 
 There is also **no useful space focus**. A single-stage extraction should have a
 Wiley-McLaren focus at twice the source depth - about 6 mm here - where the ion
@@ -193,35 +203,41 @@ factor of two across the packet does to a condition derived for a uniform one, a
 it is why a real instrument adds a second acceleration stage rather than moving the
 detector.
 
+### The slot does something
+
+**Half the beam lands on the plate.** With the shipped parameters — a 1 mm slot and
+a 0.2 mm packet — the run reports:
+
+```
+cloud         1015 of 2000 ions arrived, transmission 50.7 % +/- 1.1 %
+  lost        509 on frontPlateRight (25.5 %)
+  lost        466 on frontPlateLeft (23.3 %)
+  lost        6 on sidePlateXPlus (0.3 %)
+  lost        4 on sidePlateXMinus (0.2 %)
+```
+
+That is ACC-5's "transmission itemised by loss surface and mechanism", and the
+reason the requirement is written that way: `frontPlateRight` is a thing to move,
+where "transmission is 51 percent" is only a thing to worry about.
+
+Note that the loss is much larger than the packet's own width would suggest. A
+0.2 mm Gaussian is 98.8% inside a +/-0.5 mm slot at launch, so most of the loss
+happens *on the way*: the packet spreads across the 2 mm to the plate, and the
+aperture is a diverging lens for an accelerating ion. That is the sort of thing a
+solve tells you and an area ratio does not.
+
 ### What it does not model
-
-**Electrodes do not stop ions.** Nothing in transport tests whether a trajectory
-has entered a conductor, so ions pass through the front plate as readily as
-through the slot and transmission reads 100% regardless. For this device that is
-the difference between a modelled aperture and a decorative one, and it is the
-single most important gap the template exposed. The machinery to fix it exists -
-`CompiledElectrode.FirstEntry` already finds where a segment enters a conductor in
-closed form, and the integrator already lands exactly on declared events - so it
-is wiring rather than new numerics.
-
-Until it is wired, **treat every transmission figure from this template as
-meaningless**. The arrival-time results need the same caution for a narrower
-reason: the slot is 1 mm wide and the declared cloud is 0.2 mm across, so a
-noticeable tail of it starts outside the aperture and crosses the front plate's
-metal instead. Inside a Dirichlet-masked region the potential is pinned to the
-electrode value, so those ions coast through the conductor field-free and still
-land on the detector.
-
-That matters most for the **width** row of the decomposition below, which is
-exactly the contribution those ions carry. The thermal and depth rows involve no
-transverse excursion and are unaffected. Read the width figure as an upper bound
-until electrodes stop ions.
 
 **The auxiliary DC electrodes are not here.** The Ion Processor's are diagonal
 wedges and horizontal pairs that impose a gradient *along* the trap axis. Every
 solve here is a cross-section with translational invariance along that axis, so an
 axial field cannot be represented at all. That needs three dimensions, not another
 rectangle.
+
+**Electrodes are solid, with no way to say otherwise.** Real instruments use mesh
+and grid electrodes that are transparent to most of the beam, and there is
+currently no way to declare one — a mesh would have to be modelled as its wires,
+which the cross-section cannot do either.
 
 ## The quadrupole, as a worked example
 

@@ -287,6 +287,28 @@ is the model-free one; the Gaussian width is what the literature quotes and what
 the turn-around closed form gives. Printing only one of them beside a resolving
 power computed from the other invites exactly the wrong reconciliation.
 
+**Losses are itemised by surface, never as a bare fraction.** ACC-5 puts it as
+"transmission itemized by loss surface and mechanism, with intervals. Never
+92 percent", and the reason is that a percentage is not actionable:
+
+```
+cloud         1015 of 2000 ions arrived, transmission 50.7 % +/- 1.1 %
+  lost        509 on frontPlateRight (25.5 %)
+  lost        466 on frontPlateLeft (23.3 %)
+  lost        6 on sidePlateXPlus (0.3 %)
+  lost        4 on sidePlateXMinus (0.2 %)
+```
+
+`frontPlateRight` is a thing to move. The surface names are the ones the model
+author wrote, and losses that are not to a surface are named by mechanism instead
+- an ion still in flight when the time ceiling arrived was lost as surely as one
+that hit metal. Every launched ion appears exactly once, through or lost, because
+an itemisation that does not add up reads as complete when it is not.
+
+The list is empty for a model whose fields have no conductors, which is a
+statement rather than an omission: the analytic fields are expressions valid
+everywhere, with no surface anywhere for an ion to land on.
+
 **Emittance says whether the packet fits through what comes next.** A width alone
 does not: a wide parallel beam and a narrow diverging one can be equally hard to
 use, because optics trade size against divergence and cannot reduce the product.

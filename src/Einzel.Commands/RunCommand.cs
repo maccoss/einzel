@@ -59,6 +59,16 @@ public sealed record EnsembleOutcome
     public required MeasuredJson Transmission { get; init; }
 
     /// <summary>
+    /// Where the ions that did not arrive went, by surface, largest first.
+    /// </summary>
+    /// <remarks>
+    /// ACC-5 refuses a bare transmission figure and asks for it itemised by loss
+    /// surface and mechanism. Empty when everything arrived, which is a statement
+    /// rather than an omission.
+    /// </remarks>
+    public required IReadOnlyList<LossChannel> Losses { get; init; }
+
+    /// <summary>
     /// The width enclosing the central half of the arrivals, in nanoseconds.
     /// </summary>
     /// <remarks>
@@ -299,6 +309,7 @@ public static class RunCommand
             Launched = peak.Launched,
             Arrived = peak.Arrived,
             Transmission = MeasuredJson.From(Carry(peak.Transmission(), warnings), "1"),
+            Losses = flight.Losses,
             CentralWidthNs = peak.CentralWidthSeconds(0.5) * 1e9,
             GaussianFwhmNs = peak.GaussianEquivalentFwhmSeconds * 1e9,
             Skewness = peak.Skewness,

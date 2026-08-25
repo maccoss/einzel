@@ -24,12 +24,13 @@ namespace Einzel.Fields.Solved;
 /// gets and for the same reason.
 /// </para>
 /// </remarks>
-public sealed class SolvedField2D : IElectrostaticField
+public sealed class SolvedField2D : IElectrostaticField, IConductorBounded
 {
     private readonly IFieldInterpolant _interpolant;
     private readonly Grid2D _grid;
     private readonly double _outsidePotential;
     private readonly bool _boundaryIsDiscontinuous;
+    private readonly Core.Model.CompiledElectrode[] _conductors;
 
     /// <summary>Creates a field from a solved potential.</summary>
     /// <param name="potential">The solved potential, in volts.</param>
@@ -53,12 +54,17 @@ public sealed class SolvedField2D : IElectrostaticField
     /// The interpolant does not have continuous first derivatives and the escape
     /// hatch was not set (ACC-3).
     /// </exception>
+    /// <param name="conductors">
+    /// The electrodes, as solid bodies an ion can strike. Omit for a field whose
+    /// geometry is not meant to block anything, and every ion passes through.
+    /// </param>
     public SolvedField2D(
         ScalarField2D potential,
         IFieldInterpolant interpolant,
         double outsidePotential = 0.0,
         bool allowDiscontinuousDerivatives = false,
-        bool boundaryIsDiscontinuous = true)
+        bool boundaryIsDiscontinuous = true,
+        IReadOnlyList<Core.Model.CompiledElectrode>? conductors = null)
     {
         ArgumentNullException.ThrowIfNull(potential);
         ArgumentNullException.ThrowIfNull(interpolant);
@@ -76,6 +82,50 @@ public sealed class SolvedField2D : IElectrostaticField
         _grid = potential.Grid;
         _outsidePotential = outsidePotential;
         _boundaryIsDiscontinuous = boundaryIsDiscontinuous;
+
+        // Edge profiles are excluded: they lie along a domain edge rather than
+        // enclosing a body, so there is no interior for an ion to be inside of.
+        _conductors = conductors is null
+            ? []
+            : [.. conductors.Where(e => e.Shape != Core.Model.ElectrodeShape.EdgeProfile)];
+    }
+
+    /// <inheritdoc/>
+    public double SignedDistanceToConductor(in Vec3 position)
+    {
+        var nearest = double.PositiveInfinity;
+
+        foreach (var conductor in _conductors)
+        {
+            var distance = conductor.SignedDistance(position.X, position.Y);
+
+            if (distance < nearest)
+            {
+                nearest = distance;
+            }
+        }
+
+        return nearest;
+    }
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position)
+    {
+        string? nearestName = null;
+        var nearest = double.PositiveInfinity;
+
+        foreach (var conductor in _conductors)
+        {
+            var distance = conductor.SignedDistance(position.X, position.Y);
+
+            if (distance < nearest)
+            {
+                nearest = distance;
+                nearestName = conductor.Name;
+            }
+        }
+
+        return nearestName;
     }
 
     /// <summary>The grid the potential was solved on.</summary>
