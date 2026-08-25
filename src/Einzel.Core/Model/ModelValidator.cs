@@ -576,12 +576,7 @@ public static class ModelValidator
 
         for (var i = 0; i < solve.Electrodes.Count; i++)
         {
-            var electrode = CompileElectrode(solve.Electrodes[i], $"{path}/electrodes/{i}", p, errors);
-
-            if (electrode is not null)
-            {
-                electrodes.Add(electrode);
-            }
+            Expand(solve.Electrodes[i], $"{path}/electrodes/{i}", p, electrodes, errors);
         }
 
         var reflect = solve.ReflectAboutX is null
@@ -817,6 +812,98 @@ public static class ModelValidator
                     Suggestion = "'neumann' is a symmetry plane; omit the field for 'dirichlet'",
                 });
                 return BoundaryKind.Dirichlet;
+        }
+    }
+
+    /// <summary>
+    /// Compiles one declared electrode into the electrodes it stands for.
+    /// </summary>
+    /// <remarks>
+    /// One, unless it declares a repeat, in which case the index is bound as an
+    /// ordinary parameter and every expression on the electrode sees it. That is
+    /// what keeps a stack of two hundred rings a parametric document rather than a
+    /// generated one: the placements are still expressions, so a sweep can still
+    /// move them.
+    /// </remarks>
+    private static void Expand(
+        ElectrodeDocument declared,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<CompiledElectrode> into,
+        List<EinzelError> errors)
+    {
+        if (declared.Repeat is not { } repeat)
+        {
+            var single = CompileElectrode(declared, path, p, errors);
+
+            if (single is not null)
+            {
+                into.Add(single);
+            }
+
+            return;
+        }
+
+        var count = TryQuantity(repeat.Count, $"{path}/repeat/count", Dimension.Dimensionless, p, errors);
+
+        if (count is null)
+        {
+            return;
+        }
+
+        var copies = (int)Math.Round(count.Value.SiValue);
+
+        if (copies < 1 || Math.Abs(count.Value.SiValue - copies) > 1e-9)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/repeat/count",
+                Constraint = "a repeat count must be a whole number of at least one",
+                Observed = new ObservedValue(count.Value.SiValue, "1"),
+                Suggestion = "use a parameter that evaluates to a whole number, for example 24",
+            });
+
+            return;
+        }
+
+        var index = repeat.Index ?? "index";
+
+        if (p.ContainsKey(index))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/repeat/index",
+                Constraint = $"'{index}' is already a declared parameter, and binding it here would shadow it",
+                Observed = new ObservedValue(0.0, index),
+                Suggestion = "choose another index name, such as 'ring' or 'plate'",
+            });
+
+            return;
+        }
+
+        var name = declared.Name ?? "electrode";
+
+        for (var k = 0; k < copies; k++)
+        {
+            var scoped = new Dictionary<string, Quantity>(p, StringComparer.Ordinal)
+            {
+                [index] = Quantity.Si(k, Dimension.Dimensionless),
+            };
+
+            // Named by position so a loss itemisation, a channel report or an error
+            // says which one - "ring-17" rather than "ring", seventeen times.
+            var copy = CompileElectrode(
+                declared with { Repeat = null, Name = $"{name}-{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}" },
+                $"{path}/repeat/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                scoped,
+                errors);
+
+            if (copy is not null)
+            {
+                into.Add(copy);
+            }
         }
     }
 

@@ -232,6 +232,45 @@ Nothing is re-solved as the drive swings: electrodes sharing a time dependence
 share one basis solve, and a quadrupole's two pairs are exact negatives, so four
 rods reduce to one. See [Numerics](numerics.md).
 
+## Repeating an electrode
+
+A stack of rings is one ring, written once:
+
+```json
+{
+  "name": "ring",
+  "shape": "rectangle",
+  "repeat": { "count": { "expression": "ringCount" }, "index": "ring" },
+  "minX": { "expression": "ring * ringPitch", "unit": "mm" },
+  "minY": { "expression": "entranceRadius - ring * taper", "unit": "mm" },
+  "potential":      { "expression": "-dcGradient * ring / (ringCount - 1)", "unit": "V" },
+  "driveAmplitude": { "expression": "rfAmplitude * (1 - 2 * mod(ring, 2))", "unit": "V" }
+}
+```
+
+The index runs from zero and is bound as an ordinary parameter, so every expression
+on the electrode sees it. The copies are named by position - `ring-0`, `ring-17` -
+so an error, a loss itemisation or a channel report says *which* one.
+
+This is the discrete periodicity SYM-1 lists beside cylindrical symmetry and mirror
+planes, and it is what keeps a two-hundred-ring stack a **parametric** document
+rather than a generated one: the placements are still expressions, so "move every
+ring 50 microns and re-solve" is still sayable, which is what the whole tolerance
+apparatus rests on.
+
+An index name that collides with a declared parameter is refused rather than
+shadowing it.
+
+### Two more functions
+
+`floor(x)` and `mod(a, b)` join `abs`, `sqrt`, `min` and `max`. Indexed geometry
+needs them: the alternating sign of a two-phase stack is `1 - 2 * mod(index, 2)`.
+
+Both are dimensionless-only, for the reason `sqrt` is - the floor of a length
+depends on which unit you take it in, and that is precisely the ambiguity the
+evaluator exists to refuse. `mod` is Euclidean rather than truncated, so
+`mod(-1, 2)` is 1: an index counted backwards still alternates the way it should.
+
 ## What a solve is a cross-section of
 
 ```json

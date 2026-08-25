@@ -98,6 +98,17 @@ public sealed record ElectrodeDocument
     public IReadOnlyList<ProfilePointDocument>? Profile { get; init; }
 
     /// <summary>
+    /// Repeats this electrode, binding an index its expressions can name.
+    /// </summary>
+    /// <remarks>
+    /// A stacked-ring guide is one ring written once. Without this, a funnel is two
+    /// hundred near-identical blocks of JSON that no one can read and a sweep cannot
+    /// perturb - and "move every ring 50 microns" stops being sayable, which is the
+    /// whole point of the parametric format.
+    /// </remarks>
+    public RepeatDocument? Repeat { get; init; }
+
+    /// <summary>
     /// Amplitude of this electrode's share of the drive, zero to peak. Signed:
     /// a negative amplitude is the same as a half-cycle of phase.
     /// </summary>
@@ -466,6 +477,31 @@ public sealed record SolvedFieldDocument
     /// Omitted for a geometry that is not reflected.
     /// </remarks>
     public QuantityValue? ReflectAboutX { get; init; }
+}
+
+/// <summary>
+/// Repeats an electrode a number of times, with an index bound for its expressions.
+/// </summary>
+/// <remarks>
+/// The discrete periodicity SYM-1 lists beside cylindrical symmetry and mirror
+/// planes. Each copy is compiled with <see cref="Index"/> bound to its position, so
+/// every placement stays a parametric expression and the whole stack still moves
+/// when one parameter does.
+/// </remarks>
+public sealed record RepeatDocument
+{
+    /// <summary>How many copies. Must be at least one.</summary>
+    public QuantityValue? Count { get; init; }
+
+    /// <summary>
+    /// The name the index is bound to, running from zero. <c>index</c> when omitted.
+    /// </summary>
+    /// <remarks>
+    /// Nameable because a document that already has a parameter called
+    /// <c>index</c> should not have it shadowed silently, and because
+    /// <c>ring</c> or <c>plate</c> reads better in the expressions that use it.
+    /// </remarks>
+    public string? Index { get; init; }
 }
 
 /// <summary>

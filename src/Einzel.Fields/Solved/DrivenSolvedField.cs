@@ -18,38 +18,38 @@ namespace Einzel.Fields.Solved;
 /// <para>
 /// Channels rather than electrodes. SYM-1 makes the point in passing - "a 200-ring
 /// funnel driven in two RF phases needs two RF basis fields plus a DC gradient, not
-/// 200 basis solutions" - and it generalises: electrodes whose potentials are the
-/// same function of time, or exact negatives of one another, share a basis. A
-/// quadrupole's two pairs are negatives, so the whole device is <em>one</em> solve;
-/// a driven geometry with a grounded housing costs one more for the static part.
+/// 200 basis solutions" - and it is the target this decomposition reaches, for any
+/// number of rings.
 /// </para>
 /// <para>
-/// What this does not do is group electrodes whose potentials are merely
-/// <em>proportional</em> - a resistor chain down a funnel, where each ring holds a
-/// different fraction of the same supply. Those still cost one solve each. That is
-/// the remaining piece before a 200-ring funnel is practical.
+/// Grouping is by <em>spatial pattern</em>, not by time dependence, and that is
+/// what makes it minimal. Every electrode's potential is first split into the
+/// supplies feeding it - one constant, one per distinct drive phase - so a resistor
+/// chain down a funnel is a single supply however many distinct voltages it holds,
+/// because what makes a supply one supply is that its electrodes move
+/// <em>together</em>. Then supplies whose applied potentials are exactly
+/// proportional share a solve and carry a weight each: a quadrupole run with DC has
+/// a steady supply and an oscillating one, both putting the x pair up and the y
+/// pair down by the same relative amounts, so the whole filter is still one solve.
 /// </para>
 /// </remarks>
 public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
 {
     private readonly IElectrostaticField[] _channels;
     private readonly double[] _direct;
-    private readonly double[] _amplitude;
-    private readonly double[] _phase;
+    private readonly (double Amplitude, double Phase)[][] _harmonics;
     private readonly RfWaveform _waveform;
 
     internal DrivenSolvedField(
         IReadOnlyList<IElectrostaticField> channels,
         IReadOnlyList<double> direct,
-        IReadOnlyList<double> amplitude,
-        IReadOnlyList<double> phase,
+        IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>> harmonics,
         double frequencyHz,
         RfWaveform waveform)
     {
         _channels = [.. channels];
         _direct = [.. direct];
-        _amplitude = [.. amplitude];
-        _phase = [.. phase];
+        _harmonics = [.. harmonics.Select(h => h.ToArray())];
         _waveform = waveform;
 
         FrequencyHz = frequencyHz;
@@ -85,11 +85,21 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         return Weight(channel, timeSeconds);
     }
 
-    private double Weight(int channel, double timeSeconds) =>
-        _direct[channel]
-        + (_amplitude[channel] == 0.0
-            ? 0.0
-            : _amplitude[channel] * _waveform.At((FrequencyHz * timeSeconds) + _phase[channel]));
+    private double Weight(int channel, double timeSeconds)
+    {
+        var total = _direct[channel];
+        var cycles = FrequencyHz * timeSeconds;
+
+        // More than one term because two supplies can share a spatial pattern: a
+        // quadrupole's DC and RF put the same electrodes up and down by the same
+        // relative amounts, so they are one solved field carrying two weights.
+        foreach (var (amplitude, phase) in _harmonics[channel])
+        {
+            total += amplitude * _waveform.At(cycles + phase);
+        }
+
+        return total;
+    }
 
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)

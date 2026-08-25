@@ -16,13 +16,14 @@ physics or the abstraction is wrong, and almost always the second.
 | `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
 | `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
 | `quadrupole-rf` | The same four rods, driven: a mass filter |
+| `ion-funnel` | A tapering stack of RF rings with a DC gradient, written as one ring repeated |
 
 They **share no code at all**. All three name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
-DeviceTemplates.Names();          // ["einzel-lens", "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap"]
+DeviceTemplates.Names();          // ["einzel-lens", "ion-funnel", "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap"]
 DeviceTemplates.Read("quadrupole");
 ```
 
@@ -296,6 +297,58 @@ decaying, and the potential there is 2.457 mV against a 1000 V beam - which is t
 So **a lens is unipotential only to the extent its tubes are long**, the residual
 falls as exp(-2.405 L / r), and how long is long enough is a design question the
 solve can answer rather than an assumption to make.
+
+## The funnel, and what a stack costs
+
+A column of ring electrodes whose apertures taper from 12 mm to 1.5 mm, driven in
+two RF phases with a DC chain pushing ions along - written as **one ring repeated**.
+
+**The solve count does not grow with the ring count.**
+
+| Rings | Electrodes | Basis solves |
+| --- | --- | --- |
+| 8 | 8 | 2 |
+| 24 | 24 | 2 |
+| 48 | 48 | 2 |
+
+That is SYM-1's argument measured: "a 200-ring funnel driven in two RF phases needs
+two RF basis fields plus a DC gradient, not 200 basis solutions". It comes out at
+two rather than three because the two RF phases are exact negatives of one another,
+so they are one spatial pattern carrying one weight; three phases that were not
+negatives would be three.
+
+The resistor chain is a **single supply holding twenty-four different voltages**,
+which is the case that makes "group by spatial pattern" the right rule and "group
+by identical potential" the wrong one.
+
+### It funnels, and the RF is why
+
+An ion entering 6 mm off axis - half way to the wall - threads the whole stack and
+exits through the 1.5 mm aperture, so it was compressed by at least 4x. Switch the
+drive off and only the DC gradient is left, which pushes the ion forward and does
+nothing to keep it off the metal: it ends on `ring-14`.
+
+Acceptance falls off with entry radius the way a funnel's should:
+
+| Entry radius | |
+| --- | --- |
+| 1 mm | through |
+| 3 mm | through |
+| 6 mm | through |
+| 9 mm | lost on `ring-22` |
+| 11 mm | lost on `ring-10` |
+
+> **No gas.** A real funnel runs at around a millibar and the collisions are half
+> the mechanism - they damp the radial motion so ions settle onto the axis instead
+> of ringing about it. Everything here is the field and the confinement without the
+> cooling, so the acceptance above is a lower bound on the real one.
+
+### The sign that has to be right
+
+The DC chain starts at zero on the first ring and falls to `-dcGradient` on the
+last. Put the high potential at the entrance instead and the grounded boundary
+beside it pushes the ion straight back out - which is what happened first, and the
+run said so plainly: the ion ended 3 metres upstream.
 
 ## The quadrupole, as a worked example
 

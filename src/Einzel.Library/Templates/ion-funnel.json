@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "0.3",
+  "name": "ion-funnel",
+  "description": "A stacked-ring ion funnel, solved axisymmetrically: a column of ring electrodes whose apertures taper from wide to narrow, driven in two RF phases with a DC gradient pushing ions along. Written as one ring repeated, so the whole stack is parametric and a sweep can still move it. The RF on alternating rings makes a pseudopotential wall near the metal that pushes ions toward the axis while the DC carries them forward, which is how a funnel takes a broad, divergent plume and delivers a narrow beam. It reduces to three basis solves however many rings there are - the DC chain is one supply and each RF phase is another - which is the case SYM-1 uses to argue for symmetry in the first place. Note what is missing: a real funnel works at around a millibar and the gas is half the mechanism, damping the radial motion so ions settle onto the axis rather than ringing about it. There is no gas here, so this is the field and the confinement without the cooling.",
+
+  "parameters": {
+    "ringCount": {
+      "value": 24.0, "unit": "1", "minimum": 4.0, "maximum": 400.0,
+      "description": "How many rings in the stack. Real funnels run to a hundred or more; the cost here is the grid, not the ring count, because every ring shares one of three solves."
+    },
+    "entranceRadius": {
+      "value": 12.0, "unit": "mm", "minimum": 1.0, "maximum": 100.0,
+      "description": "Aperture of the first ring. Set by what the upstream source actually delivers - the point of a funnel is to accept a plume much wider than the exit."
+    },
+    "exitRadius": {
+      "value": 1.5, "unit": "mm", "minimum": 0.2, "maximum": 50.0,
+      "description": "Aperture of the last ring. The taper between this and the entrance is what does the compression, and taking it too fast loses ions on the rings rather than funnelling them."
+    },
+    "ringPitch": {
+      "value": 2.0, "unit": "mm", "minimum": 0.3, "maximum": 20.0,
+      "description": "Centre to centre along the axis. Together with the aperture it sets how deep the RF field reaches toward the axis: the penetration falls off over roughly a pitch, so a ring whose aperture is much larger than the pitch confines nothing."
+    },
+    "ringThickness": {
+      "value": 0.5, "unit": "mm", "minimum": 0.05, "maximum": 5.0,
+      "description": "Axial thickness of each ring. Thin rings leave more gap for the field to reach through."
+    },
+    "outerRadius": {
+      "value": 16.0, "unit": "mm", "minimum": 2.0, "maximum": 200.0,
+      "description": "Outer radius of every ring, which is also the domain boundary. The rings are the wall."
+    },
+    "rfAmplitude": {
+      "value": 100.0, "unit": "V", "minimum": 0.0, "maximum": 5000.0,
+      "description": "Zero to peak, applied to alternate rings in antiphase. This is what confines: the pseudopotential it makes goes as the square of the amplitude and inversely as the square of the frequency."
+    },
+    "driveFrequency": {
+      "value": 1.0, "unit": "MHz", "minimum": 0.01, "maximum": 100.0,
+      "description": "One generator for the whole stack. Lower frequency confines harder but is harder on the heaviest ions, which start to follow the field rather than being pushed by its gradient."
+    },
+    "dcGradient": {
+      "value": 20.0, "unit": "V", "minimum": 0.0, "maximum": 2000.0,
+      "description": "Total DC drop from the first ring to the last, applied as an even chain: the first ring sits at zero, matching the grounded entrance, and the last at minus this. That sign matters - put the high potential at the entrance instead and the grounded boundary beside it pushes the ion straight back out. Every ring holds a different voltage and they are still one supply, because they all move together."
+    },
+    "cellsPerPitch": {
+      "value": 8.0, "unit": "1", "minimum": 2.0, "maximum": 64.0,
+      "description": "Grid cells along one ring pitch. The gap between rings is the smallest feature, so check it still spans several cells before trusting a coarse run."
+    },
+    "launchRadius": {
+      "value": 6.0, "unit": "mm", "minimum": 0.0, "maximum": 90.0,
+      "description": "Where the ion enters, off the axis. The whole question a funnel answers is how far off axis it can be and still arrive."
+    },
+    "ionEnergy": {
+      "value": 1.0, "unit": "V", "minimum": 0.01, "maximum": 500.0,
+      "description": "Axial energy on entry. Low, because a funnel is fed by a plume that has already been slowed and it is the DC gradient that does the transport."
+    },
+
+    "stackLength": { "expression": "ringCount * ringPitch", "unit": "mm" },
+    "taper": { "expression": "(entranceRadius - exitRadius) / (ringCount - 1)", "unit": "mm" },
+    "cellSize": { "expression": "ringPitch / cellsPerPitch", "unit": "mm" },
+    "lastRingX": { "expression": "(ringCount - 1) * ringPitch", "unit": "mm" },
+    "detectorX": { "expression": "lastRingX + ringPitch", "unit": "mm" }
+  },
+
+  "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+
+  "source": {
+    "position": { "expression": ["0", "launchRadius", "0"], "unit": "mm" },
+    "direction": { "value": [1, 0, 0] },
+    "accelerationPotential": { "expression": "ionEnergy", "unit": "V" }
+  },
+
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "drive": {
+          "frequency": { "expression": "driveFrequency", "unit": "MHz" },
+          "waveform": "sinusoid"
+        },
+        "minX": { "value": 0, "unit": "mm" },
+        "minY": { "value": 0, "unit": "mm" },
+        "maxX": { "expression": "detectorX + 2 * ringPitch", "unit": "mm" },
+        "maxY": { "expression": "outerRadius", "unit": "mm" },
+        "cellSize": { "expression": "cellSize", "unit": "mm" },
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "ring",
+            "shape": "rectangle",
+            "repeat": { "count": { "expression": "ringCount" }, "index": "ring" },
+            "minX": { "expression": "ring * ringPitch", "unit": "mm" },
+            "maxX": { "expression": "ring * ringPitch + ringThickness", "unit": "mm" },
+            "minY": { "expression": "entranceRadius - ring * taper", "unit": "mm" },
+            "maxY": { "expression": "outerRadius", "unit": "mm" },
+            "potential": { "expression": "-dcGradient * ring / (ringCount - 1)", "unit": "V" },
+            "driveAmplitude": { "expression": "rfAmplitude * (1 - 2 * mod(ring, 2))", "unit": "V" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "detector": {
+    "planePoint": { "expression": ["detectorX", "0", "0"], "unit": "mm" },
+    "normal": { "value": [-1, 0, 0] }
+  },
+
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": { "value": 1, "unit": "ms" }
+  }
+}

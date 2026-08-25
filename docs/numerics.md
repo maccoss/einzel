@@ -355,10 +355,25 @@ is what a real instrument produces, because the electrodes are wired to the same
 supply. A tolerance here would silently merge two channels that were meant to
 differ, and the field would be plausible.
 
-**What it does not do** is group electrodes whose potentials are merely
-*proportional* - a resistor chain down a funnel, where each ring holds a different
-fraction of one supply. Those still cost a solve each, and that is the remaining
-piece before a 200-ring funnel is practical.
+Grouping is by **spatial pattern**, not by time dependence, and that is what makes
+it minimal. Every electrode's potential is first split into the supplies feeding
+it - one constant, one per distinct drive phase - so a resistor chain down a funnel
+is a *single* supply however many distinct voltages it holds, because what makes a
+supply one supply is that its electrodes move **together**, not that they move to
+the same place. Then supplies whose applied potentials are exactly proportional
+share a solve and carry a weight each.
+
+Measured on the funnel template, which is the device SYM-1 argues from:
+
+| Rings | Electrodes | Basis solves |
+| --- | --- | --- |
+| 8 | 8 | 2 |
+| 24 | 24 | 2 |
+| 48 | 48 | 2 |
+
+Two, not three - the two RF phases are exact negatives of one another, so they are
+one spatial pattern with one weight. Three phases that were not negatives, as a
+travelling-wave guide has, would be three.
 
 ### Measured
 

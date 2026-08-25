@@ -37,6 +37,7 @@ cross-code tier is unavailable — see below.
 | Axisymmetric convergence order, 32 to 256 cells | 1.84 / 2.00 / 1.95 |
 | Total energy across an einzel lens | 6.4e-10 |
 | Low-mass cut-off on **solved** round rods, against tabulated Mathieu | q = 0.90525 against 0.90804, 0.31% |
+| Funnel basis solves against ring count (8 / 24 / 48 rings) | 2 / 2 / 2 |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
@@ -163,7 +164,10 @@ covering everything.
   non-suppressibly past the budget, but the trajectories ignore it. A real
   treatment advances every ion together and recomputes their shared field each
   step, which inverts the integration loop and is Phase 3.
-- **No collisions, no gas flow.**
+- **No collisions, no gas flow.** This bites hardest on the funnel: a real one runs
+  at around a millibar and the gas is half the mechanism, damping radial motion so
+  ions settle onto the axis rather than ringing about it. The acceptance measured
+  without it is a lower bound on the real one.
 - **The agent acceptance suite has no measured pass rate yet.** The corpus, the
   scoring, and the release gates exist and are self-validating in CI — every
   task's worked solution passes and every distractor fails — but no agent has been

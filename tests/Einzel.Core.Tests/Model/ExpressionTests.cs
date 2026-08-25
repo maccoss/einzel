@@ -119,4 +119,45 @@ public sealed class ExpressionTests
         Assert.DoesNotContain("max", names);
         Assert.DoesNotContain("sqrt", names);
     }
+
+    [Theory]
+    [InlineData("floor(2.7)", 2.0)]
+    [InlineData("floor(-0.2)", -1.0)]
+    [InlineData("mod(7, 3)", 1.0)]
+    [InlineData("mod(8, 2)", 0.0)]
+    [InlineData("1 - 2 * mod(3, 2)", -1.0)]
+    [InlineData("1 - 2 * mod(4, 2)", 1.0)]
+    public void FloorAndModMakeIndexedGeometryExpressible(string expression, double expected)
+    {
+        // What a repeated electrode needs. The alternating sign of a two-phase
+        // stack is 1 - 2 mod(index, 2), and the position of the nth ring is
+        // index * pitch - neither of which the grammar could say before.
+        Assert.Equal(expected, Evaluate(expression).SiValue, 1e-12);
+    }
+
+    [Fact]
+    public void ModCountsBackwardsTheWayAnIndexShould()
+    {
+        // Euclidean rather than truncated, so a negative index still alternates.
+        // C# would give -1 here, which would make ring -1 the same phase as ring 1
+        // rather than the opposite one.
+        Assert.Equal(1.0, Evaluate("mod(-1, 2)").SiValue, 1e-12);
+        Assert.Equal(0.0, Evaluate("mod(-2, 2)").SiValue, 1e-12);
+    }
+
+    [Fact]
+    public void FloorRefusesADimensionedArgument()
+    {
+        // The floor of a length depends on which unit you take it in, which is
+        // exactly the ambiguity the evaluator exists to refuse. Form a ratio first.
+        var failure = Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Evaluate("floor(gap)"));
+
+        Assert.Contains("dimensionless", failure.Error.Constraint!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ModByZeroIsRefused()
+    {
+        Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Evaluate("mod(3, 0)"));
+    }
 }

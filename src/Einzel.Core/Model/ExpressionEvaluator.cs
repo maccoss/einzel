@@ -308,6 +308,41 @@ public static class ExpressionEvaluator
 
                     return Quantity.Number(Math.Sqrt(arguments[0].SiValue));
 
+                case "floor" when arguments.Count == 1:
+                case "mod" when arguments.Count == 2:
+                {
+                    // Dimensionless only, for the same reason sqrt is: the floor of
+                    // a length depends on which unit you take it in, and that is
+                    // precisely the ambiguity this evaluator exists to refuse.
+                    foreach (var argument in arguments)
+                    {
+                        if (!argument.Dimension.IsDimensionless)
+                        {
+                            throw Failure(
+                                path,
+                                $"{name} requires dimensionless arguments, but was given one of dimension "
+                                + $"{argument.Dimension}",
+                                "form a ratio first, for example floor(length / pitch)");
+                        }
+                    }
+
+                    if (name == "floor")
+                    {
+                        return Quantity.Number(Math.Floor(arguments[0].SiValue));
+                    }
+
+                    if (arguments[1].SiValue == 0.0)
+                    {
+                        throw Failure(path, "mod by zero", "use a non-zero divisor");
+                    }
+
+                    // Euclidean rather than truncated, so mod(-1, 2) is 1 and an
+                    // index counted backwards still alternates the way it should.
+                    var quotient = Math.Floor(arguments[0].SiValue / arguments[1].SiValue);
+
+                    return Quantity.Number(arguments[0].SiValue - (quotient * arguments[1].SiValue));
+                }
+
                 case "min" when arguments.Count == 2:
                     return arguments[0] <= arguments[1] ? arguments[0] : arguments[1];
 
@@ -318,7 +353,7 @@ public static class ExpressionEvaluator
                     throw Failure(
                         path,
                         $"'{name}' is not a known function, or was called with {arguments.Count} arguments",
-                        "available: abs(x), sqrt(x), min(a, b), max(a, b)");
+                        "available: abs(x), sqrt(x), floor(x), mod(a, b), min(a, b), max(a, b)");
             }
         }
 
