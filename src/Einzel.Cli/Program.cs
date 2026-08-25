@@ -55,6 +55,23 @@ public static class Program
             Console.Error.WriteLine(failure.Message);
             return (int)ExitCode.InternalError;
         }
+#pragma warning disable CA1031 // The process boundary is exactly where a catch-all belongs.
+        catch (Exception failure)
+#pragma warning restore CA1031
+        {
+            // A defect in the platform, which AGT-3 classes as always a bug
+            // report. The type and the stack are what makes it reportable, so they
+            // are printed rather than swallowed - but on stderr, and behind a
+            // distinct exit code, so a caller can tell an engine defect from a bad
+            // model without parsing anything.
+            Console.Error.WriteLine($"{ErrorCodes.InternalError}: {failure.GetType().Name}: {failure.Message}");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("This is a defect in einzel, not in your model. Please report it with the");
+            Console.Error.WriteLine($"command you ran and this trace, against engine {EngineBuild.Version}:");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine(failure.StackTrace);
+            return (int)ExitCode.InternalError;
+        }
     }
 
     private static int Dispatch(string[] args)
@@ -76,8 +93,17 @@ public static class Program
         return args[0] switch
         {
             "init" => Init(options),
+            "new" => New(options),
             "validate" => Validate(options),
+            "estimate" => Estimate(options),
+            "solve" => Solve(options),
             "run" => Run(options),
+            "export" => Export(options),
+            "schema" => Schema(options),
+            "templates" => Catalog(options, "template"),
+            "examples" => Catalog(options, "example"),
+            "agents-md" => AgentsMd(options),
+            "doctor" => Doctor(options),
             _ => Unknown(args[0]),
         };
     }
@@ -89,9 +115,292 @@ public static class Program
         return (int)ExitCode.ValidationFailure;
     }
 
+    /// <summary>
+    /// Writes a command result as JSON, for CLI-2.
+    /// </summary>
+    /// <remarks>
+    /// Results on stdout so a caller may pipe it straight to a parser without
+    /// filtering. Diagnostics go to stderr everywhere else in this file for the
+    /// same reason.
+    /// </remarks>
+    private static int Emit<T>(T outcome, ExitCode code = ExitCode.Success)
+    {
+        Console.Out.Write(CommandJson.Write(outcome));
+        return (int)code;
+    }
+
+    private static int Schema(CommandLine options)
+    {
+        // The schema is JSON whether or not --json was asked for; the flag is
+        // accepted and ignored rather than refused, because an agent that passes
+        // it to every verb should not have to special-case this one.
+        _ = options;
+        Console.Out.Write(CatalogCommand.Schema());
+        return (int)ExitCode.Success;
+    }
+
+    private static int Catalog(CommandLine options, string kind)
+    {
+        // With a name, emit that artifact; without, list what there is.
+        if (options.Positional.Count > 0)
+        {
+            Console.Out.Write(CatalogCommand.Read(kind, options.Positional[0]));
+            return (int)ExitCode.Success;
+        }
+
+        var outcome = kind == "template" ? CatalogCommand.Templates() : CatalogCommand.Examples();
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        foreach (var entry in outcome.Entries)
+        {
+            Console.Out.WriteLine(entry.Name);
+
+            if (!string.IsNullOrEmpty(entry.Description))
+            {
+                Console.Out.WriteLine($"    {Wrap(entry.Description)}");
+            }
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>Truncates a description to one readable terminal line.</summary>
+    private static string Wrap(string text)
+    {
+        const int Width = 96;
+
+        if (text.Length <= Width)
+        {
+            return text;
+        }
+
+        var cut = text.LastIndexOf(' ', Width);
+        return text[..(cut > 0 ? cut : Width)] + "...";
+    }
+
+    private static int New(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel new <model.json> --from-template <name> | --from-example <name> [--dry-run]");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var (kind, name) = options.Value("from-template") is { } template
+            ? ("template", template)
+            : options.Value("from-example") is { } example
+                ? ("example", example)
+                : (null, null);
+
+        if (kind is null || name is null)
+        {
+            Console.Error.WriteLine("give one of --from-template <name> or --from-example <name>");
+            Console.Error.WriteLine("run 'einzel templates' or 'einzel examples' to see what there is");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var outcome = ProjectCommands.New(options.Positional[0], kind, name, options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(outcome.Written
+            ? $"wrote {outcome.Path} from {outcome.Source}"
+            : $"would write {outcome.Path} from {outcome.Source}");
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int AgentsMd(CommandLine options)
+    {
+        var root = options.Value("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+        var outcome = ProjectCommands.AgentsMd(root, options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(outcome.Written
+            ? $"wrote {outcome.Path} ({outcome.Source})"
+            : $"would write {outcome.Path} ({outcome.Source})");
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int Doctor(CommandLine options)
+    {
+        var root = options.Value("project") ?? (options.Positional.Count > 0 ? options.Positional[0] : null);
+
+        if (root is null && Directory.Exists("models"))
+        {
+            root = ".";
+        }
+
+        var outcome = ProjectCommands.Doctor(root);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.Healthy ? ExitCode.Success : ExitCode.ValidationFailure);
+        }
+
+        foreach (var check in outcome.Checks)
+        {
+            var mark = check.Ok ? "ok  " : "WARN";
+            var stream = check.Ok ? Console.Out : Console.Error;
+            stream.WriteLine($"{mark} {check.Check,-20} {check.Detail}");
+        }
+
+        return (int)(outcome.Healthy ? ExitCode.Success : ExitCode.ValidationFailure);
+    }
+
+    private static int Estimate(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel estimate <model.json> [--json]");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var outcome = EstimateCommand.Execute(options.Positional[0]);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        foreach (var element in outcome.Elements)
+        {
+            var size = element.Nodes.Count == 2
+                ? string.Create(invariant, $"{element.Nodes[0]}x{element.Nodes[1]}")
+                : "analytic";
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"field {element.Index}  {element.Type,-14} {size,-12} {element.Seconds,8:F2} s  {element.MemoryMiB,7:F1} MiB"));
+        }
+
+        Console.Out.WriteLine(string.Create(
+            invariant, $"total         {outcome.Seconds:F2} s, peak {outcome.MemoryMiB:F1} MiB"));
+
+        Console.Out.WriteLine();
+        Console.Out.WriteLine($"basis: {outcome.Basis}");
+
+        if (outcome.AboveThreshold)
+        {
+            // GRD-8: above the threshold this is a refusal to proceed silently,
+            // not a warning printed on the way past.
+            Console.Error.WriteLine(string.Create(
+                invariant,
+                $"this is above the {outcome.ThresholdSeconds:F0} s cost threshold"));
+
+            return (int)ExitCode.CostGateRefused;
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int Solve(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel solve <model.json> [--json]");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var outcome = SolveCommand.Execute(options.Positional[0]);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Elements.Count == 0)
+        {
+            Console.Out.WriteLine("no solved field elements in this model; nothing to solve");
+            return (int)ExitCode.Success;
+        }
+
+        foreach (var element in outcome.Elements)
+        {
+            var shape = element.SquareCells ? "square" : "stretched";
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"field {element.Index}  {element.Nodes[0]}x{element.Nodes[1]} at "
+                + $"{element.SpacingMm[0]:F4} x {element.SpacingMm[1]:F4} mm ({shape})"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"          {element.Electrodes} electrode(s), {element.FixedNodes} fixed node(s), "
+                + $"{element.CutLinks} cut link(s)"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"          {element.Cycles} cycles at factor {element.ConvergenceFactor:F4}, "
+                + $"residual {element.RelativeResidual:E2} of initial"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant, $"          peak |phi| {element.PeakPotentialVolts:G6} V"));
+
+            if (!element.Converged)
+            {
+                Console.Error.WriteLine($"field {element.Index} did not converge");
+            }
+        }
+
+        Console.Out.WriteLine(string.Create(invariant, $"solved in {outcome.ElapsedMs:F0} ms"));
+
+        return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
+    }
+
+    private static int Export(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel export <model.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("writes the solved potential field as VTK ImageData for ParaView");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var modelPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+        var outcome = ExportCommand.Vtu(modelPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine(outcome.Written ? $"wrote {artifact}" : $"would write {artifact}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
     private static int Init(CommandLine options)
     {
         var root = options.Positional.Count > 0 ? options.Positional[0] : ".";
+
+        if (options.Has("dry-run"))
+        {
+            Console.Out.WriteLine($"would create a project at {Path.GetFullPath(root)}");
+            return (int)ExitCode.Success;
+        }
+
         var outcome = InitCommand.Execute(root, withGit: options.Value("vcs") == "git");
 
         if (options.Has("json"))
@@ -301,13 +610,27 @@ public static class Program
 
         usage: einzel <command> [arguments]
 
+        starting out:
+          doctor [dir]                  check the installation, and a project if given
+          schema                        the model format, as JSON Schema
+          templates [name]              list device templates, or print one
+          examples [name]               list example models, or print one
+
+        working:
           init [dir] [--vcs git]        create a project directory
+          new <model.json>              create a model from a template or an example
+                --from-template <name> | --from-example <name>
           validate <model.json>         check units, bounds, and regime validity
+          estimate <model.json>         what a run will cost, without running it
+          solve <model.json>            solve the fields only, and report how they went
           run <model.json> [--vtu]      run a model; --vtu also writes a ParaView trajectory
+          export <model.json>           write the solved field as VTK ImageData
+          agents-md [dir]               regenerate the platform layer of AGENTS.md
           --version                     print the engine version
 
         options:
           --json                        machine-readable output
+          --dry-run                     say what would be written, and write nothing
           --project <dir>               project root; inferred from the model path otherwise
 
         Results go to stdout, diagnostics to stderr. Exit codes: 0 success,

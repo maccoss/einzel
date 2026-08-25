@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Einzel.Fields.Solved;
 using Einzel.Transport.Integration;
 
 namespace Einzel.Io;
@@ -129,6 +130,85 @@ public static class VtuWriter
 
         text.Append("    </Piece>\n");
         text.Append("  </UnstructuredGrid>\n");
+        text.Append("</VTKFile>\n");
+
+        return text.ToString();
+    }
+
+    /// <summary>Writes a solved scalar field as VTK ImageData.</summary>
+    /// <param name="field">The field, on its grid.</param>
+    /// <param name="name">The name the array takes in ParaView.</param>
+    /// <param name="provenance">Provenance lines recorded as an XML comment.</param>
+    /// <returns>The .vti document text.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="field"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is null or blank.</exception>
+    /// <remarks>
+    /// <para>
+    /// ImageData rather than an unstructured grid, because that is what a uniform
+    /// Cartesian grid is. An unstructured grid would carry every node coordinate
+    /// and every cell's connectivity explicitly - several times the bytes to say
+    /// what an origin, two spacings, and an extent already say - and it would give
+    /// up ParaView's structured-grid paths for slicing and contouring.
+    /// </para>
+    /// <para>
+    /// The two spacings are written separately. A grid meshes its declared domain
+    /// exactly and its cells need not be square, so assuming one spacing here
+    /// would stretch the picture relative to the geometry it was solved on.
+    /// </para>
+    /// </remarks>
+    public static string WriteScalarField(
+        ScalarField2D field, string name, IReadOnlyList<string>? provenance = null)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var grid = field.Grid;
+        var invariant = CultureInfo.InvariantCulture;
+        var text = new StringBuilder(grid.NodeCount * 24);
+
+        text.Append("<?xml version=\"1.0\"?>\n");
+
+        if (provenance is { Count: > 0 })
+        {
+            text.Append("<!--\n");
+
+            foreach (var line in provenance)
+            {
+                text.Append("  ").Append(line.Replace("--", "- -", StringComparison.Ordinal)).Append('\n');
+            }
+
+            text.Append("-->\n");
+        }
+
+        var extent = $"0 {grid.CountX - 1} 0 {grid.CountY - 1} 0 0";
+
+        text.Append("<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
+        text.Append(
+            invariant,
+            $"  <ImageData WholeExtent=\"{extent}\" Origin=\"{grid.OriginX:G17} {grid.OriginY:G17} 0\" Spacing=\"{grid.SpacingX:G17} {grid.SpacingY:G17} 1\">\n");
+        text.Append(invariant, $"    <Piece Extent=\"{extent}\">\n");
+        text.Append(invariant, $"      <PointData Scalars=\"{name}\">\n");
+        text.Append(invariant, $"        <DataArray type=\"Float64\" Name=\"{name}\" format=\"ascii\">\n");
+
+        // Row-major, x fastest: the order VTK reads an extent in, and the order
+        // the field already stores its nodes.
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            text.Append("          ");
+
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                text.Append(invariant, $"{field[i, j]:G17} ");
+            }
+
+            text.Append('\n');
+        }
+
+        text.Append("        </DataArray>\n");
+        text.Append("      </PointData>\n");
+        text.Append("      <CellData/>\n");
+        text.Append("    </Piece>\n");
+        text.Append("  </ImageData>\n");
         text.Append("</VTKFile>\n");
 
         return text.ToString();

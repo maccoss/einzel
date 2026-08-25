@@ -19,6 +19,20 @@ namespace Einzel.Commands;
 /// </remarks>
 public static class ExampleModels
 {
+    private static readonly Dictionary<string, string> All = new(StringComparer.Ordinal)
+    {
+        ["single-stage-reflectron"] = SingleStageReflectron,
+    };
+
+    /// <summary>The examples that ship, by name.</summary>
+    public static IReadOnlyList<string> Names => [.. All.Keys.OrderBy(n => n, StringComparer.Ordinal)];
+
+    /// <summary>The text of one example.</summary>
+    /// <param name="name">Which example.</param>
+    /// <returns>The model JSON.</returns>
+    /// <exception cref="KeyNotFoundException">No example by that name.</exception>
+    public static string Read(string name) => All[name];
+
     /// <summary>
     /// An ideal single-stage reflectron at the first-order energy focus.
     /// </summary>
