@@ -588,6 +588,8 @@ public static class ModelValidator
             ? (double?)null
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
 
+        var drive = Drive(solve.Drive, $"{path}/drive", p, errors);
+
         var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
 
         // The axis is at y = 0 and a radius cannot be negative. Refused rather
@@ -613,6 +615,25 @@ public static class ModelValidator
         var bottom = Boundary(solve.BottomEdge, $"{path}/bottomEdge", errors);
         var top = Boundary(solve.TopEdge, $"{path}/topEdge", errors);
 
+        // An amplitude with no generator behind it is a document that thinks it
+        // declared RF and did not. Silence here is the expensive kind.
+        if (drive is null && electrodes.Any(e => e.IsDriven))
+        {
+            var driven = electrodes.First(e => e.IsDriven);
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/drive",
+                Constraint =
+                    $"electrode '{driven.Name}' declares a drive amplitude, but the solve declares no drive",
+                Observed = new ObservedValue(driven.DriveAmplitude, "V"),
+                Suggestion =
+                    "add a drive block with a frequency, or remove the amplitude and use "
+                    + "'potential' for a static electrode",
+            });
+        }
+
         if (errors.Count > 0)
         {
             return null;
@@ -629,6 +650,7 @@ public static class ModelValidator
                 MaxY = maxY.Value.SiValue,
                 CellSize = cell.Value.SiValue,
                 Symmetry = symmetry,
+                Drive = drive,
                 LeftEdge = left,
                 RightEdge = right,
                 BottomEdge = bottom,
@@ -639,6 +661,114 @@ public static class ModelValidator
                 ReflectAboutX = reflect,
             },
         };
+    }
+
+    /// <summary>How one electrode taps the drive: amplitude and phase.</summary>
+    /// <remarks>
+    /// Read for every electrode whether or not the geometry declares a drive, so
+    /// that an amplitude on a static solve is caught where it is written rather
+    /// than silently ignored - which is the failure mode that makes someone spend
+    /// an afternoon wondering why the RF is not doing anything.
+    /// </remarks>
+    private static (double Amplitude, double Phase) Tap(
+        ElectrodeDocument electrode,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        var amplitude = electrode.DriveAmplitude is null
+            ? 0.0
+            : TryQuantity(
+                electrode.DriveAmplitude, $"{path}/driveAmplitude",
+                Dimension.ElectricPotential, p, errors)?.SiValue ?? 0.0;
+
+        if (!double.IsFinite(electrode.DrivePhase))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/drivePhase",
+                Constraint = "a drive phase is a fraction of a cycle and must be finite",
+                Observed = new ObservedValue(electrode.DrivePhase, "1"),
+                Suggestion = "use 0 for in phase and 0.5 for antiphase",
+            });
+        }
+
+        return (amplitude, electrode.DrivePhase);
+    }
+
+    private static CompiledDrive? Drive(
+        DriveDocument? drive,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (drive is null)
+        {
+            return null;
+        }
+
+        var frequency = TryQuantity(drive.Frequency, $"{path}/frequency", Dimension.Frequency, p, errors);
+
+        if (frequency is null)
+        {
+            return null;
+        }
+
+        if (frequency.Value.SiValue <= 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/frequency",
+                Constraint = "a drive frequency must be positive",
+                Observed = new ObservedValue(frequency.Value.SiValue, "Hz"),
+                Suggestion = "supply a positive frequency, for example {\"value\": 1, \"unit\": \"MHz\"}",
+            });
+
+            return null;
+        }
+
+        var waveform = drive.Waveform switch
+        {
+            null or "sinusoid" => DriveWaveform.Sinusoid,
+            "rectangular" => DriveWaveform.Rectangular,
+            _ => (DriveWaveform?)null,
+        };
+
+        if (waveform is null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/waveform",
+                Constraint = "a drive waveform must be 'sinusoid' or 'rectangular'",
+                Observed = new ObservedValue(0.0, drive.Waveform ?? "(none)"),
+                Suggestion =
+                    "'sinusoid' is what a resonant circuit produces and gives the Mathieu equation; "
+                    + "'rectangular' is what a switching supply produces and gives Meissner's",
+            });
+
+            return null;
+        }
+
+        var duty = drive.DutyCycle ?? 0.5;
+
+        if (duty is <= 0.0 or >= 1.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/dutyCycle",
+                Constraint = "a duty cycle is the fraction of a cycle spent high, strictly between 0 and 1",
+                Observed = new ObservedValue(duty, "1"),
+                Suggestion = "0.5 is a balanced square wave; 0.61 is a typical digital mass-filter setting",
+            });
+
+            return null;
+        }
+
+        return new CompiledDrive(frequency.Value.SiValue, waveform.Value, duty);
     }
 
     private static SolveSymmetry Symmetry(string? declared, string path, List<EinzelError> errors)
@@ -706,6 +836,7 @@ public static class ModelValidator
                 var maxX = TryQuantity(electrode.MaxX, $"{path}/maxX", length, p, errors);
                 var maxY = TryQuantity(electrode.MaxY, $"{path}/maxY", length, p, errors);
                 var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
+                var drive = Tap(electrode, path, p, errors);
 
                 if (minX is null || minY is null || maxX is null || maxY is null || potential is null)
                 {
@@ -759,6 +890,8 @@ public static class ModelValidator
                         MaxX = maxX.Value.SiValue,
                         MaxY = maxY.Value.SiValue,
                         Potential = potential.Value.SiValue,
+                        DriveAmplitude = drive.Amplitude,
+                        DrivePhase = drive.Phase,
                     };
             }
 
@@ -768,6 +901,7 @@ public static class ModelValidator
                 var centreY = TryQuantity(electrode.CentreY, $"{path}/centreY", length, p, errors);
                 var radius = TryQuantity(electrode.Radius, $"{path}/radius", length, p, errors);
                 var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
+                var drive = Tap(electrode, path, p, errors);
 
                 if (centreX is null || centreY is null || radius is null || potential is null)
                 {
@@ -795,6 +929,8 @@ public static class ModelValidator
                     CentreY = centreY.Value.SiValue,
                     Radius = radius.Value.SiValue,
                     Potential = potential.Value.SiValue,
+                    DriveAmplitude = drive.Amplitude,
+                    DrivePhase = drive.Phase,
                 };
             }
 

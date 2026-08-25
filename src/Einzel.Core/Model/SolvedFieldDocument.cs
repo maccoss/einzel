@@ -97,7 +97,24 @@ public sealed record ElectrodeDocument
     /// <summary>Edge profile: the piecewise-linear potential along the edge.</summary>
     public IReadOnlyList<ProfilePointDocument>? Profile { get; init; }
 
-    /// <summary>Rectangle and disc: the potential held.</summary>
+    /// <summary>
+    /// Amplitude of this electrode's share of the drive, zero to peak. Signed:
+    /// a negative amplitude is the same as a half-cycle of phase.
+    /// </summary>
+    public QuantityValue? DriveAmplitude { get; init; }
+
+    /// <summary>
+    /// Where in the cycle this electrode sits, as a fraction of one. Zero when
+    /// omitted; a half is antiphase.
+    /// </summary>
+    /// <remarks>
+    /// A fraction rather than radians or degrees, because every use of it is a
+    /// fraction: a quadrupole pair is a half out, a three-phase guide is a third,
+    /// and a travelling wave is a ramp from zero to one along its length.
+    /// </remarks>
+    public double DrivePhase { get; init; }
+
+    /// <summary>Rectangle and disc: the potential held. The DC part, when driven.</summary>
     public QuantityValue? Potential { get; init; }
 }
 
@@ -137,8 +154,27 @@ public sealed record CompiledElectrode
     /// <summary>Edge profile: position and potential pairs, in SI, sorted by position.</summary>
     public IReadOnlyList<(double At, double Potential)> Profile { get; init; } = [];
 
-    /// <summary>Rectangle and disc: the potential held, in volts.</summary>
+    /// <summary>Rectangle and disc: the potential held, in volts. The DC part.</summary>
     public double Potential { get; init; }
+
+    /// <summary>
+    /// This electrode's share of the drive, zero to peak, in volts. Zero for an
+    /// electrode that only holds a DC potential.
+    /// </summary>
+    public double DriveAmplitude { get; init; }
+
+    /// <summary>Where in the cycle this electrode sits, as a fraction of one.</summary>
+    public double DrivePhase { get; init; }
+
+    /// <summary>
+    /// Whether this electrode's potential varies in time at all.
+    /// </summary>
+    /// <remarks>
+    /// A driven geometry still contains undriven electrodes - a housing, a lens
+    /// stack - and they cost nothing extra, because an electrode whose potential is
+    /// constant shares a basis solve with every other constant one.
+    /// </remarks>
+    public bool IsDriven => DriveAmplitude != 0.0;
 
     /// <summary>
     /// Signed distance to this electrode's surface: negative inside the
@@ -372,6 +408,16 @@ public sealed record SolvedFieldDocument
     public QuantityValue? MaxY { get; init; }
 
     /// <summary>
+    /// The RF drive this geometry is operated with, if any. Static when omitted.
+    /// </summary>
+    /// <remarks>
+    /// One generator per solve. Electrodes tap off it through their own
+    /// <c>driveAmplitude</c> and <c>drivePhase</c>; the frequency and the waveform
+    /// belong to the generator.
+    /// </remarks>
+    public DriveDocument? Drive { get; init; }
+
+    /// <summary>
     /// What the plane is a cross-section of: <c>translational</c> or
     /// <c>cylindrical</c>. Translational when omitted.
     /// </summary>
@@ -422,6 +468,38 @@ public sealed record SolvedFieldDocument
     public QuantityValue? ReflectAboutX { get; init; }
 }
 
+/// <summary>
+/// An RF drive, as it appears in a model document.
+/// </summary>
+public sealed record DriveDocument
+{
+    /// <summary>Drive frequency.</summary>
+    public QuantityValue? Frequency { get; init; }
+
+    /// <summary>
+    /// One of <c>sinusoid</c> or <c>rectangular</c>. A sinusoid when omitted.
+    /// </summary>
+    /// <remarks>
+    /// Not a detail of the supply. A sinusoid gives the Mathieu equation and a
+    /// rectangular wave gives Meissner's, and their stability boundaries are in
+    /// different places - the square-wave low-mass cut-off is q = 0.712 against a
+    /// sinusoid's 0.908.
+    /// </remarks>
+    public string? Waveform { get; init; }
+
+    /// <summary>
+    /// Fraction of the cycle at the positive level, for a rectangular wave. One
+    /// half when omitted.
+    /// </summary>
+    /// <remarks>
+    /// Away from one half the wave carries a mean of 2d - 1, which enters the
+    /// equation of motion exactly where a DC offset would. That is how a digital
+    /// mass filter gets its resolution without a DC supply existing anywhere in the
+    /// instrument: the working point is set by switching times.
+    /// </remarks>
+    public double? DutyCycle { get; init; }
+}
+
 /// <summary>A two-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField
 {
@@ -442,6 +520,9 @@ public sealed record CompiledSolvedField
 
     /// <summary>What the plane is a cross-section of (SYM-1).</summary>
     public SolveSymmetry Symmetry { get; init; }
+
+    /// <summary>The drive this geometry is operated with, or null when static.</summary>
+    public CompiledDrive? Drive { get; init; }
 
     /// <summary>Condition on the x-minimum edge.</summary>
     public BoundaryKind LeftEdge { get; init; }

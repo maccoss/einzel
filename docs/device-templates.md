@@ -15,13 +15,14 @@ physics or the abstraction is wrong, and almost always the second.
 | `quadrupole` | Four round rods in cross-section, alternating potential |
 | `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
 | `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
+| `quadrupole-rf` | The same four rods, driven: a mass filter |
 
 They **share no code at all**. All three name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
-DeviceTemplates.Names();          // ["einzel-lens", "planar-mirror-pair", "quadrupole", "rectilinear-trap"]
+DeviceTemplates.Names();          // ["einzel-lens", "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap"]
 DeviceTemplates.Read("quadrupole");
 ```
 

@@ -17,6 +17,11 @@ public static class CommandJson
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+
+        // A non-finite double is written as null rather than taking the whole
+        // document down at the serialiser. See FiniteDoubleConverter for why this
+        // is a property of the surface rather than a guard on each field.
+        Converters = { new FiniteDoubleConverter(), new FiniteNullableDoubleConverter() },
         WriteIndented = true,
         NewLine = "\n",
     };

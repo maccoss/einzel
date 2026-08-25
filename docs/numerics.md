@@ -329,6 +329,63 @@ A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
 equals its reflection inside, which is exact at any spacing and coarsens
 faithfully.
 
+## RF on solved geometry
+
+Driving a real geometry costs almost nothing beyond solving it once, because
+**basis superposition already was the mechanism**. The field is linear in the
+applied potentials, so solving at unit potential and then making the weights
+functions of time *is* the RF - nothing is re-solved as the drive swings, and the
+Poisson equation is never stepped in time at all.
+
+### Channels, not electrodes
+
+SYM-1 makes the point in passing - "a 200-ring funnel driven in two RF phases needs
+two RF basis fields plus a DC gradient, not 200 basis solutions" - and it
+generalises. Electrodes whose potentials are the same function of time, or exact
+negatives of one another, share a basis.
+
+A quadrupole's two pairs are exact negatives, so **four rods reduce to one basis
+solve**. The channel's weight swings 500 V to 0 to -500 V across a cycle and the
+field is that weight times one solved basis. A q scan, or a mass scan, re-solves
+nothing whatever.
+
+The grouping is exact rather than approximate: two electrodes share a channel when
+their DC and RF parts are equal or both exactly negated, at the same phase - which
+is what a real instrument produces, because the electrodes are wired to the same
+supply. A tolerance here would silently merge two channels that were meant to
+differ, and the field would be plausible.
+
+**What it does not do** is group electrodes whose potentials are merely
+*proportional* - a resistor chain down a funnel, where each ring holds a different
+fraction of one supply. Those still cost a solve each, and that is the remaining
+piece before a 200-ring funnel is practical.
+
+### Measured
+
+The a-q diagram had been recovered before, but against an analytic field that is
+exactly quadrupolar by construction. That tests the integrator and the drive; it
+does not test the solver, because there is no solve in it. On four round rods with
+a mesh, cut cells and a grounded housing:
+
+| | Low-mass cut-off |
+| --- | --- |
+| Solved round rods | **q = 0.90525** |
+| This engine, ideal hyperbolic field | q = 0.90684 |
+| Tabulated Mathieu | q = 0.90804 |
+
+**0.31% below the tabulated ideal**, and in the right direction: round rods carry a
+12-pole component a hyperbola does not, and cancelling it at r/r0 = 1.1468 still
+leaves the 20-pole and the housing.
+
+That it is the *geometry* rather than a formula is checkable directly - changing the
+rod ratio to 1.30 moves the cut-off to 0.89978. A field that had quietly come from
+an equation could not do that.
+
+And "unstable" now means something physical. On an ideal field an unstable ion
+leaves an aperture the test had to invent; here the rods are solid, so it ends on a
+named surface - `rodYPlus`, which is the pair that goes unstable first on the a = 0
+line.
+
 ## Cylindrical symmetry
 
 SYM-1 asks that a geometry may declare cylindrical symmetry, that the solver

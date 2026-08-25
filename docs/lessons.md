@@ -284,6 +284,37 @@ about the solve.** Anything that samples the field afterwards has to honour it t
 and the place that is easiest to forget is the one where the answer is a clean zero
 that nobody thought to check.
 
+## Fixing an instance four times before fixing the class
+
+JSON has no not-a-number and no infinity. Every result surface here is JSON, and a
+single non-finite double does not degrade a document - it takes the whole thing
+down, at the serialiser, after the run has already succeeded and the numbers are
+in hand.
+
+It happened four times, on four unrelated fields:
+
+1. a convergence residual, when there was no order to resolve;
+2. a Twiss orientation, for a packet with no phase-space area to be tilted;
+3. a space-charge fraction, for a packet with no beam energy to be a fraction of;
+4. the energy drift of a driven field, which reports not-a-number *deliberately*,
+   because a field that does work on purpose has no conservation to diagnose.
+
+Each was found the same way - a run that worked and a `--json` that did not - and
+each was fixed where it was found. Three guards, then a fourth field nobody had
+guarded.
+
+The fix for the class is a converter: **a non-finite double is written as null.**
+That is the policy the rest of the surface had already arrived at by hand - an
+undefined measurement is absent, not zero, because zero is a real answer and a
+reader cannot tell the two apart if both print as zero - so making it structural
+costs nothing and closes the whole family. Reading is the mirror, so a stored
+result still round-trips, which `verify` needs.
+
+The lesson is about *when* to generalise. Once is an incident; twice is a
+coincidence; by the third the shape of the class was already visible in the
+comments being written, and the fourth was avoidable. A guard that has to be
+remembered per field is a guard that will be forgotten.
+
 ## Two arithmetic slips, for completeness
 
 **Velocity fraction is not energy fraction.** v ∝ √E, so a fractional energy

@@ -1151,6 +1151,38 @@ public sealed class CloudRunTests : IDisposable
     }
 
     [Fact]
+    public void ADrivenModelStillProducesReadableJson()
+    {
+        // A driven field reports its energy drift as not-a-number, deliberately:
+        // a field that does work on purpose has no conservation to diagnose, and
+        // printing a number there would look like a diagnostic and mean nothing.
+        //
+        // JSON has no not-a-number, so before FiniteDoubleConverter this took the
+        // whole document down at the serialiser, after the run had already
+        // succeeded. That had happened three times before on three other fields.
+        // The converter makes it a property of the surface: a non-finite double is
+        // written as null, which is the policy the rest of the surface follows.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var model = Path.Combine(_root, "models", "filter.json");
+        Assert.Equal(0, Run("new", model, "--from-template", "quadrupole-rf").ExitCode);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+
+        // Absent, not zero. Zero drift is a real and excellent answer; this is the
+        // absence of an answer, and a reader must be able to tell them apart.
+        Assert.Equal(
+            JsonValueKind.Null,
+            document.RootElement.GetProperty("maximumRelativeEnergyDrift").ValueKind);
+
+        // The rest of the document survived, which is the point.
+        Assert.True(document.RootElement.GetProperty("acceptedSteps").GetInt32() > 1000);
+    }
+
+    [Fact]
     public void APacketAtAPointIsRefusedAsUnbounded()
     {
         // Not a small error, an infinite one, and easy to write by declaring a

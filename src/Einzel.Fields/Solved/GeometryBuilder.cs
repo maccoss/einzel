@@ -1,4 +1,5 @@
 using System.Numerics;
+using Einzel.Fields.Analytic;
 using Einzel.Core.Model;
 
 namespace Einzel.Fields.Solved;
@@ -373,6 +374,11 @@ public static class GeometryBuilder
     {
         ArgumentNullException.ThrowIfNull(solve);
 
+        if (solve.Drive is not null)
+        {
+            return BuildDriven(solve);
+        }
+
         var grid = BuildGrid(solve);
         var mask = BuildMask(solve, grid);
         var (potential, report) = PoissonSolver2D.Solve(
@@ -401,5 +407,153 @@ public static class GeometryBuilder
         }
 
         return (field, report);
+    }
+
+    /// <summary>
+    /// Builds a driven geometry: one solve per independent channel, superposed with
+    /// weights that are functions of time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing about the Poisson equation is time-dependent. The field is linear in
+    /// the applied potentials, so solving once per channel at unit potential and
+    /// then varying the weights <em>is</em> the RF - which is why driving a real
+    /// geometry costs the same per step as a static one times the channel count,
+    /// and no re-solves at all.
+    /// </para>
+    /// <para>
+    /// Electrodes are grouped by their potential as a function of time, up to sign.
+    /// A quadrupole's two pairs are exact negatives, so the whole device is one
+    /// channel; add a grounded housing and it is two.
+    /// </para>
+    /// </remarks>
+    private static (IElectrostaticField Field, SolveReport Report) BuildDriven(CompiledSolvedField solve)
+    {
+        var grid = BuildGrid(solve);
+        var drive = solve.Drive!;
+
+        var groups = Channels(solve.Electrodes);
+
+        var channels = new List<IElectrostaticField>(groups.Count);
+        var direct = new List<double>(groups.Count);
+        var amplitude = new List<double>(groups.Count);
+        var phase = new List<double>(groups.Count);
+
+        SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
+
+        foreach (var group in groups)
+        {
+            // Unit potential on this channel's electrodes, carrying each one's sign,
+            // and zero on everything else. The weight put back on afterwards is the
+            // channel's own potential in volts.
+            var signs = group.Signs;
+
+            var mask = BuildMask(solve, grid, e => signs.GetValueOrDefault(e.Name, 0.0));
+
+            var (potential, report) = PoissonSolver2D.Solve(
+                mask,
+                solve.Tolerance,
+                maximumCycles: 400,
+                coarsen: coarse => BuildMask(solve, coarse, e => signs.GetValueOrDefault(e.Name, 0.0)));
+
+            IElectrostaticField basis = new SolvedField2D(
+                potential,
+                new BicubicInterpolant(potential),
+                boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous,
+                conductors: solve.Electrodes);
+
+            if (solve.Symmetry == SolveSymmetry.Cylindrical)
+            {
+                basis = new AxisymmetricField(basis);
+            }
+
+            if (solve.ReflectAboutX is { } plane)
+            {
+                basis = new SuperposedField([basis, new ReflectedField(basis, plane)]);
+            }
+
+            channels.Add(basis);
+            direct.Add(group.Direct);
+            amplitude.Add(group.Amplitude);
+            phase.Add(group.Phase);
+
+            if (report.Cycles > worst.Cycles)
+            {
+                worst = report;
+            }
+        }
+
+        RfWaveform waveform = drive.Waveform == DriveWaveform.Rectangular
+            ? new RfWaveform.Rectangular(drive.DutyCycle)
+            : new RfWaveform.Sinusoid();
+
+        var field = new DrivenSolvedField(
+            channels, direct, amplitude, phase, drive.FrequencyHz, waveform);
+
+        return (field, worst);
+    }
+
+    /// <summary>One independent time dependence, and which electrodes follow it.</summary>
+    /// <param name="Direct">The channel's DC potential, in volts.</param>
+    /// <param name="Amplitude">The channel's RF amplitude, zero to peak, in volts.</param>
+    /// <param name="Phase">Where in the cycle it sits, as a fraction.</param>
+    /// <param name="Signs">
+    /// Electrode name to the multiple of the channel it holds: plus or minus one.
+    /// </param>
+    private sealed record Channel(
+        double Direct, double Amplitude, double Phase, Dictionary<string, double> Signs);
+
+    /// <summary>Groups electrodes by their potential as a function of time, up to sign.</summary>
+    /// <remarks>
+    /// Exact rather than approximate. Two electrodes share a channel when their DC
+    /// and RF parts are equal, or both exactly negated, at the same phase - which is
+    /// what a real instrument produces, because the electrodes are wired to the same
+    /// supply. A tolerance here would silently merge two channels that were meant to
+    /// differ, and the resulting field would be plausible.
+    /// </remarks>
+    private static List<Channel> Channels(IReadOnlyList<CompiledElectrode> electrodes)
+    {
+        var channels = new List<Channel>();
+
+        foreach (var electrode in electrodes)
+        {
+            // Edge profiles hold a shape rather than a single potential, so they
+            // cannot be scaled onto a channel and stay with the static one.
+            var direct = electrode.Potential;
+            var amplitude = electrode.DriveAmplitude;
+            var phase = electrode.DrivePhase;
+
+            // Canonical direction: the first non-zero component made positive, so
+            // that a channel and its negative are the same channel.
+            var negate = direct != 0.0 ? direct < 0.0 : amplitude < 0.0;
+            var sign = negate ? -1.0 : 1.0;
+
+            var keyDirect = direct * sign;
+            var keyAmplitude = amplitude * sign;
+
+            var existing = channels.FirstOrDefault(c =>
+                c.Direct == keyDirect
+                && c.Amplitude == keyAmplitude
+                && (keyAmplitude == 0.0 || c.Phase == phase));
+
+            if (existing is null)
+            {
+                existing = new Channel(
+                    keyDirect, keyAmplitude, keyAmplitude == 0.0 ? 0.0 : phase, []);
+
+                channels.Add(existing);
+            }
+
+            existing.Signs[electrode.Name] = sign;
+        }
+
+        // A geometry whose every electrode is grounded still needs one channel, or
+        // there is no field object to return at all.
+        if (channels.Count == 0)
+        {
+            channels.Add(new Channel(0.0, 0.0, 0.0, []));
+        }
+
+        return channels;
     }
 }

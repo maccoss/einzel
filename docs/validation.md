@@ -36,6 +36,7 @@ cross-code tier is unavailable — see below.
 | Tube field penetration, against the first Bessel zero | 2.40503 against 2.404826 |
 | Axisymmetric convergence order, 32 to 256 cells | 1.84 / 2.00 / 1.95 |
 | Total energy across an einzel lens | 6.4e-10 |
+| Low-mass cut-off on **solved** round rods, against tabulated Mathieu | q = 0.90525 against 0.90804, 0.31% |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
@@ -143,12 +144,10 @@ covering everything.
   the Ion Processor now has both figures of merit it needs — turn-around time and
   emittance — but not the trap geometry to measure them on, and the segmented
   quadrupole needs three dimensions.
-- **RF exists but only as an analytic field.** Time-domain integration through a
-  driven field works and recovers the stability diagram for both sinusoidal and
-  rectangular drives, which §19 calls the single best test that an RF path is
-  correct. What does not exist: RF on a *solved* geometry (the basis fields make
-  it nearly free, but nothing wires it), the model format cannot declare a drive,
-  and there is no sequencer, so a trap cannot be operated in stages.
+- **No sequencer.** RF works on analytic *and* solved geometry, and the model
+  format declares a drive - but only one, applied for the whole run. A trap that
+  fills, isolates, then extracts needs the drive to change partway through, and
+  there is no way to say so.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
 - **No 3D.** Every solve is two-dimensional - translational or axisymmetric. This

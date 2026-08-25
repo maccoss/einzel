@@ -190,6 +190,48 @@ and `temperature` are the two widths whose product the emittance is, so a cloud
 with one and not the other has an emittance of exactly zero — correctly, since
 every ion is then parallel — and a cloud with neither has no packet to measure.
 
+## Driving a geometry
+
+```json
+"solve": {
+  "drive": {
+    "frequency": { "value": 1, "unit": "MHz" },
+    "waveform": "sinusoid",
+    "dutyCycle": 0.5
+  },
+  "electrodes": [
+    { "name": "rodXPlus", ...,
+      "potential":      { "value": 0, "unit": "V" },
+      "driveAmplitude": { "value": 500, "unit": "V" },
+      "drivePhase": 0 },
+    { "name": "rodYPlus", ...,
+      "potential":      { "value": 0, "unit": "V" },
+      "driveAmplitude": { "value": -500, "unit": "V" } }
+  ]
+}
+```
+
+**One generator per solve.** A real instrument has a supply and electrodes tapped
+off it at various amplitudes and phases; modelling it the other way round would let
+a document declare two frequencies on one structure, which is a different
+instrument and almost always a mistake.
+
+| | |
+| --- | --- |
+| `frequency` | On the solve. The one thing every electrode shares |
+| `waveform` | `sinusoid` (Mathieu) or `rectangular` (Meissner). Their stability boundaries are in different places: the square-wave cut-off is q = 0.712 against a sinusoid's 0.908 |
+| `dutyCycle` | Rectangular only. Away from one half the wave carries a mean of 2d - 1, which enters the equation of motion exactly where a DC offset would - the trick of a digital mass filter |
+| `driveAmplitude` | Per electrode, zero to peak, **signed**. A negative amplitude is the same as a half-cycle of phase |
+| `drivePhase` | Per electrode, as a fraction of a cycle. Zero when omitted; a half is antiphase; a ramp along a structure is a travelling wave |
+| `potential` | Still the DC part, and still what an undriven electrode holds |
+
+An amplitude with no `drive` block is **refused**, naming the electrode. A document
+that thinks it declared RF and did not is the expensive kind of silence.
+
+Nothing is re-solved as the drive swings: electrodes sharing a time dependence
+share one basis solve, and a quadrupole's two pairs are exact negatives, so four
+rods reduce to one. See [Numerics](numerics.md).
+
 ## What a solve is a cross-section of
 
 ```json
