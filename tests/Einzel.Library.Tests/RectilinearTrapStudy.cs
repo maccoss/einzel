@@ -87,36 +87,85 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
     }
 
     [Fact]
-    public void FlatPlatesAreAMuchCruderQuadrupoleThanRoundRods()
+    public void ThisTrapIsAMuchCruderQuadrupoleThanRoundRods()
     {
         // Both devices measured the same way, on the same quantity, so the answer
-        // is a comparison rather than an isolated number. The rectilinear trap is
-        // put in its trapping configuration - side plates against front and back -
-        // which is what the RF drives when the trap is trapping.
+        // is a comparison rather than an isolated number. The trap is put in its
+        // trapping configuration - side plates against front and back - which is
+        // what the RF drives when the trap is trapping.
         //
-        // Flat plates should be far worse, and that is not a defect: a rectilinear
-        // trap is chosen for what it is easy to build and easy to cut a slot in,
-        // and it pays for that in field quality. Quantifying the payment is the
-        // point.
-        var trap = Compile(With(Template(), ("sidePotential", 100.0), ("frontPotential", -100.0), ("pushPotential", -100.0)));
+        // The quantity is the largest unwanted multipole rather than the 12-pole
+        // specifically. For four identical round rods the 12-pole is the largest by
+        // symmetry, and every odd order vanishes identically. This trap has a slot
+        // in one plate and not the other, so it is not four-fold symmetric and its
+        // odd orders do not vanish - measuring only the 12-pole would name the
+        // wrong aberration and attribute it to the plate shape.
+        var trap = Compile(With(
+            Template(), ("sidePotential", 100.0), ("frontPotential", -100.0), ("pushPotential", -100.0)));
+
         var quadrupole = Compile(Io.ModelJson.Parse(DeviceTemplates.Read("quadrupole")));
 
-        var trapFraction = Math.Abs(TwelvePoleFraction(trap, 0.5));
-        var rodFraction = Math.Abs(TwelvePoleFraction(quadrupole, 0.5));
+        var trapField = FieldAssembly.Build(trap);
+        var r0 = trap.Parameters["inscribedRadius"].In("m");
+        var terms = Multipoles(trapField, 0.5 * r0, highestOrder: 10);
 
-        output.WriteLine($"rectilinear, flat plates   12-pole/quadrupole = {trapFraction:E3}");
-        output.WriteLine($"round rods at 1.1468       12-pole/quadrupole = {rodFraction:E3}");
-        output.WriteLine($"ratio                      {trapFraction / rodFraction:F1}x");
+        output.WriteLine("rectilinear trap, trapping configuration, at r0/2:");
+
+        for (var order = 1; order <= 10; order++)
+        {
+            if (order != 2)
+            {
+                output.WriteLine($"  order {order,2}   {terms[order] / terms[2]:E3} of the quadrupole");
+            }
+        }
+
+        var (trapOrder, trapFraction) = WorstMultipole(trap, 0.5);
+        var (rodOrder, rodFraction) = WorstMultipole(quadrupole, 0.5);
+
+        output.WriteLine(string.Empty);
+        output.WriteLine($"trap        worst is order {trapOrder,2} at {trapFraction:E3}");
+        output.WriteLine($"round rods  worst is order {rodOrder,2} at {rodFraction:E3}");
+        output.WriteLine($"ratio       {trapFraction / rodFraction:F1}x");
 
         // The trapping configuration must actually be quadrupolar at all, or the
         // fraction is a ratio of two numbers that mean nothing.
-        var (a2, _, _) = Multipoles(FieldAssembly.Build(trap), 0.5 * trap.Parameters["inscribedRadius"].In("m"));
-        Assert.True(Math.Abs(a2) > 1.0, $"the trapping configuration is not quadrupolar; A2 = {a2:E3}");
+        Assert.True(Math.Abs(terms[2]) > 1.0, $"the trapping configuration is not quadrupolar; A2 = {terms[2]:E3}");
+
+        // Round rods are four-fold symmetric, so their worst term should be an even
+        // one. If an odd order won there, the measurement is picking up noise.
+        Assert.True(rodOrder % 2 == 0, $"the round-rod quadrupole's worst term was order {rodOrder}, which is odd");
+
+        // Which of the two departures from a round-rod quadrupole is responsible?
+        // Narrowing the slot leaves the flat plates untouched and takes the
+        // y-asymmetry away, so whatever collapses was the slot's.
+        var narrowSlot = Compile(With(
+            Template(),
+            ("sidePotential", 100.0), ("frontPotential", -100.0), ("pushPotential", -100.0),
+            ("slotWidth", 0.1)));
+
+        var narrowTerms = Multipoles(
+            FieldAssembly.Build(narrowSlot), 0.5 * r0, highestOrder: 10);
+
+        output.WriteLine(string.Empty);
+        output.WriteLine("with the slot narrowed from 1.0 mm to 0.1 mm:");
+        output.WriteLine($"  order  1   {narrowTerms[1] / narrowTerms[2]:E3}  (was {terms[1] / terms[2]:E3})");
+        output.WriteLine($"  order  6   {narrowTerms[6] / narrowTerms[2]:E3}  (was {terms[6] / terms[2]:E3})");
+
+        // The dipole is the slot's; the 12-pole is the plates'. Asserted, because
+        // the two are quoted separately and attributing one to the other is the
+        // mistake this test exists to prevent.
+        Assert.True(
+            narrowTerms[1] / narrowTerms[2] < 0.5 * (terms[1] / terms[2]),
+            "narrowing the slot did not reduce the dipole, so the dipole is not the slot's");
+
+        Assert.True(
+            Math.Abs((narrowTerms[6] / narrowTerms[2]) - (terms[6] / terms[2])) < 0.5 * (terms[6] / terms[2]),
+            "narrowing the slot changed the 12-pole substantially, so it is not a property of the plates alone");
 
         Assert.True(
             trapFraction > 10.0 * rodFraction,
-            $"flat plates gave {trapFraction:E3} against round rods at {rodFraction:E3}, which is closer than "
-            + "flat plates should manage and suggests the trapping configuration is not what it should be");
+            $"the trap gave {trapFraction:E3} against round rods at {rodFraction:E3}, which is closer than "
+            + "flat plates and a slot should manage and suggests the trapping configuration is not what it should be");
     }
 
     [Fact]
@@ -196,8 +245,14 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
 
         var measured = TurnAround(document);
 
-        var fromNaive = ClosedForm(species, 300.0, push / (2.0 * r0));
-        var fromSolved = ClosedForm(species, 300.0, solved);
+        // From the compiled cloud rather than a literal. Both sides of the
+        // comparison have to be about the same physics, and a template whose
+        // temperature was edited would otherwise fail this test for a reason that
+        // has nothing to do with the field.
+        var temperature = model.Cloud.TemperatureK;
+
+        var fromNaive = ClosedForm(species, temperature, push / (2.0 * r0));
+        var fromSolved = ClosedForm(species, temperature, solved);
 
         output.WriteLine($"closed form at the naive field    {fromNaive * 1e9:F3} ns");
         output.WriteLine($"closed form at the solved field   {fromSolved * 1e9:F3} ns");
@@ -269,10 +324,10 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
         // figure.
         var document = Template();
 
-        var thermal = Fwhm(document, temperature: true, depth: 0.0, width: 0.0);
-        var withDepth = Fwhm(document, temperature: true, depth: 0.2, width: 0.0);
-        var withWidth = Fwhm(document, temperature: true, depth: 0.0, width: 0.2);
-        var everything = Fwhm(document, temperature: true, depth: 0.2, width: 0.2);
+        var thermal = Fwhm(document, depth: 0.0, width: 0.0);
+        var withDepth = Fwhm(document, depth: 0.2, width: 0.0);
+        var withWidth = Fwhm(document, depth: 0.0, width: 0.2);
+        var everything = Fwhm(document, depth: 0.2, width: 0.2);
 
         output.WriteLine($"thermal only (turn-around)   {thermal * 1e9,8:F2} ns");
         output.WriteLine($"+ 0.2 mm depth               {withDepth * 1e9,8:F2} ns");
@@ -280,7 +335,15 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
         output.WriteLine($"all three                    {everything * 1e9,8:F2} ns");
 
         // Each pair-wise run already contains the thermal term, so the depth and
-        // width contributions are what is left when it is taken back out.
+        // width contributions are what is left when it is taken back out. Asserted
+        // rather than clamped: a negative difference means adding a spread made the
+        // peak narrower, which is not sampling noise at this size, and taking a
+        // square root of it would report the real failure as a NaN out of range.
+        Assert.True(
+            withDepth > thermal && withWidth > thermal,
+            $"adding a spatial spread did not widen the peak: thermal {thermal * 1e9:F2} ns, "
+            + $"with depth {withDepth * 1e9:F2} ns, with width {withWidth * 1e9:F2} ns");
+
         var fromDepth = Math.Sqrt((withDepth * withDepth) - (thermal * thermal));
         var fromWidth = Math.Sqrt((withWidth * withWidth) - (thermal * thermal));
 
@@ -312,46 +375,79 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
         // that started deeper catches the one in front. For a uniform field it sits
         // at twice the source depth, which would be about 6 mm here.
         //
-        // It is not there. The spread grows linearly with drift over the whole
-        // practical range, so the focus - if it is anywhere - is at essentially
-        // zero drift, and a detector at any usable distance is far past it. That is
-        // what a field varying by a factor of two across the packet does to a
-        // first-order focusing condition derived for a uniform one, and it is the
-        // reason a real instrument adds a second acceleration stage rather than
-        // moving the detector.
+        // It is not there. The spread grows monotonically over the whole practical
+        // range, so the focus - if it is anywhere - is at essentially zero drift
+        // and a detector at any usable distance is far past it. That is what a
+        // field varying by a factor of two across the packet does to a first-order
+        // condition derived for a uniform one, and it is the reason a real
+        // instrument adds a second acceleration stage rather than moving the
+        // detector.
+        //
+        // Run at two mesh densities, because changing the drift also changes the
+        // solve domain and therefore the cell size: the y extent grows with the
+        // drift while the interval count is rounded to a power of two, so a scan at
+        // one mesh compares four different discretisations and a trend of the right
+        // sign would be indistinguishable from a discretisation artefact. If the
+        // slope survives refinement it is physics.
         var document = Template();
 
-        output.WriteLine("drift / mm   arrival FWHM / ns");
+        output.WriteLine("drift / mm    20 cells/r0    40 cells/r0");
 
-        var points = new List<(double Drift, double Fwhm)>();
+        var slopes = new List<double>();
+        double[] coarse = [];
 
-        foreach (var drift in new[] { 2.0, 5.0, 8.0, 11.0 })
+        foreach (var cells in new[] { 20.0, 40.0 })
         {
-            var fwhm = ArrivalSpread(With(document, ("driftLength", drift)), ions: 500);
-            points.Add((drift, fwhm));
+            var points = new List<(double Drift, double Fwhm)>();
 
-            output.WriteLine($"{drift,10:F1}   {fwhm * 1e9,17:F2}");
+            foreach (var drift in new[] { 2.0, 5.0, 8.0, 11.0 })
+            {
+                var fwhm = ArrivalSpread(
+                    With(document, ("driftLength", drift), ("cellsPerRadius", cells)), ions: 500);
+
+                points.Add((drift, fwhm));
+            }
+
+            for (var k = 1; k < points.Count; k++)
+            {
+                Assert.True(
+                    points[k].Fwhm > points[k - 1].Fwhm,
+                    $"at {cells:F0} cells/r0 the peak narrowed from {points[k - 1].Fwhm * 1e9:F2} to "
+                    + $"{points[k].Fwhm * 1e9:F2} ns between {points[k - 1].Drift:F1} and {points[k].Drift:F1} mm, "
+                    + "so there is a focus after all");
+            }
+
+            slopes.Add(
+                (points[^1].Fwhm - points[0].Fwhm) / (points[^1].Drift - points[0].Drift));
+
+            if (cells > 20.0)
+            {
+                for (var k = 0; k < points.Count; k++)
+                {
+                    output.WriteLine($"{points[k].Drift,10:F1}   {coarse[k] * 1e9,12:F2}   {points[k].Fwhm * 1e9,12:F2}");
+                }
+            }
+            else
+            {
+                coarse = [.. points.Select(pt => pt.Fwhm)];
+            }
         }
-
-        var slope = (points[^1].Fwhm - points[0].Fwhm) / (points[^1].Drift - points[0].Drift);
 
         output.WriteLine(string.Empty);
-        output.WriteLine($"slope {slope * 1e9 / 1e-3 * 1e-3:F1} ns per mm, and monotone throughout");
+        output.WriteLine($"slope {slopes[0] * 1e9:F1} ns/mm coarse, {slopes[1] * 1e9:F1} ns/mm fine");
         output.WriteLine("an ideal-field first-order focus would be at 2 x 3 mm = 6 mm");
 
-        // Monotone: every step wider than the last. One interior minimum would be a
-        // focus, and there is none.
-        for (var k = 1; k < points.Count; k++)
-        {
-            Assert.True(
-                points[k].Fwhm > points[k - 1].Fwhm,
-                $"the peak narrowed from {points[k - 1].Fwhm * 1e9:F2} to {points[k].Fwhm * 1e9:F2} ns between "
-                + $"{points[k - 1].Drift:F1} and {points[k].Drift:F1} mm, so there is a focus after all");
-        }
+        // Monotone at both meshes is asserted above. Here the quantity that gets
+        // published has to survive refinement too, or the number is the mesh's.
+        Assert.InRange(slopes[1] / slopes[0], 0.9, 1.1);
     }
 
-    /// <summary>Arrival width with each source spread switched on or off, in millimetres.</summary>
-    private static double Fwhm(ModelDocument document, bool temperature, double depth, double width)
+    /// <summary>
+    /// Arrival width with the spatial spreads set, in millimetres. The temperature
+    /// stays as the template declares it, since it is the one contribution that is
+    /// always present.
+    /// </summary>
+    private static double Fwhm(ModelDocument document, double depth, double width)
     {
         var configured = document with
         {
@@ -360,7 +456,6 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
                 Cloud = document.Source!.Cloud! with
                 {
                     Ions = 1500,
-                    Temperature = temperature ? document.Source!.Cloud!.Temperature : null,
                     LongitudinalSpread = depth > 0.0 ? new QuantityValue(depth, "mm") : null,
                     TransverseSpread = width > 0.0 ? new QuantityValue(width, "mm") : null,
                 },
@@ -412,7 +507,10 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
     /// <summary>Flies a model's declared cloud and returns the peak it forms.</summary>
     private static Analysis.ArrivalTimePeak Fly(ModelDocument document)
     {
-        var model = ModelValidator.Validate(document).Model!;
+        // Through Compile, so an override that puts a parameter out of bounds
+        // reports the constraint it broke rather than a null reference three lines
+        // later.
+        var model = Compile(document);
         var field = FieldAssembly.Build(model);
         var species = IonSpecies.FromModel(model);
 
@@ -449,11 +547,25 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
         return Analysis.ArrivalTimePeak.FromArrivals(arrivals, cloud.Length);
     }
 
-    /// <summary>Multipole content on a circle, by discrete cosine transform.</summary>
-    private static (double A2, double A6, double A10) Multipoles(IElectrostaticField field, double radius)
+    /// <summary>
+    /// Multipole content on a circle, by discrete cosine transform, to the order
+    /// asked for.
+    /// </summary>
+    /// <remarks>
+    /// Odd orders included, unlike the round-rod version of this helper. A
+    /// quadrupole of four identical rods is four-fold symmetric and its odd terms
+    /// vanish identically, so measuring them there says nothing. This trap is not:
+    /// the front plate is split by a slot and the back plate is solid, so it is
+    /// mirror-symmetric in x and not in y, and that asymmetry radiates into the odd
+    /// cosines. Projecting only the even ones would measure the wrong aberration
+    /// and report it as the whole story.
+    /// </remarks>
+    private static double[] Multipoles(IElectrostaticField field, double radius, int highestOrder)
     {
-        const int Samples = 512;
-        double a2 = 0.0, a6 = 0.0, a10 = 0.0;
+        const int Samples = 1024;
+
+        var cosine = new double[highestOrder + 1];
+        var sine = new double[highestOrder + 1];
 
         for (var k = 0; k < Samples; k++)
         {
@@ -461,21 +573,61 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
             var point = new Vec3(radius * Math.Cos(theta), radius * Math.Sin(theta), 0.0);
             var phi = field.PotentialAt(in point);
 
-            a2 += phi * Math.Cos(2.0 * theta);
-            a6 += phi * Math.Cos(6.0 * theta);
-            a10 += phi * Math.Cos(10.0 * theta);
+            for (var order = 0; order <= highestOrder; order++)
+            {
+                cosine[order] += phi * Math.Cos(order * theta);
+                sine[order] += phi * Math.Sin(order * theta);
+            }
         }
 
         var scale = 2.0 / Samples;
-        return (a2 * scale, a6 * scale, a10 * scale);
+        var magnitude = new double[highestOrder + 1];
+
+        for (var order = 0; order <= highestOrder; order++)
+        {
+            // Both phases, combined into one amplitude. Projecting onto the cosine
+            // alone is blind to any asymmetry about the x axis - and the slot in
+            // the front plate is exactly that, so a cosine-only projection would
+            // report the odd orders as vanishing and the slot as costing nothing.
+            magnitude[order] = Math.Sqrt(
+                (cosine[order] * cosine[order]) + (sine[order] * sine[order])) * scale;
+        }
+
+        return magnitude;
     }
 
-    private static double TwelvePoleFraction(CompiledModel model, double fraction)
+    /// <summary>
+    /// The largest unwanted multipole as a fraction of the quadrupole term.
+    /// </summary>
+    /// <remarks>
+    /// Every order but 2, rather than order 6 alone. What matters to an ion is the
+    /// biggest departure from a pure quadrupole, and which order that is depends on
+    /// the geometry - for round rods it is the 12-pole by symmetry, and for a trap
+    /// with a slot in one plate it need not be.
+    /// </remarks>
+    private static (int Order, double Fraction) WorstMultipole(CompiledModel model, double fraction)
     {
         var field = FieldAssembly.Build(model);
         var r0 = model.Parameters["inscribedRadius"].In("m");
-        var (a2, a6, _) = Multipoles(field, fraction * r0);
+        var terms = Multipoles(field, fraction * r0, highestOrder: 10);
 
-        return a6 / a2;
+        var worst = (Order: 0, Fraction: 0.0);
+
+        for (var order = 1; order <= 10; order++)
+        {
+            if (order == 2)
+            {
+                continue;
+            }
+
+            var share = terms[order] / terms[2];
+
+            if (share > worst.Fraction)
+            {
+                worst = (order, share);
+            }
+        }
+
+        return worst;
     }
 }

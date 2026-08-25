@@ -354,7 +354,7 @@ public sealed class SpaceChargeTests(ITestOutputHelper output)
         // Time goes as the inverse square root of energy, so a fractional energy
         // spread is half of it in flight time. A factor of two here is the whole
         // difference between meeting the budget and missing it.
-        Assert.Equal(0.5 * baseline.EnergyFraction, baseline.TimingFraction, 1e-15);
+        Assert.Equal(0.5 * baseline.EnergyFraction!.Value, baseline.TimingFraction!.Value, 1e-15);
     }
 
     [Fact]
@@ -385,7 +385,7 @@ public sealed class SpaceChargeTests(ITestOutputHelper output)
 
         output.WriteLine($"loading {at.Population:N0} gives {at.TimingFraction / 1e-6:F3} ppm");
 
-        Assert.Equal(1e-6, at.TimingFraction, 1e-9);
+        Assert.Equal(1e-6, at.TimingFraction!.Value, 1e-9);
     }
 
     [Fact]

@@ -54,7 +54,7 @@ public sealed record QuantityValue(double Value, string Unit)
 
         var value = ExpressionEvaluator.Evaluate(Expression, parameters, path);
 
-        if (!Components.Matches(value, expected))
+        if (!Components.Matches(Expression, value, expected))
         {
             throw new EinzelException(new EinzelError
             {
@@ -180,7 +180,7 @@ public sealed record VectorValue(IReadOnlyList<double> Value, string Unit)
             var component = ExpressionEvaluator.Evaluate(
                 Expression[i], parameters, path + "/expression/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-            if (!Components.Matches(component, expected))
+            if (!Components.Matches(Expression[i], component, expected))
             {
                 throw new EinzelException(new EinzelError
                 {
@@ -189,6 +189,18 @@ public sealed record VectorValue(IReadOnlyList<double> Value, string Unit)
                     Constraint = $"this field requires a vector of dimension {expected}",
                     Observed = new ObservedValue(component.SiValue, component.Dimension.ToString()),
                     Suggestion = $"the expression '{Expression[i]}' produces dimension {component.Dimension}",
+                });
+            }
+
+            if (!double.IsFinite(component.SiValue))
+            {
+                throw new EinzelException(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = path + "/expression/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Constraint = "a vector component must be finite",
+                    Observed = new ObservedValue(component.SiValue, "1"),
+                    Suggestion = $"the expression '{Expression[i]}' is not finite; check for a division by zero",
                 });
             }
 
@@ -358,23 +370,38 @@ internal static class Components
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Exact, with one exception: a dimensionless <em>zero</em> satisfies any
-    /// dimension. The grammar has no unit literals, so a bare 0 in an expression is
-    /// dimensionless and there is otherwise no way to write "on axis" - which every
-    /// placement off the origin needs for its other two components.
+    /// Exact, with one exception: an expression that is <em>written</em> as a
+    /// literal zero satisfies any dimension. The grammar has no unit literals, so a
+    /// bare 0 is dimensionless and there is otherwise no way to write "on axis" -
+    /// which every placement off the origin needs for its other two components.
     /// </para>
     /// <para>
-    /// Safe because zero is the one value whose unit conversion is the identity:
-    /// nothing is being guessed, and the ambiguity that makes units mandatory here
-    /// - is 4000 volts or kilovolts - does not exist at zero. It is narrow on
-    /// purpose. A dimensionless expression with any other value is still refused,
-    /// and a misspelled parameter fails as an unknown name long before it could
-    /// reach this.
+    /// The test is on the text, not on the value, and that distinction is the whole
+    /// design. A value test would make dimensional validity depend on a number: a
+    /// document naming a dimensionless parameter that happens to be zero would
+    /// validate at nominal and then fail with a units error partway through a sweep
+    /// when the optimiser moved it off zero. Dimensions are a property of what was
+    /// written and must not change under a parameter override.
+    /// </para>
+    /// <para>
+    /// Safe because a literal zero is the one value whose unit conversion is the
+    /// identity: the ambiguity that makes units mandatory here - is 4000 volts or
+    /// kilovolts - does not exist at zero. Everything else is still refused,
+    /// including a parameter whose value is zero.
     /// </para>
     /// </remarks>
-    internal static bool Matches(Quantity value, Dimension expected) =>
-        value.Dimension == expected
-        || (value.SiValue == 0.0 && value.Dimension == Dimension.Dimensionless);
+    internal static bool Matches(string? expression, Quantity value, Dimension expected) =>
+        value.Dimension == expected || IsLiteralZero(expression);
+
+    /// <summary>Whether an expression is written as a zero constant.</summary>
+    private static bool IsLiteralZero(string? expression) =>
+        expression is not null
+        && double.TryParse(
+            expression.Trim(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var literal)
+        && literal == 0.0;
 
     internal static bool SequenceEqual(IReadOnlyList<string>? left, IReadOnlyList<string>? right)
     {

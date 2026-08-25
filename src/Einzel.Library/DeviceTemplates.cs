@@ -14,10 +14,11 @@ namespace Einzel.Library;
 /// </para>
 /// <para>
 /// So these are JSON documents embedded in the assembly, not classes. A mirror
-/// pair and a quadrupole share no code at all: they name the same three electrode
-/// primitives in different arrangements, and everything below reads a Dirichlet
-/// mask without knowing which is which. Adding a third device is a fourth file
-/// here, and nothing else.
+/// pair, a quadrupole and a rectilinear trap share no code at all: they name the
+/// same three electrode primitives in different arrangements, and everything below
+/// reads a Dirichlet mask without knowing which is which. Adding a device is one
+/// more file here, and nothing else - they are discovered by a resource glob, so
+/// nothing registers them either.
 /// </para>
 /// <para>
 /// They are also the beginning of the corpus EX-1 asks for. Each carries a prose

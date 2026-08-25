@@ -115,7 +115,11 @@ public sealed record EnsembleOutcome
     /// appears when it is bad teaches nobody where the edge is. Zero for a single
     /// ion or a packet with no declared extent.
     /// </remarks>
-    public required double SpaceChargeTimingFraction { get; init; }
+    /// <remarks>
+    /// Null when the packet has no beam energy for it to be a fraction of, which a
+    /// packet still sitting in its trap does not.
+    /// </remarks>
+    public required double? SpaceChargeTimingFraction { get; init; }
 
     /// <summary>
     /// How many ions this packet could hold before space charge reaches the 1 ppm
@@ -385,7 +389,7 @@ public static class RunCommand
             ];
         }
 
-        if (charge.TimingFraction <= 0.0)
+        if (charge.TimingFraction is not > 0.0)
         {
             return [];
         }

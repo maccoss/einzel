@@ -19,9 +19,20 @@ public sealed record SpaceChargeEstimate(
     int Population,
     double EffectiveRadiusM,
     double PotentialVolts,
-    double EnergyFraction,
-    double TimingFraction)
+    double? EnergyFraction,
+    double? TimingFraction)
 {
+    /// <summary>
+    /// Whether the fractions could be computed at all.
+    /// </summary>
+    /// <remarks>
+    /// They are fractions of the beam energy, so a packet with no beam energy has
+    /// none - a packet at rest, before the instrument has accelerated it. The
+    /// self-potential and the effective radius are still real and still reported;
+    /// it is only the conversion to a fractional error that has no denominator.
+    /// </remarks>
+    public bool IsScaled => TimingFraction is not null;
+
     /// <summary>Whether the packet has no spatial extent to spread its charge over.</summary>
     /// <remarks>
     /// More than one ion at a single point is not a small error, it is an infinite
@@ -101,12 +112,7 @@ public static class SpaceCharge
 
         var radius = Math.Sqrt(5.0 / 3.0) * rootMeanSquare;
 
-        // No energy to be a fraction of. A packet at rest has a real self-potential
-        // and a real effective radius, and reporting those is useful, but the
-        // conversion to a fractional energy error divides by the beam energy - so
-        // that step is skipped rather than performed against zero. Doing it anyway
-        // produces an infinity, which is not a large number, it is an absent one.
-        if (population <= 1 || radius <= 0.0 || accelerationPotentialVolts == 0.0)
+        if (population <= 1 || radius <= 0.0)
         {
             return new SpaceChargeEstimate(population, radius, 0.0, 0.0, 0.0);
         }
@@ -114,9 +120,16 @@ public static class SpaceCharge
         var potential = population * Math.Abs(species.ChargeSi)
             / (8.0 * Math.PI * PermittivitySi * radius);
 
-        var energyFraction = Math.Abs(accelerationPotentialVolts) > 0.0
-            ? potential / Math.Abs(accelerationPotentialVolts)
-            : double.PositiveInfinity;
+        // Absent rather than infinite when there is no energy to be a fraction of.
+        // An infinity is not a large number here, it is a missing one - and it
+        // reaches a JSON serialiser that cannot write either, which is how this
+        // class of bug has surfaced three times in this codebase now.
+        if (Math.Abs(accelerationPotentialVolts) <= 0.0)
+        {
+            return new SpaceChargeEstimate(population, radius, potential, null, null);
+        }
+
+        var energyFraction = potential / Math.Abs(accelerationPotentialVolts);
 
         return new SpaceChargeEstimate(population, radius, potential, energyFraction, 0.5 * energyFraction);
     }

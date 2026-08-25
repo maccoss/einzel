@@ -92,14 +92,16 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
   | | |
   | --- | --- |
-  | 12-pole fraction, flat plates vs round rods | 7.12e-3 vs 2.41e-5 — **296× worse**, and not a defect |
+  | Largest unwanted multipole, this trap vs round rods | order 1 at 5.43e-2 vs order 6 at 2.41e-5 — **2,258× worse** |
   | Turn-around from the naive V/2r₀ | 3.448 ns, **18.8% low** |
   | Turn-around from the solved field | 4.215 ns, **0.7% low** |
   | Measured through the geometry | 4.243 ns |
 
+  **The dominant aberration is a dipole, and it is the slot's, not the plates'.** Narrowing the slot 10× collapses it 96-fold (5.43e-2 → 5.69e-4) while the 12-pole barely moves (7.12e-3 → 6.06e-3), so the 12-pole is what flat plates cost (~250× round rods) and the dipole is what the slot costs, seven times larger again. A dipole displaces the trap centre rather than distorting the well, which for an extraction trap is the aberration that matters most. An earlier draft reported only the 12-pole and called it 296×; that projection used cosines alone, which is exact for four-fold-symmetric round rods and blind to a slot that breaks symmetry about x — the asymmetry lives entirely in the sine terms.
+
   Same lesson as the mirror's four-penetration-depth rule being 10 mm out: the formula is right, the number fed into it is not. And **turn-around is only 1.7% of the arrival spread** — decomposing a 0.2 mm packet gives 4.28 ns thermal, 231.9 ns depth, 87.2 ns width, closing to 0.2% in quadrature. There is also no useful space focus: the spread grows monotonically at 20.7 ns/mm from 2 to 11 mm, because a field varying 2× across the packet destroys a focusing condition derived for a uniform one.
 
-  **The gap this exposed matters more than the numbers: electrodes do not stop ions.** Nothing in transport tests whether a trajectory entered a conductor, so ions pass through the front plate as readily as through the slot and transmission reads 100% regardless. Every transmission figure from this template is meaningless until it is wired, and ACC-5's "transmission itemised by loss surface" has no loss surfaces. `CompiledElectrode.FirstEntry` already finds the entry point in closed form and the integrator already lands exactly on declared events, so it is wiring rather than new numerics.
+  **The gap this exposed matters more than the numbers: electrodes do not stop ions.** Nothing in transport tests whether a trajectory entered a conductor, so ions pass through the front plate as readily as through the slot and transmission reads 100% regardless. Every transmission figure from this template is meaningless until it is wired, and ACC-5's "transmission itemised by loss surface" has no loss surfaces. It also bounds the **width** row of the decomposition above — a 0.2 mm cloud through a 1 mm slot puts a tail of ions across the plate, and inside a Dirichlet mask they coast field-free through the metal — so read 87.2 ns as an upper bound. The thermal and depth rows involve no transverse excursion and are unaffected. `CompiledElectrode.FirstEntry` already finds the entry point in closed form and the integrator already lands exactly on declared events, so it is wiring rather than new numerics.
 
 Adding an einzel lens or a funnel should need only a fourth file. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

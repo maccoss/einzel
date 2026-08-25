@@ -226,6 +226,37 @@ measurement should be **absent, not zero**. Zero is a real emittance and a real 
 so a reader cannot tell a measured zero from an absent measurement if both print as
 zero. The field is nullable and omitted when there was nothing to measure.
 
+## Projecting onto half a basis
+
+The rectilinear trap's field quality was measured by expanding the potential on a
+circle in multipoles and comparing the largest unwanted term against the round-rod
+quadrupole's. The helper was copied from the quadrupole study, where it projects
+onto **cos(nθ) only**.
+
+That is exact there and wrong here. Four identical round rods are four-fold
+symmetric, so every sine term vanishes identically and a cosine projection loses
+nothing. This trap has a slot in one plate and not the other: it is mirror
+symmetric in x and not in y, and an asymmetry about the x axis lands **entirely in
+the sine terms**. The cosine projection reported the odd orders as 1e-9 — which
+read as "the slot costs nothing" — and the published figure named the 12-pole as
+the worst aberration at 7.12e-3.
+
+With both phases, the dipole is 5.43e-2, seven times the 12-pole and the largest
+term by far. The headline changed from 296x worse than round rods to 2,258x, and
+the attribution changed with it: the 12-pole is what flat plates cost, the dipole
+is what the slot costs.
+
+What makes this worth recording is that the near-zero was **evidence**, not
+reassurance. Odd multipoles at 1e-9 in a geometry that is visibly asymmetric is
+not a small effect, it is an absent measurement, and the right response to a
+suspiciously exact zero is to ask what could make it exact rather than to bank it.
+The same instinct is already in this file under a residual of exactly zero not
+being success.
+
+Generalises to: **a symmetry that makes half a basis redundant is a property of
+the device, not of the method.** Reusing the reduced form on a device without that
+symmetry measures a projection of the answer and reports it as the answer.
+
 ## Two arithmetic slips, for completeness
 
 **Velocity fraction is not energy fraction.** v ∝ √E, so a fractional energy

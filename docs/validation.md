@@ -30,6 +30,7 @@ cross-code tier is unavailable — see below.
 | Digital working point from duty cycle | a = 0.2630 against a published 0.2640 |
 | Thermal packet emittance, sigma_x sqrt(kT/m) / v | 0.77% at 6,000 ions |
 | Turn-around through a solved trap, against the closed form at the solved field | 0.7% |
+| Drift-scan slope under mesh refinement (20 to 40 cells/r0) | 20.7 ns/mm at both, points within 0.1% |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
 | Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |

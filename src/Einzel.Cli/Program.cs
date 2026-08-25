@@ -1027,11 +1027,12 @@ public static class Program
 
             // Reported whether or not it crosses a threshold: a number that only
             // appears when it is bad teaches nobody where the edge is.
-            if (ensemble.SpaceChargePopulationLimit > 0.0)
+            if (ensemble.SpaceChargePopulationLimit > 0.0
+                && ensemble.SpaceChargeTimingFraction is { } timingFraction)
             {
                 Console.Out.WriteLine(string.Create(
                     invariant,
-                    $"space charge  {ensemble.SpaceChargeTimingFraction / 1e-6:F2} ppm from "
+                    $"space charge  {timingFraction / 1e-6:F2} ppm from "
                     + $"{ensemble.Population:N0} ions; this packet holds "
                     + $"{ensemble.SpaceChargePopulationLimit:N0} within the 1 ppm budget"));
             }

@@ -155,7 +155,10 @@ figure alone implies, or the packet is colder than 300 K, or the row is normalis
 **Turn-around is also not what limits the peak.** Decomposing the arrival spread
 of a 0.2 mm packet in this geometry gives 4.28 ns from temperature, 231.9 ns from
 depth along the extraction, and 87.2 ns from width across it. Turn-around is 1.7%
-of the total. A published Delta-t near a nanosecond therefore describes either a
+of the total. The width figure is an upper bound until electrodes stop ions - a
+0.2 mm cloud through a 1 mm slot puts a tail across the front plate, and those
+ions currently coast through the metal rather than being lost. The thermal and
+depth figures involve no transverse excursion and are unaffected. A published Delta-t near a nanosecond therefore describes either a
 far tighter packet, a space-focused geometry, or a corrected quantity - and this
 model can now tell those apart once the trap geometry is filled in further.
 

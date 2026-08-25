@@ -117,18 +117,41 @@ the cross-section of the Ion Processor
 in one file: set the side plates against the front and back and it is a trap, set
 the back plate high and it extracts.
 
-**As a trap, flat plates are a crude quadrupole.** Measured the same way as the
-round-rod device, on the same quantity, so the comparison means something:
+**As a trap, it is a crude quadrupole — and the slot costs more than the plates
+do.** Measured the same way as the round-rod device, on the same quantity, so the
+comparison means something:
 
-| | 12-pole / quadrupole |
+| | Largest unwanted multipole |
 | --- | --- |
-| Round rods at the classical 1.1468 | 2.41e-5 |
-| Flat plates | 7.12e-3 |
+| Round rods at the classical 1.1468 | order 6, at 2.41e-5 |
+| This trap | **order 1**, at 5.43e-2 |
 
-**296 times worse**, and not a defect. A rectilinear trap is chosen because flat
-plates are easy to make, easy to align, and easy to cut a slot in; the field
-quality is what it pays. The number is what turns that from a remark into a
-design input.
+**2,258 times worse.** The dominant term is a *dipole*, not the 12-pole — and a
+dipole is not a distortion of the well, it is a displacement of its centre, which
+for an extraction trap is the aberration that matters most.
+
+Attributing it takes one more measurement. Narrowing the slot from 1.0 mm to
+0.1 mm leaves the flat plates untouched and removes the asymmetry about the
+extraction axis:
+
+| | 1.0 mm slot | 0.1 mm slot |
+| --- | --- | --- |
+| Dipole (order 1) | 5.43e-2 | 5.69e-4 |
+| 12-pole (order 6) | 7.12e-3 | 6.06e-3 |
+
+The dipole collapses by 96x and the 12-pole barely moves. So **the 12-pole is what
+flat plates cost — 6.1e-3 against round rods' 2.41e-5, about 250x — and the dipole
+is what the slot costs, seven times larger again.** Neither is a defect: a
+rectilinear trap is chosen because flat plates are easy to make and easy to cut a
+slot in, and this is the bill.
+
+> An earlier version of this page reported 7.12e-3 and "296 times worse",
+> attributing the 12-pole to the plates and stopping there. That measurement
+> projected the potential onto cosines only, which is exact for four identical
+> round rods — they are four-fold symmetric, so the odd orders vanish identically —
+> and blind for this trap, whose slot breaks the symmetry about the *x* axis and
+> puts the asymmetry entirely into the sine terms. The projection now carries both
+> phases.
 
 **As an extractor, the closed form is wrong by 19%.** Turn-around time is
 2sqrt(2 ln 2) sqrt(mkT) / qE, and the question is what to use for E. Assuming
@@ -182,8 +205,17 @@ closed form, and the integrator already lands exactly on declared events - so it
 is wiring rather than new numerics.
 
 Until it is wired, **treat every transmission figure from this template as
-meaningless** and read only the arrival-time and emittance results, which are
-computed over ions that would have got through anyway.
+meaningless**. The arrival-time results need the same caution for a narrower
+reason: the slot is 1 mm wide and the declared cloud is 0.2 mm across, so a
+noticeable tail of it starts outside the aperture and crosses the front plate's
+metal instead. Inside a Dirichlet-masked region the potential is pinned to the
+electrode value, so those ions coast through the conductor field-free and still
+land on the detector.
+
+That matters most for the **width** row of the decomposition below, which is
+exactly the contribution those ions carry. The thermal and depth rows involve no
+transverse excursion and are unaffected. Read the width figure as an upper bound
+until electrodes stop ions.
 
 **The auxiliary DC electrodes are not here.** The Ion Processor's are diagonal
 wedges and horizontal pairs that impose a gradient *along* the trap axis. Every

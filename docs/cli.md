@@ -336,6 +336,17 @@ root of energy. An instrument at a first-order energy focus suppresses that to
 second order. Over-warning is the right direction for a screen whose whole purpose
 is to stop a silent error.
 
+**The energy it is a fraction of** is the accelerating potential the source
+declares. A packet that starts at rest declares none — a pulsed extraction trap
+does not — so the scale is measured instead, from the kinetic energy the ions
+actually arrived with. Two things follow. Where a source states its own energy
+nothing changed, so no existing result moves and the estimate stays independent of
+transmission losses. Where it does not, the figure pairs a packet radius from the
+moment of release with an energy from the moment of arrival, and the packet was
+denser and slower in between — so for a trap this is **not** the conservative
+direction, and it is reported rather than left to be inferred. When neither is
+available the fractions are omitted, not printed as zero.
+
 **Turn-around is reported in the Gaussian convention** so the two are directly
 comparable: it says how much of the width the extraction is responsible for, and
 how much room there is to improve anything else. Here 0.049 of 0.430 ns, so the

@@ -64,12 +64,25 @@ public static class ModelValidator
         var p = surface.Values();
 
         var (mass, charge) = ValidateIon(document.Ion, p, errors);
-        var fields = ValidateFields(document.Fields, p, errors);
+        // Fields are compiled before the source because whether a source may start
+        // at rest depends on whether anything else can accelerate it: a beam
+        // carries its own energy, a trapped packet is accelerated by the
+        // instrument. Their errors go to a separate list and are spliced back
+        // afterwards, so the reordering does not leak into the reported order -
+        // ModelValidation promises errors in document order and /source precedes
+        // /fields.
+        var fieldErrors = new List<EinzelError>();
+        var fields = ValidateFields(document.Fields, p, fieldErrors);
 
-        // Passed in because whether a source may start at rest depends on whether
-        // anything else can accelerate it. A beam carries its own energy; a
-        // trapped packet is accelerated by the instrument.
-        var source = ValidateSource(document.Source, p, errors, CanAccelerate(fields));
+        // A field that failed to compile is not evidence that nothing can
+        // accelerate the ion, it is evidence that we cannot tell. Saying otherwise
+        // adds a second error advising the author to declare a field they did
+        // declare, and one mistake should produce one error.
+        var canAccelerate = fieldErrors.Count > 0 || CanAccelerate(fields);
+
+        var source = ValidateSource(document.Source, p, errors, canAccelerate);
+        errors.AddRange(fieldErrors);
+
         var detector = ValidateDetector(document.Detector, p, errors);
         var transport = ValidateTransport(document.Transport, p, errors);
 
@@ -187,11 +200,35 @@ public static class ModelValidator
     /// Whether any declared field could put energy into an ion that starts at rest.
     /// </summary>
     /// <remarks>
-    /// Field-free space cannot, and a model with nothing else is the one case where
-    /// a source at rest is genuinely a mistake rather than a pulsed extraction.
+    /// <para>
+    /// Magnitude rather than kind. A uniform field of zero, or a solved geometry
+    /// whose every electrode is grounded, is field-free in everything but its type
+    /// discriminator - and an ion at rest in one sits there until the flight-time
+    /// ceiling expires, which is exactly the outcome the zero-potential check
+    /// exists to prevent. Testing the kind alone would narrow that check into
+    /// uselessness rather than narrowing it correctly.
+    /// </para>
+    /// <para>
+    /// Also the predicate <see cref="ValidateGeometryConsistency"/> needs for
+    /// "something can turn the ion around", so it is written once.
+    /// </para>
     /// </remarks>
-    private static bool CanAccelerate(IReadOnlyList<CompiledField>? fields) =>
-        fields is not null && fields.Any(f => f.Kind != CompiledFieldKind.FieldFree);
+    internal static bool CanAccelerate(IReadOnlyList<CompiledField>? fields) =>
+        fields is not null && fields.Any(CanDoWork);
+
+    private static bool CanDoWork(CompiledField field) => field.Kind switch
+    {
+        CompiledFieldKind.FieldFree => false,
+        CompiledFieldKind.Uniform => field.Field.LengthSquared > 0.0,
+        CompiledFieldKind.HalfSpaceUniform => field.PotentialGradientSi != 0.0,
+
+        // A solve with every electrode at the same potential has no gradient
+        // anywhere, and grounded boundaries make that potential zero.
+        CompiledFieldKind.Solved2D =>
+            field.Solve is { } solve && solve.Electrodes.Any(e => e.Potential != 0.0),
+
+        _ => true,
+    };
 
     private static SourceValues? ValidateSource(
         SourceDocument? source,
@@ -623,9 +660,50 @@ public static class ModelValidator
                 var maxY = TryQuantity(electrode.MaxY, $"{path}/maxY", length, p, errors);
                 var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
 
-                return minX is null || minY is null || maxX is null || maxY is null || potential is null
-                    ? null
-                    : new CompiledElectrode
+                if (minX is null || minY is null || maxX is null || maxY is null || potential is null)
+                {
+                    return null;
+                }
+
+                // An inverted rectangle is not an empty electrode, it is a
+                // disappeared one: the rasteriser walks from a higher index to a
+                // lower one, marks nothing, and the solve proceeds as though the
+                // electrode were never declared. That is reachable from ordinary
+                // parameter arithmetic - a derived half-width that goes negative
+                // when a gap grows past a radius - so it is exactly the kind of
+                // silent geometry failure a tolerance sweep would attribute to
+                // physics. The disc case has always rejected a non-positive
+                // radius; this is the same check for the other primitive.
+                //
+                // Equality is allowed. A rectangle of zero extent in one axis is a
+                // line segment, which is how an infinitely thin plate is written -
+                // the mirror template's cap is one - and cut cells resolve it
+                // exactly. Only min strictly greater than max is nonsense.
+                if (minX.Value.SiValue > maxX.Value.SiValue
+                    || minY.Value.SiValue > maxY.Value.SiValue)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = path,
+                        Constraint =
+                            $"rectangle '{name}' is inverted: it needs minX <= maxX and minY <= maxY, "
+                            + "and an inverted one vanishes from the solve rather than failing",
+                        Observed = new ObservedValue(
+                            maxX.Value.SiValue - minX.Value.SiValue,
+                            "m of width, by "
+                            + (maxY.Value.SiValue - minY.Value.SiValue).ToString(
+                                "G6", System.Globalization.CultureInfo.InvariantCulture)
+                            + " m of height"),
+                        Suggestion =
+                            "check the expressions that derive the bounds; a derived half-width "
+                            + "can go negative when one parameter grows past another",
+                    });
+
+                    return null;
+                }
+
+                return new CompiledElectrode
                     {
                         Name = name,
                         Shape = ElectrodeShape.Rectangle,
@@ -886,7 +964,7 @@ public static class ModelValidator
         {
             // Launching directly away from the detector is legal — a reflectron
             // does exactly that — but only if something turns the ion around.
-            var hasMirror = model.Fields.Any(f => f.Kind != CompiledFieldKind.FieldFree);
+            var hasMirror = CanAccelerate(model.Fields);
 
             if (!hasMirror)
             {
