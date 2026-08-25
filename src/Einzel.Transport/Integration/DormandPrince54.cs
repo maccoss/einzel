@@ -34,6 +34,17 @@ internal static class DormandPrince54
     /// <summary>The order of the solution that is propagated.</summary>
     public const int Order = 5;
 
+    // Stage times, as fractions of the step. Unused while the field is static -
+    // every stage then samples the same field - and load-bearing the moment it is
+    // not, because a stage evaluated at the wrong instant of an RF cycle is a
+    // wrong force applied with full fifth-order confidence.
+    private const double C2 = 1.0 / 5.0;
+    private const double C3 = 3.0 / 10.0;
+    private const double C4 = 4.0 / 5.0;
+    private const double C5 = 8.0 / 9.0;
+    private const double C6 = 1.0;
+    private const double C7 = 1.0;
+
     // Stage coefficients.
     private const double A21 = 1.0 / 5.0;
 
@@ -85,6 +96,10 @@ internal static class DormandPrince54
     /// <param name="errorPosition">Position difference between the two solutions, in metres.</param>
     /// <param name="errorVelocity">Velocity difference between the two solutions, in metres per second.</param>
     /// <param name="derivativeAtResult">The derivative at <paramref name="result"/>.</param>
+    /// <param name="timeSeconds">
+    /// The instant the step starts at. Ignored by a static field; every stage of a
+    /// driven one samples a different point in the cycle.
+    /// </param>
     public static void Step(
         in PhaseState state,
         in PhaseDerivative k1,
@@ -94,20 +109,25 @@ internal static class DormandPrince54
         out PhaseState result,
         out Vec3 errorPosition,
         out Vec3 errorVelocity,
-        out PhaseDerivative derivativeAtResult)
+        out PhaseDerivative derivativeAtResult,
+        double timeSeconds = 0.0)
     {
         var h = stepSize;
 
-        var k2 = Derivative(Offset(state, h, (A21, k1)), field, chargeToMass);
-        var k3 = Derivative(Offset(state, h, (A31, k1), (A32, k2)), field, chargeToMass);
-        var k4 = Derivative(Offset(state, h, (A41, k1), (A42, k2), (A43, k3)), field, chargeToMass);
-        var k5 = Derivative(Offset(state, h, (A51, k1), (A52, k2), (A53, k3), (A54, k4)), field, chargeToMass);
+        var k2 = Derivative(Offset(state, h, (A21, k1)), field, chargeToMass, timeSeconds + (C2 * h));
+        var k3 = Derivative(Offset(state, h, (A31, k1), (A32, k2)), field, chargeToMass, timeSeconds + (C3 * h));
+        var k4 = Derivative(
+            Offset(state, h, (A41, k1), (A42, k2), (A43, k3)), field, chargeToMass, timeSeconds + (C4 * h));
+        var k5 = Derivative(
+            Offset(state, h, (A51, k1), (A52, k2), (A53, k3), (A54, k4)),
+            field, chargeToMass, timeSeconds + (C5 * h));
         var k6 = Derivative(
-            Offset(state, h, (A61, k1), (A62, k2), (A63, k3), (A64, k4), (A65, k5)), field, chargeToMass);
+            Offset(state, h, (A61, k1), (A62, k2), (A63, k3), (A64, k4), (A65, k5)),
+            field, chargeToMass, timeSeconds + (C6 * h));
 
         result = Offset(state, h, (B1, k1), (B3, k3), (B4, k4), (B5, k5), (B6, k6));
 
-        var k7 = Derivative(result, field, chargeToMass);
+        var k7 = Derivative(result, field, chargeToMass, timeSeconds + (C7 * h));
         derivativeAtResult = k7;
 
         var fourth = Offset(state, h, (E1, k1), (E3, k3), (E4, k4), (E5, k5), (E6, k6), (E7, k7));
@@ -120,11 +140,20 @@ internal static class DormandPrince54
     /// <param name="state">The state to evaluate at.</param>
     /// <param name="field">The field.</param>
     /// <param name="chargeToMass">Charge divided by mass, in coulombs per kilogram.</param>
+    /// <param name="timeSeconds">The instant to sample a driven field at.</param>
     /// <returns>The derivative.</returns>
-    public static PhaseDerivative Derivative(in PhaseState state, IElectrostaticField field, double chargeToMass)
+    public static PhaseDerivative Derivative(
+        in PhaseState state, IElectrostaticField field, double chargeToMass, double timeSeconds = 0.0)
     {
         var position = state.Position;
-        return new PhaseDerivative(state.Velocity, field.ElectricFieldAt(in position) * chargeToMass);
+
+        // One branch, predictable, and outside nothing: a static field is by far
+        // the common case and pays a type test it will always fail the same way.
+        var acceleration = field is ITimeVaryingField driven
+            ? driven.ElectricFieldAt(in position, timeSeconds)
+            : field.ElectricFieldAt(in position);
+
+        return new PhaseDerivative(state.Velocity, acceleration * chargeToMass);
     }
 
     private static PhaseState Offset(

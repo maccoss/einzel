@@ -112,7 +112,7 @@ public static class TrajectoryIntegrator
 
         recorder?.Offer(0.0, in state, force: true);
 
-        var derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
+        var derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
         fieldEvaluations++;
 
         // A step may not outrun the field's own resolution. Computed once: the
@@ -121,7 +121,23 @@ public static class TrajectoryIntegrator
             ? settings.ResolutionCellsPerStep * field.ResolutionLength / characteristicSpeed
             : double.PositiveInfinity;
 
-        var step = Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep);
+        // A step may not outrun the drive either, and the failure is the same one
+        // in a different variable. An embedded error estimate compares two
+        // solutions of the problem it was given; if every stage of a step lands on
+        // the same phase of the cycle both agree and the step is accepted as
+        // accurate. It was accurate for the field it was shown. It was not shown
+        // the field.
+        var driven = field as ITimeVaryingField;
+
+        var periodStep = driven is not null
+            ? driven.ShortestPeriodSeconds / StepsPerRfPeriod
+            : double.PositiveInfinity;
+
+        // Computed once, since whether a field is driven does not change mid-flight.
+        var stepSettings = driven is null ? settings : settings with { TurningPointStepFactor = 0.0 };
+
+        var step = Math.Min(
+            Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep), periodStep);
         var outcome = TrajectoryOutcome.MaximumStepsExceeded;
 
         // A stopping surface is not armed until the flight has been on its
@@ -145,7 +161,7 @@ public static class TrajectoryIntegrator
                     ref state, ref time, field, settings, activeStop,
                     recorder, ref analyticDistance, out var stoppedOnDrift))
             {
-                derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
+                derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                 fieldEvaluations++;
 
                 if (stoppedOnDrift)
@@ -163,8 +179,17 @@ public static class TrajectoryIntegrator
                 continue;
             }
 
-            step = ApplyStepCaps(step, settings, in state, in derivative, characteristicSpeed, resolutionStep);
-            step = Math.Min(step, settings.MaximumFlightTime - time.Total);
+            // The turning-point cap does not apply to a driven field, and applying
+            // it is fatal rather than merely wasteful. It exists because a
+            // position-error controller can under-refine at an isolated velocity
+            // minimum, such as an ion turning in a mirror. An ion in an
+            // oscillating field is at a velocity minimum twice per cycle: turning
+            // points are its normal condition, not an event, so the cap fires
+            // continuously and drives the step to underflow. Measured: nineteen
+            // steps and a quarter of one cycle before the integration gave up.
+            step = ApplyStepCaps(
+                step, stepSettings, in state, in derivative, characteristicSpeed, resolutionStep);
+            step = Math.Min(Math.Min(step, settings.MaximumFlightTime - time.Total), periodStep);
 
             if (step < settings.MinimumStep)
             {
@@ -176,7 +201,8 @@ public static class TrajectoryIntegrator
 
             DormandPrince54.Step(
                 in state, in derivative, step, field, chargeToMass,
-                out var candidate, out var errorPosition, out var errorVelocity, out var candidateDerivative);
+                out var candidate, out var errorPosition, out var errorVelocity, out var candidateDerivative,
+                time.Total);
             fieldEvaluations += 6;
 
             var error = ErrorNorm(in state, in candidate, in errorPosition, in errorVelocity, settings);
@@ -193,18 +219,18 @@ public static class TrajectoryIntegrator
             // ion must land on so that no step straddles it, and the stopping
             // surface, which ends the flight.
             var boundaryStep = BoundaryLandingStep(
-                in state, in derivative, in candidate, step, field, chargeToMass,
+                in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
                 boundarySurface, ref fieldEvaluations);
 
             var stopStep = StopLandingStep(
-                in state, in derivative, in candidate, step, field, chargeToMass,
+                in state, in derivative, in candidate, step, field, chargeToMass, time.Total,
                 activeStop, ref fieldEvaluations);
 
             if (double.IsFinite(stopStep) && stopStep <= boundaryStep)
             {
                 DormandPrince54.Step(
                     in state, in derivative, stopStep, field, chargeToMass,
-                    out var landed, out _, out _, out _);
+                    out var landed, out _, out _, out _, time.Total);
                 fieldEvaluations += 6;
 
                 time.Add(stopStep);
@@ -221,7 +247,7 @@ public static class TrajectoryIntegrator
             {
                 DormandPrince54.Step(
                     in state, in derivative, boundaryStep, field, chargeToMass,
-                    out var onBoundary, out _, out _, out _);
+                    out var onBoundary, out _, out _, out _, time.Total);
                 fieldEvaluations += 6;
 
                 time.Add(boundaryStep);
@@ -233,7 +259,7 @@ public static class TrajectoryIntegrator
 
                 // The field on the far side is a different function, so the
                 // cached derivative is stale.
-                derivative = DormandPrince54.Derivative(in state, field, chargeToMass);
+                derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                 fieldEvaluations++;
                 continue;
             }
@@ -281,6 +307,17 @@ public static class TrajectoryIntegrator
             return field.SignedDistanceToDiscontinuity(in position);
         };
 
+    /// <summary>
+    /// How finely a step must resolve the drive.
+    /// </summary>
+    /// <remarks>
+    /// Twenty steps to a cycle. The integrator is fifth order, so this is far
+    /// more than accuracy alone would need; it is set by the fact that the error
+    /// estimator cannot see a phase it never sampled, which no order of accuracy
+    /// repairs.
+    /// </remarks>
+    private const double StepsPerRfPeriod = 20.0;
+
     private static double BoundaryLandingStep(
         in PhaseState state,
         in PhaseDerivative derivative,
@@ -288,6 +325,7 @@ public static class TrajectoryIntegrator
         double step,
         IElectrostaticField field,
         double chargeToMass,
+        double timeSeconds,
         TrajectoryStopFunction boundarySurface,
         ref long fieldEvaluations)
     {
@@ -311,7 +349,8 @@ public static class TrajectoryIntegrator
         }
 
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, boundarySurface, before, ref fieldEvaluations);
+            in state, in derivative, step, field, chargeToMass, boundarySurface, before, timeSeconds,
+            ref fieldEvaluations);
     }
 
     private static double StopLandingStep(
@@ -321,6 +360,7 @@ public static class TrajectoryIntegrator
         double step,
         IElectrostaticField field,
         double chargeToMass,
+        double timeSeconds,
         TrajectoryStopFunction? stopWhenNegative,
         ref long fieldEvaluations)
     {
@@ -337,7 +377,8 @@ public static class TrajectoryIntegrator
         }
 
         return LandingStep(
-            in state, in derivative, step, field, chargeToMass, stopWhenNegative, before, ref fieldEvaluations);
+            in state, in derivative, step, field, chargeToMass, stopWhenNegative, before, timeSeconds,
+            ref fieldEvaluations);
     }
 
     /// <summary>
@@ -359,6 +400,7 @@ public static class TrajectoryIntegrator
         double chargeToMass,
         TrajectoryStopFunction surface,
         double valueAtStart,
+        double timeSeconds,
         ref long fieldEvaluations)
     {
         var low = 0.0;
@@ -375,7 +417,8 @@ public static class TrajectoryIntegrator
             }
 
             DormandPrince54.Step(
-                in start, in startDerivative, mid, field, chargeToMass, out var probe, out _, out _, out _);
+                in start, in startDerivative, mid, field, chargeToMass,
+                out var probe, out _, out _, out _, timeSeconds);
             fieldEvaluations += 6;
 
             var value = surface(in probe);
@@ -623,6 +666,30 @@ public static class TrajectoryIntegrator
             + (species.ChargeSi * field.PotentialAt(in position));
     }
 
+    /// <summary>
+    /// Tracks the energy-conservation diagnostic, where there is one to track.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ACC-4 uses energy drift as a cheap check that the integrator is behaving,
+    /// and it has caught real bugs. It rests entirely on the field being static:
+    /// a conservative field does no net work, so any change in total energy is
+    /// the integrator's error and nothing else.
+    /// </para>
+    /// <para>
+    /// A driven field does work on the ion, deliberately and continuously - that
+    /// is what it is for. There is no conserved quantity to compare against, so
+    /// the drift is reported as not-a-number rather than as a large number.
+    /// Reporting the change against the t = 0 potential would produce a figure
+    /// that looks like a diagnostic, moves when the physics moves, and means
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// What replaces it for RF is refinement: <c>FlightTimeStudy</c> integrates at
+    /// three tolerances and reports the observed order, which tests the same thing
+    /// without needing an invariant.
+    /// </para>
+    /// </remarks>
     private static void TrackEnergyDrift(
         in PhaseState state,
         IonSpecies species,
@@ -632,6 +699,12 @@ public static class TrajectoryIntegrator
         ref double maximumDrift,
         ref long fieldEvaluations)
     {
+        if (field is ITimeVaryingField)
+        {
+            maximumDrift = double.NaN;
+            return;
+        }
+
         if (energyScale <= 0.0)
         {
             return;
