@@ -14,13 +14,14 @@ physics or the abstraction is wrong, and almost always the second.
 | `planar-mirror-pair` | Two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair |
 | `quadrupole` | Four round rods in cross-section, alternating potential |
 | `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
+| `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
 
 They **share no code at all**. All three name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
-DeviceTemplates.Names();          // ["planar-mirror-pair", "quadrupole", "rectilinear-trap"]
+DeviceTemplates.Names();          // ["einzel-lens", "planar-mirror-pair", "quadrupole", "rectilinear-trap"]
 DeviceTemplates.Read("quadrupole");
 ```
 
@@ -238,6 +239,62 @@ rectangle.
 and grid electrodes that are transparent to most of the beam, and there is
 currently no way to declare one — a mesh would have to be modelled as its wires,
 which the cross-section cannot do either.
+
+## The einzel lens, and why it needed a new operator
+
+Three coaxial tubes, the outer two earthed and the middle one at a voltage. It is
+the device the platform is named after and **it could not be modelled at all until
+this turn**, because a translational cross-section turns three tubes into three
+pairs of bars - which deflect rather than focus. `"symmetry": "cylindrical"` on the
+solve makes x the axis of rotation and y the radius, and a rectangle in that
+half-plane is a ring in space.
+
+With the shipped parameters - 5 mm bore, 500 V on the middle electrode, a 1 keV
+beam - a ray launched 1 mm off axis and parallel to it crosses at 129.1 mm, so the
+focal length is 81 mm, about sixteen bore radii.
+
+**It converges for either sign of the middle voltage.** That is the classic
+non-obvious property of an einzel lens and the check a merely plausible field
+fails. The ion passes through one converging gap and one diverging gap whichever
+way the electrode is driven; it is slower in the converging one when the middle
+decelerates it, and faster in the diverging one, and the asymmetry always favours
+convergence.
+
+| Middle electrode | Crossing |
+| --- | --- |
+| +500 V | 129.1 mm |
+| -500 V | 273.3 mm |
+
+The decelerating sign is much the stronger, which is why real lenses are usually
+run that way - and why running one too close to the beam energy makes it a mirror
+instead.
+
+| Middle / V | Focal length |
+| --- | --- |
+| 300 | 287.3 mm |
+| 400 | 143.8 mm |
+| 500 | 81.1 mm |
+| 600 | 48.8 mm |
+
+**Spherical aberration comes out in the right direction**: a ray at 2 mm focuses
+4.7 mm shorter than one at 0.5 mm. Every real lens has it and it is why a beam
+focuses to a blur; a paraxial field would put every ray in the same place.
+
+### What "unipotential" means, measured
+
+Both outer electrodes are earthed, so an ion that starts and ends inside them has
+fallen through no net potential. The check is exact and it passes - **total energy
+is conserved to 6.4e-10** across a path that crosses a strong field twice.
+
+The ion's *kinetic* energy, though, comes back only to 2.5e-6. That is not the
+integrator, it is the instrument: the launch point sits a quarter of the way down
+the entrance tube, where the middle electrode's field has not quite finished
+decaying, and the potential there is 2.457 mV against a 1000 V beam - which is the
+2.458e-6 discrepancy to four figures.
+
+So **a lens is unipotential only to the extent its tubes are long**, the residual
+falls as exp(-2.405 L / r), and how long is long enough is a design question the
+solve can answer rather than an assumption to make.
 
 ## The quadrupole, as a worked example
 

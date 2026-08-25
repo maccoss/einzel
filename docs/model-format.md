@@ -190,6 +190,36 @@ and `temperature` are the two widths whose product the emittance is, so a cloud
 with one and not the other has an emittance of exactly zero — correctly, since
 every ion is then parallel — and a cloud with neither has no packet to measure.
 
+## What a solve is a cross-section of
+
+```json
+"solve": {
+  "symmetry": "cylindrical",
+  "minY": { "value": 0, "unit": "mm" },
+  ...
+}
+```
+
+`translational` (the default) extrudes the plane along the third axis: a
+cross-section, which is what a mass filter or a rectilinear trap is.
+`cylindrical` rotates it about the x axis, with **y as the radius**, so the domain
+must lie at y >= 0 and a negative `minY` is refused.
+
+This is not presentation. It changes the operator - in cylindrical coordinates the
+radial part of the Laplacian gains a term from the shrinking circumference of a
+ring near the axis - and a field solved with the wrong one converges perfectly well
+to the wrong answer. See [Numerics](numerics.md) for the discretisation and what it
+is checked against.
+
+Everything else behaves as before, and that is the point of SYM-1: an electrode is
+declared the same way, and a rectangle that was a bar becomes a ring. The ion is
+launched and tracked in ordinary three-dimensional space; nothing above the field
+knows the solve happened in a half-plane.
+
+The axis is a symmetry plane whatever `bottomEdge` says, and is forced to be one.
+Requiring the author to declare it would be an opportunity to get it wrong, and
+there is no second thing it could be.
+
 ## Placements are expressions, including vectors
 
 Spec section 9: every placement is a parametric expression, never a baked number.

@@ -22,6 +22,26 @@ public sealed class ScalarField2D
     /// <summary>The grid these values live on.</summary>
     public Grid2D Grid { get; }
 
+    /// <summary>Condition the x-minimum edge was solved under.</summary>
+    /// <remarks>
+    /// Carried on the field, not only on the mask, because the interpolant needs
+    /// it: a four-by-four stencil reaches one node outside the grid, and what that
+    /// ghost should hold depends on what kind of edge it is outside of. A Dirichlet
+    /// edge is the end of the data and the ghost continues the ramp; a Neumann edge
+    /// is a mirror and the ghost is the reflection. Getting that wrong puts a
+    /// spurious normal field on a plane where the field is normal to nothing.
+    /// </remarks>
+    public EdgeCondition LeftEdge { get; set; }
+
+    /// <summary>Condition the x-maximum edge was solved under.</summary>
+    public EdgeCondition RightEdge { get; set; }
+
+    /// <summary>Condition the y-minimum edge was solved under.</summary>
+    public EdgeCondition BottomEdge { get; set; }
+
+    /// <summary>Condition the y-maximum edge was solved under.</summary>
+    public EdgeCondition TopEdge { get; set; }
+
     /// <summary>The underlying values, row-major.</summary>
     public Span<double> Values => _values;
 
@@ -128,6 +148,17 @@ public sealed class DirichletMask
 
     /// <summary>The grid this mask covers.</summary>
     public Grid2D Grid { get; }
+
+    /// <summary>
+    /// What the solve is a cross-section of, which decides the operator.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the mask rather than passed alongside it because it has to
+    /// survive coarsening: every level of a multigrid hierarchy must solve the same
+    /// equation, and a coarse level that quietly reverted to the plane Laplacian
+    /// would prolong a correction for a different problem.
+    /// </remarks>
+    public Core.Model.SolveSymmetry Symmetry { get; set; }
 
     /// <summary>
     /// Where conductor surfaces cut between nodes, when the geometry was built
@@ -281,6 +312,11 @@ public sealed class DirichletMask
             RightEdge = RightEdge,
             BottomEdge = BottomEdge,
             TopEdge = TopEdge,
+
+            // Every level must solve the same equation. A coarse level that
+            // reverted to the plane Laplacian would prolong a correction for a
+            // different problem, and it would converge - to the wrong answer.
+            Symmetry = Symmetry,
         };
 
         for (var j = 0; j < coarseGrid.CountY; j++)

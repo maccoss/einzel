@@ -257,6 +257,33 @@ Generalises to: **a symmetry that makes half a basis redundant is a property of
 the device, not of the method.** Reusing the reduced form on a device without that
 symmetry measures a projection of the answer and reports it as the answer.
 
+## A mirror plane the interpolant did not know about
+
+The bicubic stencil reaches one node outside the grid and fills it by linear
+extrapolation. That is already a considered choice - clamping was wrong and cost
+7.5 ppm, and is recorded above. What was missed is that extrapolation is right for
+a *Dirichlet* edge, where the data simply ends, and wrong for a **Neumann** edge,
+which is a mirror plane: the field continues across it as its own reflection, so
+the ghost is the node one step back inside rather than the ramp continued outward.
+
+It surfaced on the axis of the first axisymmetric solve, where the radial field
+must be exactly zero because there is no radial direction to point in. It read
+**14 V/m**. An ion launched exactly on axis would have drifted off it - slowly,
+plausibly, and in whichever direction the interpolant happened to lean. Reflecting
+took it to exactly zero.
+
+Two things worth keeping. The bug had been live in a shipped template all along,
+because the mirror pair declares a Neumann edge too; it never failed a test because
+no test asked what the field was *on* that plane. And the fix is one line per edge
+that the original comment had already argued its way to the doorstep of - it says a
+Neumann edge is a mirror, in the solver, three files away from the interpolant that
+did not act on it.
+
+Generalises to: **a boundary condition is a statement about the field, not only
+about the solve.** Anything that samples the field afterwards has to honour it too,
+and the place that is easiest to forget is the one where the answer is a clean zero
+that nobody thought to check.
+
 ## Two arithmetic slips, for completeness
 
 **Velocity fraction is not energy fraction.** v ∝ √E, so a fractional energy

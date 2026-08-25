@@ -141,6 +141,16 @@ public sealed class BicubicInterpolant : IFieldInterpolant
     /// fields exactly everywhere, and reduces the edge derivative estimate to the
     /// one-sided difference, which is the right answer there anyway.
     /// </para>
+    /// <para>
+    /// Extrapolation is right for a Dirichlet edge, which is simply where the data
+    /// ends. It is wrong for a <em>Neumann</em> edge, which is a mirror plane: the
+    /// field continues across it as its own reflection, so the ghost is the node
+    /// one step back inside rather than the ramp continued outward. The difference
+    /// is not small - reflecting makes the interpolated normal derivative vanish on
+    /// the plane, which is what a mirror means, while extrapolating leaves a
+    /// spurious normal field there. On the axis of an axisymmetric solve that
+    /// spurious field points radially outward from a place with no outward.
+    /// </para>
     /// </remarks>
     private double Node(int i, int j)
     {
@@ -152,22 +162,30 @@ public sealed class BicubicInterpolant : IFieldInterpolant
         // at the corners and not at all in the interior.
         if (j < 0)
         {
-            return (2.0 * Node(i, 0)) - Node(i, 1);
+            return _field.BottomEdge == EdgeCondition.Neumann
+                ? Node(i, 1)
+                : (2.0 * Node(i, 0)) - Node(i, 1);
         }
 
         if (j > maxJ)
         {
-            return (2.0 * Node(i, maxJ)) - Node(i, maxJ - 1);
+            return _field.TopEdge == EdgeCondition.Neumann
+                ? Node(i, maxJ - 1)
+                : (2.0 * Node(i, maxJ)) - Node(i, maxJ - 1);
         }
 
         if (i < 0)
         {
-            return (2.0 * Node(0, j)) - Node(1, j);
+            return _field.LeftEdge == EdgeCondition.Neumann
+                ? Node(1, j)
+                : (2.0 * Node(0, j)) - Node(1, j);
         }
 
         if (i > maxI)
         {
-            return (2.0 * Node(maxI, j)) - Node(maxI - 1, j);
+            return _field.RightEdge == EdgeCondition.Neumann
+                ? Node(maxI - 1, j)
+                : (2.0 * Node(maxI, j)) - Node(maxI - 1, j);
         }
 
         return _field[i, j];

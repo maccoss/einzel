@@ -329,6 +329,91 @@ A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
 equals its reflection inside, which is exact at any spacing and coarsens
 faithfully.
 
+## Cylindrical symmetry
+
+SYM-1 asks that a geometry may declare cylindrical symmetry, that the solver
+reduce accordingly, and that the interpolant reconstruct the full field
+transparently. Section 22 calls it load-bearing for funnels; it is load-bearing
+for rather more than that, because **most of section 1's device table is
+rotationally symmetric** - einzel lenses, ion funnels, stacked-ring guides,
+apertures, drift tubes. A translational cross-section cannot express any of them:
+what makes them work is that the electrode wraps all the way round, and the same
+declaration in a plane is a pair of bars.
+
+`"symmetry": "cylindrical"` on a solve makes **x the axis of rotation and y the
+radius**, with the domain at y >= 0.
+
+### The operator
+
+In cylindrical coordinates the radial part of the Laplacian is
+(1/r) d/dr (r dphi/dr), not d2phi/dr2, because a ring of given thickness has less
+circumference the closer it sits to the axis. It is written in **conservative
+form** - flux through the outer face of a ring minus flux through its inner face,
+divided by the ring's own volume - which makes the discrete operator conserve what
+the continuous one does, and is stable near the axis where discretising the 1/r
+term directly is not.
+
+Face radii are in cells, so the cut-cell machinery carries over unchanged: a node
+at radius rho with arms reaching fSouth and fNorth has faces at rho - fSouth/2 and
+rho + fNorth/2, and the ring's measure is the difference of their squares.
+
+**On the axis the inner face has zero area**, so no flux crosses it and the ring is
+a disc. That limit gives 4(phi_1 - phi_0)/h^2 for a uniform arm - **twice** what a
+mirrored plane stencil gives. A solve that treats the axis as an ordinary symmetry
+plane is wrong by that factor and converges contentedly.
+
+### The axis is a mirror, and the interpolant has to know
+
+Finding this cost a test failure that looked like nothing. The bicubic stencil
+reaches one node outside the grid and fills it by **linear extrapolation**, which is
+right at a Dirichlet edge - simply where the data ends - and wrong at a Neumann
+edge, which is a mirror plane. Extrapolating across a mirror leaves a spurious
+normal field on it. On the axis that is a radial field at a place with no radial
+direction, and it read **14 V/m**; an ion launched exactly on axis would have
+drifted off it, slowly and plausibly.
+
+Reflecting instead - the ghost is the node one step back inside - takes it to
+**exactly zero**. The fix is general: it applies to every Neumann edge, and the
+shipped mirror-pair template has one.
+
+### Measured
+
+| | |
+| --- | --- |
+| Coaxial pair against phi = A ln r + B | 1.3e-3 V of 100 V applied |
+| The same geometry against a linear profile | 19.3 V, so the two are far apart |
+| Convergence order, 32 to 256 cells | 1.84 / 2.00 / 1.95 |
+| Field penetration into a grounded tube, against the first Bessel zero | 2.40503 against 2.404826 |
+| The plane operator would give, for the same geometry | pi/2 = 1.5708 |
+| Radial field on the axis | exactly 0 |
+| Azimuthal field anywhere | exactly 0 |
+
+The coaxial test sounds like it proves nothing, since phi = A ln r + B holds in both
+geometries - and that is exactly what makes it sharp. The **plane** solver gets a
+linear profile there, so agreeing with the logarithm is precisely what the radial
+weighting is responsible for.
+
+The Bessel test is the one that is specific to cylindrical geometry. Inside a
+grounded tube the field from an end cap decays along the axis as exp(-j x / R) with
+j the first zero of J0 - the radial eigenfunction of the cylindrical Laplacian - so
+the decay rate reads out the operator directly. It converges to j01 **from below**,
+because the cap's mode coefficients go as 1/(j_n J1(j_n)) and J1 alternates in sign
+at its zeros, so the second mode enters negative and slows the apparent decay until
+it dies.
+
+### Reconstruction
+
+`AxisymmetricField` wraps the half-plane solve and presents the field in space: an
+ion at (x, y, z) is sampled at (x, sqrt(y^2 + z^2)) and the radial field it finds is
+pointed back along its own azimuth. Conductors come with it - a rectangle in the
+half-plane is a **ring** in space, which is what makes an aperture an aperture
+rather than a slot.
+
+One thing is given up: `FieldFreeRunLength` returns zero, so no run is ever taken
+analytically. A straight line in space traces a curve in (axial, radial), so a
+direction mapped once is only instantaneously right, and the guarantee this returns
+is that the field is identically zero over the *whole* run.
+
 ## Electrodes stop ions
 
 An electrode used to be a boundary condition on the potential and nothing else, so

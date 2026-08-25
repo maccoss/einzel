@@ -78,7 +78,17 @@ public static class GeometryBuilder
             RightEdge = Translate(solve.RightEdge),
             BottomEdge = Translate(solve.BottomEdge),
             TopEdge = Translate(solve.TopEdge),
+            Symmetry = solve.Symmetry,
         };
+
+        // The axis of an axisymmetric solve is a mirror plane whatever the document
+        // says, because it is one. Forced rather than validated: requiring the
+        // author to declare it is an opportunity to get it wrong, and there is no
+        // second thing it could be.
+        if (solve.Symmetry == SolveSymmetry.Cylindrical && grid.OriginY <= 0.5 * grid.SpacingY)
+        {
+            mask.BottomEdge = EdgeCondition.Neumann;
+        }
 
         foreach (var electrode in solve.Electrodes)
         {
@@ -373,6 +383,14 @@ public static class GeometryBuilder
             new BicubicInterpolant(potential),
             boundaryIsDiscontinuous: solve.BoundaryIsDiscontinuous,
             conductors: solve.Electrodes);
+
+        // Wrapped before any reflection, so a reflection composes in space rather
+        // than in the half-plane - it mirrors the axial coordinate of a field that
+        // already knows how to be three-dimensional.
+        if (solve.Symmetry == SolveSymmetry.Cylindrical)
+        {
+            field = new AxisymmetricField(field);
+        }
 
         if (solve.ReflectAboutX is { } plane)
         {

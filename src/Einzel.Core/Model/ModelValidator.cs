@@ -588,6 +588,26 @@ public static class ModelValidator
             ? (double?)null
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
 
+        var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
+
+        // The axis is at y = 0 and a radius cannot be negative. Refused rather
+        // than folded, because a domain drawn across the axis is a different
+        // intent from one drawn beside it and guessing which would be worse than
+        // asking.
+        if (symmetry == SolveSymmetry.Cylindrical && minY is { } radialFloor && radialFloor.SiValue < 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/minY",
+                Constraint = "a cylindrical solve has y as the radius, so the domain cannot reach below zero",
+                Observed = new ObservedValue(radialFloor.SiValue, "m"),
+                Suggestion =
+                    "set minY to 0 to include the axis, or to a positive radius for an annulus; "
+                    + "x is the axis of rotation",
+            });
+        }
+
         var left = Boundary(solve.LeftEdge, $"{path}/leftEdge", errors);
         var right = Boundary(solve.RightEdge, $"{path}/rightEdge", errors);
         var bottom = Boundary(solve.BottomEdge, $"{path}/bottomEdge", errors);
@@ -608,6 +628,7 @@ public static class ModelValidator
                 MaxX = maxX.Value.SiValue,
                 MaxY = maxY.Value.SiValue,
                 CellSize = cell.Value.SiValue,
+                Symmetry = symmetry,
                 LeftEdge = left,
                 RightEdge = right,
                 BottomEdge = bottom,
@@ -618,6 +639,32 @@ public static class ModelValidator
                 ReflectAboutX = reflect,
             },
         };
+    }
+
+    private static SolveSymmetry Symmetry(string? declared, string path, List<EinzelError> errors)
+    {
+        switch (declared)
+        {
+            case null or "translational":
+                return SolveSymmetry.Translational;
+
+            case "cylindrical":
+                return SolveSymmetry.Cylindrical;
+
+            default:
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = path,
+                    Constraint = "a solve symmetry must be 'translational' or 'cylindrical'",
+                    Observed = new ObservedValue(0.0, declared),
+                    Suggestion =
+                        "'translational' extrudes the cross-section along the third axis and is the "
+                        + "default; 'cylindrical' rotates it about the x axis, with y as the radius",
+                });
+
+                return SolveSymmetry.Translational;
+        }
     }
 
     private static BoundaryKind Boundary(string? declared, string path, List<EinzelError> errors)

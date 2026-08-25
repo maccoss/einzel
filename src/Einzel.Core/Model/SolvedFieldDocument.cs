@@ -371,6 +371,18 @@ public sealed record SolvedFieldDocument
     /// <summary>Upper y bound.</summary>
     public QuantityValue? MaxY { get; init; }
 
+    /// <summary>
+    /// What the plane is a cross-section of: <c>translational</c> or
+    /// <c>cylindrical</c>. Translational when omitted.
+    /// </summary>
+    /// <remarks>
+    /// SYM-1. Cylindrical makes x the axis of rotation and y the radius, so the
+    /// domain must lie at y greater than or equal to zero. It changes the operator,
+    /// not the presentation: a field solved with the wrong one converges contentedly
+    /// to the wrong answer.
+    /// </remarks>
+    public string? Symmetry { get; init; }
+
     /// <summary>Node spacing. Rounded to make the interval count a power of two.</summary>
     public QuantityValue? CellSize { get; init; }
 
@@ -427,6 +439,9 @@ public sealed record CompiledSolvedField
 
     /// <summary>Node spacing, in metres.</summary>
     public required double CellSize { get; init; }
+
+    /// <summary>What the plane is a cross-section of (SYM-1).</summary>
+    public SolveSymmetry Symmetry { get; init; }
 
     /// <summary>Condition on the x-minimum edge.</summary>
     public BoundaryKind LeftEdge { get; init; }

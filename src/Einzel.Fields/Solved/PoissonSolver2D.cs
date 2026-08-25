@@ -109,6 +109,13 @@ public static class PoissonSolver2D
 
         var grid = mask.Grid;
         var potential = initialGuess?.Clone() ?? new ScalarField2D(grid);
+
+        // Stamped onto the field so the interpolant knows which of its edges are
+        // mirrors. Without this the solve is right and the sampling is not.
+        potential.LeftEdge = mask.LeftEdge;
+        potential.RightEdge = mask.RightEdge;
+        potential.BottomEdge = mask.BottomEdge;
+        potential.TopEdge = mask.TopEdge;
         mask.ApplyTo(potential);
 
         var rightHandSide = new ScalarField2D(grid);
@@ -214,7 +221,7 @@ public static class PoissonSolver2D
         // to the old five-point arithmetic exactly, halves and quarters being
         // exact in binary, so the change carries no rounding of its own.
         var halfH2 = 0.5 * grid.SpacingX * grid.SpacingX;
-        var aspectSquared = grid.AspectSquared;
+        var geometry = GeometryOf(mask);
 
         for (var sweep = 0; sweep < sweeps; sweep++)
         {
@@ -229,7 +236,7 @@ public static class PoissonSolver2D
                             continue;
                         }
 
-                        Stencil(potential, mask, i, j, aspectSquared, out var sum, out var weight);
+                        Stencil(potential, mask, i, j, in geometry, out var sum, out var weight);
                         potential[i, j] = (sum - (halfH2 * rightHandSide[i, j])) / weight;
                     }
                 }
@@ -266,7 +273,7 @@ public static class PoissonSolver2D
         DirichletMask mask,
         int i,
         int j,
-        double aspectSquared,
+        in StencilGeometry geometry,
         out double sum,
         out double weight)
     {
@@ -282,13 +289,116 @@ public static class PoissonSolver2D
         // That factor is exactly one on a square grid, and multiplying by one is
         // exact, so nothing about an isotropic solve changes by a single bit.
         var alongX = 1.0 / (fWest + fEast);
-        var alongY = aspectSquared / (fSouth + fNorth);
 
-        sum = (alongX * ((west / fWest) + (east / fEast)))
-            + (alongY * ((south / fSouth) + (north / fNorth)));
+        sum = alongX * ((west / fWest) + (east / fEast));
+        weight = alongX * ((1.0 / fWest) + (1.0 / fEast));
 
-        weight = (alongX * ((1.0 / fWest) + (1.0 / fEast)))
-            + (alongY * ((1.0 / fSouth) + (1.0 / fNorth)));
+        if (geometry.Cylindrical)
+        {
+            Radial(
+                in geometry, j, south, north, fSouth, fNorth, out var radialSum, out var radialWeight);
+
+            sum += radialSum;
+            weight += radialWeight;
+            return;
+        }
+
+        var alongY = geometry.AspectSquared / (fSouth + fNorth);
+
+        sum += alongY * ((south / fSouth) + (north / fNorth));
+        weight += alongY * ((1.0 / fSouth) + (1.0 / fNorth));
+    }
+
+    /// <summary>
+    /// The radial half of the axisymmetric operator, in the same units as the
+    /// axial half.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// In cylindrical coordinates the radial part is (1/r) d/dr (r dphi/dr) rather
+    /// than d2phi/dr2. Written in conservative form - the flux through the outer
+    /// face of a ring minus the flux through its inner face, divided by the ring's
+    /// own volume - because that is what makes the discrete operator conserve
+    /// exactly what the continuous one does, and because the alternative of
+    /// discretising the 1/r term directly is unstable near the axis.
+    /// </para>
+    /// <para>
+    /// Face radii are measured in cells: a node at radius rho cells with arms
+    /// reaching fSouth and fNorth cells has faces at rho - fSouth/2 and
+    /// rho + fNorth/2. The ring's volume measure is the difference of their
+    /// squares, which is where the whole r-dependence lives.
+    /// </para>
+    /// <para>
+    /// On the axis the inner face has zero area, so no flux crosses it and the ring
+    /// is a disc. That limit gives 4(phi_1 - phi_0)/h^2 for a uniform arm - twice
+    /// what a mirrored plane stencil gives, which is the factor a solve gets wrong
+    /// if it treats the axis as an ordinary symmetry plane.
+    /// </para>
+    /// </remarks>
+    private static void Radial(
+        in StencilGeometry geometry,
+        int j,
+        double south,
+        double north,
+        double fSouth,
+        double fNorth,
+        out double sum,
+        out double weight)
+    {
+        var rho = geometry.AxisOffsetCells + j;
+
+        // On the axis, to within a rounding of the offset. The inner face has no
+        // area, so the south arm carries no flux however far away it is.
+        if (rho <= AxisTolerance)
+        {
+            var scale = 2.0 * geometry.AspectSquared / (fNorth * fNorth);
+
+            sum = scale * north;
+            weight = scale;
+            return;
+        }
+
+        var outer = rho + (fNorth / 2.0);
+        var inner = rho - (fSouth / 2.0);
+
+        // The ring's volume measure, up to the constant the whole stencil shares.
+        var volume = (outer * outer) - (inner * inner);
+
+        var scaleR = geometry.AspectSquared / volume;
+
+        sum = scaleR * (((outer * north) / fNorth) + ((inner * south) / fSouth));
+        weight = scaleR * ((outer / fNorth) + (inner / fSouth));
+    }
+
+    /// <summary>
+    /// How close to the axis a node must be to be treated as on it, in cells.
+    /// </summary>
+    /// <remarks>
+    /// A grid whose first row sits exactly on the axis puts rho at an exact zero, so
+    /// this is a guard against an offset that arrived through arithmetic rather than
+    /// a tolerance on physics. A node a thousandth of a cell off the axis is on it.
+    /// </remarks>
+    private const double AxisTolerance = 1e-9;
+
+    /// <summary>What the stencil needs to know about the grid it is running on.</summary>
+    /// <param name="AspectSquared">The x spacing over the y spacing, squared.</param>
+    /// <param name="Cylindrical">Whether the radial half carries the r weighting.</param>
+    /// <param name="AxisOffsetCells">
+    /// Where the grid's first row sits relative to the axis, in cells, so that the
+    /// radius of row j is this plus j. Zero for a grid that starts on the axis.
+    /// </param>
+    private readonly record struct StencilGeometry(
+        double AspectSquared, bool Cylindrical, double AxisOffsetCells);
+
+    private static StencilGeometry GeometryOf(DirichletMask mask)
+    {
+        var grid = mask.Grid;
+        var cylindrical = mask.Symmetry == Core.Model.SolveSymmetry.Cylindrical;
+
+        return new StencilGeometry(
+            grid.AspectSquared,
+            cylindrical,
+            cylindrical ? grid.OriginY / grid.SpacingY : 0.0);
     }
 
     /// <summary>
@@ -339,7 +449,7 @@ public static class PoissonSolver2D
     {
         var grid = potential.Grid;
         var inverseHalfH2 = 2.0 / (grid.SpacingX * grid.SpacingX);
-        var aspectSquared = grid.AspectSquared;
+        var geometry = GeometryOf(mask);
         var sum = 0.0;
         var count = 0;
 
@@ -353,7 +463,7 @@ public static class PoissonSolver2D
                     continue;
                 }
 
-                Stencil(potential, mask, i, j, aspectSquared, out var neighbours, out var weight);
+                Stencil(potential, mask, i, j, in geometry, out var neighbours, out var weight);
                 var laplacian = (neighbours - (weight * potential[i, j])) * inverseHalfH2;
                 var value = rightHandSide[i, j] - laplacian;
 

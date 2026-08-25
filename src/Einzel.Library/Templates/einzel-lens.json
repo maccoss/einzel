@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "0.3",
+  "name": "einzel-lens",
+  "description": "Three coaxial tubes in a row, the outer two grounded and the middle one held at a voltage: the lens this platform is named after. Solved axisymmetrically, which is the only way it can be solved at all - the thing that makes it work is that each electrode wraps the whole way round, and a translational cross-section would turn the same declaration into three pairs of bars. It is a unipotential lens, so an ion leaves with exactly the energy it entered with, and it converges for either sign of the middle voltage: a positive middle decelerates the ion where the field is converging and accelerates it where the field is diverging, and the ion spends longer in the converging half. Raising the magnitude of the middle voltage shortens the focal length. Take the middle voltage past the beam energy and the ion is reflected instead, which is a mirror rather than a lens.",
+
+  "parameters": {
+    "boreRadius": {
+      "value": 5.0, "unit": "mm", "minimum": 0.5, "maximum": 50.0,
+      "description": "Inner radius of all three tubes. Everything about a lens scales with it, so a focal length is best read as a multiple of this."
+    },
+    "entranceLength": {
+      "value": 30.0, "unit": "mm", "minimum": 2.0, "maximum": 200.0,
+      "description": "Length of the earthed entrance tube. Long enough that the middle electrode's field has decayed before the tube ends, which for a grounded tube means several bore radii - the decay goes as exp(-2.405 x / r)."
+    },
+    "centreLength": {
+      "value": 24.0, "unit": "mm", "minimum": 1.0, "maximum": 200.0,
+      "description": "Length of the middle electrode. Longer gives a stronger lens at the same voltage, up to the point where the two gaps stop interacting."
+    },
+    "gap": {
+      "value": 6.0, "unit": "mm", "minimum": 0.2, "maximum": 50.0,
+      "description": "Between adjacent electrodes. This is where the field actually reaches the beam: with no gap there is no lens, and with a very wide one the field on the axis sags and the lens weakens again."
+    },
+    "driftLength": {
+      "value": 100.0, "unit": "mm", "minimum": 5.0, "maximum": 1000.0,
+      "description": "Earthed exit tube, long enough to contain the focus. An ion crosses the axis inside it, and where it does is the focal length."
+    },
+    "wallThickness": {
+      "value": 7.0, "unit": "mm", "minimum": 0.5, "maximum": 100.0,
+      "description": "Radial thickness of the tubes. They reach the domain boundary, so the electrodes are the wall and the only place field escapes is the two gaps."
+    },
+    "centrePotential": {
+      "value": 500.0, "unit": "V", "minimum": -20000.0, "maximum": 20000.0,
+      "description": "Applied to the middle electrode. The lens converges for either sign; the magnitude sets the focal length. Bounded so an optimiser can search it for a wanted focus."
+    },
+    "beamEnergy": {
+      "value": 1000.0, "unit": "V", "minimum": 1.0, "maximum": 100000.0,
+      "description": "Accelerating potential the ion arrives with. What matters is the ratio to centrePotential: near one the ion barely gets through the middle electrode and the lens is very strong and very aberrated, and past one it is reflected."
+    },
+    "launchRadius": {
+      "value": 1.0, "unit": "mm", "minimum": 0.0, "maximum": 40.0,
+      "description": "Where the ion starts, off the axis and parallel to it. A ray at a larger radius focuses shorter, which is spherical aberration and the reason a real lens has a blur rather than a point."
+    },
+    "cellsPerRadius": {
+      "value": 24.0, "unit": "1", "minimum": 4.0, "maximum": 128.0,
+      "description": "Grid cells across the bore radius. The gaps are the smallest features; check they still span several cells before trusting a coarse run."
+    },
+
+    "outerRadius": { "expression": "boreRadius + wallThickness", "unit": "mm" },
+    "centreStart": { "expression": "entranceLength + gap", "unit": "mm" },
+    "centreEnd": { "expression": "centreStart + centreLength", "unit": "mm" },
+    "exitStart": { "expression": "centreEnd + gap", "unit": "mm" },
+    "totalLength": { "expression": "exitStart + driftLength", "unit": "mm" },
+    "launchX": { "expression": "entranceLength / 4", "unit": "mm" },
+    "detectorX": { "expression": "totalLength - boreRadius", "unit": "mm" },
+    "cellSize": { "expression": "boreRadius / cellsPerRadius", "unit": "mm" }
+  },
+
+  "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+
+  "source": {
+    "position": { "expression": ["launchX", "launchRadius", "0"], "unit": "mm" },
+    "direction": { "value": [1, 0, 0] },
+    "accelerationPotential": { "expression": "beamEnergy", "unit": "V" }
+  },
+
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "minX": { "value": 0, "unit": "mm" },
+        "minY": { "value": 0, "unit": "mm" },
+        "maxX": { "expression": "totalLength", "unit": "mm" },
+        "maxY": { "expression": "outerRadius", "unit": "mm" },
+        "cellSize": { "expression": "cellSize", "unit": "mm" },
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "entrance", "shape": "rectangle",
+            "minX": { "value": 0, "unit": "mm" },
+            "maxX": { "expression": "entranceLength", "unit": "mm" },
+            "minY": { "expression": "boreRadius", "unit": "mm" },
+            "maxY": { "expression": "outerRadius", "unit": "mm" },
+            "potential": { "value": 0, "unit": "V" }
+          },
+          {
+            "name": "centre", "shape": "rectangle",
+            "minX": { "expression": "centreStart", "unit": "mm" },
+            "maxX": { "expression": "centreEnd", "unit": "mm" },
+            "minY": { "expression": "boreRadius", "unit": "mm" },
+            "maxY": { "expression": "outerRadius", "unit": "mm" },
+            "potential": { "expression": "centrePotential", "unit": "V" }
+          },
+          {
+            "name": "exit", "shape": "rectangle",
+            "minX": { "expression": "exitStart", "unit": "mm" },
+            "maxX": { "expression": "totalLength", "unit": "mm" },
+            "minY": { "expression": "boreRadius", "unit": "mm" },
+            "maxY": { "expression": "outerRadius", "unit": "mm" },
+            "potential": { "value": 0, "unit": "V" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "detector": {
+    "planePoint": { "expression": ["detectorX", "0", "0"], "unit": "mm" },
+    "normal": { "value": [-1, 0, 0] }
+  },
+
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": { "value": 1, "unit": "ms" }
+  }
+}

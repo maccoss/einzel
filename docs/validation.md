@@ -32,6 +32,10 @@ cross-code tier is unavailable — see below.
 | Turn-around through a solved trap, against the closed form at the solved field | 0.7% |
 | Drift-scan slope under mesh refinement (20 to 40 cells/r0) | 20.7 ns/mm at both, points within 0.1% |
 | Transmission through a slit, against erf(a / sigma sqrt 2) | 0.95 sigma at 20,000 ions |
+| Coaxial potential in r-z, against A ln r + B | 1.3e-3 V of 100 V |
+| Tube field penetration, against the first Bessel zero | 2.40503 against 2.404826 |
+| Axisymmetric convergence order, 32 to 256 cells | 1.84 / 2.00 / 1.95 |
+| Total energy across an einzel lens | 6.4e-10 |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
@@ -147,7 +151,7 @@ covering everything.
   and there is no sequencer, so a trap cannot be operated in stages.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
-- **No 3D.** Every solve is two-dimensional with translational invariance. This
+- **No 3D.** Every solve is two-dimensional - translational or axisymmetric. This
   is what stops the Ion Processor's auxiliary DC electrodes being modelled: they
   impose a gradient along the trap axis, which is the direction the solve is
   invariant in.
