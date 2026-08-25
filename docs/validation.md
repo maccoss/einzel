@@ -21,6 +21,7 @@ cross-code tier is unavailable — see below.
 | Energy drift in a static field | 1e-9 to 1e-15 against ACC-4's 1e-6 |
 | First-order energy focusing, L = 4d | dT/dv vanishes; reappears at the predicted magnitude when detuned |
 | Quadrupole field | Φ(x) = −Φ(y) exactly; Ex/x constant to 0.17% |
+| Rosenbrock and a 6-D sphere, both optimisers | Optima to 1e-3 in parameters, 3e-13 in objective |
 | Parallel-plate gap, boundary swept sub-cell | 3.1e-10 of applied, at every offset |
 | Coaxial log potential around a rod | Second order, 1.5e-5 at h = 0.156 mm |
 | Shape derivative dV/dL against −1000x/L² | 6.5e-6 relative at a 0.11-cell step |
@@ -129,6 +130,15 @@ covering everything.
   [Spec findings](spec-findings.md). Voltage channels linearise to 1.5e-14.
 - **Resolving powers quoted are energy-aberration only.** No spatial or angular
   spread, no turn-around time, no detector response.
+- **The optimiser handles box constraints and nothing else.** No general
+  constraint functions, no multiple objectives, no way to say "maximise resolving
+  power subject to fitting in the envelope" except by folding the envelope into
+  the objective as a penalty by hand. The mirror-pair result says that trade is
+  the interesting one, so this is a real gap rather than a theoretical one.
+- **No optimiser has been pointed at the mirror pair.** Each evaluation is about
+  23 seconds, so a search runs to minutes and does not belong in the test suite;
+  it belongs in a study. The target is well posed - the second-order coefficient
+  changes sign across the scan, so the root is bracketed.
 
 ## Running them
 

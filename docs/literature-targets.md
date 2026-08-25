@@ -11,6 +11,42 @@ capability that does not exist yet, and the specific numbers to hit.
 
 ---
 
+## Reproduced
+
+### The round-rod quadrupole ratio
+
+**Denison, J. Vac. Sci. Technol. 8 (1971): r/r0 = 1.1468**, the rod radius that
+cancels the leading non-ideal multipole of a quadrupole built from round rods.
+1.1487 is also in circulation, from a different criterion.
+
+Reproduced by optimisation rather than by assertion: `Optimiser` minimises the
+12-pole fraction A6/A2 over `rodRatio`, starting from the template's nominal, and
+converges in 45 evaluations to **1.14148 +/- 3.05e-6**, cancelling the 12-pole by
+a factor of 880. The result is stable against the radius the multipoles are
+sampled on, moving by 0.0016 across 0.45 to 0.75 r0, which is what distinguishes
+a property of the field from an artefact of the measurement.
+
+**0.46% below the published value**, and the gap is discretisation rather than
+search error or a modelling mistake. Refining the mesh moves the answer toward
+the published value and slows down doing it - 1.14148, 1.14426, 1.14487 at 16,
+32, 64 cells across the inscribed radius, which is second order and extrapolates
+to about **1.1451**. The grounded housing accounts for roughly the remaining
+0.002: the classical result assumes no housing, and widening the clearance from
+1.6 to 3.0 rod radii moves the 16-cell answer by 0.0018 in the same direction.
+
+The first guess - that the housing was the whole story - was wrong, and only the
+refinement study showed it. `housingClearance` and `cellsPerRadius` are template
+parameters precisely so that this kind of question is measurable rather than
+arguable.
+
+It is worth noting what made the measurement possible at all: the rod surfaces
+are cut cells. A rasterised circle is a staircase, and a staircase radiates
+harmonics of its own into exactly the multipoles being measured - four parts in
+ten thousand of the main term at nominal, and a few parts in a hundred million at
+the optimum.
+
+---
+
 ## 1. The Ion Processor — conjoined collision cell and pulsed extraction trap
 
 > Stewart, Grinfeld, Wagner et al., *A Conjoined Rectilinear Collision Cell and

@@ -9,17 +9,25 @@
       "description": "Distance from the axis to the nearest rod surface, conventionally r0."
     },
     "rodRatio": {
-      "value": 1.1468, "unit": "1",
-      "description": "Rod radius as a multiple of the inscribed radius. 1.1468 is the classical optimum for round rods."
+      "value": 1.1468, "unit": "1", "minimum": 1.0, "maximum": 1.4,
+      "description": "Rod radius as a multiple of the inscribed radius. 1.1468 is the classical optimum for round rods: the value that cancels the leading non-ideal multipole, the 12-pole. Bounded so an optimiser can search for it rather than being told it."
     },
     "rodPotential": {
       "value": 100.0, "unit": "V",
       "description": "Applied to the x-pair; the y-pair takes its negative."
     },
+    "housingClearance": {
+      "value": 1.6, "unit": "1", "minimum": 0.2, "maximum": 8.0,
+      "description": "Distance from a rod centre to the grounded wall, beyond the rod radius, as a multiple of the rod radius. The classical rod ratio assumes no housing at all, so this is the parameter that says how far from that assumption a given design sits."
+    },
+    "cellsPerRadius": {
+      "value": 16.0, "unit": "1", "minimum": 4.0, "maximum": 128.0,
+      "description": "Grid cells across the inscribed radius."
+    },
     "rodRadius": { "expression": "inscribedRadius * rodRatio", "unit": "mm" },
     "rodCentre": { "expression": "inscribedRadius + rodRadius", "unit": "mm" },
-    "domainHalfWidth": { "expression": "rodCentre + rodRadius * 1.6", "unit": "mm" },
-    "cellSize": { "expression": "inscribedRadius / 16", "unit": "mm" }
+    "domainHalfWidth": { "expression": "rodCentre + rodRadius * housingClearance", "unit": "mm" },
+    "cellSize": { "expression": "inscribedRadius / cellsPerRadius", "unit": "mm" }
   },
 
   "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },

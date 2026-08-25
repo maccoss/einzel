@@ -41,6 +41,17 @@ already knows.
 }
 ```
 
+**Bound anything an optimiser might search.** `Optimiser` refuses an unbounded
+design variable rather than inventing a range from the nominal value, so a
+parameter with no `minimum` and `maximum` is one nobody can optimise without
+saying the bounds again at the call site. The quadrupole's `rodRatio` is bounded
+for exactly that reason, and the optimiser recovers the classical 1.1468 from it.
+
+**Bound the numerics too, not only the physics.** `housingClearance` and
+`cellsPerRadius` exist so that the effect of the grounded box and of the mesh on a
+result can be *measured* rather than argued about. Both turned out to matter for
+the rod ratio, and the mesh mattered more.
+
 **Derive everything that is a consequence.** A derived parameter is not a knob,
 and marking it as one would hand an optimiser a dimension it must not search.
 
@@ -69,11 +80,13 @@ It is four discs and a box:
 
 ```json
 "parameters": {
-  "inscribedRadius": { "value": 5.0, "unit": "mm", "minimum": 1.0, "maximum": 50.0 },
-  "rodRatio":        { "value": 1.1468, "unit": "1" },
-  "rodPotential":    { "value": 100.0, "unit": "V" },
-  "rodRadius":       { "expression": "inscribedRadius * rodRatio", "unit": "mm" },
-  "rodCentre":       { "expression": "inscribedRadius + rodRadius", "unit": "mm" }
+  "inscribedRadius":  { "value": 5.0, "unit": "mm", "minimum": 1.0, "maximum": 50.0 },
+  "rodRatio":         { "value": 1.1468, "unit": "1", "minimum": 1.0, "maximum": 1.4 },
+  "rodPotential":     { "value": 100.0, "unit": "V" },
+  "housingClearance": { "value": 1.6, "unit": "1", "minimum": 0.2, "maximum": 8.0 },
+  "cellsPerRadius":   { "value": 16.0, "unit": "1", "minimum": 4.0, "maximum": 128.0 },
+  "rodRadius":        { "expression": "inscribedRadius * rodRatio", "unit": "mm" },
+  "rodCentre":        { "expression": "inscribedRadius + rodRadius", "unit": "mm" }
 }
 ```
 

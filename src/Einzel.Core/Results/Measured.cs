@@ -145,6 +145,10 @@ public sealed class Measured
             Evidence.Convergence c => string.Create(
                 CultureInfo.InvariantCulture,
                 $", converged in {c.Measure} at order {c.ObservedOrder:G3} of {c.NominalOrder:G3}"),
+            Evidence.Search s => string.Create(
+                CultureInfo.InvariantCulture,
+                $", {s.Evaluations} evaluations, spread {s.SpreadSi:G3}")
+                + (s.Converged ? string.Empty : ", NOT CONVERGED"),
             Evidence.Analytic a => $", analytic: {a.Reference}",
             _ => string.Empty,
         };

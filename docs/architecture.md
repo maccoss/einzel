@@ -11,12 +11,14 @@ Engine outward. Each references only what is above it in this list.
 | `Einzel.Transport` | Integrators, the trajectory recorder, ion species |
 | `Einzel.Analysis` | Figures of merit by accuracy class |
 | `Einzel.Library` | Device templates as data, and the loader that enumerates them |
+| `Einzel.Sweeps` | Tolerance Monte Carlo, sensitivity fields, Nelder-Mead and CMA-ES |
 | `Einzel.Io` | Model JSON, VTU export, the wire form of a result |
 | `Einzel.Project` | Project layout, run manifests, content hashing |
 | `Einzel.Commands` | Command objects: every operation as one serialisable thing |
 | `Einzel.Cli` | The primary surface |
 
-Not yet built: `Einzel.Sweeps`, `Einzel.Extensions`, `Einzel.Render`, `Einzel.Compute`, `Einzel.Mcp`, `Einzel.Update`, `Einzel.Wpf`.
+Not yet built: `Einzel.Extensions`, `Einzel.Render`, `Einzel.Compute`,
+`Einzel.Mcp`, `Einzel.Update`, `Einzel.Wpf`.
 
 The CLI, the future MCP server, and the future shell are **peers, not a stack**.
 All three drive the same command objects. That is what makes "nothing exists only

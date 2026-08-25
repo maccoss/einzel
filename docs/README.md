@@ -18,6 +18,7 @@ states the intent and these pages state the reality; both are noted.
 | [Model format](model-format.md) | Schema 0.2 in full: parameters, expressions, fields, electrodes |
 | [Device templates](device-templates.md) | Writing a new device as data, and the two shipped examples |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
+| [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
 | [Lessons](lessons.md) | Bugs that presented as physics and were arithmetic |
 | [CLI](cli.md) | Command reference, exit codes, and the agent loop |
 | [Literature targets](literature-targets.md) | Published instruments to reproduce, and what each needs |
@@ -47,11 +48,13 @@ are.
 
 ## Current state
 
-Stages 0 through 4 of the delivery plan are complete: units and the result
+Stages 0 through 5 of the delivery plan are complete: units and the result
 envelope, the trajectory integrator, the model format and CLI, the field solver,
-and Class T analysis with device templates. `Einzel.Sweeps` — tolerance Monte
-Carlo, sensitivity ranking, and optimisation — is the next piece and does not
-exist yet.
+Class T analysis with device templates, and `Einzel.Sweeps` — tolerance Monte
+Carlo, sensitivity ranking, and both optimisers.
+
+Not yet built: extensions, rendering, the compute dispatch layer, the MCP server,
+the update mechanism, and the shell.
 
 Nothing here is released software. Effort estimates, performance targets, and the
 numerical error budget in the specification are engineering judgement rather than

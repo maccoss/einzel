@@ -130,6 +130,13 @@ public sealed record EvidenceJson
             NominalOrder = c.NominalOrder,
             Residual = c.ResidualSi,
         },
+        Evidence.Search s => new EvidenceJson
+        {
+            Kind = "search",
+            EnsembleSize = s.Evaluations,
+            Converged = s.Converged,
+            Residual = s.SpreadSi,
+        },
         Evidence.Analytic a => new EvidenceJson { Kind = "analytic", Reference = a.Reference },
         _ => throw new ArgumentOutOfRangeException(nameof(evidence), evidence, "unhandled evidence kind"),
     };

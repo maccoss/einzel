@@ -48,6 +48,26 @@ public abstract record Evidence
         double ResidualSi) : Evidence;
 
     /// <summary>
+    /// A result found by search: an optimiser's answer, supported by how many
+    /// objective evaluations it spent and how tightly it had converged when it
+    /// stopped.
+    /// </summary>
+    /// <param name="Evaluations">Objective evaluations spent.</param>
+    /// <param name="Converged">
+    /// Whether the search met its tolerance rather than exhausting its budget. An
+    /// optimum reported from an exhausted budget is a best-so-far, not an optimum,
+    /// and the difference is the whole question when reading one.
+    /// </param>
+    /// <param name="SpreadSi">
+    /// The spread of the final simplex or population, in SI units of the reported
+    /// quantity. It is how far apart the candidates the search was still
+    /// considering were - a convergence measure, not a probabilistic interval, and
+    /// it says how sharply the optimum is defined rather than how confident anyone
+    /// should be in it.
+    /// </param>
+    public sealed record Search(int Evaluations, bool Converged, double SpreadSi) : Evidence;
+
+    /// <summary>
     /// A closed-form result, supported by derivation rather than by computation.
     /// Used by the analytic test tier of spec section 19.
     /// </summary>
