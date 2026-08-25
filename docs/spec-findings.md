@@ -325,6 +325,44 @@ the domain — differ by fifty per cent on an ordinary geometry.
 
 ---
 
+## §23's agent acceptance question, answered
+
+**Spec §19** asks for "scripted prose tasks run against an agent given a project
+directory, the CLI, and nothing else", with "a separate track measuring whether
+agents act on warnings". **§23** leaves open what it measures and what pass rate
+gates a release, and says it needs settling before Phase 1 ends.
+
+Settled, in `docs/agent-acceptance.md`. Two decisions are worth recording here
+because they were not obvious from the specification.
+
+**Score actions, not self-reports.** The natural reading of "measuring whether
+agents act on warnings" is to ask the agent which warnings it saw. That measures
+whether it can copy a list. Every check in the suite instead looks at what was
+left in the project: a quotable number means a manifest exists, because a preview
+leaves none; acting on an optimum-at-bound warning means the study file has a
+wider interval than the prompt suggested.
+
+**Every task ships wrong answers too.** A check that passes the worked solution
+proves nothing on its own — it has to reject the plausible mistakes, or it is
+testing that a file exists. CI asserts both directions, and the second is the one
+that decays quietly: a check written against one wrong answer often accepts a
+different one, and nothing about a green suite says so.
+
+The recommended gates are 80% on capability, 90% on warnings because its failure
+mode is silent wrongness, any task at 0% blocking, and **any drop against the
+previous release blocking regardless of level**. The regression gate matters more
+than the absolute one: a schema change that makes a field harder to discover shows
+up as a rate falling long before it shows up as anything else, and the absolute
+gate would still be met.
+
+One thing §19 asks for cannot be built yet. Regime-invalid traps need transport
+mode against pressure, which is Phase 3; today's warnings track uses the
+non-suppressible warnings a DC model can actually produce. A task whose obvious
+approach draws trajectories through a funnel at 1 mbar belongs in the suite when
+statistical diffusion lands, and will be the sharpest one in it.
+
+---
+
 ## The parameter surface reaches scalars but not vector components
 
 **Spec §9** makes the declared parameter surface the thing sweeps vary and

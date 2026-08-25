@@ -19,6 +19,7 @@ states the intent and these pages state the reality; both are noted.
 | [Device templates](device-templates.md) | Writing a new device as data, and the two shipped examples |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
+| [Agent acceptance](agent-acceptance.md) | The prose-task suite, what it measures, and what gates a release |
 | [Lessons](lessons.md) | Bugs that presented as physics and were arithmetic |
 | [CLI](cli.md) | Command reference, exit codes, and the agent loop |
 | [Literature targets](literature-targets.md) | Published instruments to reproduce, and what each needs |

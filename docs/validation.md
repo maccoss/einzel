@@ -118,9 +118,11 @@ covering everything.
   overlap band.
 - **No 3D.** Every solve is two-dimensional with translational invariance.
 - **No space charge, no collisions, no gas flow.**
-- **No agent acceptance suite.** Scripted prose tasks run against an agent given
-  only a project directory and the CLI, scored on whether it acts on warnings, is
-  a release metric the specification asks for and nothing measures.
+- **The agent acceptance suite has no measured pass rate yet.** The corpus, the
+  scoring, and the release gates exist and are self-validating in CI — every
+  task's worked solution passes and every distractor fails — but no agent has been
+  run against it, so there is no rate to report. See
+  [Agent acceptance](agent-acceptance.md).
 - **Anisotropy beyond two to one is not handled.** Nothing can currently produce
   it, but a point smoother damps error poorly along a stretched axis, and a grid
   built by hand at, say, 8:1 would converge slowly with nothing to say so.

@@ -108,6 +108,7 @@ public static class Program
             "templates" => Catalog(options, "template"),
             "examples" => Catalog(options, "example"),
             "agents-md" => AgentsMd(options),
+            "agents" => Agents(args, options),
             "doctor" => Doctor(options),
             _ => Unknown(args[0]),
         };
@@ -364,6 +365,142 @@ public static class Program
             : $"would write {outcome.Path} from {outcome.Source}");
 
         return (int)ExitCode.Success;
+    }
+
+    /// <summary>
+    /// The agent acceptance suite: list the tasks, set one up, score an attempt.
+    /// </summary>
+    /// <remarks>
+    /// A development and release tool rather than something a modelling session
+    /// reaches for, but it lives behind the same command objects as everything
+    /// else (AGT-2) so a harness can drive it the same way. The agent under test
+    /// is never given this verb - it gets a project directory and the rest of the
+    /// CLI, which is the situation being measured.
+    /// </remarks>
+    private static int Agents(string[] args, CommandLine options)
+    {
+        var action = args.Length > 1 && !args[1].StartsWith("--", StringComparison.Ordinal)
+            ? args[1]
+            : "tasks";
+
+        return action switch
+        {
+            "tasks" => AgentTasks(options),
+            "setup" => AgentSetup(options),
+            "score" => AgentScore(options),
+            _ => AgentUsage(action),
+        };
+    }
+
+    private static int AgentUsage(string action)
+    {
+        Console.Error.WriteLine($"unknown agents action '{action}'");
+        Console.Error.WriteLine("usage: einzel agents tasks [name]");
+        Console.Error.WriteLine("       einzel agents setup <task> <dir>");
+        Console.Error.WriteLine("       einzel agents score <task> <dir>");
+        return (int)ExitCode.ValidationFailure;
+    }
+
+    private static int AgentTasks(CommandLine options)
+    {
+        // "agents tasks" leaves the action in the positional list, so a named
+        // task is the second one.
+        var name = options.Positional.Count > 1 ? options.Positional[1] : null;
+
+        if (name is not null)
+        {
+            var task = AgentSuite.Find(name);
+
+            if (options.Has("json"))
+            {
+                return Emit(new
+                {
+                    task.Name,
+                    Track = task.Track.ToString(),
+                    task.Deliverable,
+                    task.Rationale,
+                    task.Prompt,
+                });
+            }
+
+            // The prompt alone on stdout, so a harness can pipe it straight to an
+            // agent without stripping anything.
+            Console.Out.Write(task.Prompt);
+            return (int)ExitCode.Success;
+        }
+
+        if (options.Has("json"))
+        {
+            return Emit(AgentSuite.All.Select(t => new
+            {
+                t.Name,
+                Track = t.Track.ToString(),
+                t.Deliverable,
+                t.Rationale,
+                t.Prompt,
+            }));
+        }
+
+        foreach (var task in AgentSuite.All)
+        {
+            Console.Out.WriteLine($"{task.Name,-28} {task.Track,-11} -> {task.Deliverable}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int AgentSetup(CommandLine options)
+    {
+        if (options.Positional.Count < 3)
+        {
+            Console.Error.WriteLine("usage: einzel agents setup <task> <dir>");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var task = AgentSuite.Find(options.Positional[1]);
+        var layout = new ProjectLayout(Path.GetFullPath(options.Positional[2]));
+
+        if (options.Has("dry-run"))
+        {
+            Console.Out.WriteLine($"would prepare {layout.Root} for '{task.Name}'");
+            return (int)ExitCode.Success;
+        }
+
+        layout.CreateDirectories();
+        task.Setup?.Invoke(layout);
+
+        Console.Out.WriteLine($"prepared {layout.Root} for '{task.Name}'");
+        Console.Out.WriteLine($"the agent should leave {task.Deliverable}");
+        return (int)ExitCode.Success;
+    }
+
+    private static int AgentScore(CommandLine options)
+    {
+        if (options.Positional.Count < 3)
+        {
+            Console.Error.WriteLine("usage: einzel agents score <task> <dir>");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var score = AgentSuite.Score(options.Positional[1], options.Positional[2]);
+
+        if (options.Has("json"))
+        {
+            return Emit(score, score.Passed ? ExitCode.Success : ExitCode.ValidationFailure);
+        }
+
+        foreach (var check in score.Checks)
+        {
+            var mark = check.Passed ? "ok  " : "FAIL";
+            var stream = check.Passed ? Console.Out : Console.Error;
+            stream.WriteLine($"{mark} {check.Name}");
+            stream.WriteLine($"       {check.Detail}");
+        }
+
+        Console.Out.WriteLine();
+        Console.Out.WriteLine($"{score.Task} ({score.Track}): {(score.Passed ? "passed" : "failed")}");
+
+        return (int)(score.Passed ? ExitCode.Success : ExitCode.ValidationFailure);
     }
 
     private static int AgentsMd(CommandLine options)
@@ -924,6 +1061,11 @@ public static class Program
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
           agents-md [dir]               regenerate the platform layer of AGENTS.md
+
+        release tooling:
+          agents tasks [name]           the acceptance suite: list tasks, or print one's prompt
+          agents setup <task> <dir>     prepare a project for an agent to attempt a task
+          agents score <task> <dir>     score what the agent left behind
           --version                     print the engine version
 
         options:
