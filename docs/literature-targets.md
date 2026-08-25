@@ -153,7 +153,12 @@ Do not attempt these before the RF and pressure work lands:
   trapping to extraction
 - **Collisions** — at 10⁻² mbar the collision frequency is far above the RF
   frequency, so this is the damped, event-driven regime
-- **Space charge**, which the 140,000-ion capacity figure is entirely about
+- **Space charge**, which the 140,000-ion capacity figure is entirely about. The
+  screening estimate now puts a number on it: 140,000 ions in a 1 mm packet at
+  4 kV carry about 100 mV across themselves, a 12.6 ppm flight-time error, an order
+  of magnitude past the timing budget. So that figure is not a detail of the trap,
+  it *is* a space-charge limit, and reproducing it needs the self-field solved
+  rather than estimated
 - **Gas dynamics**, for the pressure gradient between regions; Einzel consumes a
   pressure field, it does not compute one
 

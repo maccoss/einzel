@@ -145,7 +145,8 @@ why resolving powers here have carried the caveat "energy aberration only".
 
 | Field | Means |
 | --- | --- |
-| `ions` | How many to launch. ACC-5 wants transmission to ±1% at 95%, which needs about 9,600 at the worst point |
+| `ions` | How many **trajectories to compute**. A numerical setting: sampling harder only makes a statistic better. ACC-5 wants transmission to ±1% at 95%, which needs about 9,600 at the worst point |
+| `population` | How many ions are **physically in the packet**, which is what pushes on itself. Defaults to `ions` |
 | `seed` | So the same study gives the same answer twice |
 | `temperature` | Thermal velocity, drawn per component as a Gaussian of width √(kT/m). This is the whole turn-around story |
 | `transverseSpread` | Gaussian width across the direction of travel. Costs transmission |
@@ -156,6 +157,15 @@ Every spread defaults to zero, so a model that says nothing about a cloud launch
 exactly what it launched before. That is not only backward compatibility: a spread
 appearing by default would change every existing result silently, and a resolving
 power quietly getting worse is indistinguishable from a bug.
+
+**`ions` and `population` are not the same thing.** One is how hard the source
+distribution is sampled; the other is how many ions are actually there at once.
+Ten thousand samples of a single-ion experiment is a better statistic. Ten thousand
+ions in a bunch is a different experiment, because they push each other apart.
+
+The default is the conservative reading — the ions simulated are the ions
+present — so a dense packet is never silently treated as sparse. Set
+`"population": 1` when sampling an intrinsic source property one ion at a time.
 
 **There is no angular-divergence setting, on purpose.** A thermal cloud already
 has one — an ion with sideways thermal velocity is an ion launched at an angle —

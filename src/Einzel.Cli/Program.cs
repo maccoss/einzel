@@ -1003,7 +1003,21 @@ public static class Program
                 + $"{(ensemble.ResolvingPower.Uncertainty.Upper - ensemble.ResolvingPower.Uncertainty.Lower) / 2.0:G3}"
                 + $" (from the central half)"));
 
-            foreach (var warning in ensemble.ResolvingPower.Warnings.Concat(ensemble.Transmission.Warnings))
+            // Reported whether or not it crosses a threshold: a number that only
+            // appears when it is bad teaches nobody where the edge is.
+            if (ensemble.SpaceChargePopulationLimit > 0.0)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"space charge  {ensemble.SpaceChargeTimingFraction / 1e-6:F2} ppm from "
+                    + $"{ensemble.Population:N0} ions; this packet holds "
+                    + $"{ensemble.SpaceChargePopulationLimit:N0} within the 1 ppm budget"));
+            }
+
+            foreach (var warning in ensemble.ResolvingPower.Warnings
+                .Concat(ensemble.Transmission.Warnings)
+                .GroupBy(w => w.Code, StringComparer.Ordinal)
+                .Select(g => g.First()))
             {
                 var stream = warning.Suppressible ? Console.Out : Console.Error;
                 stream.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");

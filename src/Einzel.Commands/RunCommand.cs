@@ -7,6 +7,8 @@ using Einzel.Project;
 using Einzel.Transport;
 using Einzel.Fields;
 using Einzel.Analysis;
+using Einzel.Core.Results;
+using Einzel.Core.Units;
 using Einzel.Transport.Integration;
 
 namespace Einzel.Commands;
@@ -101,6 +103,25 @@ public sealed record EnsembleOutcome
 
     /// <summary>Arrival-time resolving power, model-free at half maximum.</summary>
     public required MeasuredJson ResolvingPower { get; init; }
+
+    /// <summary>Ions in the physical packet, which is what pushes on itself.</summary>
+    public required int Population { get; init; }
+
+    /// <summary>
+    /// The flight-time error the packet's own charge implies, as a fraction.
+    /// </summary>
+    /// <remarks>
+    /// Reported whether or not it crosses a threshold, because a number that only
+    /// appears when it is bad teaches nobody where the edge is. Zero for a single
+    /// ion or a packet with no declared extent.
+    /// </remarks>
+    public required double SpaceChargeTimingFraction { get; init; }
+
+    /// <summary>
+    /// How many ions this packet could hold before space charge reaches the 1 ppm
+    /// flight-time budget.
+    /// </summary>
+    public required double SpaceChargePopulationLimit { get; init; }
 }
 
 /// <summary>The outcome of a run.</summary>
@@ -172,17 +193,121 @@ public static class RunCommand
 
         var turnAround = FiguresOfMerit.Evaluator("turnAroundTime")(model) ?? 0.0;
 
+        var species = IonSpecies.FromModel(model);
+        var charge = SpaceCharge.Estimate(model.Cloud, species, model.AccelerationPotentialSi);
+
+        var limit = charge.EffectiveRadiusM > 0.0
+            ? SpaceCharge.PopulationLimit(
+                Quantity.Si(charge.EffectiveRadiusM, Quantity.From(1.0, "m").Dimension),
+                species,
+                model.AccelerationPotentialSi,
+                AccuracyBudget)
+            : 0.0;
+
+        var warnings = SpaceChargeWarnings(charge, limit);
+
         return new EnsembleOutcome
         {
             Launched = peak.Launched,
             Arrived = peak.Arrived,
-            Transmission = MeasuredJson.From(peak.Transmission(), "1"),
+            Transmission = MeasuredJson.From(Carry(peak.Transmission(), warnings), "1"),
             CentralWidthNs = peak.CentralWidthSeconds(0.5) * 1e9,
             GaussianFwhmNs = peak.GaussianEquivalentFwhmSeconds * 1e9,
             Skewness = peak.Skewness,
             TurnAroundFwhmNs = turnAround * 1e9,
-            ResolvingPower = MeasuredJson.From(peak.ResolvingPower(), "1"),
+            ResolvingPower = MeasuredJson.From(Carry(peak.ResolvingPower(), warnings), "1"),
+            Population = charge.Population,
+            SpaceChargeTimingFraction = charge.TimingFraction,
+            SpaceChargePopulationLimit = limit,
         };
+    }
+
+    /// <summary>The flight-time budget ACC-1 sets, as a fraction.</summary>
+    private const double AccuracyBudget = 1e-6;
+
+    /// <summary>
+    /// Says so when the packet is dense enough that ignoring its own charge
+    /// changes the answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The engine flies every ion through a field that does not know about the
+    /// others. For a sparse beam that is exactly right; for a dense packet it is
+    /// wrong, and wrong invisibly - the answer looks the same. Spec section 7 asks
+    /// for the governing dimensionless number to be computed and a
+    /// non-suppressible warning raised when the model is outside its validity,
+    /// and this is that.
+    /// </para>
+    /// <para>
+    /// Two tiers, because they mean different things. Past the accuracy budget the
+    /// flight time is wrong by more than it claims to be right by, which is a
+    /// validity violation. Past a tenth of it the number still stands but the
+    /// headroom is nearly gone, and someone about to raise the ion count should
+    /// hear that before they do rather than after.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<ValidityWarning> SpaceChargeWarnings(
+        SpaceChargeEstimate charge, double limit)
+    {
+        if (charge.IsPointLike)
+        {
+            return
+            [
+                new ValidityWarning(
+                    "spacecharge.point-packet",
+                    $"{charge.Population} ions are declared at a single point: the cloud has no spatial "
+                    + "extent, so its self-field is unbounded and no estimate of space charge is possible. "
+                    + "Give the cloud a transverse or longitudinal spread, or set a population of 1",
+                    WarningSeverity.ValidityViolation),
+            ];
+        }
+
+        if (charge.TimingFraction <= 0.0)
+        {
+            return [];
+        }
+
+        if (charge.TimingFraction > AccuracyBudget)
+        {
+            return
+            [
+                new ValidityWarning(
+                    "spacecharge.ignored",
+                    $"a packet of {charge.Population} ions in {charge.EffectiveRadiusM * 1e3:F3} mm carries "
+                    + $"{charge.PotentialVolts * 1e3:F1} mV across itself, which is a flight-time error of "
+                    + $"{charge.TimingFraction / 1e-6:F1} ppm against the 1 ppm budget. The ions here do not "
+                    + $"push on each other: space charge is not modelled. This packet holds about {limit:N0} "
+                    + "ions within budget, and the estimate is an upper bound - an instrument at a "
+                    + "first-order energy focus suppresses it further",
+                    WarningSeverity.ValidityViolation),
+            ];
+        }
+
+        if (charge.TimingFraction > 0.1 * AccuracyBudget)
+        {
+            return
+            [
+                new ValidityWarning(
+                    "spacecharge.approaching",
+                    $"a packet of {charge.Population} ions implies a flight-time error of "
+                    + $"{charge.TimingFraction / 1e-6:F2} ppm from its own charge, which is not modelled. "
+                    + $"Still inside the 1 ppm budget, but this packet reaches it at about {limit:N0} ions",
+                    WarningSeverity.Qualified),
+            ];
+        }
+
+        return [];
+    }
+
+    /// <summary>Attaches warnings to a result, since GRD-2 makes them travel with it.</summary>
+    private static Measured Carry(Measured measured, IReadOnlyList<ValidityWarning> warnings)
+    {
+        foreach (var warning in warnings)
+        {
+            measured = measured.WithWarning(warning);
+        }
+
+        return measured;
     }
 
     /// <summary>Validates a model document on disk.</summary>

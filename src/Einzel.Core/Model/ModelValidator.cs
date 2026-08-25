@@ -316,9 +316,25 @@ public static class ModelValidator
             }
         }
 
+        if (cloud.Population is { } declared && declared < 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/source/cloud/population",
+                Constraint = "a packet holds at least one ion",
+                Observed = new ObservedValue(declared, "1"),
+                Suggestion = "omit it to model the ions you launch as the ions that are there, or set 1 to "
+                    + "sample an intrinsic source property one ion at a time",
+            });
+
+            return null;
+        }
+
         return new IonCloudSettings
         {
             Ions = cloud.Ions,
+            Population = cloud.Population,
             Seed = cloud.Seed,
             TemperatureK = temperature.Value,
             TransverseSpreadM = transverse.Value,

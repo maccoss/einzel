@@ -21,14 +21,37 @@ namespace Einzel.Core.Model;
 /// </remarks>
 public sealed record IonCloudSettings
 {
-    /// <summary>How many ions to launch.</summary>
+    /// <summary>
+    /// How many trajectories to compute. A numerical setting, not a physical one.
+    /// </summary>
     /// <remarks>
     /// Spec ACC-5 wants a transmission interval within one per cent absolute at
     /// 95%, which is what sets the floor: a binomial interval of that width needs
-    /// of order a thousand ions, and fewer is a number with an honest error bar
-    /// too wide to design against.
+    /// of order ten thousand ions at the worst point, and fewer is a number with
+    /// an honest error bar too wide to design against.
     /// </remarks>
     public int Ions { get; init; } = 1;
+
+    /// <summary>
+    /// How many ions are in the physical packet. Defaults to <see cref="Ions"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Separate from <see cref="Ions"/> because they answer different questions and
+    /// conflating them hides a real error. <see cref="Ions"/> is how hard the
+    /// source distribution is sampled, and sampling harder only ever makes a
+    /// statistic better. A population is how many ions are actually there at once,
+    /// and more of them push each other apart.
+    /// </para>
+    /// <para>
+    /// The default is the conservative reading: the ions simulated are the ions
+    /// present. Someone measuring an intrinsic source property one ion at a time
+    /// sets a population of 1 and samples as hard as they like; someone modelling
+    /// a real bunch leaves it alone. Defaulting the other way would make a dense
+    /// packet silently sparse, which is the failure this exists to prevent.
+    /// </para>
+    /// </remarks>
+    public int? Population { get; init; }
 
     /// <summary>Seed for the draw, so a run is regenerable (PRJ-3).</summary>
     public int Seed { get; init; } = 1;

@@ -276,6 +276,31 @@ is the model-free one; the Gaussian width is what the literature quotes and what
 the turn-around closed form gives. Printing only one of them beside a resolving
 power computed from the other invites exactly the wrong reconciliation.
 
+**Space charge is estimated, never modelled.** Every ion flies through a field
+that does not know about the other ions. That is exactly right for a sparse beam
+and wrong for a dense packet, and wrong *invisibly* — the answer looks the same
+either way. So the run reports what the packet's own charge would do:
+
+```
+space charge  1.64 ppm from 10,000 ions; this packet holds 6,086 within the 1 ppm budget
+  [ValidityViolation] spacecharge.ignored: a packet of 10000 ions in 0.548 mm carries
+  13.1 mV across itself ... The ions here do not push on each other: space charge is
+  not modelled.
+```
+
+The figure appears whether or not it crosses a threshold, because a number that
+only shows up when it is bad teaches nobody where the edge is. The warning is
+non-suppressible past the 1 ppm budget and advisory past a tenth of it, and it
+names the population the packet could hold — "over budget" invites "by how much
+can I load it", and an answer that anticipates its own follow-up is worth more
+than one that does not.
+
+The estimate is an **upper bound**: it converts the energy spread to a timing
+error as though the ion were in free flight, where time goes as the inverse square
+root of energy. An instrument at a first-order energy focus suppresses that to
+second order. Over-warning is the right direction for a screen whose whole purpose
+is to stop a silent error.
+
 **Turn-around is reported in the Gaussian convention** so the two are directly
 comparable: it says how much of the width the extraction is responsible for, and
 how much room there is to improve anything else. Here 0.049 of 0.430 ns, so the

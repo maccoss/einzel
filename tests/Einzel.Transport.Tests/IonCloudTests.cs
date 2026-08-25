@@ -313,3 +313,134 @@ public sealed class EnsembleSizeTests(ITestOutputHelper output)
         return (uncertainty.UpperSi - uncertainty.LowerSi) / 2.0;
     }
 }
+
+/// <summary>
+/// The screening estimate for space charge, which the engine does not model.
+/// </summary>
+/// <remarks>
+/// Every ion here flies through a field that does not know about the other ions.
+/// For a sparse beam that is exactly right; for a dense packet it is wrong, and
+/// wrong invisibly, because the answer looks the same either way. These check the
+/// number that makes it visible.
+/// </remarks>
+public sealed class SpaceChargeTests(ITestOutputHelper output)
+{
+    private static IonSpecies Peptide => IonSpecies.FromMassToCharge(500.0, 1);
+
+    private static IonCloudSettings Packet(int population, double transverseMm) => new()
+    {
+        Ions = 100,
+        Population = population,
+        TransverseSpreadM = transverseMm * 1e-3,
+    };
+
+    [Fact]
+    public void TheEstimateScalesWithChargeAndInverselyWithSize()
+    {
+        // Nq/(8 pi eps0 R): linear in the population, inverse in the radius. If
+        // either scaling is wrong the threshold is wrong everywhere and the
+        // estimate still looks plausible at the one point it was checked.
+        var baseline = SpaceCharge.Estimate(Packet(1000, 0.3), Peptide, 4000.0);
+        var denser = SpaceCharge.Estimate(Packet(4000, 0.3), Peptide, 4000.0);
+        var larger = SpaceCharge.Estimate(Packet(1000, 0.6), Peptide, 4000.0);
+
+        output.WriteLine($"1000 ions, 0.3 mm: {baseline.PotentialVolts * 1e3:F3} mV");
+        output.WriteLine($"4000 ions, 0.3 mm: {denser.PotentialVolts * 1e3:F3} mV");
+        output.WriteLine($"1000 ions, 0.6 mm: {larger.PotentialVolts * 1e3:F3} mV");
+
+        Assert.Equal(4.0, denser.PotentialVolts / baseline.PotentialVolts, 1e-9);
+        Assert.Equal(0.5, larger.PotentialVolts / baseline.PotentialVolts, 1e-9);
+
+        // Time goes as the inverse square root of energy, so a fractional energy
+        // spread is half of it in flight time. A factor of two here is the whole
+        // difference between meeting the budget and missing it.
+        Assert.Equal(0.5 * baseline.EnergyFraction, baseline.TimingFraction, 1e-15);
+    }
+
+    [Fact]
+    public void ThePopulationLimitInvertsTheEstimate()
+    {
+        // The more useful direction to be told. "Over budget" invites "by how much
+        // can I load it", and an answer that anticipates its own follow-up is
+        // worth more than one that does not.
+        var species = Peptide;
+        const double Volts = 4000.0;
+        var radius = Quantity.From(0.5, "mm");
+
+        var limit = SpaceCharge.PopulationLimit(radius, species, Volts, 1e-6);
+        output.WriteLine($"0.5 mm at {Volts:F0} V holds {limit:N0} ions within 1 ppm");
+
+        // Loading exactly the limit should land on the budget.
+        var at = SpaceCharge.Estimate(
+            new IonCloudSettings
+            {
+                Ions = 1,
+                Population = (int)Math.Round(limit),
+                // The estimate maps Gaussian widths onto a uniform sphere, so the
+                // width that produces this radius is what the packet must declare.
+                TransverseSpreadM = radius.SiValue / Math.Sqrt(5.0 / 3.0) / Math.Sqrt(2.0),
+            },
+            species,
+            Volts);
+
+        output.WriteLine($"loading {at.Population:N0} gives {at.TimingFraction / 1e-6:F3} ppm");
+
+        Assert.Equal(1e-6, at.TimingFraction, 1e-9);
+    }
+
+    [Fact]
+    public void SamplingHarderIsNotLoadingHeavier()
+    {
+        // The distinction the whole fix exists for. Ten thousand samples of a
+        // single-ion experiment is a better statistic; ten thousand ions in a
+        // bunch is a different experiment. Conflating them makes a dense packet
+        // silently sparse.
+        var sampled = SpaceCharge.Estimate(
+            new IonCloudSettings { Ions = 10000, Population = 1, TransverseSpreadM = 3e-4 },
+            Peptide,
+            4000.0);
+
+        var loaded = SpaceCharge.Estimate(
+            new IonCloudSettings { Ions = 10000, TransverseSpreadM = 3e-4 },
+            Peptide,
+            4000.0);
+
+        output.WriteLine($"10000 samples of one ion: {sampled.TimingFraction / 1e-6:F3} ppm");
+        output.WriteLine($"a bunch of 10000 ions:    {loaded.TimingFraction / 1e-6:F3} ppm");
+
+        Assert.Equal(0.0, sampled.TimingFraction);
+        Assert.True(loaded.TimingFraction > 1e-6, "a bunch of ten thousand should be over budget");
+
+        // And the default is the conservative reading: unstated means the ions
+        // simulated are the ions present.
+        Assert.Equal(10000, loaded.Population);
+    }
+
+    [Fact]
+    public void APacketWithNoExtentIsUnbounded()
+    {
+        // Not a small error, an infinite one, and easy to write by declaring a
+        // population without any spread.
+        var estimate = SpaceCharge.Estimate(
+            new IonCloudSettings { Ions = 500 }, Peptide, 4000.0);
+
+        Assert.True(estimate.IsPointLike);
+
+        // A single ion at a point is fine: it has nothing to push against.
+        var one = SpaceCharge.Estimate(new IonCloudSettings { Ions = 1 }, Peptide, 4000.0);
+        Assert.False(one.IsPointLike);
+    }
+
+    [Fact]
+    public void TheThresholdMatchesTheHandCalculation()
+    {
+        // Worked by hand before any of this was written, which is the point of
+        // writing it down: 0.5 mm at 4 kV holds a few thousand ions, and that is a
+        // number someone would type without thinking.
+        var limit = SpaceCharge.PopulationLimit(Quantity.From(0.5, "mm"), Peptide, 4000.0, 1e-6);
+
+        output.WriteLine($"limit at 0.5 mm, 4 kV: {limit:N0} ions");
+
+        Assert.InRange(limit, 5000, 6000);
+    }
+}

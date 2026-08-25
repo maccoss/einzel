@@ -119,7 +119,12 @@ covering everything.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
 - **No 3D.** Every solve is two-dimensional with translational invariance.
-- **No space charge, no collisions, no gas flow.**
+- **Space charge is screened, not modelled.** Ions do not push on each other. A run
+  reports the flight-time error the packet's own charge implies and warns
+  non-suppressibly past the budget, but the trajectories ignore it. A real
+  treatment advances every ion together and recomputes their shared field each
+  step, which inverts the integration loop and is Phase 3.
+- **No collisions, no gas flow.**
 - **The agent acceptance suite has no measured pass rate yet.** The corpus, the
   scoring, and the release gates exist and are self-validating in CI — every
   task's worked solution passes and every distractor fails — but no agent has been

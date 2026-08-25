@@ -214,8 +214,22 @@ public sealed record SourceDocument
 /// </remarks>
 public sealed record CloudDocument
 {
-    /// <summary>How many ions to launch.</summary>
+    /// <summary>
+    /// How many trajectories to compute. A numerical setting: sampling harder only
+    /// makes a statistic better.
+    /// </summary>
     public int Ions { get; init; } = 1;
+
+    /// <summary>
+    /// How many ions are in the physical packet, which is what pushes on itself.
+    /// Defaults to <c>ions</c>.
+    /// </summary>
+    /// <remarks>
+    /// Set this to 1 when sampling an intrinsic source property one ion at a time,
+    /// so that launching ten thousand samples is not read as a bunch of ten
+    /// thousand ions. Leave it alone when modelling a real packet.
+    /// </remarks>
+    public int? Population { get; init; }
 
     /// <summary>Seed for the draw, so a run is regenerable.</summary>
     public int Seed { get; init; } = 1;

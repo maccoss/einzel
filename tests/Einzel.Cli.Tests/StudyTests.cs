@@ -911,6 +911,119 @@ public sealed class CloudRunTests : IDisposable
     }
 
     [Fact]
+    public void ADensePacketSaysThatSpaceChargeIsNotModelled()
+    {
+        // The hole this closes. Ten thousand ions is a number someone would type
+        // without thinking - it is roughly what ACC-5 asks for to pin down a
+        // transmission - and at this cloud size their mutual repulsion is already
+        // past the flight-time budget. Nothing said so before.
+        var model = WithCloud("""
+            {
+              "ions": 10000, "seed": 1,
+              "transverseSpread": { "value": 0.3, "unit": "mm" }
+            }
+            """);
+
+        var (_, stdout, stderr) = Run("run", model, "--json");
+
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        Assert.Equal(10000, ensemble.GetProperty("population").GetInt32());
+        Assert.True(ensemble.GetProperty("spaceChargeTimingFraction").GetDouble() > 1e-6);
+
+        // The limit is reported alongside, because "over budget" invites "by how
+        // much can I load it".
+        var limit = ensemble.GetProperty("spaceChargePopulationLimit").GetDouble();
+        Assert.InRange(limit, 5000, 7000);
+
+        var warning = ensemble.GetProperty("resolvingPower").GetProperty("warnings")
+            .EnumerateArray()
+            .Single(w => w.GetProperty("code").GetString() == "spacecharge.ignored");
+
+        Assert.False(warning.GetProperty("suppressible").GetBoolean());
+        Assert.Equal("ValidityViolation", warning.GetProperty("severity").GetString());
+
+        // Non-suppressible goes to stderr on the human path too.
+        var (_, _, plain) = Run("run", model);
+        Assert.Contains("space charge", plain, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ASparsePacketIsQuietButStillSaysWhereTheEdgeIs()
+    {
+        // A number that only appears when it is bad teaches nobody where the edge
+        // is, so the figure is reported either way and only the warning is
+        // conditional.
+        var model = WithCloud("""
+            {
+              "ions": 200, "seed": 1,
+              "transverseSpread": { "value": 0.3, "unit": "mm" }
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        Assert.True(ensemble.GetProperty("spaceChargeTimingFraction").GetDouble() < 1e-7);
+        Assert.True(ensemble.GetProperty("spaceChargePopulationLimit").GetDouble() > 0.0);
+
+        Assert.DoesNotContain(
+            ensemble.GetProperty("resolvingPower").GetProperty("warnings").EnumerateArray(),
+            w => w.GetProperty("code").GetString()!.StartsWith("spacecharge", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SamplingHarderDoesNotTriggerTheWarning()
+    {
+        // The distinction the fix exists for, end to end: ten thousand samples of
+        // a single-ion experiment is a better statistic, not a denser bunch.
+        var model = WithCloud("""
+            {
+              "ions": 10000, "population": 1, "seed": 1,
+              "transverseSpread": { "value": 0.3, "unit": "mm" }
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        Assert.Equal(10000, ensemble.GetProperty("launched").GetInt32());
+        Assert.Equal(1, ensemble.GetProperty("population").GetInt32());
+        Assert.Equal(0.0, ensemble.GetProperty("spaceChargeTimingFraction").GetDouble());
+
+        Assert.DoesNotContain(
+            ensemble.GetProperty("resolvingPower").GetProperty("warnings").EnumerateArray(),
+            w => w.GetProperty("code").GetString()!.StartsWith("spacecharge", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void APacketAtAPointIsRefusedAsUnbounded()
+    {
+        // Not a small error, an infinite one, and easy to write by declaring a
+        // population without any spread.
+        var model = WithCloud("""{ "ions": 500, "seed": 1 }""");
+
+        var (_, stdout, _) = Run("run", model, "--json");
+
+        using var document = JsonDocument.Parse(stdout);
+
+        var warning = document.RootElement.GetProperty("ensemble")
+            .GetProperty("resolvingPower").GetProperty("warnings")
+            .EnumerateArray()
+            .Single(w => w.GetProperty("code").GetString() == "spacecharge.point-packet");
+
+        Assert.False(warning.GetProperty("suppressible").GetBoolean());
+        Assert.Contains("single point", warning.GetProperty("message").GetString()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ACloudIsRefusedWhenItLaunchesNothing()
     {
         var model = WithCloud("""{ "ions": 0 }""");
