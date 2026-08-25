@@ -165,26 +165,39 @@ changing one word. `einzel schema --study` prints the shape.
   "name": "reflectron-tolerance",
   "model": "../models/reflectron.json",
   "figureOfMerit": "flightTime",
-  "draws": 120,
+  "draws": 200,
   "seed": 7,
   "channels": [
     { "parameter": "turningDepth", "halfWidth": 0.2, "unit": "mm" },
-    { "parameter": "capPotential", "halfWidth": 5.0, "unit": "V" }
+    { "parameter": "capPotential", "halfWidth": 5.0, "unit": "V" },
+    { "parameter": "acceleration", "halfWidth": 2.0, "unit": "V" }
   ]
 }
 ```
 
 ```
-flightTime  nominal 10.180506 us, 120 of 120 draws arrived
-            10.18 +/- 0.0234 us (95 % CI)
+flightTime  nominal 10.180506 us, 200 of 200 draws arrived
+            10.1795 +/- 0.0239 us (95 % CI)
 
 which parameter binds first:
   turningDepth             swing 0.02036 us
   capPotential             swing 0.006371 us
+  acceleration             swing 3.183E-07 us
 ```
 
 The ranking is the deliverable. Section 13: "what is wanted is not only whether
 100 to 300 microns suffices but which parameter binds first."
+
+And it is worth reading that third row, because it is the design working. Two
+volts on the **acceleration** supply move the flight time by three parts in ten
+million, while two volts on the **cap** move it twenty thousand times further -
+which is exactly what a first-order energy focus is *for*. The geometry is
+arranged so that an ion launched slightly hot goes deeper into the mirror and
+takes longer there, cancelling the time it saved in the drift. A supply tolerance
+that would matter anywhere else does not matter here.
+
+Nobody told the study that. It is a property of the model, and the ranking found
+it - which is the difference between a tolerance study and a spreadsheet.
 
 An optimisation names variables instead of channels:
 
