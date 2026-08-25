@@ -126,9 +126,16 @@ public sealed record EvidenceJson
         {
             Kind = "convergence",
             Measure = c.Measure,
-            ObservedOrder = double.IsFinite(c.ObservedOrder) ? c.ObservedOrder : null,
+
+            // Non-finite becomes absent rather than being written. JSON has no
+            // NaN, and System.Text.Json throws rather than inventing one - so a
+            // convergence with nothing to report would take the whole document
+            // down instead of the field. ObservedOrder was already guarded;
+            // Residual was not, and a preview with no convergence study behind it
+            // found the gap.
+            ObservedOrder = Finite(c.ObservedOrder),
             NominalOrder = c.NominalOrder,
-            Residual = c.ResidualSi,
+            Residual = Finite(c.ResidualSi),
         },
         Evidence.Search s => new EvidenceJson
         {
@@ -140,6 +147,8 @@ public sealed record EvidenceJson
         Evidence.Analytic a => new EvidenceJson { Kind = "analytic", Reference = a.Reference },
         _ => throw new ArgumentOutOfRangeException(nameof(evidence), evidence, "unhandled evidence kind"),
     };
+
+    private static double? Finite(double value) => double.IsFinite(value) ? value : null;
 }
 
 /// <summary>A warning on the wire.</summary>

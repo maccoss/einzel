@@ -56,6 +56,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel run <model.json>` | Run; writes a manifest and a result |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel optimise <study.json>` | Search the declared parameters for a better design |
+| `einzel preview <model.json>` | A fast, deliberately inexact look, marked as such (GRD-5) |
 | `einzel test [dir]` | Run the project's tests |
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
@@ -69,7 +70,27 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--vtu` | `run` only: also write the trajectory for ParaView |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
-Not yet built: `preview`, `render`, `ext`, `self-update`.
+Not yet built: `render`, `ext`, `self-update` - all three need assemblies that do
+not exist yet.
+
+### The preview tier
+
+`preview` runs the same solver told to stop trying so hard: the integrator
+tolerance is floored well above the model's, and there is no convergence study
+behind the number. On the shipped reflectron that is 9 ms against a full run, and
+the answer is within a hundredth of a microsecond - close enough to see that a
+change helped, nowhere near quotable.
+
+Two things make that safe rather than merely fast. The **taint rides on the
+number** (GRD-5), so it travels wherever the number goes and cannot be dropped by
+a caller who did not think to look for it. And a preview **writes nothing**: a
+tainted result sitting in `results/` would be picked up by `verify` and reported
+as current, which is exactly the quietly-wrong artifact the manifest discipline
+exists to prevent.
+
+It never runs *tighter* than the model asked for. A model wanting something looser
+than the preview floor gets what it wanted, and a preview that quietly ran more
+accurately than the real thing would be a strange kind of lie.
 
 ### Tests
 

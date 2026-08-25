@@ -100,6 +100,7 @@ public static class Program
             "run" => Run(options),
             "sweep" => Sweep(options),
             "optimise" or "optimize" => Optimise(options),
+            "preview" => Preview(options),
             "test" => Test(options),
             "verify" => Verify(options),
             "export" => Export(options),
@@ -512,6 +513,46 @@ public static class Program
         return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 
+    private static int Preview(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel preview <model.json> [--json]");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var outcome = PreviewCommand.Execute(options.Positional[0]);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.Outcome == "StopConditionMet"
+                ? ExitCode.Success
+                : ExitCode.ConvergenceFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"flight time   {outcome.FlightTime.Value:F4} {outcome.FlightTime.Unit} (preview)"));
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"              {outcome.AcceptedSteps} steps at tolerance {outcome.RelativeTolerance:G3}, "
+            + $"{outcome.ElapsedMs:F0} ms"));
+
+        // GRD-5: the mark is not suppressible and does not depend on the caller
+        // having thought to look for it.
+        foreach (var warning in outcome.FlightTime.Warnings)
+        {
+            Console.Error.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)(outcome.Outcome == "StopConditionMet"
+            ? ExitCode.Success
+            : ExitCode.ConvergenceFailure);
+    }
+
     private static int Test(CommandLine options)
     {
         var root = options.Value("project")
@@ -876,6 +917,7 @@ public static class Program
           estimate <model.json>         what a run will cost, without running it
           solve <model.json>            solve the fields only, and report how they went
           run <model.json> [--vtu]      run a model; --vtu also writes a ParaView trajectory
+          preview <model.json>          a fast, deliberately inexact look
           test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first

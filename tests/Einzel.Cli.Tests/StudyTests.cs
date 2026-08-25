@@ -629,3 +629,106 @@ public sealed class ProjectTestTests : IDisposable
         Assert.Contains("no tests", stdout, StringComparison.Ordinal);
     }
 }
+
+/// <summary>
+/// The preview tier: fast, deliberately inexact, and marked as such (GRD-5).
+/// </summary>
+public sealed class PreviewTests : IDisposable
+{
+    private readonly string _root = Path.Combine(
+        Path.GetTempPath(), "einzel-preview", Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            return (Program.Main(args), stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(previousOut);
+            Console.SetError(previousError);
+        }
+    }
+
+    private string Model()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        return Path.Combine(_root, "models", "reflectron.json");
+    }
+
+    [Fact]
+    public void APreviewIsMarkedAndTheMarkCannotBeSuppressed()
+    {
+        var (exitCode, stdout, _) = Run("preview", Model(), "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var flightTime = document.RootElement.GetProperty("flightTime");
+
+        var warning = flightTime.GetProperty("warnings")
+            .EnumerateArray()
+            .Single(w => w.GetProperty("code").GetString() == "result.preview-tier");
+
+        Assert.False(warning.GetProperty("suppressible").GetBoolean());
+        Assert.Equal("Provenance", warning.GetProperty("severity").GetString());
+
+        // The taint rides on the number, so it travels wherever the number does
+        // rather than depending on a caller having thought to look beside it.
+        Assert.True(flightTime.GetProperty("value").GetDouble() > 0.0);
+    }
+
+    [Fact]
+    public void APreviewIsCloseButNotQuotable()
+    {
+        var model = Model();
+
+        var (_, preview, _) = Run("preview", model, "--json");
+        var (_, full, _) = Run("run", model, "--json");
+
+        using var previewDocument = JsonDocument.Parse(preview);
+        using var fullDocument = JsonDocument.Parse(full);
+
+        var quick = previewDocument.RootElement.GetProperty("flightTime").GetProperty("value").GetDouble();
+        var exact = fullDocument.RootElement.GetProperty("flightTime").GetProperty("value").GetDouble();
+
+        // Close enough to see that a change helped, which is the whole use.
+        Assert.Equal(exact, quick, 1e-2);
+
+        // And it ran at a looser tolerance than the model asked for, which is what
+        // makes it a preview rather than just a run with the manifest left off.
+        var used = previewDocument.RootElement.GetProperty("relativeTolerance").GetDouble();
+        var requested = previewDocument.RootElement.GetProperty("requestedTolerance").GetDouble();
+
+        Assert.True(used > requested, $"preview ran at {used:G3}, no looser than the model's {requested:G3}");
+    }
+
+    [Fact]
+    public void APreviewWritesNothing()
+    {
+        // A tainted result sitting in results/ would be picked up by verify and
+        // reported as current, which is the sort of quietly-wrong artifact the
+        // manifest discipline exists to prevent.
+        var model = Model();
+        Assert.Equal(0, Run("preview", model).ExitCode);
+
+        var results = Path.Combine(_root, "results");
+
+        Assert.Empty(Directory.Exists(results) ? Directory.GetFiles(results) : []);
+    }
+}

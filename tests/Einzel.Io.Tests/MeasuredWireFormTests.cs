@@ -81,6 +81,32 @@ public sealed class MeasuredWireFormTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ConvergenceWithNothingToReportSerialisesRatherThanThrowing()
+    {
+        // JSON has no NaN and System.Text.Json throws rather than inventing one,
+        // so a single unreportable number takes the whole document down instead of
+        // the field. A convergence with no order and no residual is an ordinary
+        // thing - a preview has no study behind it, and a run whose refinements
+        // agreed to the last bit has no order to resolve.
+        var wire = MeasuredJson.From(
+            Envelope(new Evidence.Convergence("integrator tolerance", double.NaN, 5.0, double.NaN)), "1");
+
+        Assert.Null(wire.Evidence.ObservedOrder);
+        Assert.Null(wire.Evidence.Residual);
+        Assert.Equal(5.0, wire.Evidence.NominalOrder);
+
+        // Serialising without throwing is the assertion; before the guard this
+        // line threw and took the document with it.
+        var text = System.Text.Json.JsonSerializer.Serialize(wire);
+        output.WriteLine(text);
+
+        Assert.DoesNotContain("NaN", text, StringComparison.Ordinal);
+
+        using var parsed = System.Text.Json.JsonDocument.Parse(text);
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, parsed.RootElement.ValueKind);
+    }
+
+    [Fact]
     public void TheIntervalIsConvertedWithTheValue()
     {
         // An interval left in SI beside a value converted to millimetres is a
