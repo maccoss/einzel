@@ -77,6 +77,8 @@ public static class FiguresOfMerit
         new("transmission", "1", "Fraction of launched ions that reach the detector.", true),
         new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false),
         new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
+        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false),
+        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
@@ -131,6 +133,8 @@ public static class FiguresOfMerit
                 ? peak.GaussianEquivalentFwhmSeconds
                 : null,
             "turnAroundTime" => TurnAround,
+            "emittance" => model => PacketEmittance(model)?.Wider.GeometricM,
+            "normalisedEmittance" => model => PacketEmittance(model)?.Wider.NormalisedM,
             _ => throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.InternalError,
@@ -219,13 +223,31 @@ public static class FiguresOfMerit
     /// <returns>The arrival-time peak it forms.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
     /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
-    public static ArrivalTimePeak FromCloud(CompiledModel model)
+    public static ArrivalTimePeak FromCloud(CompiledModel model) => FlyCloud(model).Peak;
+
+    /// <summary>
+    /// Flies the cloud a model declares, keeping both when the ions arrived and
+    /// where they were going when they did.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>The arrival-time peak and the arriving ions.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
+    /// <remarks>
+    /// The arrival times answer how a peak is shaped and the final states answer
+    /// whether the packet would survive the next aperture. Both come out of one
+    /// flight because flying twice for them would double the cost of every
+    /// ensemble run to recompute something already in hand.
+    /// </remarks>
+    public static CloudFlight FlyCloud(CompiledModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         var (nominal, species, field, settings, detector) = Setup(model);
         var cloud = IonCloud.Draw(in nominal, species, model.Cloud);
+
         var arrivals = new List<double>(cloud.Length);
+        var arrived = new List<PhaseState>(cloud.Length);
 
         foreach (var start in cloud)
         {
@@ -234,10 +256,35 @@ public static class FiguresOfMerit
             if (result.Outcome == TrajectoryOutcome.StopConditionMet)
             {
                 arrivals.Add(result.FlightTimeSeconds);
+                arrived.Add(result.FinalState);
             }
         }
 
-        return ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions);
+        return new CloudFlight(
+            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions), [.. arrived]);
+    }
+
+    /// <summary>
+    /// The emittance of the packet that arrives, or null when too few ions do.
+    /// </summary>
+    /// <remarks>
+    /// Null rather than an exception, because a geometry that loses its beam is a
+    /// result a sweep records rather than a failure that stops it - the same
+    /// convention the single-trajectory figures use for an ion that never lands.
+    /// </remarks>
+    private static (Emittance Wider, Emittance Narrower)? PacketEmittance(CompiledModel model)
+    {
+        if (!model.Cloud.IsCloud)
+        {
+            // A single deterministic ion has no spread to occupy an area with, and
+            // a swept launch energy is not a packet either - the ions are not
+            // simultaneous, they are one ion under different conditions.
+            return null;
+        }
+
+        var flight = FlyCloud(model);
+
+        return flight.Arrived.Count >= 3 ? Emittance.FromPacket(flight.Arrived) : null;
     }
 
     /// <summary>

@@ -178,6 +178,54 @@ geometry with cuts on and off, and with Dirichlet and Neumann edges, showed the
 divergence in the cut-free rows and in none of the Neumann rows. That is four
 solves and it eliminated the entire feature that had just been written.
 
+## Measuring the analysis in one mechanics and the trajectory in another
+
+Normalised emittance is conventionally written as the geometric emittance times
+βγ. Implemented that way, it drifted by **8.1e-7** across an accelerating stage —
+a quantity whose entire purpose is to not change.
+
+Two separate causes, both invisible until an exact test asked for exact
+invariance.
+
+**The paraxial term.** A divergence angle is transverse velocity over *axial*
+speed, while βγ is built from the *total* speed. The two differ by a factor of
+1 + y′²/2, which is around 8e-7 for a milliradian packet — and it does not cancel,
+because damping shrinks the divergence and shrinks the term with it. Measuring the
+area in (y, p_y) directly instead of scaling an angular area by βγ removes it
+exactly: 8.1e-7 → 2.1e-8.
+
+**The remaining 2.1e-8 was γ − 1 at the exit speed**, and it was there because the
+analysis was relativistic while the transport is not. Relativistically an axial
+force conserves γmv_y exactly, so v_y falls slightly as γ grows. Newtonian
+transport holds v_y exactly constant, so γv_y grows. Carrying a γ in the analysis
+measured the packet in mechanics the trajectory was not integrated in, and the
+mismatch surfaced as an emittance that grew out of nowhere.
+
+Dropping γ took it to **3.0e-16**, machine precision. What that gives up is bounded
+and remote: γ − 1 reaches 1 ppm at around 460 keV for m/z 500, against the few keV
+an ion-optical instrument runs at. If a relativistic transport mode is ever added,
+the term has to come back — **in both places at once**, which is the actual lesson.
+An analysis and the integrator it consumes must agree about the mechanics, and a
+conserved quantity is the only thing that will tell you when they do not.
+
+## A packet with no area has no orientation
+
+A cloud with spatial spread and no temperature is perfectly parallel. Its emittance
+is exactly zero — a real answer, not a degenerate one — but the Twiss α that
+describes the *tilt* of its phase-space ellipse is undefined, because there is no
+ellipse. It came out `NaN`, JSON cannot represent `NaN`, and the serialiser took
+the entire result document down.
+
+This is the **second** time that exact failure has happened here; the first was a
+convergence residual. Both appeared only under `--json`, both were caught by a test
+written for something else, and in both cases the field was one that is normally
+finite and only fails in a case nobody pictured.
+
+The fix that generalises is not another `Finite()` guard: it is that an undefined
+measurement should be **absent, not zero**. Zero is a real emittance and a real α,
+so a reader cannot tell a measured zero from an absent measurement if both print as
+zero. The field is nullable and omitted when there was nothing to measure.
+
 ## Two arithmetic slips, for completeness
 
 **Velocity fraction is not energy fraction.** v ∝ √E, so a fractional energy
@@ -204,6 +252,9 @@ actually caught them were:
   refinement, or a cycle count that grows with it, is diagnostic on its own.
 - **Exact invariants.** The maximum principle — no potential may exceed the
   applied value — is a tolerance-free check that a solve has not diverged.
+  Liouville's theorem is the same kind of check on the integrator, and being
+  independent of energy it catches things energy conservation cannot. Both found
+  bugs that presented as small, plausible drifts.
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.

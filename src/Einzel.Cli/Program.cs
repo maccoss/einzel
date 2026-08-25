@@ -1003,6 +1003,28 @@ public static class Program
                 + $"{(ensemble.ResolvingPower.Uncertainty.Upper - ensemble.ResolvingPower.Uncertainty.Lower) / 2.0:G3}"
                 + $" (from the central half)"));
 
+            if (ensemble.EmittanceMmMrad is { } major)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"emittance     {major:G4} x {ensemble.EmittanceMinorMmMrad:G4} mm.mrad, "
+                    + $"normalised {ensemble.NormalisedEmittanceMmMrad:G4}"));
+
+                // No alpha means no ellipse: every ion exactly parallel, so there
+                // is no waist to be on one side of.
+                var orientation = ensemble.PacketTwissAlpha switch
+                {
+                    > 0.0 => "still converging",
+                    < 0.0 => "past the waist",
+                    _ => "parallel",
+                };
+
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"packet        {ensemble.PacketRadiusMm:F3} mm rms, alpha "
+                    + $"{ensemble.PacketTwissAlpha:+0.00;-0.00;0.00} ({orientation})"));
+            }
+
             // Reported whether or not it crosses a threshold: a number that only
             // appears when it is bad teaches nobody where the edge is.
             if (ensemble.SpaceChargePopulationLimit > 0.0)

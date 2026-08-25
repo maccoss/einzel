@@ -1004,6 +1004,93 @@ public sealed class CloudRunTests : IDisposable
     }
 
     [Fact]
+    public void AThermalPacketReportsAnEmittanceThatMatchesItsClosedForm()
+    {
+        // The emittance of a cloud with independently drawn position and velocity
+        // is the product of their widths: the transverse spread as declared, and
+        // the divergence, which is the thermal speed over the axial one. Both are
+        // known before the run, so the reported figure is checkable rather than
+        // merely plausible.
+        const double SpreadMm = 0.3;
+        const double TemperatureK = 300.0;
+
+        var model = WithCloud("""
+            {
+              "ions": 3000, "seed": 5,
+              "temperature": { "value": 300, "unit": "K" },
+              "transverseSpread": { "value": 0.3, "unit": "mm" }
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        var emittance = ensemble.GetProperty("emittanceMmMrad").GetDouble();
+
+        // The reflectron returns the ion to its launch energy, so the axial speed
+        // at the detector is the one the acceleration set. m/z 500 at 4 kV.
+        const double BoltzmannSi = 1.380649e-23;
+        const double MassSi = 500.0 * 1.66053906892e-27;
+        const double ChargeSi = 1.602176634e-19;
+
+        var axial = Math.Sqrt(2.0 * ChargeSi * 4000.0 / MassSi);
+        var thermal = Math.Sqrt(BoltzmannSi * TemperatureK / MassSi);
+        var exact = SpreadMm * (thermal / axial) * 1e3;
+
+        Assert.InRange(emittance, exact * 0.94, exact * 1.06);
+
+        // Round source, so the two planes should agree to sampling error rather
+        // than differ systematically.
+        var minor = ensemble.GetProperty("emittanceMinorMmMrad").GetDouble();
+        Assert.InRange(minor / emittance, 0.9, 1.0);
+
+        // Normalised is the same area against transverse momentum, so it is the
+        // geometric one scaled by the axial speed over c.
+        var normalised = ensemble.GetProperty("normalisedEmittanceMmMrad").GetDouble();
+        Assert.InRange(normalised / emittance, axial / 299792458.0 * 0.99, axial / 299792458.0 * 1.01);
+
+        // Diverging by the time it lands, having started at a waist.
+        Assert.True(ensemble.GetProperty("packetTwissAlpha").GetDouble() < 0.0);
+    }
+
+    [Fact]
+    public void APerfectlyParallelPacketReportsZeroAreaAndNoOrientation()
+    {
+        // Spatial spread with no temperature makes every ion exactly parallel,
+        // which is a real packet with a real emittance of exactly zero. It is also
+        // the case where the Twiss orientation is undefined - there is no ellipse
+        // to be tilted - and an undefined orientation reaching the serialiser as a
+        // not-a-number takes the whole document down, silently and only on --json.
+        // The same failure has happened here before, on a different field.
+        var model = WithCloud("""
+            {
+              "ions": 400, "seed": 2,
+              "transverseSpread": { "value": 0.3, "unit": "mm" }
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        // Parsing at all is most of the assertion.
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        Assert.Equal(0.0, ensemble.GetProperty("emittanceMmMrad").GetDouble(), 12);
+
+        // Absent rather than null: this surface omits what it did not measure, so
+        // a consumer distinguishes "no orientation" from "zero" by the key not
+        // being there. Zero is a real orientation and this packet does not have one.
+        Assert.False(ensemble.TryGetProperty("packetTwissAlpha", out _));
+
+        // The packet still has a size; it is only the area that vanished.
+        Assert.True(ensemble.GetProperty("packetRadiusMm").GetDouble() > 0.0);
+    }
+
+    [Fact]
     public void APacketAtAPointIsRefusedAsUnbounded()
     {
         // Not a small error, an infinite one, and easy to write by declaring a

@@ -122,6 +122,69 @@ public sealed record EnsembleOutcome
     /// flight-time budget.
     /// </summary>
     public required double SpaceChargePopulationLimit { get; init; }
+
+    /// <summary>
+    /// Geometric emittance of the arriving packet in its wider transverse plane,
+    /// in millimetre-milliradians.
+    /// </summary>
+    /// <remarks>
+    /// The phase-space area the packet occupies, and what decides whether it fits
+    /// through whatever comes next. Optics trade size against divergence and cannot
+    /// reduce the product, so this is the number that says what no downstream lens
+    /// can fix.
+    /// </remarks>
+    /// <remarks>
+    /// Null when there was no packet to measure it on - fewer than three ions
+    /// arrived. Null rather than zero, because a zero emittance is a real and
+    /// meaningful answer (a perfectly parallel beam has one) and a reader cannot
+    /// tell a measured zero from an absent measurement if both print as zero.
+    /// </remarks>
+    public required double? EmittanceMmMrad { get; init; }
+
+    /// <summary>
+    /// The same area in the narrower plane, in millimetre-milliradians.
+    /// </summary>
+    /// <remarks>
+    /// Both planes, because a packet is rarely round and a single figure would
+    /// average away the axis that is about to clip.
+    /// </remarks>
+    public required double? EmittanceMinorMmMrad { get; init; }
+
+    /// <summary>
+    /// Normalised emittance in the wider plane, in millimetre-milliradians.
+    /// </summary>
+    /// <remarks>
+    /// Measured against transverse momentum rather than angle, so acceleration
+    /// leaves it alone. A geometric emittance can be improved by nothing more than
+    /// raising the beam energy; this one cannot, which makes it the fair way to
+    /// compare two sources.
+    /// </remarks>
+    public required double? NormalisedEmittanceMmMrad { get; init; }
+
+    /// <summary>
+    /// Root-mean-square radius of the arriving packet in its wider plane, in
+    /// millimetres.
+    /// </summary>
+    public required double? PacketRadiusMm { get; init; }
+
+    /// <summary>
+    /// The Twiss alpha of the arriving packet: positive while still converging,
+    /// zero at a waist, negative once past it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Says which side of the focus the detector sits on, which a width alone
+    /// cannot. A packet measured at twice its waist size reads the same either way
+    /// and needs the opposite correction.
+    /// </para>
+    /// <para>
+    /// Null when the packet has no phase-space area to form an ellipse from - every
+    /// ion exactly parallel, which a cloud with spatial spread and no temperature
+    /// is. There is no orientation to report, and reporting one anyway is how a
+    /// not-a-number reaches a serialiser that has no way to write it.
+    /// </para>
+    /// </remarks>
+    public required double? PacketTwissAlpha { get; init; }
 }
 
 /// <summary>The outcome of a run.</summary>
@@ -177,11 +240,11 @@ public static class RunCommand
     /// <summary>Flies the declared cloud and reports what it did.</summary>
     private static EnsembleOutcome? Ensemble(CompiledModel model)
     {
-        ArrivalTimePeak peak;
+        CloudFlight flight;
 
         try
         {
-            peak = FiguresOfMerit.FromCloud(model);
+            flight = FiguresOfMerit.FlyCloud(model);
         }
         catch (ArgumentException)
         {
@@ -190,6 +253,15 @@ public static class RunCommand
             // transmission figure exists to make visible.
             return null;
         }
+
+        var peak = flight.Peak;
+
+        // Three ions to place two second moments and their covariance. Below that
+        // the area is not underdetermined so much as meaningless, and reporting a
+        // zero would read as a perfectly collimated beam.
+        var packet = flight.Arrived.Count >= 3
+            ? Emittance.FromPacket(flight.Arrived)
+            : ((Emittance Wider, Emittance Narrower)?)null;
 
         var turnAround = FiguresOfMerit.Evaluator("turnAroundTime")(model) ?? 0.0;
 
@@ -219,6 +291,19 @@ public static class RunCommand
             Population = charge.Population,
             SpaceChargeTimingFraction = charge.TimingFraction,
             SpaceChargePopulationLimit = limit,
+
+            // A micrometre is a millimetre-milliradian, since a radian is
+            // dimensionless. The engine carries metres and the report carries the
+            // unit the field is quoted in.
+            EmittanceMmMrad = packet?.Wider.MillimetreMilliradian,
+            EmittanceMinorMmMrad = packet?.Narrower.MillimetreMilliradian,
+            NormalisedEmittanceMmMrad = packet?.Wider.NormalisedM * 1e6,
+            PacketRadiusMm = packet?.Wider.RmsSizeM * 1e3,
+
+            // A packet with no area has no ellipse and so no orientation. Left
+            // null rather than passed through, because the alternative is a
+            // not-a-number in a document format that cannot represent one.
+            PacketTwissAlpha = packet is { Wider.GeometricM: > 0.0 } p ? p.Wider.TwissAlpha : null,
         };
     }
 

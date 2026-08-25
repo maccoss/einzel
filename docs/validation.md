@@ -28,6 +28,7 @@ cross-code tier is unavailable — see below.
 | Mathieu stability boundary, sinusoidal drive | q = 0.90684 against a tabulated 0.90804 |
 | Meissner boundary, square-wave drive | q = 0.71113 against a published 0.712 |
 | Digital working point from duty cycle | a = 0.2630 against a published 0.2640 |
+| Thermal packet emittance, sigma_x sqrt(kT/m) / v | 0.77% at 6,000 ions |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
 | Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |
 
@@ -83,6 +84,16 @@ Checks with no tolerance at all, which are the strongest kind available.
   integration went wrong, not the instrument.
 - **Superposition linearity**: doubling an electrode's potential doubles its basis
   field.
+- **Liouville's theorem**: a conservative force cannot change phase-space area. A
+  field-free drift to a plane preserves the emittance to **1.5e-14** and an ideal
+  thin lens to **8.1e-15**, while the same lens given a cubic term — spherical
+  aberration — grows it by 1.58x. This is a conserved quantity *independent of
+  energy*: energy conservation is blind to a map that shears phase space, so it
+  checks an axis of the integrator that ACC-4's energy drift does not reach.
+- **Adiabatic damping**: accelerating a packet along its axis divides the geometric
+  emittance by exactly the speed ratio — observed 0.031606977 against a closed-form
+  0.031606977 across a 10 V to 2 kV stage — while the normalised emittance holds to
+  **3.0e-16**.
 
 ### Contract and guardrail
 
@@ -111,12 +122,15 @@ covering everything.
 
 - **No cross-code comparison.** No SIMION licence. Nothing here is checked against
   an independently written ion-optics code.
-- **No literature regression yet.** Published geometries reproduced against
-  reported performance is the tier that catches *conceptual* errors rather than
-  numerical ones, and it does not exist. With cross-code unavailable, this is the
-  most valuable missing tier. Targets are worked up in
-  [Literature targets](literature-targets.md); the nearest is the Ion Processor's
-  turn-around time, which is a DC problem and needs only two additions.
+- **Literature regression is started, not finished.** Published geometries
+  reproduced against reported performance is the tier that catches *conceptual*
+  errors rather than numerical ones, and with cross-code unavailable it is the most
+  valuable one. Three targets are worked up in
+  [Literature targets](literature-targets.md) and the quadrupole stability
+  boundaries are reproduced against two of them. What remains is mostly geometry:
+  the Ion Processor now has both figures of merit it needs — turn-around time and
+  emittance — but not the trap geometry to measure them on, and the segmented
+  quadrupole needs three dimensions.
 - **RF exists but only as an analytic field.** Time-domain integration through a
   driven field works and recovers the stability diagram for both sinusoidal and
   rectangular drives, which §19 calls the single best test that an RF path is

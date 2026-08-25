@@ -173,6 +173,11 @@ and offering both would let a document say two things about the same physics and
 be believed twice. Energy spread *is* separate, because supply ripple varies the
 energy without varying the direction, which a temperature cannot express.
 
+A declared cloud is what makes the emittance figures available. `transverseSpread`
+and `temperature` are the two widths whose product the emittance is, so a cloud
+with one and not the other has an emittance of exactly zero — correctly, since
+every ion is then parallel — and a cloud with neither has no packet to measure.
+
 ## Fields
 
 A list, superposed. Superposition is exact for electrostatics.

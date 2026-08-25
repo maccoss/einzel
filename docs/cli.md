@@ -229,6 +229,15 @@ Python objectives will register into the same place when extensions land.
 | `energyDrift` | 1 | Largest relative energy departure over the flight. A diagnostic against ACC-4, not a design target |
 | `resolvingPower` | 1 | Arrival-time resolving power across the energy spread, model-free at half maximum |
 | `transmission` | 1 | Fraction of launched ions reaching the detector |
+| `arrivalSpread` | ns | Full width at half maximum of the arrival-time peak |
+| `turnAroundTime` | ns | The part of that width imposed before the ion left, by the source temperature |
+| `emittance` | µm | Phase-space area of the arriving packet, wider transverse plane |
+| `normalisedEmittance` | µm | The same area against transverse momentum, so acceleration does not change it |
+
+A **micrometre is a millimetre-milliradian**. A radian is dimensionless, so an
+emittance has the dimension of length, and 1 mm·mrad is exactly 1e-6 m. The unit
+is written `um` so it parses as the length it is, and the number reads as the
+conventional figure without conversion.
 
 The ensemble ones sweep launch energy across `energySpread` (±3% by default, the
 acceptance the memo asks a mirror to hold) at `ions` evenly spaced points. Evenly
@@ -259,10 +268,12 @@ alongside the single-ion flight time:
 flight time   10.180506 +/- 0 us
               convergence in integrator tolerance, residual at round-off
 
-cloud         600 of 600 ions arrived, transmission 100.0 % +/- 0.2 %
-peak          0.156 ns central half, 0.430 ns Gaussian FWHM, skew +3.27
-turn-around   0.049 ns of that Gaussian width
-resolving     32593 +/- 941 (from the central half)
+cloud         2000 of 2000 ions arrived, transmission 100.0 % +/- 0.0 %
+peak          0.169 ns central half, 0.464 ns Gaussian FWHM, skew +2.78
+turn-around   0.057 ns of that Gaussian width
+resolving     30208 +/- 478 (from the central half)
+emittance     0.5405 x 0.5289 mm.mrad, normalised 7.081E-05
+packet        0.781 mm rms, alpha -2.42 (past the waist)
 ```
 
 The single-ion flight time stays, because it is the number with a convergence
@@ -275,6 +286,30 @@ central half narrow. The resolving power is computed from the central half, whic
 is the model-free one; the Gaussian width is what the literature quotes and what
 the turn-around closed form gives. Printing only one of them beside a resolving
 power computed from the other invites exactly the wrong reconciliation.
+
+**Emittance says whether the packet fits through what comes next.** A width alone
+does not: a wide parallel beam and a narrow diverging one can be equally hard to
+use, because optics trade size against divergence and cannot reduce the product.
+The product is the emittance, and no downstream lens reduces it.
+
+Both transverse planes are reported, because a packet is rarely round — a
+quadrupole focuses one and defocuses the other by construction — and a single
+figure would average away the axis that is about to clip. The axis they are
+measured across is the packet's own mean velocity, so a mirror that turns the beam
+around or a deflector that bends it needs no special handling.
+
+The **normalised** figure is the one to compare sources by. Accelerating a beam
+along its axis shrinks every divergence angle without touching the transverse
+velocity, so the geometric emittance falls as one over the speed — real, and
+called adiabatic damping, but it makes a beam look better without anything having
+improved. The normalised figure measures against transverse momentum instead and
+does not move.
+
+`alpha` is the Twiss parameter: **positive while the packet is still converging,
+zero at a waist, negative once past it**. A width cannot say which — a packet
+measured at twice its waist size reads the same on either side and needs the
+opposite correction. It is omitted entirely when the packet has no phase-space
+area, since a zero-area packet has no ellipse to be tilted.
 
 **Space charge is estimated, never modelled.** Every ion flies through a field
 that does not know about the other ions. That is exactly right for a sparse beam

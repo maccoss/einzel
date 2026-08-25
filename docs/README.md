@@ -15,7 +15,7 @@ states the intent and these pages state the reality; both are noted.
 | Page | What it covers |
 | --- | --- |
 | [Architecture](architecture.md) | Assemblies, layering, the four invariants, and why each exists |
-| [Model format](model-format.md) | Schema 0.2 in full: parameters, expressions, fields, electrodes |
+| [Model format](model-format.md) | Schema 0.3 in full: parameters, expressions, fields, electrodes, source clouds |
 | [Device templates](device-templates.md) | Writing a new device as data, and the two shipped examples |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
@@ -53,6 +53,13 @@ Stages 0 through 5 of the delivery plan are complete: units and the result
 envelope, the trajectory integrator, the model format and CLI, the field solver,
 Class T analysis with device templates, and `Einzel.Sweeps` — tolerance Monte
 Carlo, sensitivity ranking, and both optimisers.
+
+Since then: source **ion clouds** and the Class S figures they make possible, a
+**space-charge screen** that estimates what is not modelled and warns
+non-suppressibly, a **time-domain RF** path that recovers the Mathieu and Meissner
+stability boundaries against published values, and **emittance** — which completes
+the Class T figures §12 asks for and doubles as a Liouville check on the
+integrator.
 
 Not yet built: extensions, rendering, the compute dispatch layer, the MCP server,
 the update mechanism, and the shell.

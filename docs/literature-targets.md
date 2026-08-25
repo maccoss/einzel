@@ -139,11 +139,26 @@ thermal velocity distribution — not by the RF that produced it.
 
 ### What it needs first
 
-- **Turn-around time and packet emittance as figures of merit.** Spec §12 lists
-  both under Class T and neither exists. Required for Δt\*.
-- **Ensemble launching from a distribution** — position and thermal velocity —
-  rather than single ions. The analysis side (`ArrivalTimePeak`) already handles
-  the resulting arrival distribution.
+Both of the analysis-side prerequisites are now **done**, which moves this target
+from "needs machinery" to "needs geometry".
+
+- ~~**Turn-around time and packet emittance as figures of merit.**~~ Both exist,
+  both check against closed forms: turn-around to 0.5%, emittance to 0.8% against
+  σ_x·√(kT/m)/v at 6,000 ions. Emittance is reported in both transverse planes
+  with its Twiss orientation, and in the normalised form, which is the one to quote
+  for a source that feeds an accelerating stage — as this trap does.
+- ~~**Ensemble launching from a distribution.**~~ `IonCloud.Draw` samples position
+  and per-component thermal velocity, and a model declares it in the `source`
+  block.
+
+What is left for Δt\* is the **rectilinear cross-section as a solved template**,
+which is geometry rather than capability: flat electrodes are `rectangle`
+primitives and the auxiliary DC electrodes are more of them.
+
+Note also that the 2.4 mm beam width is now checkable against something better
+than a width. A spatial extent alone does not say whether a packet will survive
+the extraction; the emittance of the extracted packet does, and it is measurable
+against the paper's stated injection energies and beam size.
 
 ### What needs Phase 3 and beyond
 
@@ -167,9 +182,10 @@ So the 84% extraction efficiency and the ion-capacity figure are Phase 3 targets
 
 ### Suggested order
 
-1. Add turn-around time and packet emittance to `Einzel.Analysis` (Class T, §12)
-2. Add ensemble launching from a spatial and thermal distribution
-3. Build the rectilinear cross-section as a template, DC only
+1. ~~Add turn-around time and packet emittance to `Einzel.Analysis`~~ — done
+2. ~~Add ensemble launching from a spatial and thermal distribution~~ — done
+3. Build the rectilinear cross-section as a template, DC only — **next, and now
+   the only thing between here and Δt\***
 4. Reproduce Δt\* = 0.8–1.2 ns across m/z 195–2722 — a strong test, because the
    mass dependence of turn-around time is a sharp signature
 5. Defer efficiency, capacity, and the pressure gradient to Phase 3

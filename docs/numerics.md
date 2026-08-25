@@ -329,6 +329,44 @@ A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
 equals its reflection inside, which is exact at any spacing and coarsens
 faithfully.
 
+## Emittance
+
+The phase-space area a packet occupies, reported per transverse plane about the
+packet's own mean velocity. Two forms, and the difference between them is not
+cosmetic.
+
+**Geometric**, √(⟨y²⟩⟨y′²⟩ − ⟨yy′⟩²) with y′ = v_y/v_axial, in m·rad. What an
+aperture cares about. Root-mean-square rather than a bounding ellipse, because a
+bounding area is set by whichever ion strayed furthest and a real distribution has
+tails.
+
+**Normalised**, the same area measured against transverse momentum — ⟨y, v_y/c⟩
+rather than ⟨y, y′⟩×βγ. Invariant under axial acceleration, which the conventional
+βγ form is not; see [Lessons](lessons.md) for the two terms that separate them and
+for why the momentum is Newtonian.
+
+A radian is dimensionless, so an emittance has the dimension of length. **1 mm·mrad
+is exactly 1 µm**, so the figure of merit is registered in `um` and the number
+reads as the conventional unit without conversion.
+
+### Measured
+
+| | |
+| --- | --- |
+| Thermal packet against σ_x·√(kT/m)/v | 0.77% at 6,000 ions |
+| Uncorrelated lattice against (2/3)·σ·δ | exact to 15 figures |
+| Preserved through a field-free drift to a plane | 1.5e-14 |
+| Preserved through an ideal thin lens | 8.1e-15 |
+| Grown by a cubic lens term (spherical aberration) | 1.58x |
+| Geometric emittance ratio across a 10 V → 2 kV stage | 0.031606977, closed form 0.031606977 |
+| Normalised emittance across the same stage | 3.0e-16 |
+
+The drift and lens figures are Liouville's theorem, and they are a check on the
+integrator as much as on the figure of merit — a conserved quantity **independent
+of energy**, so it constrains an axis that ACC-4's energy drift does not reach. The
+aberration row is the control: a metric blind to nonlinearity would report 1.00x
+there and the conservation rows would prove nothing.
+
 ## Interpolation
 
 `BicubicInterpolant` is the Catmull-Rom form of bicubic Hermite: node derivatives
