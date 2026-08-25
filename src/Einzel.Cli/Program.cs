@@ -100,6 +100,7 @@ public static class Program
             "run" => Run(options),
             "sweep" => Sweep(options),
             "optimise" or "optimize" => Optimise(options),
+            "verify" => Verify(options),
             "export" => Export(options),
             "schema" => Schema(options),
             "templates" => Catalog(options, "template"),
@@ -510,6 +511,49 @@ public static class Program
         return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 
+    private static int Verify(CommandLine options)
+    {
+        var root = options.Value("project")
+            ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+
+        var outcome = VerifyCommand.Execute(root);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.AllCurrent ? ExitCode.Success : ExitCode.ValidationFailure);
+        }
+
+        if (outcome.Results.Count == 0)
+        {
+            Console.Out.WriteLine($"no stored results under {outcome.Root}");
+            return (int)ExitCode.Success;
+        }
+
+        foreach (var result in outcome.Results)
+        {
+            var mark = result.Current ? "ok  " : "STALE";
+            var stream = result.Current ? Console.Out : Console.Error;
+            stream.WriteLine($"{mark} {result.Manifest}");
+
+            foreach (var drift in result.Drift)
+            {
+                Console.Error.WriteLine($"       {drift}");
+            }
+
+            foreach (var note in result.Notes)
+            {
+                Console.Out.WriteLine($"       note: {note}");
+            }
+        }
+
+        Console.Out.WriteLine();
+        Console.Out.WriteLine($"{outcome.Current} of {outcome.Results.Count} results still stand");
+
+        // A stale result is not an engine failure, it is a project that has moved
+        // on; the exit code says so without a caller parsing anything.
+        return (int)(outcome.AllCurrent ? ExitCode.Success : ExitCode.ValidationFailure);
+    }
+
     private static int Export(CommandLine options)
     {
         if (options.Positional.Count == 0)
@@ -769,6 +813,7 @@ public static class Program
           estimate <model.json>         what a run will cost, without running it
           solve <model.json>            solve the fields only, and report how they went
           run <model.json> [--vtu]      run a model; --vtu also writes a ParaView trajectory
+          verify [dir]                  are the stored results still the answer?
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData

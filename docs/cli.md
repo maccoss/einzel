@@ -56,6 +56,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel run <model.json>` | Run; writes a manifest and a result |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel optimise <study.json>` | Search the declared parameters for a better design |
+| `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
 | `einzel --version` | Engine version |
@@ -67,7 +68,31 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--vtu` | `run` only: also write the trajectory for ParaView |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
-Not yet built: `preview`, `test`, `verify`, `render`, `ext`, `self-update`.
+Not yet built: `preview`, `test`, `render`, `ext`, `self-update`.
+
+### What `verify` checks, and what it does not
+
+A manifest fully determines its run (PRJ-3), so a stored result carries enough to
+say whether the world has moved out from under it. Two ways it stops being the
+answer, and they fail differently:
+
+- **The model moved on.** Someone edited the geometry after the run, and the
+  number in `results/` answers a question about a geometry that no longer exists.
+  The content hash catches it exactly.
+- **The solver moved on.** The model is untouched but numerical behaviour changed.
+  FLD-3 keeps the solver-behaviour version separate from the engine version for
+  exactly this: "after an engine update a cache computed by the previous solver is
+  silently wrong and nothing else would catch it", while a release that altered
+  nothing physical must not invalidate every result in every project.
+
+A different engine build with the same solver behaviour is a **note**, not drift -
+the numbers still stand. So is a result produced on another machine, since section
+8 requires reproducibility run to run on one machine and explicitly does not
+require bit-reproducibility across them. Keeping those apart from real drift
+matters: filing them together would train a reader to ignore both.
+
+Nothing is recomputed. A check that cost as much as the run it checks would not
+get run.
 
 ## Studies
 

@@ -343,3 +343,149 @@ public sealed class StudyTests : IDisposable
         }
     }
 }
+
+/// <summary>
+/// Drift detection: whether a stored result is still the answer.
+/// </summary>
+/// <remarks>
+/// GRD-10 asks for it in both directions and PRJ-3 is what makes it possible - a
+/// manifest fully determines its run, so a result carries enough to say whether
+/// the world has moved out from under it. Nothing is recomputed, because a check
+/// costing as much as the run it checks would not get run.
+/// </remarks>
+public sealed class VerifyTests : IDisposable
+{
+    private readonly string _root = Path.Combine(
+        Path.GetTempPath(), "einzel-verify", Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            return (Program.Main(args), stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(previousOut);
+            Console.SetError(previousError);
+        }
+    }
+
+    private string RunOnce()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        var model = Path.Combine(_root, "models", "reflectron.json");
+        Assert.Equal(0, Run("run", model).ExitCode);
+        return model;
+    }
+
+    [Fact]
+    public void AFreshResultStands()
+    {
+        RunOnce();
+
+        var (exitCode, stdout, _) = Run("verify", _root, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("allCurrent").GetBoolean());
+
+        var result = root.GetProperty("results")[0];
+        Assert.True(result.GetProperty("modelMatches").GetBoolean());
+        Assert.True(result.GetProperty("solverMatches").GetBoolean());
+        Assert.Empty(result.GetProperty("drift").EnumerateArray());
+    }
+
+    [Fact]
+    public void AModelEditedUnderneathAResultIsCaught()
+    {
+        // The commonest way a result stops being the answer, and the one that is
+        // invisible from the file: the number is still there, still well formed,
+        // and about a geometry that no longer exists.
+        var model = RunOnce();
+        File.WriteAllText(model, File.ReadAllText(model).Replace(
+            "\"value\": 50, \"unit\": \"mm\"",
+            "\"value\": 51, \"unit\": \"mm\"",
+            StringComparison.Ordinal));
+
+        var (exitCode, _, stderr) = Run("verify", _root);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("STALE", stderr, StringComparison.Ordinal);
+        Assert.Contains("edited", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ADeletedModelIsCaught()
+    {
+        var model = RunOnce();
+        File.Delete(model);
+
+        var (exitCode, _, stderr) = Run("verify", _root);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("gone", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AChangedSolverBehaviourInvalidatesButAChangedBuildDoesNot()
+    {
+        // FLD-3 keeps these two apart on purpose: "after an engine update a cache
+        // computed by the previous solver is silently wrong and nothing else would
+        // catch it" - while a release that altered nothing physical must not
+        // invalidate every result in every project.
+        RunOnce();
+
+        var path = Path.Combine(_root, "results", "reflectron.manifest.json");
+
+        // Through the manifest type rather than by editing its text. The engine
+        // version contains a '+', which JSON escapes as +, so a literal
+        // string replace silently matches nothing - and a test that quietly
+        // changes nothing passes for the wrong reason.
+        var original = Einzel.Project.RunManifest.FromJson(File.ReadAllText(path))!;
+
+        // A different build, same numerical behaviour: a note, not drift.
+        File.WriteAllText(path, (original with { EngineVersion = "0.0.9-other" }).ToJson());
+
+        var (buildCode, buildOut, _) = Run("verify", _root);
+        Assert.Equal(0, buildCode);
+        Assert.Contains("note:", buildOut, StringComparison.Ordinal);
+
+        // Different numerical behaviour: drift.
+        File.WriteAllText(
+            path,
+            (original with { SolverBehaviourVersion = original.SolverBehaviourVersion + 1 }).ToJson());
+
+        var (solverCode, _, solverErr) = Run("verify", _root);
+        Assert.Equal(1, solverCode);
+        Assert.Contains("solver has changed behaviour", solverErr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AProjectWithNoResultsIsNotAFailure()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var (exitCode, stdout, _) = Run("verify", _root);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("no stored results", stdout, StringComparison.Ordinal);
+    }
+}
