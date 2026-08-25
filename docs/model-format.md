@@ -1,4 +1,4 @@
-# Model format, schema 0.2
+# Model format, schema 0.3
 
 A model is declarative, schema-validated, diffable JSON. A model file plus its
 referenced artifacts fully determines a run.
@@ -121,6 +121,48 @@ ion crosses from the positive side to the negative side, and the integrator land
 on the crossing exactly rather than at the end of whichever step passed it,
 because the crossing time is the measurement.
 
+### The source cloud
+
+Without a `cloud`, a source launches **one ion down the axis**, and every figure
+computed from it is a property of that ion rather than of the instrument. That is
+why resolving powers here have carried the caveat "energy aberration only".
+
+```json
+"source": {
+  "position":              { "value": [-100, 0, 0], "unit": "mm" },
+  "direction":             { "value": [1, 0, 0] },
+  "accelerationPotential": { "value": 4, "unit": "kV" },
+  "cloud": {
+    "ions": 1000,
+    "seed": 1,
+    "temperature":          { "value": 300, "unit": "K" },
+    "transverseSpread":     { "value": 0.3, "unit": "mm" },
+    "longitudinalSpread":   { "value": 0.1, "unit": "mm" },
+    "energyFractionSpread": 0.01
+  }
+}
+```
+
+| Field | Means |
+| --- | --- |
+| `ions` | How many to launch. ACC-5 wants transmission to ±1% at 95%, which needs about 9,600 at the worst point |
+| `seed` | So the same study gives the same answer twice |
+| `temperature` | Thermal velocity, drawn per component as a Gaussian of width √(kT/m). This is the whole turn-around story |
+| `transverseSpread` | Gaussian width across the direction of travel. Costs transmission |
+| `longitudinalSpread` | Gaussian width along it. Costs arrival time directly — two ions a millimetre apart are a millimetre of flight path apart |
+| `energyFractionSpread` | Gaussian width of the acceleration energy. Supply ripple, not temperature |
+
+Every spread defaults to zero, so a model that says nothing about a cloud launches
+exactly what it launched before. That is not only backward compatibility: a spread
+appearing by default would change every existing result silently, and a resolving
+power quietly getting worse is indistinguishable from a bug.
+
+**There is no angular-divergence setting, on purpose.** A thermal cloud already
+has one — an ion with sideways thermal velocity is an ion launched at an angle —
+and offering both would let a document say two things about the same physics and
+be believed twice. Energy spread *is* separate, because supply ripple varies the
+energy without varying the direction, which a temperature cannot express.
+
 ## Fields
 
 A list, superposed. Superposition is exact for electrostatics.
@@ -231,6 +273,11 @@ substitution.
 
 ## Versioning
 
-Schema 0.1 and 0.2 both load. Every bump ships a migration and a test that the
-prior corpus still loads. Codes and field names are a compatibility surface that
-agent workflows bind to: they are added, never reworded or repurposed.
+Schema 0.1, 0.2, and 0.3 all load. Every bump ships a migration and a test that
+the prior corpus still loads. Codes and field names are a compatibility surface
+that agent workflows bind to: they are added, never reworded or repurposed.
+
+0.3 adds the source cloud. Purely additive, so every 0.2 document still reads —
+but a document that declares a cloud genuinely is not a 0.2 document, and saying
+so is cheaper than an older build rejecting it with a schema error naming the
+wrong cause.

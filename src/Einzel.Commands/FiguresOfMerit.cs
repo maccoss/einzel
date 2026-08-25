@@ -75,6 +75,8 @@ public static class FiguresOfMerit
         new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false),
         new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true),
         new("transmission", "1", "Fraction of launched ions that reach the detector.", true),
+        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false),
+        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
@@ -125,6 +127,10 @@ public static class FiguresOfMerit
             "transmission" => model => Ensemble(model, energySpread, ions) is { } peak
                 ? Magnitude(peak.Transmission())
                 : null,
+            "arrivalSpread" => model => Ensemble(model, energySpread, ions) is { Arrived: >= 3 } peak
+                ? peak.GaussianEquivalentFwhmSeconds
+                : null,
+            "turnAroundTime" => TurnAround,
             _ => throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.InternalError,
@@ -163,17 +169,36 @@ public static class FiguresOfMerit
         return result.Outcome == TrajectoryOutcome.StopConditionMet ? result : null;
     }
 
-    /// <summary>An ensemble spread across launch energy.</summary>
+    /// <summary>
+    /// The ensemble a figure of merit is computed over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A model that declares a source cloud is asking for that cloud, and gets it:
+    /// a real spread in where the ions were, which way they were going, and how
+    /// fast. That is what makes a resolving power a property of the instrument
+    /// rather than of one ion.
+    /// </para>
+    /// <para>
+    /// A model that declares none falls back to a deterministic sweep of launch
+    /// energy, which is what these figures have always meant and what every
+    /// existing study is calibrated against. Evenly spaced rather than random,
+    /// because a tolerance study is already a Monte Carlo over geometry and
+    /// sampling the energy randomly inside it would put noise on every draw and
+    /// call it physics.
+    /// </para>
+    /// </remarks>
     private static ArrivalTimePeak Ensemble(CompiledModel model, double spread, int ions)
     {
+        if (model.Cloud.IsCloud)
+        {
+            return FromCloud(model);
+        }
+
         var arrivals = new List<double>(ions);
 
         for (var k = 0; k < ions; k++)
         {
-            // Evenly spaced across the acceptance, endpoints included. Not random:
-            // a tolerance study is already a Monte Carlo over geometry, and
-            // sampling the energy randomly inside it would put noise on every
-            // draw's figure of merit and call it physics.
             var fraction = ions == 1 ? 0.0 : (2.0 * k / (ions - 1.0)) - 1.0;
             var offset = spread * fraction;
 
@@ -187,6 +212,78 @@ public static class FiguresOfMerit
         }
 
         return ArrivalTimePeak.FromArrivals(arrivals, ions);
+    }
+
+    /// <summary>Flies the cloud a model declares.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>The arrival-time peak it forms.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
+    public static ArrivalTimePeak FromCloud(CompiledModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var (nominal, species, field, settings, detector) = Setup(model);
+        var cloud = IonCloud.Draw(in nominal, species, model.Cloud);
+        var arrivals = new List<double>(cloud.Length);
+
+        foreach (var start in cloud)
+        {
+            var result = TrajectoryIntegrator.Integrate(start, species, field, settings, detector);
+
+            if (result.Outcome == TrajectoryOutcome.StopConditionMet)
+            {
+                arrivals.Add(result.FlightTimeSeconds);
+            }
+        }
+
+        return ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions);
+    }
+
+    /// <summary>
+    /// The arrival spread a source temperature alone would impose.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured rather than derived, by flying the same cloud twice: once as
+    /// declared, and once with everything except the temperature switched off. The
+    /// difference is what the thermal velocity contributed, and it is the quantity
+    /// a pulsed extraction is designed around.
+    /// </para>
+    /// <para>
+    /// Two clouds rather than one closed form, because the closed form only holds
+    /// for a uniform extraction field. Measuring it works in any geometry, and
+    /// where the closed form does apply the two agree - which is what the
+    /// transport tests check.
+    /// </para>
+    /// </remarks>
+    private static double? TurnAround(CompiledModel model)
+    {
+        if (model.Cloud.TemperatureK <= 0.0)
+        {
+            // No temperature, no turn-around. Zero rather than null: it is a
+            // measurement of something absent, not a failure to measure.
+            return 0.0;
+        }
+
+        var thermalOnly = model with
+        {
+            Cloud = new IonCloudSettings
+            {
+                Ions = model.Cloud.Ions,
+                Seed = model.Cloud.Seed,
+                TemperatureK = model.Cloud.TemperatureK,
+            },
+        };
+
+        try
+        {
+            return FromCloud(thermalOnly).GaussianEquivalentFwhmSeconds;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static (PhaseState Launch, IonSpecies Species, IElectrostaticField Field,

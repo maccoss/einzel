@@ -239,3 +239,77 @@ public sealed class IonCloudTests(ITestOutputHelper output)
         return [.. arrivals];
     }
 }
+
+/// <summary>
+/// What ensemble size the accuracy budget actually demands.
+/// </summary>
+/// <remarks>
+/// Spec ACC-5 asks for a Class S transmission interval within one per cent
+/// absolute at 95%, and says it "drives minimum ensemble size per point". That
+/// sentence has been unactionable because nothing launched an ensemble. It is
+/// arithmetic once something does.
+/// </remarks>
+public sealed class EnsembleSizeTests(ITestOutputHelper output)
+{
+    /// <summary>The 95% coverage factor for a normal approximation.</summary>
+    private const double NinetyFive = 1.959964;
+
+    [Fact]
+    public void AccFiveDrivesTheEnsembleSize()
+    {
+        // The binomial standard error is sqrt(p(1-p)/n), widest at p = 0.5, so the
+        // worst case sets the floor and everything else is cheaper.
+        output.WriteLine("transmission   ions for a +/-1% interval at 95%");
+
+        var worst = 0;
+
+        foreach (var p in new[] { 0.5, 0.7, 0.9, 0.95, 0.99 })
+        {
+            var needed = (int)Math.Ceiling(p * (1.0 - p) * NinetyFive * NinetyFive / (0.01 * 0.01));
+            worst = Math.Max(worst, needed);
+
+            output.WriteLine($"{p,12:P0}   {needed,8}");
+        }
+
+        output.WriteLine($"worst case: {worst} ions");
+
+        // Roughly ten thousand at the worst point, which is the number worth
+        // knowing: it is what a transmission-versus-parameter scan costs per
+        // point, and it is why such a scan is a study rather than a run.
+        Assert.InRange(worst, 9000, 10000);
+    }
+
+    [Fact]
+    public void TheReportedIntervalIsTheBinomialOne()
+    {
+        // Checking the implementation against the formula rather than against
+        // itself. A transmission interval that does not narrow as the square root
+        // of the ensemble is not a statistical interval.
+        var narrow = Transmission(10000, 9000);
+        var wide = Transmission(100, 90);
+
+        output.WriteLine($"90% of 100 ions:   +/- {wide:P2}");
+        output.WriteLine($"90% of 10000 ions: +/- {narrow:P2}");
+
+        var expected = Math.Sqrt(10000.0 / 100.0);
+        var observed = wide / narrow;
+
+        output.WriteLine($"ratio {observed:F3} against the expected sqrt(100) = {expected:F3}");
+
+        Assert.Equal(expected, observed, 0.05);
+
+        // And ACC-5 is met at ten thousand and missed at a hundred, which is the
+        // practical statement of the same thing.
+        Assert.True(narrow * NinetyFive <= 0.01, "ten thousand ions should meet ACC-5");
+        Assert.False(wide * NinetyFive <= 0.01, "a hundred ions should not");
+    }
+
+    private static double Transmission(int launched, int arrived)
+    {
+        var arrivals = Enumerable.Range(0, arrived).Select(k => 1e-5 + (k * 1e-12)).ToArray();
+        var peak = ArrivalTimePeak.FromArrivals(arrivals, launched);
+        var (_, uncertainty, _, _) = peak.Transmission();
+
+        return (uncertainty.UpperSi - uncertainty.LowerSi) / 2.0;
+    }
+}

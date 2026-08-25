@@ -53,7 +53,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel validate <model.json>` | Units, bounds, dimensions, regime validity. Instant |
 | `einzel estimate <model.json>` | What a run will cost, without running it (GRD-8) |
 | `einzel solve <model.json>` | Solve the fields only, and report how they went |
-| `einzel run <model.json>` | Run; writes a manifest and a result |
+| `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel optimise <study.json>` | Search the declared parameters for a better design |
 | `einzel preview <model.json>` | A fast, deliberately inexact look, marked as such (GRD-5) |
@@ -249,6 +249,37 @@ out.
 Output is converted into the figure's own unit before it leaves - a nominal of
 1.018e-5 printed beside the label "µs" is a bare number wearing a unit, which is
 the thing GRD-1 exists to prevent rather than a formatting nicety.
+
+### What a cloud adds to a run
+
+A model that declares a source cloud gets the statistical half of a result
+alongside the single-ion flight time:
+
+```
+flight time   10.180506 +/- 0 us
+              convergence in integrator tolerance, residual at round-off
+
+cloud         600 of 600 ions arrived, transmission 100.0 % +/- 0.2 %
+peak          0.156 ns central half, 0.430 ns Gaussian FWHM, skew +3.27
+turn-around   0.049 ns of that Gaussian width
+resolving     32593 +/- 941 (from the central half)
+```
+
+The single-ion flight time stays, because it is the number with a convergence
+study behind it: removing it would trade a measured uncertainty for a sampled one.
+
+**Two widths, both named.** They agree only for a Gaussian peak, and the gap
+between them is the skew — here a single-stage mirror past its focus, whose
+one-sided second-order tail stretches the standard deviation while leaving the
+central half narrow. The resolving power is computed from the central half, which
+is the model-free one; the Gaussian width is what the literature quotes and what
+the turn-around closed form gives. Printing only one of them beside a resolving
+power computed from the other invites exactly the wrong reconciliation.
+
+**Turn-around is reported in the Gaussian convention** so the two are directly
+comparable: it says how much of the width the extraction is responsible for, and
+how much room there is to improve anything else. Here 0.049 of 0.430 ns, so the
+extraction is not what limits this instrument.
 
 ### Why `solve` is separate from `run`
 

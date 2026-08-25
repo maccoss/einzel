@@ -974,6 +974,44 @@ public static class Program
             invariant,
             $"final x       {run.FinalPositionMm[0]:F6} mm"));
 
+        if (run.Ensemble is { } ensemble)
+        {
+            Console.Out.WriteLine();
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"cloud         {ensemble.Arrived} of {ensemble.Launched} ions arrived, transmission "
+                + $"{ensemble.Transmission.Value:P1} +/- "
+                + $"{(ensemble.Transmission.Uncertainty.Upper - ensemble.Transmission.Uncertainty.Lower) / 2.0:P1}"));
+
+            // Two widths, both named. They agree only for a Gaussian peak, and the
+            // gap between them is the skew - so printing one of them beside a
+            // resolving power computed from the other invites exactly the wrong
+            // reconciliation.
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"peak          {ensemble.CentralWidthNs:F3} ns central half, "
+                + $"{ensemble.GaussianFwhmNs:F3} ns Gaussian FWHM, skew {ensemble.Skewness:+0.00;-0.00;0.00}"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"turn-around   {ensemble.TurnAroundFwhmNs:F3} ns of that Gaussian width"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"resolving     {ensemble.ResolvingPower.Value:G6} +/- "
+                + $"{(ensemble.ResolvingPower.Uncertainty.Upper - ensemble.ResolvingPower.Uncertainty.Lower) / 2.0:G3}"
+                + $" (from the central half)"));
+
+            foreach (var warning in ensemble.ResolvingPower.Warnings.Concat(ensemble.Transmission.Warnings))
+            {
+                var stream = warning.Suppressible ? Console.Out : Console.Error;
+                stream.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+            }
+
+            Console.Out.WriteLine();
+        }
+
         Console.Out.WriteLine($"engine        {run.Manifest.EngineVersion}, model {run.Manifest.ModelHash[..14]}...");
 
         // GRD-2: warnings travel with the result to every surface, including this

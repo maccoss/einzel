@@ -6,6 +6,7 @@ using Einzel.Io;
 using Einzel.Project;
 using Einzel.Transport;
 using Einzel.Fields;
+using Einzel.Analysis;
 using Einzel.Transport.Integration;
 
 namespace Einzel.Commands;
@@ -37,6 +38,71 @@ public sealed record ValidateOutcome
             : ExitCode.ValidationFailure;
 }
 
+/// <summary>What a cloud of ions did, when a model launches one.</summary>
+/// <remarks>
+/// The Class S half of a result: transmission, acceptance, efficiency, each with a
+/// stated interval. Absent when the model launches a single ion, because a
+/// transmission of "one out of one" is not a statistic and reporting it as one
+/// would be worse than saying nothing.
+/// </remarks>
+public sealed record EnsembleOutcome
+{
+    /// <summary>How many ions were launched.</summary>
+    public required int Launched { get; init; }
+
+    /// <summary>How many reached the detector.</summary>
+    public required int Arrived { get; init; }
+
+    /// <summary>Fraction arriving, with its binomial interval.</summary>
+    public required MeasuredJson Transmission { get; init; }
+
+    /// <summary>
+    /// The width enclosing the central half of the arrivals, in nanoseconds.
+    /// </summary>
+    /// <remarks>
+    /// The model-free one, and the width the resolving power is computed from.
+    /// Reported alongside <see cref="GaussianFwhmNs"/> rather than instead of it
+    /// because the two disagree whenever the peak is not Gaussian, and a reader
+    /// given only one of them beside a resolving power will try to reconcile the
+    /// wrong pair.
+    /// </remarks>
+    public required double CentralWidthNs { get; init; }
+
+    /// <summary>
+    /// The Gaussian-equivalent full width at half maximum, in nanoseconds.
+    /// </summary>
+    /// <remarks>
+    /// What the literature quotes, and what the turn-around closed form gives, so
+    /// it is the one to compare against a published number. It exceeds the central
+    /// width whenever the peak has a tail, which a second-order energy aberration
+    /// always does.
+    /// </remarks>
+    public required double GaussianFwhmNs { get; init; }
+
+    /// <summary>
+    /// Asymmetry of the peak, which is why the two widths differ.
+    /// </summary>
+    /// <remarks>
+    /// Zero for a symmetric peak. A mirror away from its focus produces a
+    /// one-sided second-order tail, and the sign says which side.
+    /// </remarks>
+    public required double Skewness { get; init; }
+
+    /// <summary>
+    /// The part of the Gaussian width imposed before the ion left, by the source
+    /// temperature. Zero for a cold cloud.
+    /// </summary>
+    /// <remarks>
+    /// In the same convention as <see cref="GaussianFwhmNs"/> so the two are
+    /// directly comparable: this is how much of that width the extraction is
+    /// responsible for, and how much room there is to improve anything else.
+    /// </remarks>
+    public required double TurnAroundFwhmNs { get; init; }
+
+    /// <summary>Arrival-time resolving power, model-free at half maximum.</summary>
+    public required MeasuredJson ResolvingPower { get; init; }
+}
+
 /// <summary>The outcome of a run.</summary>
 public sealed record RunOutcome
 {
@@ -63,6 +129,9 @@ public sealed record RunOutcome
 
     /// <summary>Files written by this run, relative to the project root.</summary>
     public required IReadOnlyList<string> Artifacts { get; init; }
+
+    /// <summary>What the cloud did, when the model launches one.</summary>
+    public EnsembleOutcome? Ensemble { get; init; }
 }
 
 /// <summary>
@@ -84,6 +153,38 @@ public sealed record RunOutcome
 /// </remarks>
 public static class RunCommand
 {
+    /// <summary>Flies the declared cloud and reports what it did.</summary>
+    private static EnsembleOutcome? Ensemble(CompiledModel model)
+    {
+        ArrivalTimePeak peak;
+
+        try
+        {
+            peak = FiguresOfMerit.FromCloud(model);
+        }
+        catch (ArgumentException)
+        {
+            // Fewer than two ions arrived. There is no peak to describe, and
+            // inventing one from a single survivor is exactly the failure the
+            // transmission figure exists to make visible.
+            return null;
+        }
+
+        var turnAround = FiguresOfMerit.Evaluator("turnAroundTime")(model) ?? 0.0;
+
+        return new EnsembleOutcome
+        {
+            Launched = peak.Launched,
+            Arrived = peak.Arrived,
+            Transmission = MeasuredJson.From(peak.Transmission(), "1"),
+            CentralWidthNs = peak.CentralWidthSeconds(0.5) * 1e9,
+            GaussianFwhmNs = peak.GaussianEquivalentFwhmSeconds * 1e9,
+            Skewness = peak.Skewness,
+            TurnAroundFwhmNs = turnAround * 1e9,
+            ResolvingPower = MeasuredJson.From(peak.ResolvingPower(), "1"),
+        };
+    }
+
     /// <summary>Validates a model document on disk.</summary>
     /// <param name="modelPath">Path to the model file.</param>
     /// <returns>The validation outcome.</returns>
@@ -244,6 +345,15 @@ public static class RunCommand
             AnalyticDriftDistanceM = finest.AnalyticDriftDistance,
             Artifacts = artifacts,
         };
+
+        // A model that launches a cloud gets the Class S half of a result too. The
+        // single-ion flight time stays: it is the centre of the peak and it is the
+        // number with a convergence study behind it, so removing it would trade a
+        // measured uncertainty for a sampled one.
+        if (model.Cloud.IsCloud)
+        {
+            run = run with { Ensemble = Ensemble(model) };
+        }
 
         var resultPath = Path.Combine(project.Results, $"{stem}.result.json");
         File.WriteAllText(resultPath, CommandJson.Write(run));

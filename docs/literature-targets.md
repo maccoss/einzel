@@ -98,6 +98,21 @@ the project thesis restated as a fact.
 | Quantity | Reported |
 | --- | --- |
 | Time-of-flight spread, corrected | Δt* = 0.8–1.2 ns across m/z 195–2722 |
+
+**An open question about that row, raised by being able to compute it.** Turn-around
+time from a thermal source is now measurable and agrees with its closed form to
+0.5%: FWHM = 2√(2ln2)√(mkT)/qE. That scales as √m, so across m/z 195 to 2722 it
+spreads by a factor of 3.7 — at 1 kV/mm and 300 K, 0.54 ns to 2.04 ns.
+
+The paper reports 0.8–1.2 ns across the same range, which is roughly *constant*.
+Those cannot both be a simple thermal turn-around. Either "corrected" in that row
+means something specific (normalised by m/z, perhaps), or the extraction is not a
+uniform pulse, or another mechanism dominates. What is recorded here is a summary
+of the paper rather than the paper, so this is a question to settle against the
+source before either number is quoted as agreement or disagreement.
+
+It is worth noticing that the machinery raised the question at all. A target that
+cannot be computed cannot disagree with anything.
 | Ion beam spatial width | 2.4 mm (6σ), measured by IonCCD |
 | Extraction efficiency | ~84% at m/z 1522 |
 | Ion capacity | >140,000 ions at 5 ms injection |

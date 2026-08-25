@@ -25,6 +25,8 @@ cross-code tier is unavailable — see below.
 | Parallel-plate gap, boundary swept sub-cell | 3.1e-10 of applied, at every offset |
 | Coaxial log potential around a rod | Second order, 1.5e-5 at h = 0.156 mm |
 | Shape derivative dV/dL against −1000x/L² | 6.5e-6 relative at a 0.11-cell step |
+| Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
+| Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |
 
 The detuned reflectron matters more than it looks: without it, a bug that simply
 returned a constant flight time would pass the focusing test.
@@ -130,8 +132,14 @@ covering everything.
   the mesh: the linearisation error is (δ/L)², so a 1 ppm gate holds to about
   δ/L = 10⁻³ and the memo's 100–300 µm channels linearise to 1e-5, not 1e-6. See
   [Spec findings](spec-findings.md). Voltage channels linearise to 1.5e-14.
-- **Resolving powers quoted are energy-aberration only.** No spatial or angular
-  spread, no turn-around time, no detector response.
+- **No detector response.** A perfect plane that stops an ion the instant it
+  arrives; no time constant, no dead time, no spatial response.
+- **Resolving powers are only as honest as the source they were computed from.**
+  A model that declares no cloud launches one ion down the axis, and its resolving
+  power measures energy aberration alone. Declaring a cloud - temperature, spatial
+  width, energy spread - makes it a property of the instrument. The default is
+  still the single ion, so every earlier number in these pages carries the older
+  meaning.
 - **The optimiser handles box constraints and nothing else.** No general
   constraint functions, no multiple objectives, no way to say "maximise resolving
   power subject to fitting in the envelope" except by folding the envelope into

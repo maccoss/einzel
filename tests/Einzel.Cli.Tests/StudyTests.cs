@@ -732,3 +732,192 @@ public sealed class PreviewTests : IDisposable
         Assert.Empty(Directory.Exists(results) ? Directory.GetFiles(results) : []);
     }
 }
+
+/// <summary>
+/// A model that launches a cloud, driven through the command surface.
+/// </summary>
+public sealed class CloudRunTests : IDisposable
+{
+    private readonly string _root = Path.Combine(
+        Path.GetTempPath(), "einzel-cloud", Guid.NewGuid().ToString("N"));
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        var previousOut = Console.Out;
+        var previousError = Console.Error;
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            return (Program.Main(args), stdout.ToString(), stderr.ToString());
+        }
+        finally
+        {
+            Console.SetOut(previousOut);
+            Console.SetError(previousError);
+        }
+    }
+
+    private string WithCloud(string cloud)
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var path = Path.Combine(_root, "models", "reflectron.json");
+        var text = File.ReadAllText(path);
+
+        File.WriteAllText(path, text.Replace(
+            "\"energyFraction\": 0",
+            "\"energyFraction\": 0,\n            \"cloud\": " + cloud,
+            StringComparison.Ordinal));
+
+        return path;
+    }
+
+    [Fact]
+    public void AModelWithoutACloudReportsNoEnsemble()
+    {
+        // The default has to stay exactly what it was. A spread appearing on its
+        // own would change every existing result silently, and a resolving power
+        // quietly getting worse is indistinguishable from a bug.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        var model = Path.Combine(_root, "models", "reflectron.json");
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+
+        Assert.False(
+            document.RootElement.TryGetProperty("ensemble", out _),
+            "a single-ion model reported an ensemble; a transmission of one out of one is not a statistic");
+    }
+
+    [Fact]
+    public void ACloudReportsTransmissionAndBothPeakWidths()
+    {
+        var model = WithCloud("""
+            {
+              "ions": 400, "seed": 1,
+              "temperature": { "value": 300, "unit": "K" },
+              "transverseSpread": { "value": 0.3, "unit": "mm" },
+              "energyFractionSpread": 0.01
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("run", model, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var ensemble = document.RootElement.GetProperty("ensemble");
+
+        Assert.Equal(400, ensemble.GetProperty("launched").GetInt32());
+        Assert.True(ensemble.GetProperty("arrived").GetInt32() > 0);
+
+        // Both widths, because they disagree whenever the peak has a tail and a
+        // reader given one of them beside a resolving power will reconcile the
+        // wrong pair. The gap between them is the skew.
+        var central = ensemble.GetProperty("centralWidthNs").GetDouble();
+        var gaussian = ensemble.GetProperty("gaussianFwhmNs").GetDouble();
+        var skew = ensemble.GetProperty("skewness").GetDouble();
+
+        Assert.True(central > 0.0);
+        Assert.True(gaussian > 0.0);
+
+        // A single-stage mirror past its focus has a one-sided second-order tail,
+        // so the Gaussian-equivalent width exceeds the central half and the skew
+        // says which side the tail is on.
+        Assert.True(gaussian > central, $"Gaussian {gaussian:F3} ns is not wider than central {central:F3} ns");
+        Assert.True(skew > 0.5, $"a one-sided tail should show as positive skew; got {skew:F2}");
+
+        // GRD-1 through to the file.
+        Assert.Equal(
+            "ensemble",
+            ensemble.GetProperty("transmission").GetProperty("evidence").GetProperty("kind").GetString());
+    }
+
+    [Fact]
+    public void AFirstOrderFocusSuppressesThermalSpreadQuadratically()
+    {
+        // Written expecting a square root and corrected by the measurement, which
+        // is the useful kind of surprise.
+        //
+        // In a uniform extraction field the turn-around width goes as the thermal
+        // velocity, so as the square root of temperature. This reflectron sits at
+        // its FIRST-ORDER ENERGY FOCUS: the mirror is arranged so an ion launched
+        // slightly fast goes deeper and takes longer there, cancelling the time it
+        // saved in the drift. The first-order term is gone by construction, so
+        // what a velocity spread leaves is the second-order term - the square of
+        // the offset - and the width goes as the temperature itself.
+        //
+        // Sixteen times the temperature gives sixteen times the width, not four.
+        // That is the focus doing its job, measured rather than assumed.
+        double TurnAround(double kelvin)
+        {
+            if (Directory.Exists(_root))
+            {
+                Directory.Delete(_root, recursive: true);
+            }
+
+            var model = WithCloud($$"""
+                {
+                  "ions": 300, "seed": 4,
+                  "temperature": { "value": {{kelvin}}, "unit": "K" }
+                }
+                """);
+
+            var (_, stdout, _) = Run("run", model, "--json");
+            using var document = JsonDocument.Parse(stdout);
+
+            return document.RootElement.GetProperty("ensemble").GetProperty("turnAroundFwhmNs").GetDouble();
+        }
+
+        var cold = TurnAround(50.0);
+        var hot = TurnAround(800.0);
+        var ratio = hot / cold;
+
+        // Linear in temperature, to a few per cent on three hundred sampled ions.
+        // A square-root scaling here would mean the focus was not working, and a
+        // resolving power computed through it would be optimistic.
+        Assert.InRange(ratio, 13.0, 19.0);
+    }
+
+    [Fact]
+    public void TheSameSeedGivesTheSameEnsemble()
+    {
+        var model = WithCloud("""
+            { "ions": 200, "seed": 9, "temperature": { "value": 300, "unit": "K" } }
+            """);
+
+        var (_, first, _) = Run("run", model, "--json");
+        var (_, again, _) = Run("run", model, "--json");
+
+        using var a = JsonDocument.Parse(first);
+        using var b = JsonDocument.Parse(again);
+
+        Assert.Equal(
+            a.RootElement.GetProperty("ensemble").GetProperty("gaussianFwhmNs").GetDouble(),
+            b.RootElement.GetProperty("ensemble").GetProperty("gaussianFwhmNs").GetDouble());
+    }
+
+    [Fact]
+    public void ACloudIsRefusedWhenItLaunchesNothing()
+    {
+        var model = WithCloud("""{ "ions": 0 }""");
+
+        var (exitCode, _, stderr) = Run("validate", model);
+
+        Assert.Equal(1, exitCode);
+        Assert.Contains("at least one ion", stderr, StringComparison.Ordinal);
+    }
+}
