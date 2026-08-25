@@ -15,6 +15,12 @@ Nothing in it knows what a mirror or a quadrupole is.
 
 This page is about the third.
 
+## From the command line
+
+Both drivers are reachable as `einzel sweep <study.json>` and
+`einzel optimise <study.json>`, over a study file that names a figure of merit
+rather than carrying a function. See [CLI](cli.md#studies).
+
 ## What an optimiser is given
 
 A **design variable** names a declared parameter and the interval to search it

@@ -98,6 +98,8 @@ public static class Program
             "estimate" => Estimate(options),
             "solve" => Solve(options),
             "run" => Run(options),
+            "sweep" => Sweep(options),
+            "optimise" or "optimize" => Optimise(options),
             "export" => Export(options),
             "schema" => Schema(options),
             "templates" => Catalog(options, "template"),
@@ -134,9 +136,152 @@ public static class Program
         // The schema is JSON whether or not --json was asked for; the flag is
         // accepted and ignored rather than refused, because an agent that passes
         // it to every verb should not have to special-case this one.
-        _ = options;
+        if (options.Has("study"))
+        {
+            Console.Out.Write(CatalogCommand.StudySchema());
+            return (int)ExitCode.Success;
+        }
+
         Console.Out.Write(CatalogCommand.Schema());
         return (int)ExitCode.Success;
+    }
+
+    private static int Sweep(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel sweep <study.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("run 'einzel schema --study' for the shape of a study file");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var studyPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var outcome = StudyCommand.Sweep(studyPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Artifacts.Count == 0)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"would sweep {outcome.Draws} draws of {outcome.FigureOfMerit.Name} over {outcome.ModelPath}"));
+
+            return (int)ExitCode.Success;
+        }
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.FigureOfMerit.Name}  nominal {outcome.Nominal:G8} {outcome.FigureOfMerit.Unit}, "
+            + $"{outcome.Succeeded} of {outcome.Draws} draws arrived"));
+
+        if (outcome.Distribution is { } distribution)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"          {distribution.Value:G6} +/- "
+                + $"{(distribution.Uncertainty.Upper - distribution.Uncertainty.Lower) / 2.0:G3} "
+                + $"{distribution.Unit} ({distribution.Uncertainty.ConfidenceLevel:P0} CI)"));
+
+            // GRD-2: warnings travel to every surface, including this one.
+            foreach (var warning in distribution.Warnings)
+            {
+                var stream = warning.Suppressible ? Console.Out : Console.Error;
+                stream.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+            }
+        }
+
+        if (outcome.Sensitivity.Count > 0)
+        {
+            // Section 13 calls this the actual deliverable: not whether the
+            // tolerance suffices, but which parameter binds first.
+            Console.Out.WriteLine();
+            Console.Out.WriteLine("which parameter binds first:");
+
+            foreach (var channel in outcome.Sensitivity)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"  {channel.Parameter,-24} swing {channel.Swing:G4} {outcome.FigureOfMerit.Unit}"));
+            }
+        }
+
+        Console.Out.WriteLine();
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine($"wrote {artifact}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int Optimise(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel optimise <study.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("run 'einzel schema --study' for the shape of a study file");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var studyPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var outcome = StudyCommand.Optimise(studyPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Artifacts.Count == 0)
+        {
+            Console.Out.WriteLine(
+                $"would {outcome.Sense.ToLowerInvariant()} {outcome.FigureOfMerit.Name} "
+                + $"by {outcome.Algorithm} over {outcome.ModelPath}");
+
+            return (int)ExitCode.Success;
+        }
+
+        foreach (var (name, measured) in outcome.Best)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{name,-24} {measured.Value:G8} +/- "
+                + $"{(measured.Uncertainty.Upper - measured.Uncertainty.Lower) / 2.0:G3} {measured.Unit}"));
+        }
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.FigureOfMerit.Name,-24} {outcome.Objective.Value:G6} {outcome.Objective.Unit} "
+            + $"({outcome.Sense.ToLowerInvariant()}d)"));
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.Algorithm}: {outcome.Evaluations} evaluations, {outcome.Failures} failed, "
+            + $"converged {outcome.Converged}"));
+
+        foreach (var warning in outcome.Objective.Warnings)
+        {
+            var stream = warning.Suppressible ? Console.Out : Console.Error;
+            stream.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        Console.Out.WriteLine();
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine($"wrote {artifact}");
+        }
+
+        return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 
     private static int Catalog(CommandLine options, string kind)
@@ -612,7 +757,7 @@ public static class Program
 
         starting out:
           doctor [dir]                  check the installation, and a project if given
-          schema                        the model format, as JSON Schema
+          schema [--study]              the model format, or the study format, as JSON Schema
           templates [name]              list device templates, or print one
           examples [name]               list example models, or print one
 
@@ -624,6 +769,8 @@ public static class Program
           estimate <model.json>         what a run will cost, without running it
           solve <model.json>            solve the fields only, and report how they went
           run <model.json> [--vtu]      run a model; --vtu also writes a ParaView trajectory
+          sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
+          optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
           agents-md [dir]               regenerate the platform layer of AGENTS.md
           --version                     print the engine version

@@ -325,6 +325,32 @@ the domain — differ by fifty per cent on an ordinary geometry.
 
 ---
 
+## The parameter surface reaches scalars but not vector components
+
+**Spec §9** makes the declared parameter surface the thing sweeps vary and
+optimisers search. A scalar field in a model may carry an expression, so
+`capPotential` and `turningDepth` are drivable from parameters. A **vector** field
+may not: `VectorValue` holds three literal numbers and a unit, with no per-component
+expression.
+
+So a source position, a detector plane, or an electrode centre given as a vector
+cannot be driven by a parameter, and a tolerance study cannot ask where the source
+is. That is a real restriction on what a study can express, and it bites on an
+obvious case: in a single-stage reflectron the first-order energy focus needs the
+field-free path to be four penetration depths, and the path is set by the source
+and detector positions. The condition is not expressible, so the optimiser cannot
+be asked to rediscover it.
+
+The shipped example works around it by parameterising the mirror rather than the
+drift, which answers a different and still useful question. Recommend
+`VectorValue` gain per-component expressions, evaluated the same way scalar ones
+are; the evaluator and the dimensional checking already exist and would not
+change.
+
+**Not yet fixed.**
+
+---
+
 ## Notes on the companion memo
 
 **Memo §6 item 1** asks for the six-oscillation mirror pair at 20,000 across

@@ -96,6 +96,12 @@ public static class ToleranceStudy
     /// <param name="draws">How many stochastic draws to take.</param>
     /// <param name="seed">Seed for the draw sequence.</param>
     /// <param name="oneAtATime">Whether to run the attribution pass.</param>
+    /// <param name="figureDimension">
+    /// The dimension of the figure of merit, for the reported envelope. Dimensionless
+    /// by default, which covers resolving power and transmission; a flight time has
+    /// to say so, because GRD-1 reports a quantity and a quantity without its
+    /// dimension is the bare number the rule exists to prevent.
+    /// </param>
     /// <returns>The draws, the attribution, and the distribution.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The draw count is negative.</exception>
@@ -108,7 +114,8 @@ public static class ToleranceStudy
         Func<CompiledModel, double?> evaluate,
         int draws = 1000,
         int seed = 1,
-        bool oneAtATime = true)
+        bool oneAtATime = true,
+        Dimension figureDimension = default)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(channels);
@@ -151,7 +158,7 @@ public static class ToleranceStudy
             ? Attribute(document, channels, surface, evaluate, nominal)
             : [];
 
-        return new ToleranceStudyResult(rows, sensitivity, Distribution(rows, draws), nominal);
+        return new ToleranceStudyResult(rows, sensitivity, Distribution(rows, draws, figureDimension), nominal);
     }
 
     private static List<ChannelSensitivity> Attribute(
@@ -234,7 +241,7 @@ public static class ToleranceStudy
         return validation.Model!;
     }
 
-    private static Measured? Distribution(List<SweepDraw> rows, int attempted)
+    private static Measured? Distribution(List<SweepDraw> rows, int attempted, Dimension dimension)
     {
         var values = rows.Where(r => r.FigureOfMerit is not null).Select(r => r.FigureOfMerit!.Value).ToArray();
 
@@ -249,7 +256,7 @@ public static class ToleranceStudy
         // A 95 percent interval about the mean of the achieved distribution, which
         // is what "what fraction of built instruments meet the target" needs.
         var half = 1.96 * deviation;
-        var quantity = Quantity.Number(mean);
+        var quantity = Quantity.Si(mean, dimension);
 
         var warnings = new List<ValidityWarning>();
 
@@ -272,7 +279,7 @@ public static class ToleranceStudy
 
         return new Measured(
             quantity,
-            UncertaintyInterval.Symmetric(quantity, Quantity.Number(half), confidenceLevel: 0.95),
+            UncertaintyInterval.Symmetric(quantity, Quantity.Si(half, dimension), confidenceLevel: 0.95),
             new Evidence.Ensemble(values.Length, Converged: values.Length >= 100),
             warnings);
     }

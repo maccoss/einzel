@@ -54,6 +54,8 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel estimate <model.json>` | What a run will cost, without running it (GRD-8) |
 | `einzel solve <model.json>` | Solve the fields only, and report how they went |
 | `einzel run <model.json>` | Run; writes a manifest and a result |
+| `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
+| `einzel optimise <study.json>` | Search the declared parameters for a better design |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
 | `einzel --version` | Engine version |
@@ -65,8 +67,91 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--vtu` | `run` only: also write the trajectory for ParaView |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
-Not yet built: `preview`, `sweep`, `optimise`, `test`, `verify`, `render`, `ext`,
-`self-update`.
+Not yet built: `preview`, `test`, `verify`, `render`, `ext`, `self-update`.
+
+## Studies
+
+A study is a file, and one document shape covers both a tolerance sweep and an
+optimisation - they differ only in what they do with the parameters, so a study
+that established which parameter binds first becomes the search that tunes it by
+changing one word. `einzel schema --study` prints the shape.
+
+```json
+{
+  "name": "reflectron-tolerance",
+  "model": "../models/reflectron.json",
+  "figureOfMerit": "flightTime",
+  "draws": 120,
+  "seed": 7,
+  "channels": [
+    { "parameter": "turningDepth", "halfWidth": 0.2, "unit": "mm" },
+    { "parameter": "capPotential", "halfWidth": 5.0, "unit": "V" }
+  ]
+}
+```
+
+```
+flightTime  nominal 10.180506 us, 120 of 120 draws arrived
+            10.18 +/- 0.0234 us (95 % CI)
+
+which parameter binds first:
+  turningDepth             swing 0.02036 us
+  capPotential             swing 0.006371 us
+```
+
+The ranking is the deliverable. Section 13: "what is wanted is not only whether
+100 to 300 microns suffices but which parameter binds first."
+
+An optimisation names variables instead of channels:
+
+```json
+{
+  "model": "../models/reflectron.json",
+  "figureOfMerit": "resolvingPower",
+  "variables": [
+    { "parameter": "capPotential", "minimum": 3.6, "maximum": 4.4, "unit": "kV" }
+  ],
+  "algorithm": "nelderMead",
+  "maximumEvaluations": 40
+}
+```
+
+Omit the bounds and the model's own declared bounds are used, which is what schema
+0.2 declaring them is for. Omit `sense` and the figure of merit decides: a
+resolving power is better larger, and making the author restate that is an
+invitation to state it wrongly.
+
+### Figures of merit
+
+A study names one out of a registry rather than carrying a function. Section 12's
+Python objectives will register into the same place when extensions land.
+
+| Name | Unit | Measures |
+| --- | --- | --- |
+| `flightTime` | µs | Arrival time, from a convergence study over three integrator tolerances |
+| `energyDrift` | 1 | Largest relative energy departure over the flight. A diagnostic against ACC-4, not a design target |
+| `resolvingPower` | 1 | Arrival-time resolving power across the energy spread, model-free at half maximum |
+| `transmission` | 1 | Fraction of launched ions reaching the detector |
+
+The ensemble ones sweep launch energy across `energySpread` (±3% by default, the
+acceptance the memo asks a mirror to hold) at `ions` evenly spaced points. Evenly
+spaced rather than random, deliberately: a tolerance study is already a Monte
+Carlo over geometry, and sampling the energy randomly inside it would put noise on
+every draw's figure and call it physics.
+
+Everything here is Class T - deterministic trajectories through a static field, no
+collisions, no space charge. An ensemble is a spread of launch energies, not a
+thermal distribution.
+
+### Units, on both sides
+
+A half-width without a unit is refused. `0.1` could be a tenth of a millimetre or
+a tenth of a metre, and an agent writing from prose is the likeliest to leave it
+out.
+
+Output is converted into the figure's own unit before it leaves - a nominal of
+1.018e-5 printed beside the label "µs" is a bare number wearing a unit, which is
+the thing GRD-1 exists to prevent rather than a formatting nicety.
 
 ### Why `solve` is separate from `run`
 

@@ -42,6 +42,27 @@ public static class CatalogCommand
     /// <returns>The schema document.</returns>
     public static string Schema() => ModelSchemaWriter.Write();
 
+    /// <summary>The study format, as JSON Schema.</summary>
+    /// <returns>The schema document.</returns>
+    /// <remarks>
+    /// Generated the same way as the model schema and for the same reason, with
+    /// the figures of merit a study may name listed alongside - a study file that
+    /// names one this build does not compute is the commonest way to write an
+    /// invalid study, and it is not something the shape of the document can say.
+    /// </remarks>
+    public static string StudySchema() =>
+        ModelSchemaWriter.Write<StudyDocument>(
+            "Einzel study",
+            "study",
+            new StudyDocument().SchemaVersion,
+            "A tolerance sweep or an optimisation over a model's declared parameters.",
+            new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["figureOfMerit"] = [.. FiguresOfMerit.All.Select(f => f.Name)],
+                ["algorithm"] = ["nelderMead", "cmaEs"],
+                ["sense"] = ["minimise", "maximise"],
+            });
+
     /// <summary>Lists the device templates.</summary>
     /// <returns>The catalogue.</returns>
     public static CatalogOutcome Templates() => new()

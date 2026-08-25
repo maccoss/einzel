@@ -40,25 +40,79 @@ public static class ModelSchemaWriter
 
     /// <summary>Writes the model format as a JSON Schema document.</summary>
     /// <returns>The schema, as indented JSON text with a trailing newline.</returns>
-    public static string Write()
+    public static string Write() =>
+        Write<ModelDocument>("Einzel model", "model", ModelSchema.CurrentVersion, null, null);
+
+    /// <summary>Writes any document type as a JSON Schema document.</summary>
+    /// <typeparam name="T">The document type to describe.</typeparam>
+    /// <param name="title">The schema title.</param>
+    /// <param name="slug">The kind, for the schema identifier.</param>
+    /// <param name="version">The format version this build writes.</param>
+    /// <param name="description">What the document is, when the type's own summary is not enough.</param>
+    /// <param name="allowed">
+    /// Permitted values for named properties, by camel-case property name. Some
+    /// fields take a string out of a set the type system does not express - which
+    /// figure of merit, which algorithm - and leaving that to prose is how invalid
+    /// documents get written.
+    /// </param>
+    /// <returns>The schema, as indented JSON text with a trailing newline.</returns>
+    public static string Write<T>(
+        string title,
+        string slug,
+        string version,
+        string? description,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? allowed)
     {
-        var documentation = LoadDocumentation();
+        // Documentation from the described type's own assembly as well as the
+        // core one: a study document does not live beside the model it studies,
+        // and a schema missing half its descriptions is the failure this whole
+        // mechanism exists to avoid.
+        var documentation = LoadDocumentation(typeof(T).Assembly);
+
+        foreach (var (key, text) in LoadDocumentation(typeof(ModelDocument).Assembly))
+        {
+            documentation.TryAdd(key, text);
+        }
         var definitions = new SortedDictionary<string, JsonNode>(StringComparer.Ordinal);
 
-        var root = Describe(typeof(ModelDocument), documentation, definitions);
+        var root = Describe(typeof(T), documentation, definitions);
+
+        if (allowed is not null)
+        {
+            var properties = root["properties"]!.AsObject();
+
+            foreach (var (name, values) in allowed)
+            {
+                if (properties[name] is JsonObject property)
+                {
+                    property["enum"] = new JsonArray([.. values.Select(v => (JsonNode)v)]);
+                }
+            }
+        }
 
         var schema = new JsonObject
         {
             ["$schema"] = "https://json-schema.org/draft/2020-12/schema",
-            ["$id"] = $"https://einzel.dev/schema/model/{ModelSchema.CurrentVersion}",
-            ["title"] = "Einzel model",
+            ["$id"] = $"https://einzel.dev/schema/{slug}/{version}",
+            ["title"] = title,
             ["$comment"] = documentation.Count > 0
                 ? "Generated from the document types. Descriptions are their XML documentation comments."
                 : "Generated from the document types. Descriptions are UNAVAILABLE: the XML "
                     + "documentation file was not found beside the assembly.",
-            ["x-schemaVersion"] = ModelSchema.CurrentVersion,
-            ["x-supportedVersions"] = new JsonArray([.. ModelSchema.SupportedVersions.Select(v => (JsonNode)v)]),
         };
+
+        if (!string.IsNullOrEmpty(description))
+        {
+            schema["description"] = description;
+        }
+
+        schema["x-schemaVersion"] = version;
+
+        if (typeof(T) == typeof(ModelDocument))
+        {
+            schema["x-supportedVersions"] =
+                new JsonArray([.. ModelSchema.SupportedVersions.Select(v => (JsonNode)v)]);
+        }
 
         // Detach each property from the fragment before adopting it: a JsonNode
         // knows its parent and refuses to have two.
@@ -264,10 +318,9 @@ public static class ModelSchemaWriter
     /// to a source column width, and a schema is read by machines and by people in
     /// editors, neither of which wants the original line breaks.
     /// </remarks>
-    private static Dictionary<string, string> LoadDocumentation()
+    private static Dictionary<string, string> LoadDocumentation(Assembly assembly)
     {
         var found = new Dictionary<string, string>(StringComparer.Ordinal);
-        var assembly = typeof(ModelDocument).Assembly;
         var path = Path.ChangeExtension(assembly.Location, ".xml");
 
         if (string.IsNullOrEmpty(assembly.Location) || !File.Exists(path))
@@ -289,14 +342,14 @@ public static class ModelSchemaWriter
         foreach (var member in xml.Descendants("member"))
         {
             var name = member.Attribute("name")?.Value;
-            var summary = member.Element("summary")?.Value;
+            var summary = member.Element("summary");
 
             if (name is null || summary is null)
             {
                 continue;
             }
 
-            var reflowed = Reflow(summary);
+            var reflowed = Reflow(Render(summary));
 
             if (reflowed.Length > 0)
             {
@@ -305,6 +358,55 @@ public static class ModelSchemaWriter
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// Flattens a documentation element to text, keeping what the cross-reference
+    /// tags name.
+    /// </summary>
+    /// <remarks>
+    /// Taking an element's Value concatenates its text nodes and drops everything
+    /// an empty element carried in its attributes - so a summary reading "See
+    /// <c>&lt;see cref="FiguresOfMerit"/&gt;</c>" comes out as "See ." That is not
+    /// a missing description, which is worse: it is a description that has been
+    /// silently hollowed out, and it reads as one the author wrote badly.
+    /// </remarks>
+    private static string Render(XElement element)
+    {
+        var builder = new StringBuilder();
+
+        foreach (var node in element.DescendantNodes())
+        {
+            if (node is XText text)
+            {
+                builder.Append(text.Value);
+                continue;
+            }
+
+            if (node is not XElement child || child.HasElements || !child.IsEmpty)
+            {
+                // A non-empty element's text arrives through its own text nodes.
+                continue;
+            }
+
+            var reference = child.Attribute("cref")?.Value ?? child.Attribute("langword")?.Value;
+
+            if (reference is null)
+            {
+                continue;
+            }
+
+            // "T:Einzel.Commands.FiguresOfMerit" is a compiler-generated
+            // identifier; the last segment is the part a reader wants.
+            var trimmed = reference.Contains(':', StringComparison.Ordinal)
+                ? reference[(reference.IndexOf(':', StringComparison.Ordinal) + 1)..]
+                : reference;
+
+            var lastDot = trimmed.LastIndexOf('.');
+            builder.Append(lastDot >= 0 ? trimmed[(lastDot + 1)..] : trimmed);
+        }
+
+        return builder.ToString();
     }
 
     private static string Reflow(string text)
