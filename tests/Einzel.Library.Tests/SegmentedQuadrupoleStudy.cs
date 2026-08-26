@@ -195,56 +195,110 @@ public sealed class SegmentedQuadrupoleStudy(ITestOutputHelper output)
     [Fact]
     public void TheFieldConvergesWithTheMesh()
     {
-        // The check the transmission boundary is waiting on. Three dimensions cost
-        // the cube of the resolution, so the question is not whether a finer mesh
-        // would be better but whether this one is close enough for the number being
+        // The check the transmission boundary rests on. Three dimensions cost the
+        // cube of the resolution, so the question is not whether a finer mesh would
+        // be better but whether this one is close enough for the number being
         // quoted - and that is answered by refining and watching, not by asserting
         // it in a comment.
         //
+        // Labelled by the mesh that came out, not by the parameter that was asked
+        // for. OverBox rounds each axis up to a power of two independently, so
+        // cellsPerRadius 4, 5 and 8 give three different grids and none of them has
+        // the requested number of cells across r0 - the shipped 5 is 8.5 across,
+        // which a study labelled by its request would have reported as 5.
+        //
         // Measured on the field rather than on a trajectory, because a solve is
-        // seconds and a flight is tens of them, and it is the field quality that was
-        // in doubt.
-        output.WriteLine("cells/r0    grid          E at r0/2      change");
+        // seconds and a flight is tens of them, and it is the field that was in
+        // doubt.
+        // Two probes, because one axis at a time is what actually refines here.
+        // Mid-section is a transverse question and is blind to the axial mesh; the
+        // segment gap is the opposite, and it is the feature this template exists
+        // for - the whole point of a segmented filter is that the working point
+        // changes across a 1 mm join.
+        output.WriteLine("asked   grid            cells/r0   mid-section       gap");
 
-        var previous = 0.0;
+        var previousMid = 0.0;
+        var previousGap = 0.0;
+        var worstMid = 0.0;
+        var worstGap = 0.0;
 
-        foreach (var cells in new[] { 4.0, 8.0 })
+        foreach (var cells in new[] { 4.0, 5.0, 8.0 })
         {
             var model = Compile(With(Template(), ("cellsPerRadius", cells)));
             var field = FieldAssembly.Build(model);
 
-            var probe = 0.5 * model.Parameters["inscribedRadius"].In("m");
+            var r0 = model.Parameters["inscribedRadius"].In("m");
+            var probe = 0.5 * r0;
 
             var mainZ = 0.5
                 * (model.Parameters["mainStart"].In("m") + model.Parameters["mainEnd"].In("m"));
 
-            var point = new Vec3(probe, 0.0, mainZ);
-            var strength = Math.Abs(field.ElectricFieldAt(in point).X);
+            // Halfway across the prefilter-to-main gap, where the field is changing
+            // from one section's amplitude to the other's.
+            var gapZ = 0.5 * (model.Parameters["preEnd"].In("m") + model.Parameters["mainStart"].In("m"));
+
+            var midPoint = new Vec3(probe, 0.0, mainZ);
+            var gapPoint = new Vec3(probe, 0.0, gapZ);
+
+            var mid = Math.Abs(field.ElectricFieldAt(in midPoint).X);
+            var gap = Math.Abs(field.ElectricFieldAt(in gapPoint).X);
 
             var solve = model.Fields[0].Solve3D!;
 
             var grid = Grid3D.OverBox(
                 solve.MinX, solve.MinY, solve.MinZ, solve.MaxX, solve.MaxY, solve.MaxZ, solve.CellSize);
 
-            var change = previous > 0.0 ? Math.Abs(strength - previous) / previous : double.NaN;
+            var midChange = previousMid > 0.0 ? Math.Abs(mid - previousMid) / previousMid : double.NaN;
+            var gapChange = previousGap > 0.0 ? Math.Abs(gap - previousGap) / previousGap : double.NaN;
+
+            if (!double.IsNaN(midChange))
+            {
+                worstMid = Math.Max(worstMid, midChange);
+                worstGap = Math.Max(worstGap, gapChange);
+            }
+
+            static string Pct(double v) => double.IsNaN(v) ? string.Empty : v.ToString("P3");
 
             output.WriteLine(
-                $"{cells,8:F0}    {grid.CountX}x{grid.CountY}x{grid.CountZ,-6}  {strength / 1e3,9:F3} kV/m"
-                + $"    {(double.IsNaN(change) ? string.Empty : change.ToString("P2")),8}");
+                $"{cells,5:F0}   {grid.CountX}x{grid.CountY}x{grid.CountZ,-8}  {r0 / grid.SpacingX,7:F2}"
+                + $"   {mid / 1e3,7:F2} kV/m {Pct(midChange),8}"
+                + $"   {gap / 1e3,7:F2} kV/m {Pct(gapChange),8}");
 
-            previous = strength;
+            previousMid = mid;
+            previousGap = gap;
         }
 
         output.WriteLine(string.Empty);
-        output.WriteLine("Doubling the mesh moves the transverse field by a hundredth of a per cent, so");
-        output.WriteLine("the field magnitude is converged at four cells across r0 - which is a good deal");
-        output.WriteLine("better than a three-dimensional solve had any right to be, and it settles one");
-        output.WriteLine("question while leaving another open. What it settles: the low transmission");
-        output.WriteLine("boundary is not simply an under-resolved field. What it does not: the stability");
-        output.WriteLine("boundary depends on the multipole content, not on the field at one point, and");
-        output.WriteLine("that has not been measured here.");
+        output.WriteLine($"mid-section: worst step-to-step change {worstMid:P3} - converged.");
+        output.WriteLine($"segment gap: worst step-to-step change {worstGap:P3} - NOT converged, and");
+        output.WriteLine("still moving at the finest mesh tested. No claim on this page rests on the");
+        output.WriteLine("field inside a gap; the ion is lost mid-section, where the field is settled.");
 
-        Assert.True(previous > 0.0);
+        Assert.True(previousMid > 0.0 && previousGap > 0.0);
+
+        // Asserted, not narrated. The first version of this test computed the
+        // change, printed a conclusion about it, and asserted only that the field
+        // was non-zero - so a regression that moved the field by 30% would have
+        // passed while still printing "a hundredth of a per cent", and this page's
+        // documentation quotes that line.
+        // The mid-section is converged, and that is what the transmission boundary
+        // below rests on - the ion is lost at z = 38.7 mm, in the middle of a 24 mm
+        // section, nowhere near a join.
+        Assert.True(
+            worstMid < 5e-3,
+            $"the mid-section transverse field moved {worstMid:P3} under refinement; at that size the "
+            + "transmission boundary below is a property of the grid rather than of the geometry");
+
+        // The gap is not, and this asserts the bound the measurement supports rather
+        // than the one that would be convenient. At 1 mm it is one to two cells
+        // across, and a point probe in a steep axial gradient is the most
+        // mesh-sensitive thing this geometry has. So: nothing here claims what the
+        // gaps *do*. That needs a mesh this template cannot afford, or a measure
+        // integrated along a trajectory rather than sampled at a point.
+        Assert.True(
+            worstGap < 5e-2,
+            $"the field across a segment gap moved {worstGap:P3} under refinement, which is past even "
+            + "the loose bound this quantity is held to; the gaps have stopped being represented at all");
     }
 
     [Fact]
@@ -327,6 +381,11 @@ public sealed class SegmentedQuadrupoleStudy(ITestOutputHelper output)
             $"lost on {struckIn} at z = {lostAt:F1} mm, inside the main section "
             + $"({mainStart:F0} to {mainEnd:F0} mm)");
 
+        // Asserted before the prefix, because StruckSurface is null unless a
+        // surface was actually struck. A loss by flight-time ceiling or by leaving
+        // the domain would otherwise fail with a complaint about "main" instead of
+        // saying that the ion was never absorbed at all.
+        Assert.NotNull(struckIn);
         Assert.StartsWith("main", struckIn, StringComparison.Ordinal);
         Assert.InRange(lostAt, mainStart, mainEnd);
     }

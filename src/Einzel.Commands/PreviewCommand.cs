@@ -91,7 +91,7 @@ public static class PreviewCommand
         var model = validation.Model!;
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
 
-        var field = FieldAssembly.Build(model);
+        var (field, fieldWarnings) = FieldAssembly.BuildReported(model);
         var species = IonSpecies.FromModel(model);
         var launch = new PhaseState(model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
 
@@ -135,6 +135,7 @@ public static class PreviewCommand
                     + $"{model.RelativeTolerance:G3}, with no convergence study behind it. This number is for "
                     + "looking at, not for quoting; run 'einzel run' for a result with an interval",
                     WarningSeverity.Provenance),
+                .. fieldWarnings,
             ]);
 
         return new PreviewOutcome

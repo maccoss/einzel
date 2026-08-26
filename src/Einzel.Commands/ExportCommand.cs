@@ -67,22 +67,93 @@ public static class ExportCommand
         var artifacts = new List<string>();
         var solved = 0;
 
+        var solvedElements = model.Fields.Count(f => f.Solve is not null || f.Solve3D is not null);
+
         for (var index = 0; index < model.Fields.Count; index++)
         {
             var solve = model.Fields[index].Solve;
+            var solve3d = model.Fields[index].Solve3D;
 
-            if (solve is null)
+            if (solve is null && solve3d is null)
             {
                 continue;
             }
 
             solved++;
-            var grid = GeometryBuilder.BuildGrid(solve);
-            var mask = GeometryBuilder.BuildMask(solve, grid);
+
+            // Named by element index as well as model, because a model with two
+            // solved elements would otherwise write one file twice.
+            var name = solvedElements > 1
+                ? $"{stem}.field{index}.vti"
+                : $"{stem}.field.vti";
+
+            var path = Path.Combine(project.Scratch, name);
+
+            if (solve3d is not null)
+            {
+                var geometry = new Geometry3D(
+                    solve3d.MinX, solve3d.MinY, solve3d.MinZ,
+                    solve3d.MaxX, solve3d.MaxY, solve3d.MaxZ,
+                    solve3d.CellSize,
+                    solve3d.Electrodes,
+                    solve3d.Tolerance)
+                {
+                    Drive = solve3d.Drive,
+                    Stages = solve3d.Stages,
+                };
+
+                var channels = GeometryBuilder3D.SolveChannels(geometry);
+
+                foreach (var channel in channels)
+                {
+                    if (!channel.Report.Converged)
+                    {
+                        throw new EinzelException(new EinzelError
+                        {
+                            Code = ErrorCodes.ConvergenceFailed,
+                            Path = $"/fields/{index}",
+                            Constraint =
+                                $"basis channel {channel.Index} did not converge in "
+                                + $"{channel.Report.Cycles} cycles",
+                            Suggestion = "a picture of an unconverged field would look like a "
+                                + "result; run 'einzel solve' to see the residual and the "
+                                + "convergence factor for every channel",
+                        });
+                    }
+                }
+
+                // One file per basis channel, because that is what was solved. A
+                // driven structure has no single potential to draw - the thing an
+                // ion sees is a weighted sum that changes within an RF cycle - and
+                // writing one file called "the field" would be picking a phase and
+                // not saying which.
+                foreach (var channel in channels)
+                {
+                    var channelPath = channels.Count > 1
+                        ? path.Replace(".vti", $".channel{channel.Index}.vti", StringComparison.Ordinal)
+                        : path;
+
+                    artifacts.Add(channelPath);
+
+                    if (!dryRun)
+                    {
+                        Directory.CreateDirectory(project.Scratch);
+
+                        File.WriteAllText(channelPath, Io.VtuWriter.WriteScalarField(
+                            channel.Potential,
+                            channels.Count > 1 ? $"potential_channel{channel.Index}_V" : "potential_V"));
+                    }
+                }
+
+                continue;
+            }
+
+            var grid = GeometryBuilder.BuildGrid(solve!);
+            var mask = GeometryBuilder.BuildMask(solve!, grid);
 
             var (potential, report) = PoissonSolver2D.Solve(
                 mask,
-                solve.Tolerance,
+                solve!.Tolerance,
                 maximumCycles: 400,
                 coarsen: coarse => GeometryBuilder.BuildMask(solve, coarse));
 
@@ -98,13 +169,6 @@ public static class ExportCommand
                 });
             }
 
-            // Named by element index as well as model, because a model with two
-            // solved elements would otherwise write one file twice.
-            var name = model.Fields.Count(f => f.Solve is not null) > 1
-                ? $"{stem}.field{index}.vti"
-                : $"{stem}.field.vti";
-
-            var path = Path.Combine(project.Scratch, name);
             artifacts.Add(path);
 
             if (!dryRun)
@@ -121,8 +185,8 @@ public static class ExportCommand
                 Code = ErrorCodes.SchemaInvalid,
                 Path = "/fields",
                 Constraint = "this model has no solved field to export",
-                Suggestion = "only a 'solved2d' field element has a grid to write; analytic fields are "
-                    + "formulas and have nothing to sample",
+                Suggestion = "only a 'solved2d' or 'solved3d' field element has a grid to write; "
+                    + "analytic fields are formulas and have nothing to sample",
             });
         }
 

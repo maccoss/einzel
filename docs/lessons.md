@@ -315,6 +315,48 @@ coincidence; by the third the shape of the class was already visible in the
 comments being written, and the fourth was avoidable. A guard that has to be
 remembered per field is a guard that will be forgotten.
 
+## The evidence was computed and then thrown away
+
+The segmented quadrupole lost its ion at q = 0.611 instead of 0.908 for a whole
+revision, because a solve stopped short of its tolerance. The solver knew. It
+returned a `SolveReport` carrying `Converged`, the cycle count and the final
+residual — and `FieldAssembly.Build` wrote
+
+```csharp
+elements.Add(GeometryBuilder3D.BuildField(geometry).Field);
+```
+
+dropping `.Report` on the floor at the one seam every run, study and test passes
+through. Downstream, an unconverged field is **indistinguishable from a converged
+one**: it is a grid of plausible numbers with no marker on it.
+
+Fixing the multigrid fixed the symptom. It did nothing about the reason nobody
+noticed for a revision, which is the part that generalises. **GRD-2 exists for this
+exact failure** — warnings propagate through engine, command layer, CLI and
+exported files — and a seam that converts a reported result into a bare object is
+where that requirement quietly stops holding.
+
+Two ways out, and the choice depends on whether there is anywhere to put a taint:
+
+- Where a **result** is produced, taint it. `BuildReported` hands back the field
+  and its warnings, and `run` and `preview` carry them onto every number computed
+  through the field.
+- Where only a **field** is produced, there is nowhere to attach anything, so
+  `Build` throws. "Taint, never block" is about results; a bare object with no
+  envelope has no third option between refusing and concealing, and concealing is
+  what it was doing.
+
+The generalisable rule: **when a computation produces evidence about its own
+quality, the type that returns it may not have a shape that makes discarding the
+evidence the shortest spelling.** `.Field` was one character shorter than handling
+the report, and that was the whole mechanism.
+
+A companion, found in the same review: `SolveOutcome.Converged` was
+`Elements.All(e => e.Converged)`, which is `true` for an empty list. `einzel solve`
+read only the two-dimensional element, skipped every three-dimensional one, and
+answered `converged: true`, exit code 0. Vacuous truth is worse than a failure
+because it terminates the investigation.
+
 ## Two arithmetic slips, for completeness
 
 **Velocity fraction is not energy fraction.** v ∝ √E, so a fractional energy
@@ -339,6 +381,10 @@ actually caught them were:
   bug that "R is disappointing" would not have.
 - **Convergence behaviour, not single values.** An error that fails to fall with
   refinement, or a cycle count that grows with it, is diagnostic on its own.
+- **Reverting the fix to check the test.** An assertion that passes with the bug
+  restored is not testing the bug. The anisotropic-coarsening test first asserted
+  the maximum principle, which held either way; the convergence factor was what
+  actually moved — 0.213 against 0.303 — and only trying it both ways showed which.
 - **Exact invariants.** The maximum principle — no potential may exceed the
   applied value — is a tolerance-free check that a solve has not diverged.
   Liouville's theorem is the same kind of check on the integrator, and being

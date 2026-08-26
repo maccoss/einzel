@@ -150,7 +150,7 @@ public sealed class Geometry3DTests(ITestOutputHelper output)
         var (potential, report) = PoissonSolver3D.Solve(
             mask,
             geometry.Tolerance,
-            coarsen: level => GeometryBuilder3D.BuildMask(geometry, level, coarse: true));
+            coarsen: GeometryBuilder3D.Coarsener(geometry));
 
         var peak = 0.0;
 
@@ -169,6 +169,89 @@ public sealed class Geometry3DTests(ITestOutputHelper output)
         output.WriteLine($"peak nodal potential {peak:F6} V against {Applied:F0} applied");
 
         Assert.True(peak <= Applied * (1.0 + 1e-9), $"a node reached {peak:F6} V");
+    }
+
+    [Fact]
+    public void AnAnisotropicGridStopsCoarseningOnItsWorstAxis()
+    {
+        // The guard asks whether a coarse level still resolves the smallest
+        // electrode, and it has to ask about the *coarsest* of the three spacings.
+        // Each axis rounds its own interval count up to a power of two, so a 2:1
+        // aspect is ordinary here; a guard satisfied by whichever axis happens to be
+        // finest is not a guard, and asking the finest one let the shipped segmented
+        // quadrupole descend to a level whose z cell was 4.875 mm against a 4.587 mm
+        // rod radius.
+        //
+        // Measured on the convergence factor, because that is what actually
+        // discriminates. Checked by reverting the guard: the maximum principle holds
+        // either way here, so asserting it alone would have been a test with no
+        // teeth. The extra level does not send the solve somewhere else - node
+        // alignment already stops that - it makes the correction worse, 18 cycles at
+        // a factor of 0.303 against 14 at 0.213.
+        //
+        // A deliberately elongated box, so the z spacing is the coarse one, holding
+        // a short cylinder whose half-length is its smallest feature.
+        var electrode = new CompiledElectrode3D
+        {
+            Name = "disc",
+            Shape = Electrode3DShape.Cylinder,
+            Axis = CylinderAxis.Z,
+            CentreX = 0.0,
+            CentreY = 0.0,
+            Radius = 0.006,
+            Lower = -0.0025,
+            Upper = 0.0025,
+            Potential = Applied,
+        };
+
+        // 17 mm across and 32 mm long at a 1 mm cell: x rounds 17 intervals up to
+        // 32 and z takes 32 exactly, so the spacings come out 0.53 and 1.00 mm on
+        // the same grid. The disc is 5 mm thick, so the second coarsening - 2.13 and
+        // 4.00 mm - straddles it: representable by the finest axis, and not by the
+        // coarsest. That is the level this rule declines and the old one took.
+        var geometry = new Geometry3D(
+            -0.0085, -0.0085, -0.016, 0.0085, 0.0085, 0.016, 0.001, [electrode], 1e-9);
+
+        var grid = GeometryBuilder3D.BuildGrid(geometry);
+
+        output.WriteLine(
+            $"grid {grid.CountX}x{grid.CountY}x{grid.CountZ}, spacing "
+            + $"{grid.SpacingX * 1e3:F3} / {grid.SpacingY * 1e3:F3} / {grid.SpacingZ * 1e3:F3} mm");
+        output.WriteLine($"smallest feature {electrode.CharacteristicSize * 1e3:F3} mm");
+
+        Assert.True(
+            grid.SpacingZ > grid.SpacingX,
+            "this test is only meaningful on a grid whose axes disagree");
+
+        var (potential, report) = PoissonSolver3D.Solve(
+            GeometryBuilder3D.BuildMask(geometry, grid),
+            geometry.Tolerance,
+            coarsen: GeometryBuilder3D.Coarsener(geometry));
+
+        var peak = 0.0;
+
+        for (var k = 0; k < grid.CountZ; k++)
+        {
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    peak = Math.Max(peak, Math.Abs(potential[i, j, k]));
+                }
+            }
+        }
+
+        output.WriteLine($"{report.Cycles} cycles at factor {report.ConvergenceFactor:F4}");
+        output.WriteLine($"peak nodal potential {peak:F6} V against {Applied:F0} applied");
+
+        Assert.True(report.Converged, "the solve did not reach its tolerance");
+        Assert.True(peak <= Applied * (1.0 + 1e-9), $"a node reached {peak:F6} V");
+
+        Assert.True(
+            report.ConvergenceFactor < 0.26,
+            $"the residual fell by a factor of {report.ConvergenceFactor:F4} per cycle, which is what "
+            + "this geometry does when the hierarchy descends one level past the disc - the guard is "
+            + "asking the finest of the three spacings again");
     }
 
     [Fact]

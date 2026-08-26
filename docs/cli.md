@@ -383,6 +383,20 @@ how many nodes an electrode claimed, how many stencil arms a surface cut short,
 whether the cells came out square - and none of that is visible from a flight
 time.
 
+**One entry per basis channel, not per field element.** A driven structure is not
+one solve but one per spatial pattern - twelve quadrupole rod segments tapped off
+one generator are a single pattern; switch the analysing DC on and they are two -
+and a residual quoted for "the field" would be quoting whichever of them ran last.
+Each entry names its `dimensions` and its `channel`.
+
+**A model with nothing to solve is an error, not a converged solve of nothing.**
+`solve` used to read only the two-dimensional element, skip every `solved3d` one,
+and return an empty element list - and "every element converged" over an empty list
+is `true`. So the verb whose whole job is to report a residual answered
+`converged: true`, exit 0, for a model it had looked at and not touched. That is
+the shape of answer an agent stops investigating on, which makes it worse than a
+failure.
+
 ### Why `export` writes ImageData
 
 A uniform Cartesian grid *is* VTK image data. An unstructured grid would carry
@@ -391,6 +405,14 @@ bytes to say what an origin, two spacings, and an extent already say, and would
 give up ParaView's structured-grid paths for slicing and contouring. Both spacings
 are written, since a grid meshes its declared domain exactly and its cells need
 not be square.
+
+**Three-dimensional solves write a volume**, in the same format with the third
+extent spanning something. A section through a solved quadrupole is a thing you
+look at once; a volume is a thing you cut, contour and re-cut, which is most of why
+VTU export lands a phase before any shell does. A driven geometry writes **one file
+per basis channel** rather than one called "the field", because what an ion sees is
+a weighted sum that changes within an RF cycle and a single file would be picking a
+phase without saying which.
 
 Trajectories are still `.vtu`, written by `run --vtu` where they are produced.
 

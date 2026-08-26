@@ -252,7 +252,8 @@ public sealed record RunOutcome
 public static class RunCommand
 {
     /// <summary>Flies the declared cloud and reports what it did.</summary>
-    private static EnsembleOutcome? Ensemble(CompiledModel model)
+    private static EnsembleOutcome? Ensemble(
+        CompiledModel model, IReadOnlyList<ValidityWarning> fieldWarnings)
     {
         CloudFlight flight;
 
@@ -302,7 +303,7 @@ public static class RunCommand
                 AccuracyBudget)
             : 0.0;
 
-        var warnings = SpaceChargeWarnings(charge, limit);
+        var warnings = (IReadOnlyList<ValidityWarning>)[.. fieldWarnings, .. SpaceChargeWarnings(charge, limit)];
 
         return new EnsembleOutcome
         {
@@ -521,7 +522,10 @@ public static class RunCommand
         var document = ModelJson.Parse(File.ReadAllText(validation.ModelPath));
         var model = ModelValidator.Validate(document).Model!;
 
-        var field = FieldAssembly.Build(model);
+        // Reported, not bare. A solve that missed its tolerance produces a field
+        // indistinguishable from one that met it, so the evidence has to travel
+        // alongside and land on every number computed through it (GRD-2).
+        var (field, fieldWarnings) = FieldAssembly.BuildReported(model);
         var species = IonSpecies.FromModel(model);
 
         var launch = new PhaseState(
@@ -595,7 +599,7 @@ public static class RunCommand
         var run = new RunOutcome
         {
             Manifest = manifest,
-            FlightTime = MeasuredJson.From(study.FlightTime, "us"),
+            FlightTime = MeasuredJson.From(Carry(study.FlightTime, fieldWarnings), "us"),
             Outcome = finest.Outcome.ToString(),
             FinalPositionMm =
             [
@@ -615,7 +619,7 @@ public static class RunCommand
         // measured uncertainty for a sampled one.
         if (model.Cloud.IsCloud)
         {
-            run = run with { Ensemble = Ensemble(model) };
+            run = run with { Ensemble = Ensemble(model, fieldWarnings) };
         }
 
         var resultPath = Path.Combine(project.Results, $"{stem}.result.json");

@@ -88,6 +88,20 @@ public sealed class Grid3D
     /// <summary>The finest spacing, which is what a step may not outrun.</summary>
     public double MinimumSpacing => Math.Min(SpacingX, Math.Min(SpacingY, SpacingZ));
 
+    /// <summary>The coarsest node spacing of the three axes, in metres.</summary>
+    /// <remarks>
+    /// The one that decides whether a level still resolves a feature. Each axis
+    /// rounds its own interval count up to a power of two, so a 2:1 aspect ratio is
+    /// ordinary here rather than exceptional, and a feature stops being resolved as
+    /// soon as the <em>worst</em> direction outgrows it - asking the best direction
+    /// lets a hierarchy descend one level past the point where an axis has stopped
+    /// seeing the electrode at all.
+    /// </remarks>
+    public double MaximumSpacing => Math.Max(SpacingX, Math.Max(SpacingY, SpacingZ));
+
+    /// <summary>Whether the cells are cubes.</summary>
+    public bool IsCubic => SpacingX == SpacingY && SpacingY == SpacingZ;
+
     /// <summary>x of a node index.</summary>
     /// <param name="i">Node index along x.</param>
     /// <returns>The coordinate, in metres.</returns>

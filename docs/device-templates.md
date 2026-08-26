@@ -338,7 +338,7 @@ The 2% is each section's own ends bleeding into its middle, which is a real
 property of a 22 mm section at r0 = 4 mm.
 
 An ion tracked through the whole structure arrives 0.26 mm off axis after 54 µs and
-3,982 steps, and raising the drive ejects it onto a named rod - `preYPlus`.
+3,982 steps.
 
 ### It filters, and in the right place
 
@@ -349,7 +349,7 @@ An ion tracked through the whole structure arrives 0.26 mm off axis after 54 µs
 | 745 V | 0.910 | lost on `mainYMinus` at z = 38.7 mm |
 
 **The cut-off brackets the ideal Mathieu boundary of q = 0.90804** - on round rods,
-cut into three sections, with gaps and end fringes, at five cells across r0.
+cut into three sections, with gaps and end fringes, at 8.5 cells across r0.
 
 And the ion is lost in the **main** section, not the prefilter. That is the
 segmentation doing its job: the entrance sits at 85% of the main amplitude, so its
@@ -359,11 +359,43 @@ decoration on the front.
 
 > This is not where the number started. Before the coarse multigrid levels were
 > made node-aligned, the ion was lost at **q = 0.611**, and the first explanation
-> written down for it was field quality at a coarse mesh. That was wrong: doubling
-> the mesh moves the transverse field by **0.01%** and a transmitted flight time by
-> 9e-5. It was an under-converged solve, and fixing the multigrid moved the boundary
-> from 0.611 to the right answer. A wrong number with a plausible explanation
-> attached is the expensive kind, and the explanation is what made it expensive.
+> written down for it was field quality at a coarse mesh. That was wrong: refining
+> the mesh moves the mid-section transverse field by **0.014%**, as the table below
+> shows. It was an under-converged solve, and fixing the multigrid moved the
+> boundary from 0.611 to the right answer. A wrong number with a plausible
+> explanation attached is the expensive kind, and the explanation is what made it
+> expensive.
+
+### What is converged, and what is not
+
+| asked | grid | cells across r0 | mid-section | segment gap |
+| --- | --- | --- | --- | --- |
+| 4 | 33x33x129 | 4.26 | 125.38 kV/m | 107.91 kV/m |
+| 5 (shipped) | 65x65x129 | 8.53 | 125.36 kV/m, 0.014% | 110.48 kV/m, 2.4% |
+| 8 | 65x65x257 | 8.53 | 125.36 kV/m, 0.000% | 112.02 kV/m, 1.4% |
+
+Two probes, because refining one axis at a time is what actually happens here.
+`OverBox` rounds each axis up to a power of two independently, so asking for 5 and
+asking for 8 give the **same transverse mesh** and differ only axially - and the
+shipped mesh is 8.5 cells across r0, not the 5 that was asked for. An earlier
+version of this page said "five cells across r0" because it labelled the study by
+the request rather than by the grid.
+
+**Mid-section: converged.** 0.014% across a genuine transverse refinement and 0.000%
+under axial refinement, which is what the transmission boundary above rests on - the
+ion is lost at z = 38.7 mm, in the middle of a 24 mm section, nowhere near a join.
+
+**Segment gap: not converged, and still moving at the finest mesh tested.** 2.4% then
+1.4%. At 1 mm the gap is one to two cells across, and a point probe in a steep axial
+gradient is the most mesh-sensitive thing this geometry has. So nothing on this page
+claims what the gaps *do*. Settling that needs either a mesh this template cannot
+afford in three dimensions, or a measure integrated along a trajectory rather than
+sampled at a point.
+
+That is worth stating plainly because it is the one claim a segmented quadrupole
+would most like to make. The template demonstrates that segments at different
+working points can be *declared, decomposed and solved*; it does not yet demonstrate
+what the joins between them do to an ion.
 
 ### What it costs
 

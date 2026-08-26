@@ -391,6 +391,37 @@ beats correct-but-uncoarsenable by a wide margin.
 Galerkin coarsening, building the coarse operator from the fine one rather than
 from the geometry again, is still the better answer and is still not done.
 
+**Coarse masks are memoised by grid.** They were being rebuilt at every level of
+every V-cycle from geometry that had not changed - for the twelve-rod segmented
+quadrupole, over a million `Contains` calls per cycle producing a mask that was
+bit-identical every time. The hierarchy is now built once per solve and reused.
+
+**Known cost, not fixed:** `CutLinks3D` allocates twelve doubles per node
+unconditionally - a fraction and a potential for each of six arms - which is 104 MB
+at the shipped segmented-quadrupole mesh and around 410 MB at eleven cells across
+r0. Only nodes adjacent to metal are ever cut, so an index array plus compact
+per-cut storage would be about 4 bytes a node instead of 96. It is not done, because
+it puts an indirection in the smoother's innermost lookup and that is the hottest
+loop in the solver; it should be measured, not assumed.
+
+**A coarse level's Dirichlet *values* do not matter, only which nodes it fixes.** A
+V-cycle solves for the error, whose boundary data is zero, and the correction array
+starts at zero and is never seeded from the mask. So a coarse level that merges two
+differently-driven electrodes across a gap it can no longer resolve is crude, not
+wrong: it clamps the error to zero somewhere it should be free, which under-corrects
+that neighbourhood and slows the iteration. What is *not* allowed is a coarse cell
+larger than the electrode itself - that is a different problem rather than a coarser
+one, and its correction points elsewhere. This is why the guard tests a physical
+size and not a node count.
+
+**The guard tests the coarsest of the three spacings, not the finest.** Each axis
+rounds its own interval count up to a power of two, so a 2:1 aspect ratio is
+ordinary here rather than exceptional. Asking `MinimumSpacing` let the shipped
+segmented quadrupole descend to a level whose z cell was **4.875 mm against a 4.587
+mm rod radius** - the exact condition the guard exists to refuse, passed because one
+of the other two axes was still fine enough. A guard that only has to be satisfied
+in its best direction is not a guard.
+
 **The interpolant overshoots about 2% just outside a conductor surface**, which is
 what a cubic through a step does. Measured at 101.8 V of 100 applied, in a shell
 one cell thick where an ion is about to be absorbed anyway. The maximum principle

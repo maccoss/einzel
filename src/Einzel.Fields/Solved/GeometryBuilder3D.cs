@@ -48,60 +48,117 @@ public static class GeometryBuilder3D
             geometry.CellSize);
     }
 
-    /// <summary>Builds the Dirichlet mask on a grid.</summary>
+    /// <summary>Builds the Dirichlet mask on the finest grid.</summary>
     /// <param name="geometry">The geometry.</param>
-    /// <param name="grid">The grid, which may be a coarse multigrid level.</param>
+    /// <param name="grid">The grid.</param>
     /// <param name="potentialOf">
     /// What each electrode holds, for a basis solve. Its own potential when omitted.
-    /// </param>
-    /// <param name="coarse">
-    /// Whether this is a multigrid level below the finest. Coarse levels are
-    /// node-aligned rather than sub-cell, and guarantee that every electrode still
-    /// holds at least one node.
     /// </param>
     /// <returns>The mask.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <remarks>
-    /// Rebuilt from geometry at every level rather than projected down from the
-    /// finest, which is what makes interior electrodes survive coarsening: an
-    /// electrode too small to hold a coarse node still cuts the links around it, so
-    /// the coarse operator still knows it is there.
+    /// Sub-cell: conductor surfaces between nodes are recorded as cut links, which
+    /// is where the accuracy of a solve comes from. Coarse multigrid levels are
+    /// built by <see cref="Coarsener"/> instead and are deliberately different.
     /// </remarks>
     public static DirichletMask3D BuildMask(
+        Geometry3D geometry, Grid3D grid, Func<CompiledElectrode3D, double>? potentialOf = null) =>
+        Assemble(geometry, grid, potentialOf, coarse: false);
+
+    /// <summary>
+    /// A builder for the coarse levels of a multigrid hierarchy, memoised by grid.
+    /// </summary>
+    /// <param name="geometry">The geometry.</param>
+    /// <param name="potentialOf">
+    /// What each electrode holds, for a basis solve. Its own potential when omitted.
+    /// </param>
+    /// <returns>A function from a coarse grid to its mask.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// Handed out as a whole function rather than as a flag on <see cref="BuildMask"/>
+    /// because the difference between the two is load-bearing and the obvious
+    /// spelling has to be the safe one. A coarse level built the fine way is not
+    /// slightly worse - it is ill-conditioned, and the solve converges contentedly
+    /// somewhere else.
+    /// </para>
+    /// <para>
+    /// Coarse levels are node-aligned: no cuts, and an electrode too small to hold
+    /// a node is pinned to its nearest free one so it does not drop out of the
+    /// problem. The values are irrelevant on these levels - a V-cycle solves for the
+    /// error, whose Dirichlet data is zero - so only the pattern of fixed nodes
+    /// matters, and the pattern is what has to stay recognisable.
+    /// </para>
+    /// <para>
+    /// Memoised because the hierarchy is rebuilt on every cycle otherwise: for the
+    /// twelve-rod segmented quadrupole that is over a million <c>Contains</c> calls
+    /// per cycle, producing a mask that is identical every time.
+    /// </para>
+    /// </remarks>
+    public static Func<Grid3D, DirichletMask3D> Coarsener(
+        Geometry3D geometry, Func<CompiledElectrode3D, double>? potentialOf = null)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+
+        var cache = new Dictionary<(int X, int Y, int Z), DirichletMask3D>();
+
+        return grid =>
+        {
+            var key = (grid.CountX, grid.CountY, grid.CountZ);
+
+            if (!cache.TryGetValue(key, out var mask))
+            {
+                mask = Assemble(geometry, grid, potentialOf, coarse: true);
+                cache[key] = mask;
+            }
+
+            return mask;
+        };
+    }
+
+    private static DirichletMask3D Assemble(
         Geometry3D geometry,
         Grid3D grid,
-        Func<CompiledElectrode3D, double>? potentialOf = null,
-        bool coarse = false)
+        Func<CompiledElectrode3D, double>? potentialOf,
+        bool coarse)
     {
         ArgumentNullException.ThrowIfNull(geometry);
         ArgumentNullException.ThrowIfNull(grid);
 
         var mask = new DirichletMask3D(grid);
+        List<CompiledElectrode3D>? missed = null;
 
         foreach (var electrode in geometry.Electrodes)
         {
             var potential = potentialOf?.Invoke(electrode) ?? electrode.Potential;
 
-            var fixedAny = Rasterise(mask, grid, electrode, potential);
-
-            // On a coarse level an electrode smaller than a cell may contain no
-            // node at all, and an electrode that rasterises to nothing has stopped
-            // being part of the problem - the coarse grid then solves a different
-            // one, and its correction is worse than none. Pinning the nearest node
-            // keeps it present at the smallest size the level can express.
-            if (coarse && !fixedAny)
+            if (!Rasterise(mask, grid, electrode, potential) && coarse)
             {
-                var (cx, cy, cz) = electrode.Centre;
-
-                var i = Math.Clamp((int)Math.Round((cx - grid.OriginX) / grid.SpacingX), 0, grid.CountX - 1);
-                var j = Math.Clamp((int)Math.Round((cy - grid.OriginY) / grid.SpacingY), 0, grid.CountY - 1);
-                var k = Math.Clamp((int)Math.Round((cz - grid.OriginZ) / grid.SpacingZ), 0, grid.CountZ - 1);
-
-                mask.Fix(i, j, k, potential);
+                (missed ??= []).Add(electrode);
             }
         }
 
         PinFaces(mask, grid);
+
+        // After the faces, so a pin can never overwrite a grounded boundary, and
+        // only onto a free node, so two electrodes whose centres round together
+        // leave one of them present rather than both of them confused. An electrode
+        // that rasterises to nothing has stopped being part of the problem and the
+        // coarse grid then solves a different one; keeping it at the smallest size
+        // the level can express is the least-wrong thing available.
+        foreach (var electrode in missed ?? [])
+        {
+            var (cx, cy, cz) = electrode.Centre;
+
+            var i = Math.Clamp((int)Math.Round((cx - grid.OriginX) / grid.SpacingX), 0, grid.CountX - 1);
+            var j = Math.Clamp((int)Math.Round((cy - grid.OriginY) / grid.SpacingY), 0, grid.CountY - 1);
+            var k = Math.Clamp((int)Math.Round((cz - grid.OriginZ) / grid.SpacingZ), 0, grid.CountZ - 1);
+
+            if (!mask.IsFixed(i, j, k))
+            {
+                mask.Fix(i, j, k, potentialOf?.Invoke(electrode) ?? electrode.Potential);
+            }
+        }
 
         // Sub-cell surfaces on the fine level only. A coarse level exists to
         // accelerate, not to be accurate, and a cut there is actively harmful: an
@@ -139,7 +196,7 @@ public static class GeometryBuilder3D
             mask,
             geometry.Tolerance,
             maximumCycles: 200,
-            coarsen: level => BuildMask(geometry, level, coarse: true));
+            coarsen: Coarsener(geometry));
 
         return (new SolvedField3D(potential, geometry.Electrodes), report);
     }
@@ -166,13 +223,8 @@ public static class GeometryBuilder3D
             return (statik, staticReport);
         }
 
-        var grid = BuildGrid(geometry);
-
-        var states = geometry.Stages.Count > 0
-            ? geometry.Stages.Select(stage => stage.Electrodes).ToList()
-            : [geometry.Electrodes];
-
-        var groups = DriveChannels.Decompose([.. states.SelectMany(e => e).Select(Excited)]);
+        var groups = Groups(geometry);
+        var solves = SolveGroups(geometry, groups);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
@@ -180,24 +232,15 @@ public static class GeometryBuilder3D
 
         SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
 
-        foreach (var group in groups)
+        for (var index = 0; index < groups.Count; index++)
         {
-            var pattern = group.Pattern;
+            channels.Add(new SolvedField3D(solves[index].Potential, geometry.Electrodes));
+            direct.Add(groups[index].Direct);
+            harmonics.Add(groups[index].Harmonics);
 
-            var (potential, report) = PoissonSolver3D.Solve(
-                BuildMask(geometry, grid, e => pattern.GetValueOrDefault(e.Name, 0.0)),
-                geometry.Tolerance,
-                maximumCycles: 200,
-                coarsen: level => BuildMask(
-                    geometry, level, e => pattern.GetValueOrDefault(e.Name, 0.0), coarse: true));
-
-            channels.Add(new SolvedField3D(potential, geometry.Electrodes));
-            direct.Add(group.Direct);
-            harmonics.Add(group.Harmonics);
-
-            if (report.Cycles > worst.Cycles)
+            if (solves[index].Report.Cycles > worst.Cycles)
             {
-                worst = report;
+                worst = solves[index].Report;
             }
         }
 
@@ -236,6 +279,75 @@ public static class GeometryBuilder3D
             channels, direct, harmonics, frequency, waveform, boundaries, stageDirect, stageHarmonics);
 
         return (sequenced, worst);
+    }
+
+    /// <summary>One basis channel of a solve, with the evidence that solve produced.</summary>
+    /// <param name="Index">Which channel, in the order the decomposition found them.</param>
+    /// <param name="Mask">The finest-level mask, for the node and cut counts.</param>
+    /// <param name="Potential">The solved potential.</param>
+    /// <param name="Report">How the solve went.</param>
+    public sealed record ChannelSolve(
+        int Index, DirichletMask3D Mask, ScalarField3D Potential, SolveReport Report);
+
+    /// <summary>Solves a geometry channel by channel, and hands back the diagnostics.</summary>
+    /// <param name="geometry">The geometry.</param>
+    /// <returns>One entry per basis channel; exactly one for a static geometry.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    /// <remarks>
+    /// What <c>einzel solve</c> reports against. A driven structure is not one solve
+    /// but one per spatial pattern, and a residual quoted for "the field" would be
+    /// quoting whichever of them happened to be last.
+    /// </remarks>
+    public static IReadOnlyList<ChannelSolve> SolveChannels(Geometry3D geometry)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+
+        if (geometry.Drive is null && geometry.Stages.Count == 0)
+        {
+            var grid = BuildGrid(geometry);
+            var mask = BuildMask(geometry, grid);
+
+            var (potential, report) = PoissonSolver3D.Solve(
+                mask, geometry.Tolerance, maximumCycles: 200, coarsen: Coarsener(geometry));
+
+            return [new ChannelSolve(0, mask, potential, report)];
+        }
+
+        return SolveGroups(geometry, Groups(geometry));
+    }
+
+    private static List<DriveChannel> Groups(Geometry3D geometry)
+    {
+        var states = geometry.Stages.Count > 0
+            ? geometry.Stages.Select(stage => stage.Electrodes).ToList()
+            : [geometry.Electrodes];
+
+        return DriveChannels.Decompose([.. states.SelectMany(e => e).Select(Excited)]);
+    }
+
+    private static List<ChannelSolve> SolveGroups(
+        Geometry3D geometry, List<DriveChannel> groups)
+    {
+        var grid = BuildGrid(geometry);
+        var solves = new List<ChannelSolve>(groups.Count);
+
+        for (var index = 0; index < groups.Count; index++)
+        {
+            var pattern = groups[index].Pattern;
+            double Weight(CompiledElectrode3D e) => pattern.GetValueOrDefault(e.Name, 0.0);
+
+            var mask = BuildMask(geometry, grid, Weight);
+
+            var (potential, report) = PoissonSolver3D.Solve(
+                mask,
+                geometry.Tolerance,
+                maximumCycles: 200,
+                coarsen: Coarsener(geometry, Weight));
+
+            solves.Add(new ChannelSolve(index, mask, potential, report));
+        }
+
+        return solves;
     }
 
     /// <summary>How a three-dimensional electrode is excited, for the shared decomposition.</summary>

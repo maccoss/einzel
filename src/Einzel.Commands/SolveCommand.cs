@@ -9,6 +9,19 @@ public sealed record SolvedElement
     /// <summary>Which field element of the model this is.</summary>
     public required int Index { get; init; }
 
+    /// <summary>How many dimensions this element was solved in.</summary>
+    public int Dimensions { get; init; } = 2;
+
+    /// <summary>
+    /// Which basis channel of this element, in the order the decomposition found them.
+    /// </summary>
+    /// <remarks>
+    /// A driven structure is not one solve but one per spatial pattern, and a
+    /// residual quoted for "the field" would be quoting whichever of them ran last.
+    /// Zero for a static element, which has exactly one.
+    /// </remarks>
+    public int Channel { get; init; }
+
     /// <summary>Node counts, x then y.</summary>
     public required IReadOnlyList<int> Nodes { get; init; }
 
@@ -65,7 +78,13 @@ public sealed record SolveOutcome
     public required double ElapsedMs { get; init; }
 
     /// <summary>Whether every element converged.</summary>
-    public bool Converged => Elements.All(e => e.Converged);
+    /// <remarks>
+    /// False for a model with nothing to solve, rather than vacuously true. An
+    /// empty list once meant a converged solve here, and it was the CLI verb whose
+    /// whole job is to report a residual saying "converged" about a field it had
+    /// silently skipped.
+    /// </remarks>
+    public bool Converged => Elements.Count > 0 && Elements.All(e => e.Converged);
 }
 
 /// <summary>
@@ -113,20 +132,70 @@ public static class SolveCommand
         for (var index = 0; index < model.Fields.Count; index++)
         {
             var solve = model.Fields[index].Solve;
+            var solve3d = model.Fields[index].Solve3D;
 
-            if (solve is null)
+            if (solve is null && solve3d is null)
             {
                 // An analytic element has nothing to solve; it is not an error and
                 // not something to report a residual for.
                 continue;
             }
 
-            var grid = GeometryBuilder.BuildGrid(solve);
-            var mask = GeometryBuilder.BuildMask(solve, grid);
+            if (solve3d is not null)
+            {
+                var geometry = new Geometry3D(
+                    solve3d.MinX, solve3d.MinY, solve3d.MinZ,
+                    solve3d.MaxX, solve3d.MaxY, solve3d.MaxZ,
+                    solve3d.CellSize,
+                    solve3d.Electrodes,
+                    solve3d.Tolerance)
+                {
+                    Drive = solve3d.Drive,
+                    Stages = solve3d.Stages,
+                };
+
+                var volume = GeometryBuilder3D.BuildGrid(geometry);
+
+                foreach (var channel in GeometryBuilder3D.SolveChannels(geometry))
+                {
+                    var volumePeak = 0.0;
+
+                    foreach (var value in channel.Potential.Values)
+                    {
+                        volumePeak = Math.Max(volumePeak, Math.Abs(value));
+                    }
+
+                    elements.Add(new SolvedElement
+                    {
+                        Index = index,
+                        Dimensions = 3,
+                        Channel = channel.Index,
+                        Nodes = [volume.CountX, volume.CountY, volume.CountZ],
+                        SpacingMm =
+                            [volume.SpacingX * 1e3, volume.SpacingY * 1e3, volume.SpacingZ * 1e3],
+                        SquareCells = volume.IsCubic,
+                        Electrodes = solve3d.Electrodes.Count,
+                        FixedNodes = channel.Mask.FixedCount,
+                        CutLinks = channel.Mask.Cuts?.CutCount ?? 0,
+                        Cycles = channel.Report.Cycles,
+                        ConvergenceFactor = channel.Report.ConvergenceFactor,
+                        RelativeResidual = channel.Report.InitialResidual > 0.0
+                            ? channel.Report.FinalResidual / channel.Report.InitialResidual
+                            : 0.0,
+                        Converged = channel.Report.Converged,
+                        PeakPotentialVolts = volumePeak,
+                    });
+                }
+
+                continue;
+            }
+
+            var grid = GeometryBuilder.BuildGrid(solve!);
+            var mask = GeometryBuilder.BuildMask(solve!, grid);
 
             var (potential, report) = PoissonSolver2D.Solve(
                 mask,
-                solve.Tolerance,
+                solve!.Tolerance,
                 maximumCycles: 400,
                 coarsen: coarse => GeometryBuilder.BuildMask(solve, coarse));
 
@@ -153,6 +222,23 @@ public static class SolveCommand
                     : 0.0,
                 Converged = report.Converged,
                 PeakPotentialVolts = peak,
+            });
+        }
+
+        if (elements.Count == 0)
+        {
+            // Rather than a converged solve of nothing. An empty element list once
+            // satisfied "every element converged" vacuously, so the verb whose whole
+            // job is to report a residual answered "converged: true, exit 0" for a
+            // model it had silently skipped every field of.
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.SchemaInvalid,
+                Path = "/fields",
+                Constraint = "this model has no field to solve",
+                Suggestion = "only a 'solved2d' or 'solved3d' field element has a discretisation to "
+                    + "report; analytic fields are formulas, and 'einzel run' will fly through them "
+                    + "without a solve",
             });
         }
 

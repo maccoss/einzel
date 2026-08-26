@@ -156,6 +156,7 @@ public static class VtuWriter
     /// would stretch the picture relative to the geometry it was solved on.
     /// </para>
     /// </remarks>
+
     public static string WriteScalarField(
         ScalarField2D field, string name, IReadOnlyList<string>? provenance = null)
     {
@@ -213,4 +214,83 @@ public static class VtuWriter
 
         return text.ToString();
     }
+
+    /// <summary>Writes a solved three-dimensional field as VTK ImageData.</summary>
+    /// <param name="field">The potential, on its grid.</param>
+    /// <param name="name">The name the array takes in ParaView.</param>
+    /// <param name="provenance">Provenance lines recorded as an XML comment.</param>
+    /// <returns>The .vti document text.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="field"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is null or blank.</exception>
+    /// <remarks>
+    /// The same format the plane writes, with the third extent actually spanning
+    /// something. A volume is where ParaView earns its place: a section through a
+    /// solved quadrupole is a thing you look at once, and a volume is a thing you
+    /// cut, contour and re-cut - which is most of why VTU export lands a phase
+    /// before any shell does.
+    /// </remarks>
+    public static string WriteScalarField(
+        ScalarField3D field, string name, IReadOnlyList<string>? provenance = null)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var grid = field.Grid;
+        var invariant = CultureInfo.InvariantCulture;
+        var text = new StringBuilder((int)Math.Min(grid.NodeCount * 24L, 1 << 28));
+
+        text.Append("<?xml version=\"1.0\"?>\n");
+
+        if (provenance is { Count: > 0 })
+        {
+            text.Append("<!--\n");
+
+            foreach (var line in provenance)
+            {
+                text.Append("  ").Append(line.Replace("--", "- -", StringComparison.Ordinal)).Append('\n');
+            }
+
+            text.Append("-->\n");
+        }
+
+        var extent = $"0 {grid.CountX - 1} 0 {grid.CountY - 1} 0 {grid.CountZ - 1}";
+
+        var origin = $"{grid.OriginX:G17} {grid.OriginY:G17} {grid.OriginZ:G17}";
+        var spacing = $"{grid.SpacingX:G17} {grid.SpacingY:G17} {grid.SpacingZ:G17}";
+
+        text.Append("<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
+        text.Append(
+            invariant,
+            $"  <ImageData WholeExtent=\"{extent}\" Origin=\"{origin}\" Spacing=\"{spacing}\">\n");
+        text.Append(invariant, $"    <Piece Extent=\"{extent}\">\n");
+        text.Append(invariant, $"      <PointData Scalars=\"{name}\">\n");
+        text.Append(invariant, $"        <DataArray type=\"Float64\" Name=\"{name}\" format=\"ascii\">\n");
+
+        // x fastest, then y, then z: the order VTK reads an extent in.
+        for (var k = 0; k < grid.CountZ; k++)
+        {
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                text.Append("          ");
+
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    text.Append(invariant, $"{field[i, j, k]:G17} ");
+                }
+
+                text.Append('\n');
+            }
+        }
+
+        text.Append("        </DataArray>\n");
+        text.Append("      </PointData>\n");
+        text.Append("      <CellData/>\n");
+        text.Append("    </Piece>\n");
+        text.Append("  </ImageData>\n");
+        text.Append("</VTKFile>\n");
+
+        return text.ToString();
+    }
+
+
 }

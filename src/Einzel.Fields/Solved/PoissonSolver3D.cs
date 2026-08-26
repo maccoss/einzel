@@ -16,12 +16,21 @@ namespace Einzel.Fields.Solved;
 /// exactly to the seven-point formula where nothing is cut.
 /// </para>
 /// <para>
-/// Coarse levels are rebuilt from geometry rather than projected down, which is
-/// what makes interior electrodes work: an electrode too small to hold a coarse
-/// node still cuts the links around it. In two dimensions that took a diverging
-/// solve at 1e134 volts down to seven cycles, and in three the problem is worse -
-/// coarsening loses seven eighths of an electrode's nodes per level rather than
-/// three quarters.
+/// Coarse levels are rebuilt from geometry rather than projected down, and they
+/// are <em>node-aligned</em> rather than sub-cell. That division is what makes
+/// interior electrodes work: accuracy comes from the finest level, where the cuts
+/// are, and acceleration from the levels below, where a cut would produce arms a
+/// thousandth of a cell long and an operator that is ill-conditioned rather than
+/// merely coarse. A charged sphere went from 13 seconds with no coarsening to 783
+/// milliseconds with it, at the same answer to the digit.
+/// </para>
+/// <para>
+/// The values a coarse mask carries do not matter, only which nodes it fixes: a
+/// V-cycle solves for the error, whose Dirichlet data is zero, and the correction
+/// array starts at zero and is never seeded from the mask. So a coarse level that
+/// merges two differently-driven electrodes is crude, not wrong. What is not
+/// allowed is a coarse cell larger than the electrode itself - that is a different
+/// problem rather than a coarser one, and its correction points elsewhere.
 /// </para>
 /// </remarks>
 public static class PoissonSolver3D
@@ -177,17 +186,25 @@ public static class PoissonSolver3D
     /// the maximum principle caught and nothing else would have.
     /// </para>
     /// <para>
-    /// Sub-cell surfaces make this worse rather than better, which is the part that
-    /// is easy to get backwards. Cut links keep recording the surface at any
-    /// spacing, so a node count stays positive long after the arms have become far
-    /// shorter than a cell - and a short arm is an enormous coefficient. The test
-    /// has to be on the physical size, not on how many nodes are left.
+    /// The test is on the physical size, not on how many nodes are left. A node
+    /// count stays positive long after a level has stopped representing anything -
+    /// on the finest level because cut links keep recording the surface at any
+    /// spacing, and on a coarse level because an electrode too small to rasterise
+    /// is pinned to its nearest node rather than allowed to vanish.
+    /// </para>
+    /// <para>
+    /// Against the <em>coarsest</em> of the three spacings, not the finest. Each
+    /// axis rounds its own interval count up to a power of two, so a 2:1 aspect is
+    /// ordinary rather than exceptional; asking the finest axis let the shipped
+    /// segmented quadrupole descend to a level whose z cell was 4.875 mm against a
+    /// 4.587 mm rod radius, which is exactly the condition this guard exists to
+    /// refuse.
     /// </para>
     /// </remarks>
     private static bool Representable(Grid3D coarse, DirichletMask3D mask) =>
         mask.InteriorFixedCount == 0
         || double.IsPositiveInfinity(mask.SmallestFeature)
-        || coarse.MinimumSpacing <= ResolvedBy * mask.SmallestFeature;
+        || coarse.MaximumSpacing <= ResolvedBy * mask.SmallestFeature;
 
     /// <summary>
     /// How well a coarse level must still resolve an electrode to be worth
@@ -195,20 +212,19 @@ public static class PoissonSolver3D
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A quarter, which in practice means a solve with interior electrodes barely
-    /// coarsens at all and runs as a smoother. That is deliberate and it is the
-    /// conservative direction: a V-cycle whose coarse level does not represent the
-    /// geometry does not converge slowly, it converges to somewhere else, and this
-    /// geometry demonstrated it - a charged sphere reached 137 V of 100 applied
-    /// through two levels of coarsening and was correct to 2.7 V with none.
+    /// One: a level may coarsen while a cell is no larger than the electrode, and
+    /// not past it. That is the physical statement - below it the level is a cruder
+    /// version of the same problem, above it a different one - and it is only usable
+    /// because coarse levels are node-aligned. It was a quarter while they carried
+    /// cuts, because a sub-cell surface on a coarse grid is ill-conditioned and the
+    /// only defence was to barely coarsen at all; a charged sphere reached 137 V of
+    /// 100 applied through two such levels.
     /// </para>
     /// <para>
-    /// So the three-dimensional solver is fast for boundary-only geometries, where
-    /// the cycle count is flat in the mesh, and slow but correct for interior ones.
-    /// The real fix is Galerkin coarsening or operator-dependent interpolation -
-    /// building the coarse operator from the fine one rather than from the geometry
-    /// again - and it is the same fix the two-dimensional solver has been waiting
-    /// for. This is a limitation, stated, not a bug pending.
+    /// The real fix is still Galerkin coarsening or operator-dependent
+    /// interpolation - building the coarse operator from the fine one rather than
+    /// from the geometry again - which would remove this guard rather than tune it,
+    /// and is the same fix the two-dimensional solver has been waiting for.
     /// </para>
     /// </remarks>
     private const double ResolvedBy = 1.0;

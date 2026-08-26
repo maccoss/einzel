@@ -43,8 +43,9 @@ cross-code tier is unavailable — see below.
 | 3D non-polynomial harmonic, observed order | 1.92 / 1.99 |
 | 3D curved conductor against the 1/r law | 2.8 V of 100 applied |
 | Tricubic interpolant on a linear field | 3.6e-15 V |
-| 3D segmented quadrupole field, mesh doubled | 0.01% |
+| 3D segmented quadrupole mid-section field, under refinement | 0.014% |
 | The same, transmitted flight time | 9e-5 |
+| 3D segmented quadrupole *segment-gap* field, under refinement | 2.4% then 1.4% - not converged |
 | Sphere solve, node-aligned coarse levels against none | identical, 16x faster |
 | 3D segmented quadrupole cut-off against tabulated Mathieu | brackets 0.90804 (0.855 through, 0.910 lost) |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
@@ -160,11 +161,22 @@ covering everything.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
 - **3D runs coarse and slow.** A solve costs the cube of its resolution. The
-  segmented quadrupole template uses five cells across r0 where the plane studies
-  use sixteen, and at eleven it does not finish in ten minutes.
-- **3D multigrid does not coarsen past an interior electrode.** It refuses rather
-  than converging to the wrong answer, so such geometries run as a smoother:
-  correct, and slow. See [Numerics](numerics.md).
+  segmented quadrupole template solves at 8.5 cells across r0 where the plane
+  studies use sixteen, and at eleven it does not finish in ten minutes.
+- **A 1 mm segment gap is not resolved.** The segmented quadrupole's mid-section
+  field is converged to 0.014% under refinement; the field *inside a gap between
+  sections* moves 2.4% then 1.4% and is still moving at the finest mesh that
+  finishes. So the template shows that segments at different working points can be
+  declared, decomposed and solved, and does not yet show what the joins do to an
+  ion. See [Device templates](device-templates.md).
+- **3D multigrid coarsens with node-aligned levels, not Galerkin ones.** Cut cells
+  on the finest level, node-aligned geometry below, and a guard that refuses a
+  level whose coarsest cell exceeds the smallest electrode. That is a working
+  hierarchy - a sphere solve went from 13 s to 783 ms at the same answer - but the
+  coarse operator is still rebuilt from the geometry rather than derived from the
+  fine one, so a level that merges two nearby electrodes is a crude preconditioner
+  rather than a wrong one. Galerkin coarsening would remove the guard rather than
+  tune it, and it is not done. See [Numerics](numerics.md).
 - **Electrodes are solid, with no way to say otherwise.** Real instruments use
   mesh and grid electrodes that pass most of the beam. There is no way to declare
   one, and a mesh cannot be modelled as its wires either, because the wires run

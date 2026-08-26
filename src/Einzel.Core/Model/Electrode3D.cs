@@ -113,9 +113,10 @@ public sealed record CompiledElectrode3D
     {
         Electrode3DShape.Sphere => Radius,
         Electrode3DShape.Cylinder => Math.Min(Radius, 0.5 * Math.Abs(Upper - Lower)),
-        _ => Math.Min(
+        Electrode3DShape.Box => Math.Min(
             Math.Abs(MaxX - MinX),
             Math.Min(Math.Abs(MaxY - MinY), Math.Abs(MaxZ - MinZ))) * 0.5,
+        _ => throw Unhandled(),
     };
 
     /// <summary>
@@ -130,6 +131,8 @@ public sealed record CompiledElectrode3D
     /// </remarks>
     public (double X, double Y, double Z) Centre => Shape switch
     {
+        Electrode3DShape.Sphere => (CentreX, CentreY, CentreZ),
+
         Electrode3DShape.Box => (
             0.5 * (MinX + MaxX), 0.5 * (MinY + MaxY), 0.5 * (MinZ + MaxZ)),
 
@@ -140,8 +143,22 @@ public sealed record CompiledElectrode3D
             _ => (CentreX, CentreY, 0.5 * (Lower + Upper)),
         },
 
-        _ => (CentreX, CentreY, CentreZ),
+        _ => throw Unhandled(),
     };
+
+    /// <summary>
+    /// The failure for a shape no member of this type knows about.
+    /// </summary>
+    /// <remarks>
+    /// Every shape-dispatching member here names all three cases and throws on the
+    /// rest, rather than letting one of them stand as a default. Defaults were how
+    /// two of them came to disagree - the size switch fell through to a box and the
+    /// centre switch to a sphere - and a fourth shape would have been sized as one
+    /// thing and centred as another with no diagnostic anywhere. Unreachable through
+    /// the document format, which rejects an unknown shape at parse.
+    /// </remarks>
+    private ArgumentOutOfRangeException Unhandled() =>
+        new(nameof(Shape), Shape, "unhandled electrode shape");
 
     /// <summary>Whether a point lies within this electrode's conductor.</summary>
     /// <param name="x">x, in metres.</param>
@@ -211,7 +228,7 @@ public sealed record CompiledElectrode3D
             }
 
             default:
-                return double.PositiveInfinity;
+                throw Unhandled();
         }
     }
 
@@ -293,7 +310,7 @@ public sealed record CompiledElectrode3D
             }
 
             default:
-                return null;
+                throw Unhandled();
         }
 
         if (low > high || high < 0.0 || low > 1.0)

@@ -211,14 +211,57 @@ public static class FieldAssembly
     /// <param name="model">The validated model.</param>
     /// <returns>The assembled field.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">A solved element did not converge.</exception>
+    /// <remarks>
+    /// Throws on a solve that missed its tolerance, rather than handing back a field
+    /// that is indistinguishable from a converged one. Callers that produce a
+    /// reportable result should use <see cref="BuildReported"/> instead and carry the
+    /// warning onto the number, which is what GRD-2 asks for; there is nowhere to
+    /// attach a taint on a bare field, so the only honest alternatives here are to
+    /// throw or to hide it.
+    /// </remarks>
     public static IElectrostaticField Build(CompiledModel model)
+    {
+        var (field, warnings) = BuildReported(model);
+
+        if (warnings.Count > 0)
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.ConvergenceFailed,
+                Path = "/fields",
+                Constraint = warnings[0].Message,
+                Suggestion = "run 'einzel solve' to see the residual and the convergence factor "
+                    + "for every element and channel, or use FieldAssembly.BuildReported to carry "
+                    + "the warning onto a result instead of failing",
+            });
+        }
+
+        return field;
+    }
+
+    /// <summary>Builds the field, and the warnings its solves earned.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>The assembled field, and any non-suppressible warnings.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <remarks>
+    /// A solved field that missed its tolerance is not distinguishable from one that
+    /// met it by looking at it, so the evidence has to travel separately. The
+    /// segmented quadrupole lost its ion at the wrong working point for a whole
+    /// revision because the report saying so was discarded at this seam.
+    /// </remarks>
+    public static (IElectrostaticField Field, IReadOnlyList<Core.Results.ValidityWarning> Warnings)
+        BuildReported(CompiledModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         var elements = new List<IElectrostaticField>(model.Fields.Count);
+        var warnings = new List<Core.Results.ValidityWarning>();
 
-        foreach (var element in model.Fields)
+        for (var index = 0; index < model.Fields.Count; index++)
         {
+            var element = model.Fields[index];
+
             switch (element.Kind)
             {
                 case CompiledFieldKind.FieldFree:
@@ -252,15 +295,21 @@ public static class FieldAssembly
                         Stages = solve.Stages,
                     };
 
-                    elements.Add(Solved.GeometryBuilder3D.BuildField(geometry).Field);
+                    var (built, report3d) = Solved.GeometryBuilder3D.BuildField(geometry);
+                    elements.Add(built);
+                    Note(warnings, report3d, index, "solved3d");
                     break;
                 }
 
                 case CompiledFieldKind.Solved2D:
+                {
                     // The solve happens here, once per build. Nothing about what
                     // the electrodes add up to is known at this level.
-                    elements.Add(Solved.GeometryBuilder.Build(element.Solve!).Field);
+                    var (plane, report2d) = Solved.GeometryBuilder.Build(element.Solve!);
+                    elements.Add(plane);
+                    Note(warnings, report2d, index, "solved2d");
                     break;
+                }
 
                 default:
                     throw new ArgumentOutOfRangeException(
@@ -268,11 +317,42 @@ public static class FieldAssembly
             }
         }
 
-        return elements.Count switch
+        var field = elements.Count switch
         {
             0 => FieldFreeSpace.Instance,
             1 => elements[0],
-            _ => new SuperposedField(elements),
+            _ => (IElectrostaticField)new SuperposedField(elements),
         };
+
+        return (field, warnings);
+    }
+
+    /// <summary>Records a solve that missed its tolerance, per GRD-2.</summary>
+    /// <remarks>
+    /// A validity violation rather than an advisory, so it cannot be suppressed. An
+    /// unconverged field is not a result with wider error bars - the residual says
+    /// nothing about how far the potential is from the true one, only that the
+    /// iteration stopped moving - so every number downstream of it is unquantified
+    /// rather than imprecise.
+    /// </remarks>
+    private static void Note(
+        List<Core.Results.ValidityWarning> warnings, Solved.SolveReport report, int index, string kind)
+    {
+        if (report.Converged)
+        {
+            return;
+        }
+
+        var relative = report.InitialResidual > 0.0
+            ? report.FinalResidual / report.InitialResidual
+            : 0.0;
+
+        warnings.Add(new Core.Results.ValidityWarning(
+            "field.not-converged",
+            $"field element {index} ({kind}) stopped at a relative residual of {relative:G3} after "
+            + $"{report.Cycles} cycles, at a convergence factor of {report.ConvergenceFactor:F3}. The "
+            + "potential it produced is not known to be the solution of the geometry that was declared, "
+            + "so nothing computed through it carries its stated accuracy",
+            Core.Results.WarningSeverity.ValidityViolation));
     }
 }
