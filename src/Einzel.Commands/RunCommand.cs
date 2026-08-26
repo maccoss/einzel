@@ -249,6 +249,61 @@ public sealed record RegimeJson
     public double? CollisionsPerRfCycle { get; init; }
 }
 
+/// <summary>What a diffusive run produced, on the wire.</summary>
+/// <remarks>
+/// TRN-2: this mode emits a time-resolved density rather than trajectories, so a
+/// result has no flight time and no final position. What it has instead is where
+/// the ions went and when they got there, which is what a Class S figure is made
+/// of - and reporting an invented flight time here would be reporting a quantity
+/// the model never computed.
+/// </remarks>
+public sealed record DiffusionJson
+{
+    /// <summary>Ions in the initial density.</summary>
+    public required double Launched { get; init; }
+
+    /// <summary>Ions that reached the collecting boundary.</summary>
+    public required double Collected { get; init; }
+
+    /// <summary>Ions still in the domain when the run ended.</summary>
+    public required double Remaining { get; init; }
+
+    /// <summary>Where the rest went, by boundary, largest first (ACC-5).</summary>
+    public required IReadOnlyList<LossChannel> Losses { get; init; }
+
+    /// <summary>Fraction collected, of those that left.</summary>
+    public required double Transmission { get; init; }
+
+    /// <summary>Mean time to reach the collector, in microseconds.</summary>
+    public double? MeanTransitUs { get; init; }
+
+    /// <summary>Spread of transit times, in microseconds.</summary>
+    public double? TransitSpreadUs { get; init; }
+
+    /// <summary>Mobility used, in square metres per volt-second.</summary>
+    public required double MobilitySi { get; init; }
+
+    /// <summary>Whether that mobility was derived rather than declared (TRN-1).</summary>
+    public required bool MobilityDerived { get; init; }
+
+    /// <summary>Grid the density was tracked on, columns then rows.</summary>
+    public required IReadOnlyList<int> Nodes { get; init; }
+
+    /// <summary>Time steps taken.</summary>
+    public required int Steps { get; init; }
+
+    /// <summary>Simulated time, in microseconds.</summary>
+    public required double ElapsedUs { get; init; }
+
+    /// <summary>Final density spread, x then y, in millimetres.</summary>
+    /// <remarks>
+    /// What replaces a packet size when there are no particles to take a variance
+    /// over. For a funnel the y figure is the radial compression the device exists
+    /// to produce.
+    /// </remarks>
+    public required IReadOnlyList<double> SpreadMm { get; init; }
+}
+
 /// <summary>The outcome of a run.</summary>
 public sealed record RunOutcome
 {
@@ -272,6 +327,9 @@ public sealed record RunOutcome
     /// vacuum where the question does not arise.
     /// </summary>
     public RegimeJson? Regime { get; init; }
+
+    /// <summary>What a diffusive run produced, or null for a trajectory run.</summary>
+    public DiffusionJson? Diffusion { get; init; }
 
     /// <summary>Accepted integrator steps, finest tolerance.</summary>
     public required int AcceptedSteps { get; init; }
@@ -494,6 +552,142 @@ public static class RunCommand
         return [];
     }
 
+    /// <summary>Runs a model in the diffusive mode and writes its result.</summary>
+    private static RunOutcome Diffusive(
+        CompiledModel model,
+        Fields.IElectrostaticField field,
+        IReadOnlyList<ValidityWarning> fieldWarnings,
+        ValidateOutcome validation,
+        ProjectLayout project,
+        DateTimeOffset timestampUtc)
+    {
+        var outcome = DiffusionRun.Execute(model, field, fieldWarnings);
+        var result = outcome.Result;
+
+        var left = result.Collected + result.Lost.Values.Sum();
+
+        // Transit time from the arrivals series, which is what a density has instead
+        // of a list of arrival times. Weighted by how many ions arrived in each bin.
+        double? mean = null;
+        double? spread = null;
+
+        if (result.Arrivals.Count > 0 && result.Collected > 0.0)
+        {
+            var weighted = result.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / result.Collected;
+
+            var variance = result.Arrivals.Sum(
+                a => a.Ions * (a.TimeSeconds - weighted) * (a.TimeSeconds - weighted)) / result.Collected;
+
+            mean = weighted * 1e6;
+            spread = Math.Sqrt(Math.Max(0.0, variance)) * 1e6;
+        }
+
+        var (spreadX, spreadY) = result.Density.Spread();
+
+        var manifest = new RunManifest
+        {
+            ModelHash = validation.ModelHash,
+            SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
+            EngineVersion = EngineBuild.Version,
+            SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
+            TransportMode = model.TransportMode,
+            ComputePath = EngineBuild.ComputePath,
+            Machine = Environment.MachineName,
+            CreatedUtc = timestampUtc.ToUniversalTime().ToString("O"),
+        };
+
+        Directory.CreateDirectory(project.Results);
+
+        var stem = Path.GetFileNameWithoutExtension(validation.ModelPath);
+        var manifestPath = Path.Combine(project.Results, $"{stem}.manifest.json");
+
+        File.WriteAllText(manifestPath, manifest.ToJson());
+
+        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+
+        var regime = Transport.Collisions.RegimeDiagnostics.Measure(
+            gas, IonSpecies.FromModel(model), 1.0, result.ElapsedSeconds, SmallestAperture(model));
+
+        var run = new RunOutcome
+        {
+            Manifest = manifest,
+
+            // No flight time: a density does not have one. The transit time is in the
+            // diffusion block, where it is a distribution rather than a number.
+            FlightTime = MeasuredJson.From(
+                Carry(
+                    new Measured(
+                        Quantity.Si(double.NaN, Dimension.TimeDimension),
+                        UncertaintyInterval.Symmetric(
+                            Quantity.Si(double.NaN, Dimension.TimeDimension),
+                            Quantity.Si(0.0, Dimension.TimeDimension),
+                            1.0),
+                        new Evidence.Convergence("diffusive transport", double.NaN, 0.0, double.NaN),
+                        [
+                            new ValidityWarning(
+                                "transport.no-flight-time",
+                                "this run computed a density, not trajectories, so there is no "
+                                + "flight time. The transit-time distribution is reported under "
+                                + "'diffusion' instead",
+                                WarningSeverity.Provenance),
+                        ]),
+                    outcome.Warnings),
+                "us"),
+
+            Outcome = "DensityEvolved",
+            FinalPositionMm = [],
+            MaximumRelativeEnergyDrift = double.NaN,
+            AcceptedSteps = result.Steps,
+            AnalyticDriftDistanceM = 0.0,
+
+            Regime = gas.IsPresent
+                ? new RegimeJson
+                {
+                    PressureMbar = regime.PressureMbar,
+                    CollisionModel = model.Gas.Model,
+                    MeanFreePathMm = regime.MeanFreePathM * 1e3,
+                    ApertureMm = regime.ApertureM * 1e3,
+                    Knudsen = regime.Knudsen,
+                    CollisionsPerFlight = regime.CollisionsPerFlight,
+                    CollisionsPerRfCycle = regime.CollisionsPerRfCycle,
+                }
+                : null,
+
+            Diffusion = new DiffusionJson
+            {
+                Launched = outcome.Launched,
+                Collected = result.Collected,
+                Remaining = result.Remaining,
+                Losses =
+                [
+                    .. result.Lost
+                        .OrderByDescending(p => p.Value)
+                        .ThenBy(p => p.Key, StringComparer.Ordinal)
+                        .Select(p => new LossChannel(p.Key, (int)Math.Round(p.Value))),
+                ],
+                Transmission = left > 0.0 ? result.Collected / left : 0.0,
+                MeanTransitUs = mean,
+                TransitSpreadUs = spread,
+                MobilitySi = outcome.Mobility.ZeroFieldSi,
+                MobilityDerived = outcome.Mobility.Derived,
+                Nodes = [outcome.Grid.CountX, outcome.Grid.CountY],
+                Steps = result.Steps,
+                ElapsedUs = result.ElapsedSeconds * 1e6,
+                SpreadMm = [spreadX * 1e3, spreadY * 1e3],
+            },
+
+            Artifacts = [Path.GetRelativePath(project.Root, manifestPath)],
+        };
+
+        var resultPath = Path.Combine(project.Results, $"{stem}.result.json");
+        File.WriteAllText(resultPath, CommandJson.Write(run));
+
+        return run with
+        {
+            Artifacts = [.. run.Artifacts, Path.GetRelativePath(project.Root, resultPath)],
+        };
+    }
+
     /// <summary>
     /// The tightest constriction an ion must pass, in metres.
     /// </summary>
@@ -646,6 +840,16 @@ public static class RunCommand
         // alongside and land on every number computed through it (GRD-2).
         var (field, built) = FieldAssembly.BuildReported(model);
         var fieldWarnings = built;
+
+        // REG-1's two modes are peers, so this is a fork rather than a special case
+        // inside one path. A diffusive run has no flight time and no final position -
+        // there are no trajectories in it - so it produces a different result rather
+        // than the same result with fields left empty.
+        if (model.TransportMode == "diffusion")
+        {
+            return (Diffusive(model, field, fieldWarnings, validation, project, timestampUtc), validation);
+        }
+
         var species = IonSpecies.FromModel(model);
 
         var launch = new PhaseState(

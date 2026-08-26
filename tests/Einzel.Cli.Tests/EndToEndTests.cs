@@ -265,16 +265,21 @@ public sealed class EndToEndTests : IDisposable
     }
 
     [Fact]
-    public void AskingForAnUnimplementedTransportModeExitsAsARegimeViolation()
+    public void AnUnknownTransportModeNamesTheOnesThatExist()
     {
+        // Both modes REG-1 declares are now built, so a name that is not one of them
+        // is a spelling error rather than a statement about the physics - and the two
+        // deserve different exit codes, because one is fixed by editing a word and
+        // the other is not fixed at all.
         var model = InitProject();
         File.WriteAllText(model, File.ReadAllText(model).Replace(
             "\"mode\": \"trajectory\"", "\"mode\": \"statisticalDiffusion\"", StringComparison.Ordinal));
 
         var (exitCode, _, stderr) = Run("validate", model);
 
-        Assert.Equal(2, exitCode);
-        Assert.Contains("REGIME_INVALID", stderr, StringComparison.Ordinal);
+        Assert.Equal(1, exitCode);
+        Assert.Contains("SCHEMA_INVALID", stderr, StringComparison.Ordinal);
+        Assert.Contains("diffusion", stderr, StringComparison.Ordinal);
     }
 
     [Fact]

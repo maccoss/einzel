@@ -137,6 +137,8 @@ public static class ModelValidator
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
             Gas = transport.Gas,
+            Mobility = transport.Mobility,
+            DensityGrid = transport.DensityGrid,
             Parameters = surface,
         };
 
@@ -1867,7 +1869,9 @@ public static class ModelValidator
         double RelativeTolerance,
         double MaximumFlightTime,
         double SampleInterval,
-        CompiledGas Gas);
+        CompiledGas Gas,
+        CompiledMobility? Mobility,
+        CompiledDensityGrid? DensityGrid);
 
     private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
@@ -1878,19 +1882,17 @@ public static class ModelValidator
             return null;
         }
 
-        if (transport.Mode != "trajectory")
+        if (transport.Mode is not ("trajectory" or "diffusion"))
         {
             errors.Add(new EinzelError
             {
-                Code = transport.Mode == "statisticalDiffusion" ? ErrorCodes.RegimeInvalid : ErrorCodes.SchemaInvalid,
+                Code = ErrorCodes.SchemaInvalid,
                 Path = "/transport/mode",
-                Constraint = "this build implements the 'trajectory' transport mode only",
+                Constraint = "a transport mode is one of 'trajectory' or 'diffusion'",
                 Observed = new ObservedValue(0.0, transport.Mode),
                 Suggestion = transport.Mode == "statisticalDiffusion"
-                    ? "statistical diffusion computes a time-resolved density field rather than "
-                        + "trajectories, and needs a mobility input and a density solver this build "
-                        + "does not have; use 'trajectory' below about 1e-2 mbar"
-                    : "use \"mode\": \"trajectory\"",
+                    ? "statistical diffusion is spelled \"diffusion\""
+                    : "'trajectory' below about 1e-2 mbar, 'diffusion' above about 1e-3",
             });
             return null;
         }
@@ -1972,8 +1974,122 @@ public static class ModelValidator
             return null;
         }
 
+        var mobility = ValidateMobility(transport, gas, p, errors);
+        var densityGrid = ValidateDensityGrid(transport.DensityGrid, p, errors);
+
+        if (transport.Mode == "diffusion")
+        {
+            if (!gas.IsPresent)
+            {
+                errors.Add(Missing("/transport/gas",
+                    "the diffusive mode describes ions moving through a gas, so there has to be one",
+                    "add a gas block, or use \"mode\": \"trajectory\" for vacuum"));
+                return null;
+            }
+
+            if (mobility is null)
+            {
+                errors.Add(Missing("/transport/mobility",
+                    "the diffusive mode needs a mobility, and the gas declares no cross section "
+                    + "to derive one from",
+                    "add {\"zeroField\": {\"value\": 2.0, \"unit\": \"cm^2/(V s)\"}}, or give the "
+                    + "gas a crossSection"));
+                return null;
+            }
+        }
+
         return new TransportValues(
-            transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample, gas);
+            transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample,
+            gas, mobility, densityGrid);
+    }
+
+    /// <summary>Validates the declared mobility, or derives one from the gas.</summary>
+    /// <remarks>
+    /// TRN-1 wants it declared. Deriving it from a cross section is offered because a
+    /// model that already declares one for the event-driven mode should not have to
+    /// declare a second independent number to run the diffusive one - and because the
+    /// two modes then describe the same gas, which is what REG-3's comparison needs
+    /// to mean anything. The derivation is marked, so a result computed from it can
+    /// say so.
+    /// </remarks>
+    private static CompiledMobility? ValidateMobility(
+        TransportDocument transport,
+        CompiledGas gas,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (transport.Mobility?.ZeroField is null)
+        {
+            // Mason-Schamp, from the cross section, when there is one.
+            if (!gas.IsPresent || gas.CrossSectionSi <= 0.0)
+            {
+                return null;
+            }
+
+            return new CompiledMobility(0.0, 0.0, 50.0, Derived: true);
+        }
+
+        var declared = transport.Mobility;
+
+        var zeroField = TryQuantity(
+            declared.ZeroField, "/transport/mobility/zeroField", Dimension.Mobility, p, errors);
+
+        if (zeroField is null)
+        {
+            return null;
+        }
+
+        if (zeroField.Value.SiValue <= 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/mobility/zeroField",
+                Constraint = "a mobility must be positive",
+                Suggestion = "an ion drifts along the field, not against it; the charge sign is "
+                    + "carried by the ion rather than by the mobility",
+            });
+            return null;
+        }
+
+        return new CompiledMobility(
+            zeroField.Value.SiValue, declared.Alpha, declared.ValidToTownsend, Derived: false);
+    }
+
+    /// <summary>Validates the declared density grid, if there is one.</summary>
+    private static CompiledDensityGrid? ValidateDensityGrid(
+        DensityGridDocument? grid, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    {
+        if (grid is null)
+        {
+            return null;
+        }
+
+        var minX = TryQuantity(grid.MinX, "/transport/densityGrid/minX", Dimension.LengthDimension, p, errors);
+        var minY = TryQuantity(grid.MinY, "/transport/densityGrid/minY", Dimension.LengthDimension, p, errors);
+        var maxX = TryQuantity(grid.MaxX, "/transport/densityGrid/maxX", Dimension.LengthDimension, p, errors);
+        var maxY = TryQuantity(grid.MaxY, "/transport/densityGrid/maxY", Dimension.LengthDimension, p, errors);
+
+        if (minX is null || minY is null || maxX is null || maxY is null)
+        {
+            return null;
+        }
+
+        if (maxX.Value.SiValue <= minX.Value.SiValue || maxY.Value.SiValue <= minY.Value.SiValue)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/densityGrid",
+                Constraint = "a density grid needs a positive extent in both directions",
+                Suggestion = "check that maxX exceeds minX and maxY exceeds minY",
+            });
+            return null;
+        }
+
+        return new CompiledDensityGrid(
+            minX.Value.SiValue, minY.Value.SiValue, maxX.Value.SiValue, maxY.Value.SiValue,
+            Math.Max(4, grid.IntervalsX), Math.Max(4, grid.IntervalsY));
     }
 
     /// <summary>Validates the background gas, if one is declared.</summary>

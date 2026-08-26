@@ -65,6 +65,12 @@ public sealed record CompiledModel
     /// <summary>The background gas; vacuum when none is declared.</summary>
     public CompiledGas Gas { get; init; } = CompiledGas.Vacuum;
 
+    /// <summary>Ion mobility, for the diffusive mode. Null when none applies.</summary>
+    public CompiledMobility? Mobility { get; init; }
+
+    /// <summary>The density grid, for the diffusive mode. Null when none applies.</summary>
+    public CompiledDensityGrid? DensityGrid { get; init; }
+
     /// <summary>
     /// The resolved parameter surface this model was compiled from. What a sweep
     /// perturbs and an optimiser searches.
@@ -181,3 +187,29 @@ public sealed record CompiledGas
     /// <summary>Whether this gas does anything.</summary>
     public bool IsPresent => Model != "none" && PressureSi > 0.0;
 }
+
+/// <summary>Ion mobility, compiled to SI.</summary>
+/// <param name="ZeroFieldSi">Zero-field mobility, in square metres per volt-second.</param>
+/// <param name="Alpha">Quadratic coefficient of the reduced-field expansion.</param>
+/// <param name="ValidToTownsend">The reduced field the expansion was fitted to.</param>
+/// <param name="Derived">
+/// Whether this was derived from a cross section rather than declared. A derived
+/// value carries the cross section's uncertainty plus a first-order Chapman-Enskog
+/// approximation, and TRN-1 wants the number declared, so a result computed from a
+/// derived one says which it was.
+/// </param>
+public sealed record CompiledMobility(
+    double ZeroFieldSi,
+    double Alpha,
+    double ValidToTownsend,
+    bool Derived);
+
+/// <summary>The region a density is tracked over, compiled to SI.</summary>
+/// <param name="MinX">Lower x, in metres.</param>
+/// <param name="MinY">Lower y, in metres.</param>
+/// <param name="MaxX">Upper x, in metres.</param>
+/// <param name="MaxY">Upper y, in metres.</param>
+/// <param name="IntervalsX">Cells across x.</param>
+/// <param name="IntervalsY">Cells across y.</param>
+public sealed record CompiledDensityGrid(
+    double MinX, double MinY, double MaxX, double MaxY, int IntervalsX, int IntervalsY);

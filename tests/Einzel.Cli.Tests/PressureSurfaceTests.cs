@@ -207,8 +207,10 @@ public sealed class PressureSurfaceTests : IDisposable
 
         var text = stdout + stderr;
 
-        Assert.Contains("REGIME_INVALID", text, StringComparison.Ordinal);
-        Assert.Contains("density field", text, StringComparison.Ordinal);
+        // Both modes now exist, so an old name is a spelling error with a one-word
+        // fix rather than a statement that the physics is unavailable.
+        Assert.Contains("SCHEMA_INVALID", text, StringComparison.Ordinal);
+        Assert.Contains("diffusion", text, StringComparison.Ordinal);
     }
 
     [Fact]

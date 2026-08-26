@@ -81,9 +81,8 @@ of trajectory integration, validated against an exactly stationary Boltzmann
 equilibrium, and agreeing with the event-driven mode to 0.43 standard errors in the
 overlap band REG-3 names.
 
-Not yet built: diffusion reachable from a model document, the in-process extension
-runner, the compute dispatch layer, the MCP server, the update mechanism, and the
-shell. Of the render verbs, `section` exists;
+Not yet built: the in-process extension runner, the compute dispatch layer, the MCP
+server, the update mechanism, and the shell. Of the render verbs, `section` exists;
 `still` and `animation` do not.
 
 Nothing here is released software. Effort estimates, performance targets, and the

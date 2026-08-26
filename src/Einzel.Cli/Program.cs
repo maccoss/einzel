@@ -108,6 +108,7 @@ public static class Program
             "export" => Export(options),
             "render" => Render(args, options),
             "ext" => Ext(args, options),
+            "compare" => Compare(options),
             "schema" => Schema(options),
             "templates" => Catalog(options, "template"),
             "examples" => Catalog(options, "example"),
@@ -1069,6 +1070,69 @@ public static class Program
         }
     }
 
+    /// <summary>
+    /// Runs both transport modes on one model and reports the disagreement.
+    /// </summary>
+    /// <remarks>
+    /// REG-3 makes this a supported operation with its own report rather than
+    /// something a careful user assembles by hand. In the overlap band both
+    /// descriptions run and neither is obviously right; the engine's job is to say
+    /// by how much they differ, not to pick one.
+    /// </remarks>
+    private static int Compare(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel compare <model.json> [--ions N] [--json]");
+            Console.Error.WriteLine(
+                "runs trajectory integration and statistical diffusion on the same model");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var ions = options.Value("ions") is { } count
+            ? int.Parse(count, CultureInfo.InvariantCulture)
+            : 60;
+
+        var outcome = ModeComparison.Execute(Path.GetFullPath(options.Positional[0]), ions);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.PressureMbar:G3} mbar, "
+            + $"{(outcome.InOverlapBand ? "inside" : "OUTSIDE")} the band where both modes apply"));
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"trajectory   {outcome.TrajectoryTransitUs:F3} +/- {outcome.TrajectoryStandardErrorUs:F3} us "
+            + $"({outcome.Ions} ions, {outcome.TrajectoryTransmission:P0} arrived)"));
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"diffusion    {outcome.DiffusionTransitUs:F3} us "
+            + $"({outcome.DiffusionTransmission:P0} arrived)"));
+
+        if (outcome.DifferenceUs is not null)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"disagreement {outcome.DifferenceUs:F3} us, {outcome.RelativeDifference:P2}, "
+                + $"{outcome.StandardErrors:F2} standard errors"));
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
     private static int Init(CommandLine options)
     {
         var root = options.Positional.Count > 0 ? options.Positional[0] : ".";
@@ -1192,8 +1256,11 @@ public static class Program
         }
 
         // A run that ended anywhere but the detector is a convergence failure, not
-        // a success with a caveat.
-        return run.Outcome == "StopConditionMet"
+        // a success with a caveat. A diffusive run has no detector to end at - it
+        // evolves a density for the declared time and reports where the ions went -
+        // so it succeeds by finishing, and what it transmitted is a figure rather
+        // than an outcome.
+        return run.Outcome is "StopConditionMet" or "DensityEvolved"
             ? (int)ExitCode.Success
             : (int)ExitCode.ConvergenceFailure;
     }
@@ -1405,6 +1472,7 @@ public static class Program
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
+          compare <model.json>          run both transport modes and report the disagreement
           render section <model.json>   draw a plane through the instrument as SVG or PDF
           ext list | test | register    the extension authoring loop
           agents-md [dir]               regenerate the platform layer of AGENTS.md

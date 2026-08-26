@@ -342,6 +342,79 @@ public sealed record TransportDocument
 
     /// <summary>The background gas, or null for vacuum.</summary>
     public GasDocument? Gas { get; init; }
+
+    /// <summary>
+    /// Ion mobility, for the diffusive transport mode.
+    /// </summary>
+    /// <remarks>
+    /// TRN-1 makes this an explicit input with stated field dependence, because it
+    /// is the one number a diffusive calculation rests on entirely - the drift
+    /// velocity, the diffusion coefficient through Einstein, and therefore the
+    /// residence time and the spread all come from it. Omitted, it is derived from
+    /// the gas cross section by Mason-Schamp and the result says so, since a derived
+    /// value carries the cross section's uncertainty plus a first-order
+    /// Chapman-Enskog approximation on top.
+    /// </remarks>
+    public MobilityDocument? Mobility { get; init; }
+
+    /// <summary>
+    /// The grid the density is tracked on, for the diffusive mode.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to the domain of the model's solved field, which is nearly always
+    /// what is wanted. Declared separately when it is not: a field may be solved
+    /// over a larger box than the region ions are followed through, and tracking a
+    /// density over the whole of it would spend the run on empty space.
+    /// </remarks>
+    public DensityGridDocument? DensityGrid { get; init; }
+}
+
+/// <summary>Ion mobility as it appears in a model document.</summary>
+/// <remarks>
+/// The field dependence is stated rather than assumed constant because it is not.
+/// Above a few tens of townsend an ion is heated by the field, its collision rate
+/// rises, and its mobility falls; treating it as constant there overestimates the
+/// drift by tens of per cent, which for a funnel is the difference between ions
+/// arriving and ions not.
+/// </remarks>
+public sealed record MobilityDocument
+{
+    /// <summary>Mobility as the field goes to zero, at the declared gas density.</summary>
+    public QuantityValue? ZeroField { get; init; }
+
+    /// <summary>
+    /// The quadratic coefficient of the reduced-field expansion:
+    /// K(E/N) = K0 (1 + a (E/N)^2), with E/N in townsend.
+    /// </summary>
+    public double Alpha { get; init; }
+
+    /// <summary>
+    /// The reduced field, in townsend, this expansion was fitted to. Past it the
+    /// value is an extrapolation and every result says so.
+    /// </summary>
+    public double ValidToTownsend { get; init; } = 50.0;
+}
+
+/// <summary>The region a density is tracked over, and how finely.</summary>
+public sealed record DensityGridDocument
+{
+    /// <summary>Lower x bound.</summary>
+    public QuantityValue? MinX { get; init; }
+
+    /// <summary>Lower y bound.</summary>
+    public QuantityValue? MinY { get; init; }
+
+    /// <summary>Upper x bound.</summary>
+    public QuantityValue? MaxX { get; init; }
+
+    /// <summary>Upper y bound.</summary>
+    public QuantityValue? MaxY { get; init; }
+
+    /// <summary>Cells across x. Rounded up to a power of two.</summary>
+    public int IntervalsX { get; init; } = 128;
+
+    /// <summary>Cells across y. Rounded up to a power of two.</summary>
+    public int IntervalsY { get; init; } = 64;
 }
 
 /// <summary>

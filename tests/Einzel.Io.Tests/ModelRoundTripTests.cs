@@ -130,15 +130,38 @@ public sealed class ModelRoundTripTests
     }
 
     [Fact]
-    public void AskingForStatisticalDiffusionIsARegimeViolationNotASilentSubstitution()
+    public void TheOldSpellingOfTheDiffusiveModeIsCorrectedRatherThanRefused()
     {
-        // REG-1 makes the two transport modes peers. Only one exists in this
-        // build, and saying so beats quietly running the other.
-        var json = Reflectron.Replace("\"mode\": \"trajectory\"", "\"mode\": \"statisticalDiffusion\"", StringComparison.Ordinal);
+        // REG-1 makes the two transport modes peers and both now exist, so asking
+        // for one by an old name is a spelling error rather than a regime violation.
+        // The distinction matters: a regime violation says the physics is wrong, and
+        // this is a typo with a one-word fix.
+        var json = Reflectron.Replace(
+            "\"mode\": \"trajectory\"", "\"mode\": \"statisticalDiffusion\"", StringComparison.Ordinal);
+
         var validation = ModelValidator.Validate(ModelJson.Parse(json));
 
         var error = Assert.Single(validation.Errors, e => e.Path == "/transport/mode");
-        Assert.Equal(ErrorCodes.RegimeInvalid, error.Code);
+
+        Assert.Equal(ErrorCodes.SchemaInvalid, error.Code);
+        Assert.Contains("\"diffusion\"", error.Suggestion!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BothTransportModesValidate()
+    {
+        foreach (var mode in new[] { "trajectory", "diffusion" })
+        {
+            var json = Reflectron.Replace(
+                "\"mode\": \"trajectory\"", $"\"mode\": \"{mode}\"", StringComparison.Ordinal);
+
+            var validation = ModelValidator.Validate(ModelJson.Parse(json));
+
+            // The reflectron declares no gas, so the diffusive mode is refused for
+            // that reason rather than for its name - which is the point: the mode is
+            // recognised, and what it lacks is said.
+            Assert.DoesNotContain(validation.Errors, e => e.Path == "/transport/mode");
+        }
     }
 
     [Fact]
@@ -156,9 +179,13 @@ public sealed class ModelRoundTripTests
     {
         // GRD-4: validity is checked, not assumed. This geometry produces a zero
         // flight time that reads like a physics answer.
+        // Matched without a newline in it. A search string spanning a line break is
+        // hostage to whether the file is checked out with CRLF or LF, which is a
+        // property of a working tree rather than of the code - so it fails on one
+        // machine and passes on another for a reason nothing in the test mentions.
         var json = Reflectron.Replace(
-            "\"planePoint\": { \"value\": [-100, 0, 0], \"unit\": \"mm\" },\n    \"normal\"",
-            "\"planePoint\": { \"value\": [50, 0, 0], \"unit\": \"mm\" },\n    \"normal\"",
+            "\"planePoint\": { \"value\": [-100, 0, 0]",
+            "\"planePoint\": { \"value\": [50, 0, 0]",
             StringComparison.Ordinal);
 
         var validation = ModelValidator.Validate(ModelJson.Parse(json));

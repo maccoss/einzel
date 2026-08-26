@@ -12,12 +12,11 @@ why: these are different descriptions of different physics, not the same calcula
 at different settings. Above about 10⁻² mbar there are no trajectories to compute;
 below it there is no density field.
 
-Only trajectory integration is built. `DiffusiveTransport` is declared anyway, is
-`IsAvailable = false`, and asking for it produces an AGT-3 error that names what it
-needs. That matters because *"this mode does not exist"* and *"you spelled it
-wrong"* are different problems an agent cannot tell apart on its own — and because
-a mode selected by an `if` somewhere in the run command falls silently through to
-whichever mode happened to be implemented first.
+Both are now built, and a model selects one by name: `"mode": "trajectory"` or
+`"mode": "diffusion"`. The seam existed before its second implementation did, on
+purpose — a mode selected by an `if` somewhere in the run command falls silently
+through to whichever was implemented first, where a registry can refuse by name and
+say what is missing.
 
 `ProducesTrajectories` is on the interface so a renderer asks the mode rather than
 inferring it from the pressure. TRN-2 and RND-8 forbid drawing lines through a
@@ -254,14 +253,68 @@ mobility it was handed — which is what TRN-1 means by an explicit input with s
 field dependence, and why `Mobility.IsWithinFit` returns false here rather than
 leaving the caller to work it out.
 
+## Diffusion from a model document
+
+`"mode": "diffusion"` now runs. A source becomes an initial density — a Gaussian at
+the source position with the cloud's declared spreads, normalised to the declared
+population — a detector becomes a collecting boundary, and an electrode becomes a
+region ions are absorbed in.
+
+A diffusive result has **no flight time**, and the absence is stated rather than
+filled in: `transport.no-flight-time` is on the envelope, and what a density has
+instead is a transit-time *distribution*, a transmission, and a spread.
+
+```
+einzel run models/tube.json          # a density, not trajectories
+einzel compare models/tube.json      # both modes, and the disagreement
+```
+
+Checked against a closed form: μE at 1 mbar is 184.7 m/s, so 38 mm from source to
+detector takes **206 µs** — and the run reports **206.6 µs**.
+
+**Mobility is derived when not declared, and says so.** TRN-1 wants it measured;
+deriving it from the cross section by Mason–Schamp is offered so both modes can
+describe the same gas, and `mobility.derived` marks every result that used one.
+
+## REG-3 as a supported operation
+
+`einzel compare` runs both modes on one model and reports the difference **in units
+of the trajectory ensemble's own standard error** — because a relative difference
+with no error beside it cannot tell a real disagreement from an under-sampled
+ensemble, which is the mistake this engine's own first mobility check made.
+
+Building it surfaced three ways the comparison can be meaningless, all now warned
+about and none of which were obvious beforehand:
+
+- **`regime.comparison-mismatched-mechanism`.** A model declaring Langevin capture
+  for the event-driven side while the diffusive side derives its mobility from a
+  cross section is comparing rigid-sphere against polarization capture. Different
+  scattering, so the disagreement is between the two *inputs*.
+- **`regime.comparison-incomplete`.** A mean transit over the subset that arrived is
+  not a transit time, and the two subsets are not the same ions. At 6.2 townsend the
+  drift was so weak that 0% of the density and 70% of the ions reached the collector
+  in the available time, and the modes "disagreed" by 145% — almost all of it the
+  ceiling.
+- **`regime.comparison-unmatched-boundaries`.** The density grid has edges and a
+  bare trajectory model does not. With no declared geometry an ion flies to the
+  detector however far off axis it wanders, while the density is absorbed at the
+  edge of its box: 89% of it, in the case that exposed this. **The two modes were
+  being asked about different instruments, one with walls and one without.**
+
+With those understood, the honest reading of a 1e-2 mbar comparison at 82.8 townsend
+— trajectory 252.1 ± 6.8 µs against diffusion 174.1 µs, 1.45× apart — is not that
+the solvers disagree. It is that the low-field mobility is outside its fitted range,
+which `mobility.outside-fit` says on the same report.
+
 ## Not built
 
-- **Diffusion from a model document.** The solver exists and is validated; what is
-  missing is the wiring that lets a model select it — a source has to become an
-  initial density, a detector a collecting boundary, an electrode an absorbing one.
-  So the mode is reachable from code and not yet from a model file, and REG-3's
-  comparison is a test rather than the supported CLI operation the requirement asks
-  for.
+- **Interior electrodes as continuous sinks.** An electrode empties the *initial*
+  density, which stops a source placed inside metal from starting there. Zeroing the
+  interior at every step is the full treatment.
+- **A cost estimate for a diffusive run.** The explicit step is set by stability, and
+  D goes as 1/P, so **a thinner gas is more expensive, not less** — the opposite of
+  the event-driven mode and the opposite of the intuition. A 3 ms run at 1e-2 mbar on
+  a 257×65 grid is 187,000 steps, and nothing warns before it starts.
 - **A neutral velocity field.** The gas is stationary, or moving with one declared
   bulk velocity. Spec figure 4 requires a velocity *field* above 10⁻² mbar, and gas
   velocity import is listed with it. This is what a funnel needs most: it is pushed

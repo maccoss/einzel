@@ -158,12 +158,15 @@ covering everything.
 - **No waveform library.** A drive is a sinusoid or a rectangular wave; there is no
   way to declare an arbitrary waveform, which spec section 9 lists as one of the
   excitations an electrode may carry, and no multi-notch isolation waveform.
-- **Statistical diffusion is not reachable from a model document.** The solver
-  exists and is validated against free diffusion, drift, and an exactly stationary
-  Boltzmann equilibrium, and REG-3's cross-mode comparison agrees to 0.43 standard
-  errors - but as a test, not as the supported CLI operation the requirement asks
-  for. Wiring it needs a source to become an initial density, a detector a
-  collecting boundary, and an electrode an absorbing one.
+- **A diffusive run has no cost estimate.** Its explicit step is set by stability
+  and the diffusion coefficient goes as one over pressure, so a *thinner* gas is
+  more expensive - the opposite of the event-driven mode. A 3 ms run at 1e-2 mbar on
+  a 257 by 65 grid is 187,000 steps, and nothing warns before it starts.
+- **An electrode empties the initial density but does not keep emptying it.** A
+  source inside metal cannot start there, which is the case that reads as an
+  instrument losing everything; an ion that diffuses into an electrode mid-run is
+  not absorbed by it. Interior geometry is a boundary only at the edges of the
+  tracked region.
 - **Collisions are elastic only.** No fragmentation, no collision-induced
   dissociation, no internal energy. An ion that scatters keeps its identity.
 - **One pressure for the whole model.** A differentially pumped instrument has

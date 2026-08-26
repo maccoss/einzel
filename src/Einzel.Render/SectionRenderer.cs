@@ -115,9 +115,35 @@ public static class SectionRenderer
         var kept = 0;
         var raw = 0;
 
-        if (spec.Trajectory)
+        // RND-8 and TRN-2: a diffusive region emits a density field, and there are no
+        // trajectories in it to draw. Lines through a funnel would depict something
+        // the model never computed - which is a stronger objection than inaccuracy,
+        // because a reader cannot tell an invented line from a computed one.
+        //
+        // Asked of the transport mode rather than inferred from the pressure, so the
+        // rule holds wherever a mode says it produces no trajectories.
+        var mode = Transport.TransportModes.All.FirstOrDefault(
+            m => string.Equals(m.Name, model.TransportMode, StringComparison.OrdinalIgnoreCase));
+
+        var drawable = mode?.ProducesTrajectories ?? true;
+
+        if (spec.Trajectory && drawable)
         {
             (kept, raw) = DrawTrajectory(paths, model, spec, field, plane, tolerance, ToPage);
+        }
+        else if (spec.Trajectory)
+        {
+            warnings =
+            [
+                .. warnings,
+                new ValidityWarning(
+                    "render.no-trajectories",
+                    $"this model declares '{model.TransportMode}' transport, which computes a "
+                    + "density rather than trajectories, so none were drawn. RND-8 forbids drawing "
+                    + "lines through a diffusive region: they would depict something the model "
+                    + "never produced",
+                    WarningSeverity.Provenance),
+            ];
         }
 
         DrawFrame(paths, texts, spec, minU, maxU, minV, maxV, scale, drawWidth, drawHeight);
