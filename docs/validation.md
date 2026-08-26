@@ -43,6 +43,10 @@ cross-code tier is unavailable — see below.
 | 3D non-polynomial harmonic, observed order | 1.92 / 1.99 |
 | 3D curved conductor against the 1/r law | 2.8 V of 100 applied |
 | Tricubic interpolant on a linear field | 3.6e-15 V |
+| 3D segmented quadrupole field, mesh doubled | 0.01% |
+| The same, transmitted flight time | 9e-5 |
+| Sphere solve, node-aligned coarse levels against none | identical, 16x faster |
+| 3D segmented quadrupole cut-off against tabulated Mathieu | brackets 0.90804 (0.855 through, 0.910 lost) |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
@@ -155,12 +159,9 @@ covering everything.
   excitations an electrode may carry, and no multi-notch isolation waveform.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
-- **3D runs coarse.** A solve costs the cube of its resolution, so a 3D model is
-  meshed far more coarsely than a plane one - the segmented quadrupole template uses
-  five cells across r0 where the plane studies use sixteen. Its transmission
-  boundary is therefore field quality rather than physics, and is reported rather
-  than asserted. Nothing yet establishes a 3D device result against mesh
-  refinement.
+- **3D runs coarse and slow.** A solve costs the cube of its resolution. The
+  segmented quadrupole template uses five cells across r0 where the plane studies
+  use sixteen, and at eleven it does not finish in ten minutes.
 - **3D multigrid does not coarsen past an interior electrode.** It refuses rather
   than converging to the wrong answer, so such geometries run as a smoother:
   correct, and slow. See [Numerics](numerics.md).

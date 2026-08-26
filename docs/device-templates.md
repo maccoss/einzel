@@ -340,15 +340,36 @@ property of a 22 mm section at r0 = 4 mm.
 An ion tracked through the whole structure arrives 0.26 mm off axis after 54 µs and
 3,982 steps, and raising the drive ejects it onto a named rod - `preYPlus`.
 
-### What this costs, and what it is not
+### It filters, and in the right place
 
-A 3D solve costs the cube of its resolution. The template runs at **five cells
-across r0** where the plane studies use sixteen, and at that mesh the transmission
-boundary sits well below the ideal q = 0.908 - it is field quality, not physics,
-until it is refined. The study reports it and does not assert it, which is the
-honest treatment of a number that would otherwise read as a stability limit.
+| Main amplitude | q | |
+| --- | --- | --- |
+| 300 V | 0.367 | through |
+| 700 V | 0.855 | through |
+| 745 V | 0.910 | lost on `mainYMinus` at z = 38.7 mm |
 
-A whole run - solve plus tracking - takes about eleven seconds.
+**The cut-off brackets the ideal Mathieu boundary of q = 0.90804** - on round rods,
+cut into three sections, with gaps and end fringes, at five cells across r0.
+
+And the ion is lost in the **main** section, not the prefilter. That is the
+segmentation doing its job: the entrance sits at 85% of the main amplitude, so its
+q is 0.85 of the main one and it stays stable while the analysing section ejects. A
+filter that lost ions in its prefilter would be a filter with an expensive
+decoration on the front.
+
+> This is not where the number started. Before the coarse multigrid levels were
+> made node-aligned, the ion was lost at **q = 0.611**, and the first explanation
+> written down for it was field quality at a coarse mesh. That was wrong: doubling
+> the mesh moves the transverse field by **0.01%** and a transmitted flight time by
+> 9e-5. It was an under-converged solve, and fixing the multigrid moved the boundary
+> from 0.611 to the right answer. A wrong number with a plausible explanation
+> attached is the expensive kind, and the explanation is what made it expensive.
+
+### What it costs
+
+A solve is a few seconds; a full run with tracking is fifteen to fifty, depending
+on how far the ion gets. At eleven cells across r0 it does not finish in ten
+minutes, which is the practical ceiling worth knowing.
 
 ## The funnel, and what a stack costs
 

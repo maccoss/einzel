@@ -211,7 +211,7 @@ public static class PoissonSolver3D
     /// for. This is a limitation, stated, not a bug pending.
     /// </para>
     /// </remarks>
-    private const double ResolvedBy = 0.25;
+    private const double ResolvedBy = 1.0;
 
     private static void Cycle(
         ScalarField3D potential,

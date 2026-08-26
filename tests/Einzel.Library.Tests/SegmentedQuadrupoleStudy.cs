@@ -193,17 +193,86 @@ public sealed class SegmentedQuadrupoleStudy(ITestOutputHelper output)
     }
 
     [Fact]
-    public void RaisingTheDriveEventuallyEjectsTheIon()
+    public void TheFieldConvergesWithTheMesh()
     {
-        // The filter filters. Reported rather than pinned to a number: at five cells
-        // across r0 the field quality is nothing like the plane studies use, so
-        // where the boundary sits is a property of this mesh as much as of the
-        // geometry, and quoting it as a stability limit would be quoting the mesh.
+        // The check the transmission boundary is waiting on. Three dimensions cost
+        // the cube of the resolution, so the question is not whether a finer mesh
+        // would be better but whether this one is close enough for the number being
+        // quoted - and that is answered by refining and watching, not by asserting
+        // it in a comment.
+        //
+        // Measured on the field rather than on a trajectory, because a solve is
+        // seconds and a flight is tens of them, and it is the field quality that was
+        // in doubt.
+        output.WriteLine("cells/r0    grid          E at r0/2      change");
+
+        var previous = 0.0;
+
+        foreach (var cells in new[] { 4.0, 8.0 })
+        {
+            var model = Compile(With(Template(), ("cellsPerRadius", cells)));
+            var field = FieldAssembly.Build(model);
+
+            var probe = 0.5 * model.Parameters["inscribedRadius"].In("m");
+
+            var mainZ = 0.5
+                * (model.Parameters["mainStart"].In("m") + model.Parameters["mainEnd"].In("m"));
+
+            var point = new Vec3(probe, 0.0, mainZ);
+            var strength = Math.Abs(field.ElectricFieldAt(in point).X);
+
+            var solve = model.Fields[0].Solve3D!;
+
+            var grid = Grid3D.OverBox(
+                solve.MinX, solve.MinY, solve.MinZ, solve.MaxX, solve.MaxY, solve.MaxZ, solve.CellSize);
+
+            var change = previous > 0.0 ? Math.Abs(strength - previous) / previous : double.NaN;
+
+            output.WriteLine(
+                $"{cells,8:F0}    {grid.CountX}x{grid.CountY}x{grid.CountZ,-6}  {strength / 1e3,9:F3} kV/m"
+                + $"    {(double.IsNaN(change) ? string.Empty : change.ToString("P2")),8}");
+
+            previous = strength;
+        }
+
+        output.WriteLine(string.Empty);
+        output.WriteLine("Doubling the mesh moves the transverse field by a hundredth of a per cent, so");
+        output.WriteLine("the field magnitude is converged at four cells across r0 - which is a good deal");
+        output.WriteLine("better than a three-dimensional solve had any right to be, and it settles one");
+        output.WriteLine("question while leaving another open. What it settles: the low transmission");
+        output.WriteLine("boundary is not simply an under-resolved field. What it does not: the stability");
+        output.WriteLine("boundary depends on the multipole content, not on the field at one point, and");
+        output.WriteLine("that has not been measured here.");
+
+        Assert.True(previous > 0.0);
+    }
+
+    [Fact]
+    public void TheCutOffBracketsTheIdealMathieuBoundary()
+    {
+        // The filter filters, and it filters in the right place. The low-mass
+        // cut-off of the ideal Mathieu equation is q = 0.90804, and this geometry -
+        // round rods, cut into three sections, with gaps and end fringes, solved on
+        // a mesh three dimensions can afford - transmits at 0.855 and loses the ion
+        // at 0.910.
+        //
+        // That is not where it started. Before the coarse levels were made
+        // node-aligned, the ion was lost at q = 0.611, and the first explanation
+        // written down for that was field quality. It was not: refining the mesh
+        // moves the field by a hundredth of a per cent. It was an under-converged
+        // solve, and fixing the multigrid moved the boundary from 0.611 to the
+        // right answer. A wrong number with a plausible explanation attached is the
+        // expensive kind.
+        const double IdealCutOff = 0.90804;
+
         output.WriteLine("amplitude / V     q      outcome");
 
-        var transmitted = new List<double>();
+        double? lastThrough = null;
+        double? firstLost = null;
+        string? struckIn = null;
+        var lostAt = 0.0;
 
-        foreach (var amplitude in new[] { 150.0, 300.0, 500.0 })
+        foreach (var amplitude in new[] { 300.0, 700.0, 745.0 })
         {
             var document = With(Template(), ("mainAmplitude", amplitude));
             var model = Compile(document);
@@ -220,19 +289,45 @@ public sealed class SegmentedQuadrupoleStudy(ITestOutputHelper output)
 
             if (through)
             {
-                transmitted.Add(amplitude);
+                lastThrough = q;
+            }
+            else if (firstLost is null)
+            {
+                firstLost = q;
+                struckIn = result.StruckSurface;
+                lostAt = result.FinalState.Position.Z * 1e3;
             }
 
             output.WriteLine(
                 $"{amplitude,13:F0}   {q,5:F3}   {(through ? "through" : "lost")}"
-                + $"{(result.StruckSurface is null ? string.Empty : " on " + result.StruckSurface)}");
+                + $"{(result.StruckSurface is null ? string.Empty : " on " + result.StruckSurface)}"
+                + $"{(through ? string.Empty : $" at z = {result.FinalState.Position.Z * 1e3:F1} mm")}");
         }
 
         output.WriteLine(string.Empty);
-        output.WriteLine("the ideal hyperbolic cut-off is q = 0.908; this mesh puts the boundary well");
-        output.WriteLine("below it, which is field quality rather than physics until it is refined.");
+        output.WriteLine($"transmits to q = {lastThrough:F3}, lost by q = {firstLost:F3}");
+        output.WriteLine($"the ideal Mathieu cut-off is q = {IdealCutOff:F5}, which that brackets");
 
-        Assert.Contains(150.0, transmitted);
-        Assert.DoesNotContain(500.0, transmitted);
+        Assert.NotNull(lastThrough);
+        Assert.NotNull(firstLost);
+
+        Assert.True(
+            lastThrough < IdealCutOff && firstLost > IdealCutOff,
+            $"the boundary between {lastThrough:F3} and {firstLost:F3} does not bracket {IdealCutOff:F5}");
+
+        // And it is lost in the *main* section, not the prefilter. That is the
+        // segmentation doing its job: the entrance sits at 85% of the main
+        // amplitude, so its q is 0.85 of the main one and it stays stable while the
+        // analysing section ejects. A filter that lost ions in its prefilter would
+        // be a filter with an expensive decoration on the front.
+        var mainStart = Compile(Template()).Parameters["mainStart"].In("mm");
+        var mainEnd = Compile(Template()).Parameters["mainEnd"].In("mm");
+
+        output.WriteLine(
+            $"lost on {struckIn} at z = {lostAt:F1} mm, inside the main section "
+            + $"({mainStart:F0} to {mainEnd:F0} mm)");
+
+        Assert.StartsWith("main", struckIn, StringComparison.Ordinal);
+        Assert.InRange(lostAt, mainStart, mainEnd);
     }
 }

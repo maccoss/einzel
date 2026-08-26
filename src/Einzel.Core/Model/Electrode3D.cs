@@ -118,6 +118,31 @@ public sealed record CompiledElectrode3D
             Math.Min(Math.Abs(MaxY - MinY), Math.Abs(MaxZ - MinZ))) * 0.5,
     };
 
+    /// <summary>
+    /// A point guaranteed to be inside this electrode, for a level too coarse to
+    /// contain one of its nodes.
+    /// </summary>
+    /// <remarks>
+    /// Its centre, which every one of these shapes is convex about. Used so that a
+    /// coarse multigrid level can still say the electrode is <em>there</em>: an
+    /// electrode that rasterises to no nodes at all has stopped being part of the
+    /// problem, and the coarse grid then solves a different one.
+    /// </remarks>
+    public (double X, double Y, double Z) Centre => Shape switch
+    {
+        Electrode3DShape.Box => (
+            0.5 * (MinX + MaxX), 0.5 * (MinY + MaxY), 0.5 * (MinZ + MaxZ)),
+
+        Electrode3DShape.Cylinder => Axis switch
+        {
+            CylinderAxis.X => (0.5 * (Lower + Upper), CentreY, CentreZ),
+            CylinderAxis.Y => (CentreX, 0.5 * (Lower + Upper), CentreZ),
+            _ => (CentreX, CentreY, 0.5 * (Lower + Upper)),
+        },
+
+        _ => (CentreX, CentreY, CentreZ),
+    };
+
     /// <summary>Whether a point lies within this electrode's conductor.</summary>
     /// <param name="x">x, in metres.</param>
     /// <param name="y">y, in metres.</param>

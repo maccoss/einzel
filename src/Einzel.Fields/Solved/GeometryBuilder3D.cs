@@ -54,6 +54,11 @@ public static class GeometryBuilder3D
     /// <param name="potentialOf">
     /// What each electrode holds, for a basis solve. Its own potential when omitted.
     /// </param>
+    /// <param name="coarse">
+    /// Whether this is a multigrid level below the finest. Coarse levels are
+    /// node-aligned rather than sub-cell, and guarantee that every electrode still
+    /// holds at least one node.
+    /// </param>
     /// <returns>The mask.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <remarks>
@@ -63,7 +68,10 @@ public static class GeometryBuilder3D
     /// the coarse operator still knows it is there.
     /// </remarks>
     public static DirichletMask3D BuildMask(
-        Geometry3D geometry, Grid3D grid, Func<CompiledElectrode3D, double>? potentialOf = null)
+        Geometry3D geometry,
+        Grid3D grid,
+        Func<CompiledElectrode3D, double>? potentialOf = null,
+        bool coarse = false)
     {
         ArgumentNullException.ThrowIfNull(geometry);
         ArgumentNullException.ThrowIfNull(grid);
@@ -74,11 +82,39 @@ public static class GeometryBuilder3D
         {
             var potential = potentialOf?.Invoke(electrode) ?? electrode.Potential;
 
-            Rasterise(mask, grid, electrode, potential);
+            var fixedAny = Rasterise(mask, grid, electrode, potential);
+
+            // On a coarse level an electrode smaller than a cell may contain no
+            // node at all, and an electrode that rasterises to nothing has stopped
+            // being part of the problem - the coarse grid then solves a different
+            // one, and its correction is worse than none. Pinning the nearest node
+            // keeps it present at the smallest size the level can express.
+            if (coarse && !fixedAny)
+            {
+                var (cx, cy, cz) = electrode.Centre;
+
+                var i = Math.Clamp((int)Math.Round((cx - grid.OriginX) / grid.SpacingX), 0, grid.CountX - 1);
+                var j = Math.Clamp((int)Math.Round((cy - grid.OriginY) / grid.SpacingY), 0, grid.CountY - 1);
+                var k = Math.Clamp((int)Math.Round((cz - grid.OriginZ) / grid.SpacingZ), 0, grid.CountZ - 1);
+
+                mask.Fix(i, j, k, potential);
+            }
         }
 
         PinFaces(mask, grid);
-        AddCuts(geometry, grid, mask, potentialOf);
+
+        // Sub-cell surfaces on the fine level only. A coarse level exists to
+        // accelerate, not to be accurate, and a cut there is actively harmful: an
+        // electrode a fraction of a coarse cell across produces arms a thousandth
+        // of a cell long, whose coefficients are enormous, and the correction that
+        // comes back does not converge slowly - it converges somewhere else.
+        //
+        // Node-aligned geometry on the coarse levels is cruder and stable. The
+        // accuracy still comes from the fine level, which is unchanged.
+        if (!coarse)
+        {
+            AddCuts(geometry, grid, mask, potentialOf);
+        }
 
         foreach (var electrode in geometry.Electrodes)
         {
@@ -103,7 +139,7 @@ public static class GeometryBuilder3D
             mask,
             geometry.Tolerance,
             maximumCycles: 200,
-            coarsen: coarse => BuildMask(geometry, coarse));
+            coarsen: level => BuildMask(geometry, level, coarse: true));
 
         return (new SolvedField3D(potential, geometry.Electrodes), report);
     }
@@ -152,7 +188,8 @@ public static class GeometryBuilder3D
                 BuildMask(geometry, grid, e => pattern.GetValueOrDefault(e.Name, 0.0)),
                 geometry.Tolerance,
                 maximumCycles: 200,
-                coarsen: coarse => BuildMask(geometry, coarse, e => pattern.GetValueOrDefault(e.Name, 0.0)));
+                coarsen: level => BuildMask(
+                    geometry, level, e => pattern.GetValueOrDefault(e.Name, 0.0), coarse: true));
 
             channels.Add(new SolvedField3D(potential, geometry.Electrodes));
             direct.Add(group.Direct);
@@ -205,9 +242,12 @@ public static class GeometryBuilder3D
     private static Excitation Excited(CompiledElectrode3D electrode) =>
         new(electrode.Name, electrode.Potential, electrode.DriveAmplitude, electrode.DrivePhase);
 
-    private static void Rasterise(
+    /// <summary>Fixes every node inside an electrode, and says whether it found any.</summary>
+    private static bool Rasterise(
         DirichletMask3D mask, Grid3D grid, CompiledElectrode3D electrode, double potential)
     {
+        var any = false;
+
         for (var k = 0; k < grid.CountZ; k++)
         {
             var z = grid.Z(k);
@@ -221,10 +261,13 @@ public static class GeometryBuilder3D
                     if (electrode.Contains(grid.X(i), y, z))
                     {
                         mask.Fix(i, j, k, potential);
+                        any = true;
                     }
                 }
             }
         }
+
+        return any;
     }
 
     /// <summary>

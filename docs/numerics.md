@@ -360,24 +360,36 @@ which a quadratic does not have - so a harmonic quadratic imposed on the faces i
 not an approximation converging, it is an identity. Nothing about the operator, the
 faces or the multigrid transfers can be wrong and still pass it.
 
-### The limitation, stated
+### Coarse levels are node-aligned, and that is what makes them work
 
-**Multigrid coarsening does not survive interior electrodes in three dimensions.**
-An electrode loses seven eighths of its nodes per level rather than three quarters,
-and past the point where a cell is bigger than the electrode the coarse grid is
-solving a different problem - its correction, prolonged back, does not converge
-slowly, it converges somewhere else. A charged sphere reached **137 V of 100
-applied** through two levels and was correct to 2.7 V with none.
+Multigrid coarsening does not survive interior electrodes when the coarse levels
+carry sub-cell surfaces. An electrode loses seven eighths of its nodes per level
+rather than three quarters, and an electrode a fraction of a coarse cell across
+produces arms a thousandth of a cell long, whose coefficients are enormous - the
+correction that comes back does not converge slowly, it converges somewhere else.
+A charged sphere reached **137 V of 100 applied** that way.
 
-So the solver refuses to descend past a level that resolves the smallest electrode
-to a quarter of its size, which in practice means a geometry with interior
-electrodes runs as a smoother: correct, and slow. Boundary-only geometries keep the
-flat cycle count above.
+The fix is to separate what each level is for. **Cut cells on the finest level,
+where the accuracy comes from; node-aligned geometry on every level below, where
+only acceleration comes from.** A coarse level that is merely crude is a perfectly
+good preconditioner; a coarse level that is ill-conditioned is not. An electrode
+too small to contain a coarse node has its nearest node pinned, so it stays present
+at the smallest size the level can express rather than vanishing.
 
-The real fix is Galerkin coarsening or operator-dependent interpolation - building
-the coarse operator from the fine one rather than from the geometry again - and it
-is the same fix the two-dimensional solver has been waiting for. This is a
-limitation with a number attached, not a bug pending.
+| | |
+| --- | --- |
+| Sphere solve, no coarsening | 13 s |
+| Same, node-aligned coarse levels | **783 ms, 9 cycles at factor 0.126** |
+| Answer | identical to the digit |
+
+Sixteen times faster for the same field. Worth noting that agglomeration was tried
+in *two* dimensions and rejected - it grows the electrode a cell per level and
+roughly triples the convergence factor - but that comparison was against a
+geometry rebuild that worked. Here the rebuild does not work, and stable-but-cruder
+beats correct-but-uncoarsenable by a wide margin.
+
+Galerkin coarsening, building the coarse operator from the fine one rather than
+from the geometry again, is still the better answer and is still not done.
 
 **The interpolant overshoots about 2% just outside a conductor surface**, which is
 what a cubic through a step does. Measured at 101.8 V of 100 applied, in a shell

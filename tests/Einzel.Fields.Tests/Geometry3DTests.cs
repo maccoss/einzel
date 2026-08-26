@@ -143,8 +143,14 @@ public sealed class Geometry3DTests(ITestOutputHelper output)
         var grid = GeometryBuilder3D.BuildGrid(geometry);
         var mask = GeometryBuilder3D.BuildMask(geometry, grid);
 
+        // The same coarsening the library uses: node-aligned below the finest level.
+        // Passing a cut-cell mask here instead is what sent this to 139.8 V of 100
+        // applied, which is the whole reason the coarse levels are built the way
+        // they are.
         var (potential, report) = PoissonSolver3D.Solve(
-            mask, geometry.Tolerance, coarsen: coarse => GeometryBuilder3D.BuildMask(geometry, coarse));
+            mask,
+            geometry.Tolerance,
+            coarsen: level => GeometryBuilder3D.BuildMask(geometry, level, coarse: true));
 
         var peak = 0.0;
 
