@@ -329,6 +329,61 @@ A Neumann edge is unchanged: it is a mirror plane, so the ghost node outside it
 equals its reflection inside, which is exact at any spacing and coarsens
 faithfully.
 
+## Three dimensions
+
+The first solver here with no symmetry behind it. A cross-section assumes the
+geometry repeats along the third axis and an axisymmetric solve assumes it repeats
+all the way round; this assumes nothing, which is what a segmented quadrupole or
+an auxiliary DC wedge needs and what neither of the others can express.
+
+Written **beside** the two-dimensional path rather than generalising it. That path
+carries every validated number in this engine - the reflectron at 1.3e-13, cut
+cells at 3.1e-10, the coaxial and Bessel closed forms - and refactoring a numerical
+core that is known to be right, in order to add a case next to it, is how those
+numbers get quietly lost. The duplication is the price and it is the cheaper one.
+
+### What is checked
+
+| | |
+| --- | --- |
+| Harmonic quadratic, reproduced | **4.3e-13** relative |
+| Non-polynomial harmonic, observed order | 1.92 / 1.99 |
+| Cycle count at 16 / 32 / 64 intervals | 12 / 13 / 13, factor 0.08 |
+| Neumann face against the full solve it mirrors | 1.4e-16 V |
+| Curved conductor against the 1/r law | 2.8 V of 100 applied |
+| Maximum principle at the nodes | exact |
+| Tricubic on a linear field | 3.6e-15 V, gradient 6.2e-12 V/m |
+
+The quadratic is the unusual one and the sharpest. The seven-point Laplacian is
+**exact** for a quadratic - its truncation error starts at the fourth derivative,
+which a quadratic does not have - so a harmonic quadratic imposed on the faces is
+not an approximation converging, it is an identity. Nothing about the operator, the
+faces or the multigrid transfers can be wrong and still pass it.
+
+### The limitation, stated
+
+**Multigrid coarsening does not survive interior electrodes in three dimensions.**
+An electrode loses seven eighths of its nodes per level rather than three quarters,
+and past the point where a cell is bigger than the electrode the coarse grid is
+solving a different problem - its correction, prolonged back, does not converge
+slowly, it converges somewhere else. A charged sphere reached **137 V of 100
+applied** through two levels and was correct to 2.7 V with none.
+
+So the solver refuses to descend past a level that resolves the smallest electrode
+to a quarter of its size, which in practice means a geometry with interior
+electrodes runs as a smoother: correct, and slow. Boundary-only geometries keep the
+flat cycle count above.
+
+The real fix is Galerkin coarsening or operator-dependent interpolation - building
+the coarse operator from the fine one rather than from the geometry again - and it
+is the same fix the two-dimensional solver has been waiting for. This is a
+limitation with a number attached, not a bug pending.
+
+**The interpolant overshoots about 2% just outside a conductor surface**, which is
+what a cubic through a step does. Measured at 101.8 V of 100 applied, in a shell
+one cell thick where an ion is about to be absorbed anyway. The maximum principle
+is therefore a statement about nodes, and is checked there.
+
 ## Landing on a switch
 
 A sequencer switches state at known times, and a Runge-Kutta step that spans one

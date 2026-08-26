@@ -151,6 +151,28 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
 - **A non-finite double is now written as `null`, as a property of the surface.** JSON has no NaN or infinity, and one such value does not degrade a document — it takes the whole thing down at the serialiser, after the run succeeded. That happened **four times** on four unrelated fields (a convergence residual, a Twiss orientation, a space-charge fraction, and a driven field's deliberately-NaN energy drift), each fixed where it was found. `FiniteDoubleConverter` closes the family: absent, not zero, which is the policy the rest of the surface had already reached by hand. Reading is the mirror so stored results still round-trip, which `verify` needs. The lesson — about when to stop fixing instances — is in `docs/lessons.md`.
 
+- **Three dimensions.** `Grid3D`, `ScalarField3D`, `DirichletMask3D` with `CutLinks3D` on six arms, `PoissonSolver3D` (red-black Gauss–Seidel, full-weighting restriction, trilinear prolongation, Shortley–Weller in cell units), `TricubicInterpolant`, `SolvedField3D`, and box/sphere/cylinder primitives with closed-form signed distance and first-entry. The first solver here with **no symmetry behind it** — a cross-section assumes the geometry repeats along the third axis, an axisymmetric solve assumes it repeats all the way round, and this assumes nothing.
+
+  **Written beside the 2-D path, not by generalising it.** That path carries every validated number in this engine, and refactoring a numerical core known to be right in order to add a case next to it is how those numbers get quietly lost. The duplication is the cheaper price.
+
+  | | |
+  | --- | --- |
+  | Harmonic quadratic, reproduced | **4.3e-13** relative |
+  | Non-polynomial harmonic, observed order | 1.92 / 1.99 |
+  | Cycle count at 16 / 32 / 64 intervals | 12 / 13 / 13, factor 0.08 |
+  | Neumann face vs the full solve it mirrors | 1.4e-16 V |
+  | Curved conductor vs the 1/r law | 2.8 V of 100 applied |
+  | Maximum principle at the nodes | exact |
+  | Tricubic on a linear field | 3.6e-15 V, gradient 6.2e-12 V/m |
+
+  The quadratic is the sharpest test available: the seven-point Laplacian is **exact** for a quadratic (truncation starts at the fourth derivative), so a harmonic quadratic on the faces is an identity rather than an approximation converging — nothing about the operator, the faces or the transfers can be wrong and still pass.
+
+  **The limitation, stated with a number: 3-D multigrid does not survive interior electrodes.** An electrode loses 7/8 of its nodes per level rather than 3/4, and past the point where a cell exceeds the electrode the coarse grid solves a different problem — the correction does not converge slowly, it converges elsewhere. A charged sphere hit **137 V of 100 applied** through two levels and was correct to 2.7 V with none. The solver now refuses to descend past a level resolving the smallest electrode to a quarter of its size, so interior geometries run as a smoother: correct and slow. Same fix pending as in 2-D — Galerkin coarsening or operator-dependent interpolation.
+
+  Three things this cost, all worth keeping. The residual norm had to become **RMS rather than max**: with sub-cell surfaces one tiny-arm node dominates the maximum, so the norm rises while the solution improves, and judging convergence on it stopped a good solve after two cycles. `OverBox` rounds intervals **up to a power of two**, so asking for 24 and asking for 32 gives the same mesh — a refinement study that did not know that reported an observed order of exactly zero. And the maximum principle is a statement about **nodes**: a cubic through the step at a conductor overshoots ~2% by construction, which is the interpolant behaving normally.
+
+  **Not yet wired to the model format** — no `solved3d` field type, so nothing above `Einzel.Fields` can reach it and the segmented quadrupole is still out of reach end to end.
+
 - **The sequencer — a geometry operated through timed states.** A solve may declare `stages`, each a duration plus a set of parameter values. **A stage sets parameters, not electrode settings**, which is the whole design: potentials are already expressions over parameters, so setting one moves everything depending on it *including derived parameters*. Listing settings instead would let a stage change an amplitude while leaving the quantity it was derived from behind. It also costs no new vocabulary — the same override mechanism a sweep uses to *perturb* a design is what a sequence uses to *operate* one.
 
   **Landing on a switch needs no root-find**, unlike a boundary in space, because the time is known: the integrator asks `NextSwitchAfter` and refuses to step past it. The check is that a sequenced run equals the same flight computed as **two separate runs stitched together** — the same physics written two ways, needing no closed form. Disagreement is **1.0e-8 / 4.6e-8 / 1.3e-9** relative at tolerances 1e-8 / 1e-10 / 1e-12: parts per billion throughout, which is round-off between two different step sequences rather than the parts per thousand a straddled switch would leave. Not monotone, because which steps each route takes is luck rather than a trend.

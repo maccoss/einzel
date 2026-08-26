@@ -39,6 +39,10 @@ cross-code tier is unavailable — see below.
 | Low-mass cut-off on **solved** round rods, against tabulated Mathieu | q = 0.90525 against 0.90804, 0.31% |
 | Funnel basis solves against ring count (8 / 24 / 48 rings) | 2 / 2 / 2 |
 | Sequenced run against the same flight stitched from two runs | 1.3e-9 relative |
+| 3D harmonic quadratic, reproduced exactly | 4.3e-13 relative |
+| 3D non-polynomial harmonic, observed order | 1.92 / 1.99 |
+| 3D curved conductor against the 1/r law | 2.8 V of 100 applied |
+| Tricubic interpolant on a linear field | 3.6e-15 V |
 | Impact point against the electrode surface it landed on | below 1e-8 m, i.e. at the root-find's own tolerance |
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
@@ -151,10 +155,15 @@ covering everything.
   excitations an electrode may carry, and no multi-notch isolation waveform.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
-- **No 3D.** Every solve is two-dimensional - translational or axisymmetric. This
-  is what stops the Ion Processor's auxiliary DC electrodes being modelled: they
-  impose a gradient along the trap axis, which is the direction the solve is
-  invariant in.
+- **3D exists but is not wired to the model format.** The solver, the cut-cell
+  geometry, the box, sphere and cylinder primitives and the tricubic interpolant are
+  built and checked against closed forms, but a document cannot yet declare a
+  `solved3d` field - so nothing above `Einzel.Fields` can reach it, and the
+  segmented quadrupole and the Ion Processor's auxiliary DC electrodes still
+  cannot be modelled end to end.
+- **3D multigrid does not coarsen past an interior electrode.** It refuses rather
+  than converging to the wrong answer, so such geometries run as a smoother:
+  correct, and slow. See [Numerics](numerics.md).
 - **Electrodes are solid, with no way to say otherwise.** Real instruments use
   mesh and grid electrodes that pass most of the beam. There is no way to declare
   one, and a mesh cannot be modelled as its wires either, because the wires run
