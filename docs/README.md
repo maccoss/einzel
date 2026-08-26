@@ -20,6 +20,7 @@ states the intent and these pages state the reality; both are noted.
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
 | [Rendering](rendering.md) | Vector sections in SVG and PDF, decimation bounds, and how a figure carries its own caveats |
+| [Pressure](pressure.md) | Collision models, regime validity, and what gas does to a funnel |
 | [Agent acceptance](agent-acceptance.md) | The prose-task suite, what it measures, and what gates a release |
 | [Lessons](lessons.md) | Bugs that presented as physics and were arithmetic |
 | [CLI](cli.md) | Command reference, exit codes, and the agent loop |
@@ -66,9 +67,13 @@ Most recently **`Einzel.Render`**: vector sections in SVG and PDF, drawn headles
 in CI with no display attached, with conductors traced from their own signed
 distance so the renderer carries no device knowledge.
 
-Not yet built: extensions, the compute dispatch layer, the MCP server, the update
-mechanism, and the shell. Of the render verbs, `section` exists; `still` and
-`animation` do not.
+Most recently **pressure**: two event-driven collision models checked against the
+Langevin rate coefficient, equipartition and Mason-Schamp mobility, the `ITransportMode`
+seam REG-1 asks for, and REG-2 regime validity computed on every run rather than assumed.
+
+Not yet built: statistical diffusion, extensions, the compute dispatch layer, the MCP
+server, the update mechanism, and the shell. Of the render verbs, `section` exists;
+`still` and `animation` do not.
 
 Nothing here is released software. Effort estimates, performance targets, and the
 numerical error budget in the specification are engineering judgement rather than

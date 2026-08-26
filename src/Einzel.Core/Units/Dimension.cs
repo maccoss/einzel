@@ -157,6 +157,9 @@ public readonly struct Dimension : IEquatable<Dimension>
     /// <summary>Area, square metre. Collision cross sections live here.</summary>
     public static Dimension Area { get; } = new(length: 2);
 
+    /// <summary>Volume, L^3.</summary>
+    public static Dimension Volume { get; } = new(length: 3);
+
     /// <summary>Electrical mobility, square metre per volt second.</summary>
     public static Dimension Mobility { get; } = new(mass: -1, time: 2, current: 1);
 

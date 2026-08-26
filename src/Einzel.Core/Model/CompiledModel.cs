@@ -62,6 +62,9 @@ public sealed record CompiledModel
     /// <summary>Trajectory sampling interval, in seconds.</summary>
     public required double SampleIntervalSi { get; init; }
 
+    /// <summary>The background gas; vacuum when none is declared.</summary>
+    public CompiledGas Gas { get; init; } = CompiledGas.Vacuum;
+
     /// <summary>
     /// The resolved parameter surface this model was compiled from. What a sweep
     /// perturbs and an optimiser searches.
@@ -136,4 +139,45 @@ public sealed record CompiledField
 
     /// <summary>Solved only: the geometry to solve.</summary>
     public CompiledSolvedField? Solve { get; init; }
+}
+
+/// <summary>
+/// The background gas, compiled to SI.
+/// </summary>
+/// <remarks>
+/// Lives in Einzel.Core because the model format declares it and validation has to
+/// check it; the collision machinery that consumes it lives in Einzel.Transport,
+/// which is where an <c>ITransportMode</c> implementation belongs.
+/// </remarks>
+public sealed record CompiledGas
+{
+    /// <summary>No gas at all.</summary>
+    public static CompiledGas Vacuum { get; } = new();
+
+    /// <summary><c>none</c>, <c>hardSphere</c>, or <c>langevin</c>.</summary>
+    public string Model { get; init; } = "none";
+
+    /// <summary>Pressure, in pascals.</summary>
+    public double PressureSi { get; init; }
+
+    /// <summary>Temperature, in kelvin.</summary>
+    public double TemperatureK { get; init; } = 300.0;
+
+    /// <summary>Mass of one neutral, in kilograms.</summary>
+    public double MassSi { get; init; }
+
+    /// <summary>Collision cross section, in square metres.</summary>
+    public double CrossSectionSi { get; init; }
+
+    /// <summary>Polarizability volume, in cubic metres.</summary>
+    public double PolarizabilitySi { get; init; }
+
+    /// <summary>Bulk gas velocity, in metres per second.</summary>
+    public Vec3 DriftVelocitySi { get; init; }
+
+    /// <summary>Seed for the collision random stream.</summary>
+    public int Seed { get; init; } = 20_240_101;
+
+    /// <summary>Whether this gas does anything.</summary>
+    public bool IsPresent => Model != "none" && PressureSi > 0.0;
 }

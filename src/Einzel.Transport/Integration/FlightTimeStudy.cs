@@ -60,6 +60,24 @@ public static class FlightTimeStudy
     /// <exception cref="ArgumentOutOfRangeException">
     /// Fewer than two refinements, or a ratio not greater than one.
     /// </exception>
+    /// <param name="collisions">
+    /// Makes a fresh collision sampler for each refinement level, or null for a
+    /// flight in vacuum.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// In a gas the interval this study produces is <em>not</em> the uncertainty on
+    /// the answer. It measures how far the integrator is from its own limit, and a
+    /// collisional flight time also carries a stochastic spread that refining the
+    /// tolerance does nothing to. Worse, the two are not independent: a slightly
+    /// different state at a scheduling instant maps the same uniform draw to a
+    /// slightly different collision time, and that difference compounds.
+    /// </para>
+    /// <para>
+    /// So a collisional single-ion flight time is qualified where it is reported,
+    /// and the number with an honest interval is the ensemble one.
+    /// </para>
+    /// </remarks>
     public static FlightTimeStudyResult Run(
         PhaseState initialState,
         IonSpecies species,
@@ -67,7 +85,8 @@ public static class FlightTimeStudy
         IntegrationSettings settings,
         TrajectoryStopFunction stopWhenNegative,
         int refinements = 3,
-        double refinementRatio = 10.0)
+        double refinementRatio = 10.0,
+        Func<Collisions.CollisionSampler>? collisions = null)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(settings);
@@ -89,7 +108,11 @@ public static class FlightTimeStudy
                 AbsoluteVelocityTolerance = settings.AbsoluteVelocityTolerance * scale,
             };
 
-            runs.Add(TrajectoryIntegrator.Integrate(initialState, species, field, refined, stopWhenNegative));
+            // A fresh sampler per refinement, from the same seed, so each level
+            // draws the same sequence of uniforms and the comparison is of the
+            // integrator rather than of the dice.
+            runs.Add(TrajectoryIntegrator.Integrate(
+                initialState, species, field, refined, stopWhenNegative, collisions: collisions?.Invoke()));
         }
 
         foreach (var run in runs)

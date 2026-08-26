@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Einzel.Core.Model;
 using Einzel.Cli;
 
 namespace Einzel.Cli.Tests;
@@ -65,7 +66,7 @@ public sealed class SurfaceTests : IDisposable
         using var schema = JsonDocument.Parse(stdout);
         var root = schema.RootElement;
 
-        Assert.Equal("0.3", root.GetProperty("x-schemaVersion").GetString());
+        Assert.Equal(ModelSchema.CurrentVersion, root.GetProperty("x-schemaVersion").GetString());
         Assert.Equal("object", root.GetProperty("type").GetString());
 
         var properties = root.GetProperty("properties");

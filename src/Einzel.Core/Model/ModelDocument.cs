@@ -146,10 +146,10 @@ public static class ModelSchema
     /// so is cheaper than an older build rejecting it with a schema error that
     /// names the wrong cause.
     /// </remarks>
-    public const string CurrentVersion = "0.3";
+    public const string CurrentVersion = "0.4";
 
     /// <summary>Versions this build can read.</summary>
-    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3"];
+    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3", "0.4"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -339,4 +339,70 @@ public sealed record TransportDocument
     /// TRJ-1: this stream has its own cadence, independent of integration steps.
     /// </summary>
     public QuantityValue? SampleInterval { get; init; }
+
+    /// <summary>The background gas, or null for vacuum.</summary>
+    public GasDocument? Gas { get; init; }
+}
+
+/// <summary>
+/// The neutral gas the ions fly through.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Absent means vacuum, and vacuum is bit-for-bit what this engine did before gas
+/// existed - so adding the field changes no number in any model that does not
+/// declare one.
+/// </para>
+/// <para>
+/// A neutral is described by two numbers for collision purposes, its mass and its
+/// polarizability, plus a collision cross section where the hard-sphere
+/// description is used. Nothing here says what device the gas is in.
+/// </para>
+/// </remarks>
+public sealed record GasDocument
+{
+    /// <summary>
+    /// <c>none</c>, <c>hardSphere</c>, or <c>langevin</c>.
+    /// </summary>
+    /// <remarks>
+    /// Spec figure 4 puts hard-sphere scattering below about 1e-5 mbar, where an
+    /// ion may not collide at all and each collision is a glance off a residual
+    /// molecule, and polarization capture between 1e-5 and 1e-2 mbar, where the ion
+    /// draws the neutral onto itself. Above 1e-2 mbar neither applies: the mobility
+    /// description with no discrete events does, and it is not built.
+    /// </remarks>
+    public string Model { get; init; } = "none";
+
+    /// <summary>Gas pressure.</summary>
+    public QuantityValue? Pressure { get; init; }
+
+    /// <summary>Gas temperature. 300 K when omitted.</summary>
+    public QuantityValue? Temperature { get; init; }
+
+    /// <summary>Mass of one neutral, in daltons.</summary>
+    public QuantityValue? Mass { get; init; }
+
+    /// <summary>
+    /// Collision cross section, for the hard-sphere model. Quoted in square
+    /// angstroms, as a measured collision cross section is.
+    /// </summary>
+    public QuantityValue? CrossSection { get; init; }
+
+    /// <summary>
+    /// Polarizability volume, for the Langevin model. Nitrogen is 1.74 cubic
+    /// angstroms, helium 0.205, argon 1.64.
+    /// </summary>
+    public QuantityValue? Polarizability { get; init; }
+
+    /// <summary>
+    /// Bulk velocity of the neutral gas. Stationary when omitted, which spec
+    /// figure 4 marks adequate below about 1e-2 mbar.
+    /// </summary>
+    public VectorValue? DriftVelocity { get; init; }
+
+    /// <summary>
+    /// Seed for the collision random stream, so a collisional run is reproducible
+    /// from its manifest (PRJ-3).
+    /// </summary>
+    public int Seed { get; init; } = 20_240_101;
 }

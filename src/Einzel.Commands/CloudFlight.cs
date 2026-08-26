@@ -36,7 +36,18 @@ public sealed record LossChannel(string Surface, int Ions);
 /// Keeping all three means an ensemble run answers "how sharp", "will it fit" and
 /// "where did the rest go" without flying three times.
 /// </remarks>
+/// <param name="Collisions">
+/// How many collisions the whole ensemble made. Zero in vacuum.
+/// </param>
+/// <param name="ScatteredIons">
+/// How many ions collided at least once. Reported beside the arrival times because
+/// COL-1 keeps scattered ions that stay within acceptance rather than discarding
+/// them, so a count of zero and a count equal to the ensemble mean very different
+/// peaks and neither is visible from a transmission figure.
+/// </param>
 public sealed record CloudFlight(
     ArrivalTimePeak Peak,
     IReadOnlyList<PhaseState> Arrived,
-    IReadOnlyList<LossChannel> Losses);
+    IReadOnlyList<LossChannel> Losses,
+    int Collisions = 0,
+    int ScatteredIons = 0);

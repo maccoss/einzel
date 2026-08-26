@@ -158,8 +158,15 @@ covering everything.
 - **No waveform library.** A drive is a sinusoid or a rectangular wave; there is no
   way to declare an arbitrary waveform, which spec section 9 lists as one of the
   excitations an electrode may carry, and no multi-notch isolation waveform.
-- **No statistical-diffusion transport**, so no cross-mode agreement check in the
-  overlap band.
+- **No statistical-diffusion transport**, so REG-3's cross-mode agreement check in
+  the overlap band cannot be made. The seam exists and the mode is declared and
+  refused by name; what is missing is the implementation behind it. See
+  [Pressure](pressure.md).
+- **Collisions are elastic only.** No fragmentation, no collision-induced
+  dissociation, no internal energy. An ion that scatters keeps its identity.
+- **One pressure for the whole model.** A differentially pumped instrument has
+  several, and the interfaces between them are where much of the interesting
+  physics is.
 - **3D runs coarse and slow.** A solve costs the cube of its resolution. The
   segmented quadrupole template solves at 8.5 cells across r0 where the plane
   studies use sixteen, and at eleven it does not finish in ten minutes.

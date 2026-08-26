@@ -1,6 +1,7 @@
 using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
+using Einzel.Core.Results;
 using Einzel.Project;
 using Einzel.Render;
 
@@ -1056,6 +1057,18 @@ public static class Program
         else
         {
             WriteRun(run);
+        }
+
+        // A regime violation outranks an incomplete flight, because it explains it:
+        // an ion that never reaches the detector at 1 mbar has not failed to
+        // converge, it has been described by the wrong physics. CLI-3 gives the two
+        // distinct codes so a caller can tell them apart without parsing anything,
+        // and REG-2 is what code 2 is for.
+        if (run.FlightTime.Warnings.Any(
+            w => w.Code.StartsWith("regime.", StringComparison.Ordinal)
+                && w.Severity == nameof(WarningSeverity.ValidityViolation)))
+        {
+            return (int)ExitCode.RegimeViolation;
         }
 
         // A run that ended anywhere but the detector is a convergence failure, not

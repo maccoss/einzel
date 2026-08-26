@@ -136,6 +136,7 @@ public static class ModelValidator
             RelativeTolerance = transport.RelativeTolerance,
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
+            Gas = transport.Gas,
             Parameters = surface,
         };
 
@@ -1862,7 +1863,11 @@ public static class ModelValidator
     }
 
     private sealed record TransportValues(
-        string Mode, double RelativeTolerance, double MaximumFlightTime, double SampleInterval);
+        string Mode,
+        double RelativeTolerance,
+        double MaximumFlightTime,
+        double SampleInterval,
+        CompiledGas Gas);
 
     private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
@@ -1882,7 +1887,9 @@ public static class ModelValidator
                 Constraint = "this build implements the 'trajectory' transport mode only",
                 Observed = new ObservedValue(0.0, transport.Mode),
                 Suggestion = transport.Mode == "statisticalDiffusion"
-                    ? "statistical diffusion arrives with the pressure regime; use 'trajectory' below about 1e-2 mbar"
+                    ? "statistical diffusion computes a time-resolved density field rather than "
+                        + "trajectories, and needs a mobility input and a density solver this build "
+                        + "does not have; use 'trajectory' below about 1e-2 mbar"
                     : "use \"mode\": \"trajectory\"",
             });
             return null;
@@ -1958,7 +1965,137 @@ public static class ModelValidator
             sample = declared.Value.SiValue;
         }
 
-        return new TransportValues(transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample);
+        var gas = ValidateGas(transport.Gas, p, errors);
+
+        if (gas is null)
+        {
+            return null;
+        }
+
+        return new TransportValues(
+            transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample, gas);
+    }
+
+    /// <summary>Validates the background gas, if one is declared.</summary>
+    /// <remarks>
+    /// Every field a model may omit has a defensible default except the ones that
+    /// decide the physics. A gas with a model and no pressure, or a hard-sphere
+    /// model and no cross section, is refused rather than silently treated as
+    /// vacuum - a run that quietly ignores a declared gas is the failure that
+    /// looks most like success.
+    /// </remarks>
+    private static CompiledGas? ValidateGas(
+        GasDocument? gas, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    {
+        if (gas is null || gas.Model == "none")
+        {
+            return CompiledGas.Vacuum;
+        }
+
+        if (gas.Model is not ("hardSphere" or "langevin"))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/gas/model",
+                Constraint = "a collision model is one of 'none', 'hardSphere', or 'langevin'",
+                Observed = new ObservedValue(0.0, gas.Model),
+                Suggestion = "'hardSphere' below about 1e-5 mbar, 'langevin' from there to about "
+                    + "1e-2 mbar; the mobility description above that is not built",
+            });
+            return null;
+        }
+
+        var pressure = Required(
+            gas.Pressure, "/transport/gas/pressure", Dimension.Pressure, p, errors,
+            "a gas must declare its pressure", "add {\"value\": 1e-6, \"unit\": \"mbar\"}");
+
+        var mass = Required(
+            gas.Mass, "/transport/gas/mass", Dimension.MassDimension, p, errors,
+            "a gas must declare the mass of one neutral",
+            "add {\"value\": 28.0134, \"unit\": \"Da\"} for nitrogen");
+
+        var temperature = gas.Temperature is null
+            ? Quantity.Si(300.0, Dimension.TemperatureDimension)
+            : TryQuantity(gas.Temperature, "/transport/gas/temperature",
+                Dimension.TemperatureDimension, p, errors);
+
+        var crossSection = gas.CrossSection is null
+            ? Quantity.Si(0.0, Dimension.Area)
+            : TryQuantity(gas.CrossSection, "/transport/gas/crossSection", Dimension.Area, p, errors);
+
+        var polarizability = gas.Polarizability is null
+            ? Quantity.Si(0.0, Dimension.Volume)
+            : TryQuantity(gas.Polarizability, "/transport/gas/polarizability", Dimension.Volume, p, errors);
+
+        if (pressure is null || mass is null || temperature is null
+            || crossSection is null || polarizability is null)
+        {
+            return null;
+        }
+
+        if (pressure.Value.SiValue <= 0.0 || temperature.Value.SiValue <= 0.0 || mass.Value.SiValue <= 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/gas",
+                Constraint = "a gas needs a positive pressure, temperature, and neutral mass",
+                Suggestion = "set \"model\": \"none\" for vacuum rather than a pressure of zero",
+            });
+            return null;
+        }
+
+        if (gas.Model == "hardSphere" && crossSection.Value.SiValue <= 0.0)
+        {
+            errors.Add(Missing("/transport/gas/crossSection",
+                "the hard-sphere model needs a collision cross section",
+                "add {\"value\": 250, \"unit\": \"Å^2\"}, which is a mid-size peptide in nitrogen"));
+            return null;
+        }
+
+        if (gas.Model == "langevin" && polarizability.Value.SiValue <= 0.0)
+        {
+            errors.Add(Missing("/transport/gas/polarizability",
+                "the Langevin model needs the neutral's polarizability volume",
+                "add {\"value\": 1.74, \"unit\": \"Å^3\"} for nitrogen"));
+            return null;
+        }
+
+        var drift = gas.DriftVelocity is null
+            ? Vec3.Zero
+            : TryVector(gas.DriftVelocity, "/transport/gas/driftVelocity", Dimension.Velocity, p, errors)
+                ?? Vec3.Zero;
+
+        return new CompiledGas
+        {
+            Model = gas.Model,
+            PressureSi = pressure.Value.SiValue,
+            TemperatureK = temperature.Value.SiValue,
+            MassSi = mass.Value.SiValue,
+            CrossSectionSi = crossSection.Value.SiValue,
+            PolarizabilitySi = polarizability.Value.SiValue,
+            DriftVelocitySi = drift,
+            Seed = gas.Seed,
+        };
+    }
+
+    private static Quantity? Required(
+        QuantityValue? value,
+        string path,
+        Dimension dimension,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors,
+        string constraint,
+        string suggestion)
+    {
+        if (value is null)
+        {
+            errors.Add(Missing(path, constraint, suggestion));
+            return null;
+        }
+
+        return TryQuantity(value, path, dimension, p, errors);
     }
 
     private static void ValidateGeometryConsistency(CompiledModel model, List<EinzelError> errors)

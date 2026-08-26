@@ -65,6 +65,11 @@ public static class TrajectoryIntegrator
     /// one makes the run allocate in proportion to the sample count; omitting it
     /// keeps the inner loop allocation-free.
     /// </param>
+    /// <param name="collisions">
+    /// Optional gas sampler. Supplying one makes the flight collisional; omitting
+    /// it is a flight in vacuum, and the arithmetic of a vacuum flight is unchanged
+    /// to the last bit by this parameter existing.
+    /// </param>
     /// <returns>The trajectory outcome.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="field"/> or <paramref name="settings"/> is null.</exception>
     /// <exception cref="ArgumentException">The run is unbounded: no stop condition and no flight-time ceiling.</exception>
@@ -74,7 +79,8 @@ public static class TrajectoryIntegrator
         IElectrostaticField field,
         IntegrationSettings settings,
         TrajectoryStopFunction? stopWhenNegative = null,
-        TrajectoryRecorder? recorder = null)
+        TrajectoryRecorder? recorder = null,
+        Collisions.CollisionSampler? collisions = null)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(settings);
@@ -112,6 +118,11 @@ public static class TrajectoryIntegrator
 
         var chargeToMass = species.ChargeToMassSi;
         var state = initialState;
+
+        // The first collision is scheduled from the launch state. A sampler that
+        // scheduled lazily at the first step would miss an ion that struck an
+        // electrode inside its own mean free path.
+        collisions?.Start(0.0, initialState.Velocity.Length);
 
         // A source inside an electrode has nowhere to go, and reporting it as a
         // zero-length flight would look like an instrument that loses everything
@@ -175,8 +186,24 @@ public static class TrajectoryIntegrator
             ? driven.ShortestPeriodSeconds / StepsPerRfPeriod
             : double.PositiveInfinity;
 
-        // Computed once, since whether a field is driven does not change mid-flight.
-        var stepSettings = driven is null ? settings : settings with { TurningPointStepFactor = 0.0 };
+        // Computed once, since neither of these changes mid-flight.
+        //
+        // The turning-point cap is off for a driven field because an oscillating
+        // ion is at a velocity minimum twice per cycle, so the cap fires
+        // continuously and the step collapses. A collisional flight has the same
+        // shape for a different reason: an ion thermalising in gas spends its whole
+        // life near a velocity minimum, and it is briefly at one after every
+        // collision that reverses it.
+        //
+        // The symptom is not a slow run, it is a wrong outcome. An ion drifting in
+        // 1 mbar of nitrogen underflowed after eight steps and 32 ns of a 300 us
+        // flight, and reported StepSizeUnderflow - a numerical failure standing in
+        // for ordinary physics. The measured evidence in section 11's own findings
+        // is that the cap does not help and slightly hurts even where it does fire
+        // harmlessly.
+        var stepSettings = driven is null && collisions is null
+            ? settings
+            : settings with { TurningPointStepFactor = 0.0 };
 
         var step = Math.Min(
             Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep), periodStep);
@@ -202,7 +229,7 @@ public static class TrajectoryIntegrator
             if (settings.UseAnalyticDrift
                 && TryAnalyticDrift(
                     ref state, ref time, field, settings, activeStop,
-                    recorder, ref analyticDistance, out var stoppedOnDrift))
+                    recorder, collisions, ref analyticDistance, out var stoppedOnDrift))
             {
                 derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
                 fieldEvaluations++;
@@ -246,6 +273,42 @@ public static class TrajectoryIntegrator
                 if (double.IsFinite(switchAt))
                 {
                     step = Math.Min(step, switchAt - time.Total);
+                }
+            }
+
+            // A collision is an instant, so it is the same kind of event as a
+            // sequencer switch and lands the same way: the time is known, so the
+            // step is cut to it rather than root-found. A step that spanned one
+            // would average the velocity before and after a discontinuity that is
+            // the entire physics being modelled.
+            var collisionDue = false;
+
+            if (collisions is not null && double.IsFinite(collisions.NextEventSeconds))
+            {
+                var toEvent = collisions.NextEventSeconds - time.Total;
+
+                if (toEvent < settings.MinimumStep)
+                {
+                    // Closer than the integrator can resolve. Applying it here
+                    // rather than cutting the step to nothing keeps a dense gas from
+                    // presenting as step-size underflow, which would look like a
+                    // numerical failure and is a physical rate.
+                    var here = state.Velocity;
+
+                    if (collisions.Collide(time.Total, ref here))
+                    {
+                        state = new PhaseState(state.Position, here);
+                        derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
+                        fieldEvaluations++;
+                    }
+
+                    continue;
+                }
+
+                if (toEvent <= step)
+                {
+                    step = toEvent;
+                    collisionDue = true;
                 }
             }
 
@@ -357,6 +420,25 @@ public static class TrajectoryIntegrator
 
             TrackEnergyDrift(
                 in state, species, field, initialEnergy, energyScale, ref maximumEnergyDrift, ref fieldEvaluations);
+
+            // Only on the plain full step. A step cut short by an electrode, a
+            // detector or a field discontinuity did not reach the collision, and
+            // applying it there would scatter an ion that had already stopped.
+            if (collisionDue)
+            {
+                var velocity = state.Velocity;
+
+                if (collisions!.Collide(time.Total, ref velocity))
+                {
+                    state = new PhaseState(state.Position, velocity);
+
+                    // The velocity is discontinuous, so every cached derivative and
+                    // the step estimate built from it are stale.
+                    derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
+                    fieldEvaluations++;
+                    recorder?.Offer(time.Total, in state, force: true);
+                }
+            }
 
             if (time.Total >= settings.MaximumFlightTime)
             {
@@ -585,6 +667,7 @@ public static class TrajectoryIntegrator
         IntegrationSettings settings,
         TrajectoryStopFunction? stopWhenNegative,
         TrajectoryRecorder? recorder,
+        Collisions.CollisionSampler? collisions,
         ref double analyticDistance,
         out bool stopped)
     {
@@ -607,6 +690,19 @@ public static class TrajectoryIntegrator
         }
 
         var remaining = settings.MaximumFlightTime - time.Total;
+
+        // A scheduled collision bounds the drift as surely as the flight-time
+        // ceiling does. Left out, an analytic advance jumps straight over it - and
+        // this is the path a long field-free flight in a thin gas takes, which is
+        // exactly the residual-gas case the hard-sphere model exists for.
+        //
+        // Bounding rather than disabling, because between two collisions the motion
+        // really is a straight line: the analytic advance is not an approximation
+        // that a gas invalidates, it is the exact solution over a shorter interval.
+        if (collisions is not null && double.IsFinite(collisions.NextEventSeconds))
+        {
+            remaining = Math.Min(remaining, collisions.NextEventSeconds - time.Total);
+        }
 
         if (remaining <= 0.0)
         {

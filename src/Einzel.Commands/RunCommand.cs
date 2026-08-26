@@ -49,6 +49,21 @@ public sealed record ValidateOutcome
 /// </remarks>
 public sealed record EnsembleOutcome
 {
+    /// <summary>Collisions the whole ensemble made. Zero in vacuum.</summary>
+    public int Collisions { get; init; }
+
+    /// <summary>
+    /// How many ions collided at least once and still reached the detector or a
+    /// surface.
+    /// </summary>
+    /// <remarks>
+    /// COL-1 keeps a scattered ion that stays within acceptance rather than
+    /// discarding it as a loss, so this count is the difference between a peak with
+    /// a pedestal and one without - and neither is visible from a transmission
+    /// figure, which counts both as arrivals.
+    /// </remarks>
+    public int ScatteredIons { get; init; }
+
     /// <summary>How many ions were launched.</summary>
     public required int Launched { get; init; }
 
@@ -201,6 +216,39 @@ public sealed record EnsembleOutcome
     public required double? PacketTwissAlpha { get; init; }
 }
 
+/// <summary>
+/// The governing dimensionless numbers of a run, on the wire.
+/// </summary>
+/// <remarks>
+/// REG-2 requires these computed rather than assumed. Reported whether or not any
+/// of them crosses a threshold, because a reader who can see a Knudsen number of
+/// 40 knows something a reader who sees no warning does not: that the run was
+/// checked and found comfortable, rather than not checked at all.
+/// </remarks>
+public sealed record RegimeJson
+{
+    /// <summary>Gas pressure, in millibar.</summary>
+    public required double PressureMbar { get; init; }
+
+    /// <summary>Which collision description was used.</summary>
+    public required string CollisionModel { get; init; }
+
+    /// <summary>Ion mean free path, in millimetres.</summary>
+    public required double MeanFreePathMm { get; init; }
+
+    /// <summary>The length the Knudsen number was taken against, in millimetres.</summary>
+    public required double ApertureMm { get; init; }
+
+    /// <summary>Mean free path over that length. Below 1 the gas is a continuum.</summary>
+    public required double Knudsen { get; init; }
+
+    /// <summary>Expected collisions over the flight.</summary>
+    public required double CollisionsPerFlight { get; init; }
+
+    /// <summary>Expected collisions per drive cycle, absent when undriven.</summary>
+    public double? CollisionsPerRfCycle { get; init; }
+}
+
 /// <summary>The outcome of a run.</summary>
 public sealed record RunOutcome
 {
@@ -218,6 +266,12 @@ public sealed record RunOutcome
 
     /// <summary>Largest relative departure of total energy over the flight (ACC-4).</summary>
     public required double MaximumRelativeEnergyDrift { get; init; }
+
+    /// <summary>
+    /// The dimensionless numbers that say whether this mode applies, or null in
+    /// vacuum where the question does not arise.
+    /// </summary>
+    public RegimeJson? Regime { get; init; }
 
     /// <summary>Accepted integrator steps, finest tolerance.</summary>
     public required int AcceptedSteps { get; init; }
@@ -309,6 +363,8 @@ public static class RunCommand
         {
             Launched = peak.Launched,
             Arrived = peak.Arrived,
+            Collisions = flight.Collisions,
+            ScatteredIons = flight.ScatteredIons,
             Transmission = MeasuredJson.From(Carry(peak.Transmission(), warnings), "1"),
             Losses = flight.Losses,
             CentralWidthNs = peak.CentralWidthSeconds(0.5) * 1e9,
@@ -438,6 +494,69 @@ public static class RunCommand
         return [];
     }
 
+    /// <summary>
+    /// The tightest constriction an ion must pass, in metres.
+    /// </summary>
+    /// <remarks>
+    /// What the Knudsen number is taken against. The honest choice is the narrowest
+    /// thing in the model rather than the size of the whole instrument: a gas is a
+    /// continuum on the scale of an aperture long before it is one on the scale of a
+    /// flight tube, and the aperture is where that matters.
+    ///
+    /// Falls back to the source-to-detector distance where no geometry declares a
+    /// smaller feature, which is the largest defensible length and so the most
+    /// conservative Knudsen number.
+    /// </remarks>
+    private static double SmallestAperture(CompiledModel model)
+    {
+        var smallest = double.PositiveInfinity;
+
+        foreach (var element in model.Fields)
+        {
+            if (element.Solve is { } flat)
+            {
+                smallest = Math.Min(smallest, Math.Min(flat.MaxX - flat.MinX, flat.MaxY - flat.MinY));
+            }
+
+            if (element.Solve3D is { } volume)
+            {
+                smallest = Math.Min(
+                    smallest,
+                    Math.Min(
+                        volume.MaxX - volume.MinX,
+                        Math.Min(volume.MaxY - volume.MinY, volume.MaxZ - volume.MinZ)));
+            }
+        }
+
+        if (double.IsPositiveInfinity(smallest))
+        {
+            smallest = (model.DetectorPoint - model.SourcePosition).Length;
+        }
+
+        return smallest > 0.0 ? smallest : 1.0;
+    }
+
+    /// <summary>The drive frequency, or zero when the model is not driven.</summary>
+    private static double DriveFrequency(CompiledModel model)
+    {
+        var highest = 0.0;
+
+        foreach (var element in model.Fields)
+        {
+            if (element.Solve?.Drive is { } flat)
+            {
+                highest = Math.Max(highest, flat.FrequencyHz);
+            }
+
+            if (element.Solve3D?.Drive is { } volume)
+            {
+                highest = Math.Max(highest, volume.FrequencyHz);
+            }
+        }
+
+        return highest;
+    }
+
     /// <summary>Attaches warnings to a result, since GRD-2 makes them travel with it.</summary>
     private static Measured Carry(Measured measured, IReadOnlyList<ValidityWarning> warnings)
     {
@@ -525,7 +644,8 @@ public static class RunCommand
         // Reported, not bare. A solve that missed its tolerance produces a field
         // indistinguishable from one that met it, so the evidence has to travel
         // alongside and land on every number computed through it (GRD-2).
-        var (field, fieldWarnings) = FieldAssembly.BuildReported(model);
+        var (field, built) = FieldAssembly.BuildReported(model);
+        var fieldWarnings = built;
         var species = IonSpecies.FromModel(model);
 
         var launch = new PhaseState(
@@ -542,10 +662,62 @@ public static class RunCommand
             MaximumFlightTime = model.MaximumFlightTimeSi,
         };
 
+        // REG-1's seam, on the execution path rather than beside it. The validator
+        // refuses an unbuilt mode earlier with the same message; this is what stops
+        // a model built in code - by a sweep, a study, or a test - from falling
+        // through to whichever mode happened to be implemented first.
+        _ = TransportModes.Resolve(model.TransportMode);
+
+        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+
         // The reportable number comes from the convergence study, not from a
         // single integration: one run has no honest uncertainty to quote.
-        var study = FlightTimeStudy.Run(launch, species, field, settings, detector);
+        //
+        // In a gas the study still flies the gas - reporting a vacuum flight time
+        // for a model that declares a pressure would be the same silent substitution
+        // the validator refuses elsewhere - but the interval it produces measures
+        // the integrator and not the stochastic spread, which is said below.
+        var study = FlightTimeStudy.Run(
+            launch, species, field, settings, detector,
+            collisions: gas.IsPresent
+                ? () => new Transport.Collisions.CollisionSampler(
+                    gas, species.MassSi, species.ChargeSi, model.Gas.Seed)
+                : null);
+
         var finest = study.Runs[^1];
+
+        // REG-2: the governing dimensionless numbers, computed rather than assumed,
+        // and a non-suppressible warning where the selected mode is outside its
+        // validity. Measured at the launch speed and the flight this model actually
+        // produced, so the numbers describe the run rather than a nominal case.
+
+        var regime = Transport.Collisions.RegimeDiagnostics.Measure(
+            gas,
+            species,
+            Math.Max(launch.Velocity.Length, 1.0),
+            finest.FlightTimeSeconds,
+            SmallestAperture(model),
+            DriveFrequency(model));
+
+        var regimeWarnings = Transport.Collisions.RegimeDiagnostics.ForTrajectoryMode(gas, regime);
+
+        if (gas.IsPresent)
+        {
+            regimeWarnings =
+            [
+                .. regimeWarnings,
+                new ValidityWarning(
+                    "collisions.single-ion-interval",
+                    "this flight time is one collisional history. The interval on it is the "
+                    + "integrator's own convergence and not the spread of arrival times a packet "
+                    + "would have: refining the tolerance does not average over the collisions, it "
+                    + "reruns the same draws against a slightly different trajectory. Declare an "
+                    + "ion cloud for a number whose interval means what it looks like",
+                    WarningSeverity.Qualified),
+            ];
+        }
+
+        fieldWarnings = [.. fieldWarnings, .. regimeWarnings];
 
         var manifest = new RunManifest
         {
@@ -608,6 +780,18 @@ public static class RunCommand
                 finest.FinalState.Position.Z * 1e3,
             ],
             MaximumRelativeEnergyDrift = finest.MaximumRelativeEnergyDrift,
+            Regime = gas.IsPresent
+                ? new RegimeJson
+                {
+                    PressureMbar = regime.PressureMbar,
+                    CollisionModel = model.Gas.Model,
+                    MeanFreePathMm = regime.MeanFreePathM * 1e3,
+                    ApertureMm = regime.ApertureM * 1e3,
+                    Knudsen = regime.Knudsen,
+                    CollisionsPerFlight = regime.CollisionsPerFlight,
+                    CollisionsPerRfCycle = regime.CollisionsPerRfCycle,
+                }
+                : null,
             AcceptedSteps = finest.AcceptedSteps,
             AnalyticDriftDistanceM = finest.AnalyticDriftDistance,
             Artifacts = artifacts,

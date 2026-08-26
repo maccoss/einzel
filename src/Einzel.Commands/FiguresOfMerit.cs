@@ -252,12 +252,42 @@ public static class FiguresOfMerit
         var arrived = new List<PhaseState>(cloud.Length);
         var losses = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        foreach (var start in cloud)
+        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        var collisions = 0;
+        var scattered = 0;
+
+        for (var index = 0; index < cloud.Length; index++)
         {
-            var result = TrajectoryIntegrator.Integrate(start, species, field, settings, detector);
+            var start = cloud[index];
+
+            // One stream per ion, derived from the declared seed and the ion's
+            // position in the cloud, so a run is reproducible from its manifest and
+            // raising the ion count does not change the flight of any ion already
+            // drawn.
+            var sampler = gas.IsPresent
+                ? new Transport.Collisions.CollisionSampler(
+                    gas, species.MassSi, species.ChargeSi, model.Gas.Seed + index)
+                : null;
+
+            var result = TrajectoryIntegrator.Integrate(
+                start, species, field, settings, detector, collisions: sampler);
+
+            if (sampler is not null)
+            {
+                collisions += sampler.Collisions;
+
+                if (sampler.Collisions > 0)
+                {
+                    scattered++;
+                }
+            }
 
             if (result.Outcome == TrajectoryOutcome.StopConditionMet)
             {
+                // COL-1: an ion that scattered and still reached the detector is
+                // tracked to it with its arrival time recorded, not discarded as a
+                // loss. Those late arrivals are the pedestal under the peak, and
+                // dropping them would make an instrument look cleaner than it is.
                 arrivals.Add(result.FlightTimeSeconds);
                 arrived.Add(result.FinalState);
                 continue;
@@ -284,7 +314,9 @@ public static class FiguresOfMerit
             [.. losses
                 .OrderByDescending(pair => pair.Value)
                 .ThenBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => new LossChannel(pair.Key, pair.Value))]);
+                .Select(pair => new LossChannel(pair.Key, pair.Value))],
+            collisions,
+            scattered);
     }
 
     /// <summary>

@@ -126,6 +126,17 @@ public static class UnitRegistry
         Add("Å^2", 1e-20, area);
         Add("angstrom^2", 1e-20, area);
 
+        var volume = Dimension.Volume;
+        Add("m^3", 1.0, volume);
+        Add("cm^3", 1e-6, volume);
+
+        // Polarizability is quoted as a volume, in cubic angstroms: nitrogen is
+        // 1.74, helium 0.205. The Langevin collision rate depends on it and on
+        // nothing else about the shape of the neutral, which is why a gas can be
+        // described by two numbers.
+        Add("Å^3", 1e-30, volume);
+        Add("angstrom^3", 1e-30, volume);
+
         Add("m^-3", 1.0, Dimension.NumberDensity);
         Add("cm^-3", 1e6, Dimension.NumberDensity);
 
