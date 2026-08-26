@@ -4,6 +4,7 @@
     <Project Path="src/Einzel.Cli/Einzel.Cli.csproj" />
     <Project Path="src/Einzel.Commands/Einzel.Commands.csproj" />
     <Project Path="src/Einzel.Core/Einzel.Core.csproj" />
+    <Project Path="src/Einzel.Extensions/Einzel.Extensions.csproj" />
     <Project Path="src/Einzel.Fields/Einzel.Fields.csproj" />
     <Project Path="src/Einzel.Io/Einzel.Io.csproj" />
     <Project Path="src/Einzel.Library/Einzel.Library.csproj" />
@@ -15,6 +16,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Einzel.Cli.Tests/Einzel.Cli.Tests.csproj" />
     <Project Path="tests/Einzel.Core.Tests/Einzel.Core.Tests.csproj" />
+    <Project Path="tests/Einzel.Extensions.Tests/Einzel.Extensions.Tests.csproj" />
     <Project Path="tests/Einzel.Fields.Tests/Einzel.Fields.Tests.csproj" />
     <Project Path="tests/Einzel.Io.Tests/Einzel.Io.Tests.csproj" />
     <Project Path="tests/Einzel.Library.Tests/Einzel.Library.Tests.csproj" />

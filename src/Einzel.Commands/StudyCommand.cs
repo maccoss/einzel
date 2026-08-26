@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Einzel.Core.Errors;
+using Einzel.Core.Model;
 using Einzel.Io;
 using Einzel.Project;
 using Einzel.Sweeps;
@@ -120,6 +121,33 @@ public sealed record OptimiseOutcome
 /// </remarks>
 public static class StudyCommand
 {
+    /// <summary>
+    /// Describes a figure of merit, whether the engine computes it or an extension
+    /// does.
+    /// </summary>
+    /// <remarks>
+    /// An extension objective has no unit the engine can know, so it is reported
+    /// dimensionless and under its own name. That is honest rather than lazy: the
+    /// extension returns a bare number, and inventing a unit for it here would be
+    /// the platform asserting something only the extension author knows.
+    /// </remarks>
+    private static FigureOfMeritInfo Figure(string name) =>
+        ExtensionObjective.Names(name)
+            ? new FigureOfMeritInfo(
+                name,
+                "1",
+                $"Computed by extension '{name[ExtensionObjective.Prefix.Length..]}', not by the engine.",
+                false)
+            : FiguresOfMerit.Describe(name);
+
+    /// <summary>Builds the evaluator a sweep or an optimiser drives.</summary>
+    private static Func<CompiledModel, double?> Evaluate(
+        string name, ProjectLayout project, double energySpread, int ions) =>
+        ExtensionObjective.Names(name)
+            ? ExtensionObjective.Evaluator(
+                name, project.Extensions, Path.Combine(project.Scratch, "ext"), energySpread, ions)
+            : FiguresOfMerit.Evaluator(name, energySpread, ions);
+
     private static readonly JsonSerializerOptions Reading = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -197,7 +225,7 @@ public static class StudyCommand
         ArgumentNullException.ThrowIfNull(project);
 
         var (study, modelPath, absolute) = Load(studyPath);
-        var figure = FiguresOfMerit.Describe(Required(study.FigureOfMerit));
+        var figure = Figure(Required(study.FigureOfMerit));
         var channels = StudyBinding.Channels(study);
         var document = ModelJson.Parse(File.ReadAllText(modelPath));
 
@@ -216,7 +244,7 @@ public static class StudyCommand
             };
         }
 
-        var evaluate = FiguresOfMerit.Evaluator(figure.Name, study.EnergySpread, study.Ions);
+        var evaluate = Evaluate(figure.Name, project, study.EnergySpread, study.Ions);
 
         var result = ToleranceStudy.Run(
             document, channels, evaluate, study.Draws, study.Seed, study.OneAtATime, figure.Dimension);
@@ -258,7 +286,7 @@ public static class StudyCommand
         ArgumentNullException.ThrowIfNull(project);
 
         var (study, modelPath, absolute) = Load(studyPath);
-        var figure = FiguresOfMerit.Describe(Required(study.FigureOfMerit));
+        var figure = Figure(Required(study.FigureOfMerit));
         var variables = StudyBinding.Variables(study);
         var algorithm = StudyBinding.Algorithm(study);
         var sense = StudyBinding.Sense(study, figure);
@@ -286,7 +314,7 @@ public static class StudyCommand
         var result = Optimiser.Run(
             document,
             variables,
-            FiguresOfMerit.Evaluator(figure.Name, study.EnergySpread, study.Ions),
+            Evaluate(figure.Name, project, study.EnergySpread, study.Ions),
             sense,
             algorithm,
             new OptimisationSettings

@@ -14,12 +14,12 @@ Engine outward. Each references only what is above it in this list.
 | `Einzel.Sweeps` | Tolerance Monte Carlo, sensitivity fields, Nelder-Mead and CMA-ES |
 | `Einzel.Io` | Model JSON, VTU export, the wire form of a result |
 | `Einzel.Project` | Project layout, run manifests, content hashing |
+| `Einzel.Extensions` | Extension manifest, schema check, and the sandboxed subprocess runner |
 | `Einzel.Render` | Projection, contouring, decimation, and the SVG and PDF writers |
 | `Einzel.Commands` | Command objects: every operation as one serialisable thing |
 | `Einzel.Cli` | The primary surface |
 
-Not yet built: `Einzel.Extensions`, `Einzel.Compute`, `Einzel.Mcp`,
-`Einzel.Update`, `Einzel.Wpf`.
+Not yet built: `Einzel.Compute`, `Einzel.Mcp`, `Einzel.Update`, `Einzel.Wpf`.
 
 The CLI, the future MCP server, and the future shell are **peers, not a stack**.
 All three drive the same command objects. That is what makes "nothing exists only
@@ -70,8 +70,17 @@ arrangements. See [Device templates](device-templates.md).
 
 Extensions are coarse-grained: whole input in, whole output out, one call per run,
 never per integration step. The subprocess boundary makes per-step scripting
-physically impossible rather than merely discouraged. Not yet built, but the
-constraint shapes what the interfaces may look like.
+physically impossible rather than merely discouraged - a subprocess cannot be
+invoked per step at any useful rate, and the measured round trip is 49 ms, which is
+where PERF-7 puts the granularity floor.
+
+Now built, with one honest caveat: the *boundary* is real, and the *containment*
+inside it is partial. Wall-clock timeouts, a scrubbed environment, an isolated
+interpreter and a scratch working directory are enforced; network, filesystem and
+memory confinement need OS primitives this build does not use. That gap is stated
+on every result and printed by `einzel ext list`, because a containment measure
+claimed and not applied is worse than one absent and known to be. See
+[Extensions](extensions.md).
 
 ### 4. No GPL dependency in the default build, ever
 

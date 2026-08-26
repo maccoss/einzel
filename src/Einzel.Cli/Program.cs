@@ -107,6 +107,7 @@ public static class Program
             "verify" => Verify(options),
             "export" => Export(options),
             "render" => Render(args, options),
+            "ext" => Ext(args, options),
             "schema" => Schema(options),
             "templates" => Catalog(options, "template"),
             "examples" => Catalog(options, "example"),
@@ -949,6 +950,125 @@ public static class Program
         }
     }
 
+    /// <summary>The extension authoring loop: list, test, register.</summary>
+    private static int Ext(string[] args, CommandLine options)
+    {
+        var action = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : "list";
+        var rest = options.Positional.Skip(1).ToList();
+
+        var root = options.Value("project") ?? InferProjectRoot(Directory.GetCurrentDirectory());
+        var project = new ProjectLayout(root);
+
+        switch (action)
+        {
+            case "list":
+            {
+                var outcome = ExtensionCommand.List(project);
+
+                if (options.Has("json"))
+                {
+                    return Emit(outcome);
+                }
+
+                Console.Out.WriteLine(
+                    $"engine {outcome.EngineVersion}, interpreter {outcome.Interpreter ?? "NOT FOUND"}");
+
+                if (outcome.Extensions.Count == 0)
+                {
+                    Console.Out.WriteLine("no extensions installed");
+                }
+
+                foreach (var entry in outcome.Extensions)
+                {
+                    Console.Out.WriteLine(
+                        $"  {entry.Name} {entry.Version}  {entry.Kind}/{entry.Trust}"
+                        + $"{(entry.Incompatibility is null ? string.Empty : "  INCOMPATIBLE: " + entry.Incompatibility)}");
+                }
+
+                // EXT-3 asks for OS-level isolation this build does not apply, and
+                // somebody deciding whether to run agent-authored code needs to know
+                // that before they run it rather than after.
+                Console.Error.WriteLine();
+                Console.Error.WriteLine("the subprocess runner does NOT enforce:");
+
+                foreach (var gap in outcome.UnenforcedContainment)
+                {
+                    Console.Error.WriteLine($"  - {gap}");
+                }
+
+                return (int)ExitCode.Success;
+            }
+
+            case "test":
+            {
+                if (rest.Count == 0)
+                {
+                    Console.Error.WriteLine(
+                        "usage: einzel ext test <name> [--input <file.json>] [--project <dir>] [--json]");
+                    return (int)ExitCode.ValidationFailure;
+                }
+
+                var payload = options.Value("input") is { } file
+                    ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.GetFullPath(file)))
+                    : new System.Text.Json.Nodes.JsonObject();
+
+                var outcome = ExtensionCommand.Test(project, rest[0], payload);
+
+                if (options.Has("json"))
+                {
+                    return Emit(outcome);
+                }
+
+                Console.Out.WriteLine(
+                    $"{outcome.Name} {outcome.Version} returned in {outcome.ElapsedMs:F0} ms:");
+
+                Console.Out.WriteLine(outcome.Output?.ToJsonString() ?? "null");
+
+                if (outcome.Diagnostics is { } diagnostics)
+                {
+                    Console.Error.Write(diagnostics);
+                }
+
+                foreach (var warning in outcome.Warnings)
+                {
+                    Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+                }
+
+                return (int)ExitCode.Success;
+            }
+
+            case "register":
+            {
+                if (rest.Count == 0)
+                {
+                    Console.Error.WriteLine(
+                        "usage: einzel ext register <name> [--kind objective|analysis|geometry|"
+                        + "sequence|interchange] [--project <dir>] [--dry-run] [--json]");
+                    return (int)ExitCode.ValidationFailure;
+                }
+
+                var kind = Enum.TryParse<Einzel.Extensions.ExtensionKind>(
+                    options.Value("kind") ?? "objective", ignoreCase: true, out var parsed)
+                    ? parsed
+                    : Einzel.Extensions.ExtensionKind.Objective;
+
+                var created = ExtensionCommand.Register(project, rest[0], kind, options.Has("dry-run"));
+
+                foreach (var file in created)
+                {
+                    Console.Out.WriteLine(options.Has("dry-run") ? $"would write {file}" : $"wrote {file}");
+                }
+
+                return (int)ExitCode.Success;
+            }
+
+            default:
+                Console.Error.WriteLine($"unknown 'ext' action '{action}'");
+                Console.Error.WriteLine("usage: einzel ext list | test <name> | register <name>");
+                return (int)ExitCode.ValidationFailure;
+        }
+    }
+
     private static int Init(CommandLine options)
     {
         var root = options.Positional.Count > 0 ? options.Positional[0] : ".";
@@ -1286,6 +1406,7 @@ public static class Program
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
           render section <model.json>   draw a plane through the instrument as SVG or PDF
+          ext list | test | register    the extension authoring loop
           agents-md [dir]               regenerate the platform layer of AGENTS.md
 
         release tooling:

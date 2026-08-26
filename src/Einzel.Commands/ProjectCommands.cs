@@ -190,6 +190,25 @@ public static class ProjectCommands
             ExampleModels.Names.Count > 0,
             string.Join(", ", ExampleModels.Names)));
 
+        // Reported as a check rather than assumed, because EXT-6 wants a vendored
+        // interpreter and this build discovers one. Not healthy when absent: an
+        // extension cannot run without it, and finding that out at the first
+        // 'ext test' is later than finding it out here.
+        var interpreter = Extensions.SubprocessRunner.Discover();
+
+        checks.Add(new DoctorCheck(
+            "python interpreter",
+            interpreter is not null,
+            interpreter is not null
+                ? $"{interpreter} (discovered, not vendored - EXT-6 wants one shipped)"
+                : "not found: extensions cannot run. Install python3, or put it on the path"));
+
+        checks.Add(new DoctorCheck(
+            "extension isolation",
+            true,
+            "subprocess, scrubbed environment, isolated interpreter, wall-clock timeout. NOT "
+            + "enforced: " + string.Join("; ", Extensions.Sandbox.Unenforced.Select(c => c.Name))));
+
         if (root is not null)
         {
             var layout = new ProjectLayout(Path.GetFullPath(root));

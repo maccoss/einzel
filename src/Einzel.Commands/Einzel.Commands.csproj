@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Einzel.Analysis\Einzel.Analysis.csproj" />
     <ProjectReference Include="..\Einzel.Sweeps\Einzel.Sweeps.csproj" />
     <ProjectReference Include="..\Einzel.Project\Einzel.Project.csproj" />
+    <ProjectReference Include="..\Einzel.Extensions\Einzel.Extensions.csproj" />
     <ProjectReference Include="..\Einzel.Render\Einzel.Render.csproj" />
     <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
   </ItemGroup>
