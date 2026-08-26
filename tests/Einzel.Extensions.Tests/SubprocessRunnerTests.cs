@@ -22,9 +22,28 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
 
     public void Dispose()
     {
-        if (Directory.Exists(_root))
+        // Tolerant, because a test that fails in its own teardown reports the
+        // teardown rather than the test. A killed extension can hold its working
+        // directory for a moment on Windows even after the runner has waited for it.
+        for (var attempt = 0; attempt < 5; attempt++)
         {
-            Directory.Delete(_root, recursive: true);
+            try
+            {
+                if (Directory.Exists(_root))
+                {
+                    Directory.Delete(_root, recursive: true);
+                }
+
+                return;
+            }
+            catch (IOException)
+            {
+                Thread.Sleep(200);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Thread.Sleep(200);
+            }
         }
     }
 

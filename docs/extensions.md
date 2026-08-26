@@ -151,6 +151,12 @@ The round trip is process start almost entirely, which is why PERF-7 sets the
 granularity floor for EXT-4: anything needing to happen more often than that cannot
 be an extension.
 
+**A kill has to be waited on.** `Process.Kill` only *asks*: it returns before the
+operating system has finished, so a timeout that does not then wait has not bounded
+anything - the extension is still running and still holding whatever it had open.
+On Windows that showed up immediately as a working directory that could not be
+deleted, which is how it was found, on CI rather than locally.
+
 ## Not built
 
 - **The in-process runner (EXT-2).** CSnakes is alive and maintained — 1.2.1, some

@@ -329,6 +329,15 @@ public sealed class SubprocessRunner
             // The tree, not the process. An extension that spawned something is
             // otherwise still running after its parent is gone.
             process.Kill(entireProcessTree: true);
+
+            // And then wait for it to actually be gone. Kill only asks: it returns
+            // before the operating system has finished, so a timeout that does not
+            // wait has not bounded anything - the extension is still running, still
+            // holding its working directory, and still whatever else it had open.
+            //
+            // On Windows that shows up immediately as a directory that cannot be
+            // deleted, which is how this was found.
+            process.WaitForExit(5000);
         }
         catch (InvalidOperationException)
         {
