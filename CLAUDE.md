@@ -54,6 +54,26 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
   Also fixed: coarse masks are now **memoised by grid** (the twelve-rod quadrupole was rebuilding an identical mask over a million `Contains` calls per cycle); the coarse-level flag became `GeometryBuilder3D.Coarsener(...)`, a whole function rather than a `bool coarse = false` default whose obvious spelling was the harmful one; a coarse pin can no longer overwrite a grounded face or collide with another electrode's; and `Electrode3D`'s shape switches were **disagreeing about their default arms** — size fell through to a box, centre to a sphere — so a fourth shape would have been sized as one thing and centred as another with no diagnostic. All three named cases now, and a throw for the rest.
 
+- **Statistical diffusion — the second transport mode, and REG-3 measured.** A drift-diffusion solve on a grid, with **mobility as a declared input** (TRN-1) and a **density field as the output** (TRN-2). RND-8's rule that a diffusive region must never be drawn as trajectories now has something to ask: `ITransportMode.ProducesTrajectories`.
+
+  **Scharfetter–Gummel fluxes, for the same reason cut cells mattered in the field solver.** Centred differencing here is not merely less accurate — it oscillates and produces negative densities as soon as drift outruns diffusion, which in a funnel is everywhere, and a negative density is a quantity that has stopped meaning anything.
+
+  | | |
+  | --- | --- |
+  | Free diffusion vs √(2Dt), three times | **1.0000** each |
+  | Drift vs μE | **1.00000** |
+  | Boltzmann equilibrium, seeded and evolved | **1.00000** over three decades |
+  | Ion conservation, every loss named | 100.0000% |
+  | Lowest density at cell Péclet 483 | non-negative |
+
+  **The Boltzmann check is sharp because the scheme is *built* to be exact there**: zero flux gives n₂/n₁ = B(−P)/B(P) = exp(P), and P is precisely qΔφ/kT. The discrete equilibrium *is* the continuous one, so anything worse than a per cent is a bug — and it found one. A first version sampled the drift at the **cell centre** and used it for both faces; where the field varies, two cells sharing a face then disagree about how much crossed it and the scheme stops conserving. A seeded equilibrium drained from the middle at 4.7× per millisecond. **The conservation test passed throughout, because its field was uniform** — a test that passed for a reason that did not generalise.
+
+  **REG-3, measured.** For the comparison to mean anything both modes must describe the *same gas*, so the event-driven side scatters off a declared cross section and the diffusive side takes its mobility from that same cross section via Mason–Schamp. At 1e-2 mbar and 6.2 Td: trajectory **13.2555 ± 1.3584 m/s**, diffusion **13.8418 m/s** — **0.43 standard errors**, between machineries that share nothing but a cross section.
+
+  **And where they legitimately disagree.** The field has to be chosen against E/N, not picked: at 1e-2 mbar the mobility is 9.2 m²/Vs, so 40 V/m is **166 townsend**, deep into field heating. There the trajectory mode gives 265.2 ± 4.1 m/s against a low-field μE of 369.4 — **overstated 1.393×**. The event-driven mode gets it right without being told; the diffusive mode is only as good as the mobility handed to it, which is exactly what TRN-1's "stated field dependence" is for, and `Mobility.IsWithinFit` returns false rather than leaving the caller to work it out.
+
+  **Not built:** diffusion reachable from a *model document* — the solver is validated but a source still has to become an initial density, a detector a collecting boundary, an electrode an absorbing one — so REG-3's comparison is a test rather than the supported CLI operation the requirement asks for. Details in `docs/pressure.md`.
+
 - **`Einzel.Extensions` — a Python extension surface, and invariant 3 goes from constraint to mechanism.** §5's argument is that agents must extend the platform, not only drive it, and an extension path requiring C#, a compile and a restart is not usable in a loop. `einzel ext register | test | list` is that loop; `register` scaffolds an extension that **runs immediately**, for the same reason `init` writes a model that runs.
 
   **One manifest, two runners — and only the sandboxed one is built, which is the right one to build first.** `trust` defaults to `sandboxed` rather than being opted into, because a trust level that has to be asked for gets granted by accident. EXT-4 is structural rather than advisory: a subprocess cannot be invoked per integration step at any useful rate, and the measured round trip is **49 ms median against PERF-7's 50 ms**, which is precisely where the granularity floor sits.

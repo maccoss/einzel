@@ -166,6 +166,22 @@ deleted, which is how it was found, on CI rather than locally.
 - **A vendored interpreter (EXT-6).** One is *discovered* instead, and `einzel
   doctor` says so rather than passing it off as the vendored path. Discovery means
   an extension behaves differently on a machine with a different Python.
+
+  **This is an installer decision, deferred to the installer.** The likely shape is
+  `uv python install --install-dir` into a directory einzel owns under the user's
+  data folder: uv is Apache-2.0 or MIT, the standalone CPython builds it fetches are
+  permissive, and pointing at a directory einzel owns rather than at uv's shared
+  store keeps another tool's `uv python uninstall` from breaking this one. Two
+  constraints it has to respect whenever it happens: provisioning downloads, so it
+  can never be implicit in a run (UPD-2 forbids the CLI touching the network, AGT-8
+  makes the environment stable within a session), and resolution has to stay a
+  filesystem lookup so PERF-8's 500 ms cold start survives it.
+
+  **One consequence is already a gap.** A run manifest fully determines its run
+  (PRJ-3), and an extension result now depends on which interpreter computed it -
+  but the manifest records the engine version, the solver-behaviour version and the
+  machine, and not the interpreter. Whatever the installer decides, the manifest has
+  to start recording it.
 - **Shared-memory transport (EXT-5).** Large arrays should cross by shared memory
   with an Arrow or raw-buffer layout, never by JSON. The small-payload path is
   built, which is what an objective or an analysis extension needs. The manifest

@@ -180,14 +180,92 @@ reports a mean free path of **21.4 µm**, a Knudsen number of **0.0143**, and **
 collisions per RF cycle** — an ion that never completes an oscillation, so the
 pseudopotential the whole device is designed around does not exist for it.
 
+## Statistical diffusion, the second mode
+
+REG-1 makes trajectory integration and statistical diffusion peers, and the second
+one now exists: a drift-diffusion solve on a grid, with **mobility as a declared
+input** (TRN-1) and **a density field as the output** (TRN-2). There are no
+trajectories in it to draw even if something wanted to, which is what RND-8 needs to
+be checkable rather than merely stated.
+
+**The flux uses Scharfetter–Gummel**, the exponentially-fitted upwind form. That
+matters for the same reason cut cells did in the field solver: centred differencing
+here is not merely less accurate, it oscillates and produces negative densities as
+soon as drift outruns diffusion, which in a funnel it does everywhere. A negative
+density is not a small error — it is a quantity that has stopped meaning anything.
+
+| | |
+| --- | --- |
+| Free diffusion against √(2Dt), three times | **1.0000** each |
+| Drift against μE | **1.00000** |
+| Boltzmann equilibrium, seeded and evolved | **1.00000** over three decades of density |
+| Ion conservation, every loss named | 100.0000% |
+| Lowest density at cell Péclet 483 | non-negative |
+
+**The Boltzmann check is the sharp one**, and it is sharp because the scheme is
+*built* so that its zero-flux state is exactly the Boltzmann factor: setting the flux
+to zero gives n_there/n_here = B(−P)/B(P) = exp(P), and P is precisely qΔφ/kT. So the
+discrete equilibrium is the continuous one, not an approximation converging to it —
+and anything worse than a per cent is a bug.
+
+**It found one.** A first version sampled the drift at the *cell centre* and used it
+for both of that cell's faces. Where the field is uniform that is the same thing;
+where it varies, the two cells sharing a face disagree about how much crossed it, and
+the scheme stops conserving. A seeded equilibrium in a well drained from the middle
+at 4.7× per millisecond. The conservation test **passed throughout**, because its
+field was uniform — a test that passed for a reason that did not generalise.
+Everything about a face is now a property of the face: the exponent from the
+potential difference between the two nodes, the diffusivity from their average.
+
+## REG-3: both modes, one physics
+
+For the comparison to mean anything the two modes must describe the **same gas**, so
+the event-driven side uses hard-sphere scattering off a declared cross section and
+the diffusive side takes its mobility from that same cross section through
+Mason–Schamp. Comparing Langevin capture against a mobility fitted to something else
+would be comparing two instruments and calling the difference a numerical
+disagreement.
+
+At 10⁻² mbar and 6.2 townsend — inside both validities:
+
+| | |
+| --- | --- |
+| Trajectory, 200 ions | 13.2555 ± 1.3584 m/s |
+| Diffusion, 4891 steps | 13.8418 m/s |
+| **Disagreement** | **0.43 standard errors** |
+
+One samples exponential waiting times and rotates velocity vectors; the other pushes
+a density through Bernoulli-weighted faces. They share a cross section and nothing
+else.
+
+**The field has to be chosen against E/N, not picked.** At this pressure the gas is
+thin and the mobility is 9.2 m²/Vs, so 40 V/m is **166 townsend** — deep into where
+the ion is heated by the field. There the two modes legitimately disagree:
+
+| | |
+| --- | --- |
+| Trajectory at 166 Td | 265.2 ± 4.1 m/s |
+| Low-field μE | 369.4 m/s |
+| **Overstated by** | **1.393×** |
+
+The event-driven mode gets this right without being told, because it is colliding an
+ion that is genuinely moving faster. The diffusive mode is only as good as the
+mobility it was handed — which is what TRN-1 means by an explicit input with stated
+field dependence, and why `Mobility.IsWithinFit` returns false here rather than
+leaving the caller to work it out.
+
 ## Not built
 
-- **Statistical diffusion.** The mobility description with no discrete events, above
-  10⁻² mbar, emitting a time-resolved density field. Declared, refused by name, and
-  the reason every funnel number above is a lower bound.
+- **Diffusion from a model document.** The solver exists and is validated; what is
+  missing is the wiring that lets a model select it — a source has to become an
+  initial density, a detector a collecting boundary, an electrode an absorbing one.
+  So the mode is reachable from code and not yet from a model file, and REG-3's
+  comparison is a test rather than the supported CLI operation the requirement asks
+  for.
 - **A neutral velocity field.** The gas is stationary, or moving with one declared
   bulk velocity. Spec figure 4 requires a velocity *field* above 10⁻² mbar, and gas
-  velocity import is listed with it.
+  velocity import is listed with it. This is what a funnel needs most: it is pushed
+  through by gas flow, and a stationary gas has no such push.
 - **Inelastic channels.** Collisions are elastic. No fragmentation, no
   collision-induced dissociation, no internal energy at all.
 - **Pressure gradients.** One pressure for the whole model. A real differentially

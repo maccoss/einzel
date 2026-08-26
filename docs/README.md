@@ -76,8 +76,14 @@ Most recently **extensions**: a manifest, a sandboxed subprocess runner at a 49 
 round trip, output validated against the declared schema, and a Python objective the
 optimiser can drive.
 
-Not yet built: statistical diffusion, the in-process extension runner, the compute
-dispatch layer, the MCP server, the update mechanism, and the shell. Of the render verbs, `section` exists;
+Most recently **statistical diffusion**: the second transport mode REG-1 makes a peer
+of trajectory integration, validated against an exactly stationary Boltzmann
+equilibrium, and agreeing with the event-driven mode to 0.43 standard errors in the
+overlap band REG-3 names.
+
+Not yet built: diffusion reachable from a model document, the in-process extension
+runner, the compute dispatch layer, the MCP server, the update mechanism, and the
+shell. Of the render verbs, `section` exists;
 `still` and `animation` do not.
 
 Nothing here is released software. Effort estimates, performance targets, and the

@@ -158,10 +158,12 @@ covering everything.
 - **No waveform library.** A drive is a sinusoid or a rectangular wave; there is no
   way to declare an arbitrary waveform, which spec section 9 lists as one of the
   excitations an electrode may carry, and no multi-notch isolation waveform.
-- **No statistical-diffusion transport**, so REG-3's cross-mode agreement check in
-  the overlap band cannot be made. The seam exists and the mode is declared and
-  refused by name; what is missing is the implementation behind it. See
-  [Pressure](pressure.md).
+- **Statistical diffusion is not reachable from a model document.** The solver
+  exists and is validated against free diffusion, drift, and an exactly stationary
+  Boltzmann equilibrium, and REG-3's cross-mode comparison agrees to 0.43 standard
+  errors - but as a test, not as the supported CLI operation the requirement asks
+  for. Wiring it needs a source to become an initial density, a detector a
+  collecting boundary, and an electrode an absorbing one.
 - **Collisions are elastic only.** No fragmentation, no collision-induced
   dissociation, no internal energy. An ion that scatters keeps its identity.
 - **One pressure for the whole model.** A differentially pumped instrument has

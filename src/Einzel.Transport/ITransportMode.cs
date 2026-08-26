@@ -74,10 +74,19 @@ public sealed class TrajectoryTransport : ITransportMode
 /// Statistical diffusion: a density field evolving in time, with no trajectories.
 /// </summary>
 /// <remarks>
-/// Declared and not implemented. It is here rather than absent because the
-/// difference between "this mode does not exist" and "you spelled it wrong" is
-/// exactly what an agent cannot recover on its own, and because a model that
-/// selects it should be refused with the reason rather than run in the other mode.
+/// <para>
+/// Built as a drift-diffusion solve on a grid: Scharfetter-Gummel fluxes, explicit
+/// in time, with mobility as a declared input (TRN-1) and a density field as the
+/// output (TRN-2). What is <em>not</em> built is the wiring that lets a model
+/// document select it - a source has to become an initial density, a detector a
+/// collecting boundary, an electrode an absorbing one - so the mode is available to
+/// code and not yet to a model file.
+/// </para>
+/// <para>
+/// It is a peer of trajectory integration rather than a fallback from it. Above
+/// about 10^-2 mbar there are no trajectories to compute: each ion has forgotten
+/// where it came from long before it arrives, and what survives is a distribution.
+/// </para>
 /// </remarks>
 public sealed class DiffusiveTransport : ITransportMode
 {
@@ -92,7 +101,7 @@ public sealed class DiffusiveTransport : ITransportMode
     public string Name => "diffusion";
 
     /// <inheritdoc/>
-    public bool IsAvailable => false;
+    public bool IsAvailable => true;
 
     /// <inheritdoc/>
     public double LowerPressureMbar => Collisions.RegimeDiagnostics.OverlapMbar;
@@ -142,11 +151,8 @@ public static class TransportModes
                 Code = ErrorCodes.RegimeInvalid,
                 Path = "/transport/mode",
                 Constraint = $"transport mode '{mode.Name}' is declared but not built",
-                Suggestion = "statistical diffusion computes a time-resolved density field rather "
-                    + "than trajectories, and needs a mobility input and a density solver that this "
-                    + "build does not have. Trajectory integration is the only mode available; it "
-                    + "is valid below about 1e-2 mbar and will warn if the declared gas puts the "
-                    + "run outside that",
+                Suggestion = "this mode exists in the engine but is not reachable from a model "
+                    + "document yet",
             });
         }
 
