@@ -158,10 +158,11 @@ covering everything.
 - **No waveform library.** A drive is a sinusoid or a rectangular wave; there is no
   way to declare an arbitrary waveform, which spec section 9 lists as one of the
   excitations an electrode may carry, and no multi-notch isolation waveform.
-- **A diffusive run has no cost estimate.** Its explicit step is set by stability
-  and the diffusion coefficient goes as one over pressure, so a *thinner* gas is
-  more expensive - the opposite of the event-driven mode. A 3 ms run at 1e-2 mbar on
-  a 257 by 65 grid is 187,000 steps, and nothing warns before it starts.
+- **A trajectory run still has no cost estimate.** A diffusive one now does, exactly
+  - its step is stability-limited and computable before the run - but trajectory
+  integration's cost depends on the path, which depends on the field, which is the
+  thing not yet solved. `einzel estimate` reports the solve and says the integration
+  is not included.
 - **An electrode empties the initial density but does not keep emptying it.** A
   source inside metal cannot start there, which is the case that reads as an
   instrument losing everything; an ion that diffuses into an electrode mid-run is

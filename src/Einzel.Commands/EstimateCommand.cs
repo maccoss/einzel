@@ -97,6 +97,17 @@ public static class EstimateCommand
     /// <summary>Above this, GRD-8 asks for confirmation rather than proceeding.</summary>
     public const double ThresholdSeconds = 30.0;
 
+    /// <summary>
+    /// Cell updates per second for a diffusive step, in millions.
+    /// </summary>
+    /// <remarks>
+    /// Measured on this codebase: 2.4 to 3.0 million across grids from 129 by 33 to
+    /// 257 by 129. The low figure is used, for the same reason the solve estimate
+    /// uses its high one - an estimate that runs under is worse than one that runs
+    /// over, because the first is discovered by waiting.
+    /// </remarks>
+    private const double MegaCellsPerSecond = 2.4;
+
     /// <summary>Estimates a model's cost.</summary>
     /// <param name="modelPath">Path to the model file.</param>
     /// <returns>The estimate.</returns>
@@ -119,6 +130,9 @@ public static class EstimateCommand
         var elements = new List<ElementEstimate>();
         var seconds = 0.0;
         var memory = 0.0;
+        var basis = $"{SecondsPerMegaNode:G3} s per million nodes for a converged V-cycle, measured on "
+            + "the shipped templates. Trajectory integration is not included: its cost depends on the "
+            + "path, which depends on the field this has not solved yet.";
 
         for (var index = 0; index < model.Fields.Count; index++)
         {
@@ -160,6 +174,19 @@ public static class EstimateCommand
             memory = Math.Max(memory, elementMemory);
         }
 
+        // A diffusive run is a time-stepped solve over a whole grid, and its step is
+        // set by stability rather than declared - so unlike trajectory integration
+        // its cost is knowable before the run, and unlike a field solve it is the
+        // dominant term rather than a preamble.
+        if (model.TransportMode == "diffusion")
+        {
+            var (diffusiveSeconds, diffusiveMemory, diffusiveBasis) = Diffusive(model);
+
+            seconds += diffusiveSeconds;
+            memory = Math.Max(memory, diffusiveMemory);
+            basis = diffusiveBasis;
+        }
+
         return new EstimateOutcome
         {
             ModelPath = absolute,
@@ -168,9 +195,94 @@ public static class EstimateCommand
             MemoryMiB = memory,
             AboveThreshold = seconds > ThresholdSeconds,
             ThresholdSeconds = ThresholdSeconds,
-            Basis = $"{SecondsPerMegaNode:G3} s per million nodes for a converged V-cycle, measured on the "
-                + "shipped templates. Trajectory integration is not included: its cost depends on the path, "
-                + "which depends on the field this has not solved yet.",
+            Basis = basis,
         };
+    }
+
+    /// <summary>
+    /// What a diffusive run will cost, from the mesh and the mobility alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The step is bounded from above by the diffusion limit, which needs no field:
+    /// D comes from the mobility and the temperature, and the mesh is declared. The
+    /// drift limit needs the field, which is the thing not solved yet, so the real
+    /// step can only be smaller and the real cost only larger - which is stated
+    /// rather than left for someone to discover by waiting.
+    /// </para>
+    /// <para>
+    /// The direction of the pressure dependence is the part worth reading. D goes as
+    /// one over pressure, so a <em>thinner</em> gas diffuses faster, needs a smaller
+    /// step, and costs more. That is the opposite of the event-driven mode, where a
+    /// thinner gas means fewer collisions, and the opposite of most people's
+    /// intuition about which regime is expensive.
+    /// </para>
+    /// </remarks>
+    private static (double Seconds, double MemoryMiB, string Basis) Diffusive(CompiledModel model)
+    {
+        var grid = DiffusionRun.GridFor(model);
+        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        var species = Transport.IonSpecies.FromModel(model);
+
+        var mobility = model.Mobility is { Derived: false } declared
+            ? declared.ZeroFieldSi
+            : Transport.Diffusion.Mobility.FromCrossSection(gas, species).ZeroFieldSi;
+
+        var diffusion = Transport.Diffusion.Mobility.DiffusionSi(
+            gas.TemperatureK, species.ChargeSi, mobility);
+
+        // The drift limit needs the field. Where every element is analytic that is
+        // free to evaluate, so it is included and the estimate becomes exact; where
+        // anything has to be solved it is omitted and the estimate says so, because
+        // solving the field to estimate the cost of the run defeats the purpose of
+        // estimating.
+        var analytic = model.Fields.All(f => f.Solve is null && f.Solve3D is null);
+
+        var fastestDrift = 0.0;
+
+        if (analytic)
+        {
+            var (field, _) = Fields.FieldAssembly.BuildReported(model);
+            var sign = Math.Sign(species.ChargeSi);
+
+            for (var j = 0; j < grid.CountY; j += 2)
+            {
+                for (var i = 0; i < grid.CountX; i += 2)
+                {
+                    var point = new Core.Geometry.Vec3(grid.X(i), grid.Y(j), 0.0);
+                    var electric = field.ElectricFieldAt(in point);
+
+                    fastestDrift = Math.Max(
+                        fastestDrift,
+                        Transport.Diffusion.DriftDiffusion.CrossingRate(
+                            grid, sign * mobility * electric.X, sign * mobility * electric.Y));
+                }
+            }
+        }
+
+        var (step, limit) = Transport.Diffusion.DriftDiffusion.StepFor(grid, diffusion, fastestDrift);
+
+        var steps = Math.Max(1.0, Math.Ceiling(model.MaximumFlightTimeSi / step));
+        var cells = steps * grid.NodeCount;
+
+        var seconds = cells / (MegaCellsPerSecond * 1e6);
+
+        // Two density fields, current and next, at eight bytes a node.
+        var memory = 2.0 * 8.0 * grid.NodeCount / (1024.0 * 1024.0);
+
+        return (
+            seconds,
+            memory,
+            $"diffusive run: {grid.CountX} by {grid.CountY} nodes, a stability-limited step of "
+            + $"{step:G3} s set by {limit}, so about {steps:N0} steps over "
+            + $"{model.MaximumFlightTimeSi * 1e6:G4} us, at {MegaCellsPerSecond:G2} million cell "
+            + "updates per second measured on this codebase. "
+            + (analytic
+                ? "Both stability limits are included: this model's fields are analytic, so the "
+                    + "drift limit costs nothing to evaluate."
+                : "The drift limit is NOT included, because it needs a field this has not solved - "
+                    + "so the real step can only be smaller and this is a lower bound.")
+            + " Note that the diffusion coefficient goes as one over pressure: a thinner gas is "
+            + "MORE expensive here, not less");
     }
 }

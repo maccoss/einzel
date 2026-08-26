@@ -97,6 +97,9 @@ public static class DiffusionRun
     }
 
     /// <summary>The grid the density is tracked on.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <returns>The grid.</returns>
+    /// <exception cref="EinzelException">There is no region to track a density over.</exception>
     /// <remarks>
     /// The declared one, or the solved field's own domain, which is nearly always
     /// what is wanted and is the only choice an analytic model cannot make for
@@ -104,7 +107,7 @@ public static class DiffusionRun
     /// density tracked over the wrong region loses its ions to a boundary that is
     /// not there in the instrument.
     /// </remarks>
-    private static Grid2D GridFor(CompiledModel model)
+    public static Grid2D GridFor(CompiledModel model)
     {
         if (model.DensityGrid is { } declared)
         {

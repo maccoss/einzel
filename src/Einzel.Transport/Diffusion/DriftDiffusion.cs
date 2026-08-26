@@ -176,6 +176,59 @@ public static class DriftDiffusion
     /// drift binds as h over v, only linearly. A run whose step is set by diffusion
     /// is one where the mesh, not the physics, is the expense.
     /// </remarks>
+    /// <summary>
+    /// The step a run will take, from the mesh and the coefficients alone.
+    /// </summary>
+    /// <param name="grid">The grid the density is tracked on.</param>
+    /// <param name="diffusionSi">The diffusion coefficient, in square metres per second.</param>
+    /// <param name="fastestCrossingRateSi">
+    /// The largest value of |vx|/hx + |vy|/hy anywhere, in reciprocal seconds, or
+    /// zero when the field is not known. A <em>rate</em> rather than a speed,
+    /// because that is what the Courant condition is on: an axial drift on an
+    /// anisotropic mesh crosses a cell at a different rate from a diagonal one of
+    /// the same speed, and quoting a speed loses which.
+    /// </param>
+    /// <returns>The step, and which limit set it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// Public because a cost estimate needs it before the run rather than after, and
+    /// GRD-8 gates on a number that has to be available without doing the work.
+    /// </para>
+    /// <para>
+    /// The diffusion limit is knowable without solving anything - D comes from the
+    /// mobility and the temperature, and the mesh is declared - while the drift limit
+    /// needs the field. So an estimate that has not solved the field can bound the
+    /// step from above and say so, which is the right direction: an estimate that
+    /// runs under is worse than one that runs over.
+    /// </para>
+    /// </remarks>
+    public static (double Seconds, string Limit) StepFor(
+        Fields.Solved.Grid2D grid, double diffusionSi, double fastestCrossingRateSi = 0.0)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var inverseSquares = (1.0 / (grid.SpacingX * grid.SpacingX))
+            + (1.0 / (grid.SpacingY * grid.SpacingY));
+
+        var byDiffusion = diffusionSi > 0.0
+            ? 1.0 / (2.0 * diffusionSi * inverseSquares)
+            : double.PositiveInfinity;
+
+        var byDrift = fastestCrossingRateSi > 0.0
+            ? 1.0 / fastestCrossingRateSi
+            : double.PositiveInfinity;
+
+        if (double.IsPositiveInfinity(byDiffusion) && double.IsPositiveInfinity(byDrift))
+        {
+            return (1e-6, "neither: nothing is moving");
+        }
+
+        return byDiffusion <= byDrift
+            ? (StabilityMargin * byDiffusion, "diffusion")
+            : (StabilityMargin * byDrift, "drift");
+    }
+
     private static double StableStep(
         Fields.Solved.Grid2D grid, double[] driftX, double[] driftY, double[] diffusion)
     {
@@ -184,24 +237,27 @@ public static class DriftDiffusion
 
         for (var k = 0; k < diffusion.Length; k++)
         {
-            fastest = Math.Max(fastest, (Math.Abs(driftX[k]) / grid.SpacingX)
-                + (Math.Abs(driftY[k]) / grid.SpacingY));
-
+            fastest = Math.Max(fastest, CrossingRate(grid, driftX[k], driftY[k]));
             widest = Math.Max(widest, diffusion[k]);
         }
 
-        var byDrift = fastest > 0.0 ? 1.0 / fastest : double.PositiveInfinity;
+        // The same function the cost estimate calls, so the two cannot disagree
+        // about what a run will do. An estimate computed by a second implementation
+        // of the step rule is an estimate of that implementation.
+        return StepFor(grid, widest, fastest).Seconds;
+    }
 
-        var inverseSquares = (1.0 / (grid.SpacingX * grid.SpacingX))
-            + (1.0 / (grid.SpacingY * grid.SpacingY));
+    /// <summary>How fast a drift crosses a cell, in reciprocal seconds.</summary>
+    /// <param name="grid">The grid.</param>
+    /// <param name="driftXSi">Drift along x, in metres per second.</param>
+    /// <param name="driftYSi">Drift along y, in metres per second.</param>
+    /// <returns>The Courant rate.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    public static double CrossingRate(Fields.Solved.Grid2D grid, double driftXSi, double driftYSi)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
 
-        var byDiffusion = widest > 0.0
-            ? 1.0 / (2.0 * widest * inverseSquares)
-            : double.PositiveInfinity;
-
-        var limit = Math.Min(byDrift, byDiffusion);
-
-        return double.IsPositiveInfinity(limit) ? 1e-6 : StabilityMargin * limit;
+        return (Math.Abs(driftXSi) / grid.SpacingX) + (Math.Abs(driftYSi) / grid.SpacingY);
     }
 
     private static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential) SampleCoefficients(

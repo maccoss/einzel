@@ -61,6 +61,33 @@ public sealed record RunManifest
     public IReadOnlyList<string> Extensions { get; init; } = [];
 
     /// <summary>
+    /// The Python interpreter extensions ran against, when any did.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// PRJ-3 says a manifest fully determines its run, and an extension result
+    /// depends on which interpreter computed it - a different Python is a different
+    /// numpy, a different rounding of a transcendental, and in the worst case a
+    /// different answer from the same source file. Recording the engine version and
+    /// not the interpreter would leave a run reproducible in the part this project
+    /// wrote and unreproducible in the part it did not.
+    /// </para>
+    /// <para>
+    /// Null when no extension ran, rather than filled in with whatever happened to
+    /// be on the path. An interpreter that took no part in a run is not provenance,
+    /// and recording it would imply it mattered. It is also why this is not
+    /// discovered eagerly: finding an interpreter costs a process start, and a run
+    /// that never needed one should not pay for it.
+    /// </para>
+    /// <para>
+    /// EXT-6 wants a vendored interpreter, which would make this a version rather
+    /// than a path. Until then it is whatever was discovered, and a path on one
+    /// machine is not the same interpreter as the same path on another.
+    /// </para>
+    /// </remarks>
+    public string? Interpreter { get; init; }
+
+    /// <summary>
     /// The machine the run happened on. Recorded because spec section 8 requires
     /// run-to-run reproducibility on one machine but explicitly does not require
     /// bit-reproducibility across machines, so a comparison that crosses machines

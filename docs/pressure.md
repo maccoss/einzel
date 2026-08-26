@@ -306,15 +306,41 @@ With those understood, the honest reading of a 1e-2 mbar comparison at 82.8 town
 the solvers disagree. It is that the low-field mobility is outside its fitted range,
 which `mobility.outside-fit` says on the same report.
 
+## What a diffusive run costs, before it starts
+
+GRD-8 gates on a number that has to be available without doing the work. For a
+diffusive run that number is **exact**, not modelled: the step is set by two
+stability limits, both computable from the mesh, the mobility and the field.
+
+| | predicted | actual |
+| --- | --- | --- |
+| 1 mbar, 257×65, drift-limited | 901 steps, 6.27 s | 901 steps, 5.30 s |
+| 10⁻² mbar, 129×33, diffusion-limited | 6,266 steps, 11.11 s | 6,266 steps, 9.21 s |
+
+**Step counts exact in both**, because `estimate` and `run` call the same function —
+an estimate computed by a second implementation of the step rule is an estimate of
+that implementation. Wall time is deliberately conservative by ~20%, from a measured
+2.4 million cell updates per second against 2.4–3.0 observed.
+
+The drift limit needs the field. Where every element is analytic that is free to
+sample, so it is included and the estimate is exact; where anything must be solved it
+is omitted and the basis line **says so**, because solving the field to estimate the
+cost of the run defeats the point.
+
+**The direction is the part worth reading.** D goes as 1/P, so a *thinner* gas
+diffuses faster, needs a smaller step, and costs more. In the table above a hundredth
+of the pressure on a **six times coarser grid** is still twice the work. That is the
+opposite of the event-driven mode, where a thinner gas means fewer collisions, and it
+is the opposite of most people's intuition — so the basis line says it in words as
+well as numbers, because a number that surprises without explaining itself gets
+worked around rather than understood.
+
 ## Not built
 
 - **Interior electrodes as continuous sinks.** An electrode empties the *initial*
   density, which stops a source placed inside metal from starting there. Zeroing the
   interior at every step is the full treatment.
-- **A cost estimate for a diffusive run.** The explicit step is set by stability, and
-  D goes as 1/P, so **a thinner gas is more expensive, not less** — the opposite of
-  the event-driven mode and the opposite of the intuition. A 3 ms run at 1e-2 mbar on
-  a 257×65 grid is 187,000 steps, and nothing warns before it starts.
+- **Interior electrodes as continuous sinks.** See above.
 - **A neutral velocity field.** The gas is stationary, or moving with one declared
   bulk velocity. Spec figure 4 requires a velocity *field* above 10⁻² mbar, and gas
   velocity import is listed with it. This is what a funnel needs most: it is pushed

@@ -177,11 +177,15 @@ deleted, which is how it was found, on CI rather than locally.
   makes the environment stable within a session), and resolution has to stay a
   filesystem lookup so PERF-8's 500 ms cold start survives it.
 
-  **One consequence is already a gap.** A run manifest fully determines its run
-  (PRJ-3), and an extension result now depends on which interpreter computed it -
-  but the manifest records the engine version, the solver-behaviour version and the
-  machine, and not the interpreter. Whatever the installer decides, the manifest has
-  to start recording it.
+  **The manifest now records which interpreter ran an extension**, because PRJ-3
+  says a manifest fully determines its run and an extension result depends on which
+  Python computed it. It is `null` when no extension ran, rather than filled in with
+  whatever was on the path: an interpreter that took no part in a run is not
+  provenance, and recording it would imply it mattered. That is also why discovery is
+  lazy - finding an interpreter costs a process start, and a run that never needed
+  one should not pay for it. Once EXT-6's vendored interpreter exists this becomes a
+  version rather than a path, which is the better thing to record: a path on one
+  machine is not the same interpreter as the same path on another.
 - **Shared-memory transport (EXT-5).** Large arrays should cross by shared memory
   with an Arrow or raw-buffer layout, never by JSON. The small-payload path is
   built, which is what an objective or an analysis extension needs. The manifest

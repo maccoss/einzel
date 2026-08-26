@@ -142,11 +142,70 @@ public static class StudyCommand
 
     /// <summary>Builds the evaluator a sweep or an optimiser drives.</summary>
     private static Func<CompiledModel, double?> Evaluate(
-        string name, ProjectLayout project, double energySpread, int ions) =>
-        ExtensionObjective.Names(name)
-            ? ExtensionObjective.Evaluator(
-                name, project.Extensions, Path.Combine(project.Scratch, "ext"), energySpread, ions)
-            : FiguresOfMerit.Evaluator(name, energySpread, ions);
+        string name,
+        ProjectLayout project,
+        double energySpread,
+        int ions,
+        out ExtensionObjective.Provenance? provenance)
+    {
+        if (!ExtensionObjective.Names(name))
+        {
+            provenance = null;
+            return FiguresOfMerit.Evaluator(name, energySpread, ions);
+        }
+
+        var evaluate = ExtensionObjective.Evaluator(
+            name, project.Extensions, Path.Combine(project.Scratch, "ext"),
+            out var used, energySpread, ions);
+
+        provenance = used;
+        return evaluate;
+    }
+
+    /// <summary>
+    /// Writes the manifest a study result references.
+    /// </summary>
+    /// <remarks>
+    /// GRD-7: every result references a manifest. Studies wrote results and no
+    /// manifest at all until this, which is the requirement missing rather than
+    /// merely thin - a sweep is exactly the operation whose thousand draws are
+    /// worth being able to regenerate, and nothing recorded what produced them.
+    /// </remarks>
+    private static string WriteManifest(
+        ProjectLayout project,
+        string studyPath,
+        string kind,
+        string modelText,
+        string schemaVersion,
+        string transportMode,
+        long seed,
+        ExtensionObjective.Provenance? extension,
+        DateTimeOffset timestampUtc)
+    {
+        var manifest = new RunManifest
+        {
+            ModelHash = ContentHash.OfText(modelText),
+            SchemaVersion = schemaVersion,
+            EngineVersion = EngineBuild.Version,
+            SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
+            TransportMode = transportMode,
+            ComputePath = EngineBuild.ComputePath,
+            Seeds = [seed],
+            Extensions = extension is null ? [] : [extension.Identity],
+            Interpreter = extension?.Interpreter,
+            Machine = Environment.MachineName,
+            CreatedUtc = timestampUtc.ToUniversalTime().ToString("O"),
+        };
+
+        Directory.CreateDirectory(project.Results);
+
+        var stem = Path.GetFileNameWithoutExtension(studyPath);
+        var path = Path.Combine(project.Results, $"{stem}.{kind}.manifest.json");
+
+        File.WriteAllText(path, manifest.ToJson());
+
+        return Path.GetRelativePath(project.Root, path);
+    }
 
     private static readonly JsonSerializerOptions Reading = new()
     {
@@ -244,7 +303,7 @@ public static class StudyCommand
             };
         }
 
-        var evaluate = Evaluate(figure.Name, project, study.EnergySpread, study.Ions);
+        var evaluate = Evaluate(figure.Name, project, study.EnergySpread, study.Ions, out var extension);
 
         var result = ToleranceStudy.Run(
             document, channels, evaluate, study.Draws, study.Seed, study.OneAtATime, figure.Dimension);
@@ -270,7 +329,17 @@ public static class StudyCommand
             Artifacts = [],
         };
 
-        return outcome with { Artifacts = [Write(project, absolute, "sweep", outcome)] };
+        return outcome with
+        {
+            Artifacts =
+            [
+                Write(project, absolute, "sweep", outcome),
+                WriteManifest(
+                    project, absolute, "sweep", File.ReadAllText(modelPath), document.SchemaVersion,
+                    document.Transport?.Mode ?? "trajectory", study.Seed, extension,
+                    DateTimeOffset.UtcNow),
+            ],
+        };
     }
 
     /// <summary>Runs an optimisation.</summary>
@@ -314,7 +383,7 @@ public static class StudyCommand
         var result = Optimiser.Run(
             document,
             variables,
-            Evaluate(figure.Name, project, study.EnergySpread, study.Ions),
+            Evaluate(figure.Name, project, study.EnergySpread, study.Ions, out var extension),
             sense,
             algorithm,
             new OptimisationSettings
@@ -352,7 +421,17 @@ public static class StudyCommand
             Artifacts = [],
         };
 
-        return outcome with { Artifacts = [Write(project, absolute, "optimise", outcome)] };
+        return outcome with
+        {
+            Artifacts =
+            [
+                Write(project, absolute, "optimise", outcome),
+                WriteManifest(
+                    project, absolute, "optimise", File.ReadAllText(modelPath), document.SchemaVersion,
+                    document.Transport?.Mode ?? "trajectory", study.Seed, extension,
+                    DateTimeOffset.UtcNow),
+            ],
+        };
     }
 
     /// <summary>An empty envelope, for a dry run that computed nothing.</summary>
