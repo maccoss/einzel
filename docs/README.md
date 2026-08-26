@@ -19,6 +19,7 @@ states the intent and these pages state the reality; both are noted.
 | [Device templates](device-templates.md) | Writing a new device as data, and the three shipped examples |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
+| [Rendering](rendering.md) | Vector sections in SVG and PDF, decimation bounds, and how a figure carries its own caveats |
 | [Agent acceptance](agent-acceptance.md) | The prose-task suite, what it measures, and what gates a release |
 | [Lessons](lessons.md) | Bugs that presented as physics and were arithmetic |
 | [CLI](cli.md) | Command reference, exit codes, and the agent loop |
@@ -61,8 +62,13 @@ stability boundaries against published values, and **emittance** — which compl
 the Class T figures §12 asks for and doubles as a Liouville check on the
 integrator.
 
-Not yet built: extensions, rendering, the compute dispatch layer, the MCP server,
-the update mechanism, and the shell.
+Most recently **`Einzel.Render`**: vector sections in SVG and PDF, drawn headlessly
+in CI with no display attached, with conductors traced from their own signed
+distance so the renderer carries no device knowledge.
+
+Not yet built: extensions, the compute dispatch layer, the MCP server, the update
+mechanism, and the shell. Of the render verbs, `section` exists; `still` and
+`animation` do not.
 
 Nothing here is released software. Effort estimates, performance targets, and the
 numerical error budget in the specification are engineering judgement rather than

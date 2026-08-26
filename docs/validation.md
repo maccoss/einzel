@@ -177,6 +177,12 @@ covering everything.
   fine one, so a level that merges two nearby electrodes is a crude preconditioner
   rather than a wrong one. Galerkin coarsening would remove the guard rather than
   tune it, and it is not done. See [Numerics](numerics.md).
+- **A figure is checked for structure, not for looking right.** The render tests
+  assert that conductors, equipotentials and a trajectory are present, that every
+  coordinate lands on the page, that labels are text in both formats, that the PDF
+  cross-reference table is valid, and that the decimation bound is respected. None
+  of that says the drawing is *legible* - that is a judgement no test makes, and
+  the figures should be looked at when they change.
 - **Electrodes are solid, with no way to say otherwise.** Real instruments use
   mesh and grid electrodes that pass most of the beam. There is no way to declare
   one, and a mesh cannot be modelled as its wires either, because the wires run

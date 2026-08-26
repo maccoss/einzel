@@ -2,6 +2,7 @@ using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 using Einzel.Project;
+using Einzel.Render;
 
 namespace Einzel.Cli;
 
@@ -104,6 +105,7 @@ public static class Program
             "test" => Test(options),
             "verify" => Verify(options),
             "export" => Export(options),
+            "render" => Render(args, options),
             "schema" => Schema(options),
             "templates" => Catalog(options, "template"),
             "examples" => Catalog(options, "example"),
@@ -821,6 +823,131 @@ public static class Program
         return (int)ExitCode.Success;
     }
 
+    /// <summary>
+    /// Draws a model, headlessly, into a vector file.
+    /// </summary>
+    /// <remarks>
+    /// Section only, for now. <c>still</c> is a raster projection and <c>animation</c>
+    /// is a frame sequence with the non-linear time mapping RND-7 requires; both are
+    /// named here and refused with a reason rather than left to fail as an unknown
+    /// verb, because "not built yet" and "you spelled it wrong" are different
+    /// problems and an agent should not have to guess which it hit.
+    /// </remarks>
+    private static int Render(string[] args, CommandLine options)
+    {
+        var kind = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : null;
+
+        if (kind is "still" or "animation")
+        {
+            Console.Error.WriteLine(
+                $"'einzel render {kind}' is not built yet. Vector sections are: "
+                + "'einzel render section <model.json>'.");
+
+            Console.Error.WriteLine(
+                kind == "still"
+                    ? "A still is a raster projection; nothing in this build rasterises."
+                    : "An animation is a frame sequence with an explicit non-linear time mapping, "
+                        + "which needs the sequencer's timeline and a frame writer.");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var positional = kind is null ? options.Positional : options.Positional.Skip(1).ToList();
+
+        if (kind is not (null or "section") || positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel render section <model.json | figures/spec.json> [--out <file>]");
+            Console.Error.WriteLine(
+                "       [--format svg|pdf] [--equipotentials N] [--width-mm W] [--no-trajectory]");
+            Console.Error.WriteLine(
+                "       [--caption <text>] [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("draws a plane through the instrument as line work");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var given = Path.GetFullPath(positional[0]);
+
+        // A render spec names its own model (RND-2), so either may be handed in and
+        // the spec is the one that travels with the paper.
+        var isSpec = ReadsAsSpec(given);
+
+        var (spec, modelPath) = isSpec
+            ? RenderCommand.ReadSpec(given)
+            : (new RenderSpec { Model = given }, ModelPath: given);
+
+        spec = spec with
+        {
+            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
+            {
+                "PDF" => FigureFormat.Pdf,
+                _ => FigureFormat.Svg,
+            },
+            WidthMm = options.Value("width-mm") is { } width
+                ? double.Parse(width, CultureInfo.InvariantCulture)
+                : spec.WidthMm,
+            Equipotentials = options.Value("equipotentials") is { } count
+                ? int.Parse(count, CultureInfo.InvariantCulture)
+                : spec.Equipotentials,
+            Trajectory = !options.Has("no-trajectory") && spec.Trajectory,
+            Caption = options.Value("caption") ?? spec.Caption,
+        };
+
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+
+        var outcome = RenderCommand.Section(
+            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine(outcome.Written ? $"wrote {artifact}" : $"would write {artifact}");
+        }
+
+        Console.Out.WriteLine(
+            $"{outcome.PageMm[0]:F0} by {outcome.PageMm[1]:F0} mm, "
+            + $"{outcome.Paths.Values.Sum()} paths, {outcome.TextRuns} labels");
+
+        Console.Out.WriteLine(
+            $"decimated to {outcome.DecimationToleranceMm:G3} mm; trajectory "
+            + $"{outcome.TrajectoryPointsSampled} points to {outcome.TrajectoryPoints}");
+
+        // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>Whether a file is a render spec rather than a model.</summary>
+    /// <remarks>
+    /// By what it declares, not by where it sits: a spec carries
+    /// <c>renderSpecVersion</c> and a model carries <c>schemaVersion</c>. Guessing
+    /// from the folder would make <c>figures/</c> load-bearing, and a file moved is
+    /// then a file broken.
+    /// </remarks>
+    private static bool ReadsAsSpec(string path)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+
+            return document.RootElement.TryGetProperty("renderSpecVersion", out _)
+                || document.RootElement.TryGetProperty("kind", out _);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
     private static int Init(CommandLine options)
     {
         var root = options.Positional.Count > 0 ? options.Positional[0] : ".";
@@ -1145,6 +1272,7 @@ public static class Program
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
+          render section <model.json>   draw a plane through the instrument as SVG or PDF
           agents-md [dir]               regenerate the platform layer of AGENTS.md
 
         release tooling:

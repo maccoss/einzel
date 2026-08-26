@@ -31,6 +31,16 @@ public static class CommandJson
     /// <param name="value">The result.</param>
     /// <returns>The JSON text, newline terminated.</returns>
     public static string Write<T>(T value) => JsonSerializer.Serialize(value, Options) + "\n";
+
+    /// <summary>Reads a command document.</summary>
+    /// <typeparam name="T">The document type.</typeparam>
+    /// <param name="json">The JSON text.</param>
+    /// <returns>The document, or null if the text is a JSON null.</returns>
+    /// <remarks>
+    /// The same options as <see cref="Write{T}"/>, so a document this platform wrote
+    /// reads back as what it was - which is what a stored render spec depends on.
+    /// </remarks>
+    public static T? Read<T>(string json) => JsonSerializer.Deserialize<T>(json, Options);
 }
 
 /// <summary>The outcome of creating a project.</summary>

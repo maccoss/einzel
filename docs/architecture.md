@@ -14,11 +14,12 @@ Engine outward. Each references only what is above it in this list.
 | `Einzel.Sweeps` | Tolerance Monte Carlo, sensitivity fields, Nelder-Mead and CMA-ES |
 | `Einzel.Io` | Model JSON, VTU export, the wire form of a result |
 | `Einzel.Project` | Project layout, run manifests, content hashing |
+| `Einzel.Render` | Projection, contouring, decimation, and the SVG and PDF writers |
 | `Einzel.Commands` | Command objects: every operation as one serialisable thing |
 | `Einzel.Cli` | The primary surface |
 
-Not yet built: `Einzel.Extensions`, `Einzel.Render`, `Einzel.Compute`,
-`Einzel.Mcp`, `Einzel.Update`, `Einzel.Wpf`.
+Not yet built: `Einzel.Extensions`, `Einzel.Compute`, `Einzel.Mcp`,
+`Einzel.Update`, `Einzel.Wpf`.
 
 The CLI, the future MCP server, and the future shell are **peers, not a stack**.
 All three drive the same command objects. That is what makes "nothing exists only
@@ -36,8 +37,11 @@ on Linux. CI builds and tests on `ubuntu-latest` *and* `windows-latest` from the
 first commit, because an invariant only ever checked on a developer's Windows box
 is one that has already been broken by the time anyone notices.
 
-This gets its hardest test when rendering arrives: `Einzel.Render` must produce a
-publication figure headlessly, in CI, on a machine with no display.
+Its hardest test has now arrived and it passes. `Einzel.Render` draws real device
+templates as SVG and PDF on the Linux runner, where there is no display, no window
+manager and no font server. There is no drawing surface anywhere in the pipeline
+and no font measurement: a scene is a list of paths and text runs, and the two
+writers turn that into files. See [Rendering](rendering.md).
 
 ### 2. No device class below `Einzel.Library`
 
@@ -49,6 +53,12 @@ This shows up in naming. The primitive an ion mirror is built from is called
 on the other — not `IonMirror`. The closed-form reflectron used as a test
 reference lives in the *test* project. `ArrivalTimePeak` computes resolving power
 without knowing what produced the arrivals.
+
+The renderer is the same argument in a new place. It draws a conductor as the
+**zero level set of the electrode's own signed distance**, which the model format
+already requires for the solver and the ion absorber - so a rod, a plate, a ring
+and a sphere are one routine, and a shape added to the format needs no change in
+`Einzel.Render` at all.
 
 LIB-1 states the test: if supporting a new device requires a change below
 `Einzel.Library`, either it is genuinely novel physics or the abstraction is
