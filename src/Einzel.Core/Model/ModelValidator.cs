@@ -546,6 +546,9 @@ public static class ModelValidator
             case "solved2d":
                 return CompileSolvedField(field.Solve, $"{path}/solve", p, restage, errors);
 
+            case "solved3d":
+                return CompileSolved3D(field.Solve3d, $"{path}/solve3d", p, restage, errors);
+
             default:
                 errors.Add(new EinzelError
                 {
@@ -706,6 +709,536 @@ public static class ModelValidator
                 || a.MinX != b.MinX || a.MaxX != b.MaxX
                 || a.MinY != b.MinY || a.MaxY != b.MaxY
                 || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.Radius != b.Radius;
+
+            if (moved)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/set",
+                    Constraint =
+                        $"stage '{stage}' moves electrode '{a.Name}', and a sequence may only change "
+                        + "what an electrode holds, not where it is",
+                    Observed = new ObservedValue(0.0, a.Name),
+                    Suggestion =
+                        "set only the parameters that reach potentials, amplitudes and phases; a stage that "
+                        + "moves metal would need its own solve and its own grid",
+                });
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Compiles a three-dimensional solved field element.</summary>
+    /// <summary>Compiles one declared 3D electrode into the electrodes it stands for.</summary>
+    private static void Expand3D(
+        Electrode3DDocument declared,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<CompiledElectrode3D> into,
+        List<EinzelError> errors)
+    {
+        if (declared.Repeat is not { } repeat)
+        {
+            var single = CompileElectrode3D(declared, path, p, errors);
+
+            if (single is not null)
+            {
+                into.Add(single);
+            }
+
+            return;
+        }
+
+        var count = TryQuantity(repeat.Count, $"{path}/repeat/count", Dimension.Dimensionless, p, errors);
+
+        if (count is null)
+        {
+            return;
+        }
+
+        var copies = (int)Math.Round(count.Value.SiValue);
+
+        if (copies < 1 || Math.Abs(count.Value.SiValue - copies) > 1e-9)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/repeat/count",
+                Constraint = "a repeat count must be a whole number of at least one",
+                Observed = new ObservedValue(count.Value.SiValue, "1"),
+                Suggestion = "use a parameter that evaluates to a whole number, for example 3",
+            });
+
+            return;
+        }
+
+        var index = repeat.Index ?? "index";
+
+        if (p.ContainsKey(index))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/repeat/index",
+                Constraint = $"'{index}' is already a declared parameter, and binding it here would shadow it",
+                Observed = new ObservedValue(0.0, index),
+                Suggestion = "choose another index name, such as 'rod' or 'section'",
+            });
+
+            return;
+        }
+
+        var name = declared.Name ?? "electrode";
+
+        for (var k = 0; k < copies; k++)
+        {
+            var scoped = new Dictionary<string, Quantity>(p, StringComparer.Ordinal)
+            {
+                [index] = Quantity.Si(k, Dimension.Dimensionless),
+            };
+
+            var copy = CompileElectrode3D(
+                declared with
+                {
+                    Repeat = null,
+                    Name = $"{name}-{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                },
+                $"{path}/repeat/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                scoped,
+                errors);
+
+            if (copy is not null)
+            {
+                into.Add(copy);
+            }
+        }
+    }
+
+    private static CompiledElectrode3D? CompileElectrode3D(
+        Electrode3DDocument electrode,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        var length = Dimension.LengthDimension;
+        var volt = Dimension.ElectricPotential;
+        var name = electrode.Name ?? "electrode";
+
+        var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
+
+        var amplitude = electrode.DriveAmplitude is null
+            ? 0.0
+            : TryQuantity(electrode.DriveAmplitude, $"{path}/driveAmplitude", volt, p, errors)?.SiValue ?? 0.0;
+
+        if (potential is null)
+        {
+            return null;
+        }
+
+        var common = new CompiledElectrode3D
+        {
+            Name = name,
+            Shape = Electrode3DShape.Box,
+            Potential = potential.Value.SiValue,
+            DriveAmplitude = amplitude,
+            DrivePhase = electrode.DrivePhase,
+        };
+
+        switch (electrode.Shape)
+        {
+            case "box":
+            {
+                var minX = TryQuantity(electrode.MinX, $"{path}/minX", length, p, errors);
+                var minY = TryQuantity(electrode.MinY, $"{path}/minY", length, p, errors);
+                var minZ = TryQuantity(electrode.MinZ, $"{path}/minZ", length, p, errors);
+                var maxX = TryQuantity(electrode.MaxX, $"{path}/maxX", length, p, errors);
+                var maxY = TryQuantity(electrode.MaxY, $"{path}/maxY", length, p, errors);
+                var maxZ = TryQuantity(electrode.MaxZ, $"{path}/maxZ", length, p, errors);
+
+                if (minX is null || minY is null || minZ is null
+                    || maxX is null || maxY is null || maxZ is null)
+                {
+                    return null;
+                }
+
+                if (minX.Value.SiValue > maxX.Value.SiValue
+                    || minY.Value.SiValue > maxY.Value.SiValue
+                    || minZ.Value.SiValue > maxZ.Value.SiValue)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = path,
+                        Constraint =
+                            $"box '{name}' is inverted, and an inverted box vanishes from the solve "
+                            + "rather than failing",
+                        Observed = new ObservedValue(maxX.Value.SiValue - minX.Value.SiValue, "m"),
+                        Suggestion = "check the expressions that derive the bounds",
+                    });
+
+                    return null;
+                }
+
+                return common with
+                {
+                    Shape = Electrode3DShape.Box,
+                    MinX = minX.Value.SiValue,
+                    MinY = minY.Value.SiValue,
+                    MinZ = minZ.Value.SiValue,
+                    MaxX = maxX.Value.SiValue,
+                    MaxY = maxY.Value.SiValue,
+                    MaxZ = maxZ.Value.SiValue,
+                };
+            }
+
+            case "sphere":
+            case "cylinder":
+            {
+                var centreX = TryQuantity(electrode.CentreX, $"{path}/centreX", length, p, errors);
+                var centreY = TryQuantity(electrode.CentreY, $"{path}/centreY", length, p, errors);
+                var radius = TryQuantity(electrode.Radius, $"{path}/radius", length, p, errors);
+
+                var centreZ = electrode.CentreZ is null
+                    ? Quantity.Si(0.0, length)
+                    : TryQuantity(electrode.CentreZ, $"{path}/centreZ", length, p, errors);
+
+                if (centreX is null || centreY is null || centreZ is null || radius is null)
+                {
+                    return null;
+                }
+
+                if (radius.Value.SiValue <= 0.0)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/radius",
+                        Constraint = $"'{name}' must have positive radius",
+                        Observed = new ObservedValue(radius.Value.SiValue, "m"),
+                        Suggestion = "supply a positive radius",
+                    });
+
+                    return null;
+                }
+
+                if (electrode.Shape == "sphere")
+                {
+                    return common with
+                    {
+                        Shape = Electrode3DShape.Sphere,
+                        CentreX = centreX.Value.SiValue,
+                        CentreY = centreY.Value.SiValue,
+                        CentreZ = centreZ.Value.SiValue,
+                        Radius = radius.Value.SiValue,
+                    };
+                }
+
+                var lower = TryQuantity(electrode.Lower, $"{path}/lower", length, p, errors);
+                var upper = TryQuantity(electrode.Upper, $"{path}/upper", length, p, errors);
+
+                if (lower is null || upper is null)
+                {
+                    return null;
+                }
+
+                var axis = electrode.Axis switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (axis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/axis",
+                        Constraint = "a cylinder axis must be 'x', 'y' or 'z'",
+                        Observed = new ObservedValue(0.0, electrode.Axis ?? "(none)"),
+                        Suggestion = "'z' when omitted; the centre is then given as centreX and centreY",
+                    });
+
+                    return null;
+                }
+
+                if (upper.Value.SiValue <= lower.Value.SiValue)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = path,
+                        Constraint = $"cylinder '{name}' must have upper above lower along its axis",
+                        Observed = new ObservedValue(upper.Value.SiValue - lower.Value.SiValue, "m"),
+                        Suggestion = "check the expressions that derive the ends",
+                    });
+
+                    return null;
+                }
+
+                return common with
+                {
+                    Shape = Electrode3DShape.Cylinder,
+                    CentreX = centreX.Value.SiValue,
+                    CentreY = centreY.Value.SiValue,
+                    CentreZ = centreZ.Value.SiValue,
+                    Radius = radius.Value.SiValue,
+                    Axis = axis.Value,
+                    Lower = lower.Value.SiValue,
+                    Upper = upper.Value.SiValue,
+                };
+            }
+
+            default:
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{path}/shape",
+                    Constraint = "an electrode shape must be 'box', 'sphere' or 'cylinder'",
+                    Observed = new ObservedValue(0.0, electrode.Shape ?? "(none)"),
+                    Suggestion =
+                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead",
+                });
+
+                return null;
+        }
+    }
+
+    private static CompiledField? CompileSolved3D(
+        SolvedField3DDocument? solve,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        StageResolver restage,
+        List<EinzelError> errors)
+    {
+        if (solve is null)
+        {
+            errors.Add(Missing(path, "a solved3d field needs a solve3d block",
+                "give it a box, a cell size, and at least one electrode"));
+            return null;
+        }
+
+        var length = Dimension.LengthDimension;
+
+        var minX = TryQuantity(solve.MinX, $"{path}/minX", length, p, errors);
+        var minY = TryQuantity(solve.MinY, $"{path}/minY", length, p, errors);
+        var minZ = TryQuantity(solve.MinZ, $"{path}/minZ", length, p, errors);
+        var maxX = TryQuantity(solve.MaxX, $"{path}/maxX", length, p, errors);
+        var maxY = TryQuantity(solve.MaxY, $"{path}/maxY", length, p, errors);
+        var maxZ = TryQuantity(solve.MaxZ, $"{path}/maxZ", length, p, errors);
+        var cell = TryQuantity(solve.CellSize, $"{path}/cellSize", length, p, errors);
+
+        if (minX is null || minY is null || minZ is null
+            || maxX is null || maxY is null || maxZ is null || cell is null)
+        {
+            return null;
+        }
+
+        if (maxX.Value.SiValue <= minX.Value.SiValue
+            || maxY.Value.SiValue <= minY.Value.SiValue
+            || maxZ.Value.SiValue <= minZ.Value.SiValue)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = path,
+                Constraint = "a solve domain must have positive extent on every axis",
+                Observed = new ObservedValue(maxX.Value.SiValue - minX.Value.SiValue, "m"),
+                Suggestion = "check that each max exceeds its min",
+            });
+
+            return null;
+        }
+
+        if (cell.Value.SiValue <= 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/cellSize",
+                Constraint = "a cell size must be positive",
+                Observed = new ObservedValue(cell.Value.SiValue, "m"),
+                Suggestion = "supply a positive spacing, for example {\"value\": 0.2, \"unit\": \"mm\"}",
+            });
+
+            return null;
+        }
+
+        var electrodes = new List<CompiledElectrode3D>();
+
+        for (var i = 0; i < (solve.Electrodes?.Count ?? 0); i++)
+        {
+            Expand3D(solve.Electrodes![i], $"{path}/electrodes/{i}", p, electrodes, errors);
+        }
+
+        if (electrodes.Count == 0 && errors.Count == 0)
+        {
+            errors.Add(Missing($"{path}/electrodes",
+                "a solved3d field needs at least one electrode",
+                "add a box, a sphere or a cylinder"));
+        }
+
+        var drive = Drive(solve.Drive, $"{path}/drive", p, errors);
+        var stages = CompileStages3D(solve, $"{path}/stages", electrodes, restage, errors);
+
+        if (drive is null && electrodes.Any(e => e.IsDriven))
+        {
+            var driven = electrodes.First(e => e.IsDriven);
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/drive",
+                Constraint =
+                    $"electrode '{driven.Name}' declares a drive amplitude, but the solve declares no drive",
+                Observed = new ObservedValue(driven.DriveAmplitude, "V"),
+                Suggestion = "add a drive block with a frequency, or use 'potential' for a static electrode",
+            });
+        }
+
+        if (errors.Count > 0)
+        {
+            return null;
+        }
+
+        return new CompiledField
+        {
+            Kind = CompiledFieldKind.Solved3D,
+            Solve3D = new CompiledSolvedField3D
+            {
+                MinX = minX.Value.SiValue,
+                MinY = minY.Value.SiValue,
+                MinZ = minZ.Value.SiValue,
+                MaxX = maxX.Value.SiValue,
+                MaxY = maxY.Value.SiValue,
+                MaxZ = maxZ.Value.SiValue,
+                CellSize = cell.Value.SiValue,
+                Tolerance = solve.Tolerance,
+                Drive = drive,
+                Stages = stages,
+                Electrodes = electrodes,
+            },
+        };
+    }
+
+    private static List<CompiledStage3D> CompileStages3D(
+        SolvedField3DDocument solve,
+        string path,
+        IReadOnlyList<CompiledElectrode3D> baseline,
+        StageResolver restage,
+        List<EinzelError> errors)
+    {
+        var stages = new List<CompiledStage3D>();
+
+        if (solve.Stages is not { Count: > 0 } declared || solve.Electrodes is not { } declaredElectrodes)
+        {
+            return stages;
+        }
+
+        for (var k = 0; k < declared.Count; k++)
+        {
+            var stage = declared[k];
+            var stagePath = $"{path}/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            var name = stage.Name ?? $"stage {k}";
+
+            var duration = TryQuantity(
+                stage.Duration, $"{stagePath}/duration", Dimension.TimeDimension, NoParameters, errors);
+
+            if (duration is null || duration.Value.SiValue <= 0.0)
+            {
+                if (duration is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{stagePath}/duration",
+                        Constraint = "a stage must last a positive time",
+                        Observed = new ObservedValue(duration.Value.SiValue, "s"),
+                        Suggestion = "give the stage a duration, for example {\"value\": 100, \"unit\": \"us\"}",
+                    });
+                }
+
+                continue;
+            }
+
+            var set = new Dictionary<string, Quantity>(StringComparer.Ordinal);
+
+            foreach (var (parameter, value) in stage.Set ?? NoOverrides)
+            {
+                try
+                {
+                    set[parameter] = Quantity.From(value.Value, value.Unit);
+                }
+                catch (EinzelException failure)
+                {
+                    errors.Add(failure.Error with { Path = $"{stagePath}/set/{parameter}" });
+                }
+            }
+
+            var surface = restage(set, errors);
+
+            if (surface is null)
+            {
+                continue;
+            }
+
+            var electrodes = new List<CompiledElectrode3D>();
+
+            for (var i = 0; i < declaredElectrodes.Count; i++)
+            {
+                Expand3D(declaredElectrodes[i], $"{stagePath}/electrodes/{i}", surface, electrodes, errors);
+            }
+
+            if (!SameGeometry3D(baseline, electrodes, name, stagePath, errors))
+            {
+                continue;
+            }
+
+            stages.Add(new CompiledStage3D(name, duration.Value.SiValue, electrodes));
+        }
+
+        return stages;
+    }
+
+    /// <summary>Whether two compilations put the same metal in the same places.</summary>
+    private static bool SameGeometry3D(
+        IReadOnlyList<CompiledElectrode3D> baseline,
+        List<CompiledElectrode3D> staged,
+        string stage,
+        string path,
+        List<EinzelError> errors)
+    {
+        if (baseline.Count != staged.Count)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/set",
+                Constraint =
+                    $"stage '{stage}' changes how many electrodes there are, from {baseline.Count} to {staged.Count}",
+                Observed = new ObservedValue(staged.Count, "electrodes"),
+                Suggestion = "a stage may change what an electrode holds, not whether it exists",
+            });
+
+            return false;
+        }
+
+        for (var i = 0; i < baseline.Count; i++)
+        {
+            var a = baseline[i];
+            var b = staged[i];
+
+            var moved = a.Shape != b.Shape || a.Axis != b.Axis
+                || a.MinX != b.MinX || a.MaxX != b.MaxX
+                || a.MinY != b.MinY || a.MaxY != b.MaxY
+                || a.MinZ != b.MinZ || a.MaxZ != b.MaxZ
+                || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.CentreZ != b.CentreZ
+                || a.Radius != b.Radius || a.Lower != b.Lower || a.Upper != b.Upper;
 
             if (moved)
             {

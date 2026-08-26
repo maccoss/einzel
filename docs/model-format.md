@@ -232,6 +232,41 @@ Nothing is re-solved as the drive swings: electrodes sharing a time dependence
 share one basis solve, and a quadrupole's two pairs are exact negatives, so four
 rods reduce to one. See [Numerics](numerics.md).
 
+## Three dimensions
+
+```json
+{
+  "type": "solved3d",
+  "solve3d": {
+    "minX": ..., "minY": ..., "minZ": ...,
+    "maxX": ..., "maxY": ..., "maxZ": ...,
+    "cellSize": { "value": 0.8, "unit": "mm" },
+    "drive": { "frequency": { "value": 1, "unit": "MHz" } },
+    "electrodes": [
+      { "name": "rod", "shape": "cylinder", "axis": "z",
+        "centreX": ..., "centreY": ..., "radius": ...,
+        "lower": ..., "upper": ...,
+        "potential": ..., "driveAmplitude": ... }
+    ]
+  }
+}
+```
+
+Three primitives: `box` (a plate, a segment wall, a housing), `cylinder` (a rod, a
+tube, a ring - along `x`, `y` or `z`), and `sphere` (a bead, a rounded end).
+Everything else is as it is for `solved2d`: repeats, drives, stages, sub-cell
+boundaries, solid electrodes.
+
+**Three dimensions cost the cube of the resolution.** A cross-section at sixteen
+cells across a bore is 128 by 128 nodes; the same in three dimensions is two
+million. So a 3D model is meshed far more coarsely than a plane one, and field
+quality is the thing to check first rather than to assume - see
+[Numerics](numerics.md) for what the solver does and does not manage.
+
+Use it when the geometry genuinely varies along all three axes. A device that is a
+cross-section extruded, or a half-plane rotated, is enormously cheaper and more
+accurate as `solved2d` with the matching symmetry.
+
 ## Operating a geometry through stages
 
 The sequencer the architecture calls a timed state machine. A trap fills,

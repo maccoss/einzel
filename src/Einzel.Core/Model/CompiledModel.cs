@@ -103,6 +103,11 @@ public enum CompiledFieldKind
     /// that lets a device be a template rather than a class (LIB-1).
     /// </summary>
     Solved2D,
+
+    /// <summary>
+    /// The same, in three dimensions, for a device with no symmetry to exploit.
+    /// </summary>
+    Solved3D,
 }
 
 /// <summary>A validated field element, in SI.</summary>
@@ -125,6 +130,9 @@ public sealed record CompiledField
 
     /// <summary>Half-space only: the turning depth the gradient was derived from, in metres.</summary>
     public double TurningDepthSi { get; init; }
+
+    /// <summary>Solved-3D only: the geometry to solve.</summary>
+    public CompiledSolvedField3D? Solve3D { get; init; }
 
     /// <summary>Solved only: the geometry to solve.</summary>
     public CompiledSolvedField? Solve { get; init; }

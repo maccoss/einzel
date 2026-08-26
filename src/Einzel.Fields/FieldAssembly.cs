@@ -237,6 +237,25 @@ public static class FieldAssembly
                         Quantity.Si(element.PotentialGradientSi, Dimension.ElectricField)));
                     break;
 
+                case CompiledFieldKind.Solved3D:
+                {
+                    var solve = element.Solve3D!;
+
+                    var geometry = new Solved.Geometry3D(
+                        solve.MinX, solve.MinY, solve.MinZ,
+                        solve.MaxX, solve.MaxY, solve.MaxZ,
+                        solve.CellSize,
+                        solve.Electrodes,
+                        solve.Tolerance)
+                    {
+                        Drive = solve.Drive,
+                        Stages = solve.Stages,
+                    };
+
+                    elements.Add(Solved.GeometryBuilder3D.BuildField(geometry).Field);
+                    break;
+                }
+
                 case CompiledFieldKind.Solved2D:
                     // The solve happens here, once per build. Nothing about what
                     // the electrodes add up to is known at this level.

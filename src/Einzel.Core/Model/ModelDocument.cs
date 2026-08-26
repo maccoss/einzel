@@ -274,6 +274,17 @@ public sealed record FieldDocument
     /// <summary>Solved only: the domain, electrodes, and boundary conditions.</summary>
     public SolvedFieldDocument? Solve { get; init; }
 
+    /// <summary>
+    /// Solved-3D only: the box, the electrodes, and how they are driven.
+    /// </summary>
+    /// <remarks>
+    /// Named with a lower-case d so the camel-case naming policy produces
+    /// <c>solve3d</c> rather than <c>solve3D</c>. The generated schema, the
+    /// documents and this property have to agree on one spelling, and the one a
+    /// person would type is the one worth keeping.
+    /// </remarks>
+    public SolvedField3DDocument? Solve3d { get; init; }
+
     /// <summary>Uniform only: the field vector.</summary>
     public VectorValue? Field { get; init; }
 

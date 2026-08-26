@@ -21,7 +21,15 @@ public sealed record Geometry3D(
     double MaxZ,
     double CellSize,
     IReadOnlyList<CompiledElectrode3D> Electrodes,
-    double Tolerance = 1e-10);
+    double Tolerance = 1e-10)
+{
+    /// <summary>The drive this geometry is operated with, or null when static.</summary>
+    public Core.Model.CompiledDrive? Drive { get; init; }
+
+    /// <summary>The timed sequence it is operated through, or empty for one state.</summary>
+    public IReadOnlyList<CompiledStage3D> Stages { get; init; } = [];
+}
+
 
 /// <summary>Builds and solves a three-dimensional geometry.</summary>
 public static class GeometryBuilder3D
@@ -99,6 +107,103 @@ public static class GeometryBuilder3D
 
         return (new SolvedField3D(potential, geometry.Electrodes), report);
     }
+
+    /// <summary>
+    /// Builds a geometry as a field, driven or sequenced if it declares either.
+    /// </summary>
+    /// <param name="geometry">The geometry.</param>
+    /// <returns>The field, and the worst of the basis solves.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    /// <remarks>
+    /// The channel decomposition is the same code the plane uses, because nothing
+    /// about it is dimensional: what makes a channel a channel is how the electrodes
+    /// are wired, not where they are. A segmented quadrupole with three sections at
+    /// different working points is three patterns, whatever the mesh is.
+    /// </remarks>
+    public static (IElectrostaticField Field, SolveReport Report) BuildField(Geometry3D geometry)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+
+        if (geometry.Drive is null && geometry.Stages.Count == 0)
+        {
+            var (statik, staticReport) = Build(geometry);
+            return (statik, staticReport);
+        }
+
+        var grid = BuildGrid(geometry);
+
+        var states = geometry.Stages.Count > 0
+            ? geometry.Stages.Select(stage => stage.Electrodes).ToList()
+            : [geometry.Electrodes];
+
+        var groups = DriveChannels.Decompose([.. states.SelectMany(e => e).Select(Excited)]);
+
+        var channels = new List<IElectrostaticField>(groups.Count);
+        var direct = new List<double>(groups.Count);
+        var harmonics = new List<IReadOnlyList<(double Amplitude, double Phase)>>(groups.Count);
+
+        SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
+
+        foreach (var group in groups)
+        {
+            var pattern = group.Pattern;
+
+            var (potential, report) = PoissonSolver3D.Solve(
+                BuildMask(geometry, grid, e => pattern.GetValueOrDefault(e.Name, 0.0)),
+                geometry.Tolerance,
+                maximumCycles: 200,
+                coarsen: coarse => BuildMask(geometry, coarse, e => pattern.GetValueOrDefault(e.Name, 0.0)));
+
+            channels.Add(new SolvedField3D(potential, geometry.Electrodes));
+            direct.Add(group.Direct);
+            harmonics.Add(group.Harmonics);
+
+            if (report.Cycles > worst.Cycles)
+            {
+                worst = report;
+            }
+        }
+
+        var drive = geometry.Drive;
+
+        Analytic.RfWaveform waveform = drive is { Waveform: Core.Model.DriveWaveform.Rectangular }
+            ? new Analytic.RfWaveform.Rectangular(drive.DutyCycle)
+            : new Analytic.RfWaveform.Sinusoid();
+
+        var frequency = drive?.FrequencyHz ?? 1.0;
+
+        if (geometry.Stages.Count == 0)
+        {
+            return (new DrivenSolvedField(channels, direct, harmonics, frequency, waveform), worst);
+        }
+
+        var boundaries = new List<double>(geometry.Stages.Count);
+        var stageDirect = new List<IReadOnlyList<double>>(geometry.Stages.Count);
+        var stageHarmonics =
+            new List<IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>>>(geometry.Stages.Count);
+
+        var elapsed = 0.0;
+
+        foreach (var stage in geometry.Stages)
+        {
+            elapsed += stage.DurationSeconds;
+            boundaries.Add(elapsed);
+
+            var weights = DriveChannels.Weigh(groups, [.. stage.Electrodes.Select(Excited)]);
+
+            stageDirect.Add(weights.Direct);
+            stageHarmonics.Add(weights.Harmonics);
+        }
+
+        var sequenced = new DrivenSolvedField(
+            channels, direct, harmonics, frequency, waveform, boundaries, stageDirect, stageHarmonics);
+
+        return (sequenced, worst);
+    }
+
+    /// <summary>How a three-dimensional electrode is excited, for the shared decomposition.</summary>
+    private static Excitation Excited(CompiledElectrode3D electrode) =>
+        new(electrode.Name, electrode.Potential, electrode.DriveAmplitude, electrode.DrivePhase);
 
     private static void Rasterise(
         DirichletMask3D mask, Grid3D grid, CompiledElectrode3D electrode, double potential)

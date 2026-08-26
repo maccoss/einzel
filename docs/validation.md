@@ -155,12 +155,12 @@ covering everything.
   excitations an electrode may carry, and no multi-notch isolation waveform.
 - **No statistical-diffusion transport**, so no cross-mode agreement check in the
   overlap band.
-- **3D exists but is not wired to the model format.** The solver, the cut-cell
-  geometry, the box, sphere and cylinder primitives and the tricubic interpolant are
-  built and checked against closed forms, but a document cannot yet declare a
-  `solved3d` field - so nothing above `Einzel.Fields` can reach it, and the
-  segmented quadrupole and the Ion Processor's auxiliary DC electrodes still
-  cannot be modelled end to end.
+- **3D runs coarse.** A solve costs the cube of its resolution, so a 3D model is
+  meshed far more coarsely than a plane one - the segmented quadrupole template uses
+  five cells across r0 where the plane studies use sixteen. Its transmission
+  boundary is therefore field quality rather than physics, and is reported rather
+  than asserted. Nothing yet establishes a 3D device result against mesh
+  refinement.
 - **3D multigrid does not coarsen past an interior electrode.** It refuses rather
   than converging to the wrong answer, so such geometries run as a smoother:
   correct, and slow. See [Numerics](numerics.md).

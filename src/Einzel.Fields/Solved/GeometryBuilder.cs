@@ -441,7 +441,8 @@ public static class GeometryBuilder
             ? solve.Stages.Select(stage => stage.Electrodes).ToList()
             : [solve.Electrodes];
 
-        var groups = Channels([.. states.SelectMany(e => e)]);
+        var groups = DriveChannels.Decompose(
+            [.. states.SelectMany(e => e).Select(Excited)]);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
@@ -519,7 +520,7 @@ public static class GeometryBuilder
 
             // The same channels, re-weighted for this stage. Every pattern already
             // has a solve; what a stage changes is only how much of each is on.
-            var weights = Weigh(groups, stage.Electrodes);
+            var weights = DriveChannels.Weigh(groups, [.. stage.Electrodes.Select(Excited)]);
 
             stageDirect.Add(weights.Direct);
             stageHarmonics.Add(weights.Harmonics);
@@ -531,220 +532,8 @@ public static class GeometryBuilder
         return (sequenced, worst);
     }
 
-    /// <summary>
-    /// The weight each already-solved channel carries during one stage.
-    /// </summary>
-    /// <remarks>
-    /// The stage is decomposed the same way the whole geometry was, and its
-    /// supplies are matched back onto the existing patterns. A supply whose pattern
-    /// is not among them cannot happen - the patterns were gathered from every
-    /// stage - so a miss would be a defect rather than a document error, and it is
-    /// left to throw rather than quietly contributing nothing.
-    /// </remarks>
-    private static (List<double> Direct, List<IReadOnlyList<(double Amplitude, double Phase)>> Harmonics)
-        Weigh(List<Channel> channels, IReadOnlyList<CompiledElectrode> electrodes)
-    {
-        var direct = new List<double>(new double[channels.Count]);
 
-        var harmonics = new List<IReadOnlyList<(double Amplitude, double Phase)>>(
-            Enumerable.Range(0, channels.Count)
-                .Select(_ => (IReadOnlyList<(double Amplitude, double Phase)>)[]));
-
-        foreach (var group in Channels(electrodes))
-        {
-            var index = channels.FindIndex(c => SamePattern(c.Pattern, group.Pattern));
-
-            if (index < 0)
-            {
-                continue;
-            }
-
-            direct[index] += group.Direct;
-            harmonics[index] = [.. harmonics[index], .. group.Harmonics];
-        }
-
-        return (direct, harmonics);
-    }
-
-    /// <summary>
-    /// One solved basis, and the time-varying weight it is multiplied by.
-    /// </summary>
-    /// <param name="Pattern">
-    /// Electrode name to the relative potential it holds in this solve, normalised
-    /// so the leading non-zero entry is one.
-    /// </param>
-    /// <param name="Direct">The constant part of the weight, in volts.</param>
-    /// <param name="Harmonics">
-    /// Amplitude and phase of each drive term in the weight. More than one because
-    /// a pattern driven at two phases at once is a real thing, and because two
-    /// supplies sharing a spatial pattern should share the solve.
-    /// </param>
-    private sealed record Channel(
-        Dictionary<string, double> Pattern,
-        double Direct,
-        List<(double Amplitude, double Phase)> Harmonics);
-
-    /// <summary>
-    /// One supply: which electrodes it reaches, at what relative potential, and how
-    /// its potential varies in time.
-    /// </summary>
-    private sealed record Supply(
-        Dictionary<string, double> Coefficients, double Direct, double Amplitude, double Phase);
-
-    /// <summary>
-    /// Reduces a driven geometry to the fewest solves that can express it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Two steps, and the order matters. First every electrode's potential is split
-    /// into the supplies feeding it: a constant one, and one per distinct drive
-    /// phase. A funnel's two hundred rings reach three supplies - a DC chain and two
-    /// RF phases - however many distinct voltages the chain holds, because what
-    /// makes a supply one supply is that every electrode on it moves <em>together</em>,
-    /// not that they move to the same place.
-    /// </para>
-    /// <para>
-    /// Then supplies are grouped by their <em>spatial pattern</em> rather than by
-    /// their time dependence. A quadrupole run with DC has two supplies - a steady
-    /// one and an oscillating one - but both put the x pair up and the y pair down
-    /// by the same relative amounts, so they are the same solved field with two
-    /// weights, and the whole filter is one solve. Grouping by time dependence
-    /// alone would have made it two.
-    /// </para>
-    /// <para>
-    /// The result is the minimum for this class: one solve per distinct shape of
-    /// applied potential, whatever the shapes are driven with. SYM-1 gives the
-    /// target - "two RF basis fields plus a DC gradient, not 200 basis solutions" -
-    /// and this reaches it for any number of rings.
-    /// </para>
-    /// </remarks>
-    private static List<Channel> Channels(IReadOnlyList<CompiledElectrode> electrodes)
-    {
-        var supplies = new List<Supply>();
-
-        Supply Reach(double direct, double amplitude, double phase)
-        {
-            var existing = supplies.FirstOrDefault(t =>
-                t.Direct == direct && t.Amplitude == amplitude && t.Phase == phase);
-
-            if (existing is null)
-            {
-                existing = new Supply([], direct, amplitude, phase);
-                supplies.Add(existing);
-            }
-
-            return existing;
-        }
-
-        foreach (var electrode in electrodes)
-        {
-            // The constant supply reaches every electrode that holds a DC
-            // potential, each at its own volts. One supply, however many voltages.
-            if (electrode.Potential != 0.0)
-            {
-                Reach(1.0, 0.0, 0.0).Coefficients[electrode.Name] = electrode.Potential;
-            }
-
-            if (electrode.DriveAmplitude != 0.0)
-            {
-                var phase = electrode.DrivePhase - Math.Floor(electrode.DrivePhase);
-                Reach(0.0, 1.0, phase).Coefficients[electrode.Name] = electrode.DriveAmplitude;
-            }
-        }
-
-        var channels = new List<Channel>();
-
-        foreach (var supply in supplies)
-        {
-            var (pattern, scale) = Normalise(supply.Coefficients, electrodes);
-
-            // Exact comparison. Two supplies share a solve when their applied
-            // potentials are exactly proportional, which is what a real instrument
-            // produces because the electrodes are the same metal in the same
-            // places. A tolerance would merge two shapes that were meant to differ,
-            // and the field would be plausible.
-            var existing = channels.FirstOrDefault(c => SamePattern(c.Pattern, pattern));
-
-            if (existing is null)
-            {
-                existing = new Channel(pattern, 0.0, []);
-                channels.Add(existing);
-            }
-
-            var index = channels.IndexOf(existing);
-
-            channels[index] = supply.Amplitude == 0.0
-                ? existing with { Direct = existing.Direct + (scale * supply.Direct) }
-                : existing with
-                {
-                    Harmonics = [.. existing.Harmonics, (scale * supply.Amplitude, supply.Phase)],
-                };
-        }
-
-        // A geometry whose every electrode is grounded still needs one solve, or
-        // there is no field object to return at all.
-        if (channels.Count == 0)
-        {
-            channels.Add(new Channel([], 0.0, []));
-        }
-
-        return channels;
-    }
-
-    /// <summary>
-    /// Scales a supply's potentials so the leading non-zero one is exactly one, and
-    /// returns the factor taken out.
-    /// </summary>
-    /// <remarks>
-    /// Leading rather than largest, and in the electrode order the document
-    /// declared, so the same shape always normalises the same way. Dividing a value
-    /// by itself is exactly one in floating point, which is what lets two supplies
-    /// that really are proportional compare equal without a tolerance.
-    /// </remarks>
-    private static (Dictionary<string, double> Pattern, double Scale) Normalise(
-        Dictionary<string, double> coefficients, IReadOnlyList<CompiledElectrode> order)
-    {
-        var leading = 0.0;
-
-        foreach (var electrode in order)
-        {
-            if (coefficients.TryGetValue(electrode.Name, out var value) && value != 0.0)
-            {
-                leading = value;
-                break;
-            }
-        }
-
-        if (leading == 0.0)
-        {
-            return (coefficients, 1.0);
-        }
-
-        var pattern = new Dictionary<string, double>(coefficients.Count, StringComparer.Ordinal);
-
-        foreach (var (name, value) in coefficients)
-        {
-            pattern[name] = value / leading;
-        }
-
-        return (pattern, leading);
-    }
-
-    private static bool SamePattern(Dictionary<string, double> left, Dictionary<string, double> right)
-    {
-        if (left.Count != right.Count)
-        {
-            return false;
-        }
-
-        foreach (var (name, value) in left)
-        {
-            if (!right.TryGetValue(name, out var other) || other != value)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    /// <summary>How a two-dimensional electrode is excited, for the shared decomposition.</summary>
+    private static Excitation Excited(CompiledElectrode electrode) =>
+        new(electrode.Name, electrode.Potential, electrode.DriveAmplitude, electrode.DrivePhase);
 }

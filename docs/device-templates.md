@@ -17,13 +17,16 @@ physics or the abstraction is wrong, and almost always the second.
 | `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
 | `quadrupole-rf` | The same four rods, driven: a mass filter |
 | `ion-funnel` | A tapering stack of RF rings with a DC gradient, written as one ring repeated |
+| `segmented-quadrupole` | Three axial sections at their own working points, solved in three dimensions |
 
 They **share no code at all**. All three name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
-DeviceTemplates.Names();          // ["einzel-lens", "ion-funnel", "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap"]
+DeviceTemplates.Names();
+// ["einzel-lens", "ion-funnel", "planar-mirror-pair", "quadrupole",
+//  "quadrupole-rf", "rectilinear-trap", "segmented-quadrupole"]
 DeviceTemplates.Read("quadrupole");
 ```
 
@@ -297,6 +300,55 @@ decaying, and the potential there is 2.457 mV against a 1000 V beam - which is t
 So **a lens is unipotential only to the extent its tubes are long**, the residual
 falls as exp(-2.405 L / r), and how long is long enough is a design question the
 solve can answer rather than an assumption to make.
+
+## The segmented quadrupole, and what three dimensions cost
+
+A quadrupole cut into three axial sections - prefilter, main, postfilter - each at
+its own working point. **The first device here a cross-section cannot express at
+any resolution**: what makes it a segmented filter is that the field changes
+*along the axis*, and that is exactly the direction a translational solve is
+invariant in. It is not a more accurate quadrupole, it is a different instrument.
+
+**Twelve rod segments reduce to one basis solve.** The two pairs within a section
+are exact negatives, and the sections are tapped off the same generator in a fixed
+ratio at the same phase, so the whole structure is a single spatial pattern with a
+single weight. The decomposition that finds this is the same code the plane uses -
+nothing about it is dimensional.
+
+Switch the analysing DC on and it becomes **two** solves, and that is the physics
+rather than an accounting detail. The coupling is a **capacitor**: it passes the RF
+and blocks the DC, so the prefilter sees the drive and not the offset, and the two
+supplies stop reaching the electrodes in the same proportions. Replace it with a
+resistive tap that passes the DC in the same ratio and it collapses back to one.
+
+That capacitive coupling is also what the prefilter is *for*: ions meet a confining
+field before they meet the analysing one, instead of crossing the DC fringe on the
+way in.
+
+**The sections really do sit at different working points**, measured from the
+solved field rather than from the applied voltages:
+
+| Transverse field at r0/2 | |
+| --- | --- |
+| Prefilter | 224.3 kV/m |
+| Main section | 258.7 kV/m |
+| Ratio | 0.867 against a declared coupling of 0.850 |
+
+The 2% is each section's own ends bleeding into its middle, which is a real
+property of a 22 mm section at r0 = 4 mm.
+
+An ion tracked through the whole structure arrives 0.26 mm off axis after 54 µs and
+3,982 steps, and raising the drive ejects it onto a named rod - `preYPlus`.
+
+### What this costs, and what it is not
+
+A 3D solve costs the cube of its resolution. The template runs at **five cells
+across r0** where the plane studies use sixteen, and at that mesh the transmission
+boundary sits well below the ideal q = 0.908 - it is field quality, not physics,
+until it is refined. The study reports it and does not assert it, which is the
+honest treatment of a number that would otherwise read as a stability limit.
+
+A whole run - solve plus tracking - takes about eleven seconds.
 
 ## The funnel, and what a stack costs
 
