@@ -232,6 +232,30 @@ Nothing is re-solved as the drive swings: electrodes sharing a time dependence
 share one basis solve, and a quadrupole's two pairs are exact negatives, so four
 rods reduce to one. See [Numerics](numerics.md).
 
+### Drive phase is an expression
+
+```json
+"drivePhase": { "expression": "-waveDirection * ring / ringsPerWave", "unit": "1" }
+```
+
+A fraction of a cycle, dimensionless, and — like every other placement — an
+expression rather than a number. It was a plain number until a travelling-wave
+guide needed one, which is exactly the case the field existed for: a phase that
+cannot depend on the repeat index cannot ramp along a stack.
+
+Two things about it are worth knowing before writing one.
+
+**The drive is evaluated as a phase lead**, `w(f·t + φ)`, so a phase that
+*increases* along the axis sends the crest *upstream*. That is a convention, not a
+physical fact; the travelling-wave template names a `waveDirection` parameter and
+negates it in the ramp rather than leaving a reader to infer it from a minus sign.
+
+**A sinusoidal drive costs two solves however many phases you use.** A cos(2π(ft +
+φ)) is a fixed pair of quadrature components with constant coefficients, so the
+decomposition resolves every phase into the same two supplies — 96 rings at 96
+phases is two basis solves. A rectangular drive cannot be decomposed that way, and
+there each distinct phase is its own supply and the solve count says so.
+
 ## Three dimensions
 
 ```json

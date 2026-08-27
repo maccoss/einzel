@@ -39,6 +39,20 @@ public sealed record DriveChannel(
 /// whole filter is one solve.
 /// </para>
 /// <para>
+/// <b>A sinusoid is a special case, and it is the one that makes a travelling wave
+/// affordable.</b> A cos(2 pi (f t - phi)) is exactly
+/// A cos(2 pi phi) cos(2 pi f t) + A sin(2 pi phi) sin(2 pi f t) — a fixed pair of
+/// time functions with constant coefficients. So however many distinct phases a
+/// structure carries, a sinusoidal drive reaches exactly <em>two</em> supplies. A
+/// sixty-ring travelling-wave guide with sixty distinct phases is two solves, not
+/// sixty.
+/// </para>
+/// <para>
+/// It holds only for a sinusoid. A rectangular wave shifted by a quarter cycle is
+/// not a combination of the unshifted wave and one shifted by a quarter, so there
+/// each distinct phase really is its own supply and the solve count says so.
+/// </para>
+/// <para>
 /// Written over names and numbers rather than over an electrode type, so the same
 /// decomposition serves two dimensions and three. Nothing about it is dimensional:
 /// what a channel is depends on how electrodes are wired, not on where they are.
@@ -48,9 +62,14 @@ public static class DriveChannels
 {
     /// <summary>Groups excitations into the channels a solve needs.</summary>
     /// <param name="excitations">What each electrode holds, in declaration order.</param>
+    /// <param name="quadrature">
+    /// Whether the drive is a sinusoid, in which case every phase resolves into two
+    /// fixed components rather than into a supply of its own.
+    /// </param>
     /// <returns>The channels, each with a pattern and a weight.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="excitations"/> is null.</exception>
-    public static List<DriveChannel> Decompose(IReadOnlyList<Excitation> excitations)
+    public static List<DriveChannel> Decompose(
+        IReadOnlyList<Excitation> excitations, bool quadrature = false)
     {
         ArgumentNullException.ThrowIfNull(excitations);
 
@@ -79,10 +98,36 @@ public static class DriveChannels
                 Reach(1.0, 0.0, 0.0).Coefficients[excitation.Name] = excitation.Direct;
             }
 
-            if (excitation.Amplitude != 0.0)
+            if (excitation.Amplitude == 0.0)
             {
-                var phase = excitation.Phase - Math.Floor(excitation.Phase);
+                continue;
+            }
+
+            var phase = excitation.Phase - Math.Floor(excitation.Phase);
+
+            if (!quadrature)
+            {
                 Reach(0.0, 1.0, phase).Coefficients[excitation.Name] = excitation.Amplitude;
+                continue;
+            }
+
+            // CosPi and SinPi rather than Cos and Sin of a scaled argument, because
+            // they are exact at the quarter turns. Math.Sin(Math.PI) is 1.2e-16, not
+            // zero, and an antiphase electrode would otherwise acquire a quadrature
+            // component made entirely of round-off - which becomes a spurious third
+            // channel carrying a field of nothing.
+            var inPhase = excitation.Amplitude * double.CosPi(2.0 * phase);
+            var outOfPhase = excitation.Amplitude * double.SinPi(2.0 * phase);
+
+            if (inPhase != 0.0)
+            {
+                Reach(0.0, 1.0, 0.0).Coefficients[excitation.Name] = inPhase;
+            }
+
+            if (outOfPhase != 0.0)
+            {
+                // A quarter cycle late: cos(2 pi (f t - 1/4)) is sin(2 pi f t).
+                Reach(0.0, 1.0, 0.25).Coefficients[excitation.Name] = outOfPhase;
             }
         }
 
@@ -128,10 +173,18 @@ public static class DriveChannels
     /// <summary>The weight each already-solved channel carries for a given set of excitations.</summary>
     /// <param name="channels">The channels the whole sequence was decomposed into.</param>
     /// <param name="excitations">What each electrode holds during this stage.</param>
+    /// <param name="quadrature">
+    /// Whether the drive is a sinusoid. Must match what <see cref="Decompose"/> was
+    /// given, or the patterns this looks up were built a different way and none of
+    /// them will be found.
+    /// </param>
     /// <returns>The constant and oscillating parts of each channel's weight.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public static (List<double> Direct, List<IReadOnlyList<(double Amplitude, double Phase)>> Harmonics)
-        Weigh(List<DriveChannel> channels, IReadOnlyList<Excitation> excitations)
+        Weigh(
+            List<DriveChannel> channels,
+            IReadOnlyList<Excitation> excitations,
+            bool quadrature = false)
     {
         ArgumentNullException.ThrowIfNull(channels);
         ArgumentNullException.ThrowIfNull(excitations);
@@ -142,7 +195,7 @@ public static class DriveChannels
             Enumerable.Range(0, channels.Count)
                 .Select(_ => (IReadOnlyList<(double Amplitude, double Phase)>)[]));
 
-        foreach (var group in Decompose(excitations))
+        foreach (var group in Decompose(excitations, quadrature))
         {
             var index = channels.FindIndex(c => SamePattern(c.Pattern, group.Pattern));
 

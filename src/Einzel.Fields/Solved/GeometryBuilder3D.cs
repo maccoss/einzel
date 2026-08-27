@@ -269,7 +269,8 @@ public static class GeometryBuilder3D
             elapsed += stage.DurationSeconds;
             boundaries.Add(elapsed);
 
-            var weights = DriveChannels.Weigh(groups, [.. stage.Electrodes.Select(Excited)]);
+            var weights = DriveChannels.Weigh(
+                groups, [.. stage.Electrodes.Select(Excited)], Quadrature(geometry));
 
             stageDirect.Add(weights.Direct);
             stageHarmonics.Add(weights.Harmonics);
@@ -316,13 +317,21 @@ public static class GeometryBuilder3D
         return SolveGroups(geometry, Groups(geometry));
     }
 
+    /// <summary>
+    /// Whether the drive is a sinusoid, so every phase resolves into two fixed
+    /// quadrature components rather than into a supply of its own.
+    /// </summary>
+    private static bool Quadrature(Geometry3D geometry) =>
+        geometry.Drive is null or { Waveform: Core.Model.DriveWaveform.Sinusoid };
+
     private static List<DriveChannel> Groups(Geometry3D geometry)
     {
         var states = geometry.Stages.Count > 0
             ? geometry.Stages.Select(stage => stage.Electrodes).ToList()
             : [geometry.Electrodes];
 
-        return DriveChannels.Decompose([.. states.SelectMany(e => e).Select(Excited)]);
+        return DriveChannels.Decompose(
+            [.. states.SelectMany(e => e).Select(Excited)], Quadrature(geometry));
     }
 
     private static List<ChannelSolve> SolveGroups(

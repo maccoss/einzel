@@ -849,7 +849,7 @@ public static class ModelValidator
             Shape = Electrode3DShape.Box,
             Potential = potential.Value.SiValue,
             DriveAmplitude = amplitude,
-            DrivePhase = electrode.DrivePhase,
+            DrivePhase = Phase(electrode.DrivePhase, $"{path}/drivePhase", p, errors),
         };
 
         switch (electrode.Shape)
@@ -1431,19 +1431,51 @@ public static class ModelValidator
                 electrode.DriveAmplitude, $"{path}/driveAmplitude",
                 Dimension.ElectricPotential, p, errors)?.SiValue ?? 0.0;
 
-        if (!double.IsFinite(electrode.DrivePhase))
+        return (amplitude, Phase(electrode.DrivePhase, $"{path}/drivePhase", p, errors));
+    }
+
+    /// <summary>
+    /// A drive phase, as a fraction of a cycle, resolved through the parameters.
+    /// </summary>
+    /// <remarks>
+    /// Dimensionless, because a fraction of a cycle is. That makes it one of the
+    /// few places a bare number is legitimate, and the units grammar already treats
+    /// "1" as the dimensionless unit - so an expression over the repeat index reads
+    /// as <c>{"expression": "ring / ringsPerWave"}</c> with no unit to argue about.
+    /// </remarks>
+    private static double Phase(
+        QuantityValue? declared,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (declared is null)
+        {
+            return 0.0;
+        }
+
+        var resolved = TryQuantity(declared, path, Dimension.Dimensionless, p, errors);
+
+        if (resolved is null)
+        {
+            return 0.0;
+        }
+
+        var phase = resolved.Value.SiValue;
+
+        if (!double.IsFinite(phase))
         {
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.ValueOutOfBounds,
-                Path = $"{path}/drivePhase",
+                Path = path,
                 Constraint = "a drive phase is a fraction of a cycle and must be finite",
-                Observed = new ObservedValue(electrode.DrivePhase, "1"),
+                Observed = new ObservedValue(phase, "1"),
                 Suggestion = "use 0 for in phase and 0.5 for antiphase",
             });
         }
 
-        return (amplitude, electrode.DrivePhase);
+        return phase;
     }
 
     private static CompiledDrive? Drive(

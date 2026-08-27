@@ -366,6 +366,95 @@ public static class GeometryBuilder
         }
     }
 
+    /// <summary>One basis channel of a solve, with the evidence that solve produced.</summary>
+    /// <param name="Index">Which channel, in the order the decomposition found them.</param>
+    /// <param name="Mask">The finest-level mask, for the node and cut counts.</param>
+    /// <param name="Potential">The solved potential.</param>
+    /// <param name="Report">How the solve went.</param>
+    public sealed record ChannelSolve(
+        int Index, DirichletMask Mask, ScalarField2D Potential, SolveReport Report);
+
+    /// <summary>Solves a geometry channel by channel, and hands back the diagnostics.</summary>
+    /// <param name="solve">The compiled solve.</param>
+    /// <returns>One entry per basis channel; exactly one for a static geometry.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="solve"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// What <c>einzel solve</c> reports against, and it had to exist for the same
+    /// reason the three-dimensional version does: a driven structure is not one
+    /// solve but one per spatial pattern, and a residual quoted for "the field"
+    /// would be quoting whichever of them happened to be last.
+    /// </para>
+    /// <para>
+    /// Without it the verb reported the <em>DC</em> pattern alone. For the shipped
+    /// RF quadrupole, whose every electrode holds zero volts of DC and all of its
+    /// potential as drive, that was a solve of a grounded box: peak potential 0 V,
+    /// zero cycles, converged true, exit 0. The verb whose entire job is to report
+    /// a residual gave a clean bill of health to a field it had never touched, for
+    /// a mass filter. The same defect was found and fixed in three dimensions by a
+    /// code review; this is the half that was left.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<ChannelSolve> SolveChannels(CompiledSolvedField solve)
+    {
+        ArgumentNullException.ThrowIfNull(solve);
+
+        var grid = BuildGrid(solve);
+        var solves = new List<ChannelSolve>();
+        var index = 0;
+
+        foreach (var pattern in Patterns(solve))
+        {
+            var mask = BuildMask(solve, grid, e => pattern.GetValueOrDefault(e.Name, 0.0));
+
+            var (potential, report) = PoissonSolver2D.Solve(
+                mask,
+                solve.Tolerance,
+                maximumCycles: 400,
+                coarsen: coarse => BuildMask(solve, coarse, e => pattern.GetValueOrDefault(e.Name, 0.0)));
+
+            solves.Add(new ChannelSolve(index++, mask, potential, report));
+        }
+
+        return solves;
+    }
+
+    /// <summary>The relative potentials of each independent channel.</summary>
+    /// <remarks>
+    /// One entry with every electrode at its declared potential for a static
+    /// geometry, and one per spatial pattern for a driven or sequenced one. Written
+    /// once so the field builder and the diagnostics cannot disagree about how many
+    /// solves a geometry needs, which is exactly the disagreement that let the
+    /// diagnostics report a field nothing else used.
+    /// </remarks>
+    private static List<Dictionary<string, double>> Patterns(CompiledSolvedField solve)
+    {
+        if (solve.Drive is null && solve.Stages.Count == 0)
+        {
+            var single = new Dictionary<string, double>(StringComparer.Ordinal);
+
+            foreach (var electrode in solve.Electrodes)
+            {
+                single[electrode.Name] = electrode.Potential;
+            }
+
+            return [single];
+        }
+
+        var states = solve.Stages.Count > 0
+            ? solve.Stages.Select(stage => stage.Electrodes).ToList()
+            : [solve.Electrodes];
+
+        var quadrature = solve.Drive is null or { Waveform: DriveWaveform.Sinusoid };
+
+        return
+        [
+            .. DriveChannels
+                .Decompose([.. states.SelectMany(e => e).Select(Excited)], quadrature)
+                .Select(group => group.Pattern),
+        ];
+    }
+
     /// <summary>Builds, solves, and wraps a declared geometry as a field.</summary>
     /// <param name="solve">The declared geometry.</param>
     /// <returns>The field, and how the solve went.</returns>
@@ -441,8 +530,14 @@ public static class GeometryBuilder
             ? solve.Stages.Select(stage => stage.Electrodes).ToList()
             : [solve.Electrodes];
 
+        // A sinusoid resolves every phase into two fixed quadrature components, so
+        // a structure with a phase ramp along it costs two solves rather than one
+        // per electrode. Any other waveform cannot be decomposed that way and each
+        // distinct phase stays its own supply.
+        var quadrature = drive is null or { Waveform: DriveWaveform.Sinusoid };
+
         var groups = DriveChannels.Decompose(
-            [.. states.SelectMany(e => e).Select(Excited)]);
+            [.. states.SelectMany(e => e).Select(Excited)], quadrature);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
@@ -520,7 +615,8 @@ public static class GeometryBuilder
 
             // The same channels, re-weighted for this stage. Every pattern already
             // has a solve; what a stage changes is only how much of each is on.
-            var weights = DriveChannels.Weigh(groups, [.. stage.Electrodes.Select(Excited)]);
+            var weights = DriveChannels.Weigh(
+                groups, [.. stage.Electrodes.Select(Excited)], quadrature);
 
             stageDirect.Add(weights.Direct);
             stageHarmonics.Add(weights.Harmonics);

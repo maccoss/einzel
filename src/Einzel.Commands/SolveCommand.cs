@@ -191,38 +191,41 @@ public static class SolveCommand
             }
 
             var grid = GeometryBuilder.BuildGrid(solve!);
-            var mask = GeometryBuilder.BuildMask(solve!, grid);
 
-            var (potential, report) = PoissonSolver2D.Solve(
-                mask,
-                solve!.Tolerance,
-                maximumCycles: 400,
-                coarsen: coarse => GeometryBuilder.BuildMask(solve, coarse));
-
-            var peak = 0.0;
-
-            foreach (var value in potential.Values)
+            // One entry per basis channel, the same as the three-dimensional path.
+            // A driven structure is one solve per spatial pattern, and reporting
+            // "the field" meant reporting the DC pattern alone - which for the RF
+            // quadrupole is a grounded box, and came back converged with a peak
+            // potential of zero volts and exit 0.
+            foreach (var channel in GeometryBuilder.SolveChannels(solve!))
             {
-                peak = Math.Max(peak, Math.Abs(value));
+                var peak = 0.0;
+
+                foreach (var value in channel.Potential.Values)
+                {
+                    peak = Math.Max(peak, Math.Abs(value));
+                }
+
+                elements.Add(new SolvedElement
+                {
+                    Index = index,
+                    Dimensions = 2,
+                    Channel = channel.Index,
+                    Nodes = [grid.CountX, grid.CountY],
+                    SpacingMm = [grid.SpacingX * 1e3, grid.SpacingY * 1e3],
+                    SquareCells = grid.IsSquare,
+                    Electrodes = solve!.Electrodes.Count,
+                    FixedNodes = channel.Mask.FixedCount,
+                    CutLinks = channel.Mask.Cuts?.CutCount ?? 0,
+                    Cycles = channel.Report.Cycles,
+                    ConvergenceFactor = channel.Report.ConvergenceFactor,
+                    RelativeResidual = channel.Report.InitialResidual > 0.0
+                        ? channel.Report.FinalResidual / channel.Report.InitialResidual
+                        : 0.0,
+                    Converged = channel.Report.Converged,
+                    PeakPotentialVolts = peak,
+                });
             }
-
-            elements.Add(new SolvedElement
-            {
-                Index = index,
-                Nodes = [grid.CountX, grid.CountY],
-                SpacingMm = [grid.SpacingX * 1e3, grid.SpacingY * 1e3],
-                SquareCells = grid.IsSquare,
-                Electrodes = solve.Electrodes.Count,
-                FixedNodes = mask.FixedCount,
-                CutLinks = mask.Cuts?.CutCount ?? 0,
-                Cycles = report.Cycles,
-                ConvergenceFactor = report.ConvergenceFactor,
-                RelativeResidual = report.InitialResidual > 0.0
-                    ? report.FinalResidual / report.InitialResidual
-                    : 0.0,
-                Converged = report.Converged,
-                PeakPotentialVolts = peak,
-            });
         }
 
         if (elements.Count == 0)

@@ -119,11 +119,21 @@ public sealed record ElectrodeDocument
     /// omitted; a half is antiphase.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A fraction rather than radians or degrees, because every use of it is a
     /// fraction: a quadrupole pair is a half out, a three-phase guide is a third,
     /// and a travelling wave is a ramp from zero to one along its length.
+    /// </para>
+    /// <para>
+    /// <b>An expression, like every other placement.</b> It was a plain number
+    /// until a travelling-wave guide needed one, and that is precisely the case a
+    /// ramp along the length exists for - a phase that cannot depend on the repeat
+    /// index cannot ramp, so the device this field was documented for was the one
+    /// device it could not express. Section 9 already says every placement is an
+    /// expression; this was the one that had been missed.
+    /// </para>
     /// </remarks>
-    public double DrivePhase { get; init; }
+    public QuantityValue? DrivePhase { get; init; }
 
     /// <summary>Rectangle and disc: the potential held. The DC part, when driven.</summary>
     public QuantityValue? Potential { get; init; }
