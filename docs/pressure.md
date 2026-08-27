@@ -335,6 +335,91 @@ is the opposite of most people's intuition — so the basis line says it in word
 well as numbers, because a number that surprises without explaining itself gets
 worked around rather than understood.
 
+## RF in the diffusive mode
+
+Between about 1e-2 and 10 mbar neither transport mode could describe a driven
+structure. Trajectory integration is outside its validity there; the diffusive
+mode steps a density through one static field, and a driven structure has none.
+That band is where ion funnels, travelling-wave guides and collision cells run,
+so the funnel's acceptance figures were a lower bound and the travelling-wave
+guide could not be operated the way a real one is.
+
+`PonderomotiveField` wraps a driven field as the cycle average a slow ion feels.
+The solver needs no change: it asks for a potential at a point and gets the
+effective one, which is the same thing `AxisymmetricField` does for a half-plane
+solve.
+
+### The collisional well, and why it is not the textbook one
+
+An ion quivering in E0 cos(Omega t) and damped at rate nu obeys
+m(v' + nu v) = q E0 cos(Omega t). Solving for the steady quiver and averaging
+q (dE0/dx) delta over a cycle gives the gradient of
+
+    Psi = q^2 E0^2 / (4 m (Omega^2 + nu^2))
+
+which is Dehmelt's q^2 E0^2 / (4 m Omega^2) when collisions are rare and is
+**suppressed by Omega^2/(Omega^2 + nu^2)** when they are not. Every textbook
+writes the collisionless form; at the pressures these devices run at, that is an
+overestimate.
+
+| Ion funnel, 2 mbar N2, 1 MHz, m/z 500 | |
+| --- | --- |
+| Mobility, Mason-Schamp from the cross section | 0.04618 m^2/(V s) |
+| Momentum-transfer rate | 4.179e6 /s |
+| Drive | 6.283e6 rad/s |
+| **Suppression** | **0.693** |
+| Largest quiver on the grid | 0.849 mm |
+| Cell | 0.312 mm |
+
+So the collisionless pseudopotential overstates this funnel's confining well by
+**44%** — and the quiver is larger than the mesh, which trips
+`rf.quiver-exceeds-mesh`, a non-suppressible violation. Averaging over an
+excursion only describes something if the field is roughly linear across it, and
+at 100 V it is not.
+
+### The damping rate is the momentum-transfer rate
+
+nu = q/(m mu), from the mobility the solve already has, rather than from the
+number of collisions per cycle. Two reasons, and the first is quantitative: a
+heavy ion in a light gas gives up only about the mass ratio of its momentum per
+collision, so for m/z 500 in nitrogen the collision count overstates the damping
+by roughly twenty times. The second is that a separately estimated collision
+frequency would be a second number for a quantity the drift term already fixes,
+free to disagree with it.
+
+### What is checked
+
+Closed forms, because the ideal quadrupole has them: its RF field is exactly
+linear in position, so the well is exactly harmonic.
+
+| | |
+| --- | --- |
+| Collisionless well against Dehmelt | exact |
+| Its curvature against the secular frequency q Omega / sqrt(8) | exact |
+| Suppression at nu = Omega | exactly 0.5 |
+| Suppression at nu = 10 Omega | exactly 1/101 |
+| Quiver amplitude at nu = Omega | exactly 1/sqrt(2) |
+
+The secular frequency is written in the Mathieu parameter rather than in volts,
+because q is what every published quadrupole result is quoted in and it is the
+one spelling of the geometry the test does not get to choose.
+
+### Two mistakes worth keeping
+
+A first version of the tests wrote the quadrupole's field amplitude as
+V r / r0^2, and every closed form came out **exactly four times too small** —
+that field's potential is V (x^2 - y^2) / r0^2, so its gradient carries a factor
+of two. The tests now ask the field for its own amplitude by sampling it, which
+removes the whole class of mistake: what is under test is the relation between
+the field and the well, not who spells the field which way.
+
+And `ResolutionLength` is **positive infinity** for an analytic field, meaning it
+has no resolution limit rather than an enormous one. Reading it as a differencing
+step gave a step of infinity, a difference of infinity minus infinity, and an
+effective field of NaN — while every potential stayed correct, so only the
+gradient was wrong.
+
+
 ## Not built
 
 - **Interior electrodes as continuous sinks.** An electrode empties the *initial*

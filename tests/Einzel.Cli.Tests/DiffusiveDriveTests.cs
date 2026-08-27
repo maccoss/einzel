@@ -9,7 +9,9 @@ namespace Einzel.Cli.Tests;
 /// Found by pointing the diffusive mode at the travelling-wave guide, which is a
 /// thing someone would obviously try: a real travelling-wave guide runs in a gas,
 /// and the diffusive mode is what this engine has for a gas. It ran, and produced
-/// a number.
+/// a number - from the RF at t = 0, with no warning anywhere. It now runs through
+/// the cycle-averaged effective potential instead, which is what closed the
+/// 1e-2 to 10 mbar band for driven structures.
 /// </remarks>
 public sealed class DiffusiveDriveTests : IDisposable
 {
@@ -91,17 +93,16 @@ public sealed class DiffusiveDriveTests : IDisposable
     }
 
     [Fact]
-    public void ADrivenGeometryIsRefusedRatherThanSteppedThroughASnapshot()
+    public void ADrivenGeometryRunsThroughItsEffectivePotential()
     {
-        // The drift-diffusion solve takes one field and steps a density through it.
-        // A driven field's time-free members sample t = 0, so what it would have
-        // used is the RF at the top of its cycle: a static field that exists for no
-        // length of time, and a density evolved through it means nothing.
+        // The band this closes. Between about 1e-2 and 10 mbar - which is where ion
+        // funnels, travelling-wave guides and collision cells actually run -
+        // trajectory integration is outside its validity, and this mode could not
+        // see a drive at all. It stepped a density through the RF at t = 0: a field
+        // that exists for no length of time, reported with no warning anywhere.
         //
-        // It used to run and report a transit distribution, with no warning
-        // anywhere. That is the one place in this engine a transport mode was
-        // selected outside its validity and nothing said so - which is the failure
-        // the whole regime apparatus exists to prevent.
+        // What a slow ion in a gas experiences instead is the cycle average, and
+        // that is what it gets now.
         Assert.Equal(0, Run("init", _root).ExitCode);
 
         var model = Path.Combine(_root, "models", "guide.json");
@@ -120,31 +121,44 @@ public sealed class DiffusiveDriveTests : IDisposable
             "\"mode\": \"trajectory\"",
             """
             "mode": "diffusion",
-                "mobility": { "zeroField": { "value": 2.0, "unit": "cm^2/(V s)" } },
+                "densityGrid": {
+                  "minX": { "value": 0, "unit": "mm" }, "maxX": { "value": 28, "unit": "mm" },
+                  "minY": { "value": 0, "unit": "mm" }, "maxY": { "value": 4, "unit": "mm" },
+                  "intervalsX": 56, "intervalsY": 8
+                },
                 "gas": {
-                  "model": "langevin",
+                  "model": "hardSphere",
                   "pressure": { "value": 1.0, "unit": "mbar" },
                   "mass": { "value": 28.0134, "unit": "Da" },
-                  "polarizability": { "value": 1.74, "unit": "Å^3" }
+                  "crossSection": { "value": 250, "unit": "Å^2" }
                 }
             """.Trim(),
             StringComparison.Ordinal));
 
-        var (exitCode, stdout, stderr) = Run("run", model, "--project", _root);
+        var (exitCode, stdout, stderr) = Run("run", model, "--project", _root, "--json");
 
-        var report = stdout + stderr;
+        Assert.Equal(0, exitCode);
 
-        // CLI-3: a regime violation gets its own exit code whether it arrives as a
-        // refusal or as a warning on a completed run. A caller branching on the
-        // code should not have to know which route it took.
-        Assert.Equal(2, exitCode);
+        var warnings = JsonDocument.Parse(stdout).RootElement
+            .GetProperty("flightTime")
+            .GetProperty("warnings")
+            .EnumerateArray()
+            .ToArray();
 
-        Assert.Contains("REGIME_INVALID", report, StringComparison.Ordinal);
-        Assert.Contains("/transport/mode", report, StringComparison.Ordinal);
+        var effective = warnings.Single(
+            w => w.GetProperty("code").GetString() == "rf.effective-potential");
 
-        // AGT-3: the message says what would have to exist for the request to be
-        // meetable, not only that it is refused.
-        Assert.Contains("effective potential", report, StringComparison.Ordinal);
+        var message = effective.GetProperty("message").GetString()!;
+
+        // REG-2: reported whether or not it crosses a threshold, so a reader who
+        // sees the number knows the question was asked.
+        Assert.Contains("effective potential", message, StringComparison.Ordinal);
+        Assert.Contains("momentum-transfer rate", message, StringComparison.Ordinal);
+
+        // And what it says is the thing the textbook formula does not: collisions
+        // weaken the well, so the suppression is below one and the collisionless
+        // q^2 E^2 / (4 m Omega^2) is an overestimate.
+        Assert.Contains("weaken that well by a factor of 0.", message, StringComparison.Ordinal);
     }
 
     [Fact]

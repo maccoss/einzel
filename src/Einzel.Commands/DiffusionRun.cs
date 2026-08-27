@@ -59,32 +59,6 @@ public static class DiffusionRun
         var species = IonSpecies.FromModel(model);
         var gas = BackgroundGas.FromModel(model.Gas);
 
-        if (field is ITimeVaryingField)
-        {
-            // The drift-diffusion solve takes one field and steps a density through
-            // it. A driven field's time-free members sample t = 0, so what it would
-            // have used is a snapshot of the RF at the top of the cycle - a static
-            // field that exists for no length of time, and a density evolved
-            // through it means nothing.
-            //
-            // This is the case the whole regime apparatus exists for, and it was
-            // the one place a mode was selected outside its validity without
-            // anything being said. It has to be a refusal rather than a warning:
-            // there is no weaker version of "the field is not the field".
-            throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.RegimeInvalid,
-                Path = "/transport/mode",
-                Constraint = "the diffusive mode steps a density through one static field, and this "
-                    + "geometry declares a drive - so what it would step through is a snapshot of "
-                    + "the RF at the top of the cycle, which is not a field the ions ever see",
-                Suggestion = "use \"mode\": \"trajectory\" and read the regime numbers the run "
-                    + "reports, or remove the drive. Modelling a driven structure at a pressure "
-                    + "where trajectories are invalid needs the RF to enter the diffusive drift as "
-                    + "an effective potential, which this build does not compute",
-            });
-        }
-
         var declared = model.Mobility
             ?? throw new EinzelException(new EinzelError
             {
@@ -112,12 +86,39 @@ public static class DiffusionRun
 
         var edges = EdgesFor(model, grid);
 
+        var warnings = new List<ValidityWarning>(fieldWarnings);
+
+        // A driven structure has no static field to step a density through, and
+        // sampling one at a chosen instant gives the RF at that phase - a field that
+        // exists for no length of time. What a slow ion in a gas experiences is the
+        // cycle average, so the driven field is presented as its effective one.
+        //
+        // This is what the 1e-2 to 10 mbar band needed. Trajectory integration is
+        // outside its validity there and this mode could not see a drive at all, so
+        // an ion funnel or a travelling-wave guide - which is to say the devices
+        // that actually run at those pressures - had no mode that described them.
+        var effective = field as Transport.Diffusion.PonderomotiveField;
+
+        if (field is ITimeVaryingField driven)
+        {
+            var rate = Transport.Diffusion.PonderomotiveField.CollisionRateFromMobility(
+                species.ChargeSi, species.MassSi, mobility.ZeroFieldSi);
+
+            effective = new Transport.Diffusion.PonderomotiveField(
+                driven, species.ChargeSi, species.MassSi, rate);
+
+            field = effective;
+        }
+
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges);
 
-        var warnings = new List<ValidityWarning>(fieldWarnings);
-
         warnings.AddRange(RegimeWarnings(gas, mobility, field, grid, declared));
+
+        if (effective is not null)
+        {
+            warnings.AddRange(EffectiveFieldWarnings(effective, grid));
+        }
 
         return new DiffusiveOutcome(result, used, grid, launched, warnings);
     }
@@ -299,6 +300,73 @@ public static class DiffusionRun
         return normal.Y < 0.0
             ? new DriftDiffusion.DomainEdges(Escape.Absorbing, Escape.Absorbing, axis, Escape.Collecting)
             : new DriftDiffusion.DomainEdges(Escape.Absorbing, Escape.Absorbing, Escape.Collecting, Escape.Absorbing);
+    }
+
+    /// <summary>
+    /// What the effective-potential approximation is doing, and where it stops
+    /// describing anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both reported whether or not they cross a threshold, per REG-2: a reader who
+    /// sees a suppression of 0.98 knows the question was asked, and one who sees
+    /// nothing cannot tell that from its not having been asked.
+    /// </para>
+    /// <para>
+    /// The suppression is the interesting one. Every textbook writes the
+    /// pseudopotential as q^2 E0^2 / (4 m Omega^2), and at the pressures these
+    /// devices run at that is an overestimate by the factor reported here - the
+    /// quiver is damped, so the round trip through the field gradient leaves less
+    /// net force. Quoting the collisionless well for a funnel at a few mbar is a
+    /// mistake this makes visible rather than one it commits.
+    /// </para>
+    /// </remarks>
+    private static List<ValidityWarning> EffectiveFieldWarnings(
+        Transport.Diffusion.PonderomotiveField field, Grid2D grid)
+    {
+        var warnings = new List<ValidityWarning>();
+
+        // The worst quiver anywhere on the grid, against the cell it sits in. The
+        // effective potential averages over that excursion and only describes
+        // something if the field is roughly linear across it.
+        var worst = 0.0;
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                worst = Math.Max(
+                    worst, field.QuiverAmplitude(new Vec3(grid.X(i), grid.Y(j), 0.0)));
+            }
+        }
+
+        var cell = Math.Min(grid.SpacingX, grid.SpacingY);
+
+        warnings.Add(new ValidityWarning(
+            "rf.effective-potential",
+            $"the drive is modelled as an effective potential: the cycle-averaged well a slow ion "
+            + $"feels, not the field at any instant. Collisions damp the quiver and weaken that well "
+            + $"by a factor of {field.Suppression:G4} against the collisionless "
+            + $"q^2 E^2 / (4 m Omega^2) that is usually quoted, at a momentum-transfer rate of "
+            + $"{field.CollisionRateSi:G4} /s against a drive of {field.AngularFrequencySi:G4} rad/s. "
+            + $"The largest quiver on this grid is {worst * 1e3:G3} mm, against a cell of "
+            + $"{cell * 1e3:G3} mm",
+            WarningSeverity.Provenance));
+
+        if (worst > cell)
+        {
+            warnings.Add(new ValidityWarning(
+                "rf.quiver-exceeds-mesh",
+                $"the ion is swept {worst * 1e3:G3} mm back and forth by the drive, which is further "
+                + $"than the {cell * 1e3:G3} mm cell the effective potential is resolved on. Averaging "
+                + "over an excursion only describes something if the field is roughly linear across "
+                + "it, and here the excursion is larger than the mesh that represents the field. "
+                + "Refine the density grid, or raise the drive frequency, or accept that the ion's "
+                + "real motion is the whole story rather than a wobble about a drift",
+                WarningSeverity.ValidityViolation));
+        }
+
+        return warnings;
     }
 
     /// <summary>Warnings a diffusive run carries, per REG-2 and TRN-1.</summary>
