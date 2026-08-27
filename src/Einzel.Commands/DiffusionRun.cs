@@ -59,6 +59,32 @@ public static class DiffusionRun
         var species = IonSpecies.FromModel(model);
         var gas = BackgroundGas.FromModel(model.Gas);
 
+        if (field is ITimeVaryingField)
+        {
+            // The drift-diffusion solve takes one field and steps a density through
+            // it. A driven field's time-free members sample t = 0, so what it would
+            // have used is a snapshot of the RF at the top of the cycle - a static
+            // field that exists for no length of time, and a density evolved
+            // through it means nothing.
+            //
+            // This is the case the whole regime apparatus exists for, and it was
+            // the one place a mode was selected outside its validity without
+            // anything being said. It has to be a refusal rather than a warning:
+            // there is no weaker version of "the field is not the field".
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.RegimeInvalid,
+                Path = "/transport/mode",
+                Constraint = "the diffusive mode steps a density through one static field, and this "
+                    + "geometry declares a drive - so what it would step through is a snapshot of "
+                    + "the RF at the top of the cycle, which is not a field the ions ever see",
+                Suggestion = "use \"mode\": \"trajectory\" and read the regime numbers the run "
+                    + "reports, or remove the drive. Modelling a driven structure at a pressure "
+                    + "where trajectories are invalid needs the RF to enter the diffusive drift as "
+                    + "an effective potential, which this build does not compute",
+            });
+        }
+
         var declared = model.Mobility
             ?? throw new EinzelException(new EinzelError
             {

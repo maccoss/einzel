@@ -35,7 +35,18 @@ public static class Program
         catch (EinzelException failure)
         {
             Console.Error.WriteLine(failure.Error.ToString());
-            return (int)ExitCode.ValidationFailure;
+
+            // CLI-3 wants a distinct exit code per failure class, and the class is
+            // in the error rather than in how it reached here. A regime violation
+            // raised as a refusal is the same finding as one raised as a warning on
+            // a completed run, and a caller branching on the exit code should not
+            // have to know which route it took.
+            return (int)(failure.Error.Code switch
+            {
+                ErrorCodes.RegimeInvalid => ExitCode.RegimeViolation,
+                ErrorCodes.ConvergenceFailed => ExitCode.ConvergenceFailure,
+                _ => ExitCode.ValidationFailure,
+            });
         }
         catch (FileNotFoundException failure)
         {
@@ -1325,13 +1336,27 @@ public static class Program
         var flight = run.FlightTime;
         var halfWidth = (flight.Uncertainty.Upper - flight.Uncertainty.Lower) / 2.0;
 
-        // GRD-1 in the terminal: the value never appears without what qualifies it.
-        // ASCII rather than a plus-minus sign, because the console encoding is not
-        // ours to assume and a mangled character in a reported uncertainty is
-        // exactly the wrong place to be clever.
-        Console.Out.WriteLine(string.Create(
-            invariant,
-            $"flight time   {flight.Value:F6} +/- {halfWidth:G3} {flight.Unit}"));
+        // A density has no flight time, no energy drift and no final position: it
+        // is a field over a whole grid, not an ion with a history. Those three
+        // lines used to be printed anyway - the flight time as "NaN +/- NaN", and
+        // the final position by indexing an empty list, which threw and reported a
+        // diffusive run as a defect in einzel.
+        //
+        // Absent rather than not-a-number, which is the rule the rest of this
+        // surface already follows: a reader cannot tell a missing measurement from
+        // a failed one if both print the same way.
+        var trajectory = run.Diffusion is null;
+
+        if (trajectory)
+        {
+            // GRD-1 in the terminal: the value never appears without what qualifies
+            // it. ASCII rather than a plus-minus sign, because the console encoding
+            // is not ours to assume and a mangled character in a reported
+            // uncertainty is exactly the wrong place to be clever.
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"flight time   {flight.Value:F6} +/- {halfWidth:G3} {flight.Unit}"));
+        }
 
         // A null observed order means the refinements agreed to the last bit, so
         // there is no order to report. Saying "converged to round-off" is the
@@ -1341,19 +1366,26 @@ public static class Program
             ? string.Create(invariant, $"observed order {order:G3} of {flight.Evidence.NominalOrder:G3}")
             : "residual at round-off, no order to resolve";
 
-        Console.Out.WriteLine(
-            $"              {flight.Evidence.Kind} in {flight.Evidence.Measure}, {convergence}");
+        if (trajectory)
+        {
+            Console.Out.WriteLine(
+                $"              {flight.Evidence.Kind} in {flight.Evidence.Measure}, {convergence}");
 
-        Console.Out.WriteLine(string.Create(
-            invariant, $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
+        }
 
         Console.Out.WriteLine(string.Create(
             invariant,
             $"steps         {run.AcceptedSteps}, {run.AnalyticDriftDistanceM:F4} m advanced analytically"));
 
-        Console.Out.WriteLine(string.Create(
-            invariant,
-            $"final x       {run.FinalPositionMm[0]:F6} mm"));
+        if (run.FinalPositionMm.Count > 0)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"final x       {run.FinalPositionMm[0]:F6} mm"));
+        }
 
         if (run.Ensemble is { } ensemble)
         {
