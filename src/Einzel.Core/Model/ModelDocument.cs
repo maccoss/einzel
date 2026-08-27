@@ -141,15 +141,16 @@ public static class ModelSchema
 {
     /// <summary>The schema version this build writes.</summary>
     /// <remarks>
-    /// 0.3 adds the source cloud. Additive, so every 0.2 document still reads, but
-    /// a document that declares a cloud genuinely is not a 0.2 document and saying
-    /// so is cheaper than an older build rejecting it with a schema error that
-    /// names the wrong cause.
+    /// 0.3 adds the source cloud, 0.5 the mutual Coulomb force. Both additive, so
+    /// every earlier document still reads - but a document whose ions push on each
+    /// other genuinely is not a 0.4 document, and saying so is cheaper than an older
+    /// build reading it, ignoring the field it does not know, and reporting a
+    /// different flight with no indication that anything was dropped.
     /// </remarks>
-    public const string CurrentVersion = "0.4";
+    public const string CurrentVersion = "0.5";
 
     /// <summary>Versions this build can read.</summary>
-    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3", "0.4"];
+    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3", "0.4", "0.5"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -367,6 +368,27 @@ public sealed record TransportDocument
     /// density over the whole of it would spend the run on empty space.
     /// </remarks>
     public DensityGridDocument? DensityGrid { get; init; }
+
+    /// <summary>
+    /// Whether the ions in a packet push on each other: <c>none</c> or <c>direct</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>none</c>, the default, flies each ion through a field that does not know
+    /// the others exist. That is exactly right for a sparse beam and wrong for a
+    /// dense packet, and the run says which it is either way.
+    /// </para>
+    /// <para>
+    /// <c>direct</c> sums every pair, which is the reference method SC-1 names. The
+    /// cost is quadratic in the trajectory count and the whole packet must be
+    /// advanced in lockstep, so it is opt-in rather than a default: a thousand-ion
+    /// cloud costs about half a million pair evaluations per stage, seven stages per
+    /// step. A string rather than a flag because particle-in-cell will be a third
+    /// value, and a boolean would have to be replaced rather than extended.
+    /// </para>
+    /// </remarks>
+    public string SpaceCharge { get; init; } = "none";
+
 }
 
 /// <summary>Ion mobility as it appears in a model document.</summary>

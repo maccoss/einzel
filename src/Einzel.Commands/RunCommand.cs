@@ -423,7 +423,13 @@ public static class RunCommand
                 flightTime)
             : 0.0;
 
-        var warnings = (IReadOnlyList<ValidityWarning>)[.. fieldWarnings, .. SpaceChargeWarnings(charge, limit)];
+        var warnings = (IReadOnlyList<ValidityWarning>)
+            [
+                .. fieldWarnings,
+                .. SpaceChargeWarnings(
+                    charge, limit, model.ModelsSpaceCharge,
+                    (double)charge.Population / Math.Max(1, model.Cloud.Ions)),
+            ];
 
         return new EnsembleOutcome
         {
@@ -508,8 +514,33 @@ public static class RunCommand
     /// </para>
     /// </remarks>
     private static IReadOnlyList<ValidityWarning> SpaceChargeWarnings(
-        SpaceChargeEstimate charge, double limit)
+        SpaceChargeEstimate charge, double limit, bool modelled, double weight)
     {
+        if (modelled)
+        {
+            // The estimate exists to say "this matters and the engine is not doing
+            // it". Here the engine is doing it, so repeating the warning would be
+            // false - and staying silent would leave a reader unable to tell a run
+            // that modelled the mutual force from one that found it negligible.
+            //
+            // What replaces it is provenance: the method used, and the fact that
+            // the trajectories are macroparticles rather than ions wherever the
+            // population exceeds them. A reader who does not know that is reading a
+            // sampled packet as a real one.
+            return
+            [
+                new ValidityWarning(
+                    "spacecharge.modelled",
+                    $"the ions in this packet push on each other, by direct summation over every pair. "
+                    + $"The screening estimate for the same packet is "
+                    + $"{charge.TimingFraction / 1e-6:F2} ppm and is reported alongside as a cross-check, "
+                    + $"not as the answer. Each trajectory carries the charge and the mass of "
+                    + $"{weight:F1} real ions, and the force between two of them closer together than "
+                    + "the mean macroparticle spacing is softened rather than Coulombic",
+                    WarningSeverity.Provenance),
+            ];
+        }
+
         if (charge.IsPointLike)
         {
             return

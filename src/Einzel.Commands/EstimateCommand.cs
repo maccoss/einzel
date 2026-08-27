@@ -187,6 +187,14 @@ public static class EstimateCommand
             basis = diffusiveBasis;
         }
 
+        if (model.ModelsSpaceCharge)
+        {
+            var (chargeSeconds, chargeBasis) = SelfField(model);
+
+            seconds += chargeSeconds;
+            basis = basis + " " + chargeBasis;
+        }
+
         return new EstimateOutcome
         {
             ModelPath = absolute,
@@ -218,6 +226,62 @@ public static class EstimateCommand
     /// intuition about which regime is expensive.
     /// </para>
     /// </remarks>
+    /// <summary>What the pairwise sum will cost.</summary>
+    /// <remarks>
+    /// <para>
+    /// GRD-8 gates an operation above a cost threshold and needs a number to gate
+    /// on without doing the work. Direct space charge is the first thing here whose
+    /// cost is <em>quadratic</em> in a number a user types: raising a cloud from 150
+    /// trajectories to 2,000 is a factor of 178, and 87 seconds becomes four hours.
+    /// A linear intuition is exactly wrong, so the basis says so in words.
+    /// </para>
+    /// <para>
+    /// The step count is the one thing here that is not knowable in advance - it is
+    /// whatever the adaptive controller decides - so it is taken from the flight
+    /// time and a step scale, and the estimate is an order of magnitude rather than
+    /// the exact number the diffusive estimate can give.
+    /// </para>
+    /// </remarks>
+    private static (double Seconds, string Basis) SelfField(CompiledModel model)
+    {
+        var trajectories = Math.Max(model.Cloud.Ions, 2);
+        var pairs = 0.5 * trajectories * (trajectories - 1.0);
+
+        // Seven Dormand-Prince stages, each summing every pair.
+        var perStep = StagesPerStep * pairs;
+
+        // Measured on this codebase: 150 trajectories through the rectilinear trap
+        // took 87 s over roughly eleven thousand steps, which is 8.7e8 pair
+        // evaluations. Rounded to one figure, because it is a rate on one machine.
+        var steps = EstimatedSteps;
+        var seconds = perStep * steps / PairsPerSecond;
+
+        var basis =
+            $"Space charge is summed over every pair: {trajectories:N0} trajectories give {pairs:N0} "
+            + $"pairs, {StagesPerStep} stages a step and about {steps:N0} steps, at {PairsPerSecond:G2} "
+            + "pair evaluations a second. THE COST IS QUADRATIC IN THE TRAJECTORY COUNT, so doubling "
+            + "the cloud quadruples this - the linear intuition is exactly wrong here. Lower "
+            + "\"ions\" and raise \"population\" to keep the packet's charge while computing fewer "
+            + "of them.";
+
+        return (seconds, basis);
+    }
+
+    /// <summary>Dormand-Prince stages that each evaluate the mutual force.</summary>
+    private const int StagesPerStep = 7;
+
+    /// <summary>Pair evaluations a second, measured on this codebase's own runs.</summary>
+    private const double PairsPerSecond = 1e7;
+
+    /// <summary>
+    /// Steps a packet flight takes, as an order of magnitude.
+    /// </summary>
+    /// <remarks>
+    /// The one quantity here that is not knowable before the run: it is whatever the
+    /// adaptive controller decides. Ten thousand is what the shipped templates take.
+    /// </remarks>
+    private const double EstimatedSteps = 1e4;
+
     private static (double Seconds, double MemoryMiB, string Basis) Diffusive(CompiledModel model)
     {
         var grid = DiffusionRun.GridFor(model);

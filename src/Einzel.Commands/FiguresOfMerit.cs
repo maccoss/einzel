@@ -323,6 +323,11 @@ public static class FiguresOfMerit
         // downstream. For a moving ion it is redundant and ignored.
         var cloud = IonCloud.Draw(in nominal, species, model.Cloud, model.SourceDirection);
 
+        if (model.ModelsSpaceCharge)
+        {
+            return FlyTogether(model, cloud, species, field, settings, detector);
+        }
+
         var arrivals = new List<double>(cloud.Length);
         var arrived = new List<PhaseState>(cloud.Length);
         var losses = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -395,6 +400,120 @@ public static class FiguresOfMerit
     }
 
     /// <summary>
+    /// Flies the whole packet in lockstep, with its ions pushing on each other.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The ordinary loop flies ion 1 to its detector before ion 2 is launched, so
+    /// there is no instant at which both exist. This one advances them together and
+    /// recomputes their shared field at every stage, which is the only way the
+    /// mutual force means anything.
+    /// </para>
+    /// <para>
+    /// <b>The weighting is the cloud's own two fields.</b> <c>ions</c> is how many
+    /// trajectories are computed and <c>population</c> is how many ions are
+    /// physically present, which is exactly the macroparticle split - each computed
+    /// trajectory stands in for <c>population / ions</c> real ions and carries their
+    /// charge and their mass together. No third field was needed, and two fields
+    /// that must agree would have been one too many.
+    /// </para>
+    /// <para>
+    /// The softening length is the mean spacing between macroparticles, from the
+    /// packet's own measured extent rather than from its declared spreads - a drawn
+    /// cloud is a sample, and its realised radius is what the sum is actually over.
+    /// </para>
+    /// </remarks>
+    private static CloudFlight FlyTogether(
+        CompiledModel model,
+        PhaseState[] cloud,
+        IonSpecies species,
+        IElectrostaticField field,
+        IntegrationSettings settings,
+        TrajectoryStopFunction detector)
+    {
+        var population = model.Cloud.Population ?? model.Cloud.Ions;
+
+        var interaction = new Transport.Interaction.CoulombInteraction(
+            population,
+            cloud.Length,
+            species.ChargeSi,
+            species.MassSi,
+            Transport.Interaction.CoulombInteraction.SpacingSoftening(
+                RealisedRadius(cloud), cloud.Length));
+
+        var result = Transport.Interaction.PacketIntegrator.Fly(
+            cloud, species, field, interaction, settings, detector);
+
+        var arrivals = new List<double>(cloud.Length);
+        var arrived = new List<PhaseState>(cloud.Length);
+        var losses = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (var member in result.Members)
+        {
+            if (member.Outcome == TrajectoryOutcome.StopConditionMet)
+            {
+                arrivals.Add(member.FlightTimeSeconds);
+                arrived.Add(member.FinalState);
+                continue;
+            }
+
+            // The same channels the independent path names, so a loss itemisation
+            // reads the same whether or not the ions pushed on each other.
+            var channel = member.Outcome switch
+            {
+                TrajectoryOutcome.StruckElectrode => member.StruckSurface ?? "an electrode",
+                TrajectoryOutcome.MaximumFlightTimeReached => "still in flight at the time limit",
+                TrajectoryOutcome.MaximumStepsExceeded => "step limit reached",
+                TrajectoryOutcome.StepSizeUnderflow => "step size underflow",
+                _ => "unknown",
+            };
+
+            losses[channel] = losses.GetValueOrDefault(channel) + 1;
+        }
+
+        return new CloudFlight(
+            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions),
+            [.. arrived],
+            [.. losses
+                .OrderByDescending(pair => pair.Value)
+                .ThenBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new LossChannel(pair.Key, pair.Value))],
+            Collisions: 0,
+            ScatteredIons: 0);
+    }
+
+    /// <summary>The radius of the uniform sphere a drawn cloud actually fills.</summary>
+    /// <remarks>
+    /// Matched by root-mean-square radius, the same convention the screening
+    /// estimate uses, so the softening length and the screen describe one packet.
+    /// </remarks>
+    private static double RealisedRadius(PhaseState[] cloud)
+    {
+        if (cloud.Length < 2)
+        {
+            return 0.0;
+        }
+
+        var centre = default(Vec3);
+
+        foreach (var one in cloud)
+        {
+            centre += one.Position;
+        }
+
+        centre *= 1.0 / cloud.Length;
+
+        var meanSquare = 0.0;
+
+        foreach (var one in cloud)
+        {
+            meanSquare += (one.Position - centre).LengthSquared;
+        }
+
+        return Math.Sqrt(5.0 / 3.0) * Math.Sqrt(meanSquare / cloud.Length);
+    }
+
+    /// <summary>
     /// The emittance of the packet that arrives, or null when too few ions do.
     /// </summary>
     /// <remarks>
@@ -453,6 +572,19 @@ public static class FiguresOfMerit
                 Seed = model.Cloud.Seed,
                 TemperatureK = model.Cloud.TemperatureK,
             },
+
+            // Turn-around is the spread the source temperature alone imposes, and
+            // the whole method is to switch everything else off and measure what is
+            // left. The packet's own charge is one of the things being switched off:
+            // leaving it on would measure temperature plus space charge and report
+            // it as temperature.
+            //
+            // It also cannot run. The thermal-only cloud has no spatial spread by
+            // construction, so its self-field is unbounded rather than large - which
+            // is exactly the case the validator refuses, reached here by a model
+            // built in code rather than read from a file. It came back as a
+            // turn-around of 0.000 ns, which reads like a measurement.
+            SpaceChargeMode = "none",
         };
 
         try

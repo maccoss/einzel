@@ -82,6 +82,15 @@ public sealed record CompiledModel
     /// </summary>
     public IonCloudSettings Cloud { get; init; } = new();
 
+    /// <summary>
+    /// Whether the packet's ions push on each other: <c>none</c> or <c>direct</c>.
+    /// </summary>
+    public string SpaceChargeMode { get; init; } = "none";
+
+    /// <summary>Whether the mutual Coulomb force is being modelled.</summary>
+    public bool ModelsSpaceCharge =>
+        string.Equals(SpaceChargeMode, "direct", StringComparison.Ordinal);
+
     /// <summary>The ion's launch speed, in metres per second.</summary>
     /// <returns>The speed after acceleration, including the energy offset.</returns>
     /// <remarks>

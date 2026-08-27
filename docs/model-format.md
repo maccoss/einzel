@@ -517,13 +517,61 @@ interpolate within a step.
 Asking for it is a regime violation with a distinct exit code, not a silent
 substitution.
 
+### Space charge
+
+```json
+"transport": {
+  "spaceCharge": "direct"
+}
+```
+
+`none`, the default, flies each ion through a field that does not know the others
+exist. That is exactly right for a sparse beam and wrong for a dense packet, and
+a run says which it is either way — the screening estimate is reported whether or
+not it crosses a threshold.
+
+`direct` sums every pair. It is the reference method SC-1 names, and it is a
+string rather than a flag because particle-in-cell will be a third value and a
+boolean would have to be replaced rather than extended.
+
+**The weighting is the cloud's own two fields.** `ions` is how many trajectories
+are computed; `population` is how many ions are physically present. Each computed
+trajectory therefore stands in for `population / ions` real ions and carries their
+charge *and* their mass together — so charge-to-mass is unchanged, motion in the
+applied field is bit-identical to the unweighted case, and only the pairwise sum
+notices. Lowering `ions` while keeping `population` is how a dense packet becomes
+affordable, and it is a declared approximation rather than a hidden one.
+
+**The cost is quadratic in `ions`**, and `einzel estimate` says so in words as
+well as in a number, because the linear intuition is exactly wrong: 150
+trajectories through the shipped trap took 87 seconds and 2,000 would take about
+four hours. Trajectory integration is otherwise excluded from the estimate — its
+cost depends on a path that depends on a field not yet solved — so this is the one
+transport cost stated in advance.
+
+Three ways to ask for it and not get it are **refused rather than run**, because
+each would produce a result that looks like the one asked for:
+
+| | |
+| --- | --- |
+| Fewer than two trajectories | nobody to push on |
+| A cloud with no spatial spread | an unbounded self-field, not a large one |
+| A declared gas | the packet advances in lockstep and has no collision hook, so the gas would take no part in the run |
+
+What it gives up, stated rather than discovered: the packet integrator **cannot
+land exactly on a declared field discontinuity**, because a shared step cannot land
+on a surface each macroparticle reaches at its own instant. It caps the step short
+of the first arrival instead. That is why this is the reference method for space
+charge rather than a replacement for the path that carries ACC-1.
+
 ## Versioning
 
-Schema 0.1, 0.2, and 0.3 all load. Every bump ships a migration and a test that
-the prior corpus still loads. Codes and field names are a compatibility surface
-that agent workflows bind to: they are added, never reworded or repurposed.
+Schema 0.1 through 0.5 all load. Every bump ships a migration and a test that the
+prior corpus still loads. Codes and field names are a compatibility surface that
+agent workflows bind to: they are added, never reworded or repurposed.
 
-0.3 adds the source cloud. Purely additive, so every 0.2 document still reads —
-but a document that declares a cloud genuinely is not a 0.2 document, and saying
-so is cheaper than an older build rejecting it with a schema error naming the
-wrong cause.
+0.3 adds the source cloud and 0.5 the mutual Coulomb force. Both purely additive,
+so every earlier document still reads — but a document whose ions push on each
+other genuinely is not a 0.4 document, and saying so is cheaper than an older
+build reading it, ignoring the field it does not know, and reporting a different
+flight with nothing to indicate that anything was dropped.

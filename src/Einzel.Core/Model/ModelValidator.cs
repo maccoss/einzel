@@ -139,6 +139,7 @@ public static class ModelValidator
             Gas = transport.Gas,
             Mobility = transport.Mobility,
             DensityGrid = transport.DensityGrid,
+            SpaceChargeMode = transport.SpaceCharge,
             Parameters = surface,
         };
 
@@ -1871,7 +1872,8 @@ public static class ModelValidator
         double SampleInterval,
         CompiledGas Gas,
         CompiledMobility? Mobility,
-        CompiledDensityGrid? DensityGrid);
+        CompiledDensityGrid? DensityGrid,
+        string SpaceCharge);
 
     private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
@@ -1998,9 +2000,86 @@ public static class ModelValidator
             }
         }
 
+        if (transport.SpaceCharge is not ("none" or "direct"))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/spaceCharge",
+                Constraint = "space charge is modelled by one of the methods this build has",
+                Observed = new ObservedValue(0.0, transport.SpaceCharge),
+                Suggestion = "\"none\" flies each ion through a field that does not know the others "
+                    + "exist; \"direct\" sums every pair, which is the reference method and costs "
+                    + "the square of the trajectory count",
+            });
+
+            return null;
+        }
+
         return new TransportValues(
             transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample,
-            gas, mobility, densityGrid);
+            gas, mobility, densityGrid, transport.SpaceCharge);
+    }
+
+    /// <summary>
+    /// Refuses a space-charge model that has nothing to compute or cannot be run.
+    /// </summary>
+    /// <remarks>
+    /// Three ways to ask for the mutual force and not get it, all of which would
+    /// otherwise run and report a number: a single trajectory has nobody to push
+    /// on; a packet with no spatial extent has an unbounded self-field rather than
+    /// a large one; and the packet integrator has no collision hook, so a declared
+    /// gas would be silently dropped. Refusing is better than any of the three,
+    /// because each would produce a result that looks like the one asked for.
+    /// </remarks>
+    private static void ValidateSpaceChargeIsComputable(CompiledModel model, List<EinzelError> errors)
+    {
+        if (!model.ModelsSpaceCharge)
+        {
+            return;
+        }
+
+        if (model.Cloud.Ions < 2)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/spaceCharge",
+                Constraint = "the mutual force needs at least two trajectories to act between",
+                Observed = new ObservedValue(model.Cloud.Ions, "1"),
+                Suggestion = "declare a source cloud with \"ions\" of 2 or more, or set "
+                    + "\"spaceCharge\": \"none\"",
+            });
+        }
+
+        var extent = (model.Cloud.TransverseSpreadM * model.Cloud.TransverseSpreadM * 2.0)
+            + (model.Cloud.LongitudinalSpreadM * model.Cloud.LongitudinalSpreadM);
+
+        if (extent <= 0.0 && model.Cloud.Ions >= 2)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/source/cloud",
+                Constraint = "a packet at a single point has an unbounded self-field, not a large one",
+                Observed = new ObservedValue(0.0, "m"),
+                Suggestion = "give the cloud a transverseSpread or a longitudinalSpread",
+            });
+        }
+
+        if (model.Gas.IsPresent)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.RegimeInvalid,
+                Path = "/transport/spaceCharge",
+                Constraint = "the direct space-charge method advances the whole packet in lockstep and "
+                    + "has no collision hook, so a declared gas would take no part in the run",
+                Observed = new ObservedValue(model.Gas.PressureSi, "Pa"),
+                Suggestion = "remove the gas, or set \"spaceCharge\": \"none\" and read the screening "
+                    + "estimate the run reports instead",
+            });
+        }
     }
 
     /// <summary>Validates the declared mobility, or derives one from the gas.</summary>
@@ -2292,6 +2371,7 @@ public static class ModelValidator
     private static void ValidateGeometryConsistency(CompiledModel model, List<EinzelError> errors)
     {
         ValidateSourceIsNotInsideMetal(model, errors);
+        ValidateSpaceChargeIsComputable(model, errors);
 
         // GRD-4: validity is checked, not assumed. An ion launched on the wrong
         // side of its own detector never flies, and the resulting zero flight time
