@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Core</RootNamespace>
+    <Description>
+      Model, units, geometry, symmetry, parameters, and validation. The innermost
+      assembly of the Einzel ion-optics platform; references nothing above it.
+    </Description>
+  </PropertyGroup>
+
+</Project>

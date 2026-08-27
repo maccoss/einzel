@@ -1,0 +1,22 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!--
+    Spec section 20: no GPL dependency in the default build, ever (LIC-1). Every
+    entry added here carries a licence note. Where GPL functionality is genuinely
+    wanted it is invoked out of process as a tool the user supplies (RND-9,
+    RND-15), never referenced from this file.
+  -->
+  <ItemGroup>
+    <!-- Test stack. MIT / Apache-2.0. -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+  </ItemGroup>
+
+</Project>

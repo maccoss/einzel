@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "0.3",
+  "name": "rectilinear-trap",
+  "description": "A rectilinear ion trap in cross-section, in its transversal pulsed-extraction configuration: four flat plates around a square aperture, the front one split by an extraction slot, solved in the plane normal to the trap axis. This is the cross-section of the Stewart/Grinfeld Ion Processor (JASMS 2023) at r0 = 2 mm. Flat plates approximate a hyperbolic field far more crudely than round rods do, so with the trapping potentials applied the 12-pole content should be percent-level rather than parts per thousand; that is a property of the geometry, not a defect. With the extraction potentials applied the packet is pushed through the slot, and what the solve buys over the closed form is the field's departure from uniform across the packet - the turn-around-time formula assumes a uniform field and a slotted plate does not provide one.",
+
+  "parameters": {
+    "inscribedRadius": {
+      "value": 2.0, "unit": "mm", "minimum": 0.5, "maximum": 20.0,
+      "description": "Axis to the inner face of a plate, conventionally r0. The Ion Processor uses 2 mm in both the high- and low-pressure regions."
+    },
+    "plateThickness": {
+      "value": 1.0, "unit": "mm", "minimum": 0.1, "maximum": 10.0,
+      "description": "Thickness of each flat plate. Thicker plates deepen the slot and make the extraction field leak less."
+    },
+    "cornerGap": {
+      "value": 0.4, "unit": "mm", "minimum": 0.05, "maximum": 5.0,
+      "description": "Insulating gap at each corner, where the front and back plates stop short of the side plates. A real trap needs one; setting it near zero shorts adjacent electrodes together and the solve will say so through the maximum principle."
+    },
+    "slotWidth": {
+      "value": 1.0, "unit": "mm", "minimum": 0.1, "maximum": 10.0,
+      "description": "Width of the extraction slot in the front plate. The trade this parameter carries is the whole design: too narrow and the packet clips, too wide and the extraction field sags in the middle and stops being uniform."
+    },
+    "pushPotential": {
+      "value": 1000.0, "unit": "V", "minimum": -5000.0, "maximum": 5000.0,
+      "description": "Applied to the back plate during extraction. The Ion Processor pulses 500 to 1000 V transversally. This sets the extraction field and with it the turn-around time, which goes as one over it."
+    },
+    "frontPotential": {
+      "value": 0.0, "unit": "V", "minimum": -5000.0, "maximum": 5000.0,
+      "description": "Applied to the slotted front plate."
+    },
+    "sidePotential": {
+      "value": 0.0, "unit": "V", "minimum": -5000.0, "maximum": 5000.0,
+      "description": "Applied to both side plates. Zero during extraction; set to plus and minus a common value against the front and back plates to put the trap in its RF-analogue trapping configuration and inspect the multipole content."
+    },
+    "driftLength": {
+      "value": 10.0, "unit": "mm", "minimum": 1.0, "maximum": 200.0,
+      "description": "From the outer face of the front plate to the detector plane. Field-free to the extent the slot lets it be, which is the point of solving it rather than assuming it."
+    },
+    "housingClearance": {
+      "value": 3.0, "unit": "mm", "minimum": 0.5, "maximum": 50.0,
+      "description": "From the outermost electrode to the grounded domain boundary. The boundary is the housing, so this says how tightly the trap is enclosed."
+    },
+    "cellsPerRadius": {
+      "value": 20.0, "unit": "1", "minimum": 4.0, "maximum": 128.0,
+      "description": "Grid cells across the inscribed radius. The slot and the corner gaps are the smallest features, so check that both still span several cells before trusting a coarse run."
+    },
+
+    "plateOuter": { "expression": "inscribedRadius + plateThickness", "unit": "mm" },
+    "capHalfWidth": { "expression": "inscribedRadius - cornerGap", "unit": "mm" },
+    "slotHalfWidth": { "expression": "slotWidth / 2", "unit": "mm" },
+    "domainHalfWidth": { "expression": "plateOuter + housingClearance", "unit": "mm" },
+    "detectorY": { "expression": "plateOuter + driftLength", "unit": "mm" },
+    "domainTop": { "expression": "detectorY + housingClearance", "unit": "mm" },
+    "cellSize": { "expression": "inscribedRadius / cellsPerRadius", "unit": "mm" }
+  },
+
+  "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+
+  "source": {
+    "position": { "value": [0, 0, 0], "unit": "mm" },
+    "direction": { "value": [0, 1, 0] },
+    "accelerationPotential": { "value": 0, "unit": "V" },
+    "cloud": {
+      "ions": 2000,
+      "seed": 1,
+      "temperature": { "value": 300, "unit": "K" },
+      "transverseSpread": { "value": 0.2, "unit": "mm" },
+      "longitudinalSpread": { "value": 0.2, "unit": "mm" }
+    }
+  },
+
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": { "expression": "-domainHalfWidth", "unit": "mm" },
+        "minY": { "expression": "-domainHalfWidth", "unit": "mm" },
+        "maxX": { "expression": "domainHalfWidth", "unit": "mm" },
+        "maxY": { "expression": "domainTop", "unit": "mm" },
+        "cellSize": { "expression": "cellSize", "unit": "mm" },
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "sidePlateXPlus", "shape": "rectangle",
+            "minX": { "expression": "inscribedRadius", "unit": "mm" },
+            "maxX": { "expression": "plateOuter", "unit": "mm" },
+            "minY": { "expression": "-plateOuter", "unit": "mm" },
+            "maxY": { "expression": "plateOuter", "unit": "mm" },
+            "potential": { "expression": "sidePotential", "unit": "V" }
+          },
+          {
+            "name": "sidePlateXMinus", "shape": "rectangle",
+            "minX": { "expression": "-plateOuter", "unit": "mm" },
+            "maxX": { "expression": "-inscribedRadius", "unit": "mm" },
+            "minY": { "expression": "-plateOuter", "unit": "mm" },
+            "maxY": { "expression": "plateOuter", "unit": "mm" },
+            "potential": { "expression": "sidePotential", "unit": "V" }
+          },
+          {
+            "name": "backPlate", "shape": "rectangle",
+            "minX": { "expression": "-capHalfWidth", "unit": "mm" },
+            "maxX": { "expression": "capHalfWidth", "unit": "mm" },
+            "minY": { "expression": "-plateOuter", "unit": "mm" },
+            "maxY": { "expression": "-inscribedRadius", "unit": "mm" },
+            "potential": { "expression": "pushPotential", "unit": "V" }
+          },
+          {
+            "name": "frontPlateLeft", "shape": "rectangle",
+            "minX": { "expression": "-capHalfWidth", "unit": "mm" },
+            "maxX": { "expression": "-slotHalfWidth", "unit": "mm" },
+            "minY": { "expression": "inscribedRadius", "unit": "mm" },
+            "maxY": { "expression": "plateOuter", "unit": "mm" },
+            "potential": { "expression": "frontPotential", "unit": "V" }
+          },
+          {
+            "name": "frontPlateRight", "shape": "rectangle",
+            "minX": { "expression": "slotHalfWidth", "unit": "mm" },
+            "maxX": { "expression": "capHalfWidth", "unit": "mm" },
+            "minY": { "expression": "inscribedRadius", "unit": "mm" },
+            "maxY": { "expression": "plateOuter", "unit": "mm" },
+            "potential": { "expression": "frontPotential", "unit": "V" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "detector": {
+    "planePoint": { "expression": ["0", "detectorY", "0"], "unit": "mm" },
+    "normal": { "value": [0, -1, 0] }
+  },
+
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": { "value": 100, "unit": "us" }
+  }
+}

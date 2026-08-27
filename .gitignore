@@ -1,0 +1,34 @@
+## Build output
+bin/
+obj/
+artifacts/
+[Rr]elease/
+[Dd]ebug/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+## Test and coverage
+TestResults/
+*.coverage
+coverage.*.xml
+
+## NuGet
+*.nupkg
+packages/
+
+## Internal working memo. Not published: it carries the patent and
+## freedom-to-operate analysis, and this remote is public. The software
+## specification alongside it IS tracked.
+compact-mrtof-stellar-memo.html
+
+## Einzel project scratch (spec section 3)
+## Field caches, trajectories, frames. Large, binary, and regenerable from the
+## run manifest, which is why discarding it loses nothing.
+.einzel/
+
+## OS
+Thumbs.db
+.DS_Store

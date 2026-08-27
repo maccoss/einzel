@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Transport</RootNamespace>
+    <Description>
+      Integrators, statistical diffusion, collisions, and space charge. Peer
+      implementations of ITransportMode live here; no device class does.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Fields\Einzel.Fields.csproj" />
+  </ItemGroup>
+
+</Project>

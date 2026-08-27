@@ -1,0 +1,11 @@
+# LF in the repository and in the working tree, on every platform.
+#
+# CI builds on Linux and Windows, and spec section 19 calls for golden SVG
+# compared as text so that "a rendering regression shows up as a readable diff".
+# Line-ending drift would turn every such diff into noise.
+* text=auto eol=lf
+
+# Binary assets, once there are any.
+*.png binary
+*.pdf binary
+*.vtu binary

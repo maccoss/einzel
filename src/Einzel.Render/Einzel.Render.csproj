@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Render</RootNamespace>
+    <Description>
+      Projection, vector emit, and frame sequences. Rendering is an engine
+      capability rather than a shell feature (RND-1): the figure composer and
+      'einzel render' are peer consumers of this, and it must produce a
+      publication figure headlessly, on Linux, in CI, with no display attached.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Fields\Einzel.Fields.csproj" />
+    <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

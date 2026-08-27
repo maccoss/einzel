@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Fields</RootNamespace>
+    <Description>
+      DC and RF solvers, basis and sensitivity fields, and interpolants. Sits
+      below Einzel.Transport: an integrator consumes fields, it does not solve
+      them.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+  </ItemGroup>
+
+</Project>

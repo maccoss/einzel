@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Io</RootNamespace>
+    <Description>Model format, field import, mesh interchange, and export.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
+    <ProjectReference Include="..\Einzel.Fields\Einzel.Fields.csproj" />
+  </ItemGroup>
+
+</Project>

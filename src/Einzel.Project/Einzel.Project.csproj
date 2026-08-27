@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Project</RootNamespace>
+    <Description>Project layout, run manifests, drift detection, AGENTS.md generation.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Io\Einzel.Io.csproj" />
+  </ItemGroup>
+
+</Project>

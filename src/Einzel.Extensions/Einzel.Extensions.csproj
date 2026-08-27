@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Extensions</RootNamespace>
+    <Description>
+      Extension manifest, schema validation, and the runners behind it. One
+      manifest, two runners (spec figure 2): a sandboxed subprocess for
+      agent-authored and third-party code, which is the default, and an
+      in-process runner for first-party and explicitly trusted code. The process
+      boundary is what makes per-step scripting physically impossible rather than
+      merely discouraged (EXT-4).
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+  </ItemGroup>
+
+</Project>

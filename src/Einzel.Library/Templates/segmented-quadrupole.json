@@ -1,0 +1,246 @@
+{
+  "schemaVersion": "0.3",
+  "name": "segmented-quadrupole",
+  "description": "A quadrupole cut into three axial sections - a short prefilter, a long main section, and a short postfilter - each at its own working point, solved in three dimensions. This is the geometry of Schrader, Anderson and Russell (JASMS 2024), where the prefilter is driven through a coupling capacitor so it sits at a lower q and a much lower a than the main section, and the ions are conditioned before they meet the analysing field. It cannot be modelled in a cross-section at any resolution: the whole point is that the field changes along the axis, which is the direction a cross-section is invariant in. The twelve rod segments reduce to a handful of basis solves, because segments driven from the same supply share a spatial pattern however many of them there are.",
+
+  "parameters": {
+    "inscribedRadius": {
+      "value": 4.0, "unit": "mm", "minimum": 0.5, "maximum": 20.0,
+      "description": "Axis to nearest rod surface, conventionally r0. The Thermo filter the paper uses is 4 mm."
+    },
+    "rodRatio": {
+      "value": 1.1468, "unit": "1", "minimum": 1.0, "maximum": 1.4,
+      "description": "Rod radius as a multiple of r0. The classical value that cancels the 12-pole."
+    },
+    "prefilterLength": {
+      "value": 22.0, "unit": "mm", "minimum": 1.0, "maximum": 200.0,
+      "description": "Axial length of the entrance section. The paper uses 22 mm."
+    },
+    "mainLength": {
+      "value": 24.0, "unit": "mm", "minimum": 5.0, "maximum": 400.0,
+      "description": "Axial length of the analysing section. The paper's is 159 mm. Much shorter here, because a three-dimensional solve costs the cube of its resolution and the length is the expensive axis - and because the physics this template exists for happens at the two joins rather than along the middle, which a longer main section only adds more of the same to."
+    },
+    "postfilterLength": {
+      "value": 22.0, "unit": "mm", "minimum": 1.0, "maximum": 200.0,
+      "description": "Axial length of the exit section."
+    },
+    "segmentGap": {
+      "value": 1.0, "unit": "mm", "minimum": 0.1, "maximum": 20.0,
+      "description": "Axial gap between adjacent segments. Where the working point actually changes, and the length over which an ion crosses from one to the next."
+    },
+    "mainAmplitude": {
+      "value": 500.0, "unit": "V", "minimum": 0.0, "maximum": 20000.0,
+      "description": "RF amplitude on the main section, zero to peak, applied to the x pair; the y pair takes its negative."
+    },
+    "mainDc": {
+      "value": 0.0, "unit": "V", "minimum": -5000.0, "maximum": 5000.0,
+      "description": "DC on the main section's x pair; the y pair takes its negative. Zero puts the main section on the a = 0 line."
+    },
+    "couplingRatio": {
+      "value": 0.85, "unit": "1", "minimum": 0.0, "maximum": 1.0,
+      "description": "What fraction of the main RF amplitude the prefilter and postfilter see. A real instrument sets this with a capacitor; here it is the one number that makes a segmented filter different from a plain one, and it is what the paper tunes."
+    },
+    "prefilterDcRatio": {
+      "value": 0.0, "unit": "1", "minimum": -1.0, "maximum": 1.0,
+      "description": "What fraction of the main section's DC the prefilter and postfilter see. Zero by default, and that is the physics rather than a simplification: the coupling is a capacitor, which passes the RF and blocks the DC, so the entrance section is an RF-only guide sitting at a = 0. That is the whole reason a prefilter helps - ions meet a confining field before they meet the analysing one, instead of crossing the DC fringe on their way in. Set it non-zero to model a resistive tap instead, and note that the structure then costs a second basis solve, because the DC and RF no longer reach the electrodes in the same proportions."
+    },
+    "driveFrequency": {
+      "value": 1.0, "unit": "MHz", "minimum": 0.01, "maximum": 100.0,
+      "description": "One generator for the whole structure."
+    },
+    "housingClearance": {
+      "value": 1.4, "unit": "1", "minimum": 0.2, "maximum": 8.0,
+      "description": "Rod centre to the grounded wall, beyond the rod radius, as a multiple of the rod radius."
+    },
+    "cellsPerRadius": {
+      "value": 5.0, "unit": "1", "minimum": 2.0, "maximum": 32.0,
+      "description": "Grid cells across r0. Three dimensions cost the cube of this, so it is far coarser than a cross-section would use - a 2D solve at 16 is 128 by 128 nodes and a 3D solve at 16 is two million. The segment gaps are the smallest feature; check they still span a cell or two."
+    },
+    "launchOffset": {
+      "value": 0.2, "unit": "mm", "minimum": 0.0, "maximum": 10.0,
+      "description": "How far off axis the ion starts, in both transverse directions."
+    },
+    "ionEnergy": {
+      "value": 5.0, "unit": "V", "minimum": 0.1, "maximum": 500.0,
+      "description": "Axial energy carrying the ion through. The paper's ions arrive at about 4.25 eV."
+    },
+
+    "rodRadius": { "expression": "inscribedRadius * rodRatio", "unit": "mm" },
+    "rodCentre": { "expression": "inscribedRadius + rodRadius", "unit": "mm" },
+    "domainHalfWidth": { "expression": "rodCentre + rodRadius * housingClearance", "unit": "mm" },
+    "cellSize": { "expression": "inscribedRadius / cellsPerRadius", "unit": "mm" },
+
+    "preEnd": { "expression": "prefilterLength", "unit": "mm" },
+    "mainStart": { "expression": "preEnd + segmentGap", "unit": "mm" },
+    "mainEnd": { "expression": "mainStart + mainLength", "unit": "mm" },
+    "postStart": { "expression": "mainEnd + segmentGap", "unit": "mm" },
+    "postEnd": { "expression": "postStart + postfilterLength", "unit": "mm" },
+    "preAmplitude": { "expression": "mainAmplitude * couplingRatio", "unit": "V" },
+    "preDc": { "expression": "mainDc * prefilterDcRatio", "unit": "V" },
+    "leadIn": { "expression": "inscribedRadius", "unit": "mm" },
+    "launchZ": { "expression": "-leadIn / 2", "unit": "mm" },
+    "detectorZ": { "expression": "postEnd + leadIn / 2", "unit": "mm" }
+  },
+
+  "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+
+  "source": {
+    "position": { "expression": ["launchOffset", "launchOffset", "launchZ"], "unit": "mm" },
+    "direction": { "value": [0, 0, 1] },
+    "accelerationPotential": { "expression": "ionEnergy", "unit": "V" }
+  },
+
+  "fields": [
+    {
+      "type": "solved3d",
+      "solve3d": {
+        "drive": {
+          "frequency": { "expression": "driveFrequency", "unit": "MHz" },
+          "waveform": "sinusoid"
+        },
+        "minX": { "expression": "-domainHalfWidth", "unit": "mm" },
+        "minY": { "expression": "-domainHalfWidth", "unit": "mm" },
+        "minZ": { "expression": "-leadIn", "unit": "mm" },
+        "maxX": { "expression": "domainHalfWidth", "unit": "mm" },
+        "maxY": { "expression": "domainHalfWidth", "unit": "mm" },
+        "maxZ": { "expression": "postEnd + leadIn", "unit": "mm" },
+        "cellSize": { "expression": "cellSize", "unit": "mm" },
+        "tolerance": 1e-7,
+        "electrodes": [
+          {
+            "name": "preXPlus", "shape": "cylinder", "axis": "z",
+            "centreX": { "expression": "rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "value": 0, "unit": "mm" },
+            "upper": { "expression": "preEnd", "unit": "mm" },
+            "potential": { "expression": "preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "preAmplitude", "unit": "V" }
+          },
+          {
+            "name": "preXMinus", "shape": "cylinder", "axis": "z",
+            "centreX": { "expression": "-rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "value": 0, "unit": "mm" },
+            "upper": { "expression": "preEnd", "unit": "mm" },
+            "potential": { "expression": "preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "preAmplitude", "unit": "V" }
+          },
+          {
+            "name": "preYPlus", "shape": "cylinder", "axis": "z",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "value": 0, "unit": "mm" },
+            "upper": { "expression": "preEnd", "unit": "mm" },
+            "potential": { "expression": "-preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "-preAmplitude", "unit": "V" }
+          },
+          {
+            "name": "preYMinus", "shape": "cylinder", "axis": "z",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "-rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "value": 0, "unit": "mm" },
+            "upper": { "expression": "preEnd", "unit": "mm" },
+            "potential": { "expression": "-preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "-preAmplitude", "unit": "V" }
+          },
+
+          {
+            "name": "mainXPlus", "shape": "cylinder", "axis": "z",
+            "centreX": { "expression": "rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "mainStart", "unit": "mm" },
+            "upper": { "expression": "mainEnd", "unit": "mm" },
+            "potential": { "expression": "mainDc", "unit": "V" },
+            "driveAmplitude": { "expression": "mainAmplitude", "unit": "V" }
+          },
+          {
+            "name": "mainXMinus", "shape": "cylinder", "axis": "z",
+            "centreX": { "expression": "-rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "mainStart", "unit": "mm" },
+            "upper": { "expression": "mainEnd", "unit": "mm" },
+            "potential": { "expression": "mainDc", "unit": "V" },
+            "driveAmplitude": { "expression": "mainAmplitude", "unit": "V" }
+          },
+          {
+            "name": "mainYPlus", "shape": "cylinder", "axis": "z",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "mainStart", "unit": "mm" },
+            "upper": { "expression": "mainEnd", "unit": "mm" },
+            "potential": { "expression": "-mainDc", "unit": "V" },
+            "driveAmplitude": { "expression": "-mainAmplitude", "unit": "V" }
+          },
+          {
+            "name": "mainYMinus", "shape": "cylinder", "axis": "z",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "-rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "mainStart", "unit": "mm" },
+            "upper": { "expression": "mainEnd", "unit": "mm" },
+            "potential": { "expression": "-mainDc", "unit": "V" },
+            "driveAmplitude": { "expression": "-mainAmplitude", "unit": "V" }
+          },
+
+          {
+            "name": "postXPlus", "shape": "cylinder", "axis": "z",
+            "centreX": { "expression": "rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "postStart", "unit": "mm" },
+            "upper": { "expression": "postEnd", "unit": "mm" },
+            "potential": { "expression": "preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "preAmplitude", "unit": "V" }
+          },
+          {
+            "name": "postXMinus", "shape": "cylinder", "axis": "z",
+            "centreX": { "expression": "-rodCentre", "unit": "mm" },
+            "centreY": { "value": 0, "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "postStart", "unit": "mm" },
+            "upper": { "expression": "postEnd", "unit": "mm" },
+            "potential": { "expression": "preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "preAmplitude", "unit": "V" }
+          },
+          {
+            "name": "postYPlus", "shape": "cylinder", "axis": "z",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "postStart", "unit": "mm" },
+            "upper": { "expression": "postEnd", "unit": "mm" },
+            "potential": { "expression": "-preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "-preAmplitude", "unit": "V" }
+          },
+          {
+            "name": "postYMinus", "shape": "cylinder", "axis": "z",
+            "centreX": { "value": 0, "unit": "mm" },
+            "centreY": { "expression": "-rodCentre", "unit": "mm" },
+            "radius": { "expression": "rodRadius", "unit": "mm" },
+            "lower": { "expression": "postStart", "unit": "mm" },
+            "upper": { "expression": "postEnd", "unit": "mm" },
+            "potential": { "expression": "-preDc", "unit": "V" },
+            "driveAmplitude": { "expression": "-preAmplitude", "unit": "V" }
+          }
+        ]
+      }
+    }
+  ],
+
+  "detector": {
+    "planePoint": { "expression": ["0", "0", "detectorZ"], "unit": "mm" },
+    "normal": { "value": [0, 0, -1] }
+  },
+
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": { "value": 1, "unit": "ms" }
+  }
+}

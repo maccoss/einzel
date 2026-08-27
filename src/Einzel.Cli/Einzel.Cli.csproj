@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Einzel.Cli</RootNamespace>
+    <AssemblyName>einzel</AssemblyName>
+    <Description>The primary surface. Every capability reachable from the shell is reachable here (AGT-2).</Description>
+    <!-- PERF-8: cold start to first output under 500 ms, with no network call in that path. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einzel &mdash; software specification rev 0.6</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F7F7F4; --ink:#12161A; --ink2:#525C64; --ink3:#7E888F;
+  --rule:#C9CFD4; --hair:#DDE2E5;
+  --blue:#1D4E89; --verd:#0B7A6B; --amber:#9C6A0B; --plum:#5B4B8A;
+  --tint:#E7EEF3; --tint2:#E4F0ED;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16.5px; line-height:1.62; letter-spacing:.002em;
+}
+.sheet{max-width:1080px;margin:0 auto;padding:0 28px 96px}
+.masthead{border-bottom:2px solid var(--ink);padding:44px 0 0}
+.stamp{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);
+  display:flex;flex-wrap:wrap;gap:22px;margin-bottom:26px;
+}
+.stamp b{color:var(--ink2);font-weight:500}
+h1{
+  font-family:"IBM Plex Sans",sans-serif;font-weight:600;
+  font-size:clamp(28px,4.6vw,44px);line-height:1.1;letter-spacing:-.022em;
+  margin:0 0 10px; max-width:20ch;
+}
+.sub{font-size:clamp(16px,2.2vw,19px);color:var(--ink2);margin:0 0 26px;max-width:58ch;font-weight:400}
+.titleblock{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+}
+.titleblock div{padding:11px 14px 12px;border-right:1px solid var(--hair)}
+.titleblock div:last-child{border-right:none}
+.titleblock span{display:block;color:var(--ink3);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;margin-bottom:3px}
+.lede{
+  font-family:"IBM Plex Serif",Georgia,serif;font-size:19px;line-height:1.55;
+  color:var(--ink);margin:36px 0 8px;max-width:62ch;
+}
+section{margin-top:56px;scroll-margin-top:20px}
+h2{
+  font-size:13px;font-family:"IBM Plex Mono",monospace;font-weight:500;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--blue);
+  margin:0 0 6px;padding-bottom:8px;border-bottom:1px solid var(--rule);
+  display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+}
+h2 em{font-style:normal;color:var(--ink3);font-size:11px;letter-spacing:.1em}
+h3{font-size:19px;font-weight:600;letter-spacing:-.012em;margin:34px 0 10px;max-width:48ch}
+h4{font-size:15px;font-weight:600;margin:24px 0 8px;letter-spacing:-.008em}
+p{margin:0 0 16px;max-width:68ch}
+ul,ol{max-width:68ch;margin:0 0 18px;padding-left:20px}
+li{margin-bottom:9px}
+li::marker{color:var(--ink3)}
+strong{font-weight:600}
+code,.m{font-family:"IBM Plex Mono",monospace;font-size:.9em;background:var(--tint);
+  padding:.1em .35em;border-radius:2px;letter-spacing:-.01em}
+a{color:var(--blue);text-decoration:none;border-bottom:1px solid rgba(29,78,137,.32)}
+.callout{
+  border-left:3px solid var(--verd);background:var(--tint2);
+  padding:16px 20px 4px;margin:26px 0;max-width:68ch;
+}
+.callout.warn{border-left-color:var(--amber);background:#F6F0E2}
+.callout.note{border-left-color:var(--blue);background:var(--tint)}
+.callout.stop{border-left-color:#8A3A3A;background:#F5E9E7}
+.callout p:last-child{margin-bottom:14px}
+.klabel{
+  font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--verd);margin-bottom:6px;display:block;
+}
+.callout.warn .klabel{color:var(--amber)}
+.callout.note .klabel{color:var(--blue)}
+.callout.stop .klabel{color:#8A3A3A}
+.tw{overflow-x:auto;margin:24px 0 28px;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;min-width:580px;font-size:14px}
+th,td{text-align:left;padding:9px 14px 9px 0;border-bottom:1px solid var(--hair);vertical-align:top}
+th{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink3);font-weight:500;border-bottom:1px solid var(--rule)}
+td.n{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+td.t{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+tr td:first-child{padding-left:0}
+figure{margin:34px 0 38px;border:1px solid var(--rule);background:#fff}
+figure svg{display:block;width:100%;height:auto}
+figcaption{border-top:1px solid var(--rule);padding:11px 16px 13px;font-size:13px;color:var(--ink2);line-height:1.5}
+figcaption b{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink);margin-right:10px}
+.req{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.06em;
+  color:var(--ink3);border:1px solid var(--hair);border-radius:2px;padding:1px 5px;margin-right:8px}
+pre{background:#fff;border:1px solid var(--hair);border-left:3px solid var(--rule);
+  padding:14px 16px;overflow-x:auto;font-family:"IBM Plex Mono",monospace;
+  font-size:12.5px;line-height:1.6;margin:20px 0;max-width:68ch;color:var(--ink2)}
+pre b{color:var(--ink);font-weight:500}
+@media (max-width:640px){
+  body{font-size:16px}
+  .sheet{padding:0 18px 72px}
+  .lede{font-size:17.5px}
+  .stamp{gap:14px;font-size:10px}
+}
+@media print{ body{background:#fff} figure{break-inside:avoid} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header class="masthead">
+  <div class="stamp">
+    <span><b>Software specification</b> &nbsp;rev 0.6</span>
+    <span><b>Status</b> &nbsp;draft for internal discussion</span>
+    <span><b>Change</b> &nbsp;rendering, vector export, animation, and interchange added; visualization scope boundary drawn</span>
+    <span><b>Not for distribution</b></span>
+  </div>
+  <h1>Einzel: an open&#8209;source, agent&#8209;native ion&#8209;optics platform</h1>
+  <p class="sub">A C# simulation core, a Python extension surface, a scriptable CLI, a WPF shell, and an MCP server. Covering DC and RF ion optics across nine decades of pressure, and designed from the engine outward for an AI agent to build on.</p>
+  <div class="titleblock">
+    <div><span>Codename</span>Einzel <span style="display:inline;font-size:9.5px;letter-spacing:0;text-transform:none">(provisional)</span></div>
+    <div><span>Core</span>C# / .NET 10</div>
+    <div><span>Extensions</span>Python</div>
+    <div><span>Primary surface</span>CLI, in a project folder</div>
+    <div><span>Figures</span>SVG, PDF, VTU</div>
+  </div>
+</header>
+
+<p class="lede">Rev 0.6 adds the artifacts that leave the platform, and drawing that boundary turned out to be as much about restraint as capability. Vector figures and animations are real gaps in the incumbent and worth building. A general-purpose 3D field visualizer is not, because a free one already exists and is better than anything this project would plausibly write. &sect;17 says both things explicitly, so the second can be argued with rather than discovered three years in.</p>
+
+<section>
+<h2>1. Thesis and scope <em>&sect;1</em></h2>
+
+<h3>The two differences, and why they are one</h3>
+<p><strong>Open source and free.</strong> No licence, no seat count, no barrier to a student or a collaborator running the same model.</p>
+<p><strong>Agent-native.</strong> Designed so an agent can author models, run studies, interpret results, and <em>write new capability into the platform</em>, in a loop that closes in seconds.</p>
+<p>These reinforce each other. An agent working against a closed binary infers behaviour from documentation and guesses the rest. An agent working against Einzel can <strong>read the implementation</strong>. Open source is not only a licensing position here; it is a capability of the agent interface.</p>
+
+<div class="callout stop">
+<span class="klabel">The corresponding danger</span>
+<p>Agent-friendliness makes wrong answers cheaper to produce. An agent generating fifty plausible funnel transmission numbers in an afternoon, three of them computed outside the validity of the model used, is <b>worse than SIMION</b> &mdash; because SIMION is slow enough that a human looks at each one, and because someone will believe the fifty. If agents are the headline feature then guardrails (&sect;4) are the headline safety requirement, specified as hard engine behaviour rather than advice.</p>
+</div>
+
+<h3>What this is</h3>
+<div class="tw"><table>
+<thead><tr><th>Device class</th><th>Fields</th><th>Transport</th><th>Headline figure of merit</th></tr></thead>
+<tbody>
+<tr><td>Einzel lens, transfer optics</td><td>DC</td><td>trajectory</td><td>Spot size, aberration coefficients</td></tr>
+<tr><td>Quadrupole mass filter</td><td>RF + DC, time-domain</td><td>trajectory</td><td>Transmission against <span class="m">a/q</span>, peak shape, resolution</td></tr>
+<tr><td>Ion funnel</td><td>Two-phase RF + axial DC</td><td>statistical diffusion, with gas flow</td><td>Transmission, radial compression, low-mass cutoff</td></tr>
+<tr><td>Stacked-ring and travelling-wave guides</td><td>RF + waveform</td><td>statistical diffusion</td><td>Transmission, transit-time distribution</td></tr>
+<tr><td>Multipole guide, collision cell</td><td>RF</td><td>hybrid</td><td>Transmission, thermalization time</td></tr>
+<tr><td>Linear and 3D ion traps</td><td>RF + waveform + DC</td><td>hybrid, damped</td><td>Isolation efficiency, secular spectrum, ejection</td></tr>
+<tr><td>Pulsed extraction traps, orthogonal accelerators</td><td>DC pulse + RF</td><td>trajectory</td><td>Packet spread, turn-around time, emittance</td></tr>
+<tr><td>Reflectrons, MR-TOF analyzers</td><td>DC</td><td>trajectory</td><td>Resolving power, aberration order, acceptance</td></tr>
+</tbody></table></div>
+
+<p>The compact MR-TOF of the companion memo is the first customer. But <strong>no device class may be visible in the engine</strong>. Devices are parameterized templates in a model library above the core (&sect;14), as data.</p>
+
+<h3>What this is not</h3>
+<ul>
+<li><strong>Not an accelerator lattice code.</strong></li>
+<li><strong>Not a gas dynamics solver.</strong> Einzel consumes pressure and neutral-velocity fields; it does not compute them.</li>
+<li><strong>Not a collision cross-section predictor.</strong></li>
+<li><strong>Not instrument control software</strong>, and not a data pipeline.</li>
+<li><strong>Not a general-purpose visualization application.</strong> New in rev 0.6 and argued in &sect;17: fields and trajectories export to VTU, and ParaView does the rest.</li>
+</ul>
+</section>
+
+<section>
+<h2>2. The agent contract <em>&sect;2</em></h2>
+
+<div class="tw"><table>
+<thead><tr><th>Requirement</th><th>Statement</th></tr></thead>
+<tbody>
+<tr><td><span class="req">AGT-1</span>The model is text</td><td>Declarative, schema-validated, diffable JSON. A model file plus referenced artifacts fully determines a run.</td></tr>
+<tr><td><span class="req">AGT-2</span>Nothing exists only in the shell</td><td>Every capability reachable from the window is reachable from the CLI and from MCP, through the same command objects. This now explicitly includes rendering (&sect;17).</td></tr>
+<tr><td><span class="req">AGT-3</span>Errors are recovery instructions</td><td>Machine-readable code, offending path, violated constraint, observed value, suggested correction.</td></tr>
+<tr><td><span class="req">AGT-4</span>Results carry their own uncertainty</td><td>See &sect;4. No quantitative result is ever returned as a bare number.</td></tr>
+<tr><td><span class="req">AGT-5</span>Feedback loops are cheap</td><td>A preview tier returns in seconds and is permanently labelled.</td></tr>
+<tr><td><span class="req">AGT-6</span>Feedback is visual where that helps</td><td>Rendered images an agent can inspect. Geometry errors are obvious in a picture and invisible in JSON.</td></tr>
+<tr><td><span class="req">AGT-7</span>The platform is self-describing at runtime</td><td>Schemas carry descriptions and units on every field; templates, extension types, and examples are enumerable.</td></tr>
+<tr><td><span class="req">AGT-8</span>The environment is stable within a session</td><td>Nothing about the installed platform changes while an agent is working. See &sect;18.</td></tr>
+</tbody></table></div>
+
+<h4>The error object</h4>
+<pre>{
+  <b>"code"</b>: "REGIME_INVALID",
+  <b>"path"</b>: "/devices/funnel_1/transport",
+  <b>"constraint"</b>: "trajectory integration requires collision frequency
+                  below 0.1 x RF frequency",
+  <b>"observed"</b>: { "value": 42.7, "unit": "ratio" },
+  <b>"suggestion"</b>: "set transport to 'statistical_diffusion', or reduce
+                  pressure below 1e-3 mbar",
+  <b>"severity"</b>: "error"
+}</pre>
+
+<h3>The examples corpus is a feature</h3>
+<p>SIMION has decades of forum posts, example files, and published geometries in the training data of every model an agent might run on. Einzel has none of that. The counter is to be self-describing at runtime and to <strong>ship a corpus an agent can pull into context</strong>.</p>
+<p><span class="req">EX-1</span> Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. <span class="req">EX-2</span> The corpus runs in CI; a failing example blocks release. <span class="req">EX-3</span> Examples are enumerable and fetchable from both surfaces.</p>
+</section>
+
+<section>
+<h2>3. The project as the unit of work <em>&sect;3</em></h2>
+
+<p><strong>A project is a directory.</strong> Everything defining a modelling effort is files under one root, and every operation is a command run against that root. This is what enables the agent loop: read files, edit files, run commands, read output. No protocol, no session.</p>
+
+<figure>
+<svg viewBox="0 0 720 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Project layout">
+<style>
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .hdv{font:500 11px "IBM Plex Mono",monospace;fill:#0B7A6B;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="ap" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+</defs>
+<rect width="720" height="424" fill="#fff"/>
+<text x="20" y="24" class="hd">A PROJECT IS A DIRECTORY</text>
+<text x="700" y="24" class="cal" text-anchor="end">version control is a layer, not a requirement</text>
+<line x1="36" y1="40" x2="684" y2="40" class="rule"/>
+<text x="48" y="58" class="lbl2">PATH</text>
+<text x="212" y="58" class="lbl2">CONTENTS</text>
+<text x="470" y="58" class="lbl2">SIZE</text>
+<text x="580" y="58" class="lbl2">UNDER VCS</text>
+<line x1="36" y1="66" x2="684" y2="66" class="hair"/>
+<text x="48" y="88" class="cal" fill="#12161A">models/</text>
+<text x="212" y="88" class="cal">model JSON</text>
+<text x="470" y="88" class="cal">small, text</text>
+<text x="580" y="88" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="98" x2="684" y2="98" class="hair"/>
+<text x="48" y="118" class="cal" fill="#12161A">extensions/</text>
+<text x="212" y="118" class="cal">Python</text>
+<text x="470" y="118" class="cal">small, text</text>
+<text x="580" y="118" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="128" x2="684" y2="128" class="hair"/>
+<text x="48" y="148" class="cal" fill="#12161A">studies/</text>
+<text x="212" y="148" class="cal">sweep and optimization configs</text>
+<text x="470" y="148" class="cal">small, text</text>
+<text x="580" y="148" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="158" x2="684" y2="158" class="hair"/>
+<text x="48" y="178" class="cal" fill="#12161A">figures/</text>
+<text x="212" y="178" class="cal">render specs; output SVG and PDF</text>
+<text x="470" y="178" class="cal">small, text</text>
+<text x="580" y="178" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="188" x2="684" y2="188" class="hair"/>
+<text x="48" y="208" class="cal" fill="#12161A">results/</text>
+<text x="212" y="208" class="cal">run manifests and figures of merit</text>
+<text x="470" y="208" class="cal">small, text</text>
+<text x="580" y="208" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="218" x2="684" y2="218" class="hair"/>
+<text x="48" y="238" class="cal" fill="#12161A">tests/</text>
+<text x="212" y="238" class="cal">assertions on expected performance</text>
+<text x="470" y="238" class="cal">small, text</text>
+<text x="580" y="238" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="248" x2="684" y2="248" class="hair"/>
+<text x="48" y="268" class="cal" fill="#12161A">AGENTS.md</text>
+<text x="212" y="268" class="cal">generated platform + written project guidance</text>
+<text x="470" y="268" class="cal">small, text</text>
+<text x="580" y="268" class="cal" fill="#0B7A6B">tracked</text>
+<line x1="36" y1="278" x2="684" y2="278" class="hair"/>
+<text x="48" y="298" class="cal" fill="#7E888F">.einzel/</text>
+<text x="212" y="298" class="cal" fill="#7E888F">field caches, trajectories, frames, scratch</text>
+<text x="470" y="298" class="cal" fill="#7E888F">large, binary</text>
+<text x="580" y="298" class="cal" fill="#9C6A0B">ignored</text>
+<line x1="36" y1="308" x2="684" y2="308" class="rule"/>
+<text x="20" y="332" class="hdv">WHY THE LAST ROW IS SAFE TO DISCARD</text>
+<rect x="36" y="342" width="196" height="38" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="134" y="366" class="cal" text-anchor="middle">manifest determines the run</text>
+<line x1="232" y1="361" x2="256" y2="361" class="dim" marker-end="url(#ap)"/>
+<rect x="260" y="342" width="180" height="38" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="350" y="366" class="cal" text-anchor="middle">artifacts are regenerable</text>
+<line x1="440" y1="361" x2="464" y2="361" class="dim" marker-end="url(#ap)"/>
+<rect x="468" y="342" width="216" height="38" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="576" y="366" class="cal" text-anchor="middle">commit text, regenerate the rest</text>
+<line x1="0" y1="404" x2="720" y2="404" class="rule"/>
+<text x="14" y="419" class="tb">FIG. 1</text>
+<text x="706" y="419" class="tb" text-anchor="end">Project layout</text>
+</svg>
+<figcaption><b>Fig. 1</b> Everything defining a modelling effort is small, text, and diffable; everything large is derived and discardable. New in rev 0.6: <span class="m">figures/</span> holds render specifications, which are text and belong with the model, while frame sequences are derived and live under <span class="m">.einzel/</span>.</figcaption>
+</figure>
+
+<h3>Three format properties, justified without reference to version control</h3>
+<ul>
+<li><span class="req">PRJ-1</span> <strong>Models, studies, extensions, render specs, and results are text.</strong></li>
+<li><span class="req">PRJ-2</span> <strong>Large artifacts are referenced by content hash, never embedded.</strong></li>
+<li><span class="req">PRJ-3</span> <strong>A run manifest fully determines its run.</strong> Model hash, seeds, engine version, transport mode, solver settings, extension identities. Results are therefore regenerable rather than precious.</li>
+</ul>
+
+<h3>Version control is optional and first-class</h3>
+<p><span class="req">PRJ-4</span> <strong>A plain folder is the default and fully supported.</strong> Every feature, guardrail, and agent workflow works in a directory with no repository. Requiring one would reinstate exactly the barrier &sect;1 exists to remove.</p>
+<p><span class="req">PRJ-5</span> <strong>Version control, where wanted, is scaffolded.</strong> <span class="m">einzel init --vcs git</span> writes an ignore file excluding <span class="m">.einzel/</span>, an <span class="m">AGENTS.md</span>, and a starter layout.</p>
+<p><span class="req">PRJ-6</span> <strong>Nothing depends on a hosting provider.</strong></p>
+
+<h3>Agent instructions in the project</h3>
+<p>An agent needs two distinct things: <strong>how to use Einzel</strong> (platform knowledge, reachable from the user's project since they installed rather than cloned) and <strong>how to work on this instrument</strong> (local conventions, targets, what has been tried).</p>
+<p><span class="req">AGD-1</span> <span class="m">einzel init</span> writes an <span class="m">AGENTS.md</span> containing both layers, the first generated and clearly delimited.</p>
+
+<div class="callout warn">
+<span class="klabel">Generate, never hand-write, the platform layer</span>
+<p>Instructions shipped with v1.2 that describe v1.0 behaviour are worse than none, because an agent trusts them and cannot detect the drift. <span class="m">einzel agents-md</span> emits guidance matched to the installed version and stamps it; <span class="m">einzel doctor</span> reports when a project's stamp is behind.</p>
+</div>
+
+<p><span class="req">PRJ-7</span> A project may declare assertions &mdash; expected resolving power, transmission floors, envelope constraints &mdash; runnable as <span class="m">einzel test</span>. An agent that edits a model gets immediate pass or fail with a specific figure of merit and a specific delta.</p>
+</section>
+
+<section>
+<h2>4. Guardrails <em>&sect;4</em></h2>
+
+<div class="tw"><table>
+<thead><tr><th>Requirement</th><th>Statement</th></tr></thead>
+<tbody>
+<tr><td><span class="req">GRD-1</span>No bare numbers</td><td>Every quantitative result carries value, units, uncertainty or confidence interval, the ensemble size or convergence measure behind it, and any active warnings. <b>The API offers no way to obtain the value alone.</b></td></tr>
+<tr><td><span class="req">GRD-2</span>Warnings propagate</td><td>Validity warnings travel with the result through every layer &mdash; engine, command layer, CLI output, MCP response, exported file, <b>rendered figure and video</b>.</td></tr>
+<tr><td><span class="req">GRD-3</span>Warnings above threshold are not suppressible</td><td>Validity violations cannot be silenced by any caller, including in batch mode.</td></tr>
+<tr><td><span class="req">GRD-4</span>Validity is checked, not assumed</td><td>Regime applicability, mesh convergence, ensemble convergence, adiabaticity, and the &sect;10 linearization residual are computed and reported.</td></tr>
+<tr><td><span class="req">GRD-5</span>Preview results are labelled and cannot be promoted</td><td>Tagged permanently; cannot be quoted, exported, fed to an optimizer, <b>or rendered without visible distinction</b> (&sect;17).</td></tr>
+<tr><td><span class="req">GRD-6</span>Extension results are attributed</td><td>Carries the extension identity and version; cannot present itself as first-party.</td></tr>
+<tr><td><span class="req">GRD-7</span>Results are immutable and traceable</td><td>Every result references a manifest. <b>Every rendered artifact references a result.</b></td></tr>
+<tr><td><span class="req">GRD-8</span>Spending is deliberate</td><td>Any operation exceeding a configurable cost threshold requires a prior estimate.</td></tr>
+<tr><td><span class="req">GRD-9</span>Human work is never silently lost</td><td>Where an agent and a human share a live model, mutations are attributed in a shared linear journal.</td></tr>
+<tr><td><span class="req">GRD-10</span>Drift is detectable, in both directions</td><td>A stored result can be checked against both the current model and the currently installed engine.</td></tr>
+<tr><td><span class="req">GRD-11</span>Known-defective versions taint their output</td><td>A result produced by a version below the published floor (&sect;18) carries a non-suppressible defect warning. The run is never blocked.</td></tr>
+<tr><td><span class="req">GRD-12</span>A rendering never looks more precise than its data</td><td>Decimation tolerance, time compression, and preview status are recorded in every rendered artifact (&sect;17).</td></tr>
+</tbody></table></div>
+
+<div class="callout note">
+<span class="klabel">GRD-10 covers engine drift, and depends on manifests rather than on version control</span>
+<p>The manifest records the model hash <i>and the engine version</i>, and the check compares both against what is present. This works in a plain folder, on a network share, anywhere. Model drift is the failure an agent produces most often; engine drift is the one an <i>update</i> produces, silently, across an entire project at once.</p>
+</div>
+
+<div class="callout warn">
+<span class="klabel">Why GRD-1 is stated so absolutely</span>
+<p>An agent handed <span class="m">R = 19,800</span> reports 19,800. An agent handed that value with n = 1000, an interval of &plusmn;400, and a warning that pseudopotential validity was exceeded over part of the path can reason about whether to trust it. The absolutism matters because a convenience accessor returning the scalar will be added by someone eventually, and then used everywhere.</p>
+</div>
+</section>
+
+<section>
+<h2>5. Extension surface <em>&sect;5</em></h2>
+
+<p>Agents must extend the platform, not only drive it. An extension path requiring C#, a compile, and a restart is not usable in a loop. The language is <strong>Python</strong>.</p>
+
+<h3>Why Python, and what it costs</h3>
+<p>The alternative considered was an embedded Lua interpreter, which has exactly one real advantage: a pure-managed interpreter is sandboxable almost for free. Against it, both differentiators point at Python &mdash; agents write it far more fluently, scientists already know it, and the numerical ecosystem is there. So Python, with the sandbox paid for architecturally, because embedded CPython cannot be sandboxed in-process.</p>
+
+<figure>
+<svg viewBox="0 0 720 412" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Extension surface">
+<style>
+  .lbl{font:500 11px "IBM Plex Mono",monospace;fill:#12161A}
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .hdv{font:500 11px "IBM Plex Mono",monospace;fill:#0B7A6B;letter-spacing:.1em}
+  .hdr{font:500 11px "IBM Plex Mono",monospace;fill:#8A3A3A;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="ax" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+</defs>
+<rect width="720" height="412" fill="#fff"/>
+<text x="20" y="24" class="hd">ONE MANIFEST, TWO RUNNERS</text>
+<rect x="230" y="36" width="260" height="46" rx="2" fill="#fff" stroke="#12161A" stroke-width="1.6"/>
+<text x="360" y="56" class="lbl" text-anchor="middle">extension manifest</text>
+<text x="360" y="72" class="lbl2" text-anchor="middle">type &#183; schema &#183; trust &#183; engine range</text>
+<path d="M300,82 L300,100 L170,100 L170,118" class="dim" fill="none" marker-end="url(#ax)"/>
+<path d="M420,82 L420,100 L550,100 L550,118" class="dim" fill="none" marker-end="url(#ax)"/>
+<rect x="42" y="122" width="256" height="104" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="170" y="143" class="lbl" text-anchor="middle">in-process, CSnakes</text>
+<text x="170" y="161" class="cal" text-anchor="middle">first-party and trusted only</text>
+<text x="58" y="182" class="cal">+ fastest, zero-copy buffers</text>
+<text x="58" y="198" class="cal">+ best authoring experience</text>
+<text x="58" y="214" class="cal">&#8722; no sandbox, GIL-bound</text>
+<rect x="422" y="122" width="256" height="104" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="550" y="143" class="lbl" text-anchor="middle">subprocess, sandboxed</text>
+<text x="550" y="161" class="cal" text-anchor="middle">agent-authored and third-party</text>
+<text x="438" y="182" class="cal">+ OS isolation, crash-contained</text>
+<text x="438" y="198" class="cal">+ N workers, GIL sidestepped</text>
+<text x="438" y="214" class="cal">&#8722; per-call latency</text>
+<line x1="42" y1="248" x2="678" y2="248" class="hair"/>
+<text x="20" y="274" class="hdv">EXTENSION POINTS</text>
+<rect x="42" y="286" width="118" height="38" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="101" y="309" class="cal" text-anchor="middle">geometry gen</text>
+<rect x="170" y="286" width="118" height="38" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="229" y="309" class="cal" text-anchor="middle">analysis</text>
+<rect x="298" y="286" width="118" height="38" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="357" y="309" class="cal" text-anchor="middle">objective</text>
+<rect x="426" y="286" width="118" height="38" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="485" y="309" class="cal" text-anchor="middle">sequence logic</text>
+<rect x="554" y="286" width="124" height="38" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="616" y="309" class="cal" text-anchor="middle">import / export</text>
+<text x="42" y="342" class="cal">All coarse-grained: whole input in, whole output out. One call per run, not per step.</text>
+<line x1="42" y1="356" x2="678" y2="356" class="hair"/>
+<text x="20" y="380" class="hdr">CLOSED TO EXTENSIONS</text>
+<text x="180" y="380" class="cal">per-step physics &#183; field solver inner loop &#183; integrator</text>
+<text x="180" y="394" class="cal">The process boundary makes this structural rather than advisory.</text>
+<line x1="0" y1="400" x2="720" y2="400" class="rule"/>
+<text x="14" y="411" class="tb">FIG. 2</text>
+<text x="706" y="411" class="tb" text-anchor="end">Extension surface</text>
+</svg>
+<figcaption><b>Fig. 2</b> A single manifest declaring type, schema, trust, and compatible engine range; two runners behind it. The process boundary makes per-step scripting physically impossible.</figcaption>
+</figure>
+
+<ul>
+<li><span class="req">EXT-1</span> An extension declares type, schemas, trust level, resource needs, and a <strong>compatible engine version range</strong>. The runtime is an implementation detail of the manifest.</li>
+<li><span class="req">EXT-2</span> <strong>In-process (CSnakes)</strong> for first-party and explicitly trusted extensions. Lowest latency, no isolation.</li>
+<li><span class="req">EXT-3</span> <strong>Sandboxed subprocess</strong> for anything agent-authored or third-party, and the default. Job objects and a restricted token on Windows, namespaces and seccomp on Linux. No network.</li>
+<li><span class="req">EXT-4</span> <strong>Never invoked per integration step.</strong> One call per run.</li>
+<li><span class="req">EXT-5</span> Large arrays cross by shared memory with an Arrow or raw-buffer layout, never by JSON.</li>
+<li><span class="req">EXT-6</span> A vendored interpreter ships with the application.</li>
+<li><span class="req">EXT-7</span> Outputs are attributed per GRD-6 and validated against the declared output schema.</li>
+<li><span class="req">EXT-8</span> Before an update is applied, the updater reports which installed extensions fall outside the new engine's compatible range.</li>
+</ul>
+
+<div class="callout warn">
+<span class="klabel">The cleanest extension of all</span>
+<p>For model authoring specifically, the best extension is not an extension. A Python script in <span class="m">extensions/</span> that <b>emits a model document</b> has zero coupling to the engine, needs no sandbox because it never runs inside the platform, and is trivially testable.</p>
+</div>
+</section>
+
+<section>
+<h2>6. Architecture <em>&sect;6</em></h2>
+
+<figure>
+<svg viewBox="0 0 720 496" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Layer architecture">
+<style>
+  .lbl{font:500 11px "IBM Plex Mono",monospace;fill:#12161A}
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="a1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+</defs>
+<rect width="720" height="496" fill="#fff"/>
+<text x="20" y="24" class="hd">SURFACES &#183; PEERS, NOT A STACK</text>
+<rect x="42" y="38" width="200" height="48" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.6"/>
+<text x="142" y="59" class="lbl" text-anchor="middle">CLI &#183; primary</text>
+<text x="142" y="75" class="lbl2" text-anchor="middle">projects, agents, batch, CI</text>
+<rect x="262" y="38" width="180" height="48" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="352" y="59" class="lbl" text-anchor="middle">MCP server</text>
+<text x="352" y="75" class="lbl2" text-anchor="middle">live shared sessions</text>
+<rect x="462" y="38" width="200" height="48" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="562" y="59" class="lbl" text-anchor="middle">WPF shell</text>
+<text x="562" y="75" class="lbl2" text-anchor="middle">interactive &#183; the only updater</text>
+<line x1="142" y1="86" x2="142" y2="108" class="dim" marker-end="url(#a1)"/>
+<line x1="352" y1="86" x2="352" y2="108" class="dim" marker-end="url(#a1)"/>
+<line x1="562" y1="86" x2="562" y2="108" class="dim" marker-end="url(#a1)"/>
+<rect x="42" y="112" width="620" height="50" rx="2" fill="#fff" stroke="#12161A" stroke-width="1.6"/>
+<text x="352" y="133" class="lbl" text-anchor="middle">Command layer &#183; every operation a serializable object</text>
+<text x="352" y="150" class="lbl2" text-anchor="middle">validate &#183; apply &#183; diff &#183; undo &#183; record &#183; replay &#183; attribute</text>
+<line x1="352" y1="162" x2="352" y2="182" class="dim" marker-end="url(#a1)"/>
+<rect x="42" y="186" width="252" height="40" rx="2" fill="#F0F4E6" stroke="#9C6A0B" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="168" y="203" class="lbl" text-anchor="middle">Model library &#183; templates as DATA</text>
+<text x="168" y="219" class="lbl2" text-anchor="middle">quadrupole &#183; funnel &#183; LIT &#183; reflectron</text>
+<rect x="304" y="186" width="176" height="40" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="392" y="203" class="lbl" text-anchor="middle">Extension host &#183; Python</text>
+<text x="392" y="219" class="lbl2" text-anchor="middle">in-process | sandboxed</text>
+<rect x="490" y="186" width="172" height="40" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="576" y="203" class="lbl" text-anchor="middle">Render &#183; vector, raster, VTU</text>
+<text x="576" y="219" class="lbl2" text-anchor="middle">headless, below the shell</text>
+<line x1="352" y1="226" x2="352" y2="248" class="dim" marker-end="url(#a1)"/>
+<text x="20" y="244" class="hd">ENGINE</text>
+<rect x="42" y="252" width="620" height="152" rx="2" fill="#FBFCFD" stroke="#C9CFD4"/>
+<rect x="58" y="266" width="140" height="44" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="128" y="285" class="cal" text-anchor="middle">Model</text>
+<text x="128" y="300" class="lbl2" text-anchor="middle">geometry, symmetry</text>
+<rect x="212" y="266" width="140" height="44" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="282" y="285" class="cal" text-anchor="middle">Fields</text>
+<text x="282" y="300" class="lbl2" text-anchor="middle">DC, RF, interp</text>
+<rect x="366" y="266" width="140" height="44" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="436" y="285" class="cal" text-anchor="middle">Transport</text>
+<text x="436" y="300" class="lbl2" text-anchor="middle">track / diffuse</text>
+<rect x="520" y="266" width="126" height="44" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="583" y="285" class="cal" text-anchor="middle">Analysis</text>
+<text x="583" y="300" class="lbl2" text-anchor="middle">FOMs by class</text>
+<rect x="58" y="322" width="217" height="38" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="166" y="345" class="cal" text-anchor="middle">Sequencer &#183; timed state machine</text>
+<rect x="289" y="322" width="217" height="38" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="397" y="345" class="cal" text-anchor="middle">Sweeps &#183; tolerance, optimization</text>
+<rect x="520" y="322" width="126" height="38" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="583" y="345" class="cal" text-anchor="middle">Persistence</text>
+<rect x="58" y="370" width="588" height="22" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="352" y="385" class="cal" text-anchor="middle">Compute &#183; scalar &rarr; SIMD &rarr; ILGPU, one interface</text>
+<line x1="42" y1="420" x2="662" y2="420" class="hair"/>
+<text x="42" y="438" class="cal">Invariant 1: no UI type below the shell &#8212; which is why Render is a peer of the shell, not part of it.</text>
+<text x="42" y="454" class="cal">Invariant 2: no device class below the model library.</text>
+<text x="42" y="470" class="cal">Invariant 3: no extension code inside the engine loop.</text>
+<line x1="0" y1="480" x2="720" y2="480" class="rule"/>
+<text x="14" y="493" class="tb">FIG. 3</text>
+<text x="706" y="493" class="tb" text-anchor="end">Layer architecture</text>
+</svg>
+<figcaption><b>Fig. 3</b> The middle band gains a third member in rev 0.6. Rendering sits beside the model library and the extension host, below the command layer: the shell and <span class="m">einzel render</span> are peer consumers of it, which is what AGT-2 and AGT-6 together require.</figcaption>
+</figure>
+
+<pre><b>Einzel.Core</b>          model, units, geometry, symmetry, parameters, validation
+<b>Einzel.Fields</b>        DC and RF solvers, basis and sensitivity fields, interpolants
+<b>Einzel.Transport</b>     integrators, statistical diffusion, collisions, space charge
+<b>Einzel.Analysis</b>      figures of merit by accuracy class, spectra, aberrations
+<b>Einzel.Sweeps</b>        tolerance Monte Carlo, optimization drivers
+<b>Einzel.Library</b>       device templates as data, plus a parameterization API
+<b>Einzel.Extensions</b>    manifest, schema validation, in-process and sandboxed runners
+<b>Einzel.Render</b>        projection, vector emit, frame sequences, VTU export
+<b>Einzel.Project</b>       project layout, manifests, drift detection, AGENTS.md generation
+<b>Einzel.Commands</b>      command objects, validation, diff, undo, journal, attribution
+<b>Einzel.Compute</b>       scalar / SIMD / ILGPU kernel dispatch
+<b>Einzel.Io</b>            model format, field import, mesh interchange, export
+<b>Einzel.Cli</b>           the primary surface
+<b>Einzel.Mcp</b>           live-session server
+<b>Einzel.Update</b>        release check, download, staging, version policy
+<b>Einzel.Wpf</b>           shell, viewport, panels
+</pre>
+
+<div class="callout warn">
+<span class="klabel">The invariant that pays for itself</span>
+<p>Nothing from <span class="m">Einzel.Wpf</span> may be referenced by anything else, and every assembly above it must build and run on Linux. <span class="m">Einzel.Render</span> is the newest test of this: it must produce a publication figure headlessly in CI on a machine with no display.</p>
+</div>
+</section>
+
+<section>
+<h2>7. Regimes and transport modes <em>&sect;7</em></h2>
+
+<p>In a funnel at 1 to 10 mbar the collision frequency vastly exceeds the RF frequency and residence time is of order a millisecond; integrating collision by collision is not merely slow, it is the wrong description. In the flight tube at 4&times;10<sup>&minus;8</sup> mbar the ion may not collide at all in 200 &micro;s and every nanosecond matters.</p>
+
+<figure>
+<svg viewBox="0 0 720 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Regime map">
+<style>
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+</style>
+<rect width="720" height="428" fill="#fff"/>
+<text x="20" y="24" class="hd">REGIME MAP</text>
+<text x="700" y="24" class="cal" text-anchor="end">the model must change, not just its parameters</text>
+<line x1="92" y1="40" x2="92" y2="330" class="hair"/><line x1="157.3" y1="40" x2="157.3" y2="330" class="hair"/><line x1="222.7" y1="40" x2="222.7" y2="330" class="hair"/><line x1="288" y1="40" x2="288" y2="330" class="hair"/><line x1="353.3" y1="40" x2="353.3" y2="330" class="hair"/><line x1="418.7" y1="40" x2="418.7" y2="330" class="hair"/><line x1="484" y1="40" x2="484" y2="330" class="hair"/><line x1="549.3" y1="40" x2="549.3" y2="330" class="hair"/><line x1="614.7" y1="40" x2="614.7" y2="330" class="hair"/><line x1="680" y1="40" x2="680" y2="330" class="hair"/>
+<text x="84" y="62" class="cal" text-anchor="end">DEVICES</text>
+<rect x="92" y="48" width="88" height="22" rx="1.5" fill="#1D4E89" fill-opacity=".13" stroke="#1D4E89" stroke-width="1"/>
+<text x="136" y="63" class="cal" text-anchor="middle" fill="#1D4E89">funnel</text>
+<rect x="288" y="48" width="65" height="22" rx="1.5" fill="#1D4E89" fill-opacity=".13" stroke="#1D4E89" stroke-width="1"/>
+<text x="320" y="63" class="cal" text-anchor="middle" fill="#1D4E89">IRM</text>
+<rect x="336" y="76" width="70" height="22" rx="1.5" fill="#1D4E89" fill-opacity=".13" stroke="#1D4E89" stroke-width="1"/>
+<text x="371" y="91" class="cal" text-anchor="middle" fill="#1D4E89">HP LIT</text>
+<rect x="452" y="48" width="65" height="22" rx="1.5" fill="#1D4E89" fill-opacity=".13" stroke="#1D4E89" stroke-width="1"/>
+<text x="484" y="63" class="cal" text-anchor="middle" fill="#1D4E89">LP LIT</text>
+<rect x="517" y="76" width="65" height="22" rx="1.5" fill="#1D4E89" fill-opacity=".13" stroke="#1D4E89" stroke-width="1"/>
+<text x="549" y="91" class="cal" text-anchor="middle" fill="#1D4E89">injector</text>
+<rect x="600" y="48" width="80" height="22" rx="1.5" fill="#0B7A6B" fill-opacity=".13" stroke="#0B7A6B" stroke-width="1"/>
+<text x="640" y="63" class="cal" text-anchor="middle" fill="#0B7A6B">analyzer</text>
+<line x1="92" y1="112" x2="680" y2="112" class="hair"/>
+<text x="84" y="140" class="cal" text-anchor="end">TRANSPORT</text>
+<rect x="92" y="126" width="261" height="24" rx="1.5" fill="#9C6A0B" fill-opacity=".14" stroke="#9C6A0B" stroke-width="1"/>
+<text x="222" y="142" class="cal" text-anchor="middle" fill="#9C6A0B">statistical diffusion</text>
+<rect x="353" y="126" width="131" height="24" rx="1.5" fill="#5B4B8A" fill-opacity=".14" stroke="#5B4B8A" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="418" y="142" class="cal" text-anchor="middle" fill="#5B4B8A">either &#183; validate</text>
+<rect x="484" y="126" width="196" height="24" rx="1.5" fill="#0B7A6B" fill-opacity=".14" stroke="#0B7A6B" stroke-width="1"/>
+<text x="582" y="142" class="cal" text-anchor="middle" fill="#0B7A6B">trajectory integration</text>
+<text x="84" y="182" class="cal" text-anchor="end">COLLISIONS</text>
+<rect x="92" y="168" width="261" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="222" y="184" class="cal" text-anchor="middle">mobility, no discrete events</text>
+<rect x="353" y="168" width="196" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="451" y="184" class="cal" text-anchor="middle">Langevin, event-driven</text>
+<rect x="549" y="168" width="131" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="614" y="184" class="cal" text-anchor="middle">hard sphere, rare</text>
+<text x="84" y="224" class="cal" text-anchor="end">SPACE CHARGE</text>
+<rect x="92" y="210" width="261" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="222" y="226" class="cal" text-anchor="middle">particle in cell</text>
+<rect x="353" y="210" width="196" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="451" y="226" class="cal" text-anchor="middle">Barnes&#8211;Hut</text>
+<rect x="549" y="210" width="131" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="614" y="226" class="cal" text-anchor="middle">direct pairwise</text>
+<text x="84" y="266" class="cal" text-anchor="end">GAS FLOW</text>
+<rect x="92" y="252" width="261" height="24" rx="1.5" fill="#9C6A0B" fill-opacity=".14" stroke="#9C6A0B" stroke-width="1"/>
+<text x="222" y="268" class="cal" text-anchor="middle" fill="#9C6A0B">neutral velocity field required</text>
+<rect x="353" y="252" width="327" height="24" rx="1.5" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="516" y="268" class="cal" text-anchor="middle">stationary gas adequate</text>
+<text x="84" y="308" class="cal" text-anchor="end">RENDERS AS</text>
+<rect x="92" y="294" width="261" height="24" rx="1.5" fill="#5B4B8A" fill-opacity=".1" stroke="#5B4B8A" stroke-width="1"/>
+<text x="222" y="310" class="cal" text-anchor="middle" fill="#5B4B8A">density field, no trajectories exist</text>
+<rect x="353" y="294" width="327" height="24" rx="1.5" fill="#5B4B8A" fill-opacity=".1" stroke="#5B4B8A" stroke-width="1"/>
+<text x="516" y="310" class="cal" text-anchor="middle" fill="#5B4B8A">trajectory bundles</text>
+<text x="92" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">1</tspan></text><text x="157.3" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">0</tspan></text><text x="222.7" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-1</tspan></text><text x="288" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-2</tspan></text><text x="353.3" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-3</tspan></text><text x="418.7" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-4</tspan></text><text x="484" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-5</tspan></text><text x="549.3" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-6</tspan></text><text x="614.7" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-7</tspan></text><text x="680" y="348" class="cal" text-anchor="middle">10<tspan dy="-4" font-size="8">-8</tspan></text>
+<text x="386" y="368" class="cal" text-anchor="middle">pressure, mbar</text>
+<text x="20" y="392" class="cal">The dashed band is the dangerous one. Both descriptions run there, neither is obviously right,</text>
+<text x="20" y="406" class="cal">and the engine must run both and report the disagreement rather than silently choosing.</text>
+<line x1="0" y1="412" x2="720" y2="412" class="rule"/>
+<text x="14" y="425" class="tb">FIG. 4</text>
+<text x="706" y="425" class="tb" text-anchor="end">Regime map</text>
+</svg>
+<figcaption><b>Fig. 4</b> A row added in rev 0.6: how each regime renders. Below about 10<sup>-2</sup> mbar there are trajectories to draw; above it there are not, and a diffusive region must be shown as an evolving density rather than as particles. A visualization that draws lines through a funnel is depicting something the model never computed.</figcaption>
+</figure>
+
+<p><span class="req">REG-1</span> <strong>Trajectory integration</strong> and <strong>statistical diffusion</strong> are peer implementations of <span class="m">ITransportMode</span>.</p>
+<p><span class="req">REG-2</span> The engine computes the governing dimensionless numbers along every path and raises a non-suppressible warning when the selected mode is outside validity.</p>
+<p><span class="req">REG-3</span> In the overlap band both modes run on the same model and the comparison is a supported operation with its own report.</p>
+
+<h3>Accuracy classes</h3>
+<ul>
+<li><strong>Class T, timing.</strong> Flight-time accuracy in ppm.</li>
+<li><strong>Class S, statistical.</strong> Transmission, acceptance, efficiency, converged to a stated confidence interval.</li>
+<li><strong>Class B, boundary.</strong> Stability and cutoff boundaries resolved to a stated fraction of the scan variable.</li>
+</ul>
+</section>
+
+<section>
+<h2>8. Accuracy, determinism, performance <em>&sect;8</em></h2>
+
+<div class="tw"><table>
+<thead><tr><th>Requirement</th><th>Bound</th><th>Rationale</th></tr></thead>
+<tbody>
+<tr><td><span class="req">ACC-1</span>Numerical flight-time error, full analyzer</td><td class="n">&le; 1 ppm</td><td>1/25 of the R = 20k peak-width budget</td></tr>
+<tr><td><span class="req">ACC-2</span>Same, high-resolution validation mode</td><td class="n">&le; 0.25 ppm</td><td>To reproduce published R = 80k results</td></tr>
+<tr><td><span class="req">ACC-3</span>Field interpolation contribution</td><td class="n">&le; 0.5 &times; ACC-1</td><td>The usual offender</td></tr>
+<tr><td><span class="req">ACC-4</span>Energy drift, static field</td><td class="n">&le; 1 ppm</td><td>Cheap conserved-quantity diagnostic</td></tr>
+<tr><td><span class="req">ACC-5</span>Class S transmission interval</td><td class="n">&le; 1% abs, 95%</td><td>Drives minimum ensemble size per point</td></tr>
+<tr><td><span class="req">ACC-6</span>Class B boundary resolution</td><td class="n">&le; 1/500 of scan</td><td>Enough to resolve a mass filter peak shape</td></tr>
+<tr><td><span class="req">ACC-7</span>Rendered geometric tolerance</td><td class="n">&le; 0.1% of extent</td><td>Default decimation bound for vector output; recorded per GRD-12</td></tr>
+</tbody></table></div>
+
+<h4>Interpolation dominates</h4>
+<p>The instinct is a higher-order integrator; usually the wrong lever. A trajectory crossing a gridded potential accumulates error from the interpolant's discontinuous derivatives at every cell boundary, and over 10<sup>5</sup> crossings that error is systematic rather than random. Trilinear interpolation is <strong>not permitted anywhere in a trajectory path</strong>; the minimum is tricubic with continuous first derivatives; grid convergence is a first-class test.</p>
+
+<h3>Determinism</h3>
+<ul>
+<li><strong>Bit-reproducibility across machines is not a requirement.</strong> Golden-file comparisons use documented tolerances with stated reasons.</li>
+<li><strong>Run-to-run reproducibility on one machine is a requirement</strong>, and partly an update-policy question &mdash; see &sect;18.</li>
+<li><strong>Parallel reduction order must not affect results.</strong></li>
+<li><strong>Flight time accumulates with Neumaier compensation.</strong></li>
+<li><strong>Rendering is deterministic too.</strong> The same result and render spec produce byte-identical vector output, so a figure regenerated for a revision does not produce a spurious diff.</li>
+</ul>
+
+<h3>Performance targets</h3>
+<div class="tw"><table>
+<thead><tr><th>Operation</th><th>Target</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><span class="req">PERF-1</span>Nominal field solve, all basis solutions</td><td class="n">&lt; 30 min</td><td>Cached. Symmetry reduction makes this reachable for a 200-ring funnel</td></tr>
+<tr><td><span class="req">PERF-2</span>Single ion, cached fields</td><td class="n">&lt; 100 ms</td><td>Interactive tuning must feel live</td></tr>
+<tr><td><span class="req">PERF-3</span>Preview tier, any model</td><td class="n">&lt; 10 s</td><td>AGT-5, labelled per GRD-5</td></tr>
+<tr><td><span class="req">PERF-4</span>10<sup>4</sup>-ion ensemble, Class S</td><td class="n">&lt; 5 min</td><td>CPU, embarrassingly parallel</td></tr>
+<tr><td><span class="req">PERF-5</span>Quadrupole stability scan, 500 &times; 10<sup>3</sup></td><td class="n">&lt; 2 h</td><td>GPU-bound; why ILGPU is early</td></tr>
+<tr><td><span class="req">PERF-6</span>Tolerance sweep, 10<sup>3</sup> geometries &times; 10<sup>3</sup> ions</td><td class="n">&lt; 8 h</td><td>Only reachable via &sect;10 sensitivity fields</td></tr>
+<tr><td><span class="req">PERF-7</span>Extension round trip, sandboxed</td><td class="n">&lt; 50 ms</td><td>Sets the granularity floor for EXT-4</td></tr>
+<tr><td><span class="req">PERF-8</span>CLI cold start to first output</td><td class="n">&lt; 500 ms</td><td>No network call permitted in that path</td></tr>
+<tr><td><span class="req">PERF-9</span>Vector figure, 10<sup>3</sup> decimated trajectories</td><td class="n">&lt; 5 s</td><td>Agents iterate on figures; it must not be a batch job</td></tr>
+<tr><td><span class="req">PERF-10</span>Vector figure file size, same</td><td class="n">&lt; 5 MB</td><td>Must open in a text editor and an illustration program</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2>9. Domain model <em>&sect;9</em></h2>
+
+<h3>Units</h3>
+<p>Internally SI, double precision, without exception. At every boundary units are <strong>explicit and required</strong>. <span class="m">{"energy": 4000}</span> is a validation error. Deliberately more annoying than the alternative, because unit ambiguity is the commonest source of silent wrongness and an agent building from prose is the actor most likely to introduce it.</p>
+
+<h3>Geometry, parameterization, symmetry</h3>
+<p>Geometry is a tree of placed primitives and CSG operations, with STEP import where CAD is the source. Every placement is a parametric expression, never a baked number: named parameters with units and bounds; derived parameters as sandboxed expressions; <strong>perturbation channels</strong> for rigid transforms and surface deformation; and <strong>arrays</strong> as a first-class construct.</p>
+<p><span class="req">SYM-1</span> A geometry subtree may declare cylindrical symmetry, a mirror plane, or discrete periodicity. The solver reduces accordingly and the interpolant reconstructs the full field transparently. A 200-ring funnel driven in two RF phases needs two RF basis fields plus a DC gradient, not 200 basis solutions.</p>
+
+<div class="callout note">
+<span class="klabel">Why the native representation is parametric, not a mesh</span>
+<p>It is tempting to adopt an established mesh format as the model representation. Resist it. A mesh is already discretized &mdash; nodes and elements &mdash; and the parameterization above is exactly what makes &sect;13's tolerance work expressible. Bake a design to a mesh and "move this stripe 50 &micro;m and re-solve" stops being sayable. Gmsh's own answer to this is a separate <span class="m">.geo</span> language, which is evidence that its mesh format was never meant to carry parametric intent. Mesh formats are for interchange (&sect;17), not for the model.</p>
+</div>
+
+<h3>Electrodes, gas, sources, sequences</h3>
+<p>An electrode is a geometry subtree plus an excitation: fixed DC; DC bound to a parameter; a node on a resistive divider chain; RF with amplitude, frequency, phase; an arbitrary waveform; or floating.</p>
+<p><span class="req">GAS-1</span> A gas region carries species, temperature, a <strong>pressure field</strong>, a <strong>bulk velocity field</strong>, and a collision model. The velocity field is easy to omit and hard to notice missing: at funnel pressures the neutral jet off the inlet capillary drags ions and frequently dominates the axial DC gradient.</p>
+<p>An instrument is a timed state machine: ordered phases with durations, excitation overrides, transport mode, and transition conditions. <span class="req">SEQ-1</span> A phase boundary may change transport mode; the conversion is explicit, reported, and named as a source of uncertainty.</p>
+</section>
+
+<section>
+<h2>10. Field subsystem <em>&sect;10</em></h2>
+
+<p>Phase 1 is a <strong>finite-difference multigrid solver on a regular Cartesian or axisymmetric grid with nested local refinement</strong>. Straightforward to implement correctly in C#, clean to parallelize and GPU-offload, naturally accommodating of SYM-1, and semantically close enough to SIMION that SIMION becomes a direct cross-validation target. A boundary element solver is the expected later addition &mdash; and the point at which unstructured mesh interchange (&sect;17) starts to matter.</p>
+
+<h3>Basis superposition, and where it stops</h3>
+<p>Solve once per electrode at unit potential with others grounded; any voltage set is a weighted sum. Essential, because it turns voltage optimization from a solve-per-iteration problem into arithmetic. <strong>It breaks the moment geometry changes</strong>, and a tolerance Monte Carlo over 10<sup>3</sup> perturbed geometries would need 10<sup>3</sup> full solve campaigns &mdash; roughly three weeks of compute for one study.</p>
+
+<figure>
+<svg viewBox="0 0 720 372" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tolerance sweep data flow">
+<style>
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .hdv{font:500 11px "IBM Plex Mono",monospace;fill:#0B7A6B;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="a2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+<marker id="a2v" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#0B7A6B"/></marker>
+</defs>
+<rect width="720" height="372" fill="#fff"/>
+<text x="20" y="24" class="hd">ONCE PER NOMINAL GEOMETRY &#183; EXPENSIVE</text>
+<rect x="30" y="36" width="150" height="48" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="105" y="57" class="cal" text-anchor="middle">nominal solve</text>
+<text x="105" y="72" class="lbl2" text-anchor="middle">multigrid</text>
+<rect x="206" y="36" width="150" height="48" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="281" y="57" class="cal" text-anchor="middle">basis fields</text>
+<text x="281" y="72" class="lbl2" text-anchor="middle">per electrode or phase</text>
+<rect x="382" y="36" width="180" height="48" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="472" y="57" class="cal" text-anchor="middle">sensitivity fields</text>
+<text x="472" y="72" class="lbl2" text-anchor="middle">d&#934;/dp per channel</text>
+<rect x="588" y="36" width="102" height="48" rx="2" fill="#fff" stroke="#C9CFD4"/>
+<text x="639" y="57" class="cal" text-anchor="middle">disk cache</text>
+<text x="639" y="72" class="lbl2" text-anchor="middle">hash + engine ver</text>
+<line x1="180" y1="60" x2="202" y2="60" class="dim" marker-end="url(#a2)"/>
+<line x1="356" y1="60" x2="378" y2="60" class="dim" marker-end="url(#a2)"/>
+<line x1="562" y1="60" x2="584" y2="60" class="dim" marker-end="url(#a2)"/>
+<line x1="30" y1="104" x2="690" y2="104" class="hair"/>
+<text x="20" y="128" class="hdv">PER DRAW &#183; CHEAP, 10&#179; TIMES</text>
+<rect x="30" y="140" width="132" height="48" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="96" y="161" class="cal" text-anchor="middle">draw &#948;p</text>
+<text x="96" y="176" class="lbl2" text-anchor="middle">seeded</text>
+<rect x="188" y="140" width="180" height="48" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="278" y="161" class="cal" text-anchor="middle">&#934; + &#931; (d&#934;/dp) &#948;p</text>
+<text x="278" y="176" class="lbl2" text-anchor="middle">superpose, no solve</text>
+<rect x="394" y="140" width="150" height="48" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="469" y="161" class="cal" text-anchor="middle">track ensemble</text>
+<text x="469" y="176" class="lbl2" text-anchor="middle">10&#179; ions</text>
+<rect x="570" y="140" width="120" height="48" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="630" y="161" class="cal" text-anchor="middle">FOM row</text>
+<text x="630" y="176" class="lbl2" text-anchor="middle">one per draw</text>
+<line x1="162" y1="164" x2="184" y2="164" stroke="#0B7A6B" stroke-width="1" marker-end="url(#a2v)"/>
+<line x1="368" y1="164" x2="390" y2="164" stroke="#0B7A6B" stroke-width="1" marker-end="url(#a2v)"/>
+<line x1="544" y1="164" x2="566" y2="164" stroke="#0B7A6B" stroke-width="1" marker-end="url(#a2v)"/>
+<line x1="30" y1="208" x2="690" y2="208" class="hair"/>
+<text x="20" y="232" class="hd">VALIDATION SUBSET &#183; MANDATORY</text>
+<rect x="30" y="244" width="240" height="48" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="150" y="265" class="cal" text-anchor="middle">full re-solve, ~2% of draws</text>
+<text x="150" y="280" class="lbl2" text-anchor="middle">stratified to the tails</text>
+<rect x="296" y="244" width="240" height="48" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="416" y="265" class="cal" text-anchor="middle">compare against linearized</text>
+<text x="416" y="280" class="lbl2" text-anchor="middle">residual gates the study</text>
+<line x1="270" y1="268" x2="292" y2="268" class="dim" marker-end="url(#a2)"/>
+<text x="556" y="262" class="cal">If the residual</text>
+<text x="556" y="276" class="cal">exceeds ACC-1,</text>
+<text x="556" y="290" class="cal">the sweep is void.</text>
+<text x="30" y="322" class="cal">Linearity holds because perturbations are small: 100&#8211;300 &#181;m against ~10 mm standoff is 1&#8211;3 percent.</text>
+<text x="30" y="336" class="cal">That premise is an assumption, not a theorem, which is why the validation subset is not optional.</text>
+<line x1="0" y1="346" x2="720" y2="346" class="rule"/>
+<text x="14" y="363" class="tb">FIG. 5</text>
+<text x="706" y="363" class="tb" text-anchor="end">Tolerance sweep data flow</text>
+</svg>
+<figcaption><b>Fig. 5</b> Precompute first-order sensitivity fields once per perturbation channel, then build each perturbed potential by superposition. The validation subset gates the study rather than annotating it.</figcaption>
+</figure>
+
+<p><span class="req">FLD-1</span> For each perturbation channel <span class="m">p</span>, cache <span class="m">&part;&Phi;/&part;p</span> by finite difference over a full re-solve. <span class="req">FLD-2</span> Every sweep runs a stratified validation subset; if the maximum residual exceeds ACC-1 the result is marked invalid, not annotated. <span class="req">FLD-3</span> Field caches are keyed by content hash over geometry, mesh, symmetry declaration, boundary conditions, <strong>and the solver-behaviour version</strong> &mdash; the last term is not optional, since after an engine update a cache computed by the previous solver is silently wrong and nothing else would catch it.</p>
+
+<h3>RF fields</h3>
+<p>Two paths with the choice explicit: <strong>pseudopotential</strong> for survey work and guide drift regions, <strong>full time-domain integration</strong> for mass filters, traps, injectors. <span class="req">RF-1</span> Time-domain RF requires a minimum sampling of the RF period, enforced rather than advised.</p>
+</section>
+
+<section>
+<h2>11. Transport engine <em>&sect;11</em></h2>
+
+<h3>Trajectory integration</h3>
+<ul>
+<li><strong>Default:</strong> adaptive-step Runge&ndash;Kutta with per-step error control against the run's accuracy class.</li>
+<li><strong>Available:</strong> symplectic Verlet for long static-field flights, high-order Gauss&ndash;Legendre for validation runs.</li>
+<li><strong>Field-free drift is advanced analytically.</strong></li>
+<li><strong>Turning points get forced step refinement.</strong> The velocity minimum inside a mirror is where relative timing error is largest and where position-error controllers under-refine.</li>
+</ul>
+<p><span class="req">TRJ-1</span> Trajectory output for rendering is a <strong>separately sampled stream</strong> with its own cadence, independent of integration steps. Integration steps cluster where the physics is hard, which is not where a picture needs points; and a full step record for 10<sup>4</sup> ions is unrenderable regardless.</p>
+
+<h3>Statistical diffusion</h3>
+<p>Motion advances as drift under the local effective field plus mobility-driven diffusion, with the neutral velocity field added to the drift term. Step size is set by diffusion length rather than RF period. <span class="req">TRN-1</span> Mobility is an explicit input with stated field dependence.</p>
+<p><span class="req">TRN-2</span> Diffusive transport emits a <strong>time-resolved density field</strong> rather than trajectories, because that is what it computes. This is what &sect;17 renders for a funnel.</p>
+
+<h3>Memory and execution</h3>
+<p>Particles are held structure-of-arrays in pooled <span class="m">double[]</span> buffers. The inner loop allocates nothing, so garbage collection cannot interrupt a run. <span class="req">CMP-1</span> The scalar reference implementation is never deleted or allowed to rot.</p>
+
+<h3>Collisions and space charge</h3>
+<div class="tw"><table>
+<thead><tr><th>Model</th><th>Regime</th><th>Used for</th></tr></thead>
+<tbody>
+<tr><td>Mobility-based, no discrete events</td><td>&gt; 10<sup>&minus;2</sup> mbar</td><td>Funnels, stacked rings, high-pressure guides</td></tr>
+<tr><td>Langevin / polarization, event-driven</td><td>10<sup>&minus;2</sup> to 10<sup>&minus;5</sup> mbar</td><td>Trap and guide damping, thermalization</td></tr>
+<tr><td>Hard-sphere elastic, event-driven</td><td>&lt; 10<sup>&minus;5</sup> mbar</td><td>Residual-gas scattering; the arrival-time pedestal</td></tr>
+</tbody></table></div>
+<p><span class="req">COL-1</span> Scattered ions remaining within acceptance are tracked to the detector with arrival times recorded, <strong>not</strong> discarded as losses. <span class="req">SC-1</span> For Class T runs the space-charge approximation parameters are validated against the direct method on a reference population.</p>
+</section>
+
+<section>
+<h2>12. Analysis <em>&sect;12</em></h2>
+<p>Figures of merit are computed by the engine, since they are what the optimizer, sweep driver, and project tests consume. All are returned per GRD-1.</p>
+<h4>Class T</h4>
+<ul>
+<li><strong>Resolving power</strong>, reported both FWHM-based and fitted, with the peak model named.</li>
+<li><strong>Peak shape</strong>: FWHM, 10 and 1 percent widths, asymmetry, integrated pedestal fraction.</li>
+<li><strong>Time-of-flight focusing order</strong>: coefficients reported so the binding aberration order is visible.</li>
+<li><strong>Turn-around time and packet emittance</strong> for extraction traps and orthogonal accelerators.</li>
+<li><strong>Synthetic spectra</strong> with detector response and digitizer sampling, and wraparound detection.</li>
+</ul>
+<h4>Class S</h4>
+<ul>
+<li><strong>Transmission</strong> itemized by loss surface and mechanism, with intervals. Never "92 percent".</li>
+<li><strong>Radial compression and exit emittance</strong> for funnels and guides.</li>
+<li><strong>Transit-time distribution</strong>, which sets a pipeline's minimum stage time.</li>
+<li><strong>Thermalization</strong>: energy distribution against residence time.</li>
+</ul>
+<h4>Class B</h4>
+<ul>
+<li><strong>Stability diagram</strong> reconstruction in <span class="m">a</span>&ndash;<span class="m">q</span> space.</li>
+<li><strong>Mass filter peak shape and resolution</strong> against scan line.</li>
+<li><strong>Low-mass cutoff</strong> for funnels and RF guides.</li>
+<li><strong>Secular frequency spectrum</strong> and isolation efficiency against notch width.</li>
+</ul>
+</section>
+
+<section>
+<h2>13. Sweeps and optimization <em>&sect;13</em></h2>
+<p>A study is a file in <span class="m">studies/</span> declaring perturbation channels with distributions, a draw count, a seed, an ensemble specification, and figures of merit to record. Output is one row per draw plus a sensitivity ranking &mdash; the actual deliverable, since what is wanted is not only whether 100 to 300 &micro;m suffices but <em>which parameter binds first</em>.</p>
+<p>Both modes required: <strong>stochastic</strong>, for the distribution of achieved performance, and <strong>one-at-a-time</strong>, to attribute variance. Optimization composes objectives from &sect;12, which may be Python extensions. Nelder&ndash;Mead for small problems, CMA-ES for larger and rougher ones.</p>
+<div class="callout note">
+<span class="klabel">Deliberately deferred</span>
+<p>An autodiff-based differentiable simulator would allow gradient-based optimization against high-order focusing. Attractive, but a research project, and building it into the foundation would constrain every kernel for a benefit derivative-free methods largely deliver at this problem size.</p>
+</div>
+</section>
+
+<section>
+<h2>14. Model format and library <em>&sect;14</em></h2>
+<ul>
+<li><strong>JSON, schema-versioned, with a published JSON Schema</strong> carrying descriptions and units on every field.</li>
+<li><strong>Migrations are code, not documentation.</strong> Every schema bump ships a migration and a test that a corpus of prior-version models still loads.</li>
+<li><strong>Large binaries</strong> referenced by content hash.</li>
+<li><strong>Run manifests</strong> record model hash, seeds, engine version, solver-behaviour version, transport mode, compute path, extension identities and versions, and machine.</li>
+</ul>
+<p><span class="req">LIB-1</span> Device templates are <strong>data in the same schema as any other model</strong>, plus a declared parameter surface. If supporting a new device requires a change below <span class="m">Einzel.Library</span>, either it is genuinely novel physics or the abstraction is wrong. Almost always the second.</p>
+</section>
+
+<section>
+<h2>15. Automation surfaces <em>&sect;15</em></h2>
+
+<figure>
+<svg viewBox="0 0 720 372" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two agent loops">
+<style>
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#9C6A0B;letter-spacing:.1em}
+  .hdv{font:500 11px "IBM Plex Mono",monospace;fill:#0B7A6B;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="a3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+</defs>
+<rect width="720" height="372" fill="#fff"/>
+<text x="20" y="24" class="hd">LOOP A &#183; PROJECT AND CLI &#183; THE COMMON CASE</text>
+<rect x="36" y="38" width="118" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="95" y="56" class="cal" text-anchor="middle">read AGENTS.md</text>
+<text x="95" y="70" class="lbl2" text-anchor="middle">and the model</text>
+<rect x="172" y="38" width="118" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="231" y="56" class="cal" text-anchor="middle">edit model file</text>
+<text x="231" y="70" class="lbl2" text-anchor="middle">plain text</text>
+<rect x="308" y="38" width="118" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="367" y="56" class="cal" text-anchor="middle">einzel validate</text>
+<text x="367" y="70" class="lbl2" text-anchor="middle">instant</text>
+<rect x="444" y="38" width="118" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="503" y="56" class="cal" text-anchor="middle">einzel render</text>
+<text x="503" y="70" class="lbl2" text-anchor="middle">look at it</text>
+<rect x="580" y="38" width="104" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="632" y="56" class="cal" text-anchor="middle">einzel test</text>
+<text x="632" y="70" class="lbl2" text-anchor="middle">pass / fail</text>
+<line x1="154" y1="59" x2="168" y2="59" class="dim" marker-end="url(#a3)"/>
+<line x1="290" y1="59" x2="304" y2="59" class="dim" marker-end="url(#a3)"/>
+<line x1="426" y1="59" x2="440" y2="59" class="dim" marker-end="url(#a3)"/>
+<line x1="562" y1="59" x2="576" y2="59" class="dim" marker-end="url(#a3)"/>
+<path d="M632,80 L632,100 L231,100 L231,84" class="dim" fill="none" stroke-dasharray="4 3" marker-end="url(#a3)"/>
+<text x="431" y="114" class="cal" text-anchor="middle">no protocol, no session, no network &#183; the version cannot change mid-loop</text>
+<line x1="36" y1="132" x2="684" y2="132" class="hair"/>
+<text x="20" y="156" class="cal">then, when the model is right:</text>
+<rect x="220" y="166" width="118" height="38" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="279" y="189" class="cal" text-anchor="middle">einzel estimate</text>
+<rect x="356" y="166" width="118" height="38" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="415" y="189" class="cal" text-anchor="middle">einzel run</text>
+<rect x="492" y="166" width="118" height="38" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="551" y="189" class="cal" text-anchor="middle">einzel verify</text>
+<line x1="338" y1="185" x2="352" y2="185" class="dim" marker-end="url(#a3)"/>
+<line x1="474" y1="185" x2="488" y2="185" class="dim" marker-end="url(#a3)"/>
+<line x1="36" y1="222" x2="684" y2="222" class="rule"/>
+<text x="20" y="248" class="hdv">LOOP B &#183; LIVE SESSION &#183; WHEN A HUMAN IS WATCHING</text>
+<rect x="36" y="262" width="150" height="44" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="111" y="281" class="cal" text-anchor="middle">human has shell open</text>
+<text x="111" y="296" class="lbl2" text-anchor="middle">viewport, journal</text>
+<rect x="204" y="262" width="150" height="44" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="279" y="281" class="cal" text-anchor="middle">agent joins by MCP</text>
+<text x="279" y="296" class="lbl2" text-anchor="middle">same command objects</text>
+<rect x="372" y="262" width="150" height="44" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="447" y="281" class="cal" text-anchor="middle">shared linear journal</text>
+<text x="447" y="296" class="lbl2" text-anchor="middle">attributed, undoable</text>
+<rect x="540" y="262" width="144" height="44" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="612" y="281" class="cal" text-anchor="middle">viewport updates</text>
+<text x="612" y="296" class="lbl2" text-anchor="middle">human sees the edit</text>
+<line x1="186" y1="284" x2="200" y2="284" class="dim" marker-end="url(#a3)"/>
+<line x1="354" y1="284" x2="368" y2="284" class="dim" marker-end="url(#a3)"/>
+<line x1="522" y1="284" x2="536" y2="284" class="dim" marker-end="url(#a3)"/>
+<text x="36" y="328" class="cal">This is what MCP is for. A real capability, and a narrower one than rev 0.3 claimed.</text>
+<line x1="0" y1="346" x2="720" y2="346" class="rule"/>
+<text x="14" y="363" class="tb">FIG. 6</text>
+<text x="706" y="363" class="tb" text-anchor="end">Two agent loops</text>
+</svg>
+<figcaption><b>Fig. 6</b> Loop A needs no protocol. Note <span class="m">einzel render</span> in the fast path: an agent that can look at the geometry catches errors that no amount of JSON inspection would surface, which is why AGT-6 is a contract requirement rather than a convenience.</figcaption>
+</figure>
+
+<h3>The CLI</h3>
+<p><span class="req">CLI-1</span> <strong>Every command emits structured output.</strong> A <span class="m">--json</span> flag on every verb produces machine-readable output including the full GRD-1 result envelope.</p>
+<p><span class="req">CLI-2</span> <strong>Results on stdout, progress and diagnostics on stderr.</strong></p>
+<p><span class="req">CLI-3</span> <strong>Exit codes are meaningful and documented.</strong> Distinct codes for validation failure, regime violation, cost-gate refusal, convergence failure, engine-pin mismatch, and internal error.</p>
+<p><span class="req">CLI-4</span> <strong>Every mutating command supports <span class="m">--dry-run</span></strong>.</p>
+<p><span class="req">CLI-5</span> <strong>Output ordering is deterministic.</strong></p>
+<p><span class="req">CLI-6</span> <strong>Startup is fast and offline.</strong> No command touches the network unless the user explicitly asks it to.</p>
+
+<div class="tw"><table>
+<thead><tr><th>Verb</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td class="t">einzel init</td><td>Create a project; <span class="m">--vcs git</span> adds scaffolding; writes AGENTS.md</td></tr>
+<tr><td class="t">einzel new --from-example</td><td>Start from a corpus model</td></tr>
+<tr><td class="t">einzel validate</td><td>Units, bounds, solvability, regime validity. Instant</td></tr>
+<tr><td class="t">einzel preview</td><td>Coarse, fast, permanently labelled</td></tr>
+<tr><td class="t">einzel estimate</td><td>Wall time, memory, disk for a proposed run</td></tr>
+<tr><td class="t">einzel solve / run / sweep</td><td>The expensive operations, resumable</td></tr>
+<tr><td class="t">einzel test</td><td>Project assertions</td></tr>
+<tr><td class="t">einzel verify</td><td>Model drift, engine drift, defect-floor status of stored results</td></tr>
+<tr><td class="t">einzel render section</td><td><b>Vector</b> 2D section or orthographic projection to SVG or PDF</td></tr>
+<tr><td class="t">einzel render still</td><td>Shaded 3D raster still to PNG</td></tr>
+<tr><td class="t">einzel render animation</td><td>Frame sequence from a render spec; encoding is separate (RND-9)</td></tr>
+<tr><td class="t">einzel export vtu</td><td>Fields, trajectories, or density clouds for ParaView</td></tr>
+<tr><td class="t">einzel ext test / register</td><td>Extension authoring loop</td></tr>
+<tr><td class="t">einzel schema / templates / examples</td><td>Self-description</td></tr>
+<tr><td class="t">einzel agents-md</td><td>Regenerate the platform layer of AGENTS.md</td></tr>
+<tr><td class="t">einzel doctor</td><td>Environment report from cached state; <span class="m">--check</span> for explicit network check</td></tr>
+<tr><td class="t">einzel self-update</td><td>Linux and portable installs only; always explicit</td></tr>
+</tbody></table></div>
+
+<h3>The MCP server</h3>
+<p>Its distinct value is <strong>shared live state</strong>: an agent operating on the model a human has open, with the viewport updating and both parties writing into one attributed journal. Everything else it could do, the CLI does at least as well and with less machinery. <strong>Streamable HTTP</strong> hosted in-process by the shell is the primary transport, with <strong>stdio</strong> as a convenience. <span class="req">MCP-1</span> Mutations are attributed and the undo stack is shared and linear.</p>
+</section>
+
+<section>
+<h2>16. Shell <em>&sect;16</em></h2>
+<p>WPF on Windows. The 3D viewport uses Helix Toolkit on its DirectX 11 path; plain WPF Media3D cannot render 10<sup>4</sup> trajectories interactively.</p>
+<h4>Required views</h4>
+<ul>
+<li><strong>3D viewport</strong>: geometry, electrode potentials by colour, equipotential surfaces or slices, trajectory bundles coloured by energy, m/z, or fate. Density clouds rather than trajectories for diffusive regions (TRN-2).</li>
+<li><strong>Figure composer</strong>: build and preview a render spec &mdash; view direction, section plane, what to include, labels, dimensions &mdash; and save it to <span class="m">figures/</span> as text so it can be regenerated, diffed, and re-run by the CLI.</li>
+<li><strong>Animation timeline</strong>: per-phase playback rates (RND-7), scrubbing, and frame export.</li>
+<li><strong>Model tree</strong> with parameter editing, live validation, units on every field, template instantiation.</li>
+<li><strong>Sequence editor</strong>: the state machine as a timeline, with excitations and transport mode per phase.</li>
+<li><strong>Results</strong> by accuracy class, with uncertainty and warnings alongside the value, never behind a disclosure control.</li>
+<li><strong>Regime inspector</strong>: governing dimensionless numbers along a selected path, violations highlighted.</li>
+<li><strong>Project view</strong>: models, studies, results with model-drift and engine-drift state, and version-control state where present.</li>
+<li><strong>Extension manager</strong>: installed extensions, trust level, versions, compatible engine range, last test result.</li>
+<li><strong>Journal</strong>: command history with agent and human attribution.</li>
+<li><strong>Update notice</strong>: non-modal, dismissible, with the deferral options of UPD-3.</li>
+</ul>
+<p><span class="req">UI-1</span> The shell owns layout, input, the interactive viewport, and the update check. It owns no physics, no validation rules, no file format knowledge, and <strong>no render output</strong> &mdash; the figure composer edits a spec that <span class="m">Einzel.Render</span> executes, so the same spec produces the same figure from the CLI.</p>
+</section>
+
+<section>
+<h2>17. Rendering, export, and interchange <em>&sect;17</em></h2>
+
+<p>Three jobs are routinely conflated here and should not be: an <strong>interactive viewport</strong> for tuning, a <strong>publication figure</strong>, and an <strong>animation for a talk</strong>. Different pipelines, different fidelity requirements, different failure modes. A fourth question &mdash; what Einzel deliberately does <em>not</em> visualize &mdash; turns out to matter as much as the other three.</p>
+
+<figure>
+<svg viewBox="0 0 720 408" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="What leaves Einzel">
+<style>
+  .lbl{font:500 11px "IBM Plex Mono",monospace;fill:#12161A}
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .hdr{font:500 11px "IBM Plex Mono",monospace;fill:#8A3A3A;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+</defs>
+<rect width="720" height="408" fill="#fff"/>
+<text x="20" y="24" class="hd">WHAT LEAVES EINZEL</text>
+
+<rect x="30" y="42" width="106" height="226" rx="2" fill="#fff" stroke="#12161A" stroke-width="1.6"/>
+<text x="83" y="146" class="lbl" text-anchor="middle">model</text>
+<text x="83" y="162" class="lbl" text-anchor="middle">+ result</text>
+<text x="83" y="182" class="lbl2" text-anchor="middle">+ manifest</text>
+
+<line x1="136" y1="66" x2="164" y2="66" class="dim" marker-end="url(#ar)"/>
+<rect x="168" y="46" width="176" height="40" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="256" y="63" class="cal" text-anchor="middle">DirectX raster</text>
+<text x="256" y="78" class="lbl2" text-anchor="middle">interactive only</text>
+<line x1="344" y1="66" x2="372" y2="66" class="dim" marker-end="url(#ar)"/>
+<rect x="376" y="46" width="150" height="40" rx="2" fill="#F4F6F7" stroke="#C9CFD4"/>
+<text x="451" y="70" class="cal" text-anchor="middle">screen</text>
+<text x="540" y="70" class="cal">tuning, not an artifact</text>
+
+<line x1="136" y1="122" x2="164" y2="122" class="dim" marker-end="url(#ar)"/>
+<rect x="168" y="102" width="176" height="40" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.4"/>
+<text x="256" y="119" class="cal" text-anchor="middle">vector projection</text>
+<text x="256" y="134" class="lbl2" text-anchor="middle">paths, not pixels</text>
+<line x1="344" y1="122" x2="372" y2="122" class="dim" marker-end="url(#ar)"/>
+<rect x="376" y="102" width="150" height="40" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.4"/>
+<text x="451" y="126" class="cal" text-anchor="middle">SVG &#183; PDF</text>
+<text x="540" y="126" class="cal">the publication path</text>
+
+<line x1="136" y1="178" x2="164" y2="178" class="dim" marker-end="url(#ar)"/>
+<rect x="168" y="158" width="176" height="40" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.4"/>
+<text x="256" y="175" class="cal" text-anchor="middle">frame sequence</text>
+<text x="256" y="190" class="lbl2" text-anchor="middle">native output</text>
+<line x1="344" y1="178" x2="372" y2="178" class="dim" marker-end="url(#ar)"/>
+<rect x="376" y="158" width="150" height="40" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="451" y="175" class="cal" text-anchor="middle">encoder</text>
+<text x="451" y="190" class="lbl2" text-anchor="middle">out of process</text>
+<text x="540" y="182" class="cal">detected, not bundled</text>
+
+<line x1="136" y1="234" x2="164" y2="234" class="dim" marker-end="url(#ar)"/>
+<rect x="168" y="214" width="176" height="40" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.4"/>
+<text x="256" y="231" class="cal" text-anchor="middle">VTU writer</text>
+<text x="256" y="246" class="lbl2" text-anchor="middle">fields, paths, density</text>
+<line x1="344" y1="234" x2="372" y2="234" class="dim" marker-end="url(#ar)"/>
+<rect x="376" y="214" width="150" height="40" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="451" y="238" class="cal" text-anchor="middle">ParaView</text>
+<text x="540" y="238" class="cal" fill="#8A3A3A">we do not build this</text>
+
+<line x1="30" y1="284" x2="690" y2="284" class="hair"/>
+<text x="20" y="308" class="hdr">EVERY ARTIFACT CARRIES ITS PROVENANCE</text>
+<rect x="30" y="318" width="156" height="38" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="108" y="341" class="cal" text-anchor="middle">engine + model hash</text>
+<rect x="196" y="318" width="156" height="38" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="274" y="341" class="cal" text-anchor="middle">decimation tolerance</text>
+<rect x="362" y="318" width="156" height="38" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="440" y="341" class="cal" text-anchor="middle">time compression</text>
+<rect x="528" y="318" width="156" height="38" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="606" y="341" class="cal" text-anchor="middle">preview flag</text>
+<text x="30" y="376" class="cal">A figure outlives the conversation that produced it. GRD-12 is the rule that keeps it honest.</text>
+
+<line x1="0" y1="388" x2="720" y2="388" class="rule"/>
+<text x="14" y="403" class="tb">FIG. 7</text>
+<text x="706" y="403" class="tb" text-anchor="end">What leaves Einzel</text>
+</svg>
+<figcaption><b>Fig. 7</b> Four pipelines from one source, and one deliberate refusal. The bottom row is the constraint that applies to all of them: a rendered artifact travels further than any other output, is seen by people who never saw the model, and must therefore carry enough of its own history to be assessed.</figcaption>
+</figure>
+
+<h3>Where rendering lives</h3>
+<p><span class="req">RND-1</span> <strong>Rendering is an engine capability, not a shell feature.</strong> <span class="m">Einzel.Render</span> sits below the shell; the figure composer and <span class="m">einzel render</span> are peer consumers of it. It must produce a publication figure headlessly, on Linux, in CI, with no display attached.</p>
+<p>This follows from two requirements already in force. AGT-2 says nothing exists only in the shell, and AGT-6 makes visual feedback part of the agent contract &mdash; an agent that can look at the geometry catches errors that no amount of JSON inspection surfaces. Rendering in the GUI only would break both.</p>
+<p><span class="req">RND-2</span> A <strong>render spec is text</strong>, lives in <span class="m">figures/</span>, and is versioned with the model. The figure in a paper is regenerable from the repository rather than being a file someone once exported.</p>
+
+<h3>Vector output</h3>
+<p>This is a real gap in the incumbent. SIMION's output is essentially screenshots, so publication figures get redrawn by hand in an illustration program, and the redrawn figure then drifts from the model it depicts. Closing that loop is worth doing properly.</p>
+<ul>
+<li><span class="req">RND-3</span> <strong>2D sections and orthographic projections emit SVG and PDF</strong>, through a geometric projection pipeline that produces paths rather than pixels. This is a separate pipeline from the DirectX viewport, not an export from it. Publication figures are overwhelmingly of this kind &mdash; the companion memo's own figures are line drawings with dimensioned callouts.</li>
+<li><span class="req">RND-4</span> <strong>Shaded 3D perspective is raster.</strong> Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added later as vector; it is not first.</li>
+<li><span class="req">RND-5</span> <strong>Trajectories are decimated with a stated geometric tolerance</strong> (ACC-7), because 10<sup>4</sup> polylines of 10<sup>5</sup> points each is an unopenable file. The tolerance is recorded in the output per GRD-12.</li>
+<li><span class="req">RND-6</span> <strong>Text stays text.</strong> Labels, dimensions, and axis annotations are selectable and editable in the output, so a figure can be relabelled for a different venue without regenerating it.</li>
+<li>Formats are SVG and PDF. EPS is not supported.</li>
+</ul>
+
+<h3>Animation</h3>
+<div class="callout stop">
+<span class="klabel">Linear time makes an instrument animation useless</span>
+<p>The timescales in a single instrument span six orders of magnitude: an RF period near 1 &micro;s, a mirror turning point in nanoseconds, a flight of 200 &micro;s, a funnel transit of about a millisecond. Played at any single rate, an animation is one blur and a great deal of nothing. Worse, a viewer cannot tell which they are looking at, so a video that compresses time silently <b>misrepresents the physics</b> to exactly the audience least able to check it.</p>
+</div>
+<ul>
+<li><span class="req">RND-7</span> <strong>An animation declares an explicit non-linear time mapping</strong> &mdash; playback rate per sequence phase &mdash; and <strong>the current rate is displayed on screen throughout playback</strong>. Neither part is optional. This is the animation equivalent of GRD-1: the artifact may compress, but it may not hide that it compressed.</li>
+<li><span class="req">RND-8</span> <strong>Diffusive regions animate as evolving density fields</strong>, never as particles (TRN-2, and the render row of Fig. 4). Drawing lines through a funnel depicts something the model never computed.</li>
+<li><span class="req">RND-9</span> <strong>Native output is an image sequence.</strong> Encoding to a video container is an optional out-of-process step using a tool the user supplies. This is a licensing decision as much as an architectural one &mdash; see below.</li>
+<li><span class="req">RND-10</span> <strong>Videos carry provenance visibly</strong>, as a corner stamp with engine version and model hash, in addition to container metadata. A video is the artifact most likely to be shown to an audience with none of the uncertainty apparatus attached, and metadata nobody opens is not provenance.</li>
+<li><span class="req">RND-11</span> <strong>Preview-tier results are visually distinguishable in any rendered output</strong> (GRD-5). A preview-quality animation shown at a conference is precisely the promotion GRD-5 exists to forbid.</li>
+</ul>
+
+<h3>Interchange, and the boundary</h3>
+<p><span class="req">RND-12</span> <strong>Fields, trajectories, and density clouds export to VTK/VTU.</strong></p>
+<p>The consequence is deliberate and worth stating as a scope decision rather than leaving implicit: <strong>the built-in viewport never has to become ParaView</strong>. ParaView is better at 3D field and trajectory exploration than anything this project would plausibly build, it is free, and it is already familiar in adjacent instrument communities. One writer buys an entire visualization application. What remains for the viewport is interactive tuning, agent-inspectable renders, and publication vector figures &mdash; three jobs it can do well. Anything beyond them is an export, and that boundary should be defended.</p>
+
+<h4>Mesh formats: the format and the library are separable</h4>
+<p><span class="req">RND-13</span> <strong>Gmsh MSH is supported for import and interchange, through an Einzel-authored reader and writer.</strong> GPL attaches to Gmsh's implementation, not to the format; parsing <span class="m">.msh</span> carries no licensing obligation, as several permissively licensed tools demonstrate. The obligation would come from linking the library, which this does not do.</p>
+<p><span class="req">RND-14</span> <strong>MSH is interchange, never the native representation</strong>, for the reason given in &sect;9: a mesh is already discretized and cannot carry the parametric intent that makes tolerance work possible.</p>
+<p><span class="req">RND-15</span> <strong>Where meshing itself is eventually needed</strong> &mdash; with the boundary element solver, not before &mdash; <strong>Gmsh is detected, not bundled.</strong> Shelling out to a GPL binary the user installed separately is clean; shipping it inside the installer drags its distribution obligations along. Identical pattern to the video encoder, and to any future solver dependency.</p>
+
+<div class="tw"><table>
+<thead><tr><th>Artifact</th><th>Format</th><th>Vector</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Section, orthographic projection</td><td class="t">SVG, PDF</td><td>yes</td><td>The publication path; text stays text</td></tr>
+<tr><td>Shaded 3D still</td><td class="t">PNG</td><td>no</td><td>Viewport capture at print resolution</td></tr>
+<tr><td>Animation frames</td><td class="t">PNG or SVG</td><td>per frame</td><td>Encoding out of process</td></tr>
+<tr><td>Fields, potentials</td><td class="t">VTU</td><td>&mdash;</td><td>ParaView</td></tr>
+<tr><td>Trajectories</td><td class="t">VTU</td><td>&mdash;</td><td>ParaView; decimation optional here</td></tr>
+<tr><td>Density clouds</td><td class="t">VTU</td><td>&mdash;</td><td>Diffusive regions, time-resolved</td></tr>
+<tr><td>Results, figures of merit</td><td class="t">JSON, CSV</td><td>&mdash;</td><td>GRD-1 envelope preserved in both</td></tr>
+<tr><td>Meshes in and out</td><td class="t">MSH</td><td>&mdash;</td><td>Own reader and writer; with BEM, not before</td></tr>
+<tr><td>Geometry from CAD</td><td class="t">STEP</td><td>&mdash;</td><td>Import only</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2>18. Distribution and updates <em>&sect;18</em></h2>
+
+<div class="callout stop">
+<span class="klabel">The conflict this section exists to resolve</span>
+<p>A tool that moves files can update itself silently and lose nothing. <b>Einzel computes numbers.</b> If the engine changes under a study &mdash; between the first sweep and the tenth, or between a run and the run it is being compared against &mdash; the results are no longer comparable, and nothing about the output looks different. Silent update and reproducibility are in direct tension, and the resolution is to make every version change visible, deliberate, and recorded.</p>
+</div>
+
+<h3>Distribution</h3>
+<ul>
+<li><span class="req">DST-1</span> <strong>Windows:</strong> a per-user installer requiring no administrator rights, so it works on a locked-down instrument PC, published as an asset on the GitHub release.</li>
+<li><span class="req">DST-2</span> <strong>Portable zip</strong> alongside, for machines where installing is not permitted.</li>
+<li><span class="req">DST-3</span> <strong>Linux:</strong> a tarball, engine and CLI only. No installer and no silent updater.</li>
+<li><span class="req">DST-4</span> <strong>SHA256SUMS.txt</strong> published with every release.</li>
+<li><span class="req">DST-5</span> <strong>Releases are built by CI on a version tag.</strong> Nothing distributed is ever built locally.</li>
+<li><span class="req">DST-6</span> The <strong>vendored Python runtime</strong> ships in the installer and the tarball.</li>
+<li><span class="req">DST-7</span> <strong>Optional external tools are detected, never bundled</strong>: the video encoder (RND-9) and, later, Gmsh (RND-15). Their absence degrades a feature; it never blocks the platform.</li>
+</ul>
+
+<p><strong>Builds are unsigned for now.</strong> SmartScreen will warn on first run and the documentation will say so plainly. This is a real cost &mdash; an adoption tax on exactly the cautious institutional user this project wants, and telling people to click through a security warning is a habit worth not teaching. Accepted deliberately at this stage and revisited if the user base grows beyond the lab and its collaborators.</p>
+
+<figure>
+<svg viewBox="0 0 720 412" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Update policy">
+<style>
+  .lbl2{font:400 10px "IBM Plex Mono",monospace;fill:#7E888F;letter-spacing:.06em}
+  .cal{font:500 10px "IBM Plex Mono",monospace;fill:#525C64}
+  .hd{font:500 11px "IBM Plex Mono",monospace;fill:#1D4E89;letter-spacing:.1em}
+  .hdv{font:500 11px "IBM Plex Mono",monospace;fill:#0B7A6B;letter-spacing:.1em}
+  .hdr{font:500 11px "IBM Plex Mono",monospace;fill:#8A3A3A;letter-spacing:.1em}
+  .tb{font:500 10px "IBM Plex Mono",monospace;fill:#525C64;letter-spacing:.1em}
+  .hair{stroke:#DDE2E5;stroke-width:1;fill:none}
+  .rule{stroke:#C9CFD4;stroke-width:1;fill:none}
+  .dim{stroke:#525C64;stroke-width:.9;fill:none}
+</style>
+<defs>
+<marker id="au" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+  <path d="M0,1 L7,4 L0,7 z" fill="#525C64"/></marker>
+</defs>
+<rect width="720" height="412" fill="#fff"/>
+<text x="20" y="24" class="hd">ONE CHECK, AT GUI LAUNCH ONLY</text>
+<rect x="36" y="36" width="150" height="42" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="111" y="54" class="cal" text-anchor="middle">shell launches</text>
+<text x="111" y="68" class="lbl2" text-anchor="middle">the only network call</text>
+<rect x="222" y="36" width="150" height="42" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="297" y="54" class="cal" text-anchor="middle">read latest release</text>
+<text x="297" y="68" class="lbl2" text-anchor="middle">cache result locally</text>
+<rect x="408" y="36" width="150" height="42" rx="2" fill="#EDF1F5" stroke="#1D4E89" stroke-width="1.2"/>
+<text x="483" y="54" class="cal" text-anchor="middle">non-modal notice</text>
+<text x="483" y="68" class="lbl2" text-anchor="middle">never a blocking dialog</text>
+<line x1="186" y1="57" x2="218" y2="57" class="dim" marker-end="url(#au)"/>
+<line x1="372" y1="57" x2="404" y2="57" class="dim" marker-end="url(#au)"/>
+<text x="20" y="106" class="hdv">FOUR ANSWERS, ALL EQUALLY VALID</text>
+<rect x="36" y="118" width="150" height="36" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="111" y="141" class="cal" text-anchor="middle">install on exit</text>
+<rect x="204" y="118" width="150" height="36" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="279" y="141" class="cal" text-anchor="middle">remind next launch</text>
+<rect x="372" y="118" width="150" height="36" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="447" y="141" class="cal" text-anchor="middle">remind in 30 days</text>
+<rect x="540" y="118" width="144" height="36" rx="2" fill="#E4F0ED" stroke="#0B7A6B" stroke-width="1.2"/>
+<text x="612" y="141" class="cal" text-anchor="middle">skip this version</text>
+<text x="36" y="176" class="cal">No option is nagged, defaulted past, or removed after repeated deferral. Nothing is forced.</text>
+<line x1="36" y1="196" x2="684" y2="196" class="hair"/>
+<text x="20" y="220" class="hd">THE CLI NEVER CHECKS</text>
+<rect x="36" y="232" width="200" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="136" y="250" class="cal" text-anchor="middle">einzel doctor</text>
+<text x="136" y="264" class="lbl2" text-anchor="middle">reads the shell's cache</text>
+<rect x="256" y="232" width="200" height="42" rx="2" fill="#F3EFE4" stroke="#9C6A0B" stroke-width="1.2"/>
+<text x="356" y="250" class="cal" text-anchor="middle">einzel doctor --check</text>
+<text x="356" y="264" class="lbl2" text-anchor="middle">explicit, user asked</text>
+<text x="476" y="250" class="cal">An agent issuing 300 commands</text>
+<text x="476" y="264" class="cal">sees one version throughout.</text>
+<line x1="36" y1="292" x2="684" y2="292" class="hair"/>
+<text x="20" y="316" class="hdr">A KNOWN-DEFECTIVE VERSION IS TAINTED, NOT BLOCKED</text>
+<rect x="36" y="328" width="180" height="42" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="126" y="346" class="cal" text-anchor="middle">below published floor</text>
+<text x="126" y="360" class="lbl2" text-anchor="middle">defect named</text>
+<line x1="216" y1="349" x2="240" y2="349" class="dim" marker-end="url(#au)"/>
+<rect x="244" y="328" width="180" height="42" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="334" y="346" class="cal" text-anchor="middle">work continues normally</text>
+<text x="334" y="360" class="lbl2" text-anchor="middle">nothing refuses to run</text>
+<line x1="424" y1="349" x2="448" y2="349" class="dim" marker-end="url(#au)"/>
+<rect x="452" y="328" width="232" height="42" rx="2" fill="#F5E9E7" stroke="#8A3A3A" stroke-width="1.2"/>
+<text x="568" y="346" class="cal" text-anchor="middle">every result carries the defect</text>
+<text x="568" y="360" class="lbl2" text-anchor="middle">manifest, export, figure, video</text>
+<line x1="0" y1="392" x2="720" y2="392" class="rule"/>
+<text x="14" y="407" class="tb">FIG. 8</text>
+<text x="706" y="407" class="tb" text-anchor="end">Update policy</text>
+</svg>
+<figcaption><b>Fig. 8</b> Three separate decisions. The check happens once, at a moment the user chose by launching the application. The answer is theirs, with no coercive default. And a version with a known defect is handled by marking its output &mdash; including figures and videos &mdash; rather than by refusing to run.</figcaption>
+</figure>
+
+<h3>Update policy</h3>
+<ul>
+<li><span class="req">UPD-1</span> <strong>The shell is the only component that checks for updates, and only at launch.</strong> No periodic timer, no background polling.</li>
+<li><span class="req">UPD-2</span> <strong>The CLI never contacts the network.</strong> <span class="m">einzel doctor</span> reports from a cache the shell writes; <span class="m">--check</span> performs an explicit live check because the user asked. This is what makes AGT-8 true.</li>
+<li><span class="req">UPD-3</span> <strong>Updates are never forced.</strong> Install on exit, remind next launch, remind in thirty days, skip this version. No option is nagged, escalated, or removed after repeated deferral.</li>
+<li><span class="req">UPD-4</span> <strong>The notice is non-modal.</strong></li>
+<li><span class="req">UPD-5</span> <strong>A project may pin an engine version.</strong> A pinned project run under a different version reports the mismatch and exits with a distinct code rather than silently proceeding.</li>
+<li><span class="req">UPD-6</span> <strong>An update never applies while a run, sweep, or solve is active</strong>, and never mid-session. Staged on download, applied on next launch.</li>
+<li><span class="req">UPD-7</span> <strong>Applying an update regenerates the platform layer of AGENTS.md</strong> in projects opened afterward.</li>
+<li><span class="req">UPD-8</span> <strong>Before applying, the updater reports what will change</strong>: extensions falling outside the new engine's compatible range, whether field caches will be invalidated by a solver-behaviour version change, and whether any project pins would be violated.</li>
+<li><span class="req">UPD-9</span> <strong>Linux and portable installs never self-update.</strong> <span class="m">einzel self-update</span> is always explicit.</li>
+</ul>
+
+<h3>The version floor, without coercion</h3>
+<p>A published policy file declares a minimum version and, critically, <em>the reason</em>. The lab tool this pattern comes from refuses to start new work below the floor. Einzel does not.</p>
+<ul>
+<li><span class="req">UPD-10</span> A version below the floor <strong>keeps working normally</strong>.</li>
+<li><span class="req">UPD-11</span> Every result it produces carries a <strong>non-suppressible defect warning naming the defect</strong> (GRD-11), propagated to exports, figures, and videos by GRD-2.</li>
+<li><span class="req">UPD-12</span> <span class="m">einzel verify</span> reports which stored results were produced by a version now known defective. <strong>This is the recall mechanism</strong>, and it works retrospectively on results computed before the defect was discovered &mdash; which blocking cannot do at all.</li>
+</ul>
+
+<div class="callout note">
+<span class="klabel">Why taint beats blocking</span>
+<p>A block is defeatable: the user pins an old version, declines the update, or runs the portable copy. It also punishes exactly the person who has done nothing wrong, mid-work. A taint does neither. It travels with the artifact, survives being copied into a document or emailed to a collaborator, and is visible to whoever eventually reads the number &mdash; which is the person the warning is for. It is the same principle as GRD-1, GRD-5, and GRD-12: the platform never stops you working, it refuses to let a result look cleaner than it is.</p>
+</div>
+</section>
+
+<section>
+<h2>19. Validation and test <em>&sect;19</em></h2>
+<ol>
+<li><strong>Analytic.</strong> Parallel-plate and coaxial fields against closed form; ideal single-stage reflectron focusing; <strong>Mathieu stability boundaries recovering the standard <span class="m">a</span>&ndash;<span class="m">q</span> diagram</strong>, the best single test that the RF path is correct; free-flight timing to machine precision; mobility-limited drift velocity against Nernst&ndash;Einstein.</li>
+<li><strong>Convergence.</strong> Every physics test at two mesh densities and two tolerances, asserting observed convergence order against nominal.</li>
+<li><strong>Cross-mode.</strong> Trajectory integration against statistical diffusion in the overlap band, agreement within Class S intervals.</li>
+<li><strong>Examples corpus.</strong> The EX-1 models run in CI with their stated tolerances. A failing example blocks release.</li>
+<li><strong>Rendering.</strong> New in rev 0.6. Vector output is generated headlessly in CI and compared against golden SVG, which is text and therefore diffable &mdash; a rendering regression shows up as a readable diff rather than a pixel comparison. Decimation is separately asserted to stay within ACC-7 by measuring deviation from the undecimated path.</li>
+<li><strong>Cross-version.</strong> Every release runs the examples corpus against the previous release and reports any figure of merit that moved. An intended change is documented and bumps the solver-behaviour version; an unintended one is a regression. Without this, "should I update?" has no answerable form.</li>
+<li><strong>Cross-code.</strong> Curated geometries with SIMION results as golden files. Not in CI, since it needs a licence.</li>
+<li><strong>Literature regression.</strong> Published reflectron, MR-TOF, quadrupole, and funnel geometries reproduced against reported performance. These catch conceptual errors rather than numerical ones.</li>
+<li><strong>Agent acceptance.</strong> Scripted prose tasks run against an agent given a project directory, the CLI, and nothing else. Success rate tracked as a release metric, with <strong>a separate track measuring whether agents act on warnings</strong>, by seeding tasks whose obvious approach is regime-invalid and scoring whether the agent notices.</li>
+</ol>
+<p><span class="req">TST-1</span> Every performance path is tested against the scalar reference. <span class="req">TST-2</span> Every golden-file tolerance carries a comment explaining its magnitude.</p>
+</section>
+
+<section>
+<h2>20. Dependencies and licensing <em>&sect;20</em></h2>
+<p>Apache 2.0. The explicit patent grant matters for institutional collaborators and is not idle given the memo's note about the multi-reflection patent family; permissive licensing is a precondition of the &sect;1 thesis rather than a preference.</p>
+<div class="tw"><table>
+<thead><tr><th>Need</th><th>Intent</th><th>Licence watch</th></tr></thead>
+<tbody>
+<tr><td>Python embedding</td><td>CSnakes for the in-process runner</td><td>Verify licence and Python version support</td></tr>
+<tr><td>Python runtime</td><td>Vendored CPython</td><td>PSF licence; redistribution permissive, attribution required</td></tr>
+<tr><td>Linear algebra</td><td>Permissive .NET library; native BLAS as optional plugin only</td><td>Keep MKL and similar out of the default build</td></tr>
+<tr><td>GPU</td><td>ILGPU</td><td>Permissive; verify current terms</td></tr>
+<tr><td>3D viewport</td><td>Helix Toolkit, DirectX 11 path</td><td>MIT; its DirectX dependency is effectively unmaintained upstream</td></tr>
+<tr><td>Vector emit</td><td><b>Own SVG and PDF writers</b>, or a permissive library</td><td>Both formats are open; no GPL path needed</td></tr>
+<tr><td>VTU writer</td><td><b>Own writer.</b> VTK's XML formats are documented and simple</td><td>Avoids depending on VTK itself; verify before committing</td></tr>
+<tr><td>MSH reader and writer</td><td><b>Own.</b> The format is not the library (RND-13)</td><td>No obligation from parsing; obligation would come from linking Gmsh</td></tr>
+<tr><td>Video encoding</td><td>External, detected, out of process (RND-9)</td><td><b>ffmpeg is GPL or LGPL by build.</b> Never bundled, never linked</td></tr>
+<tr><td>Meshing, with BEM</td><td>Gmsh, detected not bundled (RND-15)</td><td><b>GPL.</b> Out-of-process invocation only</td></tr>
+<tr><td>Charting</td><td>Permissive .NET charting</td><td>Several options are dual-licensed &mdash; check the package, not the project</td></tr>
+<tr><td>MCP</td><td>Official C# SDK</td><td>Verify current version and licence</td></tr>
+</tbody></table></div>
+<p><span class="req">LIC-1</span> No GPL dependency in the default build, ever. Where GPL functionality is genuinely useful it is invoked out-of-process as a tool the user supplies, and its absence degrades a feature rather than blocking the platform. <span class="req">LIC-2</span> Extensions carry their own licences; the extension manager surfaces them.</p>
+</section>
+
+<section>
+<h2>21. Delivery phases <em>&sect;21</em></h2>
+
+<div class="callout note">
+<span class="klabel">Three sequencing principles</span>
+<p><b>Seams first, implementations later.</b> Transport mode, symmetry, accuracy class, the device library, and the extension host are designed and stubbed in Phase 1 with one implementation behind each.</p>
+<p><b>The schema and the CLI are Phase 1 deliverables.</b> An agent can do real work at the end of Phase 1, which de-risks the thesis early.</p>
+<p><b>VTU export lands in Phase 1, before any GUI exists.</b> One writer, cheap, and it gives Phase 1 a complete visualization story through ParaView while the shell is still a year away. This is the clearest dividend of the &sect;17 boundary.</p>
+</div>
+
+<div class="tw"><table>
+<thead><tr><th>Phase</th><th>Scope</th><th>Acceptance</th><th>Effort</th></tr></thead>
+<tbody>
+<tr><td><b>1</b> &middot; Spine, project, CLI</td><td>Model, units, symmetry, DC multigrid solver, basis superposition, tricubic interpolation, adaptive integrator, JSON schema, error taxonomy, result objects with uncertainty, manifests, project layout, AGENTS.md generation, full CLI, <b>VTU export</b>, tarball and portable zip</td><td>Analytic and convergence tiers green; ACC-1 on a reflectron; the memo's mirror pair tracked end to end; schema stability review passed; GRD-1 enforced with no bypass; <b>an agent builds and runs a DC model from prose using only a project directory and the CLI</b>, and can inspect the result in ParaView</td><td class="n">4&ndash;5 mo</td></tr>
+<tr><td><b>2</b> &middot; Extensions, sweeps, shell, figures</td><td>Extension host with both runners, examples corpus v1, sensitivity fields, tolerance Monte Carlo, optimization, ILGPU, WPF shell and viewport, <b>Einzel.Render with vector sections and stills</b>, figure composer, Windows installer and the &sect;18 update mechanism</td><td><b>An agent authors, tests, and registers a working analysis extension</b>; PERF-6 met with FLD-2 residual inside ACC-1; memo &sect;6 items 1, 2 and 9 answered; <b>a publication-quality vector figure of the mirror pair generated headlessly in CI</b>; an update offered, deferred, and later accepted without any result becoming untraceable</td><td class="n">5&ndash;6 mo</td></tr>
+<tr><td><b>3</b> &middot; RF and pressure</td><td>Time-domain RF, statistical diffusion transport, collision models, gas velocity import, sequencer, space charge, Class B analysis, density-field export</td><td>Mathieu diagram reproduced; quadrupole transmission-against-resolution curve; funnel transmission against a published benchmark; cross-mode agreement in the overlap band</td><td class="n">5&ndash;6 mo</td></tr>
+<tr><td><b>4</b> &middot; Traps, animation, MCP</td><td>Waveform excitation, multi-notch isolation, trap sequences, device library filled out, <b>animation with non-linear time mapping</b>, MCP live-session server</td><td>Memo &sect;6 item 5 modelled, Variant 1 against Variant 2; <b>an animation of the full instrument, RF period to full flight, with playback rate visible throughout</b>; agent and human working the same model concurrently with correct attribution</td><td class="n">4&ndash;5 mo</td></tr>
+<tr><td><b>5</b> &middot; Generalize and release</td><td>BEM solver, MSH interchange, CAD import, plugin surface, documentation, public repository</td><td>A second, unrelated instrument modelled by someone who did not write the code, working mostly through an agent</td><td class="n">3&ndash;4 mo</td></tr>
+</tbody></table></div>
+
+<p>Roughly twenty-one to twenty-six months for one to two experienced developers. Animation sits in Phase 4 because it needs the sequencer and diffusive transport before it can depict anything honestly &mdash; an animation built in Phase 2 could only draw trajectories, which is exactly the misrepresentation RND-8 forbids.</p>
+<p>Estimates remain honest for the code and optimistic for physics validation, which is where projects of this kind consistently overrun &mdash; not because the code is hard, but because the first time a result disagrees with SIMION, establishing which of the two is wrong takes weeks.</p>
+</section>
+
+<section>
+<h2>22. Risks <em>&sect;22</em></h2>
+<ol>
+<li><strong>Agent-generated confident wrongness.</strong> The defining risk of the thesis. Mitigation is the whole of &sect;4, and specifically the warning-response track in &sect;19. <b>Measure this, do not assume it.</b></li>
+<li><strong>A figure or video outlives its model and is believed.</strong> New in rev 0.6, and arguably the highest-reach failure in the document: a rendered artifact travels further than any other output, is seen by people who never saw the model, and is the one most likely to be shown to an audience. Mitigation: GRD-12, RND-10, RND-11.</li>
+<li><strong>An animation misrepresents the physics through time compression.</strong> Six orders of magnitude of timescale cannot be shown honestly at one rate, and a viewer cannot detect the compression. Mitigation: RND-7, with the rate on screen rather than in documentation.</li>
+<li><strong>Stale results reported as current.</strong> The most likely everyday agent failure. Mitigation: GRD-10, with <span class="m">einzel verify</span> in the generated AGENTS.md workflow.</li>
+<li><strong>An update silently changes results mid-study.</strong> Mitigation: the whole of &sect;18, plus the cross-version test tier that makes the change visible before anyone accepts it.</li>
+<li><strong>Field caches survive an update and are silently wrong.</strong> Mitigation: FLD-3 keys on the solver-behaviour version; UPD-8 reports invalidation before applying.</li>
+<li><strong>Nobody updates, and defective versions persist.</strong> The cost of not forcing updates, accepted deliberately. Mitigation: GRD-11 taint and UPD-12 retrospective reporting.</li>
+<li><strong>Scope creep into building a visualization application.</strong> The pull is constant and each step is individually reasonable. Mitigation: the &sect;17 boundary, stated explicitly so it can be defended rather than eroded.</li>
+<li><strong>Silent regime extrapolation.</strong> A funnel modelled by trajectory integration produces a plausible number with no sign it is meaningless. Mitigation: REG-2, non-suppressible.</li>
+<li><strong>Interpolation error swamps the timing budget.</strong> The likeliest route to wrong numbers in Class T work. Mitigation: ACC-3 as a hard gate, convergence testing in CI from the first commit.</li>
+<li><strong>Unsigned builds teach click-through.</strong> Accepted for now; the habit is the cost, not the warning.</li>
+<li><strong>Generated agent instructions rot.</strong> Mitigation: generation derives from the same metadata as the schema and help text; UPD-7 regenerates on update.</li>
+<li><strong>Sandbox escape or resource exhaustion from agent-written extensions.</strong> Mitigation: subprocess isolation as the default, OS-level enforcement.</li>
+<li><strong>Third-party extension repositories as an instruction-injection surface.</strong> Mitigation: extension-supplied instructions are surfaced for review, never silently merged.</li>
+<li><strong>The linearized-field assumption fails at the tails.</strong> <em>Spike this in Phase 1.</em></li>
+<li><strong>Schema churn breaks agent workflows.</strong> Mitigation: the Phase 1 stability review, migrations as code, a deprecation policy.</li>
+<li><strong>Symmetry reduction is harder than it looks.</strong> SYM-1 is load-bearing for funnels.</li>
+<li><strong>Validation against SIMION takes far longer than budgeted.</strong> Historically the largest overrun in this class of project.</li>
+<li><strong>The examples corpus rots.</strong> Mitigation: CI enforcement as a release gate.</li>
+<li><strong>GC pauses in long runs.</strong> Preventable with allocation discipline from the start.</li>
+</ol>
+</section>
+
+<section>
+<h2>23. Decisions still open <em>&sect;23</em></h2>
+<ol>
+<li>Einzel availability on NuGet, GitHub, and as a mark.</li>
+<li>Whether Phase 1 spikes the FLD-1 linearity assumption before Phase 2 commits. Recommended: yes, two weeks.</li>
+<li>Whether hidden-line 3D vector output is worth building at all, or whether sections plus raster stills cover every figure anyone actually publishes.</li>
+<li>Whether the provenance stamp on figures is default-on or opt-in. Default-on is safer and will annoy someone preparing a journal submission; a defensible compromise is default-on with an explicit flag that records its own use in the file metadata.</li>
+<li>Whether to write the VTU writer or depend on a permissive VTK-adjacent library. Writing it is probably a week and removes a dependency.</li>
+<li>What triggers revisiting code signing. A user count, an external institution adopting it, or a first public release.</li>
+<li>What the defect-floor policy file contains beyond a version and a reason: whether a defect is scoped to an accuracy class, a device class, or a specific figure of merit, so the taint can be precise rather than blanket.</li>
+<li>What the agent acceptance suite measures and what pass rate gates a release. Needs designing before Phase 1 ends.</li>
+<li>Whether the in-process extension runner is worth shipping at all, or whether sandboxed-only is simpler and sufficient.</li>
+<li>Whether the funnel benchmark uses a published geometry or one of ours.</li>
+<li>Governance if this becomes a collaboration: contribution policy, extension registry, and whether instrument-specific models live in the public repository.</li>
+</ol>
+
+<p style="font-size:13px;color:var(--ink3);margin-top:26px;max-width:74ch">
+Written against the MR-TOF working memo rev 0.7. Effort estimates, performance targets, regime boundaries, and the numerical error budget are engineering judgement, not measured values. Third-party library status, licence terms, MCP SDK capabilities, and CSnakes' Python version support were current at the time of writing and should be re-checked before commitment.
+</p>
+</section>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Einzel.Analysis</RootNamespace>
+    <Description>Figures of merit by accuracy class, spectra, and aberrations. Computed in the engine because the optimiser, sweep driver, and project tests all consume them.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
+    <ProjectReference Include="..\Einzel.Transport\Einzel.Transport.csproj" />
+  </ItemGroup>
+
+</Project>
