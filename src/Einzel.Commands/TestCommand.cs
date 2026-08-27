@@ -119,7 +119,15 @@ public sealed record TestOutcome
     public int Passed => Tests.Count(t => t.Passed);
 
     /// <summary>Whether every test passed.</summary>
-    public bool AllPassed => Tests.All(t => t.Passed);
+    /// <summary>Whether every test passed, and there was at least one.</summary>
+    /// <remarks>
+    /// The count matters as much as the verdict. "Every test passed" over an empty
+    /// list is true and useless, and it is the third place in this codebase where
+    /// that shape appeared - after 'solve' answering converged for a model it had
+    /// skipped, and a test asserting nothing but that a number was non-zero. A
+    /// project with no tests is not a passing project; it is one nobody has checked.
+    /// </remarks>
+    public bool AllPassed => Tests.Count > 0 && Tests.All(t => t.Passed);
 }
 
 /// <summary>Runs the tests in a project.</summary>
@@ -148,7 +156,11 @@ public static class TestCommand
             return new TestOutcome { Root = layout.Root, Tests = tests };
         }
 
-        var files = Directory.GetFiles(layout.Tests, "*.json");
+        // Recursive, because a project that groups its tests into folders was
+        // getting silence and exit 0 rather than the tests it wrote. A discovery
+        // rule that quietly matches less than the author meant is the same failure
+        // as a vacuous pass, arriving by a different route.
+        var files = Directory.GetFiles(layout.Tests, "*.json", SearchOption.AllDirectories);
         Array.Sort(files, StringComparer.Ordinal);
 
         foreach (var file in files)

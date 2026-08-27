@@ -153,13 +153,58 @@ public sealed class IntegratorBehaviourTests
 
         // A deterministic convergence bound, not a statistical interval.
         Assert.Equal(1.0, uncertainty.ConfidenceLevel);
-        Assert.True(uncertainty.WidthSi >= 0.0);
+        Assert.True(uncertainty.WidthSi > 0.0, "an interval of exactly zero is not a bound");
 
         var convergence = Assert.IsType<Evidence.Convergence>(evidence);
         Assert.Equal("integrator tolerance", convergence.Measure);
 
         Assert.DoesNotContain(warnings, w => w.Severity == WarningSeverity.ValidityViolation);
         Assert.Equal(3, study.Runs.Count);
+    }
+
+    [Fact]
+    public void AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact()
+    {
+        // GRD-1 in its sharpest form. On a flight this engine gets right to the last
+        // bit, the two finest refinements agree exactly, and the residual between
+        // them - which is what the interval is built from - is zero. Printed, that
+        // reads as "10.180506 +/- 0 us", which a reader takes for an exact number.
+        //
+        // It is not exact. It is an uncertainty smaller than a comparison of two
+        // doubles can see, and the two statements are not interchangeable: one is
+        // defensible in a paper and the other is not. An agent asked to quote a
+        // result refused this one and measured its own tolerance ladder instead,
+        // which was the right instinct and should not have been necessary.
+        var reflectron = Reflectron();
+
+        var study = FlightTimeStudy.Run(
+            reflectron.LaunchState(), reflectron.Species, reflectron.Field,
+            reflectron.Settings(), reflectron.DetectorPlane());
+
+        var finest = study.Runs[^1];
+
+        // The premise, asserted rather than assumed: this is the case where the
+        // pair comparison really does collapse. If the integrator ever stops being
+        // this good the test would otherwise pass while measuring nothing.
+        Assert.Equal(study.Runs[^2].FlightTimeSeconds, finest.FlightTimeSeconds);
+
+        var (_, uncertainty, evidence, warnings) = study.FlightTime;
+        var convergence = Assert.IsType<Evidence.Convergence>(evidence);
+
+        Assert.True(convergence.ResidualSi > 0.0, "the residual collapsed to zero");
+        Assert.True(uncertainty.WidthSi > 0.0);
+
+        // And it says the interval is a floor rather than a measurement, because a
+        // number this small is only honest with that attached. Provenance, not a
+        // validity violation: nothing is wrong with the answer.
+        var floor = Assert.Single(warnings, w => w.Code == "convergence.at-resolution");
+
+        Assert.Equal(WarningSeverity.Provenance, floor.Severity);
+
+        // One ulp of the answer is the smallest it may ever claim.
+        var ulp = Math.BitIncrement(finest.FlightTimeSeconds) - finest.FlightTimeSeconds;
+
+        Assert.True(convergence.ResidualSi >= ulp);
     }
 
     [Fact]

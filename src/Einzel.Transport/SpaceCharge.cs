@@ -12,8 +12,7 @@ namespace Einzel.Transport;
 /// <param name="PotentialVolts">Centre-to-surface potential difference across the packet.</param>
 /// <param name="EnergyFraction">That potential as a fraction of the beam energy.</param>
 /// <param name="TimingFraction">
-/// The flight-time error it implies for free flight, which is half the energy
-/// fraction because time goes as the inverse square root of energy.
+/// The flight-time error it implies, as a fraction of the flight time.
 /// </param>
 public sealed record SpaceChargeEstimate(
     int Population,
@@ -81,6 +80,11 @@ public static class SpaceCharge
     /// <param name="settings">The cloud, whose population and spreads describe the packet.</param>
     /// <param name="species">The ion, for its charge.</param>
     /// <param name="accelerationPotentialVolts">The beam energy, as the potential it was accelerated through.</param>
+    /// <param name="flightTimeSeconds">
+    /// How long the packet flies. The dominant mechanism is expansion under the
+    /// packet's own charge, which goes on for as long as the flight does; zero
+    /// means it is not known, and the estimate falls back to a much looser bound.
+    /// </param>
     /// <returns>The estimate.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="settings"/> is null.</exception>
     /// <remarks>
@@ -100,7 +104,10 @@ public static class SpaceCharge
     /// </para>
     /// </remarks>
     public static SpaceChargeEstimate Estimate(
-        IonCloudSettings settings, IonSpecies species, double accelerationPotentialVolts)
+        IonCloudSettings settings,
+        IonSpecies species,
+        double accelerationPotentialVolts,
+        double flightTimeSeconds = 0.0)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
@@ -130,8 +137,83 @@ public static class SpaceCharge
         }
 
         var energyFraction = potential / Math.Abs(accelerationPotentialVolts);
+        var beamSpeed = Math.Sqrt(
+            2.0 * Math.Abs(species.ChargeSi) * Math.Abs(accelerationPotentialVolts) / species.MassSi);
 
-        return new SpaceChargeEstimate(population, radius, potential, energyFraction, 0.5 * energyFraction);
+        return new SpaceChargeEstimate(
+            population, radius, potential, energyFraction,
+            ExplosionTimingFraction(potential, radius, species, beamSpeed, flightTimeSeconds));
+    }
+
+    /// <summary>
+    /// The fractional flight-time error a packet's own charge implies, by the
+    /// mechanism that actually dominates.
+    /// </summary>
+    /// <param name="potentialVolts">The packet's centre-to-surface self-potential.</param>
+    /// <param name="radiusM">The packet's effective radius.</param>
+    /// <param name="species">The ion, for its charge and mass.</param>
+    /// <param name="beamSpeedSi">How fast the packet is travelling.</param>
+    /// <param name="flightTimeSeconds">How long it flies, or zero if not known.</param>
+    /// <returns>The fraction of the flight time.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This used to be half the energy fraction, and that was wrong by more than
+    /// two orders of magnitude.</b> The reasoning was that the self-potential is an
+    /// energy spread and time goes as the inverse square root of energy, so the
+    /// timing error is half of it. That describes a real mechanism — ions extracted
+    /// from different depths of the self-potential well leave with different
+    /// energies — and it is not the one that dominates in flight.
+    /// </para>
+    /// <para>
+    /// What dominates is that <b>the packet expands</b>. The self-field keeps
+    /// pushing for the whole drift, and the relative speed it imparts is set by
+    /// converting the self-potential into <em>relative</em> kinetic energy —
+    /// sqrt(2 q phi / m) — not by perturbing a beam energy thousands of times
+    /// larger. For a 40,000-ion packet of 0.5 mm at 4 kV the two differ by 527
+    /// times, and the direct pairwise sum agrees with the larger one. Found by
+    /// building the direct sum SC-1 asks for and comparing, which is exactly what
+    /// that requirement is for.
+    /// </para>
+    /// <para>
+    /// Two regimes, and the smaller wins. Over a short drift the packet has not had
+    /// time to expand, so the relative speed is the surface acceleration times the
+    /// flight time. Over a long one it saturates at the escape value. Taking the
+    /// minimum keeps a sparse packet on a short flight from being reported as
+    /// catastrophic, which the escape value alone would do: two ions half a
+    /// millimetre apart reach 1 m/s of relative speed <em>eventually</em>, and
+    /// eventually is 200 times the flight.
+    /// </para>
+    /// <para>
+    /// With no flight time known there is nothing to be short compared to, so the
+    /// escape value is used. It is a true upper bound and a very loose one, and the
+    /// callers that matter — a run, a study — all know their flight time.
+    /// </para>
+    /// </remarks>
+    public static double ExplosionTimingFraction(
+        double potentialVolts,
+        double radiusM,
+        IonSpecies species,
+        double beamSpeedSi,
+        double flightTimeSeconds = 0.0)
+    {
+        if (potentialVolts <= 0.0 || radiusM <= 0.0 || beamSpeedSi <= 0.0)
+        {
+            return 0.0;
+        }
+
+        var charge = Math.Abs(species.ChargeSi);
+
+        // The field at the surface of a uniformly charged sphere is twice the
+        // centre-to-surface potential over the radius.
+        var acceleration = 2.0 * charge * potentialVolts / (species.MassSi * radiusM);
+
+        var escape = Math.Sqrt(2.0 * charge * potentialVolts / species.MassSi);
+
+        var relative = flightTimeSeconds > 0.0
+            ? Math.Min(acceleration * flightTimeSeconds, escape)
+            : escape;
+
+        return relative / beamSpeedSi;
     }
 
     /// <summary>
@@ -142,6 +224,7 @@ public static class SpaceCharge
     /// <param name="species">The ion, for its charge.</param>
     /// <param name="accelerationPotentialVolts">The beam energy.</param>
     /// <param name="timingFraction">The flight-time error to solve for; ACC-1 is 1e-6.</param>
+    /// <param name="flightTimeSeconds">How long the packet flies, or zero if not known.</param>
     /// <returns>The population at which the budget is reached.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The radius or the budget is not positive.</exception>
     /// <remarks>
@@ -151,14 +234,42 @@ public static class SpaceCharge
     /// own follow-up is worth more than one that does not.
     /// </remarks>
     public static double PopulationLimit(
-        Quantity radius, IonSpecies species, double accelerationPotentialVolts, double timingFraction)
+        Quantity radius,
+        IonSpecies species,
+        double accelerationPotentialVolts,
+        double timingFraction,
+        double flightTimeSeconds = 0.0)
     {
         var metres = radius.SiValue;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(metres);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(timingFraction);
 
-        var potential = 2.0 * timingFraction * Math.Abs(accelerationPotentialVolts);
+        var charge = Math.Abs(species.ChargeSi);
+        var beamSpeed = Math.Sqrt(
+            2.0 * charge * Math.Abs(accelerationPotentialVolts) / species.MassSi);
 
-        return potential * 8.0 * Math.PI * PermittivitySi * metres / Math.Abs(species.ChargeSi);
+        if (beamSpeed <= 0.0)
+        {
+            return 0.0;
+        }
+
+        var relative = timingFraction * beamSpeed;
+
+        // Escape branch: relative = sqrt(2 q phi / m).
+        var fromEscape = relative * relative * species.MassSi / (2.0 * charge);
+
+        // Linear branch: relative = 2 q phi T / (m r).
+        var fromLinear = relative * species.MassSi * metres / (2.0 * charge * flightTimeSeconds);
+
+        // The larger, not the smaller. The forward estimate takes the minimum of
+        // the two mechanisms, and min(a, b) is within budget as soon as *either*
+        // is - so the population that satisfies it is the larger of the two
+        // inversions. Taking the minimum here looked symmetric with the forward
+        // direction and reported a limit of three thousandths of an ion.
+        var potential = flightTimeSeconds > 0.0
+            ? Math.Max(fromEscape, fromLinear)
+            : fromEscape;
+
+        return potential * 8.0 * Math.PI * PermittivitySi * metres / charge;
     }
 }

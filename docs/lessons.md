@@ -370,6 +370,99 @@ residual is the second-order term evaluated at two different magnitudes. Asserti
 they coincide would have been asserting the wrong physics. The closed form
 ε²/(2(1+ε)) predicts a spread of 3.132e-5 and the integrator produced 3.132e-5.
 
+## A bare double at the one seam every study crosses
+
+`FiguresOfMerit.Evaluator` hands a sweep driver a `Func<CompiledModel, double?>`,
+because ranking needs an ordering and there is no ordering on a GRD-1 envelope.
+That much is right, and the discard was documented as deliberate.
+
+What was discarded was not only the interval. The evaluator destructured the
+whole `Measured` — value, uncertainty, evidence, **warnings** — and returned the
+value. So every warning the flight behind a draw earned stopped there: a field
+that missed its tolerance, a mode outside its validity, an integration that hit
+its ceiling instead of the detector. A thousand draws could each have been
+computed in a field that never converged, and the study would report a
+distribution, a ranking, and nothing else.
+
+The shape is familiar from `FieldAssembly.Build` discarding its `SolveReport`:
+**a computation produced evidence about its own quality, and discarding it was
+the shortest spelling.** `var (value, _, _, _) = measured` is one character
+shorter than carrying the fourth field, and it reads as tidy.
+
+Three things about the fix are worth keeping.
+
+**The sink is per-evaluation, not per-emission.** An ensemble figure builds the
+field once per ion, so a field warning arrives twenty-one times for one draw.
+Counting emissions would report "on 21 of 3 evaluations", which is nonsense in a
+way that discredits the whole line. The unit being counted is the draw.
+
+**The count is the point.** "on 3 of 1000 draws" and "on 1000 of 1000 draws" are
+the difference between a corner of the tolerance box and a study to throw away,
+and a warning with no count cannot distinguish them.
+
+**Taint, never block — but only where there is something to taint.** `Setup` used
+to call `FieldAssembly.Build`, which *throws* on an unconverged solve, so a sweep
+died rather than reporting. It now uses `BuildReported` when it has a sink and
+`Build` when it does not, which is the honest reading of the rule: carry the
+warning if you can, refuse if you cannot, and never drop it. A bare field has
+nowhere to carry it, so for that caller the throw is still right.
+
+The control test is the part that took a second attempt. Asserting that a clean
+model's study warns about *nothing* failed — correctly — because a clean study
+now reports the same convergence provenance a run does. That is the seam working,
+not a regression. What the control has to assert is the absence of the specific
+claim made about the strained model, which is a weaker statement and a true one.
+
+## A formula that was right about the wrong mechanism
+
+The space-charge screen converted a packet's self-potential into a flight-time
+error as `½ × phi / V`: the self-potential is an energy spread, time goes as the
+inverse square root of energy, so halve it. Every step of that is correct. The
+answer was wrong by **527 times**, in the direction that under-reports.
+
+The reasoning describes ions leaving a trap from different depths of the
+self-potential well, which really does give them different energies and really
+does give that timing error. It is not what dominates once they are flying. In
+flight the packet **expands**: the self-field keeps pushing for the whole drift,
+and the relative speed it imparts is set by turning the self-potential into
+*relative* kinetic energy, sqrt(2 q phi / m). For 40,000 ions in a half-millimetre
+ball at 4 kV that is 149 m/s. The old reading — perturb a 4 keV beam energy by
+0.058 eV and see what it does to the speed — gives 0.28 m/s, because it is asking
+what happens to an ion already travelling at 39 km/s rather than what happens
+between two ions travelling together.
+
+Both are questions about the same self-potential. Only one of them is the question.
+
+**Nothing internal could have caught it.** The formula was dimensionally right,
+monotone in every parameter, checked against a hand calculation, and covered by
+three tests — all of which asserted the wrong relation with conviction. The unit
+tests were the same mistake written twice. What caught it was building the direct
+pairwise sum SC-1 asks for and comparing, and the first comparison failed by two
+and a half orders of magnitude, which is a large enough gap that it could not be
+argued away as a modelling choice.
+
+That is what SC-1 is for, and it is worth stating in general: **a screening
+estimate cannot be validated against reasoning, only against a computation that
+does not share its assumptions.** Ours shared its assumptions with its own tests
+for as long as those were the only thing checking it.
+
+Two smaller things fell out of the fix.
+
+**The inversion is a maximum where the forward direction is a minimum.** The
+estimate takes `min(linear, escape)`, and `min(a, b)` is within budget as soon as
+*either* is — so the population that satisfies it is the *larger* of the two
+inversions. Writing the minimum in both places looked symmetric and reported a
+population limit of three thousandths of an ion, which at least failed loudly.
+
+**And the packet's total momentum is not the invariant it looks like.** The
+obvious check on a pairwise sum is that internal forces do not move the centre of
+mass. In a real flight that is false for two reasons that are not errors: the
+applied field is an external force, and a detector removes momentum along with
+the ion carrying it. Asserting on it was asserting that mirrors do not reflect.
+The invariant that *is* exactly true is the balance of the mutual accelerations
+themselves, checked at every stage of every step — which also covers the case the
+naive version was reaching for, an indexing error over absorbed members.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

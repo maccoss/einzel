@@ -59,6 +59,18 @@ public sealed record SweepOutcome
     /// </remarks>
     public required IReadOnlyList<SweepSensitivity> Sensitivity { get; init; }
 
+    /// <summary>
+    /// What the draws earned, distinct by code and counted.
+    /// </summary>
+    /// <remarks>
+    /// GRD-2, at the seam a sweep used to lose it: the driver ranks by a bare
+    /// double, so a field that missed its tolerance or a mode outside its validity
+    /// left no trace on the study. These are the evaluations' warnings, which are
+    /// not the same as <see cref="Distribution"/>'s - those are the distribution's
+    /// own.
+    /// </remarks>
+    public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
+
     /// <summary>Files written, relative to the project root.</summary>
     public required IReadOnlyList<string> Artifacts { get; init; }
 }
@@ -98,6 +110,16 @@ public sealed record OptimiseOutcome
 
     /// <summary>Every improvement on the best-so-far, in order.</summary>
     public required IReadOnlyList<OptimisationStep> History { get; init; }
+
+    /// <summary>
+    /// What the objective evaluations earned, distinct by code and counted.
+    /// </summary>
+    /// <remarks>
+    /// GRD-2 at the same seam a sweep loses it, and it matters more here: an
+    /// optimiser walks towards whatever scores best, so a corner of the box where
+    /// the solve stops converging is somewhere it will actively go.
+    /// </remarks>
+    public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
 
     /// <summary>Files written, relative to the project root.</summary>
     public required IReadOnlyList<string> Artifacts { get; init; }
@@ -146,20 +168,39 @@ public static class StudyCommand
         ProjectLayout project,
         double energySpread,
         int ions,
+        WarningLedger ledger,
         out ExtensionObjective.Provenance? provenance)
     {
+        Func<CompiledModel, double?> inner;
+
         if (!ExtensionObjective.Names(name))
         {
             provenance = null;
-            return FiguresOfMerit.Evaluator(name, energySpread, ions);
+            inner = FiguresOfMerit.Evaluator(name, energySpread, ions, ledger.Add);
+        }
+        else
+        {
+            inner = ExtensionObjective.Evaluator(
+                name, project.Extensions, Path.Combine(project.Scratch, "ext"),
+                out var used, energySpread, ions);
+
+            provenance = used;
         }
 
-        var evaluate = ExtensionObjective.Evaluator(
-            name, project.Extensions, Path.Combine(project.Scratch, "ext"),
-            out var used, energySpread, ions);
-
-        provenance = used;
-        return evaluate;
+        // One evaluation is one draw however many warnings it emitted, and the
+        // count is closed even when the evaluation throws - a study that dies
+        // half way still has to say what it saw on the way.
+        return model =>
+        {
+            try
+            {
+                return inner(model);
+            }
+            finally
+            {
+                ledger.EndEvaluation();
+            }
+        };
     }
 
     /// <summary>
@@ -303,7 +344,10 @@ public static class StudyCommand
             };
         }
 
-        var evaluate = Evaluate(figure.Name, project, study.EnergySpread, study.Ions, out var extension);
+        var ledger = new WarningLedger();
+
+        var evaluate = Evaluate(
+            figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
 
         var result = ToleranceStudy.Run(
             document, channels, evaluate, study.Draws, study.Seed, study.OneAtATime, figure.Dimension);
@@ -326,6 +370,7 @@ public static class StudyCommand
                 : null,
             Sensitivity = [.. result.Sensitivity.Select(c => new SweepSensitivity(
                 c.Parameter, c.Low * scale, c.High * scale, c.Swing * scale))],
+            Warnings = ledger.Collected,
             Artifacts = [],
         };
 
@@ -380,10 +425,12 @@ public static class StudyCommand
             };
         }
 
+        var ledger = new WarningLedger();
+
         var result = Optimiser.Run(
             document,
             variables,
-            Evaluate(figure.Name, project, study.EnergySpread, study.Ions, out var extension),
+            Evaluate(figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension),
             sense,
             algorithm,
             new OptimisationSettings
@@ -418,6 +465,7 @@ public static class StudyCommand
             Failures = result.Failures,
             Converged = result.Converged,
             History = result.History,
+            Warnings = ledger.Collected,
             Artifacts = [],
         };
 

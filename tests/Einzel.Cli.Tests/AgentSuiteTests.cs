@@ -45,11 +45,9 @@ public sealed class AgentSuiteTests(ITestOutputHelper output) : IDisposable
         var root = Path.Combine(Path.GetTempPath(), "einzel-agent", Guid.NewGuid().ToString("N"));
         _roots.Add(root);
 
-        var layout = new ProjectLayout(root);
-        layout.CreateDirectories();
-        task.Setup?.Invoke(layout);
-
-        return layout;
+        // The same call the CLI verb makes, so a project prepared for a test is the
+        // project an agent actually gets.
+        return AgentSuite.Prepare(task, root);
     }
 
     public static TheoryData<string> EveryTask

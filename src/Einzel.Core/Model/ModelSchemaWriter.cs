@@ -389,7 +389,18 @@ public static class ModelSchemaWriter
                 continue;
             }
 
-            var reference = child.Attribute("cref")?.Value ?? child.Attribute("langword")?.Value;
+            // cref for a type or member, langword for a keyword, and name for a
+            // paramref or typeparamref. The last one was missing, and it is the one
+            // the model format uses most: every quantity's description says its
+            // magnitude is "expressed in <paramref name="Unit"/>", which rendered as
+            // "expressed in ." - the hollowed-out sentence this method's own remarks
+            // warn about, in the one place that tells an author what a unit is for.
+            //
+            // Two independent agents attempting the acceptance suite reported it
+            // before any test did, which is the argument for running that suite.
+            var reference = child.Attribute("cref")?.Value
+                ?? child.Attribute("langword")?.Value
+                ?? child.Attribute("name")?.Value;
 
             if (reference is null)
             {

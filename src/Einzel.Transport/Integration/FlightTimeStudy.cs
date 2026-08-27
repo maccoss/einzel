@@ -129,13 +129,55 @@ public static class FlightTimeStudy
 
         var finest = runs[^1];
         var residual = Math.Abs(runs[^2].FlightTimeSeconds - finest.FlightTimeSeconds);
+
+        // One unit in the last place of the answer: the smallest difference this
+        // arithmetic can express, and therefore the smallest uncertainty it can
+        // honestly claim.
+        var resolution = Math.Abs(finest.FlightTimeSeconds) is var magnitude and > 0.0
+            ? Math.BitIncrement(magnitude) - magnitude
+            : double.Epsilon;
+
+        var atResolution = residual <= resolution;
+
+        if (atResolution)
+        {
+            // The finest two levels agreed to the bit, so the pair says nothing
+            // about how far either is from the truth. Fall back to the whole ladder,
+            // and to one ulp if even that collapses.
+            //
+            // A zero here is what GRD-1 exists to prevent. It is not "no
+            // uncertainty" - it is an uncertainty smaller than the comparison can
+            // see - and it printed as "+/- 0", which a reader takes for an exact
+            // number and a paper cannot defend. An agent asked to quote a defensible
+            // result refused this one and measured its own ladder instead, which is
+            // the right instinct and should not have been necessary.
+            residual = Math.Max(
+                Math.Abs(runs[0].FlightTimeSeconds - finest.FlightTimeSeconds), resolution);
+
+            warnings.Add(new ValidityWarning(
+                "convergence.at-resolution",
+                $"the two finest refinements agreed to within one unit in the last place, so this "
+                + $"interval is a floor set by double precision rather than a measured convergence. "
+                + $"The value is at least as good as {residual:G3} s says; how much better is not "
+                + "knowable from a comparison of two numbers this close",
+                WarningSeverity.Provenance));
+        }
+
         var observedOrder = ObservedOrder(runs, refinementRatio);
 
-        if (double.IsFinite(observedOrder) && observedOrder < NominalOrder * 0.5)
+        // An order fitted to differences at round-off is fitting noise. The guard
+        // used to key on a residual of exactly zero, so an unperturbed model was
+        // quiet and any perturbation of it tripped the warning on every draw - which
+        // two independent readers reported as spurious before any test did.
+        if (!atResolution && double.IsFinite(observedOrder) && observedOrder < NominalOrder * 0.5)
         {
             warnings.Add(new ValidityWarning(
                 "CONVERGENCE_ORDER_BELOW_NOMINAL",
-                $"observed order {observedOrder:G3} against nominal {NominalOrder:G3} on tolerance refinement",
+                $"observed order {observedOrder:G3} against nominal {NominalOrder:G3} on tolerance "
+                + "refinement: the flight time stopped improving as fast as the tolerance tightened, "
+                + "which is what a floor other than the integrator looks like. In a solved field it "
+                + "is usually the interpolation error, and the fix is a finer grid rather than a "
+                + "tighter tolerance",
                 WarningSeverity.Qualified));
         }
 

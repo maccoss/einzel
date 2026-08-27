@@ -38,49 +38,49 @@ internal static class DormandPrince54
     // every stage then samples the same field - and load-bearing the moment it is
     // not, because a stage evaluated at the wrong instant of an RF cycle is a
     // wrong force applied with full fifth-order confidence.
-    private const double C2 = 1.0 / 5.0;
-    private const double C3 = 3.0 / 10.0;
-    private const double C4 = 4.0 / 5.0;
-    private const double C5 = 8.0 / 9.0;
-    private const double C6 = 1.0;
-    private const double C7 = 1.0;
+    internal const double C2 = 1.0 / 5.0;
+    internal const double C3 = 3.0 / 10.0;
+    internal const double C4 = 4.0 / 5.0;
+    internal const double C5 = 8.0 / 9.0;
+    internal const double C6 = 1.0;
+    internal const double C7 = 1.0;
 
     // Stage coefficients.
-    private const double A21 = 1.0 / 5.0;
+    internal const double A21 = 1.0 / 5.0;
 
-    private const double A31 = 3.0 / 40.0;
-    private const double A32 = 9.0 / 40.0;
+    internal const double A31 = 3.0 / 40.0;
+    internal const double A32 = 9.0 / 40.0;
 
-    private const double A41 = 44.0 / 45.0;
-    private const double A42 = -56.0 / 15.0;
-    private const double A43 = 32.0 / 9.0;
+    internal const double A41 = 44.0 / 45.0;
+    internal const double A42 = -56.0 / 15.0;
+    internal const double A43 = 32.0 / 9.0;
 
-    private const double A51 = 19372.0 / 6561.0;
-    private const double A52 = -25360.0 / 2187.0;
-    private const double A53 = 64448.0 / 6561.0;
-    private const double A54 = -212.0 / 729.0;
+    internal const double A51 = 19372.0 / 6561.0;
+    internal const double A52 = -25360.0 / 2187.0;
+    internal const double A53 = 64448.0 / 6561.0;
+    internal const double A54 = -212.0 / 729.0;
 
-    private const double A61 = 9017.0 / 3168.0;
-    private const double A62 = -355.0 / 33.0;
-    private const double A63 = 46732.0 / 5247.0;
-    private const double A64 = 49.0 / 176.0;
-    private const double A65 = -5103.0 / 18656.0;
+    internal const double A61 = 9017.0 / 3168.0;
+    internal const double A62 = -355.0 / 33.0;
+    internal const double A63 = 46732.0 / 5247.0;
+    internal const double A64 = 49.0 / 176.0;
+    internal const double A65 = -5103.0 / 18656.0;
 
     // Fifth-order weights. Also the seventh stage's coefficients, which is what
     // makes the method first-same-as-last.
-    private const double B1 = 35.0 / 384.0;
-    private const double B3 = 500.0 / 1113.0;
-    private const double B4 = 125.0 / 192.0;
-    private const double B5 = -2187.0 / 6784.0;
-    private const double B6 = 11.0 / 84.0;
+    internal const double B1 = 35.0 / 384.0;
+    internal const double B3 = 500.0 / 1113.0;
+    internal const double B4 = 125.0 / 192.0;
+    internal const double B5 = -2187.0 / 6784.0;
+    internal const double B6 = 11.0 / 84.0;
 
     // Fourth-order weights, for the embedded error estimate.
-    private const double E1 = 5179.0 / 57600.0;
-    private const double E3 = 7571.0 / 16695.0;
-    private const double E4 = 393.0 / 640.0;
-    private const double E5 = -92097.0 / 339200.0;
-    private const double E6 = 187.0 / 2100.0;
-    private const double E7 = 1.0 / 40.0;
+    internal const double E1 = 5179.0 / 57600.0;
+    internal const double E3 = 7571.0 / 16695.0;
+    internal const double E4 = 393.0 / 640.0;
+    internal const double E5 = -92097.0 / 339200.0;
+    internal const double E6 = 187.0 / 2100.0;
+    internal const double E7 = 1.0 / 40.0;
 
     /// <summary>
     /// Takes one step, producing the fifth-order state, the difference between

@@ -57,8 +57,20 @@ public static class FiguresOfMerit
 {
     /// <summary>How wide an energy spread the ensemble figures sample, as a fraction.</summary>
     /// <remarks>
+    /// <para>
     /// Plus or minus three per cent, which is the acceptance the companion memo
     /// asks a mirror to hold. A study may override it.
+    /// </para>
+    /// <para>
+    /// It is a <em>deterministic</em> sweep of the acceptance, evenly spaced from
+    /// one end to the other, not a Gaussian draw - so the seed does not enter and
+    /// two runs of the same study agree exactly. A source cloud's
+    /// <c>energyFractionSpread</c> is the other thing: a random draw about the
+    /// nominal, which gives a different and generally lower resolving power for the
+    /// same number because the ions are distributed rather than ranked. Someone
+    /// comparing the two by hand read the difference as noise in the objective,
+    /// which is the confusion this paragraph exists to prevent.
+    /// </para>
     /// </remarks>
     public const double DefaultEnergySpread = 0.03;
 
@@ -112,29 +124,42 @@ public static class FiguresOfMerit
     /// <param name="name">Which figure of merit.</param>
     /// <param name="energySpread">Fractional energy spread for the ensemble figures.</param>
     /// <param name="ions">How many ions the ensemble figures launch.</param>
+    /// <param name="report">
+    /// Where the warnings each evaluation earns are sent, or null to refuse rather
+    /// than hide them.
+    /// </param>
     /// <returns>A function from a validated model to the figure, or null when it does not arrive.</returns>
     /// <exception cref="EinzelException">No figure of merit by that name.</exception>
+    /// <remarks>
+    /// GRD-2: an evaluator hands a driver a bare double to rank by, and every
+    /// warning the flight behind it earned used to stop here. A study could be
+    /// outside the validity of its own transport mode on every draw and report a
+    /// distribution with nothing attached to say so. The sink is how they cross.
+    /// </remarks>
     public static Func<CompiledModel, double?> Evaluator(
-        string name, double energySpread = DefaultEnergySpread, int ions = DefaultIons)
+        string name,
+        double energySpread = DefaultEnergySpread,
+        int ions = DefaultIons,
+        Action<Core.Results.ValidityWarning>? report = null)
     {
         var info = Describe(name);
 
         return info.Name switch
         {
-            "flightTime" => model => Single(model)?.FlightTimeSeconds,
-            "energyDrift" => model => Single(model)?.MaximumRelativeEnergyDrift,
-            "resolvingPower" => model => Ensemble(model, energySpread, ions) is { Arrived: >= 3 } peak
-                ? Magnitude(peak.ResolvingPower())
+            "flightTime" => model => Single(model, report)?.FlightTimeSeconds,
+            "energyDrift" => model => Single(model, report)?.MaximumRelativeEnergyDrift,
+            "resolvingPower" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
+                ? Magnitude(peak.ResolvingPower(), report)
                 : null,
-            "transmission" => model => Ensemble(model, energySpread, ions) is { } peak
-                ? Magnitude(peak.Transmission())
+            "transmission" => model => Ensemble(model, energySpread, ions, report) is { } peak
+                ? Magnitude(peak.Transmission(), report)
                 : null,
-            "arrivalSpread" => model => Ensemble(model, energySpread, ions) is { Arrived: >= 3 } peak
+            "arrivalSpread" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
                 ? peak.GaussianEquivalentFwhmSeconds
                 : null,
-            "turnAroundTime" => TurnAround,
-            "emittance" => model => PacketEmittance(model)?.Wider.GeometricM,
-            "normalisedEmittance" => model => PacketEmittance(model)?.Wider.NormalisedM,
+            "turnAroundTime" => model => TurnAround(model, report),
+            "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
+            "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
             _ => throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.InternalError,
@@ -151,21 +176,65 @@ public static class FiguresOfMerit
     /// <remarks>
     /// A sweep driver needs a scalar to rank draws by, and there is no ordering on
     /// an envelope. The discard is deliberate and visible, which is exactly the
-    /// act GRD-1 is designed to make greppable rather than impossible - the
-    /// uncertainty and the warnings are still reported alongside the study, and it
-    /// is only the ranking that uses the bare number.
+    /// act GRD-1 is designed to make greppable rather than impossible - and it is
+    /// only the <em>interval</em> that is dropped. The warnings go to the sink,
+    /// because a ranking has no use for them and a study does.
     /// </remarks>
-    private static double Magnitude(Core.Results.Measured measured)
+    private static double Magnitude(
+        Core.Results.Measured measured, Action<Core.Results.ValidityWarning>? report = null)
     {
-        var (value, _, _, _) = measured;
+        var (value, _, _, warnings) = measured;
+
+        Forward(warnings, report);
+
         return value.SiValue;
     }
 
-    /// <summary>One trajectory, with its convergence study.</summary>
-    private static TrajectoryResult? Single(CompiledModel model)
+    /// <summary>Sends warnings to the sink, if there is one.</summary>
+    private static void Forward(
+        IReadOnlyList<Core.Results.ValidityWarning> warnings,
+        Action<Core.Results.ValidityWarning>? report)
     {
-        var (launch, species, field, settings, detector) = Setup(model);
-        var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+        if (report is null)
+        {
+            return;
+        }
+
+        foreach (var warning in warnings)
+        {
+            report(warning);
+        }
+    }
+
+    /// <summary>One trajectory, with its convergence study.</summary>
+    private static TrajectoryResult? Single(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (launch, species, field, settings, detector) = Setup(model, report: report);
+
+        // The same convergence study 'run' reports from, and the finest level of it,
+        // because that is the number 'run' publishes.
+        //
+        // This used to be one integration at the declared tolerance while 'run' did
+        // three and reported the finest. Both were defensible and they disagreed:
+        // 1.3e-10 in flight time on the shipped reflectron, and five orders in
+        // energy drift - 3.1e-15 against 1.0e-9. So the most obvious workflow there
+        // is, quote what 'run' prints and pin it with 'einzel test', failed, and the
+        // failure said nothing about why. An agent attempting the acceptance suite
+        // fell into it, and only caught it because it had already derived the closed
+        // form by hand.
+        //
+        // Richardson is why this direction and not the other: the best estimate is
+        // the finest level and the uncertainty is how far the next-coarsest sits
+        // from it, so reporting the coarse value with an interval around it would be
+        // centring the answer on the least accurate point available. The cost is
+        // three integrations per evaluation instead of one, which a sweep pays.
+        var study = FlightTimeStudy.Run(launch, species, field, settings, detector);
+
+        var (_, _, _, studyWarnings) = study.FlightTime;
+        Forward(studyWarnings, report);
+
+        var result = study.Runs[^1];
 
         // A draw whose ion never reaches the detector has no flight time. That is
         // a result about the geometry, not a failure of the study, and the sweep
@@ -192,11 +261,12 @@ public static class FiguresOfMerit
     /// call it physics.
     /// </para>
     /// </remarks>
-    private static ArrivalTimePeak Ensemble(CompiledModel model, double spread, int ions)
+    private static ArrivalTimePeak Ensemble(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report = null)
     {
         if (model.Cloud.IsCloud)
         {
-            return FromCloud(model);
+            return FromCloud(model, report);
         }
 
         var arrivals = new List<double>(ions);
@@ -206,7 +276,7 @@ public static class FiguresOfMerit
             var fraction = ions == 1 ? 0.0 : (2.0 * k / (ions - 1.0)) - 1.0;
             var offset = spread * fraction;
 
-            var (launch, species, field, settings, detector) = Setup(model, offset);
+            var (launch, species, field, settings, detector) = Setup(model, offset, report);
             var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
 
             if (result.Outcome == TrajectoryOutcome.StopConditionMet)
@@ -222,14 +292,18 @@ public static class FiguresOfMerit
     /// <param name="model">The validated model.</param>
     /// <returns>The arrival-time peak it forms.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <param name="report">Where the warnings the flight earns are sent, or null.</param>
     /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
-    public static ArrivalTimePeak FromCloud(CompiledModel model) => FlyCloud(model).Peak;
+    public static ArrivalTimePeak FromCloud(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null) =>
+        FlyCloud(model, report).Peak;
 
     /// <summary>
     /// Flies the cloud a model declares, keeping both when the ions arrived and
     /// where they were going when they did.
     /// </summary>
     /// <param name="model">The validated model.</param>
+    /// <param name="report">Where the warnings the flight earns are sent, or null.</param>
     /// <returns>The arrival-time peak and the arriving ions.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
     /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
@@ -239,11 +313,12 @@ public static class FiguresOfMerit
     /// flight because flying twice for them would double the cost of every
     /// ensemble run to recompute something already in hand.
     /// </remarks>
-    public static CloudFlight FlyCloud(CompiledModel model)
+    public static CloudFlight FlyCloud(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
         ArgumentNullException.ThrowIfNull(model);
 
-        var (nominal, species, field, settings, detector) = Setup(model);
+        var (nominal, species, field, settings, detector) = Setup(model, report: report);
         // The declared direction, so a packet at rest still knows which way is
         // downstream. For a moving ion it is redundant and ignored.
         var cloud = IonCloud.Draw(in nominal, species, model.Cloud, model.SourceDirection);
@@ -327,7 +402,8 @@ public static class FiguresOfMerit
     /// result a sweep records rather than a failure that stops it - the same
     /// convention the single-trajectory figures use for an ion that never lands.
     /// </remarks>
-    private static (Emittance Wider, Emittance Narrower)? PacketEmittance(CompiledModel model)
+    private static (Emittance Wider, Emittance Narrower)? PacketEmittance(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
         if (!model.Cloud.IsCloud)
         {
@@ -337,7 +413,7 @@ public static class FiguresOfMerit
             return null;
         }
 
-        var flight = FlyCloud(model);
+        var flight = FlyCloud(model, report);
 
         return flight.Arrived.Count >= 3 ? Emittance.FromPacket(flight.Arrived) : null;
     }
@@ -359,7 +435,8 @@ public static class FiguresOfMerit
     /// transport tests check.
     /// </para>
     /// </remarks>
-    private static double? TurnAround(CompiledModel model)
+    private static double? TurnAround(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
         if (model.Cloud.TemperatureK <= 0.0)
         {
@@ -380,7 +457,7 @@ public static class FiguresOfMerit
 
         try
         {
-            return FromCloud(thermalOnly).GaussianEquivalentFwhmSeconds;
+            return FromCloud(thermalOnly, report).GaussianEquivalentFwhmSeconds;
         }
         catch (ArgumentException)
         {
@@ -390,9 +467,27 @@ public static class FiguresOfMerit
 
     private static (PhaseState Launch, IonSpecies Species, IElectrostaticField Field,
         IntegrationSettings Settings, TrajectoryStopFunction Detector) Setup(
-        CompiledModel model, double energyOffset = 0.0)
+        CompiledModel model,
+        double energyOffset = 0.0,
+        Action<Core.Results.ValidityWarning>? report = null)
     {
-        var field = FieldAssembly.Build(model);
+        IElectrostaticField field;
+
+        if (report is null)
+        {
+            // Nowhere to carry a taint onto, so the only honest options are the two
+            // FieldAssembly offers - refuse, or hide it - and hiding it is how the
+            // segmented quadrupole sat at the wrong working point for a revision.
+            field = FieldAssembly.Build(model);
+        }
+        else
+        {
+            var (built, fieldWarnings) = FieldAssembly.BuildReported(model);
+
+            Forward(fieldWarnings, report);
+            field = built;
+        }
+
         var species = IonSpecies.FromModel(model);
 
         // Energy scales as the square of speed, so a fractional energy offset is

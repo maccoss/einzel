@@ -118,6 +118,52 @@ Checks with no tolerance at all, which are the strongest kind available.
   emittance by exactly the speed ratio — observed 0.031606977 against a closed-form
   0.031606977 across a 10 V to 2 kV stage — while the normalised emittance holds to
   **3.0e-16**.
+- **Newton's third law in the pairwise sum**: the mutual accelerations in a packet
+  must cancel, checked at every Dormand–Prince stage of every step and holding to
+  **1e-14** of the acceleration scale. Note what this is *not*: the packet's total
+  momentum, which is conserved only in free flight with nothing absorbed — an
+  applied field is an external force and a detector removes momentum along with the
+  ion carrying it. The first version asserted on total momentum and was asserting
+  that mirrors do not reflect.
+
+### Space charge, and what the reference method found
+
+SC-1 asks for an approximate space-charge method validated against direct
+summation on a reference population. The direct sum is built first, because an
+approximation cannot be validated against something that does not exist — and the
+first thing it validated was not an approximation but the *screening estimate*
+that had been shipping.
+
+| Check | Result |
+| --- | --- |
+| Newton's third law, every stage | 1e-14 of the acceleration scale |
+| Direct sum vs the uniform-sphere closed form | within 5% at 4,000 points (sampling noise, 1/sqrt(N)) |
+| Two ions from rest vs energy conservation | 1e-6 |
+| Interaction off vs the analytic reflectron | 1e-6 |
+| Free-flight widening vs the corrected screen | within a factor of 3, screen bounding |
+
+**The screen was wrong by 527 times, in the unsafe direction, in a number
+documented as an upper bound.** It converted the self-potential to a timing error
+as half a fractional energy spread. That describes ions leaving a trap from
+different depths of the self-potential well; it is not what dominates in flight,
+where the packet *expands* and the relative speed the self-field imparts comes
+from converting phi into relative kinetic energy — sqrt(2 q phi / m) — rather than
+from perturbing a beam energy thousands of times larger. See
+[Lessons](lessons.md#a-formula-that-was-right-about-the-wrong-mechanism).
+
+Two things this tier could not have caught on its own. The formula was
+dimensionally right, monotone in every parameter, and covered by three tests that
+all asserted the wrong relation — the tests were the same mistake written twice.
+And a hand calculation had been done and agreed, because the arithmetic was never
+the problem.
+
+**A reflectron at first-order focus measurably improves space charge**, which
+looked like a sign error. The mutual push correlates position with energy in
+exactly the sign the mirror corrects, so a leading, faster ion penetrates deeper
+and spends longer: 24.9 ns of arrival spread free against 11.3 ns pushed. Tested
+by *detuning* the mirror off the focusing condition, which weakens the
+compensation — the control that separates this from an integrator that narrows
+every packet at every drift length.
 
 ### Contract and guardrail
 

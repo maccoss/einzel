@@ -175,6 +175,61 @@ public sealed class ModelRoundTripTests
     }
 
     [Fact]
+    public void ASourceInsideAnElectrodeIsCaughtAtValidation()
+    {
+        // GRD-4: validity is checked, not assumed - and this is knowable from the
+        // declared geometry alone, since an electrode's signed distance is
+        // arithmetic on the numbers in the document.
+        //
+        // Left to the integrator it produced the worst shape of answer here:
+        // validate said OK and exit 0, solve said converged and exit 0, and only run
+        // objected. An agent asked for a model that validates and solves would have
+        // shipped one whose ion dies at step zero with two clean bills of health
+        // saying otherwise. Found by an agent attempting the acceptance suite.
+        var json = """
+        {
+          "schemaVersion": "0.4",
+          "name": "source-in-metal",
+          "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+          "source": {
+            "position": { "value": [0, 0, 0], "unit": "mm" },
+            "direction": { "value": [1, 0, 0] },
+            "accelerationPotential": { "value": 100, "unit": "V" }
+          },
+          "fields": [{
+            "type": "solved2d",
+            "solve": {
+              "minX": { "value": -10, "unit": "mm" },
+              "minY": { "value": -10, "unit": "mm" },
+              "maxX": { "value": 10, "unit": "mm" },
+              "maxY": { "value": 10, "unit": "mm" },
+              "cellSize": { "value": 0.5, "unit": "mm" },
+              "electrodes": [{
+                "name": "blocker", "shape": "disc",
+                "centreX": { "value": 0, "unit": "mm" },
+                "centreY": { "value": 0, "unit": "mm" },
+                "radius": { "value": 2, "unit": "mm" },
+                "potential": { "value": 10, "unit": "V" }
+              }]
+            }
+          }],
+          "detector": {
+            "planePoint": { "value": [9, 0, 0], "unit": "mm" },
+            "normal": { "value": [-1, 0, 0] }
+          },
+          "transport": { "mode": "trajectory", "maximumFlightTime": { "value": 1, "unit": "ms" } }
+        }
+        """;
+
+        var validation = ModelValidator.Validate(ModelJson.Parse(json));
+
+        var error = Assert.Single(validation.Errors, e => e.Path == "/source/position");
+
+        Assert.Contains("blocker", error.Constraint, StringComparison.Ordinal);
+        Assert.Contains("absorbed before it moves", error.Constraint, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AnIonLaunchedBehindItsDetectorIsCaught()
     {
         // GRD-4: validity is checked, not assumed. This geometry produces a zero

@@ -97,6 +97,41 @@ kind of support from an ensemble or a grid refinement.
 The first is the most useful thing an optimiser can say and the easiest thing to
 miss.
 
+### A tight interval is not always the better answer
+
+The natural reading of the spread is backwards as often as it is right, and the
+first agent to use it in earnest read it backwards.
+
+Two searches over the same reflectron: `resolvingPower` came back at
+4028.58 ± 0.003 V, and `arrivalSpread` at a broad optimum ± 100 V. The instinct
+is that ±0.003 V is the better-determined answer. It is the opposite. A simplex
+contracts until its vertices stop disagreeing, and it will contract hardest where
+the objective is *steepest* — so a spread of three millivolts on an 800 V box
+means the search was crawling up a ramp into a discontinuity, and ±100 V means
+the minimum is genuinely broad and flat.
+
+Which is the one you can build. The tight optimum there sat on the apex of a
+sawtooth: the resolving power climbed about 4.5 per volt below it and fell about
+200 per volt above it, and under a ±10 V supply it *lost* to the nominal design
+on average, 8521 ± 1190 against 8870 ± 55.
+
+So the spread answers "how sharply is this optimum defined", and sharply defined
+is a warning as often as it is a result. Read it beside
+`optimiser.optimum-at-bound`, which is the other way a number can look like an
+optimum without being one.
+
+### The first evaluation is the model, not the box centre
+
+Both searches start from the parameter values the model declares, clamped into
+the box — not from the middle of the box. This matters if you are driving the
+optimiser as a point probe by moving the box around: the box moves and the first
+evaluation does not, so eleven probes come back with eleven different labels and
+the same number. The tell is that evaluation 1 disagrees with the box centre.
+
+There is no verb yet for "evaluate this figure of merit at this stated point",
+and there should be; until then, probe by copying the model and changing the
+declared value.
+
 ## Choosing an algorithm
 
 **Nelder–Mead** for a handful of variables. Cheap per iteration, no derivatives,
@@ -141,6 +176,15 @@ There is also a floor no setting can move. Near a smooth optimum the objective i
 quadratic, so a parameter offset δ costs only δ² in objective: at an objective
 tolerance of 1e-8 the parameter is indistinguishable within about 1e-4 either
 way, and no amount of searching recovers a digit the objective does not carry.
+
+**Convergence is two tests and both must hold.** The simplex must be smaller than
+`parameterTolerance` *and* its objective values must agree to
+`objectiveTolerance`. In practice the second binds almost always, which makes the
+first look broken: tighten `parameterTolerance` from 1e-3 to 1e-4 and nothing
+changes at all, because it was already met four orders over. The warning used to
+say "without meeting its tolerance", which is exactly the wrong number of
+tolerances to name; it now reports the observed spread, which test it met, and
+which one is still open.
 
 ## The worked example: the quadrupole rod ratio
 

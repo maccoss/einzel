@@ -2214,8 +2214,85 @@ public static class ModelValidator
         return TryQuantity(value, path, dimension, p, errors);
     }
 
+    /// <summary>
+    /// Refuses a source that starts on or inside a conductor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// GRD-4: validity is checked, not assumed. This is knowable from the declared
+    /// geometry alone - an electrode's signed distance is arithmetic on the numbers
+    /// in the document - so there is no reason to leave it to the integrator, which
+    /// finds out by absorbing the ion at step zero.
+    /// </para>
+    /// <para>
+    /// Left to the integrator it produced the worst shape of answer this project
+    /// has: <c>validate</c> said OK and exit 0, <c>solve</c> said converged and
+    /// exit 0, and only <c>run</c> objected. An agent asked to produce a model that
+    /// validates and solves would have shipped one whose ion dies immediately and
+    /// had two clean bills of health saying otherwise.
+    /// </para>
+    /// <para>
+    /// Found by an agent attempting the acceptance suite, on the shipped quadrupole
+    /// template, by changing the one parameter that template exists to have changed.
+    /// </para>
+    /// </remarks>
+    private static void ValidateSourceIsNotInsideMetal(CompiledModel model, List<EinzelError> errors)
+    {
+        var source = model.SourcePosition;
+
+        foreach (var element in model.Fields)
+        {
+            foreach (var electrode in element.Solve?.Electrodes ?? [])
+            {
+                if (!electrode.Contains(source.X, source.Y))
+                {
+                    continue;
+                }
+
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = "/source/position",
+                    Constraint =
+                        $"the source starts inside electrode '{electrode.Name}', so the ion is "
+                        + "absorbed before it moves",
+                    Observed = new ObservedValue(source.X, "m"),
+                    Suggestion = "move the source into the space the ions fly through. If this "
+                        + "model came from a template, check whether a placement is written as a "
+                        + "bare length while the geometry around it is parametric - changing the "
+                        + "geometry then moves the metal and leaves the source behind",
+                });
+
+                return;
+            }
+
+            foreach (var electrode in element.Solve3D?.Electrodes ?? [])
+            {
+                if (!electrode.Contains(source.X, source.Y, source.Z))
+                {
+                    continue;
+                }
+
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = "/source/position",
+                    Constraint =
+                        $"the source starts inside electrode '{electrode.Name}', so the ion is "
+                        + "absorbed before it moves",
+                    Observed = new ObservedValue(source.X, "m"),
+                    Suggestion = "move the source into the space the ions fly through",
+                });
+
+                return;
+            }
+        }
+    }
+
     private static void ValidateGeometryConsistency(CompiledModel model, List<EinzelError> errors)
     {
+        ValidateSourceIsNotInsideMetal(model, errors);
+
         // GRD-4: validity is checked, not assumed. An ion launched on the wrong
         // side of its own detector never flies, and the resulting zero flight time
         // looks like a physics answer rather than a geometry mistake.

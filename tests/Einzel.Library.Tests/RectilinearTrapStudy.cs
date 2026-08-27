@@ -169,6 +169,67 @@ public sealed class RectilinearTrapStudy(ITestOutputHelper output)
     }
 
     [Fact]
+    public void WideningTheSlotBuysExtractionEfficiencyAndPaysForItInFieldQuality()
+    {
+        // The Ion Processor reports ~84% extraction efficiency at m/z 1522. The
+        // shipped 1 mm slot gives 51.5%, and widening it to between 2.0 and 2.5 mm
+        // reaches that figure - measured through the CLI, recorded in
+        // docs/literature-targets.md, and not repeated here because five ion clouds
+        // is a study rather than a test.
+        //
+        // What is repeated here is the other half of the trade, which is the half
+        // that is cheap to compute and easy to forget. Turn-around barely notices
+        // the slot: 1.821 ns at 1.0 mm against 1.878 ns at 3.0 mm, three per cent
+        // over a threefold widening. So if turn-around is the only thing being
+        // watched, a wide slot looks free.
+        //
+        // It is not free. The slot is what breaks the trap's symmetry about x, and
+        // the dipole it produces displaces the trapping centre - which for a device
+        // whose whole job is to present a packet against an extraction slot is the
+        // aberration that matters most.
+        var r0 = Compile(Template()).Parameters["inscribedRadius"].In("m");
+
+        output.WriteLine("slot/mm   dipole A1/A2   12-pole A6/A2");
+
+        var dipoles = new List<double>();
+
+        foreach (var slot in new[] { 0.5, 1.0, 2.0, 3.0 })
+        {
+            // The trapping configuration, not the extraction one: a multipole
+            // expansion of a field with no quadrupole term in it is a ratio of two
+            // numbers that mean nothing.
+            var model = Compile(With(
+                Template(),
+                ("sidePotential", 100.0), ("frontPotential", -100.0), ("pushPotential", -100.0),
+                ("slotWidth", slot)));
+
+            var terms = Multipoles(FieldAssembly.Build(model), 0.5 * r0, highestOrder: 10);
+
+            dipoles.Add(terms[1] / terms[2]);
+
+            output.WriteLine(
+                $"{slot,7:F1}   {terms[1] / terms[2]:E3}      {terms[6] / terms[2]:E3}");
+        }
+
+        // Monotone, which is the claim. A trade that is not monotone is not a trade,
+        // and a designer choosing a slot width needs to know there is no width that
+        // is both wide and clean.
+        for (var k = 1; k < dipoles.Count; k++)
+        {
+            Assert.True(
+                dipoles[k] > dipoles[k - 1],
+                $"widening the slot did not raise the dipole: {dipoles[k - 1]:E3} then {dipoles[k]:E3}");
+        }
+
+        // And the size of the trade, so a change that flattens it fails here rather
+        // than passing as an improvement.
+        Assert.True(
+            dipoles[^1] > 3.0 * dipoles[0],
+            $"a sixfold widening moved the dipole from {dipoles[0]:E3} to {dipoles[^1]:E3}, which is a "
+            + "weaker dependence than the slot is known to have");
+    }
+
+    [Fact]
     public void TheExtractionFieldIsNotTheUniformOneTheClosedFormAssumes()
     {
         // The turn-around formula takes a single field strength. A real trap has a

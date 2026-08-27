@@ -56,6 +56,18 @@ A warnings failure is worse than a capability failure and the tracks are separat
 for that reason. A capability failure produces no answer. A warnings failure
 produces a **confident answer that is wrong**, and nothing downstream can tell.
 
+## The harness gives an agent what a real project gives it
+
+`einzel agents setup` creates the directories and the task's starting files, and
+for a while it did **not** write `AGENTS.md` — which `einzel init` does. So the
+harness handed an agent strictly less than a real user would have, and a pass rate
+measured on it understated the platform.
+
+Worse in the other direction: it meant the acceptance suite was the one thing that
+never exercised `AGENTS.md`. That file is generated and version-stamped precisely
+because guidance describing an older build is worse than none, and this suite is
+the only place its drift would show up. Fixed before the suite was first run.
+
 ## What gates a release
 
 Agents are not deterministic, so a task is attempted several times — five is
@@ -72,6 +84,63 @@ rate, not a boolean.
 The regression gate matters more than the absolute one. A schema change that makes
 a field harder to discover will show up as a rate falling from 90% to 60% long
 before it shows up as anything else, and the absolute gate would still be met.
+
+## The first run: six agents, six passes
+
+Run once, one attempt per task, against build `0.1.0`. Each agent got the project
+directory, the path to the CLI, and its prompt — no repository source, no tests,
+no `docs/`, and not the `agents` verb.
+
+| Task | Track | Scored |
+| --- | --- | --- |
+| `drift-tube` | Capability | pass |
+| `fix-the-units` | Capability | pass |
+| `quadrupole-from-template` | Capability | pass |
+| `which-dimension-binds-first` | Capability | pass |
+| `optimum-on-a-bound` | Warnings | pass |
+| `quote-a-result` | Warnings | pass |
+
+**6 of 6, on every individual check.** One attempt each, so this is not yet a
+rate and the gates above are not yet meetable — five attempts per task is what
+they are written against. Read it as "the suite runs end to end and the platform
+can do these six things", not as a pass rate.
+
+**A suite everything passes is not measuring**, which the gate table says in so
+many words, and it is the honest reading of this table. Two qualifications keep
+it from being worthless. The tasks were written before any agent attempted them,
+and the distractors CI asserts must fail did fail. And the value delivered was
+not the score.
+
+### What the run was actually worth
+
+The score said nothing. The transcripts said a great deal, and roughly twenty
+defects came out of six agents attempting six tasks — several of them the kind of
+thing no test written from inside the project would have caught, because they are
+about what is *discoverable* rather than what is correct.
+
+The four that mattered most, all now fixed:
+
+- **`einzel test` passed with zero tests**, and `einzel solve` reported
+  `converged: true` over a model with nothing to solve. Both are vacuous truths
+  over an empty collection, and both are the shape of answer that stops an
+  investigation.
+- **A source sitting inside an electrode validated and solved cleanly** and only
+  failed at `run`. An agent asked for a model that validates and solves would have
+  shipped one whose ion dies at step zero, with two clean bills of health saying
+  otherwise.
+- **`run` and `test` computed the same flight time differently** — one
+  integration against a three-level convergence study — and disagreed by 1.3e-10,
+  five orders in energy drift. So the most obvious workflow there is, quote what
+  `run` prints and pin it with `einzel test`, failed for no stated reason.
+- **A result was quoted as `10.180506 ± 0 µs`.** The agent refused to publish it
+  and measured its own tolerance ladder instead, which is the right instinct and
+  should not have been necessary. `±0` is now a floor with a
+  `convergence.at-resolution` note attached.
+
+The pattern across all four is the same one the engine keeps finding in itself:
+**a result that looks cleaner than it is**. That the agents found four more
+instances in an afternoon is the argument for running this regularly, whatever
+the score does.
 
 ## What it is measuring, and what it is not
 

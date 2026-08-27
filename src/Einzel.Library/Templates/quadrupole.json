@@ -27,13 +27,19 @@
     "rodRadius": { "expression": "inscribedRadius * rodRatio", "unit": "mm" },
     "rodCentre": { "expression": "inscribedRadius + rodRadius", "unit": "mm" },
     "domainHalfWidth": { "expression": "rodCentre + rodRadius * housingClearance", "unit": "mm" },
-    "cellSize": { "expression": "inscribedRadius / cellsPerRadius", "unit": "mm" }
+    "cellSize": { "expression": "inscribedRadius / cellsPerRadius", "unit": "mm" },
+
+    "probeFraction": {
+      "value": 0.8, "unit": "1", "minimum": 0.05, "maximum": 0.98,
+      "description": "How far out the probe ion crosses the aperture, as a fraction of r0. It has to be a fraction rather than a length: this template exists to have its inscribed radius changed, and a placement in bare millimetres that is comfortably inside the aperture at one radius sits exactly on a rod at another. That is what happened here - the source was written as -4 mm, which is 0.8 r0 at the shipped 5 mm and precisely on the metal at 4 mm, and neither validate nor solve objected."
+    },
+    "probeOffset": { "expression": "inscribedRadius * probeFraction", "unit": "mm" }
   },
 
   "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
 
   "source": {
-    "position": { "value": [-4, 0, 0], "unit": "mm" },
+    "position": { "expression": ["-probeOffset", "0", "0"], "unit": "mm" },
     "direction": { "value": [1, 0, 0] },
     "accelerationPotential": { "value": 10, "unit": "V" }
   },
@@ -82,7 +88,7 @@
   ],
 
   "detector": {
-    "planePoint": { "value": [4, 0, 0], "unit": "mm" },
+    "planePoint": { "expression": ["probeOffset", "0", "0"], "unit": "mm" },
     "normal": { "value": [-1, 0, 0] }
   },
 

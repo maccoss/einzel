@@ -620,13 +620,23 @@ public sealed class ProjectTestTests : IDisposable
     [Fact]
     public void AProjectWithNoTestsSaysSoRatherThanReportingSuccess()
     {
+        // This used to be exit 0 with a note on stdout, and that was the same
+        // vacuous truth 'einzel solve' had: All() over an empty list is true, so a
+        // project with nothing to check reported that everything checked out. An
+        // agent attempting the acceptance suite deleted a test file and got a clean
+        // pass, which is the shape of answer that stops an investigation.
         Assert.Equal(0, Run("init", _root).ExitCode);
         File.Delete(Path.Combine(_root, "tests", "reflectron.json"));
 
-        var (exitCode, stdout, _) = Run("test", _root);
+        var (exitCode, _, stderr) = Run("test", _root);
 
-        Assert.Equal(0, exitCode);
-        Assert.Contains("no tests", stdout, StringComparison.Ordinal);
+        Assert.NotEqual(0, exitCode);
+
+        // CLI-2: the reason goes to stderr, and it says where the tests were looked
+        // for and how to get one, because "no tests" alone is a fact rather than a
+        // recovery.
+        Assert.Contains("no tests", stderr, StringComparison.Ordinal);
+        Assert.Contains("einzel init", stderr, StringComparison.Ordinal);
     }
 }
 
@@ -936,8 +946,16 @@ public sealed class CloudRunTests : IDisposable
 
         // The limit is reported alongside, because "over budget" invites "by how
         // much can I load it".
+        //
+        // It used to read a few thousand here and it now reads a handful. The old
+        // estimate converted the self-potential into a fractional energy spread,
+        // which is the wrong mechanism by 527 times; what dominates in flight is
+        // the packet expanding under its own charge. The direct pairwise sum in
+        // Einzel.Transport.Interaction is what established that, and the range here
+        // is loose on purpose - the point of the assertion is the order of
+        // magnitude, not a digit.
         var limit = ensemble.GetProperty("spaceChargePopulationLimit").GetDouble();
-        Assert.InRange(limit, 5000, 7000);
+        Assert.InRange(limit, 1.0, 100.0);
 
         var warning = ensemble.GetProperty("resolvingPower").GetProperty("warnings")
             .EnumerateArray()
@@ -957,10 +975,15 @@ public sealed class CloudRunTests : IDisposable
         // A number that only appears when it is bad teaches nobody where the edge
         // is, so the figure is reported either way and only the warning is
         // conditional.
+        // Genuinely sparse, which is a stricter requirement than it used to be:
+        // the corrected estimate makes 200 ions in a third of a millimetre a dense
+        // packet, not a quiet one. Twenty ions spread over three millimetres is
+        // sparse by the mechanism that actually governs - the surface acceleration
+        // goes as the population over the radius squared, so both moves count.
         var model = WithCloud("""
             {
-              "ions": 200, "seed": 1,
-              "transverseSpread": { "value": 0.3, "unit": "mm" }
+              "ions": 20, "seed": 1,
+              "transverseSpread": { "value": 3.0, "unit": "mm" }
             }
             """);
 
@@ -970,7 +993,9 @@ public sealed class CloudRunTests : IDisposable
         using var document = JsonDocument.Parse(stdout);
         var ensemble = document.RootElement.GetProperty("ensemble");
 
-        Assert.True(ensemble.GetProperty("spaceChargeTimingFraction").GetDouble() < 1e-7);
+        Assert.True(
+            ensemble.GetProperty("spaceChargeTimingFraction").GetDouble() < 1e-7,
+            "this packet was meant to be sparse enough to say nothing");
         Assert.True(ensemble.GetProperty("spaceChargePopulationLimit").GetDouble() > 0.0);
 
         Assert.DoesNotContain(

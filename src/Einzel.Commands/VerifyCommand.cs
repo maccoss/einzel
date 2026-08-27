@@ -147,18 +147,26 @@ public static class VerifyCommand
             };
         }
 
-        // A manifest is named for its model: reflectron.manifest.json came from
-        // reflectron.json. The manifest records the hash rather than the path,
-        // because a hash survives a rename and a path does not.
+        // The manifest records the hash rather than the path, because a hash
+        // survives a rename and a path does not - so the hash is what finds the
+        // model, and the name is only a shortcut to try first.
+        //
+        // It used to be the other way round, deriving the path from the manifest's
+        // own filename. That works for reflectron.manifest.json and fails for
+        // anything named otherwise: a sweep writes tolerance.sweep.manifest.json,
+        // verify went looking for models/tolerance.sweep.json, and reported a result
+        // it had just written as STALE with exit 1. A false alarm on output the tool
+        // produced a second ago is the kind that teaches people to stop reading the
+        // tool.
         var stem = Path.GetFileNameWithoutExtension(relative);
         stem = stem.EndsWith(".manifest", StringComparison.Ordinal) ? stem[..^".manifest".Length] : stem;
 
-        var modelPath = Path.Combine(layout.Models, stem + ".json");
-        var modelExists = File.Exists(modelPath);
+        var modelPath = FindByHash(layout, manifest.ModelHash, stem);
+        var modelExists = modelPath is not null;
 
         var modelMatches = modelExists
             && string.Equals(
-                ContentHash.OfText(File.ReadAllText(modelPath)), manifest.ModelHash, StringComparison.Ordinal);
+                ContentHash.OfText(File.ReadAllText(modelPath!)), manifest.ModelHash, StringComparison.Ordinal);
 
         var engineMatches = string.Equals(
             manifest.EngineVersion, EngineBuild.Version, StringComparison.Ordinal);
@@ -171,7 +179,9 @@ public static class VerifyCommand
 
         if (!modelExists)
         {
-            drift.Add($"the model this result came from is gone: expected {Path.GetRelativePath(layout.Root, modelPath)}");
+            drift.Add(
+                "the model this result came from is gone: no file in models/ has the hash "
+                + $"{manifest.ModelHash}");
         }
         else if (!modelMatches)
         {
@@ -206,7 +216,7 @@ public static class VerifyCommand
         return new VerifiedResult
         {
             Manifest = relative,
-            Model = modelExists ? Path.GetRelativePath(layout.Root, modelPath) : null,
+            Model = modelPath is null ? null : Path.GetRelativePath(layout.Root, modelPath),
             ModelMatches = modelMatches,
             EngineMatches = engineMatches,
             SolverMatches = solverMatches,
@@ -215,4 +225,42 @@ public static class VerifyCommand
             Notes = notes,
         };
     }
+    /// <summary>
+    /// Finds the model a manifest came from, by hash.
+    /// </summary>
+    /// <remarks>
+    /// The name is tried first because it is nearly always right and costs one
+    /// stat; the hash scan is the fallback that makes the answer correct rather
+    /// than merely usual. A manifest whose model has been renamed still verifies,
+    /// which is the whole reason a hash is what gets recorded.
+    /// </remarks>
+    private static string? FindByHash(ProjectLayout layout, string hash, string stem)
+    {
+        var byName = Path.Combine(layout.Models, stem + ".json");
+
+        if (File.Exists(byName)
+            && string.Equals(ContentHash.OfText(File.ReadAllText(byName)), hash, StringComparison.Ordinal))
+        {
+            return byName;
+        }
+
+        if (!Directory.Exists(layout.Models))
+        {
+            return File.Exists(byName) ? byName : null;
+        }
+
+        foreach (var candidate in Directory.EnumerateFiles(layout.Models, "*.json").Order(StringComparer.Ordinal))
+        {
+            if (string.Equals(ContentHash.OfText(File.ReadAllText(candidate)), hash, StringComparison.Ordinal))
+            {
+                return candidate;
+            }
+        }
+
+        // Nothing matches. Return the name-derived path when it exists, so the
+        // report says "changed" rather than "gone" - a model that was edited is a
+        // different thing from one that was deleted.
+        return File.Exists(byName) ? byName : null;
+    }
+
 }

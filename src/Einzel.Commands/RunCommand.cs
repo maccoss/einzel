@@ -405,14 +405,22 @@ public static class RunCommand
             ? model.AccelerationPotentialSi
             : MeanArrivalPotential(flight.Arrived, species);
 
-        var charge = SpaceCharge.Estimate(model.Cloud, species, flightPotential);
+        // The flight time matters to the estimate, because the dominant mechanism
+        // is the packet expanding under its own charge and that goes on for as long
+        // as the flight does. The peak's own position is the packet's flight time;
+        // a packet that never arrived has none, and the estimate falls back to its
+        // asymptotic bound and says so.
+        var flightTime = peak.Arrived > 0 ? peak.MeanSeconds : 0.0;
+
+        var charge = SpaceCharge.Estimate(model.Cloud, species, flightPotential, flightTime);
 
         var limit = charge.EffectiveRadiusM > 0.0 && flightPotential != 0.0
             ? SpaceCharge.PopulationLimit(
                 Quantity.Si(charge.EffectiveRadiusM, Quantity.From(1.0, "m").Dimension),
                 species,
                 flightPotential,
-                AccuracyBudget)
+                AccuracyBudget,
+                flightTime)
             : 0.0;
 
         var warnings = (IReadOnlyList<ValidityWarning>)[.. fieldWarnings, .. SpaceChargeWarnings(charge, limit)];
@@ -529,9 +537,10 @@ public static class RunCommand
                     $"a packet of {charge.Population} ions in {charge.EffectiveRadiusM * 1e3:F3} mm carries "
                     + $"{charge.PotentialVolts * 1e3:F1} mV across itself, which is a flight-time error of "
                     + $"{charge.TimingFraction / 1e-6:F1} ppm against the 1 ppm budget. The ions here do not "
-                    + $"push on each other: space charge is not modelled. This packet holds about {limit:N0} "
-                    + "ions within budget, and the estimate is an upper bound - an instrument at a "
-                    + "first-order energy focus suppresses it further",
+                    + $"push on each other: this run does not model space charge. This packet holds about "
+                    + $"{Population(limit)} within budget, and the estimate is an upper bound - a mirror at a "
+                    + "first-order energy focus measurably suppresses it, because the push correlates position "
+                    + "with energy in the sign the mirror corrects",
                     WarningSeverity.ValidityViolation),
             ];
         }
@@ -543,14 +552,28 @@ public static class RunCommand
                 new ValidityWarning(
                     "spacecharge.approaching",
                     $"a packet of {charge.Population} ions implies a flight-time error of "
-                    + $"{charge.TimingFraction / 1e-6:F2} ppm from its own charge, which is not modelled. "
-                    + $"Still inside the 1 ppm budget, but this packet reaches it at about {limit:N0} ions",
+                    + $"{charge.TimingFraction / 1e-6:F2} ppm from its own charge, which this run does not "
+                    + $"model. Still inside the 1 ppm budget, but this packet reaches it at about "
+                    + $"{Population(limit)}",
                     WarningSeverity.Qualified),
             ];
         }
 
         return [];
     }
+
+    /// <summary>A population limit, rendered so a limit below one ion does not print as none.</summary>
+    /// <remarks>
+    /// The corrected estimate puts a dense half-millimetre packet's 1 ppm capacity
+    /// in the single figures, and "holds about 0 ions" reads as a defect in the
+    /// message rather than as the finding it is.
+    /// </remarks>
+    private static string Population(double limit) => limit switch
+    {
+        < 1.0 => $"{limit:F2} ions",
+        < 10.0 => $"{limit:F1} ions",
+        _ => $"{limit:N0} ions",
+    };
 
     /// <summary>Runs a model in the diffusive mode and writes its result.</summary>
     private static RunOutcome Diffusive(

@@ -205,18 +205,33 @@ public static class Program
             }
         }
 
+        // What the draws themselves earned, which is a different set: the
+        // distribution's warnings are about the distribution, and these are about
+        // the flights it was computed from.
+        Warn(outcome.Warnings);
+
         if (outcome.Sensitivity.Count > 0)
         {
             // Section 13 calls this the actual deliverable: not whether the
             // tolerance suffices, but which parameter binds first.
             Console.Out.WriteLine();
-            Console.Out.WriteLine("which parameter binds first:");
+            Console.Out.WriteLine(
+                $"which parameter binds first (figure in {outcome.FigureOfMerit.Unit}, "
+                + "swing is the larger departure from nominal):");
 
             foreach (var channel in outcome.Sensitivity)
             {
+                // The two ends as well as the swing, because a swing alone does not
+                // say which direction hurts, and a channel whose low end is missing
+                // is one where the ion stopped arriving - which is the finding, not
+                // a gap in the table.
+                var band = channel is { Low: { } low, High: { } high }
+                    ? string.Create(invariant, $"{low:G8} .. {high:G8}")
+                    : "one end did not arrive";
+
                 Console.Out.WriteLine(string.Create(
                     invariant,
-                    $"  {channel.Parameter,-24} swing {channel.Swing:G4} {outcome.FigureOfMerit.Unit}"));
+                    $"  {channel.Parameter,-24} swing {channel.Swing:G4}   [{band}]"));
             }
         }
 
@@ -283,6 +298,12 @@ public static class Program
             stream.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
         }
 
+        // What the evaluations earned on the way. An optimiser walks towards
+        // whatever scores best, so a corner of the box where the solve stops
+        // converging is somewhere it will actively go - and it used to arrive there
+        // silently.
+        Warn(outcome.Warnings);
+
         Console.Out.WriteLine();
 
         foreach (var artifact in outcome.Artifacts)
@@ -291,6 +312,35 @@ public static class Program
         }
 
         return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
+    }
+
+    /// <summary>A population limit, rendered so a limit below ten ions keeps a figure.</summary>
+    /// <remarks>
+    /// The same rendering the warning uses, so the summary line and the warning
+    /// beneath it do not quote the same quantity as 5 and as 4.7.
+    /// </remarks>
+    private static string Capacity(double limit) => limit switch
+    {
+        < 1.0 => limit.ToString("F2", CultureInfo.InvariantCulture),
+        < 10.0 => limit.ToString("F1", CultureInfo.InvariantCulture),
+        _ => limit.ToString("N0", CultureInfo.InvariantCulture),
+    };
+
+    /// <summary>
+    /// Prints warnings, advisories on stdout and everything else on stderr.
+    /// </summary>
+    /// <remarks>
+    /// CLI-2 puts results on stdout and diagnostics on stderr, and GRD-3 makes only
+    /// an advisory suppressible - so the split by severity is the same split by
+    /// stream, and a caller redirecting stdout still sees what qualified the number.
+    /// </remarks>
+    private static void Warn(IReadOnlyList<ValidityWarning> warnings)
+    {
+        foreach (var warning in warnings)
+        {
+            var stream = warning.IsSuppressible ? Console.Out : Console.Error;
+            stream.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
     }
 
     private static int Catalog(CommandLine options, string kind)
@@ -463,16 +513,15 @@ public static class Program
         }
 
         var task = AgentSuite.Find(options.Positional[1]);
-        var layout = new ProjectLayout(Path.GetFullPath(options.Positional[2]));
+        var root = Path.GetFullPath(options.Positional[2]);
 
         if (options.Has("dry-run"))
         {
-            Console.Out.WriteLine($"would prepare {layout.Root} for '{task.Name}'");
+            Console.Out.WriteLine($"would prepare {root} for '{task.Name}'");
             return (int)ExitCode.Success;
         }
 
-        layout.CreateDirectories();
-        task.Setup?.Invoke(layout);
+        var layout = AgentSuite.Prepare(task, root);
 
         Console.Out.WriteLine($"prepared {layout.Root} for '{task.Name}'");
         Console.Out.WriteLine($"the agent should leave {task.Deliverable}");
@@ -709,11 +758,16 @@ public static class Program
 
         if (outcome.Tests.Count == 0)
         {
-            // Not a failure, but worth saying plainly. A test run that asserts
-            // nothing and reports success is a green tick standing for no
-            // evidence at all.
-            Console.Out.WriteLine($"no tests under {Path.Combine(outcome.Root, "tests")}");
-            return (int)ExitCode.Success;
+            // A green tick standing for no evidence at all - which this said in a
+            // comment while returning success anyway. A caller that gates on the
+            // exit code cannot tell "everything passed" from "there was nothing to
+            // run", and those are opposite states.
+            Console.Error.WriteLine($"no tests under {Path.Combine(outcome.Root, "tests")}");
+            Console.Error.WriteLine(
+                "a project with no tests is not a passing project, so this is not exit 0. "
+                + "'einzel init' scaffolds one; 'einzel schema' describes what a test file holds");
+
+            return (int)ExitCode.ValidationFailure;
         }
 
         var invariant = CultureInfo.InvariantCulture;
@@ -1371,7 +1425,7 @@ public static class Program
                     invariant,
                     $"space charge  {timingFraction / 1e-6:F2} ppm from "
                     + $"{ensemble.Population:N0} ions; this packet holds "
-                    + $"{ensemble.SpaceChargePopulationLimit:N0} within the 1 ppm budget"));
+                    + $"{Capacity(ensemble.SpaceChargePopulationLimit)} within the 1 ppm budget"));
             }
 
             foreach (var warning in ensemble.ResolvingPower.Warnings

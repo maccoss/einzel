@@ -98,11 +98,17 @@ the project thesis restated as a fact.
 | Quantity | Reported |
 | --- | --- |
 | Time-of-flight spread, corrected | Δt* = 0.8–1.2 ns across m/z 195–2722 |
+| Ion beam spatial width | 2.4 mm (6σ), measured by IonCCD |
+| Extraction efficiency | ~84% at m/z 1522 |
+| Ion capacity | >140,000 ions at 5 ms injection |
+| Repetition rate | 200 Hz |
+| Pressure gradient | ~one order of magnitude between regions |
 
-**An open question about that row, raised by being able to compute it.** Turn-around
-time from a thermal source is now measurable and agrees with its closed form to
-0.5%: FWHM = 2√(2ln2)√(mkT)/qE. That scales as √m, so across m/z 195 to 2722 it
-spreads by a factor of 3.7 — at 1 kV/mm and 300 K, 0.54 ns to 2.04 ns.
+**An open question about the first row, raised by being able to compute it.**
+Turn-around time from a thermal source is now measurable and agrees with its
+closed form to 0.5%: FWHM = 2√(2ln2)√(mkT)/qE. That scales as √m, so across m/z
+195 to 2722 it spreads by a factor of 3.7 — at 1 kV/mm and 300 K, 0.54 ns to
+2.04 ns.
 
 The paper reports 0.8–1.2 ns across the same range, which is roughly *constant*.
 Those cannot both be a simple thermal turn-around. Either "corrected" in that row
@@ -113,11 +119,6 @@ source before either number is quoted as agreement or disagreement.
 
 It is worth noticing that the machinery raised the question at all. A target that
 cannot be computed cannot disagree with anything.
-| Ion beam spatial width | 2.4 mm (6σ), measured by IonCCD |
-| Extraction efficiency | ~84% at m/z 1522 |
-| Ion capacity | >140,000 ions at 5 ms injection |
-| Repetition rate | 200 Hz |
-| Pressure gradient | ~one order of magnitude between regions |
 
 ### Measured, now that the cross-section exists
 
@@ -125,11 +126,20 @@ The rectilinear cross-section is a device template
 ([Device templates](device-templates.md)), so the DC half of this target can be
 computed rather than argued about. At r0 = 2 mm, a 1 kV transversal push, 300 K:
 
-| m/z | Turn-around FWHM |
-| --- | --- |
-| 195 | 2.65 ns |
-| 500 | 4.24 ns |
-| 2722 | 9.90 ns |
+| m/z | Turn-around FWHM, 1 kV push | at 4 kV push | Naive V/2r0 at 1 kV | Solved / naive |
+| --- | --- | --- | --- | --- |
+| 195 | 2.636 ns | 0.652 ns | 2.153 ns | 1.224 |
+| 500 | 4.220 ns | 1.044 ns | 3.448 ns | 1.224 |
+| 1522 | 7.363 ns | 1.821 ns | 6.015 ns | 1.224 |
+| 2722 | 9.847 ns | 2.436 ns | 8.044 ns | 1.224 |
+
+**The last column is a constant, and that is worth more than any single row.**
+The solved field gives a turn-around 22.4% longer than the naive V/2r0 closed
+form at every mass and, to 1%, at both extraction voltages (1.224 at 1 kV, 1.211
+at 4 kV). So what the slot and the fringe take out of the extraction field is a
+single geometric factor — the field at the packet is 0.82 of V/2r0 — and not
+something that has to be re-measured per operating point. That is the number the
+solve buys over the formula, and it is reusable.
 
 **Two things follow, and both bear on the reported 0.8-1.2 ns.**
 
@@ -146,11 +156,20 @@ reading of what "corrected" means in that row, and it is an inference rather tha
 a finding: settle it against the source before quoting either agreement or
 disagreement.
 
-Separately, the magnitudes are 2 to 8 times the reported ones. Reaching 1 ns at
-m/z 500 needs about 8.6e5 V/m, roughly 3.4 kV across the 4 mm gap - above the
-500-1000 V transversal pulse the paper states, though inside its 1-4 kV "lift and
-extraction". So either the extraction field is stronger than the transversal
-figure alone implies, or the packet is colder than 300 K, or the row is normalised.
+Separately, the magnitudes at 1 kV are 2 to 8 times the reported ones. Pushing at
+4 kV - the top of the paper's stated 1-4 kV "lift and extraction", though above
+its 500-1000 V transversal pulse - lands **m/z 195 at 0.652 ns and m/z 500 at
+1.044 ns**, straddling the reported 0.8-1.2 ns band. So the magnitude is
+reproducible at a plausible operating point.
+
+The *spread* still is not, and cannot be. Holding every mass from 195 to 2722
+inside a 1.5x band needs a quantity that varies by 1.5x, and a thermal turn-around
+varies by 3.74x whatever the field. Scanning the extraction voltage with mass
+would fix it in principle - and 4x of voltage range is almost exactly the 3.74x
+needed, which is a suspicious coincidence - but the absolute voltages required
+run from 2.6 kV at m/z 195 to 9.7 kV at m/z 2722, and the upper half of that is
+outside the stated range. So the normalisation reading above remains the better
+one.
 
 **Turn-around is also not what limits the peak.** Decomposing the arrival spread
 of a 0.2 mm packet in this geometry gives 4.28 ns from temperature, 231.9 ns from
@@ -159,14 +178,46 @@ depth along the extraction, and 12.3 ns from width across it - so turn-around is
 nanosecond therefore describes either a far tighter packet, a space-focused
 geometry, or a corrected quantity.
 
-**And extraction efficiency is now measurable in principle.** The shipped
-parameters give 50.7% through a 1 mm slot, itemised as 25.5% on one half of the
-front plate and 23.3% on the other. That is not yet a comparison with the paper's
-~84% at m/z 1522 - the slot width, packet size and the second acceleration stage
-would all have to match - but it is the first time the quantity exists at all
-rather than reading 100% by construction. A published Delta-t near a nanosecond therefore describes either a
-far tighter packet, a space-focused geometry, or a corrected quantity - and this
-model can now tell those apart once the trap geometry is filled in further.
+### Extraction efficiency, and what a wider slot costs
+
+The paper reports **~84% extraction efficiency at m/z 1522**. At the shipped 1 mm
+slot this model gives 51.5%, itemised on the two halves of the front plate — so
+the question is what would have to change, and the obvious candidate is the slot.
+Scanning it at m/z 1522 and a 4 kV push, 2000 ions:
+
+| Slot width | Transmission | Turn-around | Dipole A1/A2 | 12-pole A6/A2 |
+| --- | --- | --- | --- | --- |
+| 0.5 mm | — | — | 1.25e-2 | 6.38e-3 |
+| 1.0 mm | 51.5% | 1.821 ns | 5.43e-2 | 7.12e-3 |
+| 1.5 mm | 69.0% | 1.834 ns | — | — |
+| 2.0 mm | 81.7% | 1.847 ns | 2.33e-1 | 7.90e-3 |
+| 2.5 mm | 89.2% | 1.863 ns | — | — |
+| 3.0 mm | 94.0% | 1.878 ns | 6.55e-1 | 7.25e-3 |
+
+**The paper's 84% falls between 2.0 and 2.5 mm**, on a 2 mm inscribed radius. That
+is a real comparison rather than a coincidence of scale: it says the reported
+efficiency is consistent with a slot roughly the width of r0, which is a
+statement about their geometry derived from ours.
+
+**And the trade is badly asymmetric, in a direction that is easy to miss.**
+Turn-around barely notices the slot — 1.821 ns at 1.0 mm against 1.878 ns at
+3.0 mm, three per cent over a threefold widening. Watch only turn-around and a
+wide slot looks free. It is not: the dipole grows **53-fold** across the same
+range, roughly as the square of the width, while the 12-pole stays flat at
+6.4e-3 to 7.9e-3. At 3 mm the dipole reaches 0.655 of the quadrupole term and the
+trap is barely a trap on that side.
+
+That flat 12-pole column is also the cleanest confirmation of the attribution
+made when the template landed: **the 12-pole is what flat plates cost and the
+dipole is what the slot costs**, now measured across a sixfold range rather than
+at two points. A dipole displaces the trapping centre, which for a device whose
+job is to present a packet against a slot is precisely the aberration that
+matters — so the efficiency is bought with the quantity the design is most
+sensitive to, and the figure that would have flagged it is not turn-around.
+
+Asserted in `RectilinearTrapStudy.WideningTheSlotBuysExtractionEfficiencyAndPaysForItInFieldQuality`,
+which checks the monotonicity and the size of the dependence; the transmission
+column is a study rather than a test, because five ion clouds is not a unit test.
 
 ### What is reproducible now
 

@@ -1,5 +1,4 @@
-using Einzel.Core.Model;
-using Einzel.Project;
+using Einzel.Core.Model;using Einzel.Project;
 
 namespace Einzel.Commands;
 
@@ -129,6 +128,43 @@ public static class AgentSuite
     /// <summary>Every task, ordered by name.</summary>
     public static IReadOnlyList<AgentTask> All =>
         [.. Tasks.OrderBy(t => t.Name, StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Prepares a project for a task: what a real user would have, and the task's
+    /// own starting files.
+    /// </summary>
+    /// <param name="task">The task.</param>
+    /// <param name="root">Where to prepare it.</param>
+    /// <returns>The project layout.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="task"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="root"/> is null or blank.</exception>
+    /// <remarks>
+    /// <para>
+    /// One place, called by the CLI verb and by the tests, because it was two and
+    /// they drifted: both created the directories and neither wrote AGENTS.md, so
+    /// the harness handed an agent less than <c>einzel init</c> gives a real user -
+    /// and the suite that exists to notice guidance drifting was the one place
+    /// AGENTS.md was never present to drift.
+    /// </para>
+    /// <para>
+    /// Duplicated setup is how a harness stops measuring the thing it is named
+    /// after, quietly, while every test it owns keeps passing.
+    /// </para>
+    /// </remarks>
+    public static ProjectLayout Prepare(AgentTask task, string root)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
+
+        var layout = new ProjectLayout(Path.GetFullPath(root));
+
+        layout.CreateDirectories();
+        File.WriteAllText(layout.AgentsFile, AgentsFile.Generate());
+
+        task.Setup?.Invoke(layout);
+
+        return layout;
+    }
 
     /// <summary>Looks a task up by name.</summary>
     /// <param name="name">The task name.</param>

@@ -351,10 +351,22 @@ public sealed class SpaceChargeTests(ITestOutputHelper output)
         Assert.Equal(4.0, denser.PotentialVolts / baseline.PotentialVolts, 1e-9);
         Assert.Equal(0.5, larger.PotentialVolts / baseline.PotentialVolts, 1e-9);
 
-        // Time goes as the inverse square root of energy, so a fractional energy
-        // spread is half of it in flight time. A factor of two here is the whole
-        // difference between meeting the budget and missing it.
-        Assert.Equal(0.5 * baseline.EnergyFraction!.Value, baseline.TimingFraction!.Value, 1e-15);
+        // The timing fraction used to be half the energy fraction, on the
+        // reasoning that time goes as the inverse square root of energy. That
+        // describes ions extracted from different depths of the self-potential
+        // well and is not what dominates in flight: the packet expands, and the
+        // relative speed that gives it comes from converting the self-potential
+        // into *relative* kinetic energy rather than from perturbing a beam energy
+        // thousands of times larger. The two differ by hundreds of times, and the
+        // direct pairwise sum agrees with the larger.
+        Assert.True(
+            baseline.TimingFraction!.Value > 10.0 * baseline.EnergyFraction!.Value,
+            $"timing fraction {baseline.TimingFraction:E3} against energy fraction "
+            + $"{baseline.EnergyFraction:E3}: this is the old, wrong conversion");
+
+        // Still monotone in both directions, which is what this test is for.
+        Assert.True(denser.TimingFraction!.Value > baseline.TimingFraction!.Value);
+        Assert.True(larger.TimingFraction!.Value < baseline.TimingFraction!.Value);
     }
 
     [Fact]
@@ -367,25 +379,37 @@ public sealed class SpaceChargeTests(ITestOutputHelper output)
         const double Volts = 4000.0;
         var radius = Quantity.From(0.5, "mm");
 
-        var limit = SpaceCharge.PopulationLimit(radius, species, Volts, 1e-6);
-        output.WriteLine($"0.5 mm at {Volts:F0} V holds {limit:N0} ions within 1 ppm");
+        // The estimate depends on the flight time now, because the mechanism it
+        // models runs for as long as the flight does - so the inverse has to be
+        // asked at the same flight time or it is inverting a different function.
+        const double Flight = 10e-6;
 
-        // Loading exactly the limit should land on the budget.
+        var limit = SpaceCharge.PopulationLimit(radius, species, Volts, 1e-6, Flight);
+        output.WriteLine($"0.5 mm at {Volts:F0} V over {Flight * 1e6:F0} us holds {limit:N1} ions within 1 ppm");
+
+        // Loading exactly the limit should land on the budget. Fractional, because
+        // the limit is under an ion here and rounding it to zero would be
+        // inverting the wrong number - which is itself the finding.
         var at = SpaceCharge.Estimate(
             new IonCloudSettings
             {
                 Ions = 1,
-                Population = (int)Math.Round(limit),
+                Population = (int)Math.Max(1.0, Math.Round(limit)),
                 // The estimate maps Gaussian widths onto a uniform sphere, so the
                 // width that produces this radius is what the packet must declare.
                 TransverseSpreadM = radius.SiValue / Math.Sqrt(5.0 / 3.0) / Math.Sqrt(2.0),
             },
             species,
-            Volts);
+            Volts,
+            Flight);
 
         output.WriteLine($"loading {at.Population:N0} gives {at.TimingFraction / 1e-6:F3} ppm");
 
-        Assert.Equal(1e-6, at.TimingFraction!.Value, 1e-9);
+        // Round-tripped through the population, so the check is that the estimate
+        // at the rounded limit is within rounding of the budget.
+        var rounded = Math.Max(1.0, Math.Round(limit));
+
+        Assert.Equal(1e-6 * rounded / limit, at.TimingFraction!.Value, 1e-6 * rounded / limit * 1e-9);
     }
 
     [Fact]
@@ -434,13 +458,29 @@ public sealed class SpaceChargeTests(ITestOutputHelper output)
     [Fact]
     public void TheThresholdMatchesTheHandCalculation()
     {
-        // Worked by hand before any of this was written, which is the point of
-        // writing it down: 0.5 mm at 4 kV holds a few thousand ions, and that is a
-        // number someone would type without thinking.
-        var limit = SpaceCharge.PopulationLimit(Quantity.From(0.5, "mm"), Peptide, 4000.0, 1e-6);
+        // This used to say a few thousand, and it was wrong by three orders of
+        // magnitude. 0.5 mm at 4 kV over a 10 us flight holds *under ten* ions
+        // within 1 ppm, because the packet expands under its own charge for the
+        // whole flight and the relative speed that gives it is sqrt(2 q phi / m) -
+        // 149 m/s for a 40,000-ion packet, against a beam speed of 39 km/s.
+        //
+        // Checked against the direct pairwise sum rather than by hand this time,
+        // which is what SC-1 asks the direct sum to be for. A hand calculation had
+        // the mechanism wrong and no amount of care about the arithmetic would
+        // have caught that.
+        const double Flight = 10e-6;
 
-        output.WriteLine($"limit at 0.5 mm, 4 kV: {limit:N0} ions");
+        var limit = SpaceCharge.PopulationLimit(Quantity.From(0.5, "mm"), Peptide, 4000.0, 1e-6, Flight);
 
-        Assert.InRange(limit, 5000, 6000);
+        output.WriteLine($"limit at 0.5 mm, 4 kV, {Flight * 1e6:F0} us: {limit:N2} ions");
+
+        Assert.InRange(limit, 1.0, 20.0);
+
+        // And it scales with the flight: a packet that flies half as long has half
+        // as long to expand, so it holds twice as many.
+        var brief = SpaceCharge.PopulationLimit(
+            Quantity.From(0.5, "mm"), Peptide, 4000.0, 1e-6, 0.5 * Flight);
+
+        Assert.Equal(2.0, brief / limit, 1e-9);
     }
 }

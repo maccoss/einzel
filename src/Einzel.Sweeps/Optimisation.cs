@@ -425,10 +425,22 @@ internal sealed class SearchProblem
 
         if (!converged)
         {
+            // Which tolerance, not "its tolerance". Convergence is two tests and
+            // both must hold, so a reader who tightens the one that was already met
+            // changes nothing and concludes the setting does not work - which is
+            // what happened to the first agent to hit this.
+            var widest = spread.Length > 0 ? spread.Max() : 0.0;
+            var parameterMet = widest <= Settings.ParameterTolerance;
+
             warnings.Add(new ValidityWarning(
                 "optimiser.budget-exhausted",
-                $"the search stopped after {Evaluations} evaluations without meeting its tolerance, so this is "
-                + "the best design found rather than an optimum",
+                $"the search stopped after {Evaluations} evaluations without meeting both convergence "
+                + "tests, so this is the best design found rather than an optimum. The final spread was "
+                + $"{widest:G3} of the box against parameterTolerance {Settings.ParameterTolerance:G3}, "
+                + $"which it {(parameterMet ? "met" : "did not meet")}; the other test asks the objective "
+                + $"to settle to within objectiveTolerance {Settings.ObjectiveTolerance:G3} of its own "
+                + $"spread, and {(parameterMet ? "that is the one still open" : "both are still open")}. "
+                + "Loosen whichever is not met, or raise maximumEvaluations",
                 WarningSeverity.Qualified));
         }
 
