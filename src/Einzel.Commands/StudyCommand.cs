@@ -205,6 +205,21 @@ public sealed record BoundaryOutcome
     /// <summary>Whether the requested resolution was reached.</summary>
     public required bool Converged { get; init; }
 
+    /// <summary>
+    /// How many points outside the bracket were tested for a second crossing.
+    /// </summary>
+    public int Probes { get; init; }
+
+    /// <summary>
+    /// Where the figure crossed the threshold again, in SI, or null if it never did.
+    /// </summary>
+    /// <remarks>
+    /// A bisection cannot contradict its own assumption of a single crossing, so
+    /// this is the only part of the result that carries evidence about whether the
+    /// located edge is the edge of the region or one of several.
+    /// </remarks>
+    public double? SecondCrossingSi { get; init; }
+
     /// <summary>Warnings the search carries, and every one its evaluations earned.</summary>
     public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
 
@@ -685,6 +700,8 @@ public static class StudyCommand
             Evaluations = result.Evaluations,
             ResolvedFraction = result.ResolvedFraction,
             Converged = result.MetAccuracyTarget,
+            Probes = result.Probes,
+            SecondCrossingSi = result.SecondCrossingSi,
             Warnings = [.. result.Warnings, .. ledger.Collected],
             Artifacts = [],
         };

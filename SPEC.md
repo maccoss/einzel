@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**570 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 21 examples, every expectation a closed form, a published value, or an exact invariant.
+**570 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 23 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -259,13 +259,32 @@ Recommended gates: 80% capability, 90% warnings, any task at 0% blocks, and **an
 drop against the previous release blocks regardless of level** — the regression gate
 matters more than the absolute one.
 
-### 12 · LIB-1's test earned its keep, and fired exactly once
+### 12 · LIB-1's test earned its keep, and fired three times in three different ways
 
-Seven of eight device templates needed no change below `Einzel.Library`. The eighth,
-the travelling-wave guide, did — `drivePhase` was a plain `double` while every other
-placement was an expression, so a phase could not depend on the repeat index, and a
-phase that cannot depend on the index cannot ramp. Narrow, real, and exactly what
-LIB-1 says to believe.
+Ten device templates now ship, and the rule has fired three times — each time
+narrow, each time real, and each time meaning something different, which is the
+part worth recording.
+
+**A missing expression.** The travelling-wave guide: `drivePhase` was a plain
+`double` while every other placement was an expression, so a phase could not depend
+on the repeat index, and a phase that cannot depend on the index cannot ramp.
+
+**A missing function.** `multipole-guide`: a `2n`-pole is `2n` rods at `π/n`
+intervals and the grammar had no trigonometry, so that geometry could not be written
+at all — not awkwardly, *not at all*. One function below the library bought one
+template covering every even order instead of three near-identical files.
+Amendment 17.
+
+**A wrong check.** The Paul trap: `ModelValidator.CanDoWork` decided whether a
+source may start at rest by asking whether any electrode held non-zero **DC**
+potential. A trap holds zero DC and all of its potential as drive, so the archetypal
+start-at-rest device was refused as a model in which nothing could move an ion.
+
+The third is the one that needs care. LIB-1 says a change below the library usually
+means the abstraction is wrong — but this change said "there is a bug here", and the
+abstraction was fine. **Telling those two apart is part of using the rule**, and the
+signal that separates them is whether the change *adds* something the format could
+not say or *corrects* something it already claimed to support.
 
 ### 13 · A conservative operator was written twice and got it right once
 
@@ -401,6 +420,67 @@ excitation are ill-posed and must be refused. Now done, naming both electrodes a
 what each holds, with three deliberate limits — tangency allowed, agreement
 allowed, and edge profiles skipped rather than guessed at.
 
+### 19 · A stability boundary is not a property of the design alone
+
+ACC-6 asks for a boundary resolved to one part in five hundred of the scan, and
+`einzel boundary` reaches that in eleven evaluations. §12 and §19 both treat the
+result as a property of the instrument. **On the shipped Paul trap it is not, until
+the observation window is long enough**, and at sixty RF cycles the "boundary" is a
+ragged strip:
+
+```
+   V   672 674 676 678 680 682 684 686 688 690 692
+held     1   1   0   0   1   0   1   0   1   0   0
+```
+
+At two hundred cycles the same scan is a clean step between 672 and 674 V. Nothing
+about the design changed. The growth rate goes to zero at the stability edge, so
+whether a marginally unstable ion reaches an electrode inside the hold is a property
+of **the hold**. Two bisections over brackets differing only in their lower end gave
+680.7 V and 694.4 V for the same geometry, which is how it was noticed.
+
+**Recommend §12 state that a Class B boundary is quoted with the observation window
+that produced it**, and that a convergence check in that window is part of the
+measurement rather than an optional extra — the same standing that grid convergence
+already has under ACC-3.
+
+**And with the launch amplitude, which is the sharper half.** The same trap's
+hold-converged edge is q_z = 0.860 at a 0.1 mm launch, 0.824 at 0.3 mm and 0.635 at
+0.6 mm. The Mathieu equation is linear, so an ideal trap's boundary *cannot* depend
+on how far off centre the ion started — a trajectory scaled by a constant is another
+trajectory. A real one's does, and the dependence is not small. Worse, there is no
+clean small-amplitude limit to extrapolate to, for a structural reason: a
+measurement that registers a loss only when the ion **reaches** an electrode is never
+a small-amplitude measurement, whatever it was launched at. The launch offset sets
+how much of the journey is spent in the anharmonic region, not whether any of it is.
+
+The same geometry also carries a **narrow band of loss at q_z = 0.739–0.750**, sixty
+volts inside the main edge, which survives a mesh doubling and a hold doubling and
+vanishes at a 0.1 mm launch and at 60 cycles — a nonlinear resonance, and §12's
+Class B vocabulary has no way to report one. It was found by the confirmation walk
+of Amendment 20, from a search whose bisection had converged cleanly.
+
+### 20 · Bisection cannot check its own premise, and now does
+
+A corollary of Amendment 19, and separable from it. Bisection assumes the predicate
+flips once across the bracket. **Every step it takes is consistent with that
+assumption by construction**, so a clean cut-off and a frayed edge produce identical
+search histories and the result looks equally confident either way. §12's "boundary
+resolution" therefore says nothing about whether the located value is *the* edge.
+
+What separates them is a walk outward from the converged bracket at geometrically
+growing offsets, asking whether the predicate flips back. It costs about `log2` of
+the range over the bracket width — roughly doubling an eleven-evaluation search,
+against a grid that would cost five hundred and one.
+
+`boundary.multiple-crossings` is a **validity violation**, because a value quoted as
+the edge of a region when it is one of several is wrong rather than imprecise.
+`boundary.single-crossing-checked` carries the probe count when nothing was found —
+REG-2's rule that a check made and passed must be visible, or a reader cannot tell it
+from a check never made. Two limits are stated rather than papered over: the walk
+stays inside the declared range, and its first step is the bracket width, so a flip
+narrower than that is stepped over.
+
 ---
 
 ## The shell, and the rest of §16
@@ -480,7 +560,7 @@ in a table.
 | `ACC-3` | Field interpolation contribution ≤ 0.5 × | **Met** | Tricubic enforced; a forbidden interpolant is refused on a trajectory path. Bilinear measured at 9.4e-6 against bicubic 6.4e-8. |
 | `ACC-4` | Energy drift, static field ≤ 1 ppm Cheap conserved-quantity diagnostic | **Met** | 1e-9 to 1e-15 in static fields. Reports NaN in a driven field, where energy drift is not a diagnostic. |
 | `ACC-5` | Class S transmission interval ≤ 1% abs, 95% Drives minimum ensemble size per point | **Met** | Losses itemised by the surface name the author wrote; checked against erf for a slit at 0.95 sigma on 20,000 ions. A transmission of **zero** is now expressible - see Amendment 15, where it was not. |
-| `ACC-6` | Class B boundary resolution ≤ 1/500 of scan Enough to resolve a mass filter peak shape | **Met** | `einzel boundary` bisects onto the crossing and reports it as an envelope whose interval **is** the bracket. Measured: a step at a known value bracketed to 1 part in 512 in 11 evaluations, against 501 for a grid; the quadrupole low-mass cut-off at **q = 0.90508 +/- 0.00039** against a tabulated 0.90804. |
+| `ACC-6` | Class B boundary resolution ≤ 1/500 of scan Enough to resolve a mass filter peak shape | **Met** | `einzel boundary` bisects onto the crossing and reports it as an envelope whose interval **is** the bracket. Measured: a step at a known value bracketed to 1 part in 512 in 11 evaluations, against 501 for a grid; the quadrupole low-mass cut-off at **q = 0.90508 +/- 0.00039** against a tabulated 0.90804. The search now also **walks outward from its converged bracket** looking for the predicate flipping back, which is the one thing bisection structurally cannot see - every step of its own path is consistent with a single crossing by construction. `boundary.multiple-crossings` is a validity violation; the confirmation is reported whether or not anything was found. |
 | `ACC-7` | Rendered geometric tolerance ≤ 0.1% of extent Default decimation bound for vector output; recorded per | **Met** | Ramer-Douglas-Peucker measured tight against its bound: 4,000 points to 577 at a worst deviation of 0.010000 mm against 0.01. |
 
 ### Agent instructions (§3)
@@ -541,7 +621,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **21 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide, an extraction trap, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: a 3-D trap, an MR-TOF, and a collisional example. |
+| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **23 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide, an extraction trap, a 3-D Paul trap held and ejected, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: an MR-TOF and a collisional example. |
 | `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. 17 of 17 in 29 s, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself. |
 | `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. Still one surface, because there is no second one. |
 
@@ -593,7 +673,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Nine device templates as data in the model schema. Two have needed a change below `Einzel.Library`, and both were narrow and general: `drivePhase` becoming an expression (the travelling wave), and trigonometry in the expression grammar (any multipole above four rods). The second yielded **one** template covering quadrupole, hexapole, octupole and beyond rather than three files. |
+| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Ten device templates as data in the model schema. Two have needed a change below `Einzel.Library` to *express* the device, and both were narrow and general: `drivePhase` becoming an expression (the travelling wave), and trigonometry in the expression grammar (any multipole above four rods). The second yielded **one** template covering quadrupole, hexapole, octupole and beyond rather than three files. A third change - the Paul trap - is worth distinguishing: nothing was missing, a validator was **wrong**. `CanDoWork` asked whether any electrode held non-zero **DC**, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion. LIB-1 says to believe the signal when a template needs a change below the library; this one said "there is a bug here", not "the abstraction is wrong", and telling those apart is part of using the rule. |
 
 ### Licensing (§20)
 
@@ -750,11 +830,11 @@ in a table.
 
 Ordered by what unblocks the most, with the reasoning rather than just the list.
 
-1. **Finish the examples corpus (EX-1).** 21 of thirty, and the gate (EX-2) is
-   built and green in 29 s. What the first seventeen cost was mostly *deciding what
-   can honestly be asserted*, and that work is now done — the remaining thirteen are
-   breadth: a multipole above four rods, a 3-D trap, an MR-TOF, and the diffusive
-   mode, which `transitTime` now makes assertable. Worth finishing, and worth
+1. **Finish the examples corpus (EX-1).** 23 of thirty, and the gate (EX-2) is
+   built and green. What the first seventeen cost was mostly *deciding what can
+   honestly be asserted*, and that work is now done — the remaining seven are
+   breadth: an MR-TOF, a collisional example, and more of the diffusive mode, which
+   `transitTime` now makes assertable. Worth finishing, and worth
    noticing what the first tranche already returned: **two defects that no test
    written from inside the project would have caught**, because both were about a
    model that validates and answers a different question.

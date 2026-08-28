@@ -91,6 +91,7 @@ public static class FiguresOfMerit
         new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
         new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false),
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
+        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true),
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
     ];
 
@@ -159,6 +160,7 @@ public static class FiguresOfMerit
             "turnAroundTime" => model => TurnAround(model, report),
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
+            "confined" => model => Confined(model, energySpread, ions, report),
             "transitTime" => model => Transit(model, report),
             _ => throw new EinzelException(new EinzelError
             {
@@ -271,9 +273,15 @@ public static class FiguresOfMerit
 
         var arrivals = new List<double>(ions);
 
-        for (var k = 0; k < ions; k++)
+        // Collapsed where the spread varies nothing. Twenty-one identical flight
+        // times would otherwise form a peak of exactly zero width and a resolving
+        // power of infinity, which is a confident answer to a question that was
+        // never asked; one arrival is no peak at all, and says so.
+        var members = Distinct(model, spread, ions, report);
+
+        for (var k = 0; k < members; k++)
         {
-            var fraction = ions == 1 ? 0.0 : (2.0 * k / (ions - 1.0)) - 1.0;
+            var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
             var offset = spread * fraction;
 
             var (launch, species, field, settings, detector) = Setup(model, offset, report);
@@ -285,7 +293,7 @@ public static class FiguresOfMerit
             }
         }
 
-        return arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, ions) : null;
+        return arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, members) : null;
     }
 
     /// <summary>Flies the cloud a model declares.</summary>
@@ -638,6 +646,58 @@ public static class FiguresOfMerit
     /// all gives null.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// How many distinct ions an energy-spread ensemble actually has.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An ensemble here is a sweep of <em>launch energy</em>, and the launch speed
+    /// goes as the square root of it - so when the source starts at rest, every
+    /// member is <c>0 * sqrt(1 + offset)</c> and the ensemble is one ion flown
+    /// <c>n</c> times. That is not merely wasteful (each member rebuilds the field,
+    /// so a trap held for two hundred RF cycles paid twenty-one times over for one
+    /// answer): it is <em>misleading</em>, because the result is then reported as a
+    /// fraction over an ensemble that has no spread in it.
+    /// </para>
+    /// <para>
+    /// A resting source is not an edge case - it is what every trap and every
+    /// pulsed extraction declares, and it is exactly the population a
+    /// <c>confined</c> figure is asked about. So the collapse is reported rather
+    /// than silently applied: the caller learns that <c>ions</c> bought nothing and
+    /// what would have to change for it to buy something, which for a trap is a
+    /// thermal cloud rather than a wider energy spread.
+    /// </para>
+    /// </remarks>
+    private static int Distinct(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
+    {
+        if (ions <= 1)
+        {
+            return ions;
+        }
+
+        var reason =
+            model.LaunchSpeedSi() == 0.0 ? "the source starts at rest, so every launch speed is zero"
+            : spread == 0.0 ? "the energy spread is zero"
+            : null;
+
+        if (reason is null)
+        {
+            return ions;
+        }
+
+        report?.Invoke(new Core.Results.ValidityWarning(
+            "ensemble.degenerate",
+            $"{ions} ions were asked for and one was flown: {reason} whatever the offset, so every "
+            + "member of the ensemble is the same ion. The figure is a fraction over one trajectory "
+            + "rather than over a distribution. To vary the population of a source at rest, declare a "
+            + "cloud with a temperature or a spatial spread - an energy spread cannot move an ion "
+            + "that has no energy",
+            Core.Results.WarningSeverity.Provenance));
+
+        return 1;
+    }
+
     private static double? Transmitted(
         CompiledModel model,
         double spread,
@@ -662,10 +722,11 @@ public static class FiguresOfMerit
         }
 
         var arrived = 0;
+        var members = Distinct(model, spread, ions, report);
 
-        for (var k = 0; k < ions; k++)
+        for (var k = 0; k < members; k++)
         {
-            var fraction = ions == 1 ? 0.0 : (2.0 * k / (ions - 1.0)) - 1.0;
+            var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
 
             var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
             var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
@@ -676,7 +737,56 @@ public static class FiguresOfMerit
             }
         }
 
-        return (arrived, ions);
+        return (arrived, members);
+    }
+
+    /// <summary>
+    /// The fraction of launched ions still inside at the end of the run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What a trap is measured by, and it is the complement of everything else here:
+    /// a trapped ion by definition never arrives anywhere, so transmission is zero
+    /// for a working trap and zero again for one that lost everything. The two are
+    /// not the same instrument, and no figure that counted arrivals could tell them
+    /// apart.
+    /// </para>
+    /// <para>
+    /// Confined means the run ended at its flight-time ceiling with the ion neither
+    /// struck on a surface nor past the detector. So a model measured this way puts
+    /// its detector <em>outside</em> the trap, where reaching it means having
+    /// escaped - which makes the three outcomes distinct: struck, escaped, held.
+    /// </para>
+    /// </remarks>
+    private static double? Confined(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (ions <= 0)
+        {
+            return null;
+        }
+
+        var held = 0;
+        var members = Distinct(model, spread, ions, report);
+
+        for (var k = 0; k < members; k++)
+        {
+            var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
+
+            var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
+            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+
+            if (result.Outcome == TrajectoryOutcome.MaximumFlightTimeReached
+                && result.StruckSurface is null)
+            {
+                held++;
+            }
+        }
+
+        return (double)held / members;
     }
 
     private static double? TurnAround(

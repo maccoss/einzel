@@ -388,6 +388,65 @@ which end gave what, and points at `einzel scan` for finding the bracket.
 on the result, not a refusal: a coarse boundary is still a boundary, and the
 reader needs to know which one they have.
 
+## The single-crossing assumption is checked, not assumed
+
+**A bisection cannot contradict its own premise.** Every step it takes is
+consistent with a single crossing by construction, so the search path is not
+evidence about the shape of the region — a clean cut-off and a frayed edge produce
+*identical* histories, and the answer that comes back looks equally confident
+either way.
+
+What separates them is a **walk outward from the converged bracket**, at
+geometrically growing offsets, asking whether the predicate ever flips back. It
+reaches the ends of the declared range in about `log2` of the range over the
+bracket width — roughly doubling the search, against a grid that would cost five
+hundred. Finding a flip is proof; *not* finding one is not, and the result says
+which it got either way:
+
+```
+rfAmplitude    673.24 V, bracketed [672.56, 673.92]
+where          confined crosses 0.5 1 (inside is above)
+resolved       1 part in 512 of the range in 11 evaluations
+confirmed      17 probe(s) outside the bracket found no second crossing
+```
+
+or, when the region is not what it looked like:
+
+```
+but            the figure crosses back at 684.1 SI, so this is one edge of
+               several rather than the edge of the region (6 probe(s))
+```
+
+`boundary.multiple-crossings` is a **validity violation**, because a boundary
+quoted as the edge of a region when it is one of several is wrong rather than
+imprecise. `boundary.single-crossing-checked` is a provenance note carrying the
+probe count — REG-2's rule that a check made and passed has to be visible, or a
+reader cannot tell it from a check never made.
+
+**Two limits, both deliberate.** The walk stays inside the declared range, so a
+bracket spanning one edge of a band cannot discover the other: evaluating outside
+the range would answer a question nobody asked, at parameter values that may not
+even be buildable. And its first step is the bracket width, so a flip narrower than
+that is stepped over.
+
+**It earns its keep on the first geometry it was pointed at.** Bisecting the shipped
+Paul trap's ejection amplitude converges cleanly onto 673.9 V — and the walk then
+finds the figure crossing back at **610.9 V**, sixty volts inside the region. That is
+a real nonlinear resonance band, 605–614 V wide, which survives a mesh doubling and a
+hold doubling; see `device-templates.md`. The bisection reported nothing unusual and
+structurally could not have.
+
+**Where this came from.** The same trap, whose ejection boundary at sixty RF cycles
+is not a boundary at all but a ragged strip — confined at 674 V, lost at
+676 and 678, confined again at 680, lost at 682, confined at 684. Bisection lands
+anywhere in that strip depending on the path it took, which is exactly why two runs
+over slightly different brackets gave 680.7 V and 694.4 V for the same geometry.
+The strip is the finite hold, not the design: the growth rate goes to zero at the
+stability edge, so whether a marginally unstable ion reaches an electrode inside
+the hold is a property of the hold. At two hundred cycles the same scan is a clean
+step between 672 and 674 V. **A boundary quoted without its observation window is
+not quoted.**
+
 ## Measured: the low-mass cut-off on solved round rods
 
 | | |

@@ -237,6 +237,15 @@ Python objectives will register into the same place when extensions land.
 | `turnAroundTime` | ns | The part of that width imposed before the ion left, by the source temperature |
 | `emittance` | µm | Phase-space area of the arriving packet, wider transverse plane |
 | `normalisedEmittance` | µm | The same area against transverse momentum, so acceleration does not change it |
+| `confined` | 1 | Fraction still inside when the run ends: struck nothing, reached no detector. What a trap is measured by |
+| `transitTime` | µs | Mean time for a diffusive run's density to reach the collecting boundary. What a density has instead of a flight time |
+
+**`confined` is the one that is not an arrival**, and it exists because every other
+figure here counts ions that got somewhere. A trapped ion by definition never gets
+anywhere, so a transmission reads zero for a trap that works and zero again for one
+that lost everything. A model measured this way puts its detector *outside* the
+trap, which keeps the three outcomes distinct: **struck an electrode, escaped past
+the detector, still held**.
 
 A **micrometre is a millimetre-milliradian**. A radian is dimensionless, so an
 emittance has the dimension of length, and 1 mm·mrad is exactly 1e-6 m. The unit

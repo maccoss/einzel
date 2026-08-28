@@ -18,15 +18,19 @@ physics or the abstraction is wrong, and almost always the second.
 | `quadrupole-rf` | The same four rods, driven: a mass filter |
 | `ion-funnel` | A tapering stack of RF rings with a DC gradient, written as one ring repeated |
 | `segmented-quadrupole` | Three axial sections at their own working points, solved in three dimensions |
+| `travelling-wave-guide` | A ring stack whose drive phase ramps along it, so the potential travels |
+| `multipole-guide` | Any even order — quadrupole, hexapole, octupole, and beyond — from one file |
+| `paul-trap` | A driven ring between two earthed endcaps: the three-dimensional quadrupole trap, solved axisymmetrically |
 
-They **share no code at all**. All three name the same electrode primitives in
+They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
 DeviceTemplates.Names();
-// ["einzel-lens", "ion-funnel", "planar-mirror-pair", "quadrupole",
-//  "quadrupole-rf", "rectilinear-trap", "segmented-quadrupole"]
+// ["einzel-lens", "ion-funnel", "multipole-guide", "paul-trap",
+//  "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap",
+//  "segmented-quadrupole", "travelling-wave-guide"]
 DeviceTemplates.Read("quadrupole");
 ```
 
@@ -621,3 +625,149 @@ because the overlap is not the problem; and an **edge profile is skipped**, beca
 a boundary profile touching an interior electrode is a different question and a
 check that guessed would sometimes refuse a legitimate geometry.
 
+## `paul-trap` — the 3-D quadrupole trap, and where its cut-off really is
+
+A driven ring with an earthed endcap either side of it, on the axis of rotation.
+**Axisymmetric, so it is a half-plane solve rather than a volume** — SYM-1 is what
+makes a three-dimensional trap cost what a two-dimensional cross-section costs.
+Three electrodes, and because the endcaps are earthed there is only one thing that
+moves: **one basis solve**, 10 cycles at a convergence factor of 0.0587.
+
+The classical geometry has `r0² = 2z0²`, which collapses
+
+```
+q_z = 8 z e V / (m Ω² (r0² + 2 z0²))    →    4 z e V / (m Ω² r0²)
+```
+
+— the same volts per unit `q` as a linear quadrupole of the same inscribed radius,
+so the two are directly comparable and the amplitude is arithmetic. `z0` is
+*derived* from `r0` rather than declared, because departing from that ratio is a
+different device rather than a different size.
+
+### A trap needs a figure of merit that is not an arrival
+
+Everything else here is measured by ions arriving somewhere. **A trapped ion never
+arrives anywhere**, so a transmission reads zero for a trap that works and zero
+again for one that lost everything, and no figure that counts arrivals can tell
+those apart. `confined` is the complement — the fraction still inside when the hold
+ends, having struck nothing and passed no detector — and the model puts its
+detector *outside* the trap so the three outcomes stay distinct: **struck, escaped,
+held**.
+
+### Measured
+
+| | |
+| --- | --- |
+| Basis solves for three electrodes | **1** |
+| Ejection boundary, 0.3 mm launch, 200 cycles, 128 × 64 | **672–674 V**, q_z = 0.8218–0.8236 |
+| The same at 256 × 128 | **672–674 V** — mesh-converged |
+| The same at 800 cycles | **674 V** — hold-converged |
+| Tabulated Mathieu boundary, a = 0 line | q_z = 0.90804 |
+| Where the ion is lost | an **endcap**, at exactly ±z0 |
+| Effective r0 from the solved field | **3.8195 mm** against 4.0000 declared |
+| Boundary a scale factor alone would predict | **677.5 V**, q_z = 0.828 |
+
+**Most of the 9.4 per cent shortfall is one number, and the rest is not.** These
+electrodes are flat annuli, and a flat annulus at the nominal radius lies *inside*
+the hyperbola sharing its vertex everywhere except at that vertex — at z = 2.23 mm
+the ring hyperbola would be at r = 5.09 mm and this ring is at 4.00; at r = 3.4 mm
+the endcap hyperbola would be at z = 3.71 mm and this endcap is at 2.83. Metal
+closer in means a stronger field at the centre than `r0` implies, which is a smaller
+effective radius, which is a larger `q` per volt, which is ejection at a **lower**
+amplitude. That accounts for the sign and for 0.828 of the 0.908.
+
+### But the boundary is amplitude-dependent, and an ideal one cannot be
+
+| launch offset | hold-converged edge | q_z |
+| --- | --- | --- |
+| 0.1 mm | 700–704 V | 0.855–0.860 |
+| 0.3 mm | 674 V | **0.8236** |
+| 0.6 mm | ~520 V | 0.635 |
+
+The Mathieu equation is linear, so a trajectory scaled by a constant is another
+trajectory and **an ideal trap's stability boundary cannot depend on how far off
+centre the ion started**. This one depends on it strongly. That is the anharmonicity
+in the table above doing its work, and it is *not* the finite hold masquerading as
+physics — the 0.1 mm edge moves only 704 → 700 V between 200 and 800 cycles, and
+the 0.3 mm edge does not move at all.
+
+So the scale factor is not the whole account: 0.828 matches the 0.3 mm figure and
+not the 0.1 mm one, which makes that agreement **partly coincidence**. The reason
+there is no clean small-amplitude limit to compare against is structural — a
+measurement that only registers a loss when the ion *reaches* z0 is never a
+small-amplitude measurement, whatever it was launched at. The launch offset sets how
+much of the journey is spent in the anharmonic region, not whether any of it is.
+
+### A resonance band inside the stable region, found by the confirmation walk
+
+At a 0.3 mm launch there is a narrow band of loss at **605–614 V** (q_z =
+0.739–0.750), sixty volts *below* the main edge and well inside what the Mathieu
+chart calls stable. Every control says it is real:
+
+| control | result |
+| --- | --- |
+| 256 × 128 grid | identical band, 605–614 V |
+| 400 cycles | identical band |
+| 60 cycles | **gone** — the growth is slow and secular, not exponential |
+| 0.1 mm launch | **gone** — so it is driven by the field's higher multipoles |
+
+That combination is the signature of a **nonlinear resonance**: a linear instability
+would be exponential (visible at 60 cycles) and amplitude-independent (visible at
+0.1 mm), and this is neither. **Which** resonance is not established — β_z there is
+0.615, which lands on no `n_z β_z + n_r β_r = 2` for any multipole order up to six —
+and settling that needs a frequency analysis of the secular motion rather than a
+loss test. Recorded as measured rather than explained.
+
+It is worth saying how it was found: **the confirmation walk in `einzel boundary`
+turned it up on its first real use**, from a search whose bisection had converged
+cleanly onto the main edge sixty volts above. The bisection itself reported nothing
+unusual, and could not have — see `optimisation.md`.
+
+The effective radius is read off the field itself, from `dEz/dz = 2V/r0²`, and the
+same samples give the anharmonicity for free. `dEz/dz ÷ dEr/dr` is exactly −2
+wherever the quadratic term dominates — that is Laplace's equation in cylindrical
+coordinates — and here it drifts from −1.9867 to −1.9461 as the sampling radius
+doubles from 0.4 to 0.8 mm. **A hyperbolic trap would hold −2 everywhere by
+construction**, so a departure growing with radius is the higher multipole flat
+electrodes buy. That growth is what the test asserts, rather than a blanket
+tolerance: a departure that did *not* grow with radius would be discretisation or a
+bug.
+
+### The finding worth keeping: a boundary needs its observation window
+
+At **60 RF cycles** the ejection boundary is not a boundary. It is a ragged strip:
+
+```
+   V   672 674 676 678 680 682 684 686 688 690 692
+held     1   1   0   0   1   0   1   0   1   0   0
+```
+
+At **200 cycles** the same scan is a clean step between 672 and 674 with no
+survivors above it. Nothing about the design changed. The growth rate goes to zero
+at the stability edge, so whether a marginally unstable ion reaches an electrode
+inside the hold is a property of *the hold*, not of the trap.
+
+Two consequences. The template holds for 200 cycles by default and says why. And
+**`einzel boundary` now walks outward from its converged bracket** looking for the
+predicate flipping back — because bisection on the 60-cycle scan lands anywhere in
+that strip depending on the path it took, and every step of that path is consistent
+with a clean edge. Two runs over slightly different brackets gave 680.7 V and
+694.4 V for the same geometry, which is how the fraying was noticed at all. See
+`optimisation.md`.
+
+### What it cost below the library: one line, and it was a real gap
+
+`ModelValidator` refused the trap outright — *"the accelerating potential may only
+be zero when a field can accelerate the ion, and this model declares none that
+can."* The check asked whether any electrode held a non-zero **DC** potential. A
+Paul trap holds zero volts of DC on every electrode and all of its potential as
+drive, so the archetypal start-at-rest device was declared incapable of moving an
+ion. Now it asks about the drive as well, in both two and three dimensions — the
+3-D arm had never inspected anything at all and passed by default, which is the
+same bug wearing the opposite mask.
+
+Same shape as two defects already recorded: `einzel solve` reporting the DC pattern
+for a driven geometry, and the 3-D verb reporting `converged: true` for a field it
+never touched. **Reading only the DC of a driven electrode is a recurring mistake
+here**, and it is worth grepping for the next time something driven behaves as
+though it were earthed.

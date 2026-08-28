@@ -550,6 +550,38 @@ And an expectation that is *arithmetic the engine had no part in* catches a clas
 of thing that self-consistency cannot. That is the whole argument for EX-1's
 corpus, and it paid for itself on the second batch.
 
+## Reading the DC of an electrode that holds none, three times
+
+A basis-superposed field is linear in the applied potentials, so an electrode's
+excitation is *two* numbers — a DC potential and a drive amplitude — and code that
+asks only about the first is asking about the half that is often zero. That has now
+been the bug three separate times, in three unrelated places:
+
+- **`einzel solve`, 3-D.** It iterated `Solve` elements and `continue`d past every
+  `Solve3D`, then answered `Elements.All(e => e.Converged)` — vacuously true over an
+  empty list. `converged: true`, exit 0, for a field it never touched.
+- **`einzel solve`, 2-D.** Fixed in three dimensions and still wrong in two: it
+  built one mask from the electrodes' DC potentials. For the shipped `quadrupole-rf`,
+  whose every electrode holds zero DC, that was a solve of an earthed box — **peak
+  potential 0 V, zero cycles, converged, exit 0.**
+- **`ModelValidator.CanDoWork`.** A source at rest is legal exactly when some field
+  could accelerate it, and the test was `Electrodes.Any(e => e.Potential != 0)`. So
+  the **Paul trap**, the archetypal device whose ions sit still until the RF moves
+  them, was refused as a model in which nothing could move an ion. The 3-D arm of
+  the same switch fell through to `_ => true` and inspected nothing at all — the
+  same bug wearing the opposite mask, one over-refusing and one under-refusing.
+
+**Why it keeps happening.** `e.Potential` is the obvious spelling, it is correct for
+every DC device, and every failure is silent and confident: an earthed box solves
+fine, and a refusal names a plausible-sounding constraint. Nothing about the
+symptom points at the drive.
+
+The generalisable rule is the one already recorded under *the evidence was computed
+and then thrown away*: **when a quantity has two parts, the shortest spelling must
+not be the one that silently drops a part.** `IsDriven` exists on both electrode
+records precisely so the complete question has a short name. It is worth grepping
+for `.Potential` the next time something driven behaves as though it were earthed.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
@@ -573,3 +605,8 @@ actually caught them were:
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.
+- **Running the same measurement twice, slightly differently.** Two boundary
+  searches over brackets differing only in their lower end returned 680.7 V and
+  694.4 V for the same trap. Either alone reads as a measurement; the pair says the
+  predicate is frayed, which is what sent the observation window from 60 cycles to
+  200 and put a confirmation walk into `BoundarySearch`.

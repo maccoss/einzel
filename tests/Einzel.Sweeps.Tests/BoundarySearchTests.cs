@@ -114,18 +114,108 @@ public sealed class BoundarySearchTests(ITestOutputHelper output)
     {
         // The whole reason this exists beside a scan. One part in five hundred on a
         // grid costs 501 evaluations; halving the bracket costs log2(500) plus the
-        // two that establish it.
+        // two that establish it, and the confirmation walk costs another log2 either
+        // way. Three logarithms is still not a linear number.
         var result = BoundarySearch.Run(Model(), Bracket(), Step, 0.5);
 
         var grid = (int)Math.Ceiling(1.0 / BoundarySearch.AccuracyTarget) + 1;
 
-        output.WriteLine($"bisection {result.Evaluations} evaluations, grid would be {grid}");
+        output.WriteLine($"bisection {result.Evaluations - result.Probes} evaluations");
+        output.WriteLine($"confirm   {result.Probes} probes");
+        output.WriteLine($"total     {result.Evaluations}, grid would be {grid}");
 
         Assert.True(
-            result.Evaluations <= 14,
-            $"{result.Evaluations} evaluations to halve a bracket 9 times is too many");
+            result.Evaluations - result.Probes <= 14,
+            $"{result.Evaluations - result.Probes} evaluations to halve a bracket 9 times is too many");
 
         Assert.True(result.Evaluations < grid / 10);
+    }
+
+    [Fact]
+    public void ACleanEdgeIsConfirmedRatherThanAssumed()
+    {
+        var result = BoundarySearch.Run(Model(), Bracket(), Step, 0.5);
+
+        output.WriteLine($"probes {result.Probes}, second crossing {result.SecondCrossingSi?.ToString() ?? "none"}");
+
+        Assert.Null(result.SecondCrossingSi);
+        Assert.True(result.Probes > 0, "a converged bracket must be walked");
+
+        // REG-2's rule: a check made and passed has to be visible, or a reader
+        // cannot tell it from a check never made.
+        Assert.Contains(result.Warnings, w => w.Code == "boundary.single-crossing-checked");
+        Assert.DoesNotContain(result.Warnings, w => w.Code == "boundary.multiple-crossings");
+    }
+
+    /// <summary>
+    /// A cut-off at 137 mm with an island of survivors at 150 to 156 mm past it.
+    /// </summary>
+    /// <remarks>
+    /// Not a contrived shape. It is what a stability boundary measured through a
+    /// finite observation window looks like: the growth rate goes to zero at the
+    /// edge, so whether an ion reaches an electrode inside the hold time stops being
+    /// a property of the design and starts being a property of the hold, and the
+    /// clean step frays into a strip of survivors. The shipped Paul trap does
+    /// exactly this at sixty RF cycles and stops at two hundred.
+    /// </remarks>
+    private static double? Frayed(CompiledModel model)
+    {
+        var alpha = model.Parameters["alpha"].In("mm");
+
+        return alpha < Edge || alpha is >= 150.0 and <= 156.0 ? 1.0 : 0.0;
+    }
+
+    [Fact]
+    public void ASecondCrossingIsFoundRatherThanBisectedPast()
+    {
+        // The failure this exists for. Bisection converges onto 137 mm and every
+        // step of the path is consistent with a clean cut-off - a frayed edge and a
+        // clean one produce identical histories, so the search can never contradict
+        // its own assumption. Only a walk outward from the converged bracket can.
+        var result = BoundarySearch.Run(Model(), Bracket(), Frayed, 0.5);
+
+        output.WriteLine($"edge   {Millimetres(result.Boundary):F4} mm");
+        output.WriteLine($"probes {result.Probes}");
+        output.WriteLine($"again  {result.SecondCrossingSi * 1e3:F4} mm");
+
+        // It did find an edge at 137, correctly and to ACC-6.
+        Assert.Equal(Edge, Millimetres(result.Boundary), 280.0 * BoundarySearch.AccuracyTarget);
+
+        // And it says there is another crossing beyond it, so that number is one
+        // edge of several rather than the edge of the region.
+        Assert.NotNull(result.SecondCrossingSi);
+        Assert.InRange(result.SecondCrossingSi!.Value * 1e3, 150.0, 156.0);
+
+        var warning = Assert.Single(
+            result.Warnings, w => w.Code == "boundary.multiple-crossings");
+
+        Assert.Equal(Core.Results.WarningSeverity.ValidityViolation, warning.Severity);
+        Assert.DoesNotContain(result.Warnings, w => w.Code == "boundary.single-crossing-checked");
+    }
+
+    [Fact]
+    public void TheWalkStaysInsideTheDeclaredRange()
+    {
+        // A bracket that spans only one edge of a band cannot be told from a cut-off
+        // by any amount of walking, because the other edge is not in the range the
+        // study declared - and evaluating outside it would be answering a question
+        // nobody asked, at parameter values that may not even be buildable. So the
+        // honest answer is "no second crossing here", and the warning says
+        // "consistent with" rather than "proof of".
+        var axis = new ScanAxis("alpha", Quantity.From(150.0, "mm"), Quantity.From(300.0, "mm"), 2);
+
+        var result = BoundarySearch.Run(Model(), axis, Frayed, 0.5);
+
+        output.WriteLine($"edge   {Millimetres(result.Boundary):F4} mm");
+        output.WriteLine($"probes {result.Probes}");
+
+        Assert.Equal(156.0, Millimetres(result.Boundary), 150.0 * BoundarySearch.AccuracyTarget);
+        Assert.Null(result.SecondCrossingSi);
+
+        var warning = Assert.Single(
+            result.Warnings, w => w.Code == "boundary.single-crossing-checked");
+
+        Assert.Contains("not proof", warning.Message, StringComparison.Ordinal);
     }
 
     [Fact]

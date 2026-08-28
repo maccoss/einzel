@@ -1,0 +1,287 @@
+{
+  "schemaVersion": "0.3",
+  "name": "paul-trap-ejected",
+  "description": "Ejected. q_z = 1.20, above every boundary in play, so the ion leaves - and it leaves axially, on an endcap at exactly z0, because q_r is half q_z and the axial direction goes unstable first. Run this beside its held twin: together they bracket the published cut-off, which is a stronger statement than either alone. The amplitude is 982.00 V, which is q_z = 1.20 by arithmetic alone. A three-dimensional quadrupole ion trap - a driven ring between two grounded endcaps, on the axis of rotation - solved axisymmetrically. The classical geometry has r0^2 = 2 z0^2, which collapses q_z = 8 z e V / (m Omega^2 (r0^2 + 2 z0^2)) to 4 z e V / (m Omega^2 r0^2): the same volts per unit q as a linear quadrupole of the same inscribed radius, so the amplitude is arithmetic and can be checked before anything is simulated. The published boundary on the a = 0 line is q_z = 0.90804.\n\nMeasured by 'confined' rather than by a transmission, and that is the point of the pair: a trapped ion never arrives anywhere, so an arrival count reads zero for a trap that works and zero again for one that lost everything. The detector sits outside the trap, so the three outcomes stay distinct - struck an electrode, escaped past the detector, or still held when the hold ends.\n\nWhat the pair does and does not show. It brackets the tabulated boundary from both sides with margin, which is a statement about the published number rather than about this engine. It does not locate the boundary: these electrodes are flat annuli rather than hyperboloids, and a flat annulus at the nominal radius lies inside the hyperbola sharing its vertex everywhere else, so the field at the centre is stronger than r0 implies. The measured effective radius is 3.82 mm against a declared 4.00, and the ejection edge sits at q_z = 0.822 rather than 0.908 - which is that ratio squared, to under a per cent. Bracketing wide is deliberate: an example that pinned the edge would be pinning this geometry's edge and calling it Mathieu's.",
+  "parameters": {
+    "inscribedRadius": {
+      "value": 4,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 50,
+      "description": "r0, the radius of the ring's inner surface. Every Mathieu parameter here is quoted against it."
+    },
+    "endcapHalfSpacing": {
+      "expression": "inscribedRadius / sqrt(2)",
+      "unit": "mm",
+      "description": "z0, half the distance between the endcaps. Derived, because the classical trap has r0^2 = 2 z0^2 and departing from that is a different device rather than a different size. Change inscribedRadius and the whole trap scales."
+    },
+    "rfAmplitude": {
+      "value": 982.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "Drive amplitude on the ring, zero to peak. The endcaps are grounded, which is the usual arrangement and is what makes the trap one basis solve."
+    },
+    "driveFrequency": {
+      "value": 1,
+      "unit": "MHz",
+      "minimum": 0.05,
+      "maximum": 20,
+      "description": "Drive frequency."
+    },
+    "electrodeGap": {
+      "value": 0.6,
+      "unit": "mm",
+      "minimum": 0.05,
+      "maximum": 5,
+      "description": "Clearance between the ring and each endcap. A real trap needs one for the same reason: they are at different potentials and must not touch."
+    },
+    "ringThickness": {
+      "value": 4,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 40,
+      "description": "How far the ring extends radially beyond r0."
+    },
+    "endcapThickness": {
+      "value": 1.5,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 20,
+      "description": "Axial thickness of each endcap."
+    },
+    "launchOffset": {
+      "value": 0.3,
+      "unit": "mm",
+      "minimum": 0,
+      "maximum": 20,
+      "description": "How far off centre the ion starts, applied along the axis and across it at once. Both are needed and for different reasons: an ion at the exact centre feels no field at all, and an ion offset only radially sits at the axial null forever, so the axial instability - which is the one that ejects first, since q_r is half q_z - would never be excited and the trap would look stable at any amplitude."
+    },
+    "cellsPerRadius": {
+      "value": 20,
+      "unit": "1",
+      "minimum": 4,
+      "maximum": 80,
+      "description": "Mesh density, in cells across the inscribed radius. The knob a convergence study turns."
+    },
+    "cycles": {
+      "value": 200,
+      "unit": "1",
+      "minimum": 5,
+      "maximum": 2000,
+      "description": "How many RF cycles to hold for. Not a convenience: the growth rate goes to zero at the stability edge, so a marginally unstable ion needs a long time to reach an electrode and a window shorter than that reports the window rather than the design. Measured on this geometry - at 60 cycles the ejection boundary is a ragged strip of survivors from 674 to 690 V, and at 200 it is a clean step between 672 and 674."
+    },
+    "ringInnerRadius": {
+      "expression": "inscribedRadius",
+      "unit": "mm"
+    },
+    "ringOuterRadius": {
+      "expression": "inscribedRadius + ringThickness",
+      "unit": "mm"
+    },
+    "ringHalfLength": {
+      "expression": "endcapHalfSpacing - electrodeGap",
+      "unit": "mm",
+      "description": "The ring stops short of the endcaps by the gap, so the two never occupy the same space - which the validator now refuses outright."
+    },
+    "endcapOuterRadius": {
+      "expression": "inscribedRadius - electrodeGap",
+      "unit": "mm",
+      "description": "The endcaps stop short of the ring radially, again by the gap."
+    },
+    "domainHalfLength": {
+      "expression": "endcapHalfSpacing + endcapThickness + inscribedRadius",
+      "unit": "mm",
+      "description": "Half the axial extent of the solve, with room beyond the endcaps for the field to decay."
+    },
+    "cellSize": {
+      "expression": "inscribedRadius / cellsPerRadius",
+      "unit": "mm"
+    },
+    "holdTime": {
+      "expression": "cycles / driveFrequency",
+      "unit": "s",
+      "description": "Derived from the cycle count, so changing the drive frequency does not silently change how long the trap is held."
+    },
+    "escapeDistance": {
+      "expression": "domainHalfLength",
+      "unit": "mm",
+      "description": "Where the detector sits: outside the trap, so reaching it means having escaped. That is what makes the three outcomes distinct - struck an electrode, escaped, or still held."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "launchOffset",
+        "launchOffset",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "temperature": {
+        "value": 300,
+        "unit": "K"
+      },
+      "seed": 20240101
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "drive": {
+          "frequency": {
+            "expression": "driveFrequency",
+            "unit": "MHz"
+          },
+          "waveform": "sinusoid"
+        },
+        "minX": {
+          "expression": "-domainHalfLength",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainHalfLength",
+          "unit": "mm"
+        },
+        "minY": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "ringOuterRadius",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "ring",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-ringHalfLength",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "ringHalfLength",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "ringInnerRadius",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "ringOuterRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "endcapEntrance",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-endcapHalfSpacing - endcapThickness",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "-endcapHalfSpacing",
+              "unit": "mm"
+            },
+            "minY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "endcapOuterRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "endcapExit",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "endcapHalfSpacing",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "endcapHalfSpacing + endcapThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "endcapOuterRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "escapeDistance",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-09,
+    "maximumFlightTime": {
+      "expression": "holdTime",
+      "unit": "s"
+    }
+  }
+}

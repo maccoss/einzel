@@ -254,9 +254,18 @@ public static class ModelValidator
         CompiledFieldKind.HalfSpaceUniform => field.PotentialGradientSi != 0.0,
 
         // A solve with every electrode at the same potential has no gradient
-        // anywhere, and grounded boundaries make that potential zero.
+        // anywhere, and grounded boundaries make that potential zero. The drive
+        // has to count as well as the DC: a Paul trap and an RF-only mass filter
+        // both hold zero volts of DC on every electrode and all of their potential
+        // as drive, and asking only about the DC declares the archetypal
+        // start-at-rest device incapable of moving an ion.
         CompiledFieldKind.Solved2D =>
-            field.Solve is { } solve && solve.Electrodes.Any(e => e.Potential != 0.0),
+            field.Solve is { } solve
+            && solve.Electrodes.Any(e => e.Potential != 0.0 || e.DriveAmplitude != 0.0),
+
+        CompiledFieldKind.Solved3D =>
+            field.Solve3D is { } volume
+            && volume.Electrodes.Any(e => e.Potential != 0.0 || e.DriveAmplitude != 0.0),
 
         _ => true,
     };

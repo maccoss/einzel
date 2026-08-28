@@ -397,6 +397,19 @@ public static class Program
                 $"{"resolved",-14} 1 part in {1.0 / Math.Max(outcome.ResolvedFraction, 1e-12):F0} of "
                 + $"the range in {outcome.Evaluations} evaluations; ACC-6 asks for 1 in 500, and a "
                 + $"grid would cost 501"));
+
+            // Whether or not the check found anything. A reader who sees the line
+            // knows the single-crossing assumption was tested; one who sees nothing
+            // cannot tell that from its never having been tested (REG-2).
+            Console.Out.WriteLine(outcome.SecondCrossingSi is { } flip
+                ? string.Create(
+                    invariant,
+                    $"{"but",-14} the figure crosses back at {flip:G8} SI, so this is one edge of "
+                    + $"several rather than the edge of the region ({outcome.Probes} probe(s))")
+                : string.Create(
+                    invariant,
+                    $"{"confirmed",-14} {outcome.Probes} probe(s) outside the bracket found no second "
+                    + $"crossing"));
         }
 
         Warn(outcome.Warnings);
@@ -1709,21 +1722,33 @@ public static class Program
     /// Walks up from a model file looking for a project root, so that
     /// <c>einzel run models/x.json</c> works from anywhere inside a project.
     /// </summary>
+    /// <summary>
+    /// The project a file belongs to: the nearest ancestor holding a
+    /// <c>models</c> directory, or failing that the file's own directory.
+    /// </summary>
+    /// <remarks>
+    /// The fallback used to be the working directory, which put results wherever
+    /// the caller happened to be standing rather than anywhere near the thing they
+    /// ran. A study kept in a scratch folder and run from a source tree wrote
+    /// <c>results/</c> into the source tree and said only "wrote results\x.json",
+    /// which is both surprising and hard to trace back. A file's own directory is
+    /// the closest thing to a project when it is not in one - PRJ-1's unit of work
+    /// is a directory, and this picks the directory that at least contains the
+    /// input.
+    /// </remarks>
     private static string InferProjectRoot(string modelPath)
     {
         var directory = new FileInfo(modelPath).Directory;
 
-        while (directory is not null)
+        for (var at = directory; at is not null; at = at.Parent)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "models")))
+            if (Directory.Exists(Path.Combine(at.FullName, "models")))
             {
-                return directory.FullName;
+                return at.FullName;
             }
-
-            directory = directory.Parent;
         }
 
-        return Directory.GetCurrentDirectory();
+        return directory?.FullName ?? Directory.GetCurrentDirectory();
     }
 
     private const string Usage =

@@ -32,6 +32,15 @@ public enum BoundarySense
 /// written in.
 /// </param>
 /// <param name="MetAccuracyTarget">Whether it reached the requested resolution.</param>
+/// <param name="Probes">
+/// How many points the confirmation walk tested outside the final bracket, looking
+/// for a second crossing bisection cannot see.
+/// </param>
+/// <param name="SecondCrossingSi">
+/// Where the walk found the predicate flip back, or null if it never did. Not null
+/// means the located edge is one of several, so the bracket is a claim about this
+/// bracket rather than about the region.
+/// </param>
 /// <param name="Warnings">What the search has to say about its own validity.</param>
 public sealed record BoundaryResult(
     Measured Boundary,
@@ -40,6 +49,8 @@ public sealed record BoundaryResult(
     int Evaluations,
     double ResolvedFraction,
     bool MetAccuracyTarget,
+    int Probes,
+    double? SecondCrossingSi,
     IReadOnlyList<ValidityWarning> Warnings);
 
 /// <summary>
@@ -68,6 +79,18 @@ public sealed record BoundaryResult(
 /// each edge separately - which is a statement about how to use this, and is why
 /// the bracket is declared rather than searched for. A bracket whose ends agree is
 /// refused rather than guessed at, naming both ends and what each gave.
+/// </para>
+/// <para>
+/// <strong>The assumption is checked rather than assumed.</strong> Every step of a
+/// bisection is consistent with a single crossing by construction, so the search
+/// path is no evidence at all - a band and a cut-off produce identical histories.
+/// What separates them is a walk outward from the final bracket, at geometrically
+/// growing offsets, asking whether the predicate ever flips back. It costs about
+/// <c>log2</c> of the range over the bracket width, roughly doubling the search,
+/// against a grid that would cost five hundred. Finding a flip is proof; not
+/// finding one is not, and the warning says so with the point count either way -
+/// REG-2's rule that a check made and passed must be visible, or a reader cannot
+/// tell it from a check never made.
 /// </para>
 /// </remarks>
 public static class BoundarySearch
@@ -175,6 +198,32 @@ public static class BoundarySearch
         var resolved = width / span;
         var met = resolved <= resolution;
 
+        var (probes, secondCrossing) = Confirm(Inside, lo, hi, axis, width);
+
+        if (secondCrossing is { } flip)
+        {
+            warnings.Add(new ValidityWarning(
+                "boundary.multiple-crossings",
+                $"the figure crosses the threshold again at {axis.Parameter} = {flip:G6} SI, outside "
+                + "the bracket this search converged on. Bisection assumes one crossing and its own "
+                + "path can never contradict that, so the located edge is one of several rather than "
+                + "the edge of the region. A stability band has two, and a boundary softened by a "
+                + "finite observation window - a hold time, a flight-time ceiling - has a ragged "
+                + $"strip of them. Run 'einzel scan' across {axis.Parameter} to see the shape, and "
+                + "bracket one edge at a time",
+                WarningSeverity.ValidityViolation));
+        }
+        else if (probes > 0)
+        {
+            warnings.Add(new ValidityWarning(
+                "boundary.single-crossing-checked",
+                $"{probes} point(s) outside the bracket, at offsets growing geometrically to the "
+                + "declared ends, all agreed with a single crossing. That is consistent with a clean "
+                + "edge and is not proof of one: a flip narrower than the bracket would be stepped "
+                + "over",
+                WarningSeverity.Provenance));
+        }
+
         if (!met)
         {
             warnings.Add(new ValidityWarning(
@@ -218,7 +267,64 @@ public static class BoundarySearch
             evaluations,
             resolved,
             met,
+            probes,
+            secondCrossing,
             warnings);
+    }
+
+    /// <summary>
+    /// Walks outward from the converged bracket looking for the predicate flipping
+    /// back, which is the one thing bisection structurally cannot see.
+    /// </summary>
+    /// <remarks>
+    /// Geometric offsets rather than a grid, for the same reason the search itself
+    /// is a bisection: doubling reaches the end of the declared range in about nine
+    /// steps either way, where a grid fine enough to be worth running would cost
+    /// hundreds. Both directions are walked - a second crossing on the inside of the
+    /// located edge means the region is not connected, which matters as much as one
+    /// on the outside.
+    /// </remarks>
+    private static (int Probes, double? SecondCrossing) Confirm(
+        Func<double, bool> inside, double lo, double hi, ScanAxis axis, double width)
+    {
+        if (!(width > 0.0))
+        {
+            return (0, null);
+        }
+
+        var lowEnd = Math.Min(axis.From.SiValue, axis.To.SiValue);
+        var highEnd = Math.Max(axis.From.SiValue, axis.To.SiValue);
+
+        var probes = 0;
+
+        // `lo` is the inside end and `hi` the outside one, in whichever physical
+        // direction that happens to be, so the walk is expressed in the search's own
+        // orientation and works for a low-mass cut-off and a high-mass one without
+        // knowing which it has.
+        var outward = Math.Sign(hi - lo);
+
+        foreach (var (from, direction, expected) in
+                 new[] { (hi, outward, false), (lo, -outward, true) })
+        {
+            for (var step = width; ; step *= 2.0)
+            {
+                var at = from + (direction * step);
+
+                if (at < lowEnd || at > highEnd)
+                {
+                    break;
+                }
+
+                probes++;
+
+                if (inside(at) != expected)
+                {
+                    return (probes, at);
+                }
+            }
+        }
+
+        return (probes, null);
     }
 
     private static double? Figure(
