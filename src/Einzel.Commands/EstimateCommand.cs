@@ -324,7 +324,17 @@ public static class EstimateCommand
             }
         }
 
-        var (step, limit) = Transport.Diffusion.DriftDiffusion.StepFor(grid, diffusion, fastestDrift);
+        // The same weight the run will use, from the same function, so the estimate
+        // and the run cannot disagree about what a step is. On the axis of a
+        // cylindrical solve it is four, and an estimate that assumed a plane would
+        // report a quarter of the steps.
+        var cylindrical = model.Fields.Any(
+            f => f.Solve?.Symmetry == Core.Model.SolveSymmetry.Cylindrical);
+
+        var weight = new Transport.Diffusion.DensityField(grid, cylindrical).LargestRadialWeight();
+
+        var (step, limit) = Transport.Diffusion.DriftDiffusion.StepFor(
+            grid, diffusion, fastestDrift, weight);
 
         var steps = Math.Max(1.0, Math.Ceiling(model.MaximumFlightTimeSi / step));
         var cells = steps * grid.NodeCount;

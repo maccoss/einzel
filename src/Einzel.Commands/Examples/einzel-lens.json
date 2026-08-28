@@ -1,0 +1,161 @@
+{
+  "schemaVersion": "0.3",
+  "name": "einzel-lens-energy",
+  "description": "Three coaxial tubes with the centre one at 500 V - the device this platform is named after, and a unipotential lens: an ion enters and leaves at the same energy however strongly the middle electrode focuses it. What is asserted is exactly that, because it is an invariant rather than a number this engine chose: total energy is conserved across a path that crosses a strong field twice. It also converges for either sign of the centre voltage, which is the classic non-obvious property of an einzel lens and the one a merely plausible field fails.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        -60,
+        1,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 1,
+      "unit": "kV"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "minX": {
+          "value": -60,
+          "unit": "mm"
+        },
+        "maxX": {
+          "value": 60,
+          "unit": "mm"
+        },
+        "minY": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "maxY": {
+          "value": 20,
+          "unit": "mm"
+        },
+        "cellSize": {
+          "value": 0.5,
+          "unit": "mm"
+        },
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "entrance",
+            "shape": "rectangle",
+            "minX": {
+              "value": -40,
+              "unit": "mm"
+            },
+            "maxX": {
+              "value": -10,
+              "unit": "mm"
+            },
+            "minY": {
+              "value": 5,
+              "unit": "mm"
+            },
+            "maxY": {
+              "value": 8,
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "centre",
+            "shape": "rectangle",
+            "minX": {
+              "value": -7,
+              "unit": "mm"
+            },
+            "maxX": {
+              "value": 7,
+              "unit": "mm"
+            },
+            "minY": {
+              "value": 5,
+              "unit": "mm"
+            },
+            "maxY": {
+              "value": 8,
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 500,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "exit",
+            "shape": "rectangle",
+            "minX": {
+              "value": 10,
+              "unit": "mm"
+            },
+            "maxX": {
+              "value": 40,
+              "unit": "mm"
+            },
+            "minY": {
+              "value": 5,
+              "unit": "mm"
+            },
+            "maxY": {
+              "value": 8,
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        60.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-10,
+    "maximumFlightTime": {
+      "value": 200.0,
+      "unit": "us"
+    }
+  }
+}

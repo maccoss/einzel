@@ -1,0 +1,269 @@
+{
+  "schemaVersion": "0.5",
+  "name": "travelling-wave-guide",
+  "description": "A stacked-ring guide whose drive phase ramps along its length, so the potential is a wave that travels rather than a field that oscillates in place. An ion is caught in a well and carried at the wave speed, which is the signature of the device: transit stops depending on how fast the ion was injected. The decomposition is worth noticing - however many distinct phases the structure carries it reduces to two basis solves, because a sinusoid at any phase is a fixed combination of a sine and a cosine, and 96 rings that would otherwise need 21 supplies need two.",
+  "parameters": {
+    "boreRadius": {
+      "value": 2.0,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 20.0,
+      "description": "Inner radius of every ring. The bore the ions travel down."
+    },
+    "outerRadius": {
+      "value": 6.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 60.0,
+      "description": "Outer radius of the rings, which is also the grounded housing the solve is bounded by."
+    },
+    "ringThickness": {
+      "value": 0.4,
+      "unit": "mm",
+      "minimum": 0.05,
+      "maximum": 5.0,
+      "description": "Axial thickness of one ring. Thicker rings hold the wave better and leak less between them, at the cost of a shallower well on the axis."
+    },
+    "ringPitch": {
+      "value": 1.0,
+      "unit": "mm",
+      "minimum": 0.1,
+      "maximum": 10.0,
+      "description": "Centre-to-centre spacing along the axis. With ringsPerWave this sets the wavelength, and with the frequency it sets the wave velocity."
+    },
+    "ringCount": {
+      "value": 24.0,
+      "unit": "1",
+      "minimum": 4.0,
+      "maximum": 400.0,
+      "description": "How many rings the stack holds. The solve count does not grow with it: a sinusoidal drive resolves every phase into two fixed quadrature components, so the whole guide is two basis solves however long it is."
+    },
+    "ringsPerWave": {
+      "value": 6.0,
+      "unit": "1",
+      "minimum": 2.0,
+      "maximum": 64.0,
+      "description": "Rings per full cycle of drive phase, so the wavelength is ringsPerWave * ringPitch. Below about four the wave is too coarsely sampled to be a wave and the stack behaves as an alternating-phase guide instead."
+    },
+    "waveDirection": {
+      "value": 1.0,
+      "unit": "1",
+      "minimum": -1.0,
+      "maximum": 1.0,
+      "description": "Which way the wave runs: +1 downstream, towards the detector, and -1 back towards the source. It appears negated in the phase ramp because the drive is evaluated as a phase lead, w(f t + phi), so a phase that increases along the axis sends the crest upstream. That is a convention rather than a physical fact, and stating it here is cheaper than leaving a reader to discover it from a minus sign."
+    },
+    "rfAmplitude": {
+      "value": 60.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 500.0,
+      "description": "Zero-to-peak amplitude on every ring. The same on all of them; only the phase differs along the stack. This is the parameter that decides whether the guide works: it sets the depth of the travelling well, and the well has to be deep enough to hold an ion against its own velocity mismatch. Measured on this geometry, 20 V only pulls an ion part way towards the wave, 60 V carries it, and 120 V drives ions into the rings. The window is real and narrower than it looks."
+    },
+    "driveFrequency": {
+      "value": 0.5,
+      "unit": "MHz",
+      "minimum": 0.001,
+      "maximum": 50.0,
+      "description": "Drive frequency. With ringsPerWave and ringPitch this fixes the wave velocity, which is the quantity the device is designed around."
+    },
+    "entryGap": {
+      "value": 2.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 50.0,
+      "description": "Field-free space before the first ring, so an ion enters the stack rather than starting inside it."
+    },
+    "entryRadius": {
+      "value": 0.05,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 5.0,
+      "description": "How far off axis the ion starts. A travelling wave has deep wells along the axis and a weak radial restoring force, so the radial acceptance is small: about 0.1 mm on a 2 mm bore at 20 V. A real travelling-wave guide superimposes a fast alternating RF for radial confinement on top of the slow travelling wave, which this format cannot express because an electrode carries one drive tap rather than two."
+    },
+    "entryX": {
+      "expression": "entryGap * 0.5",
+      "unit": "mm",
+      "description": "Where the ion starts along the axis: inside the entry gap, before the first ring."
+    },
+    "waveSpeed": {
+      "expression": "waveDirection * ringsPerWave * ringPitch * driveFrequency",
+      "unit": "m/s",
+      "description": "How fast a crest travels, signed by waveDirection: one wavelength per cycle. This is the closed form a transit time is checked against, and it is derived rather than declared so it cannot disagree with the geometry that produces it."
+    },
+    "ionMass": {
+      "value": 500.0,
+      "unit": "Da",
+      "minimum": 1.0,
+      "maximum": 100000.0,
+      "description": "Mass of the ion being guided. Declared here as well as in the ion block so the injection energy can be derived from it: an ion has to enter at the wave speed to be carried, and a matching condition written as a number stops matching the moment anything it was computed from changes."
+    },
+    "unitCharge": {
+      "value": 1.0,
+      "unit": "e",
+      "description": "One elementary charge, so the matching condition below can be written dimensionally. The expression grammar has no unit literals, so a constant that carries a unit has to be a parameter."
+    },
+    "speedRatio": {
+      "value": 1.0,
+      "unit": "1",
+      "minimum": 0.05,
+      "maximum": 5.0,
+      "description": "Injection speed as a fraction of the wave speed. One is matched, which is the condition an ion would have to meet to be carried. Energy goes as the square of speed, so it enters the injection potential squared."
+    },
+    "injectionPotential": {
+      "expression": "0.5 * ionMass * waveSpeed * waveSpeed * speedRatio * speedRatio / unitCharge",
+      "unit": "V",
+      "description": "The potential that launches the ion at speedRatio times the wave speed, from m v^2 / 2q. Derived rather than declared, so changing the frequency, the pitch or the mass moves it and it cannot fall out of step with the wave it is matched to."
+    },
+    "stackLength": {
+      "expression": "ringCount * ringPitch",
+      "unit": "mm",
+      "description": "End to end along the rings."
+    },
+    "totalLength": {
+      "expression": "entryGap + ringCount * ringPitch + entryGap",
+      "unit": "mm",
+      "description": "The solve domain along the axis."
+    },
+    "detectorX": {
+      "expression": "entryGap + ringCount * ringPitch + entryGap",
+      "unit": "mm",
+      "description": "The far end of the domain, where an ion that traversed the guide arrives."
+    },
+    "cellSize": {
+      "value": 0.1,
+      "unit": "mm",
+      "minimum": 0.01,
+      "maximum": 1.0,
+      "description": "Grid spacing. The ring thickness and the gap between rings are the smallest features; check that both still span several cells before trusting a coarse run."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "expression": "ionMass",
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "entryX",
+        "entryRadius",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "injectionPotential",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "minX": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "minY": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "totalLength",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "outerRadius",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "boundaryIsDiscontinuous": false,
+        "drive": {
+          "frequency": {
+            "expression": "driveFrequency",
+            "unit": "MHz"
+          },
+          "waveform": "sinusoid"
+        },
+        "electrodes": [
+          {
+            "name": "ring",
+            "shape": "rectangle",
+            "repeat": {
+              "count": {
+                "expression": "ringCount"
+              },
+              "index": "ring"
+            },
+            "minX": {
+              "expression": "entryGap + ring * ringPitch",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "entryGap + ring * ringPitch + ringThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "boreRadius",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "outerRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "-waveDirection * ring / ringsPerWave",
+              "unit": "1"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "detectorX",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-09,
+    "maximumFlightTime": {
+      "value": 1,
+      "unit": "ms"
+    }
+  }
+}

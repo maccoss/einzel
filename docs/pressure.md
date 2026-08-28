@@ -258,7 +258,7 @@ leaving the caller to work it out.
 `"mode": "diffusion"` now runs. A source becomes an initial density — a Gaussian at
 the source position with the cloud's declared spreads, normalised to the declared
 population — a detector becomes a collecting boundary, and an electrode becomes a
-region ions are absorbed in.
+region ions flow into and do not come back from.
 
 A diffusive result has **no flight time**, and the absence is stated rather than
 filled in: `transport.no-flight-time` is on the envelope, and what a density has
@@ -420,20 +420,169 @@ effective field of NaN — while every potential stayed correct, so only the
 gradient was wrong.
 
 
+## Electrodes absorb for the whole run, not only the seed
+
+An electrode used to empty the *initial* density and nothing more. That stops a
+source placed inside metal from starting there, which is the case that reads as an
+instrument losing everything — and it does nothing at all about density that
+arrives later. A funnel's rings shaped the field and then let the density pass
+straight through them, so every diffusive transmission figure was an upper bound
+with nothing saying so.
+
+The mask is now built once and handed to the solver, which holds those cells at
+zero at every step. A conductor is **an open boundary with a name**: the density on
+the far side of the face is zero, so the Scharfetter–Gummel flux reduces to
+`B(-P) n_here`, which is non-negative for any potential drop across the face. An
+electrode can therefore only take and never give, and that falls out of the scheme
+rather than needing a clamp — including when the field is pushing ions the other
+way, which is the case a sign error would show up in.
+
+| Check | Result |
+| --- | --- |
+| A wall across the channel, against the same run without it | 100.00% collected to 0.00%, all of it named on the wall |
+| An electrode downstream of the source, nothing inside it at t = 0 | 100.00% lands on it |
+| Ions conserved with an absorber and the field reversed | 100.0000% |
+
+The control matters more than it looks. On its own "almost nothing was collected"
+is equally consistent with a solver that lost the density somewhere, in a scheme
+whose whole point is not doing that; what is asserted is the difference the metal
+makes.
+
+**The seed's own overlap now joins the same ledger.** It used to be deleted after
+the launched population had already been counted, so launched, collected, remaining
+and the named losses did not add up — and an itemisation that does not add up is
+worse than none, because it reads as complete.
+
+## The gas can move, and the diffusive mode now sees it
+
+`transport.gas.driftVelocity` has been in the model format since the collision
+models landed, and the event-driven side has always used it: a moving gas shifts
+the Maxwellian the ion scatters off. **The diffusive mode ignored it entirely** —
+declared, validated, carried through compilation, and dropped at the solver. That
+is the same shape as the two evidence-discarding bugs already recorded here: a
+declared input that one path honours and another silently does not.
+
+Advection by a moving neutral **is not the gradient of anything**, so it cannot
+enter as a potential difference. It enters the Scharfetter–Gummel exponent
+directly, as `P_gas = v.n h / D`, which is the same exponent the field term already
+is — by the Einstein relation `q(phi_here - phi_there)/kT` *is* `v h / D` — so the
+two simply add and the scheme stays exact for a linearly varying total drift.
+
+**Sampled at the face, averaged over its two nodes.** That is what keeps it
+conservative: the neighbouring cell computes the same average with the opposite
+sign, so the two cells sharing a face agree about how much crossed it. Sampling the
+gas at the cell centre instead would repeat, exactly, the bug that made a seeded
+Boltzmann equilibrium drain from the middle at 4.7x per millisecond.
+
+| Check | Result |
+| --- | --- |
+| Centroid speed with no field, gas at 40 and 120 m/s | **1.000000** each |
+| Centroid speed against muE + v_gas, gas plus and minus 60 m/s | **1.000000** each |
+| A still gas against no gas velocity at all | bit-identical, every node |
+| Ions conserved with a moving gas across a varying field | 100.0000% |
+
+Tight on purpose. Scharfetter–Gummel is exact for a drift that varies linearly
+across a cell and a uniform one trivially is, so the first moment is not an
+approximation converging with the mesh — it is the scheme's own answer, and a band
+wide enough for a discretisation error would accept a term that is merely the right
+size. The reversed gas is the control: a sign error is invisible when the gas and
+the field push the same way.
+
+**Both cases are reported, per REG-2.** A model that declares a flow gets the ratio
+that says which is carrying its ions — at 50 V/m and 30 m/s of gas, `gas.flow`
+says 6.5 and "the gas is carrying these ions, not the field". A model that declares
+*none*, above the 10⁻² mbar where spec figure 4 makes a velocity field a
+requirement rather than a benefit, gets `gas.stationary-above-flow-threshold`.
+A stationary gas is a modelling choice and it does not look like one in the output.
+
+**The event-driven mode refuses a flow field rather than ignoring one.**
+`CollisionSampler` schedules and draws without a position — `Collide` takes a time
+and a velocity — so it cannot evaluate a velocity that varies with position. A
+uniform `driftVelocity` it uses as it always did; a `Flow` object it refuses by
+name, because the alternative is a run that quietly used the uniform value and flew
+an ion through a declared jet as though the gas were standing still.
+
+## A conservative operator, written twice, right once
+
+The cylindrical Poisson operator is in conservative form — flux through a ring's
+outer face minus its inner face, over the ring's own volume — and the reasoning is
+recorded in [Numerics](numerics.md). **The density solver was not.** It computed a
+flux per unit area and applied it as though the two cells sharing a radial face had
+the same volume. In an axisymmetric solve they do not.
+
+The weight a face needs is its area over the cell's volume, `A hy / V`, which is
+identically **1** in the plane — so an isotropic solve multiplies by one and is
+unchanged to the last bit — and `1 ± hy/2r` in a cylindrical one. **On the axis it
+is 4**, because the inner face has no area and the cell is a disc rather than a
+ring: the same factor of four the cylindrical Laplacian carries there, from the same
+geometry.
+
+The error was therefore largest on the axis, which is exactly where a funnel
+concentrates its ions. On the shipped funnel at 2 mbar, cylindrical, with absorbing
+rings and a 50 m/s gas flow, the ion ledger closed to **95.99%**. With the face
+weights carried it closes to **100.0001%**.
+
+Two things about finding it are worth more than the fix.
+
+**It was invisible until the ledger was made to close.** Before interior electrodes
+absorbed continuously and the seed's own overlap was accounted for, launched,
+collected, remaining and the named losses never had to add up — so a four per cent
+leak had nowhere to show.
+
+**Every conservation test in the suite was Cartesian**, where the weight is
+identically one. They passed for a reason that did not generalise, which is the same
+failure mode as the uniform-field conservation test that hid the cell-centred drift
+sample. The new test is cylindrical, and it is backed by an exact assertion on the
+weights — 4 on the axis, `1 ± h/2r` off it — because a conservation figure can be
+nearly right with a wrong weight and an exact 4 cannot.
+
+The stability limit had to follow: a weighted face scales the outward coefficient
+with it, so the explicit step on the axis is four times shorter than the unweighted
+rate says. `einzel estimate` takes the weight from the same function the run does,
+so the two still cannot disagree about what a step is.
+
+## The density is an output you can look at
+
+TRN-2 makes a density the output of this mode the way a trajectory is the output of
+integration, and RND-8 forbids drawing lines through one. Until recently the
+prohibition had nothing on the other side of it: the mode's principal result could
+not be looked at in any form, only summarised into a transmission and a transit
+time.
+
+`einzel run --vtu` on a diffusive model now writes `<model>.density.vti` — VTK
+ImageData on the density grid, ions per cubic metre at the nodes, with the
+warnings recorded in the file's own header per GRD-2. Section 21's argument for
+VTU in Phase 1, that ParaView supplies the whole visualisation story before any
+shell exists, applies to a density at least as strongly as to a field.
+
+`einzel render section` draws it too, as contour lines at **decades** below the
+peak rather than at even fractions: a density spans orders of magnitude, so evenly
+spaced levels draw the top decade several times and the tail not at all. The levels
+are recorded in the figure's own provenance, because a density plotted without them
+is a shape rather than a measurement. A run whose ions have all reached a boundary
+leaves an empty box — correctly — and says so as `render.density-empty` with the
+change that would produce a picture, since drawing nothing and saying nothing looks
+identical to a figure where the density was never computed.
+
 ## Not built
 
-- **Interior electrodes as continuous sinks.** An electrode empties the *initial*
-  density, which stops a source placed inside metal from starting there. Zeroing the
-  interior at every step is the full treatment.
-- **Interior electrodes as continuous sinks.** See above.
-- **A neutral velocity field.** The gas is stationary, or moving with one declared
-  bulk velocity. Spec figure 4 requires a velocity *field* above 10⁻² mbar, and gas
-  velocity import is listed with it. This is what a funnel needs most: it is pushed
-  through by gas flow, and a stationary gas has no such push.
+- **A neutral velocity *field*.** A uniform bulk velocity is honoured everywhere it
+  can be; the seam for a varying one is `IGasFlow`, with `UniformGasFlow` behind it
+  and nothing else yet. Spec figure 4 requires a *field* above 10⁻² mbar and lists
+  gas velocity import with it, and this is still what a funnel needs most: the jet
+  off an inlet capillary is not uniform across a ring stack.
 - **Inelastic channels.** Collisions are elastic. No fragmentation, no
   collision-induced dissociation, no internal energy at all.
 - **Pressure gradients.** One pressure for the whole model. A real differentially
   pumped instrument has several, and the interfaces between them are where much of
   the interesting physics is.
-- **Space charge during transport.** Still screened rather than modelled; see the
-  space-charge estimate, which is unchanged by any of this.
+- **An affordable driven run.** The ponderomotive well's gradient at the ring edges
+  sets the Courant limit, and it is severe: on the shipped funnel at 2 mbar the step
+  is **1.067 ns against a diffusion limit of 5.2 µs**, a factor of 4,900, so 900 µs
+  is about 843,000 steps. Attributed by control rather than asserted — 15.5 ns at
+  0 V of RF, 8.93 ns at 25 V, 1.067 ns at 100 V, so it is the drive and roughly as
+  E₀². An implicit or operator-split step is the fix; the explicit one is what makes
+  the rest of this mode cheap and it is the wrong trade here.
+- **A density snapshot mid-run.** A run reports and exports the density at the end.
+  A model whose ions have all arrived by then leaves an empty box, correctly, and
+  the only way to see the packet in flight is to shorten `maximumFlightTime`.

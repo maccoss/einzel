@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "0.1",
+  "name": "travelling-wave-guide",
+  "description": "Qualitative: the ion is carried the length of the guide. A stacked-ring guide whose drive phase ramps along its length, so the potential is a wave that travels rather than a field that oscillates in place. An ion is caught in a well and carried at the wave speed, which is the signature of the device: transit stops depending on how fast the ion was injected. The decomposition is worth noticing - however many distinct phases the structure carries it reduces to two basis solves, because a sinusoid at any phase is a fixed combination of a sine and a cosine, and 96 rings that would otherwise need 21 supplies need two.",
+  "model": "../models/travelling-wave-guide.json",
+  "expect": [
+    {
+      "figureOfMerit": "transmission",
+      "value": 1.0,
+      "unit": "1",
+      "tolerance": 1e-09,
+      "ions": 1
+    }
+  ]
+}

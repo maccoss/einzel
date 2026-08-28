@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "0.1",
+  "name": "ion-funnel-rf",
+  "description": "Qualitative but not weak: the same geometry with one parameter changed, and the transmission goes from all to none. A 24-ring tapering funnel from a 12 mm entrance to a 1.5 mm exit, with the RF drive at 100 V. An ion entering 6 mm off axis threads the stack and leaves through the 1.5 mm exit. The pair is the claim: it is the RF that confines, not the DC gradient, and switching it off is the control that says so. Note also what the solve costs - the whole stack reduces to two basis fields however many rings it has, because the two RF phases are exact negatives of one another and the DC chain is one more spatial pattern.",
+  "model": "../models/ion-funnel-rf.json",
+  "expect": [
+    {
+      "figureOfMerit": "transmission",
+      "value": 1.0,
+      "unit": "1",
+      "tolerance": 1e-09,
+      "ions": 1
+    }
+  ]
+}

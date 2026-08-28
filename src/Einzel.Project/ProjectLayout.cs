@@ -38,6 +38,39 @@ public sealed class ProjectLayout
         Root = Path.GetFullPath(root);
     }
 
+    /// <summary>
+    /// The project a path sits in, by walking up until a <c>models/</c> is found.
+    /// </summary>
+    /// <param name="startingAt">A file or directory inside the project.</param>
+    /// <returns>The layout, or null when no project encloses it.</returns>
+    /// <exception cref="ArgumentException"><paramref name="startingAt"/> is null or blank.</exception>
+    /// <remarks>
+    /// PRJ-4: a project is a plain directory, so it is identified by its shape
+    /// rather than by a marker file - there is nothing to register and nothing to
+    /// corrupt. Null rather than a guess: a caller that wants the working directory
+    /// as a fallback can say so, and one that does not should not get it silently.
+    /// </remarks>
+    public static ProjectLayout? Find(string startingAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startingAt);
+
+        var directory = Directory.Exists(startingAt)
+            ? new DirectoryInfo(startingAt)
+            : new FileInfo(startingAt).Directory;
+
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "models")))
+            {
+                return new ProjectLayout(directory.FullName);
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
+    }
+
     /// <summary>The project root, as an absolute path.</summary>
     public string Root { get; }
 

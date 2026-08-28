@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "0.3",
+  "name": "turn-around-time",
+  "description": "The arrival spread a source temperature imposes before the ion has left: half the packet is moving the wrong way when the field switches on, and has to be turned round. FWHM = 2 sqrt(2 ln 2) sqrt(m k T) / (q E), which for m/z 500 at 300 K in a 1 kV/mm extraction field is 0.862 ns. This is the quantity a pulsed-extraction trap is designed around, it is the one part of the arrival spread no downstream optics can undo, and it depends on nothing but the ion, the temperature and the field.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        0,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 4000,
+      "seed": 20240101,
+      "temperature": {
+        "value": 300.0,
+        "unit": "K"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "value": [
+          1000000.0,
+          0,
+          0
+        ],
+        "unit": "V/m"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        20.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-10,
+    "maximumFlightTime": {
+      "value": 50.0,
+      "unit": "us"
+    }
+  }
+}

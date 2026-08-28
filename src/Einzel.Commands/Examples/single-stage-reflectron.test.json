@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "0.1",
+  "name": "single-stage-reflectron",
+  "description": "Closed form: 2L/v + 2v/a with L = 4d. Ideal single-stage reflectron at the first-order energy focus, where the total field-free path is four penetration depths. Analytic flight time 10.1805 us for m/z 500 at 4 keV: 2L/v of drift plus 2v/a of turnaround. Arrival time is flat to first order in energy, so sweeping the acceptance moves it by only the second-order term. The mirror depth and the cap potential are declared parameters, so this model can be swept and optimised as it stands.",
+  "model": "../models/single-stage-reflectron.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 10.180505718,
+      "unit": "us",
+      "tolerance": 1e-06
+    },
+    {
+      "figureOfMerit": "energyDrift",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-06
+    }
+  ]
+}

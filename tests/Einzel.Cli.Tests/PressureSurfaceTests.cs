@@ -60,7 +60,7 @@ public sealed class PressureSurfaceTests : IDisposable
         "cloud": {
           "ions": 60,
           "seed": 11,
-          "transverseWidth": { "value": 0.2, "unit": "mm" }
+          "transverseSpread": { "value": 0.2, "unit": "mm" }
         }
       },
       "fields": [ { "type": "fieldFree" } ],

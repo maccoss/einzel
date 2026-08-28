@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "0.3",
+  "name": "thermal-emittance",
+  "description": "The phase-space area a thermal packet occupies: position against divergence, which is the quantity that says whether a beam will fit through the next aperture. For a packet of transverse width sigma_x and thermal velocity spread sqrt(kT/m), drifting at speed v, the geometric emittance is sigma_x sqrt(kT/m) / v - 1.798 mm.mrad here. Optics can trade size against divergence and cannot reduce the product, so this is the number to compare sources by rather than a beam width.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        -200,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 4,
+      "unit": "kV"
+    },
+    "cloud": {
+      "ions": 6000,
+      "seed": 20240101,
+      "temperature": {
+        "value": 300.0,
+        "unit": "K"
+      },
+      "transverseSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "fieldFree"
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        0.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-10,
+    "maximumFlightTime": {
+      "value": 100.0,
+      "unit": "us"
+    }
+  }
+}

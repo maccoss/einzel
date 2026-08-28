@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "thermal-emittance",
+  "description": "Closed form: sigma_x sqrt(kT/m) / v. The three per cent tolerance is the sampling error of 6000 ions. The phase-space area a thermal packet occupies: position against divergence, which is the quantity that says whether a beam will fit through the next aperture. For a packet of transverse width sigma_x and thermal velocity spread sqrt(kT/m), drifting at speed v, the geometric emittance is sigma_x sqrt(kT/m) / v - 1.798 mm.mrad here. Optics can trade size against divergence and cannot reduce the product, so this is the number to compare sources by rather than a beam width.",
+  "model": "../models/thermal-emittance.json",
+  "expect": [
+    {
+      "figureOfMerit": "emittance",
+      "value": 1.7976373308608284,
+      "unit": "um",
+      "tolerance": 0.03
+    }
+  ]
+}

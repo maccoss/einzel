@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "0.3",
+  "name": "reflectron-off-focus",
+  "description": "The same single-stage mirror as the focused reflectron, with the drift lengthened from four penetration depths to six. The flight time is still 2L/v + 2v/a exactly, and it is the *energy focusing* that is gone: dT/dv no longer vanishes, so an energy spread now shows up as an arrival spread at first order rather than second. Run this beside single-stage-reflectron to see what the four-depth condition buys, and note it buys nothing in the flight time itself.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        -150.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 4000.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "halfSpaceUniform",
+      "planePoint": {
+        "value": [
+          0,
+          0,
+          0
+        ],
+        "unit": "mm"
+      },
+      "inwardNormal": {
+        "value": [
+          1,
+          0,
+          0
+        ]
+      },
+      "capPotential": {
+        "value": 4,
+        "unit": "kV"
+      },
+      "turningDepth": {
+        "value": 50,
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        -150.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 1000.0,
+      "unit": "us"
+    }
+  }
+}

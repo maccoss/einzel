@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "einzel-lens",
+  "description": "Exact invariant: a static field does no net work, so ACC-4 bounds the drift at 1 ppm and this path crosses a strong field twice. Three coaxial tubes with the centre one at 500 V - the device this platform is named after, and a unipotential lens: an ion enters and leaves at the same energy however strongly the middle electrode focuses it. What is asserted is exactly that, because it is an invariant rather than a number this engine chose: total energy is conserved across a path that crosses a strong field twice. It also converges for either sign of the centre voltage, which is the classic non-obvious property of an einzel lens and the one a merely plausible field fails.",
+  "model": "../models/einzel-lens.json",
+  "expect": [
+    {
+      "figureOfMerit": "energyDrift",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-06
+    }
+  ]
+}

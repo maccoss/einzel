@@ -91,6 +91,146 @@ public sealed class DensityField
         return Math.PI * ((outer * outer) - (inner * inner)) * Grid.SpacingX;
     }
 
+    /// <summary>
+    /// What a radial face's flux must be scaled by to conserve ions across it.
+    /// </summary>
+    /// <param name="j">The row the flux leaves.</param>
+    /// <param name="direction">+1 for the outward face, -1 for the inward one.</param>
+    /// <returns>The weight, which is exactly 1 on a Cartesian grid.</returns>
+    /// <remarks>
+    /// <para>
+    /// A flux computed per unit area is conservative between two cells only if they
+    /// have the same volume. In a cylindrical solve a cell is a ring, so they do not:
+    /// the face area is <c>2 pi r_face hx</c> and the volume is <c>pi (r_out^2 -
+    /// r_in^2) hx</c>, and a scheme that ignores the difference creates ions on one
+    /// side of every radial face and destroys them on the other.
+    /// </para>
+    /// <para>
+    /// The weight is <c>A_face hy / V</c>, which is identically 1 in the plane -
+    /// so an isotropic solve multiplies by one and is unchanged to the last bit -
+    /// and <c>1 + hy / (2r)</c> outward, <c>1 - hy / (2r)</c> inward, in a
+    /// cylindrical one. Both cells sharing a face take the same <c>r_face</c>, which
+    /// is what makes the exchange balance.
+    /// </para>
+    /// <para>
+    /// <strong>On the axis it is 4.</strong> The inner face has zero area, so the
+    /// cell is a disc rather than a ring and the outward weight is 4 rather than 1.
+    /// That is the same factor of four the cylindrical Laplacian carries on the axis,
+    /// arrived at from the same geometry - and the field solver had it while this did
+    /// not. It is also where the error was largest, which is exactly where a funnel
+    /// concentrates its ions.
+    /// </para>
+    /// </remarks>
+    public double RadialFaceWeight(int j, int direction)
+    {
+        if (!Cylindrical)
+        {
+            return 1.0;
+        }
+
+        var faceRadius = Grid.Y(j) + (0.5 * direction * Grid.SpacingY);
+
+        if (faceRadius <= 0.0)
+        {
+            // The axis. No area, so nothing crosses, which is the physical statement
+            // as well as the arithmetic one: there is no radial direction there.
+            return 0.0;
+        }
+
+        var area = 2.0 * Math.PI * faceRadius * Grid.SpacingX;
+
+        return area * Grid.SpacingY / CellVolume(j);
+    }
+
+    /// <summary>
+    /// The largest radial face weight anywhere on this grid.
+    /// </summary>
+    /// <returns>The weight, which is 1 on a Cartesian grid and 4 on an axis.</returns>
+    /// <remarks>
+    /// What a stability limit has to be taken against: the explicit step is set by
+    /// the largest outward coefficient, and weighting a face scales that coefficient
+    /// with it. Taking the step from the unweighted rate on a cylindrical grid means
+    /// stepping up to four times too far on the axis.
+    /// </remarks>
+    public double LargestRadialWeight()
+    {
+        if (!Cylindrical)
+        {
+            return 1.0;
+        }
+
+        var largest = 1.0;
+
+        for (var j = 0; j < Grid.CountY; j++)
+        {
+            largest = Math.Max(largest, RadialFaceWeight(j, +1));
+            largest = Math.Max(largest, RadialFaceWeight(j, -1));
+        }
+
+        return largest;
+    }
+
+    /// <summary>
+    /// The density at a point, in ions per cubic metre.
+    /// </summary>
+    /// <param name="x">Axial coordinate, in metres.</param>
+    /// <param name="y">The other coordinate, or the radius in a cylindrical solve.</param>
+    /// <returns>The density, and zero anywhere outside the tracked region.</returns>
+    /// <remarks>
+    /// <para>
+    /// Bilinear, which is a deliberate difference from how a <em>field</em> is
+    /// sampled. ACC-3 forbids trilinear interpolation on a trajectory path because
+    /// the interpolant's discontinuous derivatives accumulate into the timing budget
+    /// over a hundred thousand cell crossings. Nothing integrates through a density:
+    /// it is read once per picture or once per query, its derivative is not used,
+    /// and a higher-order interpolant would overshoot into negative values at the
+    /// edge of a packet - which is the one thing this whole scheme is built to avoid.
+    /// </para>
+    /// <para>
+    /// Zero outside rather than clamped to the edge value. A density is a quantity
+    /// with a total, and repeating the boundary outward invents ions.
+    /// </para>
+    /// </remarks>
+    public double SampleAt(double x, double y)
+    {
+        if (Cylindrical)
+        {
+            y = Math.Abs(y);
+        }
+
+        var u = (x - Grid.OriginX) / Grid.SpacingX;
+        var v = (y - Grid.OriginY) / Grid.SpacingY;
+
+        if (u < 0.0 || v < 0.0 || u > Grid.CountX - 1 || v > Grid.CountY - 1)
+        {
+            return 0.0;
+        }
+
+        var i = Math.Min((int)u, Grid.CountX - 2);
+        var j = Math.Min((int)v, Grid.CountY - 2);
+
+        var fu = u - i;
+        var fv = v - j;
+
+        return ((1.0 - fu) * (1.0 - fv) * this[i, j])
+            + (fu * (1.0 - fv) * this[i + 1, j])
+            + ((1.0 - fu) * fv * this[i, j + 1])
+            + (fu * fv * this[i + 1, j + 1]);
+    }
+
+    /// <summary>The largest density anywhere, in ions per cubic metre.</summary>
+    public double Peak()
+    {
+        var peak = 0.0;
+
+        foreach (var value in _values)
+        {
+            peak = Math.Max(peak, value);
+        }
+
+        return peak;
+    }
+
     /// <summary>How many ions the field holds.</summary>
     /// <returns>The total population.</returns>
     public double Population()

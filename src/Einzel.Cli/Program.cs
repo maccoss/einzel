@@ -113,6 +113,7 @@ public static class Program
             "run" => Run(options),
             "sweep" => Sweep(options),
             "optimise" or "optimize" => Optimise(options),
+            "scan" => Scan(options),
             "preview" => Preview(options),
             "test" => Test(options),
             "verify" => Verify(options),
@@ -254,6 +255,106 @@ public static class Program
         }
 
         return (int)ExitCode.Success;
+    }
+
+    private static int Scan(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel scan <study.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("run 'einzel schema --study' for the shape of a study file");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var studyPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var outcome = StudyCommand.Scan(studyPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Artifacts.Count == 0)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"would scan {outcome.Parameter} over {outcome.FigureOfMerit.Name} in "
+                + $"{outcome.ModelPath}"));
+
+            return (int)ExitCode.Success;
+        }
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.Parameter} / {outcome.Unit}      {outcome.FigureOfMerit.Name} / "
+            + $"{outcome.FigureOfMerit.Unit}"));
+
+        foreach (var point in outcome.Points)
+        {
+            // A point with no figure prints its reason rather than a blank. On a
+            // stability scan that reason is the result - the ion was lost, and where.
+            var figure = point.FigureOfMerit is { } value
+                ? string.Create(invariant, $"{value,18:G8}")
+                : $"{"-",18}  {Short(point.Failure)}";
+
+            Console.Out.WriteLine(string.Create(invariant, $"{point.Value,14:G8}  {figure}"));
+        }
+
+        Console.Out.WriteLine();
+
+        if (outcome.Nominal is { } nominal)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"nominal {nominal:G8} {outcome.FigureOfMerit.Unit} at the model's own value"));
+        }
+
+        if (outcome.Steepest is { } steepest)
+        {
+            // Not a boundary: where the figure moves fastest on the grid actually
+            // computed, and how coarse that grid is there. ACC-6 wants one part in
+            // five hundred of the scan, so the fraction is what says whether this
+            // scan resolved anything.
+            var change = steepest.FigureVanishes
+                ? "the figure stops existing"
+                : string.Create(invariant, $"the figure moves {steepest.Change:G4}");
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"steepest between {steepest.Low:G8} and {steepest.High:G8} {outcome.Unit}: {change}"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"  that interval is 1 part in {1.0 / Math.Max(steepest.WidthFraction, 1e-12):F0} of the "
+                + $"scan; ACC-6 asks for 1 in 500"));
+        }
+
+        Warn(outcome.Warnings);
+
+        Console.Out.WriteLine();
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine($"wrote {artifact}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>The first line of a failure, for a table cell.</summary>
+    private static string Short(string? failure)
+    {
+        if (string.IsNullOrWhiteSpace(failure))
+        {
+            return "no figure";
+        }
+
+        var line = failure.ReplaceLineEndings(" ").Trim();
+
+        return line.Length <= 72 ? line : line[..69] + "...";
     }
 
     private static int Optimise(CommandLine options)
@@ -429,6 +530,15 @@ public static class Program
         Console.Out.WriteLine(outcome.Written
             ? $"wrote {outcome.Path} from {outcome.Source}"
             : $"would write {outcome.Path} from {outcome.Source}");
+
+        // An example brings its own assertion, so say where it landed - otherwise
+        // the file appears in tests/ with nothing having mentioned it.
+        if (outcome.TestPath is { } test)
+        {
+            Console.Out.WriteLine(outcome.Written
+                ? $"wrote {test} - run 'einzel test' to check it"
+                : $"would write {test}");
+        }
 
         return (int)ExitCode.Success;
     }
@@ -1401,20 +1511,37 @@ public static class Program
             // gap between them is the skew - so printing one of them beside a
             // resolving power computed from the other invites exactly the wrong
             // reconciliation.
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"peak          {ensemble.CentralWidthNs:F3} ns central half, "
-                + $"{ensemble.GaussianFwhmNs:F3} ns Gaussian FWHM, skew {ensemble.Skewness:+0.00;-0.00;0.00}"));
+            //
+            // Absent, not zero, where fewer than two ions arrived: a peak needs two
+            // points to have a width, and a printed 0.000 ns reads as an infinitely
+            // sharp one. The transmission and the itemised losses above are still
+            // reported, and they are the whole of what such a run has to say.
+            if (ensemble.CentralWidthNs is { } central && ensemble.GaussianFwhmNs is { } gaussian)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"peak          {central:F3} ns central half, "
+                    + $"{gaussian:F3} ns Gaussian FWHM, skew {ensemble.Skewness:+0.00;-0.00;0.00}"));
 
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"turn-around   {ensemble.TurnAroundFwhmNs:F3} ns of that Gaussian width"));
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"turn-around   {ensemble.TurnAroundFwhmNs:F3} ns of that Gaussian width"));
+            }
+            else
+            {
+                Console.Out.WriteLine(
+                    "peak          none: fewer than two ions arrived, so there is no width to "
+                    + "measure");
+            }
 
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"resolving     {ensemble.ResolvingPower.Value:G6} +/- "
-                + $"{(ensemble.ResolvingPower.Uncertainty.Upper - ensemble.ResolvingPower.Uncertainty.Lower) / 2.0:G3}"
-                + $" (from the central half)"));
+            if (ensemble.ResolvingPower is { } resolving)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"resolving     {resolving.Value:G6} +/- "
+                    + $"{(resolving.Uncertainty.Upper - resolving.Uncertainty.Lower) / 2.0:G3}"
+                    + $" (from the central half)"));
+            }
 
             // ACC-5: never a bare percentage. A named surface says which one to
             // move; "transmission is 51 percent" says only that something is wrong.
@@ -1460,7 +1587,7 @@ public static class Program
                     + $"{Capacity(ensemble.SpaceChargePopulationLimit)} within the 1 ppm budget"));
             }
 
-            foreach (var warning in ensemble.ResolvingPower.Warnings
+            foreach (var warning in (ensemble.ResolvingPower?.Warnings ?? [])
                 .Concat(ensemble.Transmission.Warnings)
                 .GroupBy(w => w.Code, StringComparer.Ordinal)
                 .Select(g => g.First()))
@@ -1556,6 +1683,7 @@ public static class Program
           test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
+          scan <study.json>             one parameter across a range, one row per point
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
           compare <model.json>          run both transport modes and report the disagreement

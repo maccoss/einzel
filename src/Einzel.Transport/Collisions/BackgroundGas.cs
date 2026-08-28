@@ -111,7 +111,37 @@ public sealed record BackgroundGas
     public double PolarizabilitySi { get; init; }
 
     /// <summary>Bulk velocity of the neutral gas, in metres per second.</summary>
+    /// <remarks>
+    /// The uniform case, and what a model document declares. Prefer
+    /// <see cref="VelocityAt"/> over reading this directly: a caller that reads the
+    /// vector is a caller that will not see a flow field when one exists.
+    /// </remarks>
     public Vec3 DriftVelocitySi { get; init; }
+
+    /// <summary>
+    /// How the gas is moving, when it is more than one vector (GAS-1).
+    /// </summary>
+    /// <remarks>
+    /// Null means the uniform <see cref="DriftVelocitySi"/> stands, which is what a
+    /// declared <c>driftVelocity</c> gives. The property exists so that both
+    /// transport modes ask the same object the same question - REG-3 only means
+    /// something if the two descriptions are of the same gas.
+    /// </remarks>
+    public IGasFlow? Flow { get; init; }
+
+    /// <summary>Bulk velocity of the neutral gas at a point, in metres per second.</summary>
+    /// <param name="point">Where, in metres.</param>
+    /// <returns>The velocity.</returns>
+    public Vec3 VelocityAt(in Vec3 point) =>
+        Flow is null ? DriftVelocitySi : Flow.VelocityAt(in point);
+
+    /// <summary>Whether the neutral gas is moving anywhere.</summary>
+    public bool IsFlowing =>
+        Flow is null ? DriftVelocitySi.LengthSquared > 0.0 : Flow.IsMoving;
+
+    /// <summary>The fastest bulk gas speed anywhere, in metres per second.</summary>
+    public double FastestBulkSpeedSi =>
+        Flow is null ? DriftVelocitySi.Length : Flow.FastestSpeedSi;
 
     /// <summary>Whether this gas does anything at all.</summary>
     public bool IsPresent => Model != CollisionModel.None && PressureSi > 0.0;

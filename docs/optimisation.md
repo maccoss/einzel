@@ -1,25 +1,27 @@
 # Sweeps and optimisation
 
-`Einzel.Sweeps` holds three things that all take the same shape: a model, a set
+`Einzel.Sweeps` holds four things that all take the same shape: a model, a set
 of named parameters to vary, and a function from a validated model to a number.
 Nothing in it knows what a mirror or a quadrupole is.
 
 - **Tolerance Monte Carlo** (`ToleranceStudy`) — stochastic draws for the
   distribution of achieved performance, and one-at-a-time attribution for which
   tolerance binds first.
+- **Parameter scan** (`ParameterScan`) — one parameter across a declared range on a
+  grid, one row per point. What a curve is made of.
 - **Sensitivity fields** (`SensitivityFields`) — FLD-1's cached derivative of
   potential with respect to each channel, so a perturbed geometry is a weighted
   sum rather than a solve.
 - **Optimisation** (`Optimiser`) — Nelder–Mead and CMA-ES over the declared
   parameter surface.
 
-This page is about the third.
+This page is about the last, with the scan below it.
 
 ## From the command line
 
-Both drivers are reachable as `einzel sweep <study.json>` and
-`einzel optimise <study.json>`, over a study file that names a figure of merit
-rather than carrying a function. See [CLI](cli.md#studies).
+All three drivers are reachable as `einzel sweep`, `einzel scan` and
+`einzel optimise`, over a study file that names a figure of merit rather than
+carrying a function. See [CLI](cli.md#studies).
 
 ## What an optimiser is given
 
@@ -244,3 +246,93 @@ like the obvious culprit and it is the smaller of the two; only refining the mes
 showed which. The 64-cell case is a 513 by 513 solve per evaluation and takes
 minutes, so the suite ships the 16 and 32 comparison and this page records the
 third point.
+
+---
+
+# Scans
+
+## What a scan is for, and why it is not a sweep with one channel
+
+A sweep asks what a *distribution* of manufacturing error does to a design, and
+reports a spread. An optimiser asks where the figure is best, and reports where it
+stopped. Neither answers what section 12's whole Class B asks — stability and
+cut-off boundaries, mass filter peak shape against a scan line, low-mass cut-off
+for funnels and RF guides — because every one of those is a question about a
+**curve**, and averaging a curve into an interval answers a different question.
+
+This is the operation every curve in this engine had so far been produced by a
+hand-written loop in a test file: the low-mass cut-off scans, the extraction-slot
+scan at 0.5 to 3.0 mm, the drift-length scan at 20.7 ns/mm. None of them wrote a
+manifest, none could be re-run from the project, and none was reachable by an agent
+at all.
+
+```json
+{
+  "name": "low-mass-cutoff",
+  "model": "../models/quadrupole-rf.json",
+  "figureOfMerit": "transmission",
+  "scan": {
+    "parameter": "q",
+    "from": 0.80, "to": 0.95, "unit": "1",
+    "points": 31,
+    "spacing": "linear"
+  }
+}
+```
+
+```
+einzel scan studies/low-mass-cutoff.json
+```
+
+`spacing` may be `logarithmic`, which is what a range spanning decades needs: a
+pressure scan from 1e-4 to 10 mbar taken linearly puts every point but one above a
+millibar and says nothing about the thin end — and the thin end is where the
+transport mode changes.
+
+## Four decisions worth keeping
+
+**Both ends are included, and returned exactly.** Half of the interval (0.1, 0.2)
+is 0.15000000000000002 in binary, so an end reached by interpolation lands an ulp
+outside a bound — and a scan written the obvious way, from a parameter's declared
+minimum to its declared maximum, then has its last point refused by validation with
+nothing on the page to say why the row is blank. The ends are the declared
+quantities themselves; interpolation is for the interior, where an ulp means
+nothing.
+
+**A failed point is a row, not the end of the scan**, and the reason matters more
+here than in a sweep. On a stability scan "the ion was lost on `rodYPlus`" is the
+*answer*: a cut-off is precisely the value at which the figure stops existing, so a
+driver that stopped at the first failure would stop exactly where the interesting
+thing is.
+
+**A range past the declared bounds is warned about once, up front.** Walking past
+what the template says is buildable is a legitimate thing to ask for — it is how
+you find where a design stops working — but half a table of blanks with no
+explanation reads as the solver failing rather than as the model refusing.
+`scan.outside-declared-bounds` says which end and what the bound was.
+
+**The steepest interval is reported, and is deliberately not called a boundary.**
+What comes back is where on the grid *actually computed* the figure moves fastest,
+and how wide that interval is as a fraction of the whole scan — which is the
+currency ACC-6 is written in, one part in five hundred. A reader can then tell a
+resolved transition from a scan too coarse to have found one:
+
+```
+steepest between 0.905 and 0.910 1: the figure stops existing
+  that interval is 1 part in 30 of the scan; ACC-6 asks for 1 in 500
+```
+
+An interval where the figure *vanishes* outranks one where it merely moves a long
+way, and it is flagged as `figureVanishes` rather than an infinite change, because
+JSON has no infinity and a null would be indistinguishable from a value that was
+never computed. On a mass filter that vanishing is the cut-off, and scoring it as
+"no change" would rank the one interesting interval last.
+
+## What a scan is not, yet
+
+Class B proper. ACC-6 wants a boundary resolved to one part in five hundred of the
+scan variable, which needs a bisection onto the transition rather than a grid
+across it; the steepest interval is the honest precursor and says how coarse it is.
+The mass-filter peak shape against a scan line, and the secular frequency spectrum
+against notch width, need the same machinery plus figures of merit that do not
+exist yet.

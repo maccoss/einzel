@@ -236,6 +236,173 @@ public sealed class DriftDiffusionTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AStillGasIsBitIdenticalToNoGasVelocityAtAll()
+    {
+        // Asserted rather than assumed, the same way a vacuum flight is asserted to
+        // be bit-identical with a collision sampler attached. Adding an advection
+        // term to the flux is exactly the kind of change that perturbs the answer
+        // everywhere by rounding, and a diffusive result nobody can reproduce across
+        // a build is one nothing downstream can pin.
+        var grid = Grid2D.OverBox(-0.02, -0.01, 0.04, 0.01, 128, 64);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var field = UniformField.Create(new Vec3(300.0, 0.0, 0.0));
+
+        var still = Nitrogen(100.0);
+        var declared = still with { DriftVelocitySi = Vec3.Zero };
+
+        var mobility = Mobility.FromCrossSection(still, species);
+
+        var edges = new DriftDiffusion.DomainEdges(
+            Escape.Absorbing, Escape.Collecting, Escape.Absorbing, Escape.Absorbing);
+
+        var a = DriftDiffusion.Run(
+            PointSource(grid, 8, grid.CountY / 2), field, still, mobility, species, 1e-4, edges);
+
+        var b = DriftDiffusion.Run(
+            PointSource(grid, 8, grid.CountY / 2), field, declared, mobility, species, 1e-4, edges);
+
+        Assert.Equal(a.Steps, b.Steps);
+        Assert.Equal(a.Collected, b.Collected);
+
+        for (var k = 0; k < a.Density.Values.Length; k++)
+        {
+            Assert.Equal(a.Density.Values[k], b.Density.Values[k]);
+        }
+
+        output.WriteLine(
+            $"{a.Steps} steps, {a.Density.Values.Length} nodes, every value identical to the bit");
+    }
+
+    [Fact]
+    public void AMovingGasCarriesTheDensityAtItsOwnSpeed()
+    {
+        // Pure advection, with the field switched off so nothing else can move the
+        // ions: the centroid travels at exactly the declared gas velocity. This is
+        // the closed form for the term, and it is the one GAS-1 says is easy to omit
+        // and hard to notice missing - a model that ignores it does not fail, it
+        // answers about an instrument whose gas is standing still.
+        var grid = Grid2D.OverBox(-0.02, -0.02, 0.06, 0.02, 256, 128);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var still = Nitrogen(100.0);
+        var mobility = Mobility.FromCrossSection(still, species);
+
+        var edges = new DriftDiffusion.DomainEdges(
+            Escape.Reflecting, Escape.Reflecting, Escape.Reflecting, Escape.Reflecting);
+
+        var seconds = 2e-4;
+
+        output.WriteLine("gas / m/s     measured / m/s    ratio");
+
+        foreach (var speed in new[] { 40.0, 120.0 })
+        {
+            var flowing = still with { DriftVelocitySi = new Vec3(speed, 0.0, 0.0) };
+
+            var start = PointSource(grid, grid.CountX / 4, grid.CountY / 2);
+            var (fromX, _) = start.Centroid();
+
+            var result = DriftDiffusion.Run(
+                start, FieldFreeSpace.Instance, flowing, mobility, species, seconds, edges);
+
+            var (toX, _) = result.Density.Centroid();
+            var measured = (toX - fromX) / seconds;
+
+            output.WriteLine($"{speed,9:F1}    {measured,14:F3}    {measured / speed,8:F6}");
+
+            // Tight on purpose. Scharfetter-Gummel is exact for a drift that varies
+            // linearly across a cell, and a uniform one trivially is, so the first
+            // moment is not an approximation converging with the mesh - it is the
+            // scheme's own answer. A band wide enough for a discretisation error
+            // would accept a term that is merely the right size.
+            Assert.InRange(measured / speed, 0.999, 1.001);
+        }
+    }
+
+    [Fact]
+    public void GasAndFieldDriftsAdd()
+    {
+        // The two mechanisms are separate terms in one exponent, so the centroid
+        // moves at their sum. Worth testing against the sum rather than against
+        // either part: a scheme that used the gas velocity *instead* of the field
+        // drift, or that double-counted it, passes the pure-advection test above.
+        //
+        // Run against the gas both ways round, because a sign error in the advection
+        // term is invisible when the two push the same way.
+        var grid = Grid2D.OverBox(-0.03, -0.02, 0.05, 0.02, 256, 128);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var still = Nitrogen(100.0);
+        var mobility = Mobility.FromCrossSection(still, species);
+
+        var strength = 200.0;
+        var field = UniformField.Create(new Vec3(strength, 0.0, 0.0));
+        var drift = mobility.ZeroFieldSi * strength;
+
+        var edges = new DriftDiffusion.DomainEdges(
+            Escape.Reflecting, Escape.Reflecting, Escape.Reflecting, Escape.Reflecting);
+
+        var seconds = 1e-4;
+
+        output.WriteLine($"mu E = {drift:F3} m/s");
+        output.WriteLine("gas / m/s    expected / m/s    measured / m/s    ratio");
+
+        foreach (var speed in new[] { 60.0, -60.0 })
+        {
+            var flowing = still with { DriftVelocitySi = new Vec3(speed, 0.0, 0.0) };
+
+            var start = PointSource(grid, grid.CountX / 2, grid.CountY / 2);
+            var (fromX, _) = start.Centroid();
+
+            var result = DriftDiffusion.Run(
+                start, field, flowing, mobility, species, seconds, edges);
+
+            var (toX, _) = result.Density.Centroid();
+
+            var measured = (toX - fromX) / seconds;
+            var expected = drift + speed;
+
+            output.WriteLine(
+                $"{speed,9:F1}    {expected,14:F3}    {measured,14:F3}    {measured / expected,8:F6}");
+
+            Assert.InRange(measured / expected, 0.999, 1.001);
+        }
+    }
+
+    [Fact]
+    public void AMovingGasStillConservesIons()
+    {
+        // The advection term is only conservative if the two cells sharing a face
+        // compute the same crossing with opposite signs, which is why the gas is
+        // averaged over the face rather than sampled at the cell asking. Getting
+        // that wrong does not produce a visibly odd density - it produces one that
+        // quietly gains or loses ions, which is exactly how the first version of the
+        // *field* term failed while its conservation test passed on a uniform field.
+        //
+        // So this one runs the gas across a field that varies, where a cell-centred
+        // sample and a face-averaged one differ.
+        var grid = Grid2D.OverBox(-0.02, -0.005, 0.02, 0.005, 128, 32);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var gas = Nitrogen(100.0) with { DriftVelocitySi = new Vec3(80.0, 0.0, 0.0) };
+        var mobility = Mobility.FromCrossSection(gas, species);
+
+        var start = PointSource(grid, grid.CountX / 2, grid.CountY / 2);
+        var launched = start.Population();
+
+        var result = DriftDiffusion.Run(
+            start, new WedgeField(500.0), gas, mobility, species, 2e-4,
+            new DriftDiffusion.DomainEdges(
+                Escape.Absorbing, Escape.Collecting, Escape.Absorbing, Escape.Absorbing));
+
+        var total = result.Remaining + result.Collected + result.Lost.Values.Sum();
+
+        output.WriteLine($"launched  {launched:E6}");
+        output.WriteLine($"total     {total:E6}  ({total / launched:P4} of launched)");
+
+        Assert.Equal(launched, total, 1e-3 * launched);
+    }
+
+    [Fact]
     public void IonsAreConservedUntilTheyLeave()
     {
         // Every ion is somewhere: still in the domain, collected, or absorbed on a
@@ -275,6 +442,230 @@ public sealed class DriftDiffusionTests(ITestOutputHelper output)
         // And ACC-5's rule survives the change of description: a loss is named by
         // where it went, not aggregated into a transmission figure.
         Assert.NotEmpty(result.Lost);
+    }
+
+    /// <summary>A wall of blocked cells across the channel, at one column.</summary>
+    private static AbsorbingCells Barrier(Grid2D grid, int column, string name)
+    {
+        var owner = new int[grid.CountX * grid.CountY];
+
+        Array.Fill(owner, -1);
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            owner[(j * grid.CountX) + column] = 0;
+        }
+
+        return new AbsorbingCells(owner, [name]);
+    }
+
+    [Fact]
+    public void AnInteriorElectrodeStopsTheDensityAndIsNamedForIt()
+    {
+        // The control is the same run without the barrier. On its own, "almost
+        // nothing was collected" is equally consistent with a solver that lost the
+        // density somewhere, and this is a scheme whose whole point is not doing
+        // that - so what is asserted is the difference the metal makes.
+        var grid = Grid2D.OverBox(-0.01, -0.005, 0.03, 0.005, 128, 32);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var gas = Nitrogen(100.0);
+        var mobility = Mobility.FromCrossSection(gas, species);
+        var field = UniformField.Create(new Vec3(300.0, 0.0, 0.0));
+
+        // Every wall but the exit is sealed, so the only two ways out are the
+        // detector and the metal. Anything the barrier does then shows up as a
+        // transfer between exactly those two columns.
+        var edges = new DriftDiffusion.DomainEdges(
+            Escape.Reflecting, Escape.Collecting, Escape.Reflecting, Escape.Reflecting);
+
+        var open = DriftDiffusion.Run(
+            PointSource(grid, 4, grid.CountY / 2), field, gas, mobility, species, 2e-3, edges);
+
+        var blocked = DriftDiffusion.Run(
+            PointSource(grid, 4, grid.CountY / 2), field, gas, mobility, species, 2e-3, edges,
+            Barrier(grid, grid.CountX / 2, "skimmer"));
+
+        var launched = PointSource(grid, 4, grid.CountY / 2).Population();
+
+        output.WriteLine($"open      collected {open.Collected / launched:P2}");
+        output.WriteLine($"blocked   collected {blocked.Collected / launched:P2}");
+
+        foreach (var (where, ions) in blocked.Lost.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            output.WriteLine($"          lost on {where,-10} {ions / launched:P2}");
+        }
+
+        Assert.True(
+            open.Collected > 0.9 * launched,
+            $"the control should transmit nearly everything, and transmitted {open.Collected / launched:P2}");
+
+        Assert.True(
+            blocked.Collected < 0.01 * launched,
+            $"a wall across the channel let {blocked.Collected / launched:P2} through");
+
+        // ACC-5: named by the surface the model author wrote, not aggregated.
+        Assert.True(blocked.Lost.TryGetValue("skimmer", out var stopped));
+        Assert.True(stopped > 0.9 * launched, $"only {stopped / launched:P2} landed on the skimmer");
+    }
+
+    [Fact]
+    public void AnInteriorElectrodeAbsorbsForTheWholeRunNotOnlyTheSeed()
+    {
+        // The distinction that matters, and the one that was missing: emptying the
+        // seed stops a source inside metal from starting there, and does nothing at
+        // all about density that arrives later. With the electrode downstream of the
+        // source there is nothing inside it to empty at t = 0, so a seed-only
+        // treatment transmits everything and this test separates the two.
+        var grid = Grid2D.OverBox(-0.01, -0.005, 0.03, 0.005, 128, 32);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var gas = Nitrogen(100.0);
+        var mobility = Mobility.FromCrossSection(gas, species);
+        var field = UniformField.Create(new Vec3(300.0, 0.0, 0.0));
+
+        var start = PointSource(grid, 4, grid.CountY / 2);
+        var absorbers = Barrier(grid, grid.CountX / 2, "ring");
+
+        // Nothing of the seed is inside the barrier: it is 60 cells downstream.
+        Assert.Equal(0.0, start[grid.CountX / 2, grid.CountY / 2]);
+
+        var result = DriftDiffusion.Run(
+            start, field, gas, mobility, species, 2e-3,
+            new DriftDiffusion.DomainEdges(
+                Escape.Reflecting, Escape.Collecting, Escape.Reflecting, Escape.Reflecting),
+            absorbers);
+
+        output.WriteLine($"landed on the ring {result.Lost.GetValueOrDefault("ring") / start.Population():P2}");
+
+        Assert.True(result.Lost.GetValueOrDefault("ring") > 0.9 * start.Population());
+    }
+
+    [Fact]
+    public void AnInteriorElectrodeNeverEmitsIons()
+    {
+        // The scheme gives this rather than a clamp giving it: with the density on
+        // the far side of the face held at zero, the Scharfetter-Gummel flux reduces
+        // to B(-P) n_here, which is non-negative whatever the potential drop across
+        // the face is. So a conductor at any potential can only take.
+        //
+        // Driven the wrong way on purpose - the field pushes ions *back* out of the
+        // barrier - which is the case a sign error would show up in.
+        var grid = Grid2D.OverBox(-0.01, -0.005, 0.03, 0.005, 128, 32);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var gas = Nitrogen(100.0);
+        var mobility = Mobility.FromCrossSection(gas, species);
+        var field = UniformField.Create(new Vec3(-300.0, 0.0, 0.0));
+
+        var start = PointSource(grid, 4, grid.CountY / 2);
+        var launched = start.Population();
+
+        var result = DriftDiffusion.Run(
+            start, field, gas, mobility, species, 2e-3,
+            new DriftDiffusion.DomainEdges(
+                Escape.Collecting, Escape.Absorbing, Escape.Reflecting, Escape.Reflecting),
+            Barrier(grid, grid.CountX / 2, "ring"));
+
+        var total = result.Remaining + result.Collected + result.Lost.Values.Sum();
+
+        output.WriteLine($"launched {launched:E6}");
+        output.WriteLine($"total    {total:E6}  ({total / launched:P4})");
+
+        // Never more than were launched, and the barrier is not a source.
+        Assert.True(
+            total <= launched * (1.0 + 1e-9),
+            $"the run ended with {total / launched:P4} of what it started with");
+
+        Assert.Equal(launched, total, 1e-3 * launched);
+    }
+
+    [Fact]
+    public void TheRadialFaceWeightIsOneInThePlaneAndFourOnTheAxis()
+    {
+        // The number that discriminates, asserted exactly rather than through a
+        // conservation figure that a wrong weight can still nearly pass. A face's
+        // flux has to be scaled by its area over the cell's volume, and in a
+        // cylindrical solve those differ: the outward weight is 1 + h/2r, the inward
+        // one 1 - h/2r, and on the axis the cell is a disc rather than a ring so the
+        // outward weight is 4 and the inward one 0.
+        //
+        // That four is the same factor the cylindrical Laplacian carries on the axis
+        // - the field solver had it and this did not.
+        var grid = Grid2D.OverBox(0.0, 0.0, 0.008, 0.008, 32, 32);
+
+        var plane = new DensityField(grid);
+        var axis = new DensityField(grid, cylindrical: true);
+
+        // In the plane every face is the same size as every other.
+        for (var j = 0; j < 4; j++)
+        {
+            Assert.Equal(1.0, plane.RadialFaceWeight(j, +1));
+            Assert.Equal(1.0, plane.RadialFaceWeight(j, -1));
+        }
+
+        Assert.Equal(1.0, plane.LargestRadialWeight());
+
+        // On the axis: no inward face at all, and an outward one four times the
+        // plane's.
+        Assert.Equal(0.0, axis.RadialFaceWeight(0, -1));
+        Assert.Equal(4.0, axis.RadialFaceWeight(0, +1), 1e-12);
+        Assert.Equal(4.0, axis.LargestRadialWeight(), 1e-12);
+
+        // And 1 +/- h/2r away from it, which tends to one as the radius grows.
+        for (var j = 1; j < 8; j++)
+        {
+            var radius = grid.Y(j);
+            var expected = grid.SpacingY / (2.0 * radius);
+
+            output.WriteLine(
+                $"r = {radius * 1e3:F3} mm   outward {axis.RadialFaceWeight(j, +1):F6}   "
+                + $"inward {axis.RadialFaceWeight(j, -1):F6}");
+
+            Assert.Equal(1.0 + expected, axis.RadialFaceWeight(j, +1), 1e-12);
+            Assert.Equal(1.0 - expected, axis.RadialFaceWeight(j, -1), 1e-12);
+        }
+    }
+
+    [Fact]
+    public void ACylindricalDensityConservesIonsUnderRadialTransport()
+    {
+        // Every conservation test above is Cartesian, where the two cells sharing a
+        // face have the same volume. In a cylindrical solve a cell is a ring and its
+        // volume grows with radius, so a flux that is conservative per unit area is
+        // not conservative per cell unless the face areas are carried with it.
+        var grid = Grid2D.OverBox(-0.005, 0.0, 0.005, 0.016, 32, 64);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var gas = Nitrogen(200.0);
+        var mobility = Mobility.FromCrossSection(gas, species);
+
+        var density = new DensityField(grid, cylindrical: true);
+
+        // A blob off axis, so there is real radial transport in both directions.
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                var dx = (grid.X(i) - 0.0) / 0.001;
+                var dy = (grid.Y(j) - 0.008) / 0.001;
+
+                density[i, j] = 1e12 * Math.Exp(-0.5 * ((dx * dx) + (dy * dy)));
+            }
+        }
+
+        var launched = density.Population();
+
+        // Everything sealed: nothing may leave, so the population must not move.
+        var result = DriftDiffusion.Run(
+            density, FieldFreeSpace.Instance, gas, mobility, species, 3e-3,
+            new DriftDiffusion.DomainEdges(
+                Escape.Reflecting, Escape.Reflecting, Escape.Reflecting, Escape.Reflecting));
+
+        output.WriteLine($"launched  {launched:E8}");
+        output.WriteLine($"remaining {result.Remaining:E8}  ({result.Remaining / launched:P4})");
+        output.WriteLine($"steps     {result.Steps}");
+
+        Assert.Equal(launched, result.Remaining, 1e-3 * launched);
     }
 
     [Fact]

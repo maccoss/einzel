@@ -2,7 +2,7 @@
 
 What is tested, what each tier proves, and — as importantly — what is not covered.
 
-103 tests across seven assemblies. Warnings are errors; XML documentation is
+531 tests across nine assemblies. Warnings are errors; XML documentation is
 required on public API; CI builds and tests on Linux and Windows.
 
 ## The tiers
@@ -52,6 +52,12 @@ cross-code tier is unavailable — see below.
 | Arrival-spread decomposition against quadrature of its three parts | 0.2% |
 | Turn-around time against 2√(2ln2)√(mkT)/qE | 0.49% on 4000 ions; 0.5–2.0 ns across m/z 195–2722 |
 | Thermal cloud width against √(kT/m) per component | 0.4% on 20000 ions, mean indistinguishable from zero |
+| Diffusive centroid carried by a moving gas, no field, 40 and 120 m/s | **1.000000** each |
+| The same against μE + v_gas, gas at ±60 m/s | **1.000000** each |
+| A still gas against no declared gas velocity | bit-identical at every node |
+| Scan endpoints from a parameter's minimum to its maximum | exact, both ends inside the bound |
+| Cylindrical radial face weight, on the axis and away from it | exactly 4 and exactly 1 ± h/2r |
+| Ion ledger on the shipped funnel: cylindrical, absorbing rings, gas flow | **100.0001%** (was 95.99%) |
 
 The detuned reflectron matters more than it looks: without it, a bug that simply
 returned a constant flight time would pass the focusing test.
@@ -107,7 +113,21 @@ Checks with no tolerance at all, which are the strongest kind available.
   field.
 - **Conservation of ions**: every launched ion either reaches the detector or is
   named on a loss surface, and the two sum to the launch count. An itemisation
-  that does not add up is worse than none, because it reads as complete.
+  that does not add up is worse than none, because it reads as complete. In the
+  diffusive description the same sum holds with a moving gas across a varying field,
+  and with interior electrodes absorbing — the two cases where a face-flux scheme
+  stops conserving if the coefficient is sampled at the cell rather than the face.
+- **A cylindrical density conserves ions**: a flux computed per unit area is
+  conservative only between cells of equal volume, and in an axisymmetric solve a
+  cell is a ring. Weighting each radial face by its own area over the cell's volume
+  closes it exactly — and the weight on the axis is **4**, because the cell there is
+  a disc rather than a ring. Asserted on the weights themselves as well as on the
+  population, because a conservation figure can be nearly right with a wrong weight
+  and the exact 4 cannot.
+- **A conductor takes and never gives**: with the density on the far side of a face
+  held at zero, the Scharfetter–Gummel flux reduces to `B(-P) n_here`, which is
+  non-negative for any potential drop. Checked with the field driving ions *out* of
+  the electrode, which is where a sign error would show.
 - **Liouville's theorem**: a conservative force cannot change phase-space area. A
   field-free drift to a plane preserves the emittance to **1.5e-14** and an ideal
   thin lens to **8.1e-15**, while the same lens given a cubic term — spherical
@@ -179,6 +199,49 @@ Tests that enforce rules rather than measure physics.
 - Bounds are checked, not clamped; a cycle in derived parameters is refused with
   the chain named; an override of the wrong dimension is refused.
 
+### The example corpus
+
+EX-1 asks for thirty validated reference models "spanning every device class, each
+with a prose description, expected results, and assertion tolerances", and EX-2
+makes them a release gate. Seventeen exist, and the gate is built: every example is
+materialised into a real project and driven through `einzel test` via
+`Program.Main`, in 29 seconds.
+
+**Every expectation is arithmetic, a published value, or an exact invariant.** That
+is what makes the corpus a check on the engine rather than on its own past output -
+a failure means the engine has moved away from a closed form, not away from a
+golden file.
+
+| Example | Asserted against | Observed |
+| --- | --- | --- |
+| `free-flight` | L / sqrt(2qU/m) | **exactly 0** error |
+| `accelerating-gap` | sqrt(2dm/qE) from rest | 3.5e-16 |
+| `uniform-field-turnaround` | the positive root of v t - a t^2/2 + d | 1.1e-15 |
+| `single-stage-reflectron` | 2L/v + 2v/a at L = 4d | 1.3e-11 |
+| `reflectron-off-focus` | the same at L = 6d | **exactly 0** |
+| `reflectron-heavy-ion` | the same scaled by sqrt(2000/500) = 2 | 9.9e-13 |
+| `orthogonal-accelerator` | sqrt(2d/a) + L/sqrt(2ad) | 5.0e-12 |
+| `turn-around-time` | 2 sqrt(2 ln 2) sqrt(mkT)/qE | 0.93%, inside the 4000-ion sampling error |
+| `thermal-emittance` | sigma_x sqrt(kT/m)/v | 0.72%, inside the 6000-ion sampling error |
+| `einzel-lens`, `quadrupole-dc`, `rectilinear-trap-extraction` | energy drift in a static field (ACC-4) | 4.2e-9, 6.4e-10, 1.5e-8 |
+| `quadrupole-rf-stable` / `-unstable` | the tabulated Mathieu cut-off q = 0.90804 | transmits 1.0 at q = 0.70, 0.0 at q = 0.95 |
+| `ion-funnel-rf` / `-no-rf` | the RF is what confines | threads the stack; lost on a named ring |
+| `travelling-wave-guide` | an ion is carried the length of the guide | arrives |
+
+The quadrupole pair is the one worth noticing: neither number comes from this
+engine, and **bracketing a published boundary from both sides is a stronger claim
+than either model alone**.
+
+**Two defects came out of writing the first seventeen**, both of the kind no test
+written from inside the project would catch, because both were about a model that
+validates and answers a different question. An unrecognised property was ignored
+rather than refused, and a transmission of zero could not be expressed. Both are
+recorded in [Spec findings](spec-findings.md) as amendments.
+
+**What is missing is breadth**: no multipole above four rods, no three-dimensional
+trap, no MR-TOF, and nothing in the diffusive mode - which `transitTime` now makes
+assertable and which nothing yet asserts.
+
 ### End to end
 
 The CLI is driven through `Program.Main` itself, not through the command objects,
@@ -209,11 +272,10 @@ covering everything.
   integration's cost depends on the path, which depends on the field, which is the
   thing not yet solved. `einzel estimate` reports the solve and says the integration
   is not included.
-- **An electrode empties the initial density but does not keep emptying it.** A
-  source inside metal cannot start there, which is the case that reads as an
-  instrument losing everything; an ion that diffuses into an electrode mid-run is
-  not absorbed by it. Interior geometry is a boundary only at the edges of the
-  tracked region.
+- **A density is reported at the end of the run and at no other instant.** It is
+  exported as `.vti` and drawn as decade contours, but a model whose ions have all
+  arrived leaves an empty box — correctly, and it says so. Seeing the packet in
+  flight means shortening `maximumFlightTime` and running again.
 - **Collisions are elastic only.** No fragmentation, no collision-induced
   dissociation, no internal energy. An ion that scatters keeps its identity.
 - **One pressure for the whole model.** A differentially pumped instrument has
@@ -246,15 +308,21 @@ covering everything.
   mesh and grid electrodes that pass most of the beam. There is no way to declare
   one, and a mesh cannot be modelled as its wires either, because the wires run
   along the invariant axis of a 2D solve.
-- **Space charge is screened, not modelled.** Ions do not push on each other. A run
-  reports the flight-time error the packet's own charge implies and warns
-  non-suppressibly past the budget, but the trajectories ignore it. A real
-  treatment advances every ion together and recomputes their shared field each
-  step, which inverts the integration loop and is Phase 3.
-- **No collisions, no gas flow.** This bites hardest on the funnel: a real one runs
-  at around a millibar and the gas is half the mechanism, damping radial motion so
-  ions settle onto the axis rather than ringing about it. The acceptance measured
-  without it is a lower bound on the real one.
+- **Space charge is modelled by direct summation and by nothing else.** The
+  pairwise sum SC-1 names as the reference exists and is checked; the *approximate*
+  method it is meant to validate — particle-in-cell — does not.
+- **The gas has one bulk velocity, not a velocity field.** A uniform
+  `driftVelocity` is honoured by both transport modes, and the diffusive one takes
+  it at the face so it conserves. What spec figure 4 actually requires above
+  10⁻² mbar is a velocity *field*, and the jet off an inlet capillary is not uniform
+  across a ring stack. `IGasFlow` is the seam; `UniformGasFlow` is the only
+  implementation. Until an imported field exists, a funnel's transmission is
+  computed in a gas that is either standing still or moving all in one piece.
+- **A scan reports where a transition is, not what value it is at.** ACC-6 asks for
+  a boundary resolved to one part in five hundred of the scan variable, which needs
+  a bisection onto the transition; `einzel scan` reports the steepest interval on
+  the grid it computed and how coarse that grid is. Class B proper — peak shape
+  against a scan line, secular frequency against notch width — is not built.
 - **The agent acceptance suite has no measured pass rate yet.** The corpus, the
   scoring, and the release gates exist and are self-validating in CI — every
   task's worked solution passes and every distractor fails — but no agent has been

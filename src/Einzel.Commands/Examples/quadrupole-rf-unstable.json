@@ -1,0 +1,279 @@
+{
+  "schemaVersion": "0.3",
+  "name": "quadrupole-rf-unstable",
+  "description": "A round-rod quadrupole driven at 1 MHz with the RF amplitude set so that m/z 500 sits at a Mathieu q of 0.95, which is above the tabulated low-mass cut-off of q = 0.90804 on the a = 0 line. The ion does not. Run this beside its stable twin: together they bracket a published boundary, which is a stronger statement than either alone, and neither number comes from this engine. The amplitude is arithmetic - q = 4 z e V / (m Omega^2 r0^2) gives 777.4 V - so the operating point can be checked before any simulation runs.",
+  "parameters": {
+    "inscribedRadius": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 50.0,
+      "description": "Axis to nearest rod surface, conventionally r0. Everything scales with it: the Mathieu q goes as r0 squared at fixed voltage."
+    },
+    "rodRatio": {
+      "value": 1.1468,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 1.4,
+      "description": "Rod radius as a multiple of the inscribed radius. 1.1468 cancels the leading non-ideal multipole, the 12-pole; move away from it and the stability boundary moves too, which is the effect this template exists to make measurable."
+    },
+    "rfAmplitude": {
+      "value": 777.4,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 20000.0,
+      "description": "Zero to peak, applied to the x pair; the y pair takes its negative. Sets the Mathieu q, which is 4 z e V / (m omega^2 r0^2)."
+    },
+    "dcPotential": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": -5000.0,
+      "maximum": 5000.0,
+      "description": "Applied to the x pair as a steady offset; the y pair takes its negative. Sets the Mathieu a, which is 8 z e U / (m omega^2 r0^2). Zero puts the working point on the a = 0 line, where the filter passes everything above the low-mass cut-off."
+    },
+    "driveFrequency": {
+      "value": 1.0,
+      "unit": "MHz",
+      "minimum": 0.001,
+      "maximum": 100.0,
+      "description": "One generator for the whole structure. Raising it lowers q at fixed voltage, so frequency and amplitude trade against each other at a fixed working point."
+    },
+    "waveformDutyCycle": {
+      "value": 0.5,
+      "unit": "1",
+      "minimum": 0.05,
+      "maximum": 0.95,
+      "description": "Only meaningful for a rectangular drive, which this template does not select by default. Away from one half the wave carries a mean that acts as a DC offset - the trick of a digital mass filter."
+    },
+    "housingClearance": {
+      "value": 1.6,
+      "unit": "1",
+      "minimum": 0.2,
+      "maximum": 8.0,
+      "description": "Rod centre to the grounded wall, beyond the rod radius, as a multiple of the rod radius. The classical rod ratio assumes no housing, so this says how far a given design sits from that assumption."
+    },
+    "cellsPerRadius": {
+      "value": 16.0,
+      "unit": "1",
+      "minimum": 4.0,
+      "maximum": 128.0,
+      "description": "Grid cells across the inscribed radius. The rod surfaces are cut cells, so the boundary is resolved below one cell, but the multipole content still converges with the mesh."
+    },
+    "launchOffset": {
+      "value": 0.1,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 20.0,
+      "description": "How far off axis the ion starts, in both transverse directions. Small enough to be a probe of stability rather than a test of acceptance."
+    },
+    "ionEnergy": {
+      "value": 10.0,
+      "unit": "V",
+      "minimum": 0.1,
+      "maximum": 1000.0,
+      "description": "Axial energy carrying the ion through. It does not enter the stability condition at all - the transverse motion is governed by a and q alone - so it sets how many RF cycles the ion spends inside and nothing else."
+    },
+    "rodRadius": {
+      "expression": "inscribedRadius * rodRatio",
+      "unit": "mm"
+    },
+    "rodCentre": {
+      "expression": "inscribedRadius + rodRadius",
+      "unit": "mm"
+    },
+    "domainHalfWidth": {
+      "expression": "rodCentre + rodRadius * housingClearance",
+      "unit": "mm"
+    },
+    "cellSize": {
+      "expression": "inscribedRadius / cellsPerRadius",
+      "unit": "mm"
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "launchOffset",
+        "launchOffset",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        0,
+        0,
+        1
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "ionEnergy",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "drive": {
+          "frequency": {
+            "expression": "driveFrequency",
+            "unit": "MHz"
+          },
+          "waveform": "sinusoid",
+          "dutyCycle": 0.5
+        },
+        "minX": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "rodXPlus",
+            "shape": "disc",
+            "centreX": {
+              "expression": "rodCentre",
+              "unit": "mm"
+            },
+            "centreY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "dcPotential",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "rodXMinus",
+            "shape": "disc",
+            "centreX": {
+              "expression": "-rodCentre",
+              "unit": "mm"
+            },
+            "centreY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "dcPotential",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "rodYPlus",
+            "shape": "disc",
+            "centreX": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "rodCentre",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-dcPotential",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "-rfAmplitude",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "rodYMinus",
+            "shape": "disc",
+            "centreX": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "-rodCentre",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-dcPotential",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "-rfAmplitude",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        0,
+        0,
+        200
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        0,
+        0,
+        -1
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-09,
+    "maximumFlightTime": {
+      "value": 200,
+      "unit": "us"
+    }
+  }
+}

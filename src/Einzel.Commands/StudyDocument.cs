@@ -101,6 +101,9 @@ public sealed record StudyDocument
     /// <summary>Optimisation: the parameters to search.</summary>
     public IReadOnlyList<VariableDocument>? Variables { get; init; }
 
+    /// <summary>Scan: the one parameter to vary, and over what range.</summary>
+    public ScanDocument? Scan { get; init; }
+
     /// <summary>Optimisation: <c>nelderMead</c> or <c>cmaEs</c>.</summary>
     public string Algorithm { get; init; } = "nelderMead";
 
@@ -123,6 +126,35 @@ public sealed record StudyDocument
     /// spend its whole budget doing so and then report that it never converged.
     /// </remarks>
     public double ObjectiveTolerance { get; init; } = 1e-8;
+}
+
+/// <summary>One parameter a scan varies, as it appears in a file.</summary>
+/// <remarks>
+/// The third thing a study can be, beside a tolerance sweep and an optimisation.
+/// Section 12's Class B figures - a stability boundary, a mass filter peak against
+/// its scan line, a low-mass cut-off - are all questions about how a figure behaves
+/// across a range, and neither of the other two answers that: a sweep collapses a
+/// range into a distribution and an optimiser reports only where it stopped.
+/// </remarks>
+public sealed record ScanDocument
+{
+    /// <summary>The declared parameter this scan varies.</summary>
+    public string? Parameter { get; init; }
+
+    /// <summary>Where the scan starts.</summary>
+    public double From { get; init; }
+
+    /// <summary>Where it ends. Included, not a limit the last point stops short of.</summary>
+    public double To { get; init; }
+
+    /// <summary>Unit of both ends; must match the parameter's dimension.</summary>
+    public string? Unit { get; init; }
+
+    /// <summary>How many points, counting both ends.</summary>
+    public int Points { get; init; } = 21;
+
+    /// <summary><c>linear</c> or <c>logarithmic</c>.</summary>
+    public string Spacing { get; init; } = "linear";
 }
 
 /// <summary>Turns a study document into the objects the sweep drivers take.</summary>
@@ -171,6 +203,57 @@ public static class StudyBinding
 
         return channels;
     }
+
+    /// <summary>The axis a scan varies.</summary>
+    /// <param name="study">The study.</param>
+    /// <returns>The axis.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="study"/> is null.</exception>
+    /// <exception cref="EinzelException">The scan block is missing or incomplete.</exception>
+    public static ScanAxis Axis(StudyDocument study)
+    {
+        ArgumentNullException.ThrowIfNull(study);
+
+        if (study.Scan is not { } scan)
+        {
+            throw Missing("scan", "a scan needs a 'scan' block naming a parameter and a range");
+        }
+
+        if (string.IsNullOrWhiteSpace(scan.Parameter))
+        {
+            throw Missing("scan/parameter", "a scan names the parameter it varies");
+        }
+
+        if (string.IsNullOrWhiteSpace(scan.Unit))
+        {
+            // SI internally, units explicit at every boundary. The same rule a
+            // channel's half-width is held to, for the same reason: '0.5' is a
+            // millimetre or a metre depending on something nobody wrote down.
+            throw Missing(
+                "scan/unit",
+                "a scan's range needs a unit; use '1' for a dimensionless parameter such as a "
+                + "Mathieu q or a rod ratio");
+        }
+
+        return new ScanAxis(
+            scan.Parameter,
+            Quantity.From(scan.From, scan.Unit),
+            Quantity.From(scan.To, scan.Unit),
+            scan.Points,
+            Spacing(scan.Spacing));
+    }
+
+    private static ScanSpacing Spacing(string declared) => declared.ToLowerInvariant() switch
+    {
+        "linear" => ScanSpacing.Linear,
+        "logarithmic" or "log" => ScanSpacing.Logarithmic,
+        _ => throw new EinzelException(new EinzelError
+        {
+            Code = ErrorCodes.SchemaInvalid,
+            Path = "/scan/spacing",
+            Constraint = $"'{declared}' is not a spacing",
+            Suggestion = "one of: linear, logarithmic",
+        }),
+    };
 
     /// <summary>The design variables an optimisation searches.</summary>
     /// <param name="study">The study.</param>

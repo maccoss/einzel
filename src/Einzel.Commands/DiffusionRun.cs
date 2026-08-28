@@ -82,7 +82,7 @@ public static class DiffusionRun
         var density = Seed(model, grid, cylindrical);
         var launched = density.Population();
 
-        Absorb(model, grid, density);
+        var (absorbers, seedLoss) = Absorb(model, grid, density);
 
         var edges = EdgesFor(model, grid);
 
@@ -111,7 +111,21 @@ public static class DiffusionRun
         }
 
         var result = DriftDiffusion.Run(
-            density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges);
+            density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers);
+
+        // The seed's overlap with metal joins the same ledger the run fills, so the
+        // itemisation adds back up to the launched population.
+        if (seedLoss.Count > 0)
+        {
+            var merged = new Dictionary<string, double>(result.Lost, StringComparer.Ordinal);
+
+            foreach (var (where, ions) in seedLoss)
+            {
+                merged[where] = merged.GetValueOrDefault(where) + ions;
+            }
+
+            result = result with { Lost = merged };
+        }
 
         warnings.AddRange(RegimeWarnings(gas, mobility, field, grid, declared));
 
@@ -243,32 +257,91 @@ public static class DiffusionRun
         return density;
     }
 
-    /// <summary>Empties the cells inside conductors, so an electrode absorbs.</summary>
+    /// <summary>
+    /// The conductors, as cells that keep absorbing, plus whatever the seed already
+    /// had inside them.
+    /// </summary>
     /// <remarks>
+    /// <para>
     /// ACC-5 wants transmission itemised by loss surface, and in this description a
-    /// loss is a cell that stopped holding ions rather than an ion that stopped
-    /// moving. Zeroing the interior each step would be the full treatment; zeroing
-    /// the seed is what stops a source placed inside metal from starting there,
-    /// which is the case that reads as an instrument losing everything.
+    /// loss is density that flowed into metal rather than an ion that stopped moving.
+    /// The mask is built once and handed to the solver, which empties those cells at
+    /// every step - so an electrode is a boundary for the whole run rather than only
+    /// for the seed. Before this, a funnel's rings shaped the field and then let the
+    /// density pass straight through them, which made every diffusive transmission
+    /// figure an upper bound with nothing saying so.
+    /// </para>
+    /// <para>
+    /// The seed's own overlap is returned rather than discarded. It used to be
+    /// silently deleted after the launched population had already been counted, so
+    /// launched, collected, remaining and the named losses did not add up - and an
+    /// itemisation that does not add up is worse than none, because it reads as
+    /// complete.
+    /// </para>
     /// </remarks>
-    private static void Absorb(CompiledModel model, Grid2D grid, DensityField density)
+    private static (AbsorbingCells Cells, IReadOnlyDictionary<string, double> SeedLoss) Absorb(
+        CompiledModel model, Grid2D grid, DensityField density)
     {
+        var names = new List<string>();
+        var owner = new int[grid.CountX * grid.CountY];
+
+        Array.Fill(owner, -1);
+
+        var seedLoss = new Dictionary<string, double>(StringComparer.Ordinal);
+
         foreach (var element in model.Fields)
         {
             foreach (var electrode in element.Solve?.Electrodes ?? [])
             {
+                var index = names.Count;
+                var claimed = false;
+
                 for (var j = 0; j < grid.CountY; j++)
                 {
+                    var volume = density.CellVolume(j);
+
                     for (var i = 0; i < grid.CountX; i++)
                     {
-                        if (electrode.Contains(grid.X(i), grid.Y(j)))
+                        if (!electrode.Contains(grid.X(i), grid.Y(j)))
                         {
+                            continue;
+                        }
+
+                        var k = (j * grid.CountX) + i;
+
+                        // First claim wins, so two overlapping electrodes do not
+                        // both bill for the same ions. Which one is arbitrary and
+                        // does not matter: the cell absorbs either way, and the
+                        // total is right.
+                        if (owner[k] >= 0)
+                        {
+                            continue;
+                        }
+
+                        owner[k] = index;
+                        claimed = true;
+
+                        if (density[i, j] > 0.0)
+                        {
+                            seedLoss[electrode.Name] =
+                                seedLoss.GetValueOrDefault(electrode.Name)
+                                + (density[i, j] * volume);
+
                             density[i, j] = 0.0;
                         }
                     }
                 }
+
+                if (claimed)
+                {
+                    names.Add(electrode.Name);
+                }
             }
         }
+
+        return names.Count > 0
+            ? (new AbsorbingCells(owner, names), seedLoss)
+            : (AbsorbingCells.None, seedLoss);
     }
 
     /// <summary>
@@ -369,6 +442,73 @@ public static class DiffusionRun
         return warnings;
     }
 
+    /// <summary>
+    /// What the neutral gas is doing, reported whether or not it is doing anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// GAS-1 asks a gas region for a bulk velocity field, and spec figure 4 makes it
+    /// required rather than optional above about 1e-2 mbar. The specification is
+    /// unusually direct about why: the field "is easy to omit and hard to notice
+    /// missing: at funnel pressures the neutral jet off the inlet capillary drags
+    /// ions and frequently dominates the axial DC gradient".
+    /// </para>
+    /// <para>
+    /// So both cases are named. A model that declares a flow gets the number that
+    /// says whether the gas or the field is carrying its ions; one that declares
+    /// none, at a pressure where the specification says it should have, gets told -
+    /// because a stationary gas is a modelling choice and it does not look like one
+    /// in the output. It is exactly REG-2's argument: a reader who sees the ratio
+    /// knows the question was asked, and one who sees nothing cannot tell that from
+    /// its not having been asked.
+    /// </para>
+    /// </remarks>
+    private static List<ValidityWarning> FlowWarnings(
+        BackgroundGas gas, Mobility mobility, double strongestFieldSi, double pressureMbar)
+    {
+        var warnings = new List<ValidityWarning>();
+
+        // The fastest the field can push an ion anywhere on this grid, which is what
+        // a bulk gas speed has to be read against.
+        var drift = mobility.ZeroFieldSi * strongestFieldSi;
+
+        if (gas.IsFlowing)
+        {
+            var bulk = gas.FastestBulkSpeedSi;
+
+            warnings.Add(new ValidityWarning(
+                "gas.flow",
+                $"the neutral gas moves at up to {bulk:G4} m/s, against a field drift of at most "
+                + $"{drift:G4} m/s on this grid"
+                + (drift > 0.0
+                    ? $" - a ratio of {bulk / drift:G3}. "
+                        + (bulk > drift
+                            ? "The gas is carrying these ions, not the field"
+                            : "The field dominates, and the flow is a correction")
+                    : ". There is no field here, so the flow is the whole transport"),
+                WarningSeverity.Provenance));
+
+            return warnings;
+        }
+
+        if (pressureMbar > Transport.Collisions.RegimeDiagnostics.DiffusiveMbar)
+        {
+            warnings.Add(new ValidityWarning(
+                "gas.stationary-above-flow-threshold",
+                $"at {pressureMbar:G3} mbar this model's gas is standing still, and spec figure 4 "
+                + $"puts a neutral velocity field among the things a description above "
+                + $"{Transport.Collisions.RegimeDiagnostics.DiffusiveMbar:G1} mbar requires rather "
+                + "than merely benefits from. At these pressures the jet off an inlet capillary "
+                + "frequently dominates the axial DC gradient, so a stationary gas can understate "
+                + "the transport badly - a funnel is pushed through by its gas, and this one is "
+                + "not being pushed. Declare 'transport.gas.driftVelocity' if the instrument has a "
+                + "flow through it",
+                WarningSeverity.Qualified));
+        }
+
+        return warnings;
+    }
+
     /// <summary>Warnings a diffusive run carries, per REG-2 and TRN-1.</summary>
     private static List<ValidityWarning> RegimeWarnings(
         BackgroundGas gas,
@@ -417,6 +557,8 @@ public static class DiffusionRun
                 worst = Math.Max(worst, Math.Sqrt((electric.X * electric.X) + (electric.Y * electric.Y)));
             }
         }
+
+        warnings.AddRange(FlowWarnings(gas, mobility, worst, pressureMbar));
 
         if (!mobility.IsWithinFit(worst, gas.NumberDensitySi))
         {

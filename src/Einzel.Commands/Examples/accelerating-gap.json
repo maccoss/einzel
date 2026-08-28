@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "0.3",
+  "name": "accelerating-gap",
+  "description": "An ion released at rest in a uniform 10 kV/m field and collected 100 mm away. The acceleration is qE/m and the flight time is sqrt(2d/a), which is 10.1805 us for m/z 500. A source may declare a zero accelerating potential exactly when a declared field could accelerate the ion - a trap holds its packet still until the instrument switches a field on, and this is the simplest instance of that.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        0.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "value": [
+          10000.0,
+          0,
+          0
+        ],
+        "unit": "V/m"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        100.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 100.0,
+      "unit": "us"
+    }
+  }
+}

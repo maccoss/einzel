@@ -41,9 +41,31 @@ public sealed class CollisionSampler
     /// <param name="chargeSi">Ion charge, in coulombs.</param>
     /// <param name="seed">The random seed for this ion.</param>
     /// <exception cref="ArgumentNullException"><paramref name="gas"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The gas carries a flow field, which this sampler has no position to evaluate.
+    /// </exception>
     public CollisionSampler(BackgroundGas gas, double ionMassSi, double chargeSi, int seed)
     {
         ArgumentNullException.ThrowIfNull(gas);
+
+        // A flow field is a velocity at a place, and a collision here is scheduled
+        // and drawn without one - Collide takes a time and a velocity. Refused
+        // rather than evaluated at some convenient point, because the failure would
+        // otherwise be a run that used the uniform drift and said nothing: the ion
+        // would fly through a declared jet as though the gas were standing still,
+        // which is the exact mistake GAS-1 exists to prevent.
+        if (gas.Flow is not null)
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.RegimeInvalid,
+                Path = "/transport/gas/flow",
+                Constraint = "the event-driven collision models sample a neutral velocity without "
+                    + "a position, so they cannot see a gas flow that varies with position",
+                Suggestion = "declare a uniform 'driftVelocity' instead, or use the diffusive "
+                    + "transport mode, which samples the flow on its own grid",
+            });
+        }
 
         _gas = gas;
         _ionMass = ionMassSi;

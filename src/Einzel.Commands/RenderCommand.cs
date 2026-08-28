@@ -114,7 +114,34 @@ public static class RenderCommand
             $"model {Path.GetFileName(absolute)} hash {hash}",
         };
 
-        var figure = SectionRenderer.Render(validation.Model!, spec, provenance);
+        // A diffusive model has no trajectory to draw, and RND-8 forbids inventing
+        // one. What it has instead is a density, so the transport is run and the
+        // result handed to the renderer - the same trade the trajectory path already
+        // makes, where the ion is flown to draw its path.
+        //
+        // Failure here is not fatal to the figure. A model whose transport refuses -
+        // a regime violation, a missing mobility - still has geometry and a field
+        // worth drawing, and the renderer says which of the two it got.
+        Transport.Diffusion.DensityField? density = null;
+
+        if (spec.Trajectory
+            && spec.DensityContours > 0
+            && string.Equals(
+                validation.Model!.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var (built, fieldWarnings) = Fields.FieldAssembly.BuildReported(validation.Model!);
+
+                density = DiffusionRun.Execute(validation.Model!, built, fieldWarnings).Result.Density;
+            }
+            catch (EinzelException)
+            {
+                density = null;
+            }
+        }
+
+        var figure = SectionRenderer.Render(validation.Model!, spec, provenance, density);
 
         var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
 

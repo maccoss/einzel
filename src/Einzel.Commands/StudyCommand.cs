@@ -75,6 +75,90 @@ public sealed record SweepOutcome
     public required IReadOnlyList<string> Artifacts { get; init; }
 }
 
+/// <summary>One point of a scan, as it is reported.</summary>
+/// <param name="Value">The parameter's value there, in the scan's own unit.</param>
+/// <param name="FigureOfMerit">The figure in its own unit, or null where none was produced.</param>
+/// <param name="Failure">
+/// Why none was produced, or null where one was. Kept per point rather than
+/// summarised: on a stability scan the reason the figure stops existing is the
+/// result, and "the ion was lost on rodYPlus" and "the geometry does not validate"
+/// are different findings that would look identical as a blank.
+/// </param>
+public sealed record ScanRow(double Value, double? FigureOfMerit, string? Failure);
+
+/// <summary>What a scan found.</summary>
+public sealed record ScanOutcome
+{
+    /// <summary>The study file, as an absolute path.</summary>
+    public required string StudyPath { get; init; }
+
+    /// <summary>The model that was scanned, as an absolute path.</summary>
+    public required string ModelPath { get; init; }
+
+    /// <summary>Which figure of merit was recorded, and its unit.</summary>
+    public required FigureOfMeritInfo FigureOfMerit { get; init; }
+
+    /// <summary>Which parameter was varied.</summary>
+    public required string Parameter { get; init; }
+
+    /// <summary>The unit the scan's values are quoted in.</summary>
+    public required string Unit { get; init; }
+
+    /// <summary>How the points were spaced.</summary>
+    public required string Spacing { get; init; }
+
+    /// <summary>The figure at the model's own parameter value, or null.</summary>
+    public double? Nominal { get; init; }
+
+    /// <summary>How many points produced a figure.</summary>
+    public required int Succeeded { get; init; }
+
+    /// <summary>The curve, one row per point, in scan order (CLI-6).</summary>
+    public required IReadOnlyList<ScanRow> Points { get; init; }
+
+    /// <summary>
+    /// The adjacent pair the figure changes most between, and how wide that interval
+    /// is as a fraction of the whole scan.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not called a boundary. ACC-6 asks for a boundary resolved to one
+    /// part in five hundred of the scan variable, which needs a bisection this does
+    /// not do; what this says is where on the grid actually computed the figure moves
+    /// fastest, and how coarse that grid is there. A reader can then tell a resolved
+    /// transition from a scan too coarse to have found one.
+    /// </remarks>
+    public ScanTransition? Steepest { get; init; }
+
+    /// <summary>
+    /// Warnings the scan carries, per GRD-2 - its own, and every one its points
+    /// earned.
+    /// </summary>
+    public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
+
+    /// <summary>Files written, relative to the project root.</summary>
+    public required IReadOnlyList<string> Artifacts { get; init; }
+}
+
+/// <summary>Where a scan's figure changes fastest, on the grid it was computed on.</summary>
+/// <param name="Low">Lower end of the interval, in the scan's unit.</param>
+/// <param name="High">Upper end.</param>
+/// <param name="Change">
+/// How much the figure moved across it, in the figure's unit, or null where the
+/// figure stopped existing instead of moving.
+/// </param>
+/// <param name="FigureVanishes">
+/// Whether the figure stopped existing across this interval rather than changing by
+/// a finite amount. Said as its own flag because JSON has no infinity and a null
+/// change would otherwise be indistinguishable from one that was never computed -
+/// and on a stability scan the vanishing <em>is</em> the finding.
+/// </param>
+/// <param name="WidthFraction">
+/// How wide the interval is as a fraction of the whole scan - the resolution ACC-6
+/// is written in. One part in five hundred needs 501 points.
+/// </param>
+public sealed record ScanTransition(
+    double Low, double High, double? Change, bool FigureVanishes, double WidthFraction);
+
 /// <summary>What an optimisation found.</summary>
 public sealed record OptimiseOutcome
 {
@@ -381,6 +465,102 @@ public static class StudyCommand
                 Write(project, absolute, "sweep", outcome),
                 WriteManifest(
                     project, absolute, "sweep", File.ReadAllText(modelPath), document.SchemaVersion,
+                    document.Transport?.Mode ?? "trajectory", study.Seed, extension,
+                    DateTimeOffset.UtcNow),
+            ],
+        };
+    }
+
+    /// <summary>Runs a scan.</summary>
+    /// <param name="studyPath">Path to the study file.</param>
+    /// <param name="project">Where artifacts belong.</param>
+    /// <param name="dryRun">Report what would be done and compute nothing (CLI-4).</param>
+    /// <returns>The outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="project"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="studyPath"/> is null or blank.</exception>
+    /// <exception cref="EinzelException">The study or the model does not validate.</exception>
+    /// <remarks>
+    /// The operation every curve in this engine has so far been produced by a loop in
+    /// a test file: the low-mass cut-off scans, the extraction-slot scan, the drift
+    /// scan. Written as a study it gets what those did not - a manifest, a result
+    /// file beside the model, and a form an agent can author.
+    /// </remarks>
+    public static ScanOutcome Scan(string studyPath, ProjectLayout project, bool dryRun = false)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        var (study, modelPath, absolute) = Load(studyPath);
+        var figure = Figure(Required(study.FigureOfMerit));
+        var axis = StudyBinding.Axis(study);
+        var document = ModelJson.Parse(File.ReadAllText(modelPath));
+
+        var unit = study.Scan!.Unit!;
+        var spacing = axis.Spacing.ToString().ToLowerInvariant();
+
+        if (dryRun)
+        {
+            return new ScanOutcome
+            {
+                StudyPath = absolute,
+                ModelPath = modelPath,
+                FigureOfMerit = figure,
+                Parameter = axis.Parameter,
+                Unit = unit,
+                Spacing = spacing,
+                Succeeded = 0,
+                Points = [],
+                Artifacts = [],
+            };
+        }
+
+        var ledger = new WarningLedger();
+
+        var evaluate = Evaluate(
+            figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
+
+        var result = ParameterScan.Run(document, axis, evaluate);
+
+        // One conversion out of SI for the figure and one for the scan variable, so
+        // nothing leaves here as a bare number under a label it does not match.
+        var figureScale = 1.0 / Core.Units.Quantity.From(1.0, figure.Unit).SiValue;
+        var axisScale = 1.0 / Core.Units.Quantity.From(1.0, unit).SiValue;
+
+        var span = Math.Abs(axis.To.SiValue - axis.From.SiValue);
+
+        var outcome = new ScanOutcome
+        {
+            StudyPath = absolute,
+            ModelPath = modelPath,
+            FigureOfMerit = figure,
+            Parameter = axis.Parameter,
+            Unit = unit,
+            Spacing = spacing,
+            Nominal = result.Nominal * figureScale,
+            Succeeded = result.Succeeded,
+            Points =
+            [
+                .. result.Points.Select(p => new ScanRow(
+                    p.ValueSi * axisScale, p.FigureOfMerit * figureScale, p.Failure)),
+            ],
+            Steepest = result.SteepestInterval is { } steepest && span > 0.0
+                ? new ScanTransition(
+                    steepest.LowSi * axisScale,
+                    steepest.HighSi * axisScale,
+                    double.IsPositiveInfinity(steepest.Change) ? null : steepest.Change * figureScale,
+                    double.IsPositiveInfinity(steepest.Change),
+                    Math.Abs(steepest.HighSi - steepest.LowSi) / span)
+                : null,
+            Warnings = [.. result.Warnings, .. ledger.Collected],
+            Artifacts = [],
+        };
+
+        return outcome with
+        {
+            Artifacts =
+            [
+                Write(project, absolute, "scan", outcome),
+                WriteManifest(
+                    project, absolute, "scan", File.ReadAllText(modelPath), document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
                     DateTimeOffset.UtcNow),
             ],

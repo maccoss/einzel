@@ -66,8 +66,8 @@ public sealed class DiffusionSurfaceTests : IDisposable
         "accelerationPotential": { "value": 0.001, "unit": "V" },
         "cloud": {
           "ions": 1, "population": 10000,
-          "transverseWidth": { "value": 1.0, "unit": "mm" },
-          "longitudinalWidth": { "value": 1.0, "unit": "mm" }
+          "transverseSpread": { "value": 1.0, "unit": "mm" },
+          "longitudinalSpread": { "value": 1.0, "unit": "mm" }
         }
       },
       "fields": [
@@ -144,6 +144,44 @@ public sealed class DiffusionSurfaceTests : IDisposable
 
         // ACC-5 survives the change of description: a loss is named by where it went.
         Assert.NotEqual(JsonValueKind.Undefined, diffusion.GetProperty("losses").ValueKind);
+    }
+
+    [Fact]
+    public void VtuOnADiffusiveRunWritesTheDensityAndCarriesItsWarnings()
+    {
+        // What --vtu means for a mode with no trajectories. RND-8 forbids drawing
+        // lines through a density, and until this existed there was nothing on the
+        // other side of the prohibition: the flag was accepted, wrote nothing, and
+        // said nothing, so the mode's principal output could not be looked at at all.
+        var model = Write("tube", "diffusion", Grid);
+
+        var (exitCode, stdout, _) = Run("run", model, "--vtu", "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+
+        var written = document.RootElement.GetProperty("artifacts")
+            .EnumerateArray()
+            .Select(a => a.GetString()!)
+            .ToList();
+
+        var density = Assert.Single(written, a => a.EndsWith(".density.vti", StringComparison.Ordinal));
+
+        var text = File.ReadAllText(Path.Combine(_root, density));
+
+        // ImageData on the density grid, and a density rather than a potential.
+        Assert.Contains("<VTKFile type=\"ImageData\"", text, StringComparison.Ordinal);
+        Assert.Contains("Name=\"density_per_m3\"", text, StringComparison.Ordinal);
+        Assert.Contains("WholeExtent=\"0 128 0 32 0 0\"", text, StringComparison.Ordinal);
+
+        // GRD-2: the warnings travel with the file, because a volume is exactly the
+        // artifact somebody opens without ever seeing the result envelope.
+        Assert.Contains("units: ions per cubic metre", text, StringComparison.Ordinal);
+        Assert.Contains("mobility.derived", text, StringComparison.Ordinal);
+        Assert.Contains("model: sha256:", text, StringComparison.Ordinal);
+
+        // And no trajectory, which is the half of RND-8 that has teeth.
+        Assert.DoesNotContain(written, a => a.EndsWith(".vtu", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "reflectron-heavy-ion",
+  "description": "Closed form: the focused reflectron time scaled by sqrt(2000/500) = 2 exactly. The focused single-stage reflectron flown with m/z 2000 instead of 500. At fixed accelerating potential the speed goes as 1/sqrt(m) and every term of the flight time goes as sqrt(m), so a four-fold mass gives exactly twice the time: 20.3610 us against 10.1805. That exact factor of two is the sharpest statement of what a time-of-flight instrument measures, and it is a stronger check than it looks - a field or a charge entering the wrong power would break it while leaving one mass looking right.",
+  "model": "../models/reflectron-heavy-ion.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 20.361011435742384,
+      "unit": "us",
+      "tolerance": 1e-06
+    }
+  ]
+}

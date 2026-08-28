@@ -145,6 +145,46 @@ Endpoints are bucketed by rounded coordinate so joining is linear rather than
 quadratic in the segment count; a contour over a fine sample grid is tens of
 thousands of segments and the quadratic form is minutes.
 
+## A density is drawn where a trajectory cannot be
+
+RND-8 and TRN-2 forbid drawing lines through a diffusive region: above about
+10^-2 mbar the model computes a density field and no trajectories exist, so lines
+would depict something the model never produced. The renderer asks the transport
+mode `ProducesTrajectories` rather than inferring it from the pressure, and draws
+none when the answer is no.
+
+On its own that rule is entirely negative, and it was: the mode's principal output
+had no drawing at all, so the honest figure of a funnel at a millibar was an empty
+box with a warning on it. Density contours are what goes there instead.
+
+**Decades, not even fractions.** A density spans orders of magnitude - the core of
+a packet and its tail differ by six - so evenly spaced levels put every line inside
+the core and draw the extent, which is the part a reader most wants, not at all.
+Six levels at 10^-1 through 10^-6 of the peak, fainter with each decade, because
+the eye reads line weight as concentration whatever the caption says.
+
+**The levels are recorded in the figure's provenance.** A density plotted without
+them is a shape rather than a measurement, which is GRD-12's argument applied to a
+contour set.
+
+**Lines rather than filled bands.** Marching squares gives runs, and a filled band
+needs them nested into rings and holes - a different algorithm whose failures are
+silent, since a hole drawn as a solid reads as a *denser* region rather than as a
+bug.
+
+**An empty density is named.** A run whose ions have all reached a boundary leaves
+a residue many orders below one ion in the whole domain, and contouring that draws
+the shape of the round-off. Below the floor nothing is drawn and
+`render.density-empty` says so, along with the change that would produce a picture:
+drawing nothing and saying nothing is indistinguishable from a figure where the
+density was never computed at all.
+
+The density is passed in rather than computed here. Running the transport is the
+command layer's job - it owns turning a model document into a density problem - and
+a renderer that could do it would be a renderer that decides how long a run lasts.
+Where the transport refuses outright, the figure is still drawn from the geometry
+and the field, and the warning says which of the two it got.
+
 ## Not built
 
 - **`render still`** - a raster projection. Nothing in this build rasterises.
@@ -154,8 +194,11 @@ thousands of segments and the quadratic form is minutes.
   writer.
 - **Dimensioned callouts.** The memo's own figures are line drawings *with
   dimensions*, and there is no way to declare one yet.
-- **Density fields.** RND-8 and TRN-2 forbid drawing trajectories for diffusive
-  transport, and there is no diffusive transport mode to draw instead.
+- **Filled density bands, and a colour scale.** Contour lines carry the levels in
+  the provenance; a filled and keyed plot would carry them on the page.
+- **A density at a chosen instant.** What is drawn is the density at the end of the
+  run, which is what the solver returns. Seeing the packet mid-flight means
+  shortening `maximumFlightTime`.
 
 Both unbuilt verbs are named by the CLI and refused with a reason rather than
 falling through as unknown commands, because "not built yet" and "you spelled it

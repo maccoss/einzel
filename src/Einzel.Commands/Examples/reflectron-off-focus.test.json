@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "reflectron-off-focus",
+  "description": "Closed form: 2L/v + 2v/a with L = 150 mm, six penetration depths of drift. The same single-stage mirror as the focused reflectron, with the drift lengthened from four penetration depths to six. The flight time is still 2L/v + 2v/a exactly, and it is the *energy focusing* that is gone: dT/dv no longer vanishes, so an energy spread now shows up as an arrival spread at first order rather than second. Run this beside single-stage-reflectron to see what the four-depth condition buys, and note it buys nothing in the flight time itself.",
+  "model": "../models/reflectron-off-focus.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 12.725632147338992,
+      "unit": "us",
+      "tolerance": 1e-06
+    }
+  ]
+}

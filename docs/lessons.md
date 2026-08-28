@@ -463,6 +463,52 @@ The invariant that *is* exactly true is the balance of the mutual accelerations
 themselves, checked at every stage of every step — which also covers the case the
 naive version was reaching for, an indexing error over absorbed members.
 
+## The same operator, written twice, conservative once
+
+The cylindrical Poisson operator is written in conservative form — flux through a
+ring's outer face minus its inner face, over the ring's own volume — and the
+reasoning behind it is written down. Months later the drift-diffusion solver was
+built on the same grid class, with the same `Cylindrical` flag, and its face flux
+was computed per unit area and applied to both neighbours as though their volumes
+were equal. In an axisymmetric solve they are not: a cell is a ring, so the ion
+count crossing a face is created on one side and destroyed on the other.
+
+The weight a face needs is `A_face · h / V`, identically 1 in the plane and
+`1 ± h/2r` in a cylindrical one. **On the axis it is 4** — the inner face has no
+area, so the cell is a disc rather than a ring. That is the *same* factor of four
+the Laplacian carries on the axis, and it was already documented, one file away, as
+the thing a plane operator gets wrong there.
+
+**Three things about how it hid.**
+
+*The tests were all Cartesian.* Every conservation check in the suite ran on a
+plane grid, where the weight is exactly one and a scheme with no weights at all is
+correct. They passed for a reason that did not generalise — the identical failure
+mode as the uniform-field conservation test that hid a cell-centred drift sample,
+recorded above.
+
+*The ledger did not have to close.* An electrode emptied only the initial density,
+and the ions it deleted were removed after the launched population had been
+counted. So launched, collected, remaining and the named losses were never required
+to add up, and a four per cent leak on the shipped funnel had nowhere to appear.
+Making the itemisation complete is what made the defect visible; the fix to the
+bookkeeping found the fix to the physics.
+
+*It was worst exactly where it mattered.* The weight departs from one as `h/2r`, so
+the error is negligible at the wall and total on the axis — which is where a funnel
+puts its ions, and a funnel is the device this transport mode exists for.
+
+**The check that discriminates is not the conservation figure.** A wrong weight can
+still conserve to a few per cent over a short run, and the population sum was
+99.9995% on the first off-axis fixture that exercised it. What cannot be nearly
+right is the weight itself: exactly 4 on the axis, exactly `1 ± h/2r` off it. Assert
+the quantity with an exact value, not the symptom with a tolerance.
+
+**The rule.** A conservative discretisation is a property of an *operator on a
+geometry*, not of a grid class. Sharing `Grid2D` and a `Cylindrical` flag with a
+solver that got it right transfers none of it, and the second author of an operator
+on the same mesh is the least likely person to re-derive the face areas.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

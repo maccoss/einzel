@@ -39,6 +39,14 @@ public sealed record LossChannel(string Surface, int Ions);
 /// <param name="Collisions">
 /// How many collisions the whole ensemble made. Zero in vacuum.
 /// </param>
+/// <remarks>
+/// <see cref="Peak"/> is null when fewer than two ions arrived, because an arrival
+/// peak needs two points to have a width. <strong>The flight is still a result.</strong>
+/// A packet that loses everything is exactly the case ACC-5 exists for - the losses
+/// are itemised by the surface the model author named, and they are most worth
+/// reading when the transmission is zero. Treating no-peak as no-flight threw that
+/// away at the one point it mattered.
+/// </remarks>
 /// <param name="ScatteredIons">
 /// How many ions collided at least once. Reported beside the arrival times because
 /// COL-1 keeps scattered ions that stay within acceptance rather than discarding
@@ -46,7 +54,7 @@ public sealed record LossChannel(string Surface, int Ions);
 /// peaks and neither is visible from a transmission figure.
 /// </param>
 public sealed record CloudFlight(
-    ArrivalTimePeak Peak,
+    ArrivalTimePeak? Peak,
     IReadOnlyList<PhaseState> Arrived,
     IReadOnlyList<LossChannel> Losses,
     int Collisions = 0,

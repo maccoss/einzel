@@ -5,6 +5,14 @@
     <Description>Command objects: validate, apply, diff, undo, journal, attribution. Every operation a serializable object, so the CLI, MCP server, and shell are peers over one implementation (AGT-2).</Description>
   </PropertyGroup>
 
+  <!-- EX-1: the reference corpus is data, embedded so an example ships with the
+       engine that reads it and cannot drift from the schema version it was
+       written for. Discovered by glob, so adding one is a pair of files and
+       nothing else - a registry edited alongside is a registry that goes stale. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Examples\**\*.json" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Einzel.Core\Einzel.Core.csproj" />
     <ProjectReference Include="..\Einzel.Io\Einzel.Io.csproj" />

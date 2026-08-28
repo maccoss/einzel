@@ -91,6 +91,7 @@ public static class FiguresOfMerit
         new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
         new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false),
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
+        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
@@ -151,15 +152,14 @@ public static class FiguresOfMerit
             "resolvingPower" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
                 ? Magnitude(peak.ResolvingPower(), report)
                 : null,
-            "transmission" => model => Ensemble(model, energySpread, ions, report) is { } peak
-                ? Magnitude(peak.Transmission(), report)
-                : null,
+            "transmission" => model => Transmitted(model, energySpread, ions, report),
             "arrivalSpread" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
                 ? peak.GaussianEquivalentFwhmSeconds
                 : null,
             "turnAroundTime" => model => TurnAround(model, report),
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
+            "transitTime" => model => Transit(model, report),
             _ => throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.InternalError,
@@ -261,7 +261,7 @@ public static class FiguresOfMerit
     /// call it physics.
     /// </para>
     /// </remarks>
-    private static ArrivalTimePeak Ensemble(
+    private static ArrivalTimePeak? Ensemble(
         CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report = null)
     {
         if (model.Cloud.IsCloud)
@@ -285,7 +285,7 @@ public static class FiguresOfMerit
             }
         }
 
-        return ArrivalTimePeak.FromArrivals(arrivals, ions);
+        return arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, ions) : null;
     }
 
     /// <summary>Flies the cloud a model declares.</summary>
@@ -294,7 +294,7 @@ public static class FiguresOfMerit
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
     /// <param name="report">Where the warnings the flight earns are sent, or null.</param>
     /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
-    public static ArrivalTimePeak FromCloud(
+    public static ArrivalTimePeak? FromCloud(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null) =>
         FlyCloud(model, report).Peak;
 
@@ -389,7 +389,10 @@ public static class FiguresOfMerit
         }
 
         return new CloudFlight(
-            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions),
+            // Null rather than a throw when fewer than two arrived. A peak needs two
+            // points to have a width; the flight around it is still a result, and its
+            // itemised losses are most worth reading precisely when nothing arrived.
+            arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions) : null,
             [.. arrived],
             [.. losses
                 .OrderByDescending(pair => pair.Value)
@@ -554,6 +557,128 @@ public static class FiguresOfMerit
     /// transport tests check.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The mean transit time of a diffusive run, in seconds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// TRN-2: a density has no flight time, and `transport.no-flight-time` says so
+    /// rather than filling one in. What it has instead is a transit-time
+    /// <em>distribution</em>, and this is its mean - weighted by how many ions
+    /// arrived in each bin, because an unweighted mean over bins is a mean over the
+    /// solver's step schedule rather than over the ions.
+    /// </para>
+    /// <para>
+    /// Added because without it the diffusive mode's principal scalar output could
+    /// not be asserted at all: no study could rank by it and no project test could
+    /// pin it, so half of REG-1's peer pair was outside the machinery that keeps the
+    /// other half honest.
+    /// </para>
+    /// </remarks>
+    private static double? Transit(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (!string.Equals(model.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            // Not a failure to measure - a wrong question. A trajectory run has a
+            // flight time, which is a different quantity computed a different way,
+            // and quietly returning it here would let a test pass against the mode
+            // it was not written for.
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/mode",
+                Constraint = "'transitTime' is the transit of a density, and this model declares "
+                    + $"'{model.TransportMode}' transport",
+                Suggestion = "use 'flightTime' for a trajectory run, or set "
+                    + "\"transport\": { \"mode\": \"diffusion\" }",
+            });
+        }
+
+        var (field, warnings) = Fields.FieldAssembly.BuildReported(model);
+        var outcome = DiffusionRun.Execute(model, field, warnings);
+
+        Forward(outcome.Warnings, report);
+
+        var result = outcome.Result;
+
+        if (result.Arrivals.Count == 0 || result.Collected <= 0.0)
+        {
+            // Nothing arrived, so there is no transit to average. Null rather than
+            // zero: zero is a real answer and a caller cannot tell the two apart.
+            return null;
+        }
+
+        return result.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / result.Collected;
+    }
+
+    /// <summary>
+    /// The fraction of launched ions that arrive, in its own right.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Counted rather than read off an arrival-time peak, because a peak needs at
+    /// least two arrivals to have a width and a transmission needs none at all.
+    /// Going through the peak meant <strong>a transmission of zero could not be
+    /// expressed</strong>: a mass filter above its cut-off, or an ion lost on a ring,
+    /// raised an internal error saying "a peak needs at least two arrivals" and the
+    /// whole run reported itself as a defect in the engine.
+    /// </para>
+    /// <para>
+    /// That is exactly backwards for ACC-5, whose entire subject is transmission as
+    /// a measured, itemised quantity: an instrument that loses everything is the
+    /// case a reader most wants reported, and it was the one case the figure could
+    /// not report. Found by the example corpus, where a quadrupole above its
+    /// low-mass cut-off is half of a two-model pair that brackets a published
+    /// boundary.
+    /// </para>
+    /// <para>
+    /// Zero is a measurement and null is a failure to measure, and the two are kept
+    /// apart: nothing arrived gives 0.0, while a model that could not be flown at
+    /// all gives null.
+    /// </para>
+    /// </remarks>
+    private static double? Transmitted(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (arrived, launched) = Counted(model, spread, ions, report);
+
+        return launched > 0 ? (double)arrived / launched : null;
+    }
+
+    /// <summary>How many of the ensemble arrived, and how many were launched.</summary>
+    private static (int Arrived, int Launched) Counted(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (model.Cloud.IsCloud)
+        {
+            return (FlyCloud(model, report).Arrived.Count, model.Cloud.Ions);
+        }
+
+        var arrived = 0;
+
+        for (var k = 0; k < ions; k++)
+        {
+            var fraction = ions == 1 ? 0.0 : (2.0 * k / (ions - 1.0)) - 1.0;
+
+            var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
+            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+
+            if (result.Outcome == TrajectoryOutcome.StopConditionMet)
+            {
+                arrived++;
+            }
+        }
+
+        return (arrived, ions);
+    }
+
     private static double? TurnAround(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
@@ -589,7 +714,7 @@ public static class FiguresOfMerit
 
         try
         {
-            return FromCloud(thermalOnly, report).GaussianEquivalentFwhmSeconds;
+            return FromCloud(thermalOnly, report)?.GaussianEquivalentFwhmSeconds;
         }
         catch (ArgumentException)
         {
