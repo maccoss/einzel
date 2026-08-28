@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "0.4",
+  "name": "drift-tube-diffusion",
+  "description": "A 38 mm drift tube at 1 mbar, described the way the second transport mode describes things: as a density evolving in time rather than as trajectories. Above about 1e-2 mbar an ion has forgotten where it came from long before it arrives, and what survives is a distribution - so REG-1 makes statistical diffusion a peer of trajectory integration rather than a fallback from it, and RND-8 forbids drawing lines through the result. The mobility is declared rather than derived from the cross section, which is what TRN-1 asks for and is also what keeps the expected number arithmetic: 0.09 m^2/(V s) in 2 kV/m is 180 m/s, so 38 mm takes 211 us. A density has no flight time and says so; what it has is a transit-time distribution, and this is its mean.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        2,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.001,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "population": 10000,
+      "transverseSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      },
+      "longitudinalSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "value": [
+          2000.0,
+          0,
+          0
+        ],
+        "unit": "V/m"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        40.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "diffusion",
+    "maximumFlightTime": {
+      "value": 1500,
+      "unit": "us"
+    },
+    "mobility": {
+      "zeroField": {
+        "value": 0.09,
+        "unit": "m^2/(V s)"
+      }
+    },
+    "densityGrid": {
+      "minX": {
+        "value": -2,
+        "unit": "mm"
+      },
+      "maxX": {
+        "value": 40,
+        "unit": "mm"
+      },
+      "minY": {
+        "value": -6,
+        "unit": "mm"
+      },
+      "maxY": {
+        "value": 6,
+        "unit": "mm"
+      },
+      "intervalsX": 128,
+      "intervalsY": 32
+    },
+    "gas": {
+      "model": "hardSphere",
+      "pressure": {
+        "value": 1,
+        "unit": "mbar"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "crossSection": {
+        "value": 250,
+        "unit": "Å^2"
+      }
+    }
+  }
+}

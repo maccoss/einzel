@@ -98,7 +98,7 @@ public static class ExportCommand
                     solve3d.Electrodes,
                     solve3d.Tolerance)
                 {
-                    Drive = solve3d.Drive,
+                    Drives = solve3d.Drives,
                     Stages = solve3d.Stages,
                 };
 

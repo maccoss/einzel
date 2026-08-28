@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "0.3",
+  "name": "free-flight",
+  "description": "A single ion of m/z 500 accelerated through 4 kV and allowed to drift one metre in a field-free region. The flight time is the distance over the speed, and the speed is sqrt(2qU/m): 39291.5 m/s, so one metre takes 25.4508 us. There is no geometry to solve and nothing approximate anywhere in the path, so this is the model to run first when checking that an installation works at all.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        -1000.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 4000.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "fieldFree"
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        0.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 100.0,
+      "unit": "us"
+    }
+  }
+}

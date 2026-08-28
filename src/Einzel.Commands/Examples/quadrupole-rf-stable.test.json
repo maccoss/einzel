@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "quadrupole-rf-stable",
+  "description": "Published: the tabulated Mathieu cut-off is q = 0.90804, and this model sits at q = 0.70. A round-rod quadrupole driven at 1 MHz with the RF amplitude set so that m/z 500 sits at a Mathieu q of 0.70, which is below the tabulated low-mass cut-off of q = 0.90804 on the a = 0 line. The ion transmits. Run this beside its unstable twin: together they bracket a published boundary, which is a stronger statement than either alone, and neither number comes from this engine. The amplitude is arithmetic - q = 4 z e V / (m Omega^2 r0^2) gives 572.8 V - so the operating point can be checked before any simulation runs.",
+  "model": "../models/quadrupole-rf-stable.json",
+  "expect": [
+    {
+      "figureOfMerit": "transmission",
+      "value": 1.0,
+      "unit": "1",
+      "tolerance": 1e-09
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "accelerating-gap",
+  "description": "Closed form: t = sqrt(2 d m / (q E)). An ion released at rest in a uniform 10 kV/m field and collected 100 mm away. The acceleration is qE/m and the flight time is sqrt(2d/a), which is 10.1805 us for m/z 500. A source may declare a zero accelerating potential exactly when a declared field could accelerate the ion - a trap holds its packet still until the instrument switches a field on, and this is the simplest instance of that.",
+  "model": "../models/accelerating-gap.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 10.180505717871194,
+      "unit": "us",
+      "tolerance": 1e-09
+    }
+  ]
+}

@@ -372,6 +372,17 @@ depends on which unit you take it in, and that is precisely the ambiguity the
 evaluator exists to refuse. `mod` is Euclidean rather than truncated, so
 `mod(-1, 2)` is 1: an index counted backwards still alternates the way it should.
 
+`cosPi(x)` and `sinPi(x)` join them, and take **half turns rather than radians**.
+A multipole needs them: 2n rods at pi/n intervals is
+`rodCentre * cosPi(2 * pole / poleCount)`, and without trigonometry that geometry
+cannot be written at all.
+
+Half turns because `Math.Cos(Math.PI / 2)` is 6.1e-17 rather than zero, so a rod
+placed at a quarter turn would land a hair off axis and the multipole would carry a
+spurious dipole made of rounding. `cosPi(0.5)` is exactly zero. This is the same
+convention, for the same reason, that the drive decomposition already uses to keep
+an antiphase electrode from picking up a quadrature component of pure round-off.
+
 ## What a solve is a cross-section of
 
 ```json
@@ -599,3 +610,89 @@ so every earlier document still reads — but a document whose ions push on each
 other genuinely is not a 0.4 document, and saying so is cheaper than an older
 build reading it, ignoring the field it does not know, and reporting a different
 flight with nothing to indicate that anything was dropped.
+
+## Several generators on one geometry
+
+A `solve` may declare `drives` instead of `drive`, and each electrode names which ones
+it taps and with what amplitude and phase:
+
+```json
+"drives": [
+  { "name": "wave",    "frequency": { "value": 0.5, "unit": "MHz" } },
+  { "name": "confine", "frequency": { "value": 3.0, "unit": "MHz" } }
+],
+"electrodes": [
+  {
+    "name": "ring",
+    "repeat": { "count": { "expression": "ringCount" }, "index": "ring" },
+    "potential": { "value": 0, "unit": "V" },
+    "taps": [
+      { "drive": "wave",
+        "amplitude": { "expression": "rfAmplitude", "unit": "V" },
+        "phase": { "expression": "-waveDirection * ring / ringsPerWave", "unit": "1" } },
+      { "drive": "confine",
+        "amplitude": { "expression": "confineAmplitude", "unit": "V" },
+        "phase": { "expression": "mod(ring, 2) / 2", "unit": "1" } }
+    ]
+  }
+]
+```
+
+`drive` and `driveAmplitude`/`drivePhase` remain the short form for the common case of
+one generator, and declaring both spellings is **refused** rather than merged: a
+document that says a geometry has one drive and also says it has three is not a
+document with a default to fall back on. Every generator needs a `name` once there is
+more than one, since a tap resolves by name; duplicates and unknown names are refused,
+and the error lists the generators that exist.
+
+**Why the format said "one" and what changed its mind.** The original note in
+`CompiledDrive` read: *"one drive per solve ... modelling it the other way round would
+let a document declare two frequencies on one structure — which is a different
+instrument and almost always a mistake."* Two devices refuted it. A real
+travelling-wave guide superposes a fast confining RF on a slow travelling wave, and a
+trap performing a stored-waveform isolation runs a low-frequency notched comb across
+its endcaps while the ring carries the main drive. **Two frequencies on one structure
+is not a mistake; it is what a trap is.**
+
+### It costs nothing in the solver
+
+Basis superposition is indifferent to what the weights are functions of. Two
+generators reaching the same electrodes in the same proportions are **one solved
+pattern carrying two weights on two clocks**, exactly as a DC supply and an RF supply
+already were. What multiplies the solve count is a different *spatial pattern*, never
+a different frequency.
+
+Measured on the shipped travelling-wave guide, whose 24 rings each tap both
+generators: **3 basis solves**. Two for the wave — a sinusoidal phase ramp collapses
+into a fixed quadrature pair however many rings there are — and one for the
+alternating confinement.
+
+The quadrature collapse is decided **per generator**, because an instrument may run a
+sinusoidal confinement and a switched excitation at once and each collapses or does
+not on its own terms.
+
+### It does change the step control
+
+A field with two timescales must cap its step by the faster one.
+`DrivenSolvedField.ShortestPeriodSeconds` is the minimum over generators, and for a
+harmonic waveform it is the period of the **highest term** rather than of the
+fundamental — a comb reaching order 120 carries information a hundred and twenty times
+faster than its own repeat rate, and a controller told only the fundamental would step
+over every one of those oscillations while its error estimator agreed the step was
+accurate. For the field the step was shown. It was not shown the field.
+
+Measured: the guide's wave repeats at 0.5 MHz and its confinement at 3 MHz, and the
+assembled field reports **333.33 ns** — the confinement's period, not the wave's.
+
+### What is still one drive
+
+**Three-dimensional solves.** `CompiledSolvedField3D` and `Geometry3D` carry a list
+and the builder uses it, so nothing below the document is limited; the `solved3d`
+document form has not been given the `drives` spelling. It is the same change and it
+has not been needed yet.
+
+**Analytic elements.** An `OscillatingUniformField` is its own generator with its own
+frequency, superposed through `DrivenSuperposedField`, which is how the notch-width
+measurement in `docs/validation.md` is done. A solved geometry with a supplementary
+uniform excitation would be that superposition, and nothing in the format declares
+one.

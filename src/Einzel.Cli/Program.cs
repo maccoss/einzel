@@ -113,6 +113,8 @@ public static class Program
             "run" => Run(options),
             "sweep" => Sweep(options),
             "optimise" or "optimize" => Optimise(options),
+            "scan" => Scan(options),
+            "boundary" => Boundary(options),
             "preview" => Preview(options),
             "test" => Test(options),
             "verify" => Verify(options),
@@ -254,6 +256,185 @@ public static class Program
         }
 
         return (int)ExitCode.Success;
+    }
+
+    private static int Scan(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine("usage: einzel scan <study.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("run 'einzel schema --study' for the shape of a study file");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var studyPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var outcome = StudyCommand.Scan(studyPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Artifacts.Count == 0)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"would scan {outcome.Parameter} over {outcome.FigureOfMerit.Name} in "
+                + $"{outcome.ModelPath}"));
+
+            return (int)ExitCode.Success;
+        }
+
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.Parameter} / {outcome.Unit}      {outcome.FigureOfMerit.Name} / "
+            + $"{outcome.FigureOfMerit.Unit}"));
+
+        foreach (var point in outcome.Points)
+        {
+            // A point with no figure prints its reason rather than a blank. On a
+            // stability scan that reason is the result - the ion was lost, and where.
+            var figure = point.FigureOfMerit is { } value
+                ? string.Create(invariant, $"{value,18:G8}")
+                : $"{"-",18}  {Short(point.Failure)}";
+
+            Console.Out.WriteLine(string.Create(invariant, $"{point.Value,14:G8}  {figure}"));
+        }
+
+        Console.Out.WriteLine();
+
+        if (outcome.Nominal is { } nominal)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"nominal {nominal:G8} {outcome.FigureOfMerit.Unit} at the model's own value"));
+        }
+
+        if (outcome.Steepest is { } steepest)
+        {
+            // Not a boundary: where the figure moves fastest on the grid actually
+            // computed, and how coarse that grid is there. ACC-6 wants one part in
+            // five hundred of the scan, so the fraction is what says whether this
+            // scan resolved anything.
+            var change = steepest.FigureVanishes
+                ? "the figure stops existing"
+                : string.Create(invariant, $"the figure moves {steepest.Change:G4}");
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"steepest between {steepest.Low:G8} and {steepest.High:G8} {outcome.Unit}: {change}"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"  that interval is 1 part in {1.0 / Math.Max(steepest.WidthFraction, 1e-12):F0} of the "
+                + $"scan; ACC-6 asks for 1 in 500"));
+        }
+
+        Warn(outcome.Warnings);
+
+        Console.Out.WriteLine();
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine($"wrote {artifact}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    private static int Boundary(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel boundary <study.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("run 'einzel schema --study' for the shape of a study file");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var studyPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var outcome = StudyCommand.Boundary(studyPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Artifacts.Count == 0)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"would bisect for {outcome.Parameter} where {outcome.FigureOfMerit.Name} crosses "
+                + $"{outcome.Threshold:G6} in {outcome.ModelPath}"));
+
+            return (int)ExitCode.Success;
+        }
+
+        if (outcome.Boundary is { } boundary)
+        {
+            // The bracket, not a value with an error bar. A bisection proves
+            // containment; the midpoint is a convention laid over it, and printing
+            // the midpoint alone would quote the boundary more precisely than it was
+            // measured.
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{outcome.Parameter,-14} {boundary.Value:G8} {outcome.Unit}, "
+                + $"bracketed [{boundary.Uncertainty.Lower:G8}, {boundary.Uncertainty.Upper:G8}]"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{"where",-14} {outcome.FigureOfMerit.Name} crosses {outcome.Threshold:G6} "
+                + $"{outcome.FigureOfMerit.Unit} (inside is {outcome.Inside})"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{"resolved",-14} 1 part in {1.0 / Math.Max(outcome.ResolvedFraction, 1e-12):F0} of "
+                + $"the range in {outcome.Evaluations} evaluations; ACC-6 asks for 1 in 500, and a "
+                + $"grid would cost 501"));
+
+            // Whether or not the check found anything. A reader who sees the line
+            // knows the single-crossing assumption was tested; one who sees nothing
+            // cannot tell that from its never having been tested (REG-2).
+            Console.Out.WriteLine(outcome.SecondCrossingSi is { } flip
+                ? string.Create(
+                    invariant,
+                    $"{"but",-14} the figure crosses back at {flip:G8} SI, so this is one edge of "
+                    + $"several rather than the edge of the region ({outcome.Probes} probe(s))")
+                : string.Create(
+                    invariant,
+                    $"{"confirmed",-14} {outcome.Probes} probe(s) outside the bracket found no second "
+                    + $"crossing"));
+        }
+
+        Warn(outcome.Warnings);
+
+        Console.Out.WriteLine();
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine($"wrote {artifact}");
+        }
+
+        return outcome.Converged ? (int)ExitCode.Success : (int)ExitCode.ConvergenceFailure;
+    }
+
+    /// <summary>The first line of a failure, for a table cell.</summary>
+    private static string Short(string? failure)
+    {
+        if (string.IsNullOrWhiteSpace(failure))
+        {
+            return "no figure";
+        }
+
+        var line = failure.ReplaceLineEndings(" ").Trim();
+
+        return line.Length <= 72 ? line : line[..69] + "...";
     }
 
     private static int Optimise(CommandLine options)
@@ -429,6 +610,15 @@ public static class Program
         Console.Out.WriteLine(outcome.Written
             ? $"wrote {outcome.Path} from {outcome.Source}"
             : $"would write {outcome.Path} from {outcome.Source}");
+
+        // An example brings its own assertion, so say where it landed - otherwise
+        // the file appears in tests/ with nothing having mentioned it.
+        if (outcome.TestPath is { } test)
+        {
+            Console.Out.WriteLine(outcome.Written
+                ? $"wrote {test} - run 'einzel test' to check it"
+                : $"would write {test}");
+        }
 
         return (int)ExitCode.Success;
     }
@@ -1401,20 +1591,37 @@ public static class Program
             // gap between them is the skew - so printing one of them beside a
             // resolving power computed from the other invites exactly the wrong
             // reconciliation.
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"peak          {ensemble.CentralWidthNs:F3} ns central half, "
-                + $"{ensemble.GaussianFwhmNs:F3} ns Gaussian FWHM, skew {ensemble.Skewness:+0.00;-0.00;0.00}"));
+            //
+            // Absent, not zero, where fewer than two ions arrived: a peak needs two
+            // points to have a width, and a printed 0.000 ns reads as an infinitely
+            // sharp one. The transmission and the itemised losses above are still
+            // reported, and they are the whole of what such a run has to say.
+            if (ensemble.CentralWidthNs is { } central && ensemble.GaussianFwhmNs is { } gaussian)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"peak          {central:F3} ns central half, "
+                    + $"{gaussian:F3} ns Gaussian FWHM, skew {ensemble.Skewness:+0.00;-0.00;0.00}"));
 
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"turn-around   {ensemble.TurnAroundFwhmNs:F3} ns of that Gaussian width"));
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"turn-around   {ensemble.TurnAroundFwhmNs:F3} ns of that Gaussian width"));
+            }
+            else
+            {
+                Console.Out.WriteLine(
+                    "peak          none: fewer than two ions arrived, so there is no width to "
+                    + "measure");
+            }
 
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"resolving     {ensemble.ResolvingPower.Value:G6} +/- "
-                + $"{(ensemble.ResolvingPower.Uncertainty.Upper - ensemble.ResolvingPower.Uncertainty.Lower) / 2.0:G3}"
-                + $" (from the central half)"));
+            if (ensemble.ResolvingPower is { } resolving)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"resolving     {resolving.Value:G6} +/- "
+                    + $"{(resolving.Uncertainty.Upper - resolving.Uncertainty.Lower) / 2.0:G3}"
+                    + $" (from the central half)"));
+            }
 
             // ACC-5: never a bare percentage. A named surface says which one to
             // move; "transmission is 51 percent" says only that something is wrong.
@@ -1460,7 +1667,7 @@ public static class Program
                     + $"{Capacity(ensemble.SpaceChargePopulationLimit)} within the 1 ppm budget"));
             }
 
-            foreach (var warning in ensemble.ResolvingPower.Warnings
+            foreach (var warning in (ensemble.ResolvingPower?.Warnings ?? [])
                 .Concat(ensemble.Transmission.Warnings)
                 .GroupBy(w => w.Code, StringComparer.Ordinal)
                 .Select(g => g.First()))
@@ -1515,21 +1722,33 @@ public static class Program
     /// Walks up from a model file looking for a project root, so that
     /// <c>einzel run models/x.json</c> works from anywhere inside a project.
     /// </summary>
+    /// <summary>
+    /// The project a file belongs to: the nearest ancestor holding a
+    /// <c>models</c> directory, or failing that the file's own directory.
+    /// </summary>
+    /// <remarks>
+    /// The fallback used to be the working directory, which put results wherever
+    /// the caller happened to be standing rather than anywhere near the thing they
+    /// ran. A study kept in a scratch folder and run from a source tree wrote
+    /// <c>results/</c> into the source tree and said only "wrote results\x.json",
+    /// which is both surprising and hard to trace back. A file's own directory is
+    /// the closest thing to a project when it is not in one - PRJ-1's unit of work
+    /// is a directory, and this picks the directory that at least contains the
+    /// input.
+    /// </remarks>
     private static string InferProjectRoot(string modelPath)
     {
         var directory = new FileInfo(modelPath).Directory;
 
-        while (directory is not null)
+        for (var at = directory; at is not null; at = at.Parent)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "models")))
+            if (Directory.Exists(Path.Combine(at.FullName, "models")))
             {
-                return directory.FullName;
+                return at.FullName;
             }
-
-            directory = directory.Parent;
         }
 
-        return Directory.GetCurrentDirectory();
+        return directory?.FullName ?? Directory.GetCurrentDirectory();
     }
 
     private const string Usage =
@@ -1556,6 +1775,8 @@ public static class Program
           test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
+          scan <study.json>             one parameter across a range, one row per point
+          boundary <study.json>         bisect onto a stability boundary (Class B, ACC-6)
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
           compare <model.json>          run both transport modes and report the disagreement

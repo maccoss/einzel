@@ -1,0 +1,229 @@
+{
+  "schemaVersion": "0.3",
+  "name": "quadrupole-dc",
+  "description": "Four round rods at 100 V DC, the classical quadrupole cross-section with the rod radius at Denison's 1.1468 inscribed radii - the ratio that cancels the leading non-ideal multipole. With no RF this is not a mass filter, it is a strong electrostatic lens, and what is asserted is that an ion crosses it without gaining or losing energy. That is an exact invariant rather than a number this engine chose, and it is a real check on a solved field: an interpolant with discontinuous derivatives leaks energy at every cell boundary, which is why ACC-3 forbids the cheap one.",
+  "parameters": {
+    "inscribedRadius": {
+      "value": 5.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 50.0,
+      "description": "Distance from the axis to the nearest rod surface, conventionally r0."
+    },
+    "rodRatio": {
+      "value": 1.1468,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 1.4,
+      "description": "Rod radius as a multiple of the inscribed radius. 1.1468 is the classical optimum for round rods: the value that cancels the leading non-ideal multipole, the 12-pole. Bounded so an optimiser can search for it rather than being told it."
+    },
+    "rodPotential": {
+      "value": 100.0,
+      "unit": "V",
+      "description": "Applied to the x-pair; the y-pair takes its negative."
+    },
+    "housingClearance": {
+      "value": 1.6,
+      "unit": "1",
+      "minimum": 0.2,
+      "maximum": 8.0,
+      "description": "Distance from a rod centre to the grounded wall, beyond the rod radius, as a multiple of the rod radius. The classical rod ratio assumes no housing at all, so this is the parameter that says how far from that assumption a given design sits."
+    },
+    "cellsPerRadius": {
+      "value": 16.0,
+      "unit": "1",
+      "minimum": 4.0,
+      "maximum": 128.0,
+      "description": "Grid cells across the inscribed radius."
+    },
+    "rodRadius": {
+      "expression": "inscribedRadius * rodRatio",
+      "unit": "mm"
+    },
+    "rodCentre": {
+      "expression": "inscribedRadius + rodRadius",
+      "unit": "mm"
+    },
+    "domainHalfWidth": {
+      "expression": "rodCentre + rodRadius * housingClearance",
+      "unit": "mm"
+    },
+    "cellSize": {
+      "expression": "inscribedRadius / cellsPerRadius",
+      "unit": "mm"
+    },
+    "probeFraction": {
+      "value": 0.8,
+      "unit": "1",
+      "minimum": 0.05,
+      "maximum": 0.98,
+      "description": "How far out the probe ion crosses the aperture, as a fraction of r0. It has to be a fraction rather than a length: this template exists to have its inscribed radius changed, and a placement in bare millimetres that is comfortably inside the aperture at one radius sits exactly on a rod at another. That is what happened here - the source was written as -4 mm, which is 0.8 r0 at the shipped 5 mm and precisely on the metal at 4 mm, and neither validate nor solve objected."
+    },
+    "probeOffset": {
+      "expression": "inscribedRadius * probeFraction",
+      "unit": "mm"
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "-probeOffset",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 10,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "rodXPlus",
+            "shape": "disc",
+            "centreX": {
+              "expression": "rodCentre",
+              "unit": "mm"
+            },
+            "centreY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "rodPotential",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "rodXMinus",
+            "shape": "disc",
+            "centreX": {
+              "expression": "-rodCentre",
+              "unit": "mm"
+            },
+            "centreY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "rodPotential",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "rodYPlus",
+            "shape": "disc",
+            "centreX": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "rodCentre",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-rodPotential",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "rodYMinus",
+            "shape": "disc",
+            "centreX": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "-rodCentre",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-rodPotential",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "probeOffset",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-10,
+    "maximumFlightTime": {
+      "value": 1,
+      "unit": "ms"
+    }
+  }
+}

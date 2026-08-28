@@ -83,6 +83,10 @@ public static class DriftDiffusion
     /// <param name="species">The ion, for its charge sign.</param>
     /// <param name="untilSeconds">How long to run.</param>
     /// <param name="edges">What happens at each domain edge.</param>
+    /// <param name="absorbers">
+    /// Interior cells that swallow whatever reaches them, named by surface, or null
+    /// where the tracked region has no geometry in it.
+    /// </param>
     /// <param name="maximumSteps">A runaway guard.</param>
     /// <returns>What happened.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
@@ -95,12 +99,15 @@ public static class DriftDiffusion
         IonSpecies species,
         double untilSeconds,
         DomainEdges edges,
+        AbsorbingCells? absorbers = null,
         int maximumSteps = 2_000_000)
     {
         ArgumentNullException.ThrowIfNull(initial);
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(gas);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(untilSeconds);
+
+        absorbers ??= AbsorbingCells.None;
 
         var grid = initial.Grid;
         var density = initial.Clone();
@@ -111,14 +118,15 @@ public static class DriftDiffusion
 
         // Sampled once. The field does not change during a diffusive run - a
         // sequenced one would need this inside the loop, and does not exist yet.
-        var (driftX, driftY, diffusion, potential) = SampleCoefficients(
+        var (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
             grid, field, gas, mobility, species, sign, number, initial.Cylindrical);
 
         // The thermal voltage, which is what turns a potential difference across a
         // face into the exponent Scharfetter-Gummel needs.
         var thermal = BackgroundGas.BoltzmannSi * gas.TemperatureK / species.ChargeSi;
 
-        var step = StableStep(grid, driftX, driftY, diffusion);
+        var step = StableStep(
+            grid, driftX, driftY, gasX, gasY, diffusion, density.LargestRadialWeight());
 
         var arrivals = new List<(double, double)>();
         var lost = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -132,7 +140,8 @@ public static class DriftDiffusion
             var dt = Math.Min(step, untilSeconds - time);
 
             var leaving = Advance(
-                density, next, grid, driftX, driftY, diffusion, potential, thermal, dt, edges);
+                density, next, grid, driftX, driftY, gasX, gasY,
+                diffusion, potential, thermal, dt, edges, absorbers);
 
             (density, next) = (next, density);
 
@@ -188,6 +197,11 @@ public static class DriftDiffusion
     /// anisotropic mesh crosses a cell at a different rate from a diagonal one of
     /// the same speed, and quoting a speed loses which.
     /// </param>
+    /// <param name="largestRadialWeight">
+    /// The largest conservative face weight anywhere on the grid, from
+    /// <see cref="DensityField.LargestRadialWeight"/>. One in the plane, four on the
+    /// axis of a cylindrical solve.
+    /// </param>
     /// <returns>The step, and which limit set it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
     /// <remarks>
@@ -204,19 +218,29 @@ public static class DriftDiffusion
     /// </para>
     /// </remarks>
     public static (double Seconds, string Limit) StepFor(
-        Fields.Solved.Grid2D grid, double diffusionSi, double fastestCrossingRateSi = 0.0)
+        Fields.Solved.Grid2D grid,
+        double diffusionSi,
+        double fastestCrossingRateSi = 0.0,
+        double largestRadialWeight = 1.0)
     {
         ArgumentNullException.ThrowIfNull(grid);
 
+        // A weighted radial face scales the outward coefficient with it, so the
+        // largest weight anywhere scales the limit. One in the plane; four on the
+        // axis of a cylindrical solve, where the cell is a disc rather than a ring.
+        // Taking the step from the unweighted rate there is stepping four times too
+        // far, at the one place a funnel puts most of its ions.
+        var weight = Math.Max(1.0, largestRadialWeight);
+
         var inverseSquares = (1.0 / (grid.SpacingX * grid.SpacingX))
-            + (1.0 / (grid.SpacingY * grid.SpacingY));
+            + (weight / (grid.SpacingY * grid.SpacingY));
 
         var byDiffusion = diffusionSi > 0.0
             ? 1.0 / (2.0 * diffusionSi * inverseSquares)
             : double.PositiveInfinity;
 
         var byDrift = fastestCrossingRateSi > 0.0
-            ? 1.0 / fastestCrossingRateSi
+            ? 1.0 / (weight * fastestCrossingRateSi)
             : double.PositiveInfinity;
 
         if (double.IsPositiveInfinity(byDiffusion) && double.IsPositiveInfinity(byDrift))
@@ -230,21 +254,34 @@ public static class DriftDiffusion
     }
 
     private static double StableStep(
-        Fields.Solved.Grid2D grid, double[] driftX, double[] driftY, double[] diffusion)
+        Fields.Solved.Grid2D grid,
+        double[] driftX,
+        double[] driftY,
+        double[] gasX,
+        double[] gasY,
+        double[] diffusion,
+        double largestRadialWeight)
     {
         var fastest = 0.0;
         var widest = 0.0;
 
         for (var k = 0; k < diffusion.Length; k++)
         {
-            fastest = Math.Max(fastest, CrossingRate(grid, driftX[k], driftY[k]));
+            // The Courant condition is on how fast the ions actually move, which is
+            // the field drift and the gas carrying them added. Taking it from the
+            // field alone would let a fast gas outrun the step in a model whose own
+            // field is weak - which is precisely the funnel case, where the gas is
+            // half the mechanism.
+            fastest = Math.Max(
+                fastest, CrossingRate(grid, driftX[k] + gasX[k], driftY[k] + gasY[k]));
+
             widest = Math.Max(widest, diffusion[k]);
         }
 
         // The same function the cost estimate calls, so the two cannot disagree
         // about what a run will do. An estimate computed by a second implementation
         // of the step rule is an estimate of that implementation.
-        return StepFor(grid, widest, fastest).Seconds;
+        return StepFor(grid, widest, fastest, largestRadialWeight).Seconds;
     }
 
     /// <summary>How fast a drift crosses a cell, in reciprocal seconds.</summary>
@@ -260,7 +297,7 @@ public static class DriftDiffusion
         return (Math.Abs(driftXSi) / grid.SpacingX) + (Math.Abs(driftYSi) / grid.SpacingY);
     }
 
-    private static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential) SampleCoefficients(
+    private static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential, double[] GasX, double[] GasY) SampleCoefficients(
         Fields.Solved.Grid2D grid,
         IElectrostaticField field,
         BackgroundGas gas,
@@ -276,6 +313,8 @@ public static class DriftDiffusion
         var driftY = new double[count];
         var diffusion = new double[count];
         var potential = new double[count];
+        var gasX = new double[count];
+        var gasY = new double[count];
 
         for (var j = 0; j < grid.CountY; j++)
         {
@@ -294,20 +333,32 @@ public static class DriftDiffusion
 
                 diffusion[k] = Mobility.DiffusionSi(gas.TemperatureK, species.ChargeSi, local);
                 potential[k] = field.PotentialAt(in point);
+
+                // Sampled per node rather than taken once, even though only a
+                // uniform flow can be declared today. A flow field is what GAS-1
+                // asks for above 1e-2 mbar and the face averaging below is only
+                // correct if the velocity is known at both nodes of a face.
+                var flow = gas.VelocityAt(in point);
+
+                gasX[k] = flow.X;
+                gasY[k] = flow.Y;
             }
         }
 
         // On the axis of a cylindrical solve there is no radial direction, so a
         // radial drift there is a discretisation artefact rather than a velocity.
+        // The same argument applies to the gas: a neutral flow with a radial
+        // component on the axis is describing a jet emerging from the axis itself.
         if (cylindrical)
         {
             for (var i = 0; i < grid.CountX; i++)
             {
                 driftY[i] = 0.0;
+                gasY[i] = 0.0;
             }
         }
 
-        return (driftX, driftY, diffusion, potential);
+        return (driftX, driftY, diffusion, potential, gasX, gasY);
     }
 
     private static (double Collected, IReadOnlyList<(string Where, double Ions)> Absorbed) Advance(
@@ -316,11 +367,14 @@ public static class DriftDiffusion
         Fields.Solved.Grid2D grid,
         double[] driftX,
         double[] driftY,
+        double[] gasX,
+        double[] gasY,
         double[] diffusion,
         double[] potential,
         double thermal,
         double dt,
-        DomainEdges edges)
+        DomainEdges edges,
+        AbsorbingCells absorbers)
     {
         var collected = 0.0;
         var absorbed = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -331,28 +385,45 @@ public static class DriftDiffusion
 
             for (var i = 0; i < grid.CountX; i++)
             {
+                // A cell inside metal holds nothing. Skipped rather than stepped,
+                // because a conductor that computed an outward flux would be a
+                // conductor that emits - and it is emptied at every step rather than
+                // only at the start, which is what makes an electrode a boundary for
+                // the whole run instead of only for the seed.
+                if (absorbers.Blocks((j * grid.CountX) + i))
+                {
+                    next[i, j] = 0.0;
+                    continue;
+                }
+
                 var here = density[i, j];
                 var outward = 0.0;
 
                 outward += FaceFlux(
-                    density, grid, driftX, diffusion, potential, thermal,
+                    density, grid, driftX, gasX, diffusion, potential, thermal,
                     i, j, i + 1, j, +1, grid.SpacingX,
-                    edges.MaxX, "maxX", ref collected, absorbed, volume, dt);
+                    edges.MaxX, "maxX", ref collected, absorbed, volume, dt, absorbers);
 
                 outward += FaceFlux(
-                    density, grid, driftX, diffusion, potential, thermal,
+                    density, grid, driftX, gasX, diffusion, potential, thermal,
                     i, j, i - 1, j, -1, grid.SpacingX,
-                    edges.MinX, "minX", ref collected, absorbed, volume, dt);
+                    edges.MinX, "minX", ref collected, absorbed, volume, dt, absorbers);
 
+                // The radial faces carry a weight, because in a cylindrical solve
+                // the two cells sharing one are rings of different volume and a flux
+                // per unit area is not a flux per cell. Exactly 1 in the plane, so
+                // an isotropic solve multiplies by one and is unchanged.
                 outward += FaceFlux(
-                    density, grid, driftY, diffusion, potential, thermal,
+                    density, grid, driftY, gasY, diffusion, potential, thermal,
                     i, j, i, j + 1, +1, grid.SpacingY,
-                    edges.MaxY, "maxY", ref collected, absorbed, volume, dt);
+                    edges.MaxY, "maxY", ref collected, absorbed, volume, dt, absorbers,
+                    density.RadialFaceWeight(j, +1));
 
                 outward += FaceFlux(
-                    density, grid, driftY, diffusion, potential, thermal,
+                    density, grid, driftY, gasY, diffusion, potential, thermal,
                     i, j, i, j - 1, -1, grid.SpacingY,
-                    edges.MinY, "minY", ref collected, absorbed, volume, dt);
+                    edges.MinY, "minY", ref collected, absorbed, volume, dt, absorbers,
+                    density.RadialFaceWeight(j, -1));
 
                 next[i, j] = Math.Max(0.0, here - (dt * outward));
             }
@@ -393,6 +464,7 @@ public static class DriftDiffusion
         DensityField density,
         Fields.Solved.Grid2D grid,
         double[] drift,
+        double[] gasDrift,
         double[] diffusion,
         double[] potential,
         double thermal,
@@ -407,8 +479,18 @@ public static class DriftDiffusion
         ref double collected,
         Dictionary<string, double> absorbed,
         double volume,
-        double dt)
+        double dt,
+        AbsorbingCells absorbers,
+        double faceWeight = 1.0)
     {
+        if (faceWeight == 0.0)
+        {
+            // A face with no area. On the axis of a cylindrical solve this is the
+            // whole statement: there is no radial direction there and nothing
+            // crosses.
+            return 0.0;
+        }
+
         var outside = ni < 0 || nj < 0 || ni >= grid.CountX || nj >= grid.CountY;
 
         if (outside && edge == Escape.Reflecting)
@@ -418,6 +500,19 @@ public static class DriftDiffusion
 
         var k = (j * grid.CountX) + i;
         var here = density[i, j];
+
+        // A neighbour inside metal is an open edge with a name. The two cases are
+        // the same physics - the density beyond is zero and nothing comes back - so
+        // they share the accounting below rather than getting a second path through
+        // it, and the ions land under the surface's own name rather than under a
+        // domain edge they never reached.
+        var swallowed = !outside && absorbers.Blocks((nj * grid.CountX) + ni);
+
+        if (swallowed)
+        {
+            name = absorbers.NameAt((nj * grid.CountX) + ni)!;
+            edge = Escape.Absorbing;
+        }
 
         double there;
         double faceDiffusion;
@@ -432,31 +527,85 @@ public static class DriftDiffusion
             there = 0.0;
             faceDiffusion = diffusion[k];
 
-            // The exponent directly from the local drift, since P = v h / D.
+            // The exponent directly from the local drift, since P = v h / D, and the
+            // gas carries the ions across the edge alongside the field.
+            var total = drift[k] + gasDrift[k];
+
             drop = diffusion[k] > 0.0
-                ? direction * drift[k] * spacing / diffusion[k]
-                : (direction * drift[k] > 0.0 ? 40.0 : -40.0);
+                ? direction * total * spacing / diffusion[k]
+                : (direction * total > 0.0 ? 40.0 : -40.0);
         }
         else
         {
             var neighbour = (nj * grid.CountX) + ni;
 
-            there = density[ni, nj];
+            // Zero inside a conductor, and it stays zero: with no density on the far
+            // side the Scharfetter-Gummel flux reduces to B(-P) n_here, which is
+            // non-negative for any P. So an electrode can only take, never give -
+            // that falls out of the scheme rather than needing a clamp.
+            there = swallowed ? 0.0 : density[ni, nj];
+
             faceDiffusion = 0.5 * (diffusion[k] + diffusion[neighbour]);
 
             // P = q (phi_here - phi_there) / kT, with the thermal voltage carrying
             // the sign of the charge. Antisymmetric between the two cells by
             // construction, which is what makes the flux conservative.
             drop = (potential[k] - potential[neighbour]) / thermal;
+
+            // The gas adds a velocity the potential cannot express: advection by a
+            // moving neutral is not the gradient of anything, so it enters the
+            // exponent directly as P_gas = v.n h / D rather than as a potential
+            // difference. That is the same exponent the field term already is - by
+            // the Einstein relation q(phi_here - phi_there)/kT *is* v h / D - so the
+            // two simply add, and Scharfetter-Gummel stays exact for a linearly
+            // varying total drift.
+            //
+            // Averaged over the two nodes of the face, and signed by which way the
+            // face points. Both are what keep it conservative: the neighbour
+            // computes the same average with the opposite sign, so the two cells
+            // sharing a face agree about how much crossed it. Sampling the gas at
+            // the cell centre instead would repeat, exactly, the bug that made a
+            // seeded Boltzmann equilibrium drain from the middle.
+            var faceGas = 0.5 * (gasDrift[k] + gasDrift[neighbour]);
+
+            if (faceGas != 0.0)
+            {
+                drop += faceDiffusion > 0.0
+                    ? direction * faceGas * spacing / faceDiffusion
+                    : (direction * faceGas > 0.0 ? 40.0 : -40.0);
+            }
         }
 
-        var peclet = Math.Clamp(drop, -40.0, 40.0);
+        // Not clamped. Bernoulli already handles a large argument exactly - it is
+        // zero above +40 and -x below -40, which are the true limits, not
+        // approximations to them - so clamping the argument before calling it does
+        // not protect anything and does throw the drift away.
+        //
+        // What it threw away: for large P the flux tends to (D/h^2) P n_here, which
+        // is (v/h) n_here, the correct upwind answer. Capping P at 40 caps the
+        // effective drift at 40 D / h whatever the field and the gas actually are.
+        // On the corpus's drift tube the cell Peclet is 25 from the field alone, and
+        // adding a 120 m/s gas flow took it to 42 - so the transit came out 6.7%
+        // long, in a model whose closed form is a division. It was found by writing
+        // an example whose expected number was arithmetic; a scheme checked only
+        // against its own past output would have kept it.
+        //
+        // The stability step is unaffected: the Courant limit is already taken
+        // against the true drift, so removing the cap makes the flux agree with the
+        // step rather than sitting conservatively under it.
+        var peclet = double.IsFinite(drop) ? drop : Math.Sign(drop) * 40.0;
 
         var flux = faceDiffusion > 0.0
             ? faceDiffusion / (spacing * spacing) * ((Bernoulli(-peclet) * here) - (Bernoulli(peclet) * there))
             : (peclet > 0.0 ? peclet * here : peclet * there) / spacing;
 
-        if (outside && flux > 0.0)
+        // Area over volume, in the units the rest of this is written in. Both cells
+        // sharing a face take the same face radius and so the same area, while each
+        // divides by its own volume - which is what makes the ion counts balance
+        // rather than only the densities.
+        flux *= faceWeight;
+
+        if ((outside || swallowed) && flux > 0.0)
         {
             var leaving = flux * dt * volume;
 

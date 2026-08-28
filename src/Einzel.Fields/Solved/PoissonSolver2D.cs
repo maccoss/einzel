@@ -87,6 +87,11 @@ public static class PoissonSolver2D
     /// Optional starting field. A previous solve on the same geometry makes a good
     /// one; otherwise the fixed potentials are smoothed into a zero interior.
     /// </param>
+    /// <param name="source">
+    /// The right-hand side of <c>grad^2 phi = source</c>, or null for Laplace. A
+    /// charge density enters as <c>-rho / epsilon0</c>, which is the sign the
+    /// residual convention already fixes.
+    /// </param>
     /// <param name="coarsen">
     /// Optional factory that rebuilds the mask for a coarser grid from the
     /// geometry itself. Strongly preferred over the default, which projects the
@@ -101,7 +106,8 @@ public static class PoissonSolver2D
         double tolerance = 1e-10,
         int maximumCycles = 200,
         ScalarField2D? initialGuess = null,
-        Func<Grid2D, DirichletMask>? coarsen = null)
+        Func<Grid2D, DirichletMask>? coarsen = null,
+        ScalarField2D? source = null)
     {
         ArgumentNullException.ThrowIfNull(mask);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tolerance);
@@ -118,8 +124,26 @@ public static class PoissonSolver2D
         potential.TopEdge = mask.TopEdge;
         mask.ApplyTo(potential);
 
-        var rightHandSide = new ScalarField2D(grid);
+        // Laplace when nothing is given, Poisson when something is. The whole cycle
+        // already carries a right-hand side and has only ever been handed zeros -
+        // the smoother subtracts it, the residual is defined against it, and the
+        // coarse levels receive the restricted residual, which is what they need
+        // whatever the fine level's source is. So a charge density costs one
+        // argument and no numerics.
+        //
+        // The convention is the one the residual already fixes: this solves
+        // grad^2 phi = source, so a charge density enters as -rho/epsilon0.
+        var rightHandSide = source ?? new ScalarField2D(grid);
         var residual = new ScalarField2D(grid);
+
+        if (source is not null && !ReferenceEquals(source.Grid, grid)
+            && (source.Grid.CountX != grid.CountX || source.Grid.CountY != grid.CountY))
+        {
+            throw new ArgumentException(
+                "the source is on a different grid from the mask, so its values do not "
+                + "correspond to the nodes being solved",
+                nameof(source));
+        }
 
         var initial = Residual(potential, rightHandSide, mask, residual);
 

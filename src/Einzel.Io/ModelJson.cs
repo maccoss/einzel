@@ -21,6 +21,22 @@ namespace Einzel.Io;
 /// useless to an agent; the translated form names a JSON Pointer and says what
 /// was expected.
 /// </para>
+/// <para>
+/// <strong>An unrecognised property is an error, not something to ignore.</strong>
+/// This is the same rule as requiring a unit on every quantity, applied to the key
+/// instead of the value, and for the same reason: section 5's whole argument is
+/// that an agent building from prose is the actor most likely to introduce a
+/// mistake, and a misspelled field name that is silently dropped is the purest
+/// form of the section 22 headline risk. The model validates, solves, runs, and
+/// answers a different question from the one the document appears to ask.
+/// </para>
+/// <para>
+/// It was found by writing the example corpus. A cloud declaring
+/// <c>transverseWidth</c> instead of <c>transverseSpread</c> parsed cleanly, gave
+/// a packet with no spatial extent, and produced an emittance of 7.1e-8 um where
+/// the closed form says 1.798 - a plausible number, from a model that read as
+/// though it said something else.
+/// </para>
 /// </remarks>
 public static class ModelJson
 {
@@ -34,6 +50,11 @@ public static class ModelJson
         NewLine = "\n",
         AllowTrailingCommas = false,
         ReadCommentHandling = JsonCommentHandling.Skip,
+
+        // A property the format does not have is a mistake worth stopping for. See
+        // the remarks above: the alternative is a model that validates and answers
+        // a question nobody asked.
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     /// <summary>Parses a model document.</summary>
@@ -61,12 +82,21 @@ public static class ModelJson
         }
         catch (JsonException failure)
         {
+            var unmapped = failure.Message.Contains(
+                "could not be mapped", StringComparison.OrdinalIgnoreCase);
+
             throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
                 Path = PointerFrom(failure.Path),
                 Constraint = failure.Message,
-                Suggestion = "check that quantities are written as {\"value\": ..., \"unit\": \"...\"}",
+                Suggestion = unmapped
+                    ? "this property is not part of the model format. Check the spelling against "
+                        + "'einzel schema', which is generated from the document types and so "
+                        + "cannot be out of date. An unrecognised property is refused rather than "
+                        + "ignored, because a misspelled field that is silently dropped gives a "
+                        + "model that validates and answers a different question"
+                    : "check that quantities are written as {\"value\": ..., \"unit\": \"...\"}",
             }, failure);
         }
     }

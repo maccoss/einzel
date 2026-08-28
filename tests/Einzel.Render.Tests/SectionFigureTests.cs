@@ -75,6 +75,123 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
         Assert.Empty(figure.Warnings);
     }
 
+    /// <summary>A drift tube declaring diffusive transport, so no path exists to draw.</summary>
+    private const string DiffusiveTube = """
+    {
+      "schemaVersion": "0.4",
+      "name": "diffusive-tube",
+      "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+      "source": {
+        "position": { "value": [2, 0, 0], "unit": "mm" },
+        "direction": { "value": [1, 0, 0] },
+        "accelerationPotential": { "value": 0.001, "unit": "V" }
+      },
+      "fields": [
+        { "type": "uniform", "field": { "value": [2000, 0, 0], "unit": "V/m" } }
+      ],
+      "detector": {
+        "planePoint": { "value": [40, 0, 0], "unit": "mm" },
+        "normal": { "value": [-1, 0, 0] }
+      },
+      "transport": {
+        "mode": "diffusion",
+        "maximumFlightTime": { "value": 100, "unit": "us" },
+        "densityGrid": {
+          "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 40, "unit": "mm" },
+          "minY": { "value": -6, "unit": "mm" }, "maxY": { "value": 6, "unit": "mm" },
+          "intervalsX": 128, "intervalsY": 32
+        },
+        "gas": {
+          "model": "hardSphere",
+          "pressure": { "value": 1, "unit": "mbar" },
+          "mass": { "value": 28.0134, "unit": "Da" },
+          "crossSection": { "value": 250, "unit": "Å^2" }
+        }
+      }
+    }
+    """;
+
+    /// <summary>A Gaussian blob of ions in the middle of the tube.</summary>
+    private static Transport.Diffusion.DensityField Blob()
+    {
+        var grid = Fields.Solved.Grid2D.OverBox(-0.002, -0.006, 0.040, 0.006, 128, 32);
+        var density = new Transport.Diffusion.DensityField(grid);
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                var dx = (grid.X(i) - 0.020) / 0.004;
+                var dy = grid.Y(j) / 0.002;
+
+                density[i, j] = 1e9 * Math.Exp(-0.5 * ((dx * dx) + (dy * dy)));
+            }
+        }
+
+        return density;
+    }
+
+    [Fact]
+    public void ADiffusiveModelDrawsItsDensityInsteadOfATrajectory()
+    {
+        // RND-8's other half. Refusing to draw lines through a diffusive region was
+        // always right and, on its own, entirely negative: the mode's principal
+        // output could not be drawn at all, so the honest figure was an empty box.
+        var document = ModelJson.Parse(DiffusiveTube);
+        var validation = ModelValidator.Validate(document, null);
+
+        Assert.True(validation.IsValid, validation.IsValid ? "" : validation.Errors[0].Constraint);
+
+        var spec = new RenderSpec { WidthMm = 160.0, Equipotentials = 6, DensityContours = 5 };
+
+        var figure = SectionRenderer.Render(validation.Model!, spec, null, Blob());
+
+        foreach (var layer in figure.Scene.Paths.Select(p => p.Layer).Distinct().Order())
+        {
+            output.WriteLine($"  layer {layer}: {figure.Scene.Paths.Count(p => p.Layer == layer)} paths");
+        }
+
+        Assert.Contains(figure.Scene.Paths, p => p.Layer == "density");
+        Assert.DoesNotContain(figure.Scene.Paths, p => p.Layer == "trajectory");
+
+        Assert.Contains(figure.Warnings, w => w.Code == "render.no-trajectories");
+        Assert.DoesNotContain(figure.Warnings, w => w.Code == "render.density-empty");
+
+        // GRD-12's argument applied to a contour set: a reader has to be able to
+        // tell what the lines are worth, and a density plotted without its levels is
+        // a shape rather than a measurement.
+        var levels = Assert.Single(
+            figure.Scene.Provenance, line => line.StartsWith("density contours", StringComparison.Ordinal));
+
+        output.WriteLine(levels);
+
+        // Decades, so five levels span five orders of magnitude below the peak.
+        Assert.Equal(5, levels.Split(':')[1].Split(',').Length);
+    }
+
+    [Fact]
+    public void AnEmptyDensityIsSaidToBeEmptyRatherThanDrawnAsNothing()
+    {
+        // A run whose ions have all reached a boundary leaves a residue many orders
+        // below one ion in the whole domain. Contouring that draws the shape of the
+        // round-off; drawing nothing and saying nothing looks identical to a figure
+        // where the density was never computed. So it is named, with the change that
+        // would produce a picture.
+        var document = ModelJson.Parse(DiffusiveTube);
+        var validation = ModelValidator.Validate(document, null);
+
+        var grid = Fields.Solved.Grid2D.OverBox(-0.002, -0.006, 0.040, 0.006, 128, 32);
+        var empty = new Transport.Diffusion.DensityField(grid);
+
+        var figure = SectionRenderer.Render(
+            validation.Model!, new RenderSpec { DensityContours = 5 }, null, empty);
+
+        Assert.DoesNotContain(figure.Scene.Paths, p => p.Layer == "density");
+        Assert.Contains(figure.Warnings, w => w.Code == "render.density-empty");
+
+        output.WriteLine(figure.Warnings.Single(w => w.Code == "render.density-empty").Message);
+    }
+
     [Fact]
     public void EverySvgCoordinateLandsOnThePage()
     {

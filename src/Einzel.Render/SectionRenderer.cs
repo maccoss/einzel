@@ -35,6 +35,7 @@ public static class SectionRenderer
     private const string ConductorEdge = "#4a4f57";
     private const string Equipotential = "#7a8390";
     private const string TrajectoryInk = "#b3452a";
+    private const string DensityInk = "#2f6f8f";
     private const string TaintInk = "#a8321e";
 
     /// <summary>A rendered figure, and what it does not claim.</summary>
@@ -56,11 +57,24 @@ public static class SectionRenderer
     /// <param name="model">The validated model.</param>
     /// <param name="spec">What to draw.</param>
     /// <param name="provenance">Lines to record in the output and stamp on the page.</param>
+    /// <param name="density">
+    /// The density a diffusive run produced, drawn in place of the trajectories that
+    /// mode does not have, or null when there is none.
+    /// </param>
     /// <returns>The figure.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The model has no extent to draw.</exception>
+    /// <remarks>
+    /// The density is passed in rather than computed here. Running the transport is
+    /// the command layer's job - it owns turning a model document into a density
+    /// problem - and a renderer that could do it would be a renderer that decides
+    /// how long a run lasts.
+    /// </remarks>
     public static Figure Render(
-        CompiledModel model, RenderSpec spec, IReadOnlyList<string>? provenance = null)
+        CompiledModel model,
+        RenderSpec spec,
+        IReadOnlyList<string>? provenance = null,
+        Transport.Diffusion.DensityField? density = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(spec);
@@ -127,11 +141,43 @@ public static class SectionRenderer
 
         var drawable = mode?.ProducesTrajectories ?? true;
 
+        var densityLevels = Array.Empty<double>();
+
         if (spec.Trajectory && drawable)
         {
             (kept, raw) = DrawTrajectory(paths, model, spec, field, plane, tolerance, ToPage);
         }
-        else if (spec.Trajectory)
+
+        // Drawn whenever there is a density and contours were asked for. A density is
+        // not a trajectory, so the trajectory toggle has no say in it - and nesting
+        // this inside the "trajectories were requested" branch, which is how it was
+        // written, made --no-trajectory silently suppress the one output a diffusive
+        // model has. Two independent questions, asked independently.
+        if (density is not null && spec.DensityContours > 0)
+        {
+            densityLevels = DrawDensity(
+                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
+
+            if (densityLevels.Length == 0)
+            {
+                warnings =
+                [
+                    .. warnings,
+                    new ValidityWarning(
+                        "render.density-empty",
+                        "the density had nothing left in it to draw: by the end of the run "
+                        + "every ion had reached a boundary. What a figure of the end state "
+                        + "shows in that case is an empty box, correctly. Shorten "
+                        + "'maximumFlightTime' to draw the packet while it is still in flight",
+                        WarningSeverity.Provenance),
+                ];
+            }
+        }
+
+        // RND-8, and it is a statement about what was asked for: a trajectory was
+        // requested and this mode does not produce one. A caller who never asked has
+        // nothing to be told.
+        if (spec.Trajectory && !drawable)
         {
             warnings =
             [
@@ -141,7 +187,11 @@ public static class SectionRenderer
                     $"this model declares '{model.TransportMode}' transport, which computes a "
                     + "density rather than trajectories, so none were drawn. RND-8 forbids drawing "
                     + "lines through a diffusive region: they would depict something the model "
-                    + "never produced",
+                    + "never produced"
+                    + (densityLevels.Length > 0
+                        ? ". The contours are the density itself, at decades below its peak"
+                        : ". No density was drawn either, so this figure shows the geometry "
+                        + "and the field alone"),
                     WarningSeverity.Provenance),
             ];
         }
@@ -150,6 +200,13 @@ public static class SectionRenderer
 
         var lines = new List<string>(provenance ?? []);
         lines.Add($"decimation tolerance {tolerance:G3} mm of a {drawWidth:F1} by {drawHeight:F1} mm drawing");
+
+        if (densityLevels.Length > 0)
+        {
+            lines.Add(
+                "density contours, ions per cubic metre: "
+                + string.Join(", ", densityLevels.Select(v => v.ToString("G4", System.Globalization.CultureInfo.InvariantCulture))));
+        }
 
         foreach (var warning in warnings)
         {
@@ -330,6 +387,96 @@ public static class SectionRenderer
                 Emit(paths, run, tolerance, toPage, style, "equipotentials");
             }
         }
+    }
+
+    /// <summary>
+    /// The density, as contour lines at decades below its peak.
+    /// </summary>
+    /// <returns>
+    /// The levels actually drawn, in ions per cubic metre, highest first - empty
+    /// when there was no density left to draw.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Decades rather than even fractions. A density is not a quantity with a scale
+    /// - the core of a packet and its tail differ by six orders of magnitude - so
+    /// evenly spaced levels put every line inside the core and draw the extent,
+    /// which is the part a reader most wants, not at all.
+    /// </para>
+    /// <para>
+    /// Lines rather than filled bands. Marching squares gives runs, and a filled
+    /// band needs the runs nested into rings and holes, which is a different
+    /// algorithm and one whose failures are silent - a hole drawn as a solid reads
+    /// as a denser region rather than as a bug.
+    /// </para>
+    /// </remarks>
+    private static double[] DrawDensity(
+        List<ScenePath> paths,
+        Transport.Diffusion.DensityField density,
+        SectionPlane plane,
+        RenderSpec spec,
+        double minU,
+        double minV,
+        double spanU,
+        double spanV,
+        double tolerance,
+        Func<double, double, PagePoint> toPage)
+    {
+        var peak = density.Peak();
+
+        // Not merely zero: a run that collected everything leaves a residue many
+        // orders below one ion in the whole domain, and contouring that would draw
+        // the shape of the round-off.
+        var floor = 1e-6 * Math.Max(1.0, density.Population()) / Math.Max(spanU * spanV, 1e-12);
+
+        if (!(peak > floor))
+        {
+            return [];
+        }
+
+        var columns = Math.Max(8, spec.SampleColumns);
+        var rows = Math.Max(8, (int)Math.Round(columns * spanV / spanU));
+
+        var stepU = spanU / (columns - 1);
+        var stepV = spanV / (rows - 1);
+
+        var values = Contours.Sample(
+            plane, minU, minV, stepU, stepV, columns, rows,
+            point => density.SampleAt(point.X, point.Y));
+
+        var levels = new List<double>();
+
+        for (var k = 1; k <= spec.DensityContours; k++)
+        {
+            var level = peak * Math.Pow(10.0, -k);
+
+            if (level <= floor)
+            {
+                break;
+            }
+
+            // Fainter with each decade, so the core reads as the core. The eye takes
+            // line weight for concentration whatever the caption says, and a tail
+            // drawn as heavily as a peak is a picture that lies about where the ions
+            // are.
+            var style = new PathStyle(
+                DensityInk, 0.30 - (0.03 * k), Dash: DashStyle.Solid, Opacity: 0.95 - (0.09 * k));
+
+            var drawn = false;
+
+            foreach (var run in Contours.Trace(values, minU, minV, stepU, stepV, level))
+            {
+                Emit(paths, run, tolerance, toPage, style, "density");
+                drawn = true;
+            }
+
+            if (drawn)
+            {
+                levels.Add(level);
+            }
+        }
+
+        return [.. levels];
     }
 
     private static void DrawConductors(

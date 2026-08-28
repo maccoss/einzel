@@ -4,10 +4,11 @@ using Einzel.Core.Units;
 using Einzel.Transport;
 using Einzel.Fields;
 using Einzel.Transport.Integration;
+using Xunit.Abstractions;
 
 namespace Einzel.Transport.Tests;
 
-public sealed class IntegratorBehaviourTests
+public sealed class IntegratorBehaviourTests(ITestOutputHelper output)
 {
     private static IonSpecies Peptide => IonSpecies.FromMassToCharge(500.0, 1);
 
@@ -123,13 +124,42 @@ public sealed class IntegratorBehaviourTests
             warmMany.AcceptedSteps > warmFew.AcceptedSteps * 10,
             $"the two settings should differ greatly in step count: {warmFew.AcceptedSteps} vs {warmMany.AcceptedSteps}");
 
-        var beforeFew = GC.GetAllocatedBytesForCurrentThread();
-        TrajectoryIntegrator.Integrate(reflectron.LaunchState(), reflectron.Species, reflectron.Field, few, stop);
-        var costFew = GC.GetAllocatedBytesForCurrentThread() - beforeFew;
+        // The cheapest of several runs, not one run. What is being measured is the
+        // marginal cost of a step, and the runtime charges one-off costs to whichever
+        // run happens to trigger them - a tier-1 recompilation or an on-stack
+        // replacement lands in the window it fires in. Those are load-dependent, so
+        // this test passed alone and failed inside a full parallel suite, which is
+        // the worst way for a test to be wrong: it reads as a regression in the
+        // thing under test.
+        //
+        // The minimum is the right statistic because the property is a floor. A run
+        // that allocated nothing per step proves the per-step cost is zero however
+        // many other runs paid a one-off charge; averaging would fold those charges
+        // back in.
+        long Cheapest(IntegrationSettings settings)
+        {
+            var best = long.MaxValue;
 
-        var beforeMany = GC.GetAllocatedBytesForCurrentThread();
-        TrajectoryIntegrator.Integrate(reflectron.LaunchState(), reflectron.Species, reflectron.Field, many, stop);
-        var costMany = GC.GetAllocatedBytesForCurrentThread() - beforeMany;
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                var before = GC.GetAllocatedBytesForCurrentThread();
+
+                TrajectoryIntegrator.Integrate(
+                    reflectron.LaunchState(), reflectron.Species, reflectron.Field, settings, stop);
+
+                best = Math.Min(best, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
+
+            return best;
+        }
+
+        var costFew = Cheapest(few);
+        var costMany = Cheapest(many);
+
+        // Reported whether or not it fails, so a future failure is diagnosable from
+        // the log rather than needing a rerun.
+        output.WriteLine($"{warmFew.AcceptedSteps,6} steps: {costFew,6} bytes");
+        output.WriteLine($"{warmMany.AcceptedSteps,6} steps: {costMany,6} bytes");
 
         Assert.True(
             costMany <= costFew + 256,

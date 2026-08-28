@@ -14,6 +14,7 @@ states the intent and these pages state the reality; both are noted.
 
 | Page | What it covers |
 | --- | --- |
+| [Living specification](../SPEC.md) | Every r06 requirement with its status and evidence, what changed and why, and what to do next |
 | [Architecture](architecture.md) | Assemblies, layering, the four invariants, and why each exists |
 | [Model format](model-format.md) | Schema 0.3 in full: parameters, expressions, fields, electrodes, source clouds |
 | [Device templates](device-templates.md) | Writing a new device as data, and the three shipped examples |
@@ -64,26 +65,40 @@ stability boundaries against published values, and **emittance** — which compl
 the Class T figures §12 asks for and doubles as a Liouville check on the
 integrator.
 
-Most recently **`Einzel.Render`**: vector sections in SVG and PDF, drawn headlessly
-in CI with no display attached, with conductors traced from their own signed
-distance so the renderer carries no device knowledge.
+Then, in order:
 
-Most recently **pressure**: two event-driven collision models checked against the
-Langevin rate coefficient, equipartition and Mason-Schamp mobility, the `ITransportMode`
-seam REG-1 asks for, and REG-2 regime validity computed on every run rather than assumed.
-
-Most recently **extensions**: a manifest, a sandboxed subprocess runner at a 49 ms
-round trip, output validated against the declared schema, and a Python objective the
-optimiser can drive.
-
-Most recently **statistical diffusion**: the second transport mode REG-1 makes a peer
-of trajectory integration, validated against an exactly stationary Boltzmann
-equilibrium, and agreeing with the event-driven mode to 0.43 standard errors in the
-overlap band REG-3 names.
+- **`Einzel.Render`** — vector sections in SVG and PDF, drawn headlessly in CI with
+  no display attached, with conductors traced from their own signed distance so the
+  renderer carries no device knowledge.
+- **Pressure** — two event-driven collision models checked against the Langevin rate
+  coefficient, equipartition and Mason-Schamp mobility, the `ITransportMode` seam
+  REG-1 asks for, and REG-2 regime validity computed on every run rather than
+  assumed.
+- **Extensions** — a manifest, a sandboxed subprocess runner at a 49 ms round trip,
+  output validated against the declared schema, and a Python objective the optimiser
+  can drive.
+- **Statistical diffusion** — the second transport mode REG-1 makes a peer of
+  trajectory integration, validated against an exactly stationary Boltzmann
+  equilibrium, and agreeing with the event-driven mode to 0.43 standard errors in
+  the overlap band REG-3 names. Since extended with a cycle-averaged effective
+  potential, so the 1e-2 to 10 mbar band where funnels and travelling-wave guides
+  actually run has a description at all.
+- **Space charge** — the direct pairwise sum SC-1 names as the reference an
+  approximate method is validated against, which first corrected the screening
+  estimate it replaced by a factor of 527.
+- **The density as an output** — exported as `.vti` and drawn as decade contours, so
+  RND-8's prohibition on trajectories through a diffusive region has something on
+  the other side of it. Interior electrodes now absorb for the whole run rather than
+  only emptying the seed, and a declared gas velocity reaches the diffusive solver
+  instead of being dropped at it.
+- **`einzel scan`** — one parameter across a range, one row per point. The third
+  study driver, and the operation every curve in these pages had previously been a
+  hand-written loop in a test file.
 
 Not yet built: the in-process extension runner, the compute dispatch layer, the MCP
 server, the update mechanism, and the shell. Of the render verbs, `section` exists;
-`still` and `animation` do not.
+`still` and `animation` do not. The examples corpus EX-1 asks thirty models for has
+one.
 
 Nothing here is released software. Effort estimates, performance targets, and the
 numerical error budget in the specification are engineering judgement rather than

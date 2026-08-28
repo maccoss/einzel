@@ -257,6 +257,29 @@ public sealed record CloudDocument
     public double EnergyFractionSpread { get; init; }
 }
 
+/// <summary>An imported neutral velocity field, as it appears in a model.</summary>
+/// <remarks>
+/// VTK ImageData, which is the format this engine already writes and the one every
+/// CFD code can export. Einzel <em>consumes</em> a velocity field and does not
+/// compute one - that boundary is deliberate, and is the same one §17 draws around
+/// visualisation.
+/// </remarks>
+public sealed record GasFlowDocument
+{
+    /// <summary>Path to the .vti file, relative to the model document.</summary>
+    public string? Path { get; init; }
+
+    /// <summary>
+    /// Which array in the file holds the velocity, or null for the first one.
+    /// </summary>
+    /// <remarks>
+    /// A CFD export usually carries several - pressure, density, velocity - so
+    /// naming it is the difference between reading the flow and reading whatever
+    /// happened to be written first.
+    /// </remarks>
+    public string? Array { get; init; }
+}
+
 /// <summary>A field element. The discriminator is <see cref="Type"/>.</summary>
 /// <remarks>
 /// A single record with a discriminator rather than a polymorphic hierarchy, so
@@ -494,6 +517,18 @@ public sealed record GasDocument
     /// figure 4 marks adequate below about 1e-2 mbar.
     /// </summary>
     public VectorValue? DriftVelocity { get; init; }
+
+    /// <summary>
+    /// An imported neutral velocity <em>field</em>, which is what GAS-1 asks for and
+    /// what spec figure 4 requires above about 1e-2 mbar.
+    /// </summary>
+    /// <remarks>
+    /// Referenced, never embedded (PRJ-2): a CFD field is thousands of numbers, and
+    /// a model document is meant to stay small, text and diffable. Overrides
+    /// <see cref="DriftVelocity"/> where both are given, because a field is the more
+    /// specific statement.
+    /// </remarks>
+    public GasFlowDocument? VelocityField { get; init; }
 
     /// <summary>
     /// Seed for the collision random stream, so a collisional run is reproducible

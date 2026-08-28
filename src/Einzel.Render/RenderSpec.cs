@@ -85,6 +85,26 @@ public sealed record RenderSpec
     /// </remarks>
     public int SampleColumns { get; init; } = 400;
 
+    /// <summary>
+    /// How many density contours to draw for a diffusive model, or zero for none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other half of RND-8. Forbidding trajectories through a diffusive region
+    /// is right and was, on its own, purely negative: the mode's principal output
+    /// is a density and there was no way to draw one, so the honest figure of a
+    /// funnel at a millibar was an empty box. These are what goes there instead.
+    /// </para>
+    /// <para>
+    /// Drawn at decade intervals below the peak rather than at even ones, because a
+    /// density spans orders of magnitude - a packet's tail is not a small fraction
+    /// of its core, it is a millionth of it - and evenly spaced levels would draw
+    /// the top decade several times and everything else not at all. The levels are
+    /// recorded in the figure's own provenance so a reader knows what the lines are.
+    /// </para>
+    /// </remarks>
+    public int DensityContours { get; init; } = 6;
+
     /// <summary>Whether to fly the model's ion and draw its path.</summary>
     public bool Trajectory { get; init; } = true;
 

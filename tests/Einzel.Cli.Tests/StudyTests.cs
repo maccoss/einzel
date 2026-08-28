@@ -70,6 +70,159 @@ public sealed class StudyTests : IDisposable
     }
 
     [Fact]
+    public void AScanReportsACurveWithOneRowPerPoint()
+    {
+        // The third kind of study, and the operation every curve this engine has
+        // produced was hand-written C# for. A sweep collapses a range into a
+        // distribution and an optimiser reports only where it stopped; neither
+        // answers what section 12's Class B asks, which is what the figure looks
+        // like across a range.
+        Project();
+
+        var study = WriteStudy("scan.json", """
+            {
+              "name": "depth-scan",
+              "model": "../models/reflectron.json",
+              "figureOfMerit": "flightTime",
+              "scan": {
+                "parameter": "turningDepth",
+                "from": 20, "to": 200, "unit": "mm",
+                "points": 10
+              }
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("scan", study, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var root = document.RootElement;
+
+        Assert.Equal("turningDepth", root.GetProperty("parameter").GetString());
+        Assert.Equal("mm", root.GetProperty("unit").GetString());
+        Assert.Equal("linear", root.GetProperty("spacing").GetString());
+        Assert.Equal(10, root.GetProperty("succeeded").GetInt32());
+
+        var points = root.GetProperty("points").EnumerateArray().ToList();
+
+        Assert.Equal(10, points.Count);
+
+        // In the scan's own unit and the figure's own unit, not raw SI, and in scan
+        // order (CLI-6).
+        Assert.Equal(20.0, points[0].GetProperty("value").GetDouble(), 1e-9);
+        Assert.Equal(200.0, points[^1].GetProperty("value").GetDouble(), 1e-9);
+
+        // A single-stage reflectron's flight time is 2L/v + 2v/a with a inversely
+        // proportional to the penetration depth, so the curve is a straight line in
+        // depth. That is a closed form, not a stored expectation - and a driver that
+        // evaluated the unperturbed model at every point would give a flat one.
+        var first = points[0].GetProperty("figureOfMerit").GetDouble();
+        var last = points[^1].GetProperty("figureOfMerit").GetDouble();
+        var middle = points[4].GetProperty("figureOfMerit").GetDouble();
+
+        var slope = (last - first) / 180.0;
+
+        Assert.Equal(first + (slope * (points[4].GetProperty("value").GetDouble() - 20.0)), middle, 1e-6);
+        Assert.True(last > first);
+
+        // GRD-7: a study references a manifest. Sweeps wrote results and no manifest
+        // at all until recently, and a scan is no less worth regenerating.
+        var artifacts = root.GetProperty("artifacts").EnumerateArray()
+            .Select(a => a.GetString()!).ToList();
+
+        Assert.Contains(artifacts, a => a.EndsWith(".scan.json", StringComparison.Ordinal));
+        Assert.Contains(artifacts, a => a.EndsWith(".scan.manifest.json", StringComparison.Ordinal));
+
+        foreach (var artifact in artifacts)
+        {
+            Assert.True(File.Exists(Path.Combine(_root, artifact)), artifact);
+        }
+    }
+
+    [Fact]
+    public void AScanPastADeclaredBoundKeepsGoingAndSaysWhy()
+    {
+        // Walking past what the template says is buildable is a legitimate thing to
+        // ask a scan for - it is how you find where a design stops working. What is
+        // not acceptable is a table half full of blanks with no explanation, which
+        // reads as the solver failing rather than the model refusing.
+        Project();
+
+        var study = WriteStudy("past.json", """
+            {
+              "name": "past-the-bound",
+              "model": "../models/reflectron.json",
+              "figureOfMerit": "flightTime",
+              "scan": {
+                "parameter": "turningDepth",
+                "from": 150, "to": 250, "unit": "mm",
+                "points": 5
+              }
+            }
+            """);
+
+        var (exitCode, stdout, stderr) = Run("scan", study, "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+        var root = document.RootElement;
+
+        var points = root.GetProperty("points").EnumerateArray().ToList();
+
+        Assert.Equal(5, points.Count);
+        Assert.True(root.GetProperty("succeeded").GetInt32() < 5);
+
+        // Per row, with the validator's own message rather than a blank.
+        var refused = points.Last();
+
+        Assert.False(refused.TryGetProperty("figureOfMerit", out var value)
+            && value.ValueKind == JsonValueKind.Number);
+
+        Assert.Contains(
+            "VALUE_OUT_OF_BOUNDS", refused.GetProperty("failure").GetString()!, StringComparison.Ordinal);
+
+        // And once, up front.
+        Assert.Contains(
+            root.GetProperty("warnings").EnumerateArray(),
+            w => w.GetProperty("code").GetString() == "scan.outside-declared-bounds");
+
+        Assert.DoesNotContain("Unhandled", stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AScanRefusesADryRunTheSameWayTheOthersDo()
+    {
+        // CLI-4: --dry-run on every mutating command, saying what it would do and
+        // writing nothing.
+        Project();
+
+        var study = WriteStudy("dry.json", """
+            {
+              "name": "dry",
+              "model": "../models/reflectron.json",
+              "figureOfMerit": "flightTime",
+              "scan": {
+                "parameter": "turningDepth",
+                "from": 40, "to": 60, "unit": "mm",
+                "points": 3
+              }
+            }
+            """);
+
+        var (exitCode, stdout, _) = Run("scan", study, "--dry-run", "--json");
+        Assert.Equal(0, exitCode);
+
+        using var document = JsonDocument.Parse(stdout);
+
+        Assert.Empty(document.RootElement.GetProperty("artifacts").EnumerateArray());
+        Assert.Empty(document.RootElement.GetProperty("points").EnumerateArray());
+
+        Assert.False(
+            File.Exists(Path.Combine(_root, "results", "dry.scan.json")),
+            "a dry run wrote a result");
+    }
+
+    [Fact]
     public void ASweepSaysWhichParameterBindsFirst()
     {
         Project();
@@ -420,10 +573,7 @@ public sealed class VerifyTests : IDisposable
         // invisible from the file: the number is still there, still well formed,
         // and about a geometry that no longer exists.
         var model = RunOnce();
-        File.WriteAllText(model, File.ReadAllText(model).Replace(
-            "\"value\": 50, \"unit\": \"mm\"",
-            "\"value\": 51, \"unit\": \"mm\"",
-            StringComparison.Ordinal));
+        Edit(model, "\"value\": 50,", "\"value\": 51,");
 
         var (exitCode, _, stderr) = Run("verify", _root);
 
@@ -488,6 +638,27 @@ public sealed class VerifyTests : IDisposable
         Assert.Equal(0, exitCode);
         Assert.Contains("no stored results", stdout, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Rewrites part of a model file, and fails if the text was not there.
+    /// </summary>
+    /// <remarks>
+    /// A test that edits a file by string replacement and does not check that the
+    /// replacement happened is a test that can silently stop testing anything.
+    /// Three uses of this pattern failed at once when the shipped example was
+    /// reformatted: the edit matched nothing, the model was unchanged, and each
+    /// test reported the feature it was checking as broken.
+    /// </remarks>
+    private static void Edit(string path, string from, string to)
+    {
+        var before = File.ReadAllText(path);
+        var after = before.Replace(from, to, StringComparison.Ordinal);
+
+        Assert.NotEqual(before, after);
+
+        File.WriteAllText(path, after);
+    }
+
 }
 
 /// <summary>
@@ -565,10 +736,7 @@ public sealed class ProjectTestTests : IDisposable
         Assert.Equal(0, Run("init", _root).ExitCode);
 
         var model = Path.Combine(_root, "models", "reflectron.json");
-        File.WriteAllText(model, File.ReadAllText(model).Replace(
-            "\"value\": 50, \"unit\": \"mm\", \"minimum\": 5",
-            "\"value\": 52, \"unit\": \"mm\", \"minimum\": 5",
-            StringComparison.Ordinal));
+        Edit(model, "\"value\": 50,", "\"value\": 52,");
 
         var (exitCode, _, stderr) = Run("test", _root);
 
@@ -638,6 +806,27 @@ public sealed class ProjectTestTests : IDisposable
         Assert.Contains("no tests", stderr, StringComparison.Ordinal);
         Assert.Contains("einzel init", stderr, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Rewrites part of a model file, and fails if the text was not there.
+    /// </summary>
+    /// <remarks>
+    /// A test that edits a file by string replacement and does not check that the
+    /// replacement happened is a test that can silently stop testing anything.
+    /// Three uses of this pattern failed at once when the shipped example was
+    /// reformatted: the edit matched nothing, the model was unchanged, and each
+    /// test reported the feature it was checking as broken.
+    /// </remarks>
+    private static void Edit(string path, string from, string to)
+    {
+        var before = File.ReadAllText(path);
+        var after = before.Replace(from, to, StringComparison.Ordinal);
+
+        Assert.NotEqual(before, after);
+
+        File.WriteAllText(path, after);
+    }
+
 }
 
 /// <summary>

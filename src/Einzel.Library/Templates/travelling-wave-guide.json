@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.5",
   "name": "travelling-wave-guide",
-  "description": "A stacked-ring guide driven by a travelling potential wave, solved axisymmetrically. Each ring is one repeat of a single declared electrode, and what makes the wave travel is that the ring drive phase ramps with its index rather than alternating: after ringsPerWave rings the phase has advanced a whole cycle, so a crest moves along the axis at ringsPerWave * ringPitch * driveFrequency. That ramp is why drivePhase had to become an expression - a phase that cannot depend on the repeat index cannot ramp, and this was the one device the field was documented for and could not express. At the shipped amplitude the wave carries ions: transit becomes a property of the wave rather than of the ion, holding to about one per cent while the injection speed is varied over more than a factor of two.",
+  "description": "A stacked-ring guide driven by a travelling potential wave, solved axisymmetrically. Each ring is one repeat of a single declared electrode, and what makes the wave travel is that the ring drive phase ramps with its index rather than alternating: after ringsPerWave rings the phase has advanced a whole cycle, so a crest moves along the axis at ringsPerWave * ringPitch * driveFrequency. That ramp is why drivePhase had to become an expression - a phase that cannot depend on the repeat index cannot ramp, and this was the one device the field was documented for and could not express. At the shipped amplitude the wave carries ions: transit becomes a property of the wave rather than of the ion, holding to about one per cent while the injection speed is varied over more than a factor of two. It carries TWO generators: a slow travelling wave whose phase ramps along the stack, and a fast confining RF on the same rings in adjacent antiphase. That is what a real travelling-wave guide does, and until a solve could declare more than one drive this template could not say it at all. The confinement defaults to zero volts: it is now expressible, solved and stepped correctly, and no amplitude tried on this geometry improved the radial acceptance - see confineAmplitude for the measurements and for why the usable window is narrow.",
   "parameters": {
     "boreRadius": {
       "value": 2.0,
@@ -65,6 +65,20 @@
       "minimum": 0.001,
       "maximum": 50.0,
       "description": "Drive frequency. With ringsPerWave and ringPitch this fixes the wave velocity, which is the quantity the device is designed around."
+    },
+    "confineFrequency": {
+      "value": 3.0,
+      "unit": "MHz",
+      "minimum": 0.05,
+      "maximum": 50.0,
+      "description": "Frequency of the confining RF, the second generator. Far above the travelling wave's, because the two do different jobs on different timescales: the wave has to move slowly enough for an ion to ride it, and the confinement has to oscillate fast enough that the ion sees only its cycle average. A confinement at the wave's own frequency would not confine, it would be part of the wave."
+    },
+    "confineAmplitude": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 2000.0,
+      "description": "Amplitude of the confining RF, applied to adjacent rings in antiphase - the axis-restoring pseudopotential a real stacked-ring guide runs on. Declarable since a solve can carry two generators, and it defaults to ZERO because on this geometry no value tried improved anything. Measured, as the fraction of entry radii from 0.1 to 1.2 mm that arrive: 5/12 with none, 2/12 at 100 V, 4/12 at 200 V, 3/12 at 400 V, 1/12 at 800 V; and 1/12 at 200 V and 400 V with the frequency halved to deepen the well. The usable window is narrow at both ends - the confining drive's own Mathieu q reaches about 0.9 near 200 V, so above that the ion is RF-unstable and is ejected rather than held, while below it the well is shallow against a 60 V wave. Finding a working point needs a two-dimensional study over wave and confinement amplitude together, which is a design study rather than a default."
     },
     "entryGap": {
       "value": 2.0,
@@ -191,13 +205,24 @@
           "unit": "mm"
         },
         "boundaryIsDiscontinuous": false,
-        "drive": {
-          "frequency": {
-            "expression": "driveFrequency",
-            "unit": "MHz"
+        "drives": [
+          {
+            "name": "wave",
+            "frequency": {
+              "expression": "driveFrequency",
+              "unit": "MHz"
+            },
+            "waveform": "sinusoid"
           },
-          "waveform": "sinusoid"
-        },
+          {
+            "name": "confine",
+            "frequency": {
+              "expression": "confineFrequency",
+              "unit": "MHz"
+            },
+            "waveform": "sinusoid"
+          }
+        ],
         "electrodes": [
           {
             "name": "ring",
@@ -228,14 +253,30 @@
               "value": 0,
               "unit": "V"
             },
-            "driveAmplitude": {
-              "expression": "rfAmplitude",
-              "unit": "V"
-            },
-            "drivePhase": {
-              "expression": "-waveDirection * ring / ringsPerWave",
-              "unit": "1"
-            }
+            "taps": [
+              {
+                "drive": "wave",
+                "amplitude": {
+                  "expression": "rfAmplitude",
+                  "unit": "V"
+                },
+                "phase": {
+                  "expression": "-waveDirection * ring / ringsPerWave",
+                  "unit": "1"
+                }
+              },
+              {
+                "drive": "confine",
+                "amplitude": {
+                  "expression": "confineAmplitude",
+                  "unit": "V"
+                },
+                "phase": {
+                  "expression": "mod(ring, 2) / 2",
+                  "unit": "1"
+                }
+              }
+            ]
           }
         ]
       }

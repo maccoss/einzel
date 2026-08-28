@@ -91,6 +91,11 @@ public static class FiguresOfMerit
         new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
         new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false),
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
+        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true),
+        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
+        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false),
+        new("secularFrequencyY", "kHz", "The same along y.", false),
+        new("secularFrequencyZ", "kHz", "The same along z.", false),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
@@ -151,15 +156,18 @@ public static class FiguresOfMerit
             "resolvingPower" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
                 ? Magnitude(peak.ResolvingPower(), report)
                 : null,
-            "transmission" => model => Ensemble(model, energySpread, ions, report) is { } peak
-                ? Magnitude(peak.Transmission(), report)
-                : null,
+            "transmission" => model => Transmitted(model, energySpread, ions, report),
             "arrivalSpread" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
                 ? peak.GaussianEquivalentFwhmSeconds
                 : null,
             "turnAroundTime" => model => TurnAround(model, report),
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
+            "confined" => model => Confined(model, energySpread, ions, report),
+            "transitTime" => model => Transit(model, report),
+            "secularFrequencyX" => model => Secular(model, 0, report),
+            "secularFrequencyY" => model => Secular(model, 1, report),
+            "secularFrequencyZ" => model => Secular(model, 2, report),
             _ => throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.InternalError,
@@ -261,7 +269,7 @@ public static class FiguresOfMerit
     /// call it physics.
     /// </para>
     /// </remarks>
-    private static ArrivalTimePeak Ensemble(
+    private static ArrivalTimePeak? Ensemble(
         CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report = null)
     {
         if (model.Cloud.IsCloud)
@@ -271,9 +279,15 @@ public static class FiguresOfMerit
 
         var arrivals = new List<double>(ions);
 
-        for (var k = 0; k < ions; k++)
+        // Collapsed where the spread varies nothing. Twenty-one identical flight
+        // times would otherwise form a peak of exactly zero width and a resolving
+        // power of infinity, which is a confident answer to a question that was
+        // never asked; one arrival is no peak at all, and says so.
+        var members = Distinct(model, spread, ions, report);
+
+        for (var k = 0; k < members; k++)
         {
-            var fraction = ions == 1 ? 0.0 : (2.0 * k / (ions - 1.0)) - 1.0;
+            var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
             var offset = spread * fraction;
 
             var (launch, species, field, settings, detector) = Setup(model, offset, report);
@@ -285,7 +299,7 @@ public static class FiguresOfMerit
             }
         }
 
-        return ArrivalTimePeak.FromArrivals(arrivals, ions);
+        return arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, members) : null;
     }
 
     /// <summary>Flies the cloud a model declares.</summary>
@@ -294,7 +308,7 @@ public static class FiguresOfMerit
     /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
     /// <param name="report">Where the warnings the flight earns are sent, or null.</param>
     /// <exception cref="ArgumentException">Fewer than two ions arrived.</exception>
-    public static ArrivalTimePeak FromCloud(
+    public static ArrivalTimePeak? FromCloud(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null) =>
         FlyCloud(model, report).Peak;
 
@@ -389,7 +403,10 @@ public static class FiguresOfMerit
         }
 
         return new CloudFlight(
-            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions),
+            // Null rather than a throw when fewer than two arrived. A peak needs two
+            // points to have a width; the flight around it is still a result, and its
+            // itemised losses are most worth reading precisely when nothing arrived.
+            arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions) : null,
             [.. arrived],
             [.. losses
                 .OrderByDescending(pair => pair.Value)
@@ -554,6 +571,311 @@ public static class FiguresOfMerit
     /// transport tests check.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The mean transit time of a diffusive run, in seconds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// TRN-2: a density has no flight time, and `transport.no-flight-time` says so
+    /// rather than filling one in. What it has instead is a transit-time
+    /// <em>distribution</em>, and this is its mean - weighted by how many ions
+    /// arrived in each bin, because an unweighted mean over bins is a mean over the
+    /// solver's step schedule rather than over the ions.
+    /// </para>
+    /// <para>
+    /// Added because without it the diffusive mode's principal scalar output could
+    /// not be asserted at all: no study could rank by it and no project test could
+    /// pin it, so half of REG-1's peer pair was outside the machinery that keeps the
+    /// other half honest.
+    /// </para>
+    /// </remarks>
+    private static double? Transit(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (!string.Equals(model.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            // Not a failure to measure - a wrong question. A trajectory run has a
+            // flight time, which is a different quantity computed a different way,
+            // and quietly returning it here would let a test pass against the mode
+            // it was not written for.
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/mode",
+                Constraint = "'transitTime' is the transit of a density, and this model declares "
+                    + $"'{model.TransportMode}' transport",
+                Suggestion = "use 'flightTime' for a trajectory run, or set "
+                    + "\"transport\": { \"mode\": \"diffusion\" }",
+            });
+        }
+
+        var (field, warnings) = Fields.FieldAssembly.BuildReported(model);
+        var outcome = DiffusionRun.Execute(model, field, warnings);
+
+        Forward(outcome.Warnings, report);
+
+        var result = outcome.Result;
+
+        if (result.Arrivals.Count == 0 || result.Collected <= 0.0)
+        {
+            // Nothing arrived, so there is no transit to average. Null rather than
+            // zero: zero is a real answer and a caller cannot tell the two apart.
+            return null;
+        }
+
+        return result.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / result.Collected;
+    }
+
+    /// <summary>
+    /// The fraction of launched ions that arrive, in its own right.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Counted rather than read off an arrival-time peak, because a peak needs at
+    /// least two arrivals to have a width and a transmission needs none at all.
+    /// Going through the peak meant <strong>a transmission of zero could not be
+    /// expressed</strong>: a mass filter above its cut-off, or an ion lost on a ring,
+    /// raised an internal error saying "a peak needs at least two arrivals" and the
+    /// whole run reported itself as a defect in the engine.
+    /// </para>
+    /// <para>
+    /// That is exactly backwards for ACC-5, whose entire subject is transmission as
+    /// a measured, itemised quantity: an instrument that loses everything is the
+    /// case a reader most wants reported, and it was the one case the figure could
+    /// not report. Found by the example corpus, where a quadrupole above its
+    /// low-mass cut-off is half of a two-model pair that brackets a published
+    /// boundary.
+    /// </para>
+    /// <para>
+    /// Zero is a measurement and null is a failure to measure, and the two are kept
+    /// apart: nothing arrived gives 0.0, while a model that could not be flown at
+    /// all gives null.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// The strongest line below the drive in one component of the ion's motion.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Section 12 asks for the secular frequency spectrum as a Class B figure, and a
+    /// figure of merit needs one number out of it: the dominant line. What makes it
+    /// worth having as a scannable quantity rather than a diagnostic is that a
+    /// nonlinear resonance is <em>defined</em> by a condition on these frequencies,
+    /// so a scan that reports where the ion is lost and a scan that reports its
+    /// secular frequency can be read against each other.
+    /// </para>
+    /// <para>
+    /// The search band is 2 to 90 per cent of the drive, taken from the field's own
+    /// shortest period rather than from a parameter with a guessable name. The upper
+    /// end stops below the drive on purpose: the micromotion at the drive frequency
+    /// is the largest line in most spectra and is not the secular motion, so
+    /// including it would report the drive back to the caller as a discovery.
+    /// </para>
+    /// <para>
+    /// Null for a static field, with a warning. That is not a failed measurement - a
+    /// static field has no secular motion to have a frequency, and reporting an
+    /// ion's ordinary oscillation in a DC well under this name would be answering a
+    /// different question.
+    /// </para>
+    /// </remarks>
+    private static double? Secular(
+        CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (launch, species, field, settings, detector) = Setup(model, report: report);
+
+        if (field is not Fields.ITimeVaryingField driven)
+        {
+            report?.Invoke(new Core.Results.ValidityWarning(
+                "secular.no-drive",
+                "this model declares no time-varying field, so there is no secular motion to have a "
+                + "frequency. A secular frequency is the slow oscillation an ion makes in the "
+                + "effective well of an RF field, and a static field has no such well - the ion "
+                + "simply moves in the field it is in",
+                Core.Results.WarningSeverity.ValidityViolation));
+
+            return null;
+        }
+
+        var period = driven.ShortestPeriodSeconds;
+        var recorder = new TrajectoryRecorder(period / 16.0);
+
+        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
+
+        if (recorder.Samples.Count < 4)
+        {
+            return null;
+        }
+
+        try
+        {
+            var spectrum = Analysis.SecularSpectrum.From(
+                recorder.Samples, axis, 0.02 / period, 0.90 / period, 4000);
+
+            var peak = spectrum.Peak();
+
+            if (peak is null)
+            {
+                return null;
+            }
+
+            Forward(peak.Warnings, report);
+
+            var (value, _, _, _) = peak;
+
+            return value.SiValue;
+        }
+        catch (ArgumentException)
+        {
+            // No variance along this axis: the ion never moved in this direction, so
+            // it has no spectrum here. Absent rather than zero - zero hertz is a real
+            // answer and a reader cannot tell the two apart if both print as zero.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How many distinct ions an energy-spread ensemble actually has.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An ensemble here is a sweep of <em>launch energy</em>, and the launch speed
+    /// goes as the square root of it - so when the source starts at rest, every
+    /// member is <c>0 * sqrt(1 + offset)</c> and the ensemble is one ion flown
+    /// <c>n</c> times. That is not merely wasteful (each member rebuilds the field,
+    /// so a trap held for two hundred RF cycles paid twenty-one times over for one
+    /// answer): it is <em>misleading</em>, because the result is then reported as a
+    /// fraction over an ensemble that has no spread in it.
+    /// </para>
+    /// <para>
+    /// A resting source is not an edge case - it is what every trap and every
+    /// pulsed extraction declares, and it is exactly the population a
+    /// <c>confined</c> figure is asked about. So the collapse is reported rather
+    /// than silently applied: the caller learns that <c>ions</c> bought nothing and
+    /// what would have to change for it to buy something, which for a trap is a
+    /// thermal cloud rather than a wider energy spread.
+    /// </para>
+    /// </remarks>
+    private static int Distinct(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
+    {
+        if (ions <= 1)
+        {
+            return ions;
+        }
+
+        var reason =
+            model.LaunchSpeedSi() == 0.0 ? "the source starts at rest, so every launch speed is zero"
+            : spread == 0.0 ? "the energy spread is zero"
+            : null;
+
+        if (reason is null)
+        {
+            return ions;
+        }
+
+        report?.Invoke(new Core.Results.ValidityWarning(
+            "ensemble.degenerate",
+            $"{ions} ions were asked for and one was flown: {reason} whatever the offset, so every "
+            + "member of the ensemble is the same ion. The figure is a fraction over one trajectory "
+            + "rather than over a distribution. To vary the population of a source at rest, declare a "
+            + "cloud with a temperature or a spatial spread - an energy spread cannot move an ion "
+            + "that has no energy",
+            Core.Results.WarningSeverity.Provenance));
+
+        return 1;
+    }
+
+    private static double? Transmitted(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (arrived, launched) = Counted(model, spread, ions, report);
+
+        return launched > 0 ? (double)arrived / launched : null;
+    }
+
+    /// <summary>How many of the ensemble arrived, and how many were launched.</summary>
+    private static (int Arrived, int Launched) Counted(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (model.Cloud.IsCloud)
+        {
+            return (FlyCloud(model, report).Arrived.Count, model.Cloud.Ions);
+        }
+
+        var arrived = 0;
+        var members = Distinct(model, spread, ions, report);
+
+        for (var k = 0; k < members; k++)
+        {
+            var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
+
+            var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
+            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+
+            if (result.Outcome == TrajectoryOutcome.StopConditionMet)
+            {
+                arrived++;
+            }
+        }
+
+        return (arrived, members);
+    }
+
+    /// <summary>
+    /// The fraction of launched ions still inside at the end of the run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What a trap is measured by, and it is the complement of everything else here:
+    /// a trapped ion by definition never arrives anywhere, so transmission is zero
+    /// for a working trap and zero again for one that lost everything. The two are
+    /// not the same instrument, and no figure that counted arrivals could tell them
+    /// apart.
+    /// </para>
+    /// <para>
+    /// Confined means the run ended at its flight-time ceiling with the ion neither
+    /// struck on a surface nor past the detector. So a model measured this way puts
+    /// its detector <em>outside</em> the trap, where reaching it means having
+    /// escaped - which makes the three outcomes distinct: struck, escaped, held.
+    /// </para>
+    /// </remarks>
+    private static double? Confined(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (ions <= 0)
+        {
+            return null;
+        }
+
+        var held = 0;
+        var members = Distinct(model, spread, ions, report);
+
+        for (var k = 0; k < members; k++)
+        {
+            var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
+
+            var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
+            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+
+            if (result.Outcome == TrajectoryOutcome.MaximumFlightTimeReached
+                && result.StruckSurface is null)
+            {
+                held++;
+            }
+        }
+
+        return (double)held / members;
+    }
+
     private static double? TurnAround(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
@@ -589,7 +911,7 @@ public static class FiguresOfMerit
 
         try
         {
-            return FromCloud(thermalOnly, report).GaussianEquivalentFwhmSeconds;
+            return FromCloud(thermalOnly, report)?.GaussianEquivalentFwhmSeconds;
         }
         catch (ArgumentException)
         {

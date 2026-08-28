@@ -190,6 +190,23 @@ public sealed record CompiledGas
     /// <summary>Bulk gas velocity, in metres per second.</summary>
     public Vec3 DriftVelocitySi { get; init; }
 
+    /// <summary>
+    /// Path to an imported velocity field, as declared, or null.
+    /// </summary>
+    /// <remarks>
+    /// Carried as written rather than resolved, because resolving it needs the
+    /// model file's own directory and validation does not read files. Whoever loads
+    /// the model resolves it; a caller that cannot is refused rather than quietly
+    /// given a gas that stands still - see <c>DiffusionRun.Execute</c>.
+    /// </remarks>
+    public string? VelocityFieldPath { get; init; }
+
+    /// <summary>Which array in that file holds the velocity, or null for the first.</summary>
+    public string? VelocityFieldArray { get; init; }
+
+    /// <summary>Whether a velocity field was declared.</summary>
+    public bool HasVelocityField => !string.IsNullOrWhiteSpace(VelocityFieldPath);
+
     /// <summary>Seed for the collision random stream.</summary>
     public int Seed { get; init; } = 20_240_101;
 

@@ -37,29 +37,31 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
 {
     private readonly IElectrostaticField[] _channels;
     private readonly double[] _direct;
-    private readonly (double Amplitude, double Phase)[][] _harmonics;
-    private readonly RfWaveform _waveform;
+    private readonly WeightTerm[][] _harmonics;
+    private readonly double[] _frequencies;
+    private readonly RfWaveform[] _waveforms;
 
     // One entry per stage, holding that stage's weights and when it ends. Empty
     // for a geometry held in one state for the whole run.
     private readonly double[] _boundaries;
     private readonly double[][] _stageDirect;
-    private readonly (double Amplitude, double Phase)[][][] _stageHarmonics;
+    private readonly WeightTerm[][][] _stageHarmonics;
 
     internal DrivenSolvedField(
         IReadOnlyList<IElectrostaticField> channels,
         IReadOnlyList<double> direct,
-        IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>> harmonics,
-        double frequencyHz,
-        RfWaveform waveform,
+        IReadOnlyList<IReadOnlyList<WeightTerm>> harmonics,
+        IReadOnlyList<double> frequenciesHz,
+        IReadOnlyList<RfWaveform> waveforms,
         IReadOnlyList<double>? boundaries = null,
         IReadOnlyList<IReadOnlyList<double>>? stageDirect = null,
-        IReadOnlyList<IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>>>? stageHarmonics = null)
+        IReadOnlyList<IReadOnlyList<IReadOnlyList<WeightTerm>>>? stageHarmonics = null)
     {
         _channels = [.. channels];
         _direct = [.. direct];
         _harmonics = [.. harmonics.Select(h => h.ToArray())];
-        _waveform = waveform;
+        _frequencies = [.. frequenciesHz];
+        _waveforms = [.. waveforms];
 
         _boundaries = boundaries is null ? [] : [.. boundaries];
         _stageDirect = stageDirect is null ? [] : [.. stageDirect.Select(d => d.ToArray())];
@@ -67,8 +69,6 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         _stageHarmonics = stageHarmonics is null
             ? []
             : [.. stageHarmonics.Select(stage => stage.Select(h => h.ToArray()).ToArray())];
-
-        FrequencyHz = frequencyHz;
     }
 
     /// <summary>How many stages the sequence has. Zero for a geometry held in one state.</summary>
@@ -114,8 +114,20 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         return double.PositiveInfinity;
     }
 
-    /// <summary>The drive frequency, in hertz.</summary>
-    public double FrequencyHz { get; }
+    /// <summary>
+    /// The primary drive frequency, in hertz - the fastest of them.
+    /// </summary>
+    /// <remarks>
+    /// A geometry may carry several generators at once: a trap's main RF alongside
+    /// a supplementary excitation, or a guide's confining RF alongside a travelling
+    /// wave. Where a single number is wanted - a collisions-per-cycle figure, a step
+    /// cap - it is the fastest, because that is the timescale the field carries
+    /// information on.
+    /// </remarks>
+    public double FrequencyHz => _frequencies.Length == 0 ? 1.0 : _frequencies.Max();
+
+    /// <summary>Every drive frequency, in hertz, in declaration order.</summary>
+    public IReadOnlyList<double> FrequenciesHz => _frequencies;
 
     /// <summary>How many basis solves the geometry reduced to.</summary>
     /// <remarks>
@@ -126,7 +138,37 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     public int ChannelCount => _channels.Length;
 
     /// <inheritdoc/>
-    public double ShortestPeriodSeconds => 1.0 / FrequencyHz;
+    /// <remarks>
+    /// The shortest period any drive carries, and for a harmonic waveform the period
+    /// of its highest term rather than of its fundamental - a comb reaching order 120
+    /// carries information a hundred and twenty times faster than its own repeat
+    /// rate, and a controller told only the fundamental would step over every one of
+    /// those oscillations while its error estimator agreed the step was accurate.
+    /// </remarks>
+    public double ShortestPeriodSeconds
+    {
+        get
+        {
+            var shortest = double.PositiveInfinity;
+
+            for (var k = 0; k < _frequencies.Length; k++)
+            {
+                var highest = 1;
+
+                if (k < _waveforms.Length && _waveforms[k] is RfWaveform.Harmonic harmonic)
+                {
+                    foreach (var term in harmonic.Terms)
+                    {
+                        highest = Math.Max(highest, term.Order);
+                    }
+                }
+
+                shortest = Math.Min(shortest, 1.0 / (_frequencies[k] * highest));
+            }
+
+            return double.IsPositiveInfinity(shortest) ? 1.0 : shortest;
+        }
+    }
 
     /// <inheritdoc/>
     public double ResolutionLength => _channels[0].ResolutionLength;
@@ -152,14 +194,22 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
 
         var total = direct;
-        var cycles = FrequencyHz * timeSeconds;
 
         // More than one term because two supplies can share a spatial pattern: a
         // quadrupole's DC and RF put the same electrodes up and down by the same
-        // relative amounts, so they are one solved field carrying two weights.
-        foreach (var (amplitude, phase) in harmonics)
+        // relative amounts, so they are one solved field carrying two weights. Each
+        // term names the clock its phase is measured on, which is what lets one
+        // solved pattern be driven by two generators at different frequencies.
+        foreach (var term in harmonics)
         {
-            total += amplitude * _waveform.At(cycles + phase);
+            var drive = term.Drive;
+
+            if (drive < 0 || drive >= _frequencies.Length)
+            {
+                continue;
+            }
+
+            total += term.Amplitude * _waveforms[drive].At((_frequencies[drive] * timeSeconds) + term.Phase);
         }
 
         return total;

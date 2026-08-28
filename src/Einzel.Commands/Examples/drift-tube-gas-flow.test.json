@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "drift-tube-gas-flow",
+  "description": "Closed form: L / (mu E + v_gas), with both declared. The same drift tube with the neutral gas streaming through it at 120 m/s. GAS-1 calls a bulk gas velocity easy to omit and hard to notice missing, and this is why: the drift is now 300 m/s rather than 180, so two thirds of the transport is the gas rather than the field, and a model that left it out would be describing a different instrument at the same pressure. Advection is not the gradient of anything, so it cannot enter as a potential - it adds to the drift directly, and the transit is L / (mu E + v_gas).",
+  "model": "../models/drift-tube-gas-flow.json",
+  "expect": [
+    {
+      "figureOfMerit": "transitTime",
+      "value": 126.66666666666667,
+      "unit": "us",
+      "tolerance": 0.03
+    }
+  ]
+}

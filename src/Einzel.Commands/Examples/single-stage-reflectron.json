@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "0.3",
+  "name": "single-stage-reflectron",
+  "description": "Ideal single-stage reflectron at the first-order energy focus, where the total field-free path is four penetration depths. Analytic flight time 10.1805 us for m/z 500 at 4 keV: 2L/v of drift plus 2v/a of turnaround. Arrival time is flat to first order in energy, so sweeping the acceptance moves it by only the second-order term. The mirror depth and the cap potential are declared parameters, so this model can be swept and optimised as it stands.",
+  "parameters": {
+    "turningDepth": {
+      "value": 50,
+      "unit": "mm",
+      "minimum": 5,
+      "maximum": 200,
+      "description": "How far into the mirror the potential reaches capPotential. The penetration depth of an ion at the full acceleration potential."
+    },
+    "capPotential": {
+      "value": 4,
+      "unit": "kV",
+      "minimum": 0.1,
+      "maximum": 20,
+      "description": "Potential at the back of the mirror. Equal to the acceleration potential here, so the ion turns exactly at turningDepth; a supply drifting off that moves the turning point and the flight time with it."
+    },
+    "acceleration": {
+      "value": 4,
+      "unit": "kV",
+      "minimum": 0.1,
+      "maximum": 20,
+      "description": "Acceleration potential the ion is launched at."
+    },
+    "gradient": {
+      "expression": "capPotential / turningDepth",
+      "unit": "V/m",
+      "description": "The mirror field. Derived, because it is a consequence of the two above rather than a knob of its own."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        -100,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "acceleration",
+      "unit": "kV"
+    },
+    "energyFraction": 0
+  },
+  "fields": [
+    {
+      "type": "halfSpaceUniform",
+      "planePoint": {
+        "value": [
+          0,
+          0,
+          0
+        ],
+        "unit": "mm"
+      },
+      "inwardNormal": {
+        "value": [
+          1,
+          0,
+          0
+        ]
+      },
+      "capPotential": {
+        "expression": "capPotential",
+        "unit": "kV"
+      },
+      "turningDepth": {
+        "expression": "turningDepth",
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        -100,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 1,
+      "unit": "ms"
+    },
+    "sampleInterval": {
+      "value": 20,
+      "unit": "ns"
+    }
+  }
+}

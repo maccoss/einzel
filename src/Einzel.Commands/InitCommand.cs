@@ -100,7 +100,16 @@ public static class InitCommand
 
         if (!File.Exists(testPath))
         {
-            File.WriteAllText(testPath, ExampleModels.SingleStageReflectronTest);
+            // The shipped test names the model by its corpus name; init writes it as
+            // reflectron.json, so the reference is rewritten to what actually landed.
+            // A scaffolded project whose one test cannot find its one model is the
+            // worst possible first minute.
+            File.WriteAllText(
+                testPath,
+                ExampleModels.SingleStageReflectronTest.Replace(
+                    $"../models/{ExampleModels.ScaffoldName}.json",
+                    "../models/reflectron.json",
+                    StringComparison.Ordinal));
             created.Add(Path.GetRelativePath(project.Root, testPath));
         }
 

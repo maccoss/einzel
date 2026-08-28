@@ -18,15 +18,19 @@ physics or the abstraction is wrong, and almost always the second.
 | `quadrupole-rf` | The same four rods, driven: a mass filter |
 | `ion-funnel` | A tapering stack of RF rings with a DC gradient, written as one ring repeated |
 | `segmented-quadrupole` | Three axial sections at their own working points, solved in three dimensions |
+| `travelling-wave-guide` | A ring stack whose drive phase ramps along it, so the potential travels |
+| `multipole-guide` | Any even order — quadrupole, hexapole, octupole, and beyond — from one file |
+| `paul-trap` | A driven ring between two earthed endcaps: the three-dimensional quadrupole trap, solved axisymmetrically |
 
-They **share no code at all**. All three name the same electrode primitives in
+They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
 DeviceTemplates.Names();
-// ["einzel-lens", "ion-funnel", "planar-mirror-pair", "quadrupole",
-//  "quadrupole-rf", "rectilinear-trap", "segmented-quadrupole"]
+// ["einzel-lens", "ion-funnel", "multipole-guide", "paul-trap",
+//  "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap",
+//  "segmented-quadrupole", "travelling-wave-guide"]
 DeviceTemplates.Read("quadrupole");
 ```
 
@@ -525,3 +529,344 @@ an ion funnel needs, or **discrete periodicity**, which is what a stacked-ring
 guide needs to be expressed compactly rather than as hundreds of rectangles.
 Both are symmetry declarations the solver would exploit, and both are the natural
 next additions.
+
+---
+
+## `multipole-guide` — every even order in one file
+
+LIB-1's test, run deliberately: **what does a multipole above four rods cost?**
+
+It cost exactly one thing below `Einzel.Library`, and it was small and general.
+The expression grammar had **no trigonometry**, so `2n` rods at `π/n` intervals
+could not be written at all — not awkwardly, not verbosely, but not at all. With
+`cosPi` and `sinPi` added it is one template with `poleCount` as a parameter:
+four is a quadrupole, six a hexapole, eight an octupole, and nothing else changes.
+
+**Half turns rather than radians**, which is the convention the drive decomposition
+already chose and for the same reason: `Math.Cos(Math.PI / 2)` is 6.1e-17 rather
+than zero, so a rod placed at a quarter turn lands a hair off axis and the
+multipole carries a spurious dipole made of rounding.
+
+### The rods have to fit, and now they cannot not
+
+| poles | largest ratio | closed form | actual | nearest gap |
+| --- | --- | --- | --- | --- |
+| 4 | 2.41421 | 2.41421 | 1.14675 | 2.970 mm |
+| 6 | 1.00000 | 1.00000 | 0.47500 | 2.100 mm |
+| 8 | 0.61991 | 0.61991 | 0.29446 | 1.607 mm |
+| 10 | 0.44721 | 0.44721 | 0.21243 | 1.298 mm |
+| 12 | 0.34920 | 0.34920 | 0.16587 | 1.087 mm |
+
+Rod centres sit on a circle of `r0 + rodRadius`, adjacent centres are
+`2(r0 + rodRadius) sin(π/N)` apart, and that must be at least twice the rod
+radius — which rearranges to `rodRatio ≤ sin(π/N) / (1 − sin(π/N))`.
+
+**So the knob is `rodFill`, a fraction of that maximum, not the ratio itself.** An
+overlapping geometry is then not expressible rather than merely refused. And
+`rodFill = 0.475` reproduces Denison's classical quadrupole ratio of **1.1468** at
+four poles, reached through the derived-parameter chain rather than written into
+it — which is a sharp check on `sinPi` as well as on the geometry.
+
+### Every order is one basis solve
+
+| poles | electrodes | basis solves | cycles | convergence factor |
+| --- | --- | --- | --- | --- |
+| 4 | 4 | **1** | 8 | 0.0262 |
+| 6 | 6 | **1** | 8 | 0.0285 |
+| 8 | 8 | **1** | 8 | 0.0236 |
+| 12 | 12 | **1** | 8 | 0.0257 |
+
+Twelve rods cost what four do. Adjacent rods alternate in phase, so they are exact
+negatives of one another however many there are, and the whole structure is one
+spatial pattern whose weight is a function of time. **Exact negation is what does
+it** — which is why the amplitude is written `rfAmplitude * (1 - 2 mod(pole, 2))`
+rather than as a cosine of the pole index: the second would be right to a rounding
+and would split into two channels.
+
+### What is not claimed, and why
+
+The obvious question is whether a higher order accepts a larger offset, and this
+template can be made to answer it — a boundary search on `launchOffset` costs
+eleven evaluations per order. **It is not claimed, because the measurement as set
+up is confounded.**
+
+The template launches at `(offset, offset)`, a 45° diagonal. For a quadrupole,
+with rods on the axes, that is the *widest* gap between rods: an ion enters at
+r = 4.95 mm and still arrives, outside the 4 mm inscribed radius. For a hexapole
+the same diagonal falls between rods at 0° and 60°, a narrower gap. So the
+comparison measures the angular gap the launch point happens to sit in at least as
+much as it measures the order.
+
+Measured anyway, for the record: at 200 V the hexapole accepts 0.68 r0 and the
+octupole 0.58; at 300 V that **reverses** to 0.46 and 0.48. A non-monotone ordering
+that flips with amplitude is a sign the variable being scanned is not the one that
+matters. Settling it needs a scan over launch *angle* as well as radius, and an
+acceptance defined as a solid angle rather than one ray.
+
+## Overlapping conductors are refused
+
+Found by getting the above wrong first. Applying Denison's 1.1468 to six rods puts
+them **through one another** — they need a centre circle 9.17 mm across and a
+hexapole gives them 8.59 mm — and the engine solved it, converged in eight cycles,
+and produced an acceptance measurement that was really a measurement of rods
+closing in on the axis.
+
+A Dirichlet mask is built by writing each electrode's nodes in turn, so where two
+overlap the last one written wins. Where both hold the same potential and drive
+that is harmless and often deliberate: a shape assembled from overlapping
+primitives is how a fillet or a shoulder gets built. **Where they disagree it is
+ill-posed** — the region is simultaneously at +300 V and −300 V of drive, and the
+field returned is the field of a geometry nobody described.
+
+`ElectrodeOverlap` refuses that case, naming both electrodes and what each holds.
+Three deliberate limits: tangency is allowed, because exactly touching is a design
+and a floating-point equality is a poor thing to refuse on; agreement is allowed,
+because the overlap is not the problem; and an **edge profile is skipped**, because
+a boundary profile touching an interior electrode is a different question and a
+check that guessed would sometimes refuse a legitimate geometry.
+
+## `paul-trap` — the 3-D quadrupole trap, and where its cut-off really is
+
+A driven ring with an earthed endcap either side of it, on the axis of rotation.
+**Axisymmetric, so it is a half-plane solve rather than a volume** — SYM-1 is what
+makes a three-dimensional trap cost what a two-dimensional cross-section costs.
+Three electrodes, and because the endcaps are earthed there is only one thing that
+moves: **one basis solve**, 10 cycles at a convergence factor of 0.0587.
+
+The classical geometry has `r0² = 2z0²`, which collapses
+
+```
+q_z = 8 z e V / (m Ω² (r0² + 2 z0²))    →    4 z e V / (m Ω² r0²)
+```
+
+— the same volts per unit `q` as a linear quadrupole of the same inscribed radius,
+so the two are directly comparable and the amplitude is arithmetic. `z0` is
+*derived* from `r0` rather than declared, because departing from that ratio is a
+different device rather than a different size.
+
+### A trap needs a figure of merit that is not an arrival
+
+Everything else here is measured by ions arriving somewhere. **A trapped ion never
+arrives anywhere**, so a transmission reads zero for a trap that works and zero
+again for one that lost everything, and no figure that counts arrivals can tell
+those apart. `confined` is the complement — the fraction still inside when the hold
+ends, having struck nothing and passed no detector — and the model puts its
+detector *outside* the trap so the three outcomes stay distinct: **struck, escaped,
+held**.
+
+### Measured
+
+| | |
+| --- | --- |
+| Basis solves for three electrodes | **1** |
+| Ejection boundary, 0.3 mm launch, 200 cycles, 128 × 64 | **672–674 V**, q_z = 0.8218–0.8236 |
+| The same at 256 × 128 | **672–674 V** — mesh-converged |
+| The same at 800 cycles | **674 V** — hold-converged |
+| Tabulated Mathieu boundary, a = 0 line | q_z = 0.90804 |
+| Where the ion is lost | an **endcap**, at exactly ±z0 |
+| Effective r0 from the solved field | **3.8195 mm** against 4.0000 declared |
+| Boundary a scale factor alone would predict | **677.5 V**, q_z = 0.828 |
+
+**Most of the 9.4 per cent shortfall is one number, and the rest is not.** These
+electrodes are flat annuli, and a flat annulus at the nominal radius lies *inside*
+the hyperbola sharing its vertex everywhere except at that vertex — at z = 2.23 mm
+the ring hyperbola would be at r = 5.09 mm and this ring is at 4.00; at r = 3.4 mm
+the endcap hyperbola would be at z = 3.71 mm and this endcap is at 2.83. Metal
+closer in means a stronger field at the centre than `r0` implies, which is a smaller
+effective radius, which is a larger `q` per volt, which is ejection at a **lower**
+amplitude. That accounts for the sign and for 0.828 of the 0.908.
+
+### The ejection edge is amplitude-dependent, and it is not the linear boundary
+
+| launch offset | hold-converged edge | q_z |
+| --- | --- | --- |
+| 0.1 mm | 695–700 V | 0.849–0.856 |
+| 0.3 mm | 665–670 V | 0.813–0.819 |
+| 0.6 mm | ~520 V | 0.635 |
+
+The Mathieu equation is linear, so a trajectory scaled by a constant is another
+trajectory and **an ideal trap's stability boundary cannot depend on how far off
+centre the ion started**. This edge depends on it strongly, and it is **hold-converged**
+— 800 and 2000 RF cycles give the same answer at both offsets, so this is not the
+observation window.
+
+**The reason is structural and it is not fixable by measuring more carefully.** A
+boundary found by asking *did the ion reach an electrode* requires the ion to travel
+from wherever it started all the way to z0, through the whole anharmonic region. So it
+is never a small-amplitude measurement, whatever it was launched at — the launch offset
+sets how much of the journey is spent in the anharmonic region, not whether any of it
+is. A small launch survives past the linear boundary because the anharmonic frequency
+shift halts the growth before z0; a larger one is lost below it.
+
+### The linear boundary, measured without the ion going anywhere
+
+β needs no journey. It is read off the spectrum of an ion that stays small, so the
+linear boundary can be located by calibrating β(V) against Mathieu across a range where
+the ion *is* small, and asking where the calibration puts β = 1.
+
+**β is amplitude-independent where it should be**, which is the premise:
+
+| amplitude | β at 0.05 mm | β at 0.20 mm | spread |
+| --- | --- | --- | --- |
+| 300 V | 0.29554 | 0.29495 | 2.0e-3 |
+| 450 V | 0.46746 | 0.46540 | 4.4e-3 |
+| 600 V | 0.69923 | 0.68749 | 1.7e-2 |
+
+A fourfold change in launch amplitude moves β by two parts in a thousand at low q, and
+measurably more at high q — which is the anharmonicity appearing in the *frequency*
+rather than in a loss, and is the control that says the shift is real and small.
+
+Fitting one number — the scale `s` with `β_measured(V) = β_Mathieu(q_nominal(V)·s)` —
+across four amplitudes:
+
+| | measured | predicted | ratio |
+| --- | --- | --- | --- |
+| 300 V | 0.29524 | 0.29515 | 1.0003 |
+| 390 V | 0.39470 | 0.39442 | 1.0007 |
+| 480 V | 0.50618 | 0.50590 | 1.0006 |
+| 570 V | 0.64114 | 0.64191 | 0.9988 |
+
+**Worst residual 1.2e-3.** The trap is one ideal quadrupole across the whole range, of
+effective radius **3.8137 mm** — against **3.8195 mm** from the field curvature with no
+ion involved at all, and in the direction that measurement's own δ-dependence predicts
+(3.8195 at a 0.4 mm sampling radius, 3.8286 at 0.6, 3.8438 at 0.8, so falling as δ→0).
+**Two routes sharing nothing but the solved field, agreeing to 0.15 per cent.**
+
+That puts β = 1 — the published boundary q = 0.90804 — at **675.5 V, q_nominal =
+0.82543**. And the two ejection edges **bracket it**: 665–670 V at 0.3 mm and
+695–700 V at 0.1 mm.
+
+**A caveat about the tool.** The endpoint is anchored to the *tabulated* 0.90804 rather
+than to the continued fraction used everywhere else here, deliberately: that expansion
+has a near-singularity exactly at β = 1, where its n = 1 denominator `(β−2)²` goes to
+one, and it puts the crossing at q = 0.9117 — four parts in a thousand off. It is
+accurate where it is used, at β from 0.3 to 0.8, and not at the endpoint.
+
+**So the 9.4 per cent shortfall from the tabulated boundary is one geometric factor,
+now measured three independent ways** — the field's curvature at the centre, the secular
+frequency of a flown ion, and the ejection edges that straddle it.
+
+### A resonance band inside the stable region, found by the confirmation walk
+
+At a 0.3 mm launch there is a narrow band of loss at **605–614 V** (q_z =
+0.739–0.750), sixty volts *below* the main edge and well inside what the Mathieu
+chart calls stable. Every control says it is real:
+
+| control | result |
+| --- | --- |
+| 256 × 128 grid | identical band, 605–614 V |
+| 400 cycles | identical band |
+| 60 cycles | **gone** — the growth is slow and secular, not exponential |
+| 0.1 mm launch | **gone** — so it is driven by the field's higher multipoles |
+
+That combination is the signature of a **nonlinear resonance**: a linear instability
+would be exponential (visible at 60 cycles) and amplitude-independent (visible at
+0.1 mm), and this is neither. **Which** resonance is not established — β_z there is
+0.615, which lands on no `n_z β_z + n_r β_r = 2` for any multipole order up to six —
+and settling that needs a frequency analysis of the secular motion rather than a
+loss test. Recorded as measured rather than explained.
+
+It is worth saying how it was found: **the confirmation walk in `einzel boundary`
+turned it up on its first real use**, from a search whose bisection had converged
+cleanly onto the main edge sixty volts above. The bisection itself reported nothing
+unusual, and could not have — see `optimisation.md`.
+
+The effective radius is read off the field itself, from `dEz/dz = 2V/r0²`, and the
+same samples give the anharmonicity for free. `dEz/dz ÷ dEr/dr` is exactly −2
+wherever the quadratic term dominates — that is Laplace's equation in cylindrical
+coordinates — and here it drifts from −1.9867 to −1.9461 as the sampling radius
+doubles from 0.4 to 0.8 mm. **A hyperbolic trap would hold −2 everywhere by
+construction**, so a departure growing with radius is the higher multipole flat
+electrodes buy. That growth is what the test asserts, rather than a blanket
+tolerance: a departure that did *not* grow with radius would be discretisation or a
+bug.
+
+### The finding worth keeping: a boundary needs its observation window
+
+At **60 RF cycles** the ejection boundary is not a boundary. It is a ragged strip:
+
+```
+   V   672 674 676 678 680 682 684 686 688 690 692
+held     1   1   0   0   1   0   1   0   1   0   0
+```
+
+At **200 cycles** the same scan is a clean step between 672 and 674 with no
+survivors above it. Nothing about the design changed. The growth rate goes to zero
+at the stability edge, so whether a marginally unstable ion reaches an electrode
+inside the hold is a property of *the hold*, not of the trap.
+
+Two consequences. The template holds for 200 cycles by default and says why. And
+**`einzel boundary` now walks outward from its converged bracket** looking for the
+predicate flipping back — because bisection on the 60-cycle scan lands anywhere in
+that strip depending on the path it took, and every step of that path is consistent
+with a clean edge. Two runs over slightly different brackets gave 680.7 V and
+694.4 V for the same geometry, which is how the fraying was noticed at all. See
+`optimisation.md`.
+
+### What it cost below the library: one line, and it was a real gap
+
+`ModelValidator` refused the trap outright — *"the accelerating potential may only
+be zero when a field can accelerate the ion, and this model declares none that
+can."* The check asked whether any electrode held a non-zero **DC** potential. A
+Paul trap holds zero volts of DC on every electrode and all of its potential as
+drive, so the archetypal start-at-rest device was declared incapable of moving an
+ion. Now it asks about the drive as well, in both two and three dimensions — the
+3-D arm had never inspected anything at all and passed by default, which is the
+same bug wearing the opposite mask.
+
+Same shape as two defects already recorded: `einzel solve` reporting the DC pattern
+for a driven geometry, and the 3-D verb reporting `converged: true` for a field it
+never touched. **Reading only the DC of a driven electrode is a recurring mistake
+here**, and it is worth grepping for the next time something driven behaves as
+though it were earthed.
+
+## The travelling-wave guide gets its second generator, and it does not help yet
+
+The shipped guide now declares **two** generators — a slow travelling wave whose phase
+ramps along the stack, and a fast confining RF on the same rings in adjacent antiphase
+— which is what a real stacked-ring travelling-wave guide is and what this template
+could not say at all until a solve could carry more than one drive.
+
+| | |
+| --- | --- |
+| Electrodes | 24 rings, each tapping both generators |
+| Generators | wave at 0.5 MHz, confinement at 3 MHz |
+| Basis solves | **3** — two for the wave's phase ramp, one for the alternating confinement |
+| Shortest period the field reports | **333.33 ns**, the confinement's, not the wave's |
+
+**And the confinement does not widen the acceptance.** Measured as the fraction of
+entry radii from 0.1 to 1.2 mm that arrive, on a 2 mm bore:
+
+| confinement | arrivals of 12 |
+| --- | --- |
+| none | **5** |
+| 100 V | 2 |
+| 200 V | 4 |
+| 400 V | 3 |
+| 800 V | 1 |
+| 200 V at half the frequency | 1 |
+| 400 V at half the frequency | 1 |
+
+**The window is narrow at both ends, and that is the explanation rather than a
+disappointment.** Above about 200 V on this ring pitch the confining drive's own
+Mathieu q passes the stability limit, so the ion is RF-*unstable* and is ejected
+rather than held — at 800 V the confinement removes ions that would otherwise have
+arrived. Below it the pseudopotential well is shallow against a 60 V wave, and the
+alternating field decays as `exp(−2πr/pitch)` so what reaches the axis is a small
+fraction of what sits at the rings.
+
+Whether a working point exists is a two-dimensional question in wave and confinement
+amplitude together, and it is a design study rather than a test. **The template
+therefore ships with the confinement at zero volts**: shipping a default that makes a
+device worse would be worse than shipping none.
+
+What the tests assert is the part that is settled — the generator is declarable, costs
+one extra solve, sets the step by the faster clock, and **reaches the ion**: the
+acceptance differs with it on, so it is neither inert nor being silently dropped
+somewhere between the document and the trajectory. An excitation that ejects is still
+an excitation that arrived.
+
+**A statistic that had to be replaced.** The first measurement was "the widest entry
+radius that still arrives", which read 0.65 mm on one radius grid and 0.20 mm on
+another for the same geometry — a maximum over a ragged set is a maximum over noise.
+Counting arrivals over a fixed grid is the same measurement made stable.

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "paul-trap-held",
+  "description": "Published: the tabulated Mathieu ejection boundary for a 3-D quadrupole trap on the a = 0 line is q_z = 0.90804, and this model sits at q_z = 0.30. Held. q_z = 0.30, well inside every boundary in play - the tabulated 0.90804 and this geometry's own 0.822 - so the ion is still in the trap after two hundred RF cycles, having struck nothing and escaped nowhere.",
+  "model": "../models/paul-trap-held.json",
+  "expect": [
+    {
+      "figureOfMerit": "confined",
+      "value": 1.0,
+      "unit": "1",
+      "tolerance": 1e-09
+    }
+  ]
+}

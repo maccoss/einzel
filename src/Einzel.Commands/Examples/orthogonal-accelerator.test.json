@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "orthogonal-accelerator",
+  "description": "Closed form: sqrt(2d/a) + L/sqrt(2 a d). A packet held at rest 10 mm inside a 50 kV/m extraction region, pushed out through the plane and allowed to drift 400 mm. This is the device class an extraction trap or an orthogonal accelerator belongs to, and it is two closed forms composed: sqrt(2d/a) to leave the field region and L/v to cross the drift, with v = sqrt(2 a d). A half-space uniform field is field-free on one side and uniformly retarding on the other, so an ion released inside it and moving outward is accelerated by exactly the field that would have retarded it going in.",
+  "model": "../models/orthogonal-accelerator.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 30.2345594418636,
+      "unit": "us",
+      "tolerance": 1e-06
+    }
+  ]
+}

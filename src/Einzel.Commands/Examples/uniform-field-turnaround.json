@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "0.3",
+  "name": "uniform-field-turnaround",
+  "description": "An ion launched at 4 keV into a uniform 40 kV/m retarding field, which stops it 100 mm downrange, turns it round and returns it past its launch point to a detector 50 mm behind. The whole path is one parabola, so the arrival time is the positive root of v t - a t^2 / 2 + d = 0. Worth running because the turning point is where a position-error step controller is most likely to under-refine, and the closed form here is exact.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        0.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 4000.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "value": [
+          -40000.0,
+          0,
+          0
+        ],
+        "unit": "V/m"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        -50.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 200.0,
+      "unit": "us"
+    }
+  }
+}

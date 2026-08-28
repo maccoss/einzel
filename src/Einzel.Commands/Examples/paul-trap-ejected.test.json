@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "paul-trap-ejected",
+  "description": "Published: the tabulated Mathieu ejection boundary for a 3-D quadrupole trap on the a = 0 line is q_z = 0.90804, and this model sits at q_z = 1.20. Ejected. q_z = 1.20, above every boundary in play, so the ion leaves - and it leaves axially, on an endcap at exactly z0, because q_r is half q_z and the axial direction goes unstable first. Run this beside its held twin: together they bracket the published cut-off, which is a stronger statement than either alone.",
+  "model": "../models/paul-trap-ejected.json",
+  "expect": [
+    {
+      "figureOfMerit": "confined",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-09
+    }
+  ]
+}

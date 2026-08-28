@@ -2,6 +2,34 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Read SPEC.md first, and update it last
+
+**`SPEC.md` is the living specification. Read it at the start of every session**,
+before proposing or planning anything. It carries all 118 tagged requirements from
+`einzel-software-spec-r06.html` with a status and the evidence behind each, the
+delivery phases planned against actual, the amendments where building it showed
+the original wrong, and a ranked list of what to do next. It answers "where is this
+project" in one place, which nothing else here does — this file is a changelog and
+the `docs/` pages are per-subsystem.
+
+**Update it in the same change that alters what it says.** Specifically:
+
+- A requirement's status changed → update its register row *and* its evidence. The
+  evidence is the point: **Met** means a measurement is named, not that something
+  was attempted. Use **Unverified** when a thing plausibly works and nothing
+  measures it; it is not a synonym for met.
+- The requirement itself turned out to be wrong, incomplete, or right for a reason
+  r06 does not give → add an entry to **Amendments**, with the evidence that forced
+  it. Do not silently diverge: r06 stays unchanged as the record of intent, and
+  every disagreement is written down as a disagreement.
+- A §23 open decision got settled → move it and say how.
+- The "What to do next" list changed → reorder it, and say why rather than only
+  what.
+
+A status page that has drifted is worse than none, because it is trusted. This is
+the same argument that makes the platform layer of `AGENTS.md` generated rather
+than hand-written, applied to the one document here that is not generated.
+
 ## What this repository is
 
 The goal is to **build the software described in the specification**: a general, open-source, agent-native ion-optics platform — an open replacement for SIMION. Spec §1's device table spans einzel lenses, quadrupole mass filters, ion funnels, stacked-ring and travelling-wave guides, multipole guides, linear and 3D traps, orthogonal accelerators, reflectrons and MR-TOFs.
@@ -371,6 +399,319 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
 - **`einzel solve` reported the DC pattern and nothing else for every driven 2D geometry.** The 3D path had been fixed by an earlier code review to report one entry per basis channel; the 2D path still built one mask from the electrodes' DC potentials. For the shipped **`quadrupole-rf`**, whose every electrode holds zero volts of DC and all of its potential as drive, that was a solve of a grounded box: **peak potential 0 V, zero cycles, `converged: true`, exit 0** — a clean bill of health for a mass filter's field that was never touched. The funnel reported its DC chain and not the RF that does the confining. `GeometryBuilder.SolveChannels` now mirrors the 3D API and both dimensions report the same way.
 
+- **The density became an output, electrodes started absorbing, and the gas started moving.** Three gaps in the diffusive mode, all of the same shape: a thing the mode computed or was told that nothing downstream could see.
+
+  **A density had no drawing and no file.** RND-8 forbids trajectories through a diffusive region, which was right and, on its own, entirely negative — the mode's principal result could be summarised into a transmission and a transit time and looked at in no other form, so the honest figure of a funnel at a millibar was an empty box. `run --vtu` now writes a `.vti` density on the tracked grid, with the warnings in the file's own header (GRD-2), and `render section` draws it as contours at **decades** below the peak. Decades rather than even fractions because a density spans orders of magnitude — a packet's tail is a millionth of its core, not a small fraction of it — and even spacing draws the top decade several times and the extent not at all. The levels go in the figure's provenance, since a density plotted without them is a shape rather than a measurement. `--vtu` on a diffusive model previously wrote nothing and said nothing, which is the worst of the three options.
+
+  **An electrode emptied the seed and then let everything through.** That stops a source placed inside metal from starting there — the case that reads as an instrument losing everything — and does nothing at all about density arriving later, so a funnel's rings shaped the field and then passed the density straight through. **Every diffusive transmission figure was an upper bound with nothing saying so.** The mask is now handed to the solver and those cells are held at zero at every step. A conductor is **an open boundary with a name**: with the far side at zero the Scharfetter–Gummel flux reduces to `B(−P)·n_here`, non-negative for any potential drop, so an electrode can only take and never give — which falls out of the scheme rather than needing a clamp, and is checked with the field driving ions *out* of the metal. A wall across the channel takes 100.00% collected to 0.00%, all of it named on the wall; the control is the same run without it, because "almost nothing arrived" is equally consistent with a solver that lost the density. And the seed's own overlap now **joins the same ledger** — it used to be deleted after the launched population was counted, so launched, collected, remaining and the named losses did not add up.
+
+  **`transport.gas.driftVelocity` was honoured by one transport mode and silently dropped by the other.** It has been in the format since the collision models landed and the event-driven side has always used it; the diffusive solver never looked. Same shape as `FieldAssembly.Build` discarding its `SolveReport`. Advection by a moving neutral **is not the gradient of anything**, so it cannot enter as a potential difference — it enters the SG exponent directly as `P_gas = v·n̂ h / D`, which is the same exponent the field term already is, because by the Einstein relation `q(φ_here − φ_there)/kT` *is* `v h / D`. The two add, and the scheme stays exact for a linearly varying total drift.
+
+  | | |
+  | --- | --- |
+  | Centroid carried by gas alone, 40 and 120 m/s | **1.000000** each |
+  | Centroid against μE + v_gas, gas at ±60 m/s | **1.000000** each |
+  | A still gas against no declared velocity | bit-identical, every node |
+  | Ions conserved, moving gas across a varying field | 100.0000% |
+
+  Six figures, not a band: SG is exact for a linearly varying drift and a uniform one trivially is, so the first moment is the scheme's own answer rather than an approximation converging. **Sampled at the face and averaged over its two nodes** — the neighbour computes the same average with the opposite sign, so the two cells agree about how much crossed. Sampling at the cell centre would repeat exactly the bug that drained a seeded Boltzmann equilibrium at 4.7× per millisecond. The reversed gas is the control, because a sign error is invisible when gas and field push together.
+
+  **Both directions are reported, per REG-2.** A declared flow gets the ratio saying which is carrying the ions (`gas.flow`: 6.5, "the gas is carrying these ions, not the field"). A model with *no* flow above 1e-2 mbar — where spec figure 4 makes a velocity field a requirement rather than a benefit — gets `gas.stationary-above-flow-threshold`, because a stationary gas is a modelling choice and does not look like one in the output. And **`CollisionSampler` refuses a flow field rather than ignoring one**: it schedules and draws without a position, so it cannot evaluate a velocity that varies with one, and the alternative is an ion flying through a declared jet as though the gas were still.
+
+  **Not built:** a neutral velocity *field*. `IGasFlow` is the seam and `UniformGasFlow` is the only implementation, so a funnel's transmission is still computed in a gas that is either standing still or moving all in one piece — and the jet off an inlet capillary is neither.
+
+- **A cylindrical density was not conserving ions, and closing the ledger is what found it.** The cylindrical *Poisson* operator is written in conservative form — flux through a ring's outer face minus its inner face, over the ring's own volume — and that reasoning is recorded in `docs/numerics.md`. The *density* solver, on the same grid class with the same `Cylindrical` flag, computed a flux per unit area and applied it to both neighbours as though their volumes were equal. In an axisymmetric solve they are not.
+
+  The weight is `A_face·h/V`: identically **1** in the plane, so an isotropic solve multiplies by one and is unchanged to the last bit, and `1 ± h/2r` in a cylindrical one. **On the axis it is 4**, because the inner face has no area and the cell is a disc rather than a ring — the *same* factor of four the Laplacian carries there, already written down one file away. The stability limit follows: a weighted face scales the outward coefficient, so the explicit step on the axis is four times shorter than the unweighted rate says, and `estimate` takes the weight from the same function `run` does.
+
+  **The shipped funnel's ion ledger closed to 95.99%. It closes to 100.0001%.** The error goes as `h/2r`, so it is negligible at the wall and total on the axis — which is where a funnel puts its ions, and a funnel is the device this mode exists for.
+
+  Three things about how it hid, all in `docs/lessons.md`. **Every conservation test in the suite was Cartesian**, where the weight is exactly one and a scheme with no weights is correct — passing for a reason that did not generalise, the same failure mode as the uniform-field test that hid the cell-centred drift sample. **The ledger did not have to close**: until interior electrodes absorbed continuously and the seed's own overlap was accounted, launched/collected/remaining/losses were never required to add up, so a four per cent leak had nowhere to appear — the bookkeeping fix found the physics fix. And **the conservation figure is not the discriminating check**: a wrong weight still conserves to 99.9995% on a short off-axis run. What cannot be nearly right is the weight, asserted exactly at 4 and `1 ± h/2r`.
+
+  **Also measured, and not yet fixed: a driven diffusive run is expensive for a reason the estimate warned about.** The ponderomotive well's gradient at the ring edges sets the Courant limit — on the shipped funnel at 2 mbar the step is **1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900**, so 900 µs is ~843,000 steps. Attributed by control rather than asserted: 15.5 ns at 0 V of RF, 8.93 ns at 25 V, 1.067 ns at 100 V, so it is the drive and roughly as E₀². An implicit or operator-split step is the fix.
+
+- **`einzel scan`: the third study mode, and the operation this engine kept rewriting by hand.** A study could be a tolerance sweep or an optimisation and nothing else. But a sweep collapses a range into a distribution and an optimiser reports only where it stopped, while **all of §12's Class B is a question about a curve** — stability and cut-off boundaries, mass filter peak shape against a scan line, low-mass cut-off for funnels and guides.
+
+  So every curve here so far was a loop in a C# test file: the q scans, the extraction-slot scan at 0.5–3.0 mm, the 20.7 ns/mm drift scan. **None wrote a manifest, none could be re-run from the project, and none was reachable by an agent.** `ParameterScan` is the third driver beside `ToleranceStudy` and `Optimiser`, taking the same function from a validated model to a number; `scan` is a block in a study file, picked up by `einzel schema --study` through reflection with no schema edit.
+
+  Four decisions worth keeping. **Both ends are included and returned exactly** — half of (0.1, 0.2) is 0.15000000000000002, so an end reached by interpolation lands an ulp outside a bound, and a scan written the obvious way (from a parameter's declared minimum to its maximum) has its last row refused by validation with nothing on the page to say why. My own test found that. **A failed point is a row, not the end of the scan**, and the reason matters more here than in a sweep: on a stability scan "the ion was lost on `rodYPlus`" *is* the answer, so a driver that stopped at the first failure would stop exactly where the interesting thing is. **A range past the declared bounds is warned about once, up front**, because half a table of blanks reads as the solver failing rather than the model refusing. And **the steepest interval is reported and deliberately not called a boundary**: what comes back is where on the grid actually computed the figure moves fastest and how wide that interval is *as a fraction of the scan* — ACC-6's own currency, one part in five hundred — so a reader can tell a resolved transition from a scan too coarse to have found one. An interval where the figure **vanishes** outranks one where it merely moves far, flagged as `figureVanishes` rather than an infinite change, because JSON has no infinity and a null would be indistinguishable from a value never computed.
+
+  **What this is not, yet:** Class B proper. ACC-6 wants the boundary bisected onto, not bracketed by a grid, and peak shape against a scan line needs figures of merit that do not exist.
+
+- **The examples corpus (EX-1), and the two defects writing it found.** One reference model of the thirty §5 asks for had existed since the beginning. Seventeen do now, and the release gate EX-2 wants is built: every example is materialised into a real project and driven through `einzel test` via `Program.Main`, **17 of 17 in 29 s**, so it runs on every change rather than at release.
+
+  **Data, not code, discovered by a resource glob** — the same mechanism the device templates use, so adding one is a pair of files and nothing else. `name.json` is the model and `name.test.json` is what it must produce; `einzel new --from-example` writes both and rewrites the model reference to wherever the file landed, so the loop from `new` to a green tick has no step the user has to know about.
+
+  **Every expectation is arithmetic, a published value, or an exact invariant** — never a number this engine produced and then had enshrined. `free-flight` and `reflectron-off-focus` come out at **exactly zero** error; the gap, the turnaround, the mass scaling and the orthogonal accelerator between 3.5e-16 and 5.0e-12; turn-around time and thermal emittance to 0.93% and 0.72% inside their own sampling errors. The one worth noticing is the **RF quadrupole pair**: q = 0.70 transmits 1.0 and q = 0.95 transmits 0.0, bracketing the tabulated Mathieu cut-off of 0.90804 from both sides, and neither number comes from here.
+
+  **Two defects came out of it, both of the kind no test written from inside the project would catch**, because both were about a model that validates and answers a different question.
+
+  **An unrecognised property was ignored rather than refused.** A cloud declaring `transverseWidth` instead of `transverseSpread` parsed cleanly, validated, solved, ran, and gave an emittance of **7.1e-8 µm where the closed form says 1.798**. This is the rule §9 already argues at length — `{"energy": 4000}` is a validation error on purpose, because "unit ambiguity is the commonest source of silent wrongness and an agent building from prose is the actor most likely to introduce it" — applied to the *key* instead of the value, and §22 names its consequence as the defining risk of the whole thesis. Now refused, naming the property by JSON Pointer and pointing at `einzel schema`. **Four shipped test fixtures turned out to be affected**: they declared 1 mm clouds and had been running with point sources.
+
+  **ACC-5's transmission could not express zero.** It was read off an arrival-time peak, and a peak needs two arrivals to have a width — so a quadrupole above its cut-off, or an ion lost on a funnel ring, raised `INTERNAL_ERROR: a peak needs at least two arrivals` and the run reported *itself* as a defect in the engine. Exactly backwards for a requirement whose subject is transmission as a measured quantity: **an instrument that loses everything is the case a reader most wants reported, and it was the one case the figure could not report.** Worse one level up — `einzel run` caught the exception and returned no ensemble at all, so the itemised losses disappeared precisely when the transmission was zero. Fixed by separating the two: a transmission is a count and needs no peak; a width still needs two points and is now **absent rather than zero** when there are not two.
+
+  **A third, smaller one, in the tests themselves.** Three tests edited the scaffolded model by string replacement against a JSON layout the corpus reformatted, so the edit matched nothing, the model was unchanged, and each reported the feature it was checking as broken. They now go through an `Edit` helper that **asserts the replacement happened** — a test that edits a file and does not check the edit is a test that can silently stop testing anything.
+
+  Also added: **`transitTime`**, the mean transit of a diffusive run, because without it the diffusive mode's principal scalar could not be asserted by a project test or ranked by a study — half of REG-1's peer pair was outside the machinery that keeps the other half honest.
+
+  **Still missing:** thirteen more, and the gap is breadth rather than machinery — no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode.
+
+- **Class B: bisection onto a boundary, and Phase 3 acceptance criterion 3.** ACC-6 asks for a boundary resolved to **one part in five hundred of the scan**. A grid reaches that by having 501 points in it; `BoundarySearch` halves the bracket instead, which is `log2(500)` steps plus the two that establish it — **11 evaluations against 501, measured**.
+
+  **The result is an interval and the midpoint is a convention.** A bisection does not produce a value with an error bar around it, it produces a bracket known to contain the crossing, so the boundary comes back as a GRD-1 envelope whose `uncertainty` *is* that bracket, with `Evidence.Search` carrying the evaluations and the width. Three refusals that matter: a figure that **stops existing is outside, always** — a cut-off is precisely where the ion stops arriving, so treating its absence as a failed evaluation would refuse to look for the thing being looked for; a bracket whose **ends agree is refused rather than guessed at**, naming both and pointing at `einzel scan`; and a search coarser than ACC-6 is **qualified rather than refused**, because a coarse boundary is still a boundary and the reader needs to know which one they have.
+
+  | | |
+  | --- | --- |
+  | Tabulated Mathieu cut-off, a = 0 | q = 0.90804 |
+  | This engine, ideal analytic field | q = 0.90684 |
+  | **Solved round rods, bisected** | **q = 0.90508 ± 0.00039**, 11 evaluations, 5.5 s |
+
+  **And transmission against resolution, which is Phase 3's acceptance criterion 3.** Hold U/V fixed, scan V, and the width of the stability band *is* the width in mass — q goes as V/m, so a band of relative width dV/V passes one of relative width dm/m.  Both edges bisected:
+
+  | U/V | q low | q high | q centre | R = V/dV |
+  | --- | --- | --- | --- | --- |
+  | 0.100 | 0.40521 | 0.77519 | 0.59020 | 1.6 |
+  | 0.130 | 0.53383 | 0.74246 | 0.63815 | 3.1 |
+  | 0.150 | 0.62226 | 0.72179 | 0.67203 | 6.8 |
+  | 0.160 | 0.66781 | 0.71203 | 0.68992 | 15.6 |
+
+  **The band closes onto the tabulated apex.** The first stability region's apex is at a = 0.23699, q = 0.70600, so the scan line runs out at U/V = a/2q = 0.16785 — and the centre walks monotonically to **0.68992, 2.28% below**, while R rises tenfold. Both halves are asserted, because either alone is much weaker: a band narrowing onto the *wrong* q is the wrong geometry, and one sitting at the right q that never narrows is not filtering.
+
+  **The first version was wrong for a reason worth keeping.** Its stability criterion was "did the ion strike a rod within twenty RF cycles". Near the low-q edge the instability is weak and takes far longer than that to grow past the inscribed radius, so it **called the whole low-q region stable** and the bracket had no edge in it — the search correctly refused, saying both ends were inside. The criterion has to be reaching the *detector*, and the window has to be the transit time: **a stability test whose window is shorter than the instability's growth time measures the window.**
+
+  **What Class B still lacks needs an arbitrary waveform, not more analysis.** The secular frequency spectrum and isolation efficiency against notch width are §12 items that §9's arbitrary-waveform excitation would unblock; this build has sinusoid and rectangular only.
+
+- **GAS-1: the gas can vary from place to place.** A single declared vector is a stream, not a jet. Spec figure 4 requires a velocity **field** above 1e-2 mbar and §21 lists "gas velocity import" among Phase 3's deliverables, and GAS-1 says why in its own words: the neutral jet off an inlet capillary "drags ions and frequently dominates the axial DC gradient", and it is not uniform across a ring stack.
+
+  **VTK ImageData, which is what this engine already writes** — no format to decide and no dependency to take, because reading a *format* carries no licence obligation while linking a library would (RND-13). The path resolves against the **model document's own directory**, not the working directory, so a model means the same thing wherever the command is run from. **ASCII only, stated rather than discovered**: binary, appended and compressed payloads are most real VTK files and none is read, so such a file is refused by name with the ParaView setting that fixes it — the same kind of deliberate subset as EXT-7's JSON Schema one.
+
+  | Check | Result |
+  | --- | --- |
+  | An imported *uniform* field against a *declared* uniform one | agree to **2 ulps** |
+  | Trilinear against a linear field | exact, 1e-9 over the box |
+  | An accelerating flow against uniform at each end | strictly between, both ways |
+  | A file this engine wrote, read back | every node exactly |
+
+  The first is what makes the import trustworthy: two entirely separate paths to the same gas — a vector in the document, and a file read, interpolated and sampled per node — give the same answer. **Two ulps rather than bit-identical, and the reason is worth knowing:** interpolating a constant returns that constant only to rounding, because 30(1−f) + 30f is 29.999999999999996 for plenty of f. Inherent to sampling, not fixable in a reader.
+
+  **A caller that cannot resolve the path is refused, not run in a still gas.** Resolving needs the model file's directory, and a study or a figure of merit meets the transport without one — which is precisely the shape of the bug where `driftVelocity` was honoured by the event-driven mode and silently dropped by the diffusive one. **The overhang is reported rather than absorbed**: outside the imported extent the edge value is continued, right for a stream and wrong for the end of a jet, and the samples do not say which, so `gas.flow-imported` states what fraction of the tracked region was extrapolated. One bug found writing it, in my own overhang arithmetic: the helper conflated a **flat axis** (a 2-D import makes no claim about z, so it covers all of it) with **no overlap** (covers none), so a box far outside the field reported itself as fully covered.
+
+  **Einzel consumes a velocity field and does not compute one** — the same boundary §17 draws around visualisation. A compressible flow through a differentially pumped stack is a CFD problem, and a half-hearted one inside an ion-optics engine would be worse than none because it would look like an answer.
+
+  **Two gaps left, both named.** The **pressure** is still a single number for the whole model, which a differentially pumped instrument is not. And the **event-driven mode refuses a field** rather than using one: `CollisionSampler` schedules and draws a neutral velocity without a position, so threading a position through the collision path is the work.
+
+- **A clamp that guarded nothing and capped the drift, found by an expectation that was a division.** Scharfetter–Gummel's exponent `P = v h / D` feeds a Bernoulli function that already handles a large argument **exactly** — zero above +40 and `−x` below −40 are the true limits, taken explicitly to avoid an overflow inside `exp`. The flux clamped `P` to ±40 *before* calling it. Read together the clamp looks like it protects the exponential; it does not, the exponential protects itself one function down. What it did was **cap the effective drift at `40 D / h`** whatever the field and the gas actually were.
+
+  | | |
+  | --- | --- |
+  | Cell Péclet on the corpus drift tube, field alone | 25.4 |
+  | The same with a 120 m/s gas flow | 42.3 |
+  | Closed form `L / (μE + v_gas)` | 126.7 µs |
+  | Measured, clamped | 135.1 µs, **6.7% long** |
+  | Measured, unclamped | 127.8 µs, **0.86% long** |
+
+  The 0.86% is the packet's own spread, and what makes that convincing is that it is now **the same 0.86% with and without the flow**: a residual independent of the drift speed is a packet effect, one that grows with the drift is a scheme effect, and only having both cases separates them.
+
+  **Every advection test in the suite runs at cell Péclet 16, below the cap, and reports 1.000000.** They were correct and could not see this. What saw it was a corpus example whose expected number is a *division* — a drift tube with a **declared** mobility and a declared gas flow, so there was nothing for the engine to agree with itself about. The suite now has a case at cell Péclet 105 and 209, exact to a part in a million. The stability step needed no change: the Courant limit was always taken against the true drift, so removing the cap makes the flux agree with the step rather than sitting conservatively under it.
+
+  **Three rules generalise**, all in `docs/lessons.md`. A guard placed one level above the thing that already guards itself is not redundant, it is a second policy, and the outer one wins silently. **A test whose parameter sits below the threshold of a bug is not a weak test, it is a test of a different regime** — where a scheme has a dimensionless number in it, the tests should straddle the values that number switches behaviour at, and should print it. And an expectation that is arithmetic the engine had no part in catches a class of thing self-consistency cannot, which is the whole argument for EX-1's corpus.
+
+  **Corpus 17 → 20**, and the diffusive mode has examples for the first time because `transitTime` made its principal scalar assertable: `drift-tube-diffusion` against `L/(μE)` at 0.86%, `drift-tube-gas-flow` against `L/(μE + v_gas)` at the same 0.86%, and `slit-transmission` against **erf(a/σ√2) = 0.68269 at 0.17%** — the slit's jaws both grounded so the field is exactly zero and the transmission is pure geometry.
+
+  **And a flaky test made diagnosable.** `AllocationDoesNotGrowWithStepCount` failed inside the full parallel suite and passed alone, which is the worst way for a test to be wrong because it reads as a regression in the thing under test. It now takes the **cheapest of five runs** — the runtime charges one-off costs like a tier-1 recompilation to whichever window they fire in, and the property is a floor, so the minimum is the right statistic — and prints the numbers: 240 bytes over 41 steps, 240 bytes over 2030.
+
+- **`multipole-guide` — every even order in one file, and the overlapping rods that found a gap.** LIB-1's test run deliberately: what does a multipole above four rods cost below `Einzel.Library`? **One function, and it was general.** A 2n-pole is 2n rods at π/n intervals, and the expression grammar had **no trigonometry** — so that geometry could not be written at all. Not awkwardly, not verbosely: not at all. The choice was three near-identical template files with coordinates longhand, or `cosPi`/`sinPi` in the grammar.
+
+  **Half turns rather than radians**, the convention the drive decomposition already chose and for the same reason: `Math.Cos(Math.PI/2)` is 6.1e-17, so a rod at a quarter turn lands a hair off axis and the multipole carries a spurious dipole made of rounding. `cosPi(0.5)` is exactly zero.
+
+  | poles | electrodes | basis solves | cycles | convergence |
+  | --- | --- | --- | --- | --- |
+  | 4 | 4 | **1** | 8 | 0.0262 |
+  | 6 | 6 | **1** | 8 | 0.0285 |
+  | 8 | 8 | **1** | 8 | 0.0236 |
+  | 12 | 12 | **1** | 8 | 0.0257 |
+
+  **Twelve rods cost what four do**, because adjacent rods are exact negatives however many there are. Exact negation is what does it — which is why the amplitude is `rfAmplitude * (1 - 2 mod(pole, 2))` rather than a cosine of the pole index: the second would be right to a rounding and would split into two channels.
+
+  **The rods have to fit, and now they cannot not.** `rodRatio ≤ sin(π/N)/(1 − sin(π/N))` — 2.414 at four rods, 1.000 at six, 0.620 at eight — so the knob is `rodFill`, a *fraction* of that maximum, and an overlapping geometry is not expressible rather than merely refused. `rodFill = 0.475` reproduces **Denison's 1.1468** at four poles through the derived chain, which is a sharp check on `sinPi` as well as on the geometry.
+
+  **A gap found by getting that wrong first.** Applying Denison's *quadrupole* ratio to six rods puts them through one another, and **the engine solved it, converged in eight cycles, and returned a field** — the acceptance measurement taken from it was really a measurement of rods closing in on the axis. A Dirichlet mask is written electrode by electrode, so where two overlap the last one wins; where both hold the same thing that is harmless and often deliberate (a fillet is built that way), and where they **disagree** the region is simultaneously at +300 V and −300 V and the field is of a geometry nobody described. `ElectrodeOverlap` now refuses that, naming both electrodes and what each holds, with three deliberate limits — tangency allowed, agreement allowed, edge profiles skipped rather than guessed at.
+
+  **What is deliberately not claimed:** whether a higher order accepts a larger offset. The template launches on a 45° diagonal, which for a quadrupole is the *widest* gap between rods — an ion enters at r = 4.95 mm and still arrives, outside the 4 mm inscribed radius — and for a hexapole is not, so the comparison measures the angular gap at least as much as the order. Measured anyway for the record: at 200 V the hexapole accepts 0.68 r₀ and the octupole 0.58, and at 300 V that **reverses** to 0.46 and 0.48. A non-monotone ordering that flips with amplitude is a sign the scanned variable is not the one that matters; settling it needs a scan over launch *angle* and an acceptance defined as a solid angle rather than one ray.
+
+- **`paul-trap` — the 3-D quadrupole trap, a figure of merit that is not an arrival, and a boundary that was not one.** A driven ring between two earthed endcaps on the axis of rotation. **Axisymmetric, so it is a half-plane solve rather than a volume** — SYM-1 is what makes a three-dimensional trap cost what a cross-section costs — and because the endcaps are earthed, three electrodes reduce to **one basis solve** (10 cycles, factor 0.0587).
+
+  **A trap cannot be measured by anything that counts arrivals.** A trapped ion never arrives anywhere, so a transmission reads zero for a trap that works and zero again for one that lost everything. `confined` is the complement — still inside at the end of the hold, having struck nothing and reached no detector — and the model puts its detector **outside** the trap so the three outcomes stay distinct: struck, escaped, held.
+
+  | | |
+  | --- | --- |
+  | Ejection boundary, 0.3 mm launch, 200 cycles, 128 × 64 | **672–674 V**, q_z = 0.8218–0.8236 |
+  | The same at 256 × 128, and at 800 cycles | **unchanged** — mesh- and hold-converged |
+  | Tabulated Mathieu, a = 0 line | q_z = 0.90804 |
+  | Where the ion is lost | an **endcap**, at exactly ±z0 |
+  | Effective r0 from the solved field | **3.8195 mm** against 4.0000 declared |
+  | Boundary a scale factor alone would predict | **677.5 V**, q_z = 0.828 |
+
+  **Most of the 9.4% shortfall is one number, and the rest is not.** Flat annuli at the nominal radius lie *inside* the hyperbola sharing their vertex everywhere except at that vertex — at z = 2.23 mm the ring hyperbola would be at r = 5.09 mm and this ring is at 4.00 — so the field at the centre is stronger than r0 implies, the effective radius is smaller, q per volt is larger, and ejection comes at a **lower** amplitude. That accounts for the sign and for 0.828 of the 0.908. The same samples give the anharmonicity free: dEz/dz ÷ dEr/dr is exactly −2 wherever the quadratic dominates, and drifts −1.9867 → −1.9461 as the sampling radius doubles. **A hyperbolic trap would hold −2 everywhere by construction**, so a departure *growing with radius* is the higher multipole flat electrodes buy — and that growth is what the test asserts, because a departure that did not grow would be discretisation or a bug.
+
+  **And the ejection edge is amplitude-dependent, which an ideal boundary cannot be** — q_z = 0.85 at a 0.1 mm launch, 0.82 at 0.3 mm, 0.64 at 0.6 mm, all hold-converged (800 and 2000 cycles agree at both offsets). The Mathieu equation is linear, so a trajectory scaled by a constant is another trajectory. My first write-up said the scale factor "closes to under 1%" on the strength of the 0.3 mm offset alone, which is the mistake of quoting a number whose controls have not been run.
+
+  **The reason is structural, and the fix is to stop measuring it that way.** A boundary found by asking *did the ion reach an electrode* requires the ion to cross the whole anharmonic region, so it is never a small-amplitude measurement whatever it was launched at: a small launch survives past the linear edge because the anharmonic frequency shift halts the growth before z0, and a larger one is lost below it.
+
+  **β needs no journey, and it settles it.** Calibrating β(V) against Mathieu over a range where the ion stays small — β is amplitude-independent to 2e-3 there, and measurably shifted at high q, which is the control — fits one number to a worst residual of **1.2e-3** and gives an effective radius of **3.8137 mm** against **3.8195** from the field's curvature with no ion involved. Two routes sharing nothing but the solved field, **0.15% apart**, and in the direction the curvature's own δ-dependence predicts. That puts β = 1 at **675.5 V, q_nominal 0.8254**, which the two ejection edges **bracket**: 665–670 V at 0.3 mm, 695–700 V at 0.1 mm.
+
+  **So the 9.4% shortfall is one geometric factor, measured three independent ways.** A caveat about the tool, though: the endpoint is anchored to the *tabulated* 0.90804 rather than to the continued fraction used elsewhere here, because that expansion has a near-singularity exactly at β = 1 — its n = 1 denominator (β−2)² goes to one — and puts the crossing at 0.9117, four parts in a thousand off. It is accurate at β from 0.3 to 0.8 and not at the endpoint.
+
+  **Two quantities, not one, and only one is the design parameter.** A *linear* stability boundary is where β reaches one and is a property of the field; an *ejection* threshold is where a particular ion launched a particular way leaves within a particular hold, and is what an instrument does. Conflating them is what made the first account confusing.
+
+  **A resonance band inside the stable region, found by the confirmation walk on its first real use.** 605–614 V (q_z = 0.739–0.750), sixty volts below the main edge. Identical at 256 × 128 and at 400 cycles; **gone** at 60 cycles (so the growth is slow and secular, not exponential) and **gone** at a 0.1 mm launch (so it is driven by the higher multipoles). That combination is a nonlinear resonance and nothing else. **Which** resonance is not established — β_z there is 0.615, landing on no n_zβ_z + n_rβ_r = 2 up to order six — and it is recorded as measured rather than explained. The bisection that found the main edge reported nothing unusual, and structurally could not have.
+
+  **The finding worth keeping: a stability boundary is not a property of the design alone.** At 60 RF cycles the ejection edge is a ragged strip — held at 674, lost at 676 and 678, held at 680, lost at 682, held at 684, solid loss from 690. At 200 cycles the same scan is a clean step between 672 and 674. Nothing about the design changed: the growth rate goes to zero at the edge, so whether a marginally unstable ion reaches an electrode inside the hold is a property of *the hold*. Two bisections over brackets differing only at their lower end gave **680.7 V and 694.4 V for the same geometry**, which is how it was noticed at all.
+
+  **So `einzel boundary` now checks its own premise.** Every step of a bisection is consistent with a single crossing *by construction*, so a clean edge and a frayed one produce identical histories and the result looks equally confident either way. It now walks outward from the converged bracket at geometrically growing offsets asking whether the predicate flips back — about log2 of the range over the bracket width, roughly doubling an 11-evaluation search against a grid's 501. `boundary.multiple-crossings` is a **validity violation**; the confirmation is reported with its probe count whether or not anything was found. Two limits stated rather than papered over: the walk stays inside the declared range, and its first step is the bracket width, so a flip narrower than that is stepped over.
+
+  **What it cost below the library was a bug, not a capability — and it is the third time the same mistake has been made.** `ModelValidator.CanDoWork` decided whether a source may start at rest by asking whether any electrode held non-zero **DC**. A Paul trap holds zero DC and all of its potential as drive, so the archetypal start-at-rest device was refused as one in which nothing could move an ion; the 3-D arm of the same switch inspected nothing at all and passed by default, the same bug wearing the opposite mask. `einzel solve` had already been wrong this way twice — reporting the DC pattern for every driven 2-D geometry, and answering `converged: true` over an empty list of 3-D elements. **Reading only the DC of a driven electrode is a recurring mistake here**; grep for `.Potential` the next time something driven behaves as though it were earthed. Recorded in `docs/lessons.md`.
+
+  Also fixed while here: **`InferProjectRoot` fell back to the working directory**, so a study kept outside any project wrote `results/` into whatever tree the caller happened to be standing in and said only "wrote results\x.json". It now falls back to the file's own directory.
+
+  Corpus 21 → 23 (`paul-trap-held` at q_z = 0.30, `paul-trap-ejected` at q_z = 1.20 — bracketing the published boundary from both sides, deliberately wide, because an example that pinned the edge would be pinning this geometry's edge and calling it Mathieu's). Details in `docs/device-templates.md` and `docs/optimisation.md`.
+
+- **The secular frequency spectrum, and the resonance it named.** §12 lists it as a Class B figure; the reason to build it now was that the trap above had a loss band nothing could identify. **A nonlinear resonance is *defined* by a frequency condition** — `n_z β_z + n_r β_r = 2` for a multipole of order n_z + n_r — so a scan over amplitude can establish that a band exists and can never say what it is.
+
+  **Lomb–Scargle rather than a DFT, and that is the load-bearing choice.** A trajectory is sampled at accepted integration steps, which cluster where the physics is hard — `TrajectoryRecorder` working as designed — so the series is **not uniform**. A DFT would need it resampled first, which is inventing values the integrator never computed and then measuring them. Lomb–Scargle is the closed-form least-squares fit of a sinusoid at each trial frequency and needs no such step.
+
+  Checked against the Mathieu characteristic exponent — a continued fraction in a and q, evaluated **in the test** rather than shipped, because comparing the engine's β to the engine's spectrum would be testing self-consistency:
+
+  | q | β | expected | measured |
+  | --- | --- | --- | --- |
+  | 0.10 | 0.070850 | 35.425 kHz | 35.374 kHz (−0.144%) |
+  | 0.30 | 0.216059 | 108.030 kHz | 108.037 kHz (+0.007%) |
+  | 0.50 | 0.373744 | 186.872 kHz | 186.937 kHz (+0.035%) |
+  | 0.70 | 0.563066 | 281.533 kHz | 281.500 kHz (−0.012%) |
+  | 0.85 | 0.772950 | 386.475 kHz | 386.507 kHz (+0.008%) |
+
+  **The sidebands are the sharper check**: finding the lowest line right says the slow motion has the right frequency, but finding the drive split into a *pair* straddling it — 813.19 against 813.13 kHz, 1186.94 against 1186.87 — says the motion has the form Mathieu's solution gives. The reported uncertainty is 1/T, because a record of finite length cannot locate a line more finely however fine the trial spacing; `spectrum.short-record` and `spectrum.peak-at-band-edge` say when that bites.
+
+  **The band is the octupole.** β_z = 0.6769, β_r = 0.3225, so **2β_z + 2β_r = 1.9989** — order four, met to 0.055% at the band centre and a hundred times worse either side. Nine candidate conditions are searched and one is always nearest, so what makes this an identification rather than a fit is that **order four was predicted in advance**: the trap is symmetric about its centre plane and about the axis, so every odd multipole vanishes and four is the first available. It is independently corroborated by the field, where the curvature ratio departs from −2 by an amount that grows with radius.
+
+  **And the effective radius is now confirmed twice over, from routes sharing nothing but the solved field** — the curvature at the centre with no ion involved (3.8195 mm), and the secular line of a flown ion against Mathieu at q × (r0/r0_eff)². They agree to **0.02% at q = 0.27**, 0.04% at 0.40, 0.28% at 0.54 — and diverge to 3.1% at 0.80, which is the other half of the same statement rather than a failure: the trap is an ideal quadrupole of radius 3.82 mm *to the extent the ion stays small*. That is why the stability boundary cannot be predicted from the effective radius alone — a boundary measurement requires the ion to travel all the way to an electrode, through the anharmonic region.
+
+  **The ideal-Mathieu prediction was wrong and had to be**: β at the *nominal* q of 0.745 is 0.6156, which satisfies no low-order condition. Working in the nominal geometry rather than the solved one is what made the resonance unidentifiable in the first place.
+
+  Exposed as `secularFrequencyX|Y|Z`, so a study can scan or optimise against it. Refused with `secular.no-drive` for a static field — a secular frequency is the slow oscillation in an RF field's *effective* well, and a static field has no such well. The band searched is 2–90% of the drive, taken from the field's own shortest period and stopping below the drive deliberately, because micromotion at the drive is the largest line in most spectra and reporting it back would be reporting the input as a discovery. Details in `docs/validation.md`.
+
+- **The arbitrary waveform, and the last Class B figure.** §9 lists an arbitrary waveform among the excitations an electrode may carry; §12's isolation efficiency against notch width cannot be measured without one. It is a **Fourier series**, which is not a restriction — every periodic waveform is one — and is the natural spelling for the thing being designed: a notch is a list of harmonics with a gap in it, where a sampled table is a waveform someone has to inverse-transform first. It is also smooth by construction, where a table is piecewise something and a jump in the drive is a jump in the acceleration. **One basis solve however many harmonics**, since a sum of harmonics is still one scalar function of time.
+
+  **Three reductions it must satisfy, and it does.** A single order-one term *is* the sinusoid (6.1e-16 over 721 phases). A half turn of phase is *exactly* antiphase where the argument is representable (exactly 0 at phases k/16; 1.0e-14 at arbitrary phases across orders 1–17 — the honest limit, since `2(nt + ½)` is itself rounded and the error grows with order). And the Fourier series of a square wave converges on it with textbook Gibbs — interior 0.182 → 0.051 → 0.013 at 5/20/80 terms while the **edge overshoot holds at 0.182/0.179/0.177**, which is asserted too, because a series showing no overshoot would not be a Fourier series.
+
+  **The literature check**: the 80-term series recovers the published digital-mass-filter cut-off by the same bracket as the direct rectangular wave — last through 0.710, first lost 0.715, containing Schrader/Anderson/Russell's 0.712. That is what says the path *drives an ion* rather than evaluating to the right numbers. **A mistake worth keeping**: the first version wrote the series with zero phase, but a square wave's series is a **sine** series — so it was a square wave shifted a quarter cycle, which converged perfectly well and moved the cut-off to ~0.703. A reduction that converges to the *wrong thing* is worse than one that does not converge.
+
+  **Isolation efficiency against notch width, measured.** A mass axis is a frequency axis (q goes as 1/m), so a notch in frequency is a window in mass: with the target at m/z 500 and a notch over comb orders 71–75, masses 490/500/510 survive and 420/460/545/600 are ejected. **The trade needs two amplitudes to show both arms** — at the amplitude that just ejects a resonant ion the narrow end is free and efficiency is monotone (1.00 → 0.50 → 0 → 0); at three times that the narrow end loses the target and an **interior optimum appears at half-width 6, efficiency 0.75**. A study run at one amplitude reports the wrong shape and is internally consistent.
+
+  **Two scales that had to be derived, both first got wrong by orders of magnitude.** The comb spacing must equal **1/T** — a resonance excited for time T has width 1/T, so a wider comb has *holes* and an ion between lines survives; at 5 kHz against a 333 Hz width the notch width toggled every ion at once. And the amplitude follows from `E = 2amω/qT`, 76 V/m here; 300 V/m ejected everything at every width. **An amplitude picked to make a demonstration work is a demonstration of the amplitude.**
+
+  **And a defect found on the way, the third of its exact shape.** `SuperposedField` implements only `IElectrostaticField`, and a driven member answers that interface at t = 0 — so **a driven element summed with anything else silently became a snapshot of the RF at the top of its cycle**, with no exception and nothing in the result to say so. The diffusive mode was found doing this, `einzel solve` was found doing it, and now this. The class is: **a time-varying quantity reached through a time-free interface does not fail, it answers at an arbitrary instant.** Fixed structurally — `FieldAssembly` picks `DrivenSuperposedField` when any member is driven, so the composition is chosen by what it contains rather than by what the caller asks for. Step control follows: the shortest period is the minimum over members, and `OscillatingUniformField` reports its **highest harmonic's** period rather than its fundamental's, since a comb reaching order 120 carries information 120× faster than its repeat rate.
+
+  **What it does not reach: the model format cannot declare a supplementary excitation.** A `solve` carries one `drive` with one frequency, so the notch measurement runs on the analytic quadrupole. Same limitation the travelling-wave guide has. The fix is **a drive per supply rather than per solve** — the decomposition already groups electrodes into supplies by spatial pattern, and a supply is exactly the thing that has a frequency, so it costs one level of schema nesting and nothing in the solver. Details in `docs/validation.md` and `docs/model-format.md`.
+
+- **Several generators on one geometry — and the design note that had to be retracted to get there.** `CompiledDrive` said, from the beginning: *"one drive per solve ... modelling it the other way round would let a document declare two frequencies on one structure — which is a different instrument and almost always a mistake."* **It is not a mistake, it is what a trap is.** A real travelling-wave guide superposes a fast confining RF on a slow travelling wave; a stored-waveform isolation runs a notched comb across the endcaps while the ring carries the main drive. The rule cost the shipped guide its radial confinement and forced the notch measurement onto an analytic quadrupole.
+
+  A `solve` now declares `drives` and each electrode `taps` them **by name**. Both spellings coexist — `drive` and `driveAmplitude` stay the short form for the common single-generator case — and **declaring both is refused rather than merged**, because a document saying a geometry has one drive and also three is not a document with a default to fall back on.
+
+  **It cost nothing in the solver, which is the part worth keeping.** Basis superposition is indifferent to what the weights are functions of, so two generators reaching the same electrodes in the same proportions are **one solved pattern carrying two weights on two clocks** — exactly as a DC supply and an RF supply already were. Measured on the guide: **24 rings each tapping both generators → 3 basis solves**, two for the wave's phase ramp (a sinusoid collapses to a fixed quadrature pair however many rings) and one for the alternating confinement. The quadrature collapse is now decided **per generator**, since an instrument may run a sinusoidal confinement and a switched excitation at once.
+
+  **It does change step control**: `ShortestPeriodSeconds` is the minimum over generators, so the guide reports **333.33 ns** — its 3 MHz confinement's period, not its 0.5 MHz wave's.
+
+  **And the negative result is worth as much as the capability.** Giving the guide its confinement did **not** widen the acceptance at any amplitude tried — 5 of 12 entry radii arrive with none, then 2 / 4 / 3 / 1 at 100 / 200 / 400 / 800 V, and 1 at half the frequency. The window is narrow at both ends: above ~200 V on this ring pitch the confining drive's own Mathieu q passes the stability limit and the ion is **ejected**, while below it the well is shallow against a 60 V wave and the alternating field decays as exp(−2πr/pitch) so little of it reaches the axis. **The template ships with the confinement at zero volts** — a default that makes a device worse is worse than no default. What the tests assert is that the generator *reaches* the ion (acceptance differs with it on), which is the claim the capability supports; whether a working point exists is a two-dimensional study in wave and confinement amplitude.
+
+  **A statistic that had to be replaced on the way**: "widest entry radius that still arrives" gave 0.65 mm on one radius grid and 0.20 mm on another for the same geometry. A maximum over a ragged set is a maximum over noise; counting arrivals over a fixed grid is the same measurement made stable.
+
+  **Not done:** the `solved3d` document form still spells one `drive`, though `CompiledSolvedField3D`, `Geometry3D` and the 3-D builder all carry a list already. Details in `docs/model-format.md` and `docs/device-templates.md`.
+
+- **A gas that moves, in the event-driven mode — GAS-1's last transport gap.** The diffusive mode could see an imported velocity field; the trajectory models **refused** one, and refusing was right at the time: a collision was drawn from a time and a velocity with no place to evaluate the flow at, so the alternative was a run that used the uniform drift and said nothing. The change is one argument — the ion's **position** goes into the draw, so a collision samples the Maxwellian about the bulk velocity *where the ion is*.
+
+  **Checked against `u + μE`**, which is a closed form the engine has no part in, and taken as a *difference* so it cancels the collision model, the cross section and the temperature:
+
+  | | along the flow | across it |
+  | --- | --- | --- |
+  | still gas | −5.405 m/s | 1005.209 m/s |
+  | moving at 120 m/s | 114.595 | 1005.209 |
+  | **difference** | **120.000** | **−0.000** |
+
+  And the control: a `UniformGasFlow` and a declared `driftVelocity` are the same gas said two ways, so on the same seed they must give the same *trajectory* rather than the same average — **1e-9**. A stepped flow (still below a plane, 200 m/s above) gives **204.5 m/s** of carry across the step.
+
+  **The trap that removing a refusal set, and it nearly shipped.** The trajectory path built its gas with `BackgroundGas.FromModel`, which does **not** resolve a declared `velocityField` — only the diffusive path called `GasFlowImport.Resolve`. Lifting the refusal without also resolving there would have reintroduced *exactly* the failure the refusal existed to prevent: a model declaring a jet, flown as though the gas stood still, silently. **A guard is removed correctly only when the thing it guarded against is checked for directly.**
+
+  **And two things the sampler knew that nobody read.** `BoundExceeded` and the new `SampledOutsideFlow` were computed and consumed by nothing — the third time evidence about a computation's own quality has been dropped at a seam here, after `FieldAssembly.Build` discarding its `SolveReport` and the sweep evaluator discarding its warnings. Both now reach the result: `collisions.rate-underestimated` (a biased collision rate looks exactly like a correct one) and `gas.flow-extrapolated` (outside the imported box the flow is the edge value continued, which is right for a stream and wrong for the end of a jet).
+
+  **A measurement mistake worth keeping**: the stepped-flow test first put the step 3 mm from the launch, which the ion crosses in 6 µs — so the "before" average was three samples of an ion still accelerating from rest, and the carry read 361 against a declared 200. That looks like a physics discrepancy and is a launch transient. **An average is over whatever the window contains, including the part that is not yet the thing being measured.**
+
+  **Still one pressure**: the gas *density* is a single number for the whole model, so a differentially pumped instrument is not expressible — an imported field gives the neutrals a velocity everywhere and the same number of them everywhere. Details in `docs/pressure.md`.
+
+- **Corpus 23 → 26, exercising what the night built.** Three examples, each with an expectation that is arithmetic and nothing else.
+
+  **`gas-flow-carry`** — no field at all, a gas streaming at 200 m/s down a metre of tube. Collisions drive the ion toward the frame the gas is at rest in, so the steady drift *is* the gas velocity and the transit is L/u = **5000 µs by arithmetic**; measured 4904.5. The ion is launched at exactly 200 m/s (0.103642697 V for m/z 500) so there is no equilibration lag either. **The ten per cent tolerance understates how discriminating it is**: with the flow ignored the same ion damps to rest and covers **15.8 mm in twenty milliseconds** instead of arriving.
+
+  **`travelling-wave-capture` and `travelling-wave-ballistic` are a pair, and neither is worth much alone.** Injected at *half* the wave speed: with the wave on the transit is the distance over the **wave's** speed — 27 mm / 3000 m/s = 9.0 µs, measured 8.697 — and with it off, 27 mm / 1500 m/s = **18.000000 µs exactly**, because a guide with no amplitude is field-free and the analytic drift is exact. A transit matching the wave in one case and the injection speed in the other would be a coincidence twice over; a transit matching the wave *whatever* the injection speed is capture. That is the distinction an earlier version of this measurement got wrong by comparing two captured transits to each other.
+
+  Remaining for EX-1: an MR-TOF, a thermalisation, and a three-dimensional geometry.
+
+- **A review of the night's own work, and the defect it found.** Adding a second generator turned `CompiledElectrode.DriveAmplitude` from *the* amplitude into *the first tap's* amplitude, and left it as a property with the same name. Everything kept compiling. One reader was `ElectrodeOverlap.Agrees` — the check that refuses two conductors occupying the same space at different excitations — so **two electrodes agreeing about the main RF and differing about a supplementary one were judged identical**, and the Dirichlet mask kept whichever was written last. The one check that exists to prevent a field of a geometry nobody described had become a route to one.
+
+  Now compared over **every** tap, with order significant (the conservative reading: two electrodes whose taps are the same set in a different order really do hold the same thing, so refusing them costs a spurious complaint rather than a silent wrong field). **Three tests, and all three were run with the fix reverted** — two fail with the bug restored, which is what makes them tests of the bug rather than tests that a file exists.
+
+  Also swept: `CanDoWork` now asks `IsDriven` rather than the first tap's amplitude, and `einzel schema` was checked to carry `drives`, `taps` and `TapTermDocument` — AGT-7 says the format an agent reads cannot drift from the code, and a reflection-generated schema is only as good as the records it reflects over.
+
+  The general lesson, in `docs/lessons.md`: **a convenience accessor that quietly becomes a summary keeps every caller compiling and changes what some of them mean.** After widening a scalar into a list, ask which readers of the scalar were asking a question it no longer answers.
+
+- **The corpus has no 3-D example, and finding out why was worth more than the example.** One was written — a parallel-plate gap checked against `sqrt(2d²m/(qV))`, the same closed form the analytic accelerating-gap example uses. It was not shipped:
+
+  | | cycles | factor |
+  | --- | --- | --- |
+  | **parallel plates, 2 slabs in a grounded box** | **49** | **0.652** |
+  | the shipped segmented quadrupole, 12 rods | 12–13 | 0.08 |
+  | a charged sphere, node-aligned coarse levels | 9 | 0.126 |
+
+  **124 seconds** for the plates, against 11 for a whole segmented-quadrupole *run*, and against a gate that does the other twenty-six examples in forty-two. A factor of 0.65 means the V-cycle is barely doing anything.
+
+  **The simplest 3-D geometry anybody would write is the worst case for the documented interior-electrode limitation**, and that is the wrong way round. A rod is thin, so coarsening loses it fast and the pinning fix restores its presence; **a slab is a large solid Dirichlet region**, so a coarse level that half-represents it is solving a different problem over most of the domain rather than a corner of it.
+
+  It was also **3.2% off**, which is the geometry rather than the solver — a finite plate in a grounded box 2 mm behind it is not an infinite capacitor, and asserting V/d to 1% would be asserting that it is. Fixing that needs a *larger* domain, so more solve, not less.
+
+  So the volume solver, its tricubic interpolant and its cut cells are exercised by `Einzel.Fields.Tests` and the segmented-quadrupole study, and **not by the release gate** — a stated gap rather than an oversight. Galerkin coarsening closes it, and would make the plates converge like everything else. In `docs/numerics.md`.
+
+- **Poisson, not only Laplace - the field half of SC-1's approximate method.** Every solve here has been Laplace: a potential with no charge in it, fixed on conductors. Particle-in-cell needs grad2 phi = -rho/eps0. **The cycle already carried a right-hand side and had only ever been handed zeros** - the smoother subtracts it, the residual is defined against it, and the coarse levels get the restricted *residual*, which is what they need whatever the fine source is. One argument, no numerics.
+
+  Checked by **manufactured solution**, the sharpest thing available: pick a potential, differentiate it analytically for the source that produces it, compare. Nothing on the exact side is discretised. With phi = sin(pi x) sin(pi y), Laplacian -2 pi^2 phi:
+
+  | intervals | worst error | order | cycles | factor |
+  | --- | --- | --- | --- | --- |
+  | 32 | 8.0358e-4 | | 11 | 0.0632 |
+  | 64 | 2.0082e-4 | **2.000** | 11 | 0.0659 |
+  | 128 | 5.0201e-5 | **2.000** | 11 | 0.0702 |
+
+  **The order is the load-bearing check**: a source entering the smoother and the residual inconsistently would still converge - to the wrong answer - and would show it as an order that is not two rather than as a failure. And a null source gives **exactly** the old Laplace answer in the same cycle count; not nearly, or every number published from a solved field has moved.
+
+  Left for SC-1: cloud-in-cell deposit, the same weights on the gather (or momentum is not conserved), and the comparison against the direct pairwise sum - which exists, and is why it was built first.
+
+- **Cloud-in-cell: the particle half of SC-1's approximate method.** The direct sum costs O(N^2); particle-in-cell costs one solve plus O(N), which is what makes 10^4 macroparticles affordable when 10^3 already takes hours. Charge is conserved **by construction** - the eight weights sum to exactly one whatever the position, so 8.010883e-14 C in is 8.010883e-14 C on the grid, and normalising afterwards would pass the same test while hiding a weighting error rather than preventing one. Charge that leaves the grid is **counted**, not clamped or dropped: a packet off its own grid gives a field quietly too weak, which looks exactly like a packet more dilute than it is.
+
+  **The same weights on the way out, and it is not a convenience.** A particle writes charge to a node with a weight and reads the field back with the same weight, so its own contribution cancels. Measured as a fraction of the field a neighbour one cell away feels, against a nearest-node gather sharing no weights:
+
+  | offset in the cell | matched | mismatched |
+  | --- | --- | --- |
+  | 0.00 | 8.05e-5 | 0.521 |
+  | 0.50 | 1.15e-4 | 0.495 |
+  | 0.89 | 1.68e-4 | 0.485 |
+
+  **Three and a half orders of magnitude**, and the mismatched column is what makes the matched one a property of the *symmetry* rather than of the grid being fine. Half the neighbour field felt by a particle from itself is a packet that expands for a reason nobody put in — and a tricubic gather, which is *more accurate* for a smooth field, would do exactly that. **ACC-3 is not violated**: it forbids trilinear interpolation on a *trajectory path*, and this is the interpolation of a self-consistent field whose accuracy the deposit already bounds. The applied field an ion flies through is still tricubic.
+
+  It is **not exactly zero** and the test says so: the cancellation is exact on a uniform periodic grid with centred differences, and an earthed box breaks it slightly through its images. So the assertion is a ratio to the scale that would matter, not a claim of zero.
+
+  A uniform ball of 20,000 macroparticles reproduces Qr/(4πε₀R³) and Q/(4πε₀r²) to 1–8% in 11 cycles at factor 0.110 — the residual being the earthed cube rather than the method, since the closed form is for a sphere alone in space.
+
+  **Left for SC-1:** the integration — which grid a drifting packet deposits onto, when to re-solve, and the comparison against the direct sum on the same configuration. Every piece exists; nothing wires them to `PacketIntegrator` yet. In `docs/numerics.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
@@ -378,7 +719,9 @@ Two findings from Stage 1 that bear on the spec:
 1. **The turning-point step cap (§11) does not help and slightly hurts.** In a smooth field the flight time is at machine precision with 6 steps and marginally worse with 105. §11's rationale is that "position-error controllers under-refine" at the velocity minimum — but `ErrorNorm` weights velocity error with its own absolute floor, so it is not a position-error controller and does not under-refine. The cap is implemented and on by default (`TurningPointStepFactor = 0.01`) to honour the spec as written; the evidence says it should default to 0.
 2. **A field discontinuity is a real error source and must be landed on exactly.** Dormand–Prince stage 4 carries the coefficient −56/15, so intermediate stage samples fall outside the step interval and can land on the wrong side of a field jump even when both endpoints are inside. Handling the boundary as an event took the reflectron from 5.5e-10 to 1.7e-16. A residual around 1e-10 remains and behaves as noise rather than as a controlled error — it is an artifact of idealised *discontinuous* analytic fields and should not appear in solved, interpolated fields, but it is what sets the achievable tolerance on finite-difference tests.
 
-The two design documents remain the source of truth. Tracked alongside them: `README.md`, `LICENSE` (Apache 2.0).
+**`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
+
+The two design documents remain the source of truth for *intent*. Tracked alongside them: `SPEC.md`, `README.md`, `LICENSE` (Apache 2.0).
 
 - `einzel-software-spec-r06.html` — the software specification, rev 0.6. **The source of truth for every architectural decision below.** Tracked in git. Read the relevant `§` section before proposing or changing design.
 - `compact-mrtof-stellar-memo.html` — companion working memo, rev 0.7. The instrument the platform must model first; the spec's acceptance criteria reference it by section (e.g. "memo §6 item 5", "the memo's mirror pair tracked end to end"). Phase 1 is not done until that mirror pair runs at ACC-1. **Gitignored and not published** — it carries the patent and freedom-to-operate analysis and this remote is public, so it exists only in the local working tree. Do not add it to git, and do not quote its patent or competitive analysis into tracked files.

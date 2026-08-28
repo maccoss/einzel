@@ -188,8 +188,7 @@ public sealed class EndToEndTests : IDisposable
         var manifestPath = Path.Combine(_root, "results", "reflectron.manifest.json");
         var before = RunManifest.FromJson(File.ReadAllText(manifestPath))!.ModelHash;
 
-        File.WriteAllText(model, File.ReadAllText(model).Replace(
-            "\"value\": 50, \"unit\": \"mm\"", "\"value\": 55, \"unit\": \"mm\"", StringComparison.Ordinal));
+        Edit(model, "\"value\": 50,", "\"value\": 55,");
 
         Run("run", model);
         var after = RunManifest.FromJson(File.ReadAllText(manifestPath))!.ModelHash;
@@ -345,4 +344,25 @@ public sealed class EndToEndTests : IDisposable
         var shift = ((times[0] + times[2]) / 2.0 - nominal) / nominal;
         Assert.True(shift is > 1e-4 and < 1e-3, $"second-order shift {shift:E3} is outside the expected 3e-4");
     }
+
+    /// <summary>
+    /// Rewrites part of a model file, and fails if the text was not there.
+    /// </summary>
+    /// <remarks>
+    /// A test that edits a file by string replacement and does not check that the
+    /// replacement happened is a test that can silently stop testing anything. All
+    /// three uses of this failed at once when the shipped example was reformatted:
+    /// the edit matched nothing, the model was unchanged, and each test reported
+    /// the feature it was checking as broken.
+    /// </remarks>
+    private static void Edit(string path, string from, string to)
+    {
+        var before = File.ReadAllText(path);
+        var after = before.Replace(from, to, StringComparison.Ordinal);
+
+        Assert.NotEqual(before, after);
+
+        File.WriteAllText(path, after);
+    }
+
 }

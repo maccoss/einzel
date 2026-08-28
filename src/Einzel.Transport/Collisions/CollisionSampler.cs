@@ -41,6 +41,15 @@ public sealed class CollisionSampler
     /// <param name="chargeSi">Ion charge, in coulombs.</param>
     /// <param name="seed">The random seed for this ion.</param>
     /// <exception cref="ArgumentNullException"><paramref name="gas"/> is null.</exception>
+    /// <remarks>
+    /// A gas flow that varies with position used to be refused here, because a
+    /// collision was drawn from a time and a velocity with no place to evaluate the
+    /// flow at. Refusing was right at the time - the alternative would have been a
+    /// run that used the uniform drift and said nothing, flying an ion through a
+    /// declared jet as though the gas were standing still, which is exactly the
+    /// mistake GAS-1 exists to prevent. The position is now carried into the draw,
+    /// so the sampler sees the flow where the ion actually is.
+    /// </remarks>
     public CollisionSampler(BackgroundGas gas, double ionMassSi, double chargeSi, int seed)
     {
         ArgumentNullException.ThrowIfNull(gas);
@@ -75,6 +84,20 @@ public sealed class CollisionSampler
     /// </remarks>
     public bool BoundExceeded { get; private set; }
 
+    /// <summary>
+    /// Whether a collision was ever drawn at a point outside the imported flow
+    /// field's extent.
+    /// </summary>
+    /// <remarks>
+    /// A sampled flow clamps to its edge value outside its box, which is a choice and
+    /// not a measurement: the gas beyond the imported volume is whatever the last
+    /// plane of it said. True here means at least one collision used that
+    /// extrapolation, and it is worth reporting for the same reason the diffusive
+    /// mode reports its own fraction - an ion that spends its flight outside the data
+    /// was flown through a gas nobody computed.
+    /// </remarks>
+    public bool SampledOutsideFlow { get; private set; }
+
     /// <summary>Time of the next scheduled collision event, in seconds.</summary>
     public double NextEventSeconds { get; private set; } = double.PositiveInfinity;
 
@@ -87,6 +110,11 @@ public sealed class CollisionSampler
     /// Applies the event due now, and schedules the next one.
     /// </summary>
     /// <param name="nowSeconds">The current flight time.</param>
+    /// <param name="position">
+    /// Where the ion is, so the neutral is drawn from the gas <em>there</em>. A gas
+    /// that flows carries its neutrals with it, and an ion colliding in a jet meets
+    /// molecules moving at the jet's speed.
+    /// </param>
     /// <param name="velocity">The ion velocity, replaced if the collision is real.</param>
     /// <returns><see langword="true"/> if the ion actually scattered.</returns>
     /// <remarks>
@@ -96,21 +124,26 @@ public sealed class CollisionSampler
     /// invert it - is exact in principle and needs the trajectory before it can
     /// tell you where the trajectory bends.
     /// </remarks>
-    public bool Collide(double nowSeconds, ref Vec3 velocity)
+    public bool Collide(double nowSeconds, in Vec3 position, ref Vec3 velocity)
     {
         var scattered = false;
+
+        if (_gas.Flow is { } flow && !flow.Covers(in position))
+        {
+            SampledOutsideFlow = true;
+        }
 
         if (_gas.Model == CollisionModel.Langevin)
         {
             // No rejection step at all: the Langevin rate does not contain the
             // speed, so every scheduled event is a real one.
-            Scatter(ref velocity);
+            Scatter(in position, ref velocity);
             Collisions++;
             scattered = true;
         }
         else if (_gas.Model == CollisionModel.HardSphere)
         {
-            var neutral = DrawNeutral();
+            var neutral = DrawNeutral(in position);
             var relative = (velocity - neutral).Length;
 
             var bound = Bound(velocity.Length);
@@ -163,17 +196,25 @@ public sealed class CollisionSampler
         _gas.NumberDensitySi * _gas.CrossSectionSi
         * (speedSi + (ThermalHeadroom * _gas.ThermalSpeedSi));
 
-    /// <summary>Draws one neutral velocity from the Maxwellian, plus any bulk drift.</summary>
-    private Vec3 DrawNeutral()
+    /// <summary>Draws one neutral velocity from the Maxwellian, plus the bulk flow there.</summary>
+    /// <remarks>
+    /// The bulk term is evaluated at the ion's own position rather than taken from a
+    /// single declared drift, which is what makes a spatially varying flow visible to
+    /// the event-driven models at all. Where the gas declares no flow field this is
+    /// the uniform drift and the draw is bit-identical to what it was.
+    /// </remarks>
+    private Vec3 DrawNeutral(in Vec3 position)
     {
         var sigma = _gas.MassSi > 0.0
             ? Math.Sqrt(BackgroundGas.BoltzmannSi * _gas.TemperatureK / _gas.MassSi)
             : 0.0;
 
-        return new Vec3(Normal() * sigma, Normal() * sigma, Normal() * sigma) + _gas.DriftVelocitySi;
+        return new Vec3(Normal() * sigma, Normal() * sigma, Normal() * sigma)
+            + _gas.VelocityAt(in position);
     }
 
-    private void Scatter(ref Vec3 velocity) => Deflect(ref velocity, DrawNeutral());
+    private void Scatter(in Vec3 position, ref Vec3 velocity) =>
+        Deflect(ref velocity, DrawNeutral(in position));
 
     /// <summary>
     /// Elastic scattering off one neutral: isotropic in the centre-of-mass frame.

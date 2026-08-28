@@ -93,7 +93,7 @@ public sealed record EnsembleOutcome
     /// given only one of them beside a resolving power will try to reconcile the
     /// wrong pair.
     /// </remarks>
-    public required double CentralWidthNs { get; init; }
+    public double? CentralWidthNs { get; init; }
 
     /// <summary>
     /// The Gaussian-equivalent full width at half maximum, in nanoseconds.
@@ -104,7 +104,7 @@ public sealed record EnsembleOutcome
     /// width whenever the peak has a tail, which a second-order energy aberration
     /// always does.
     /// </remarks>
-    public required double GaussianFwhmNs { get; init; }
+    public double? GaussianFwhmNs { get; init; }
 
     /// <summary>
     /// Asymmetry of the peak, which is why the two widths differ.
@@ -113,7 +113,7 @@ public sealed record EnsembleOutcome
     /// Zero for a symmetric peak. A mirror away from its focus produces a
     /// one-sided second-order tail, and the sign says which side.
     /// </remarks>
-    public required double Skewness { get; init; }
+    public double? Skewness { get; init; }
 
     /// <summary>
     /// The part of the Gaussian width imposed before the ion left, by the source
@@ -127,7 +127,7 @@ public sealed record EnsembleOutcome
     public required double TurnAroundFwhmNs { get; init; }
 
     /// <summary>Arrival-time resolving power, model-free at half maximum.</summary>
-    public required MeasuredJson ResolvingPower { get; init; }
+    public MeasuredJson? ResolvingPower { get; init; }
 
     /// <summary>Ions in the physical packet, which is what pushes on itself.</summary>
     public required int Population { get; init; }
@@ -286,6 +286,18 @@ public sealed record DiffusionJson
     /// <summary>Whether that mobility was derived rather than declared (TRN-1).</summary>
     public required bool MobilityDerived { get; init; }
 
+    /// <summary>
+    /// Bulk speed of the neutral gas, in metres per second, or null where it is
+    /// standing still.
+    /// </summary>
+    /// <remarks>
+    /// GAS-1. Reported as a number as well as in a warning because a study over
+    /// pressure or flow needs to read it back, and absent rather than zero because
+    /// zero is a real answer - a stationary gas - and a reader cannot tell that from
+    /// a field that was never consulted.
+    /// </remarks>
+    public double? GasSpeedSi { get; init; }
+
     /// <summary>Grid the density was tracked on, columns then rows.</summary>
     public required IReadOnlyList<int> Nodes { get; init; }
 
@@ -367,21 +379,27 @@ public static class RunCommand
     private static EnsembleOutcome? Ensemble(
         CompiledModel model, IReadOnlyList<ValidityWarning> fieldWarnings)
     {
-        CloudFlight flight;
+        var flight = FiguresOfMerit.FlyCloud(model);
 
-        try
-        {
-            flight = FiguresOfMerit.FlyCloud(model);
-        }
-        catch (ArgumentException)
-        {
-            // Fewer than two ions arrived. There is no peak to describe, and
-            // inventing one from a single survivor is exactly the failure the
-            // transmission figure exists to make visible.
-            return null;
-        }
-
+        // Null when fewer than two ions arrived: an arrival peak needs two points to
+        // have a width. The flight is still a result, and this used to return null
+        // outright - so a packet that lost everything reported no ensemble at all,
+        // and its itemised losses went with it. That is backwards. ACC-5's whole
+        // subject is transmission by named surface, and the reading most worth
+        // having is the one where the transmission is zero.
         var peak = flight.Peak;
+
+        var launched = model.Cloud.Ions;
+        var arrived = flight.Arrived.Count;
+
+        var transmission = new Measured(
+            Quantity.Si(launched > 0 ? (double)arrived / launched : 0.0, default),
+            UncertaintyInterval.Symmetric(
+                Quantity.Si(launched > 0 ? (double)arrived / launched : 0.0, default),
+                Quantity.Si(0.0, default),
+                1.0),
+            new Evidence.Ensemble(launched, true),
+            []);
 
         // Three ions to place two second moments and their covariance. Below that
         // the area is not underdetermined so much as meaningless, and reporting a
@@ -410,7 +428,7 @@ public static class RunCommand
         // as the flight does. The peak's own position is the packet's flight time;
         // a packet that never arrived has none, and the estimate falls back to its
         // asymptotic bound and says so.
-        var flightTime = peak.Arrived > 0 ? peak.MeanSeconds : 0.0;
+        var flightTime = peak is { Arrived: > 0 } ? peak.MeanSeconds : 0.0;
 
         var charge = SpaceCharge.Estimate(model.Cloud, species, flightPotential, flightTime);
 
@@ -433,17 +451,28 @@ public static class RunCommand
 
         return new EnsembleOutcome
         {
-            Launched = peak.Launched,
-            Arrived = peak.Arrived,
+            Launched = launched,
+            Arrived = arrived,
             Collisions = flight.Collisions,
             ScatteredIons = flight.ScatteredIons,
-            Transmission = MeasuredJson.From(Carry(peak.Transmission(), warnings), "1"),
+
+            // Counted, not read off the peak, so a transmission of zero is a
+            // measurement rather than a missing peak.
+            Transmission = MeasuredJson.From(
+                Carry(peak is null ? transmission : peak.Transmission(), warnings), "1"),
+
             Losses = flight.Losses,
-            CentralWidthNs = peak.CentralWidthSeconds(0.5) * 1e9,
-            GaussianFwhmNs = peak.GaussianEquivalentFwhmSeconds * 1e9,
-            Skewness = peak.Skewness,
+
+            // Absent rather than zero where there is no peak to measure. Zero is a
+            // real width and a reader cannot tell the two apart if both print as
+            // zero, which is the policy the rest of this surface already follows.
+            CentralWidthNs = peak is null ? null : peak.CentralWidthSeconds(0.5) * 1e9,
+            GaussianFwhmNs = peak is null ? null : peak.GaussianEquivalentFwhmSeconds * 1e9,
+            Skewness = peak?.Skewness,
             TurnAroundFwhmNs = turnAround * 1e9,
-            ResolvingPower = MeasuredJson.From(Carry(peak.ResolvingPower(), warnings), "1"),
+            ResolvingPower = peak is null
+                ? null
+                : MeasuredJson.From(Carry(peak.ResolvingPower(), warnings), "1"),
             Population = charge.Population,
             SpaceChargeTimingFraction = charge.TimingFraction,
             SpaceChargePopulationLimit = limit,
@@ -613,9 +642,15 @@ public static class RunCommand
         IReadOnlyList<ValidityWarning> fieldWarnings,
         ValidateOutcome validation,
         ProjectLayout project,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        bool exportVtu)
     {
-        var outcome = DiffusionRun.Execute(model, field, fieldWarnings);
+        // The one place that knows where the model file is, so the one place that can
+        // resolve a declared velocity field.
+        var resolved = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
+
+        var outcome = DiffusionRun.Execute(model, field, fieldWarnings, resolved);
         var result = outcome.Result;
 
         var left = result.Collected + result.Lost.Values.Sum();
@@ -657,7 +692,11 @@ public static class RunCommand
 
         File.WriteAllText(manifestPath, manifest.ToJson());
 
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        // The resolved gas, not a fresh one built from the document. Rebuilding here
+        // would report a model with an imported velocity field as standing still,
+        // which is the same silent drop the resolution exists to prevent - one line
+        // further down the pipe.
+        var gas = resolved;
 
         var regime = Transport.Collisions.RegimeDiagnostics.Measure(
             gas, IonSpecies.FromModel(model), 1.0, result.ElapsedSeconds, SmallestAperture(model));
@@ -724,6 +763,7 @@ public static class RunCommand
                 TransitSpreadUs = spread,
                 MobilitySi = outcome.Mobility.ZeroFieldSi,
                 MobilityDerived = outcome.Mobility.Derived,
+                GasSpeedSi = gas.IsFlowing ? gas.FastestBulkSpeedSi : null,
                 Nodes = [outcome.Grid.CountX, outcome.Grid.CountY],
                 Steps = result.Steps,
                 ElapsedUs = result.ElapsedSeconds * 1e6,
@@ -732,6 +772,44 @@ public static class RunCommand
 
             Artifacts = [Path.GetRelativePath(project.Root, manifestPath)],
         };
+
+        var artifacts = new List<string> { Path.GetRelativePath(project.Root, manifestPath) };
+
+        // What --vtu means for this mode. A diffusive run has no trajectory to write
+        // and RND-8 forbids inventing one, so the file it writes is the thing it
+        // actually computed: the density at the end of the run, on the grid it was
+        // tracked on. Before this the flag was accepted and silently did nothing,
+        // which is the worst of the three options - the result of the mode could not
+        // be looked at in any form, and nothing said so.
+        if (exportVtu)
+        {
+            Directory.CreateDirectory(project.Scratch);
+
+            var densityPath = Path.Combine(project.Scratch, $"{stem}.density.vti");
+
+            // GRD-2: the warnings travel with the file. A figure or a volume is the
+            // artifact most likely to be looked at by someone who never saw the
+            // result envelope it came from.
+            var provenance = new List<string>
+            {
+                $"engine: {EngineBuild.Version}",
+                $"model: {validation.ModelHash}",
+                $"transport: diffusion, {result.Steps} steps over {result.ElapsedSeconds:G6} s",
+                $"ions: {outcome.Launched:G6} launched, {result.Collected:G6} collected, "
+                    + $"{result.Remaining:G6} still in the domain",
+                "units: ions per cubic metre, at grid nodes",
+            };
+
+            provenance.AddRange(outcome.Warnings.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+            File.WriteAllText(
+                densityPath,
+                VtuWriter.WriteDensityField(result.Density, "density_per_m3", provenance));
+
+            artifacts.Add(Path.GetRelativePath(project.Root, densityPath));
+        }
+
+        run = run with { Artifacts = artifacts };
 
         var resultPath = Path.Combine(project.Results, $"{stem}.result.json");
         File.WriteAllText(resultPath, CommandJson.Write(run));
@@ -901,7 +979,9 @@ public static class RunCommand
         // than the same result with fields left empty.
         if (model.TransportMode == "diffusion")
         {
-            return (Diffusive(model, field, fieldWarnings, validation, project, timestampUtc), validation);
+            return (
+                Diffusive(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu),
+                validation);
         }
 
         var species = IonSpecies.FromModel(model);
@@ -926,7 +1006,13 @@ public static class RunCommand
         // through to whichever mode happened to be implemented first.
         _ = TransportModes.Resolve(model.TransportMode);
 
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        // Resolved rather than merely built from the model, so a declared velocity
+        // field reaches the event-driven models too. FromModel alone would produce a
+        // gas with no flow in it and no complaint - which is the failure the sampler
+        // used to refuse a flow outright to prevent, and removing that refusal
+        // without this would have reintroduced it exactly.
+        var gas = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
         // The reportable number comes from the convergence study, not from a
         // single integration: one run has no honest uncertainty to quote.

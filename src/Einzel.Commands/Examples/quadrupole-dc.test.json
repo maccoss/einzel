@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "quadrupole-dc",
+  "description": "Exact invariant: a static field does no net work on a closed path segment, bounded by ACC-4 at 1 ppm. Four round rods at 100 V DC, the classical quadrupole cross-section with the rod radius at Denison's 1.1468 inscribed radii - the ratio that cancels the leading non-ideal multipole. With no RF this is not a mass filter, it is a strong electrostatic lens, and what is asserted is that an ion crosses it without gaining or losing energy. That is an exact invariant rather than a number this engine chose, and it is a real check on a solved field: an interpolant with discontinuous derivatives leaks energy at every cell boundary, which is why ACC-3 forbids the cheap one.",
+  "model": "../models/quadrupole-dc.json",
+  "expect": [
+    {
+      "figureOfMerit": "energyDrift",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-06
+    }
+  ]
+}

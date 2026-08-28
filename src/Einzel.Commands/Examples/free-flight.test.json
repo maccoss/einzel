@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "free-flight",
+  "description": "Closed form: t = L / sqrt(2qU/m). A single ion of m/z 500 accelerated through 4 kV and allowed to drift one metre in a field-free region. The flight time is the distance over the speed, and the speed is sqrt(2qU/m): 39291.5 m/s, so one metre takes 25.4508 us. There is no geometry to solve and nothing approximate anywhere in the path, so this is the model to run first when checking that an installation works at all.",
+  "model": "../models/free-flight.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 25.451264294677983,
+      "unit": "us",
+      "tolerance": 1e-09
+    }
+  ]
+}

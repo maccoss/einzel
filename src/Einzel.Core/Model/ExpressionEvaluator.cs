@@ -343,6 +343,35 @@ public static class ExpressionEvaluator
                     return Quantity.Number(arguments[0].SiValue - (quotient * arguments[1].SiValue));
                 }
 
+                case "cosPi" when arguments.Count == 1:
+                case "sinPi" when arguments.Count == 1:
+                {
+                    // Dimensionless only, for the same reason sqrt and floor are:
+                    // the cosine of a length depends on which unit you take it in.
+                    if (!arguments[0].Dimension.IsDimensionless)
+                    {
+                        throw Failure(
+                            path,
+                            $"{name} requires a dimensionless argument, but was given one of "
+                            + $"dimension {arguments[0].Dimension}",
+                            "form a ratio first, for example cosPi(2 * index / poleCount)");
+                    }
+
+                    // Half turns, not radians, and the reason is one this engine has
+                    // already paid for once. Math.Cos(Math.PI / 2) is 6.1e-17 rather
+                    // than zero, so a rod placed at a quarter turn lands a hair off
+                    // axis and a multipole built that way carries a spurious dipole
+                    // made of round-off. double.CosPi is exact at every quarter turn.
+                    // The drive decomposition made the same choice for the same
+                    // reason: an antiphase electrode written as Cos of a scaled
+                    // argument picks up a quadrature component that is entirely
+                    // rounding, and costs a whole extra basis solve to carry it.
+                    return Quantity.Number(
+                        name == "cosPi"
+                            ? double.CosPi(arguments[0].SiValue)
+                            : double.SinPi(arguments[0].SiValue));
+                }
+
                 case "min" when arguments.Count == 2:
                     return arguments[0] <= arguments[1] ? arguments[0] : arguments[1];
 
@@ -353,7 +382,9 @@ public static class ExpressionEvaluator
                     throw Failure(
                         path,
                         $"'{name}' is not a known function, or was called with {arguments.Count} arguments",
-                        "available: abs(x), sqrt(x), floor(x), mod(a, b), min(a, b), max(a, b)");
+                        "available: abs(x), sqrt(x), floor(x), mod(a, b), min(a, b), max(a, b), "
+                            + "cosPi(x), sinPi(x) - the last two in half turns, so cosPi(0.5) is "
+                            + "exactly zero");
             }
         }
 

@@ -61,6 +61,28 @@ public enum ElectrodeShape
 /// <param name="Potential">Potential held there.</param>
 public sealed record ProfilePointDocument(QuantityValue? At, QuantityValue? Potential);
 
+/// <summary>How one electrode is connected to one generator.</summary>
+/// <remarks>
+/// The long form of <c>driveAmplitude</c> and <c>drivePhase</c>, needed when a
+/// geometry has more than one generator or when an electrode is fed by more than
+/// one. The short form remains for the common case of a single drive.
+/// </remarks>
+public sealed record TapTermDocument
+{
+    /// <summary>
+    /// Which declared drive, by name. May be omitted where there is only one.
+    /// </summary>
+    public string? Drive { get; init; }
+
+    /// <summary>This electrode's share of that drive, zero to peak.</summary>
+    public QuantityValue? Amplitude { get; init; }
+
+    /// <summary>
+    /// Where in that drive's cycle it sits, as a fraction of one. Zero when omitted.
+    /// </summary>
+    public QuantityValue? Phase { get; init; }
+}
+
 /// <summary>An electrode, as it appears in a model document.</summary>
 public sealed record ElectrodeDocument
 {
@@ -135,9 +157,36 @@ public sealed record ElectrodeDocument
     /// </remarks>
     public QuantityValue? DrivePhase { get; init; }
 
+    /// <summary>
+    /// Every generator this electrode is tapped off, where one is not enough.
+    /// Mutually exclusive with <c>driveAmplitude</c>.
+    /// </summary>
+    /// <remarks>
+    /// A ring in a travelling-wave guide carries a fast confining RF and a slow
+    /// travelling wave at once; a trap endcap carries a supplementary excitation
+    /// while the ring carries the main drive. Neither is expressible with one
+    /// amplitude and one phase.
+    /// </remarks>
+    public IReadOnlyList<TapTermDocument>? Taps { get; init; }
+
     /// <summary>Rectangle and disc: the potential held. The DC part, when driven.</summary>
     public QuantityValue? Potential { get; init; }
 }
+
+/// <summary>One electrode's connection to one generator, validated and in SI.</summary>
+/// <param name="Drive">
+/// Which declared drive, by index into the solve's <c>Drives</c>. Zero where a
+/// geometry declares only one.
+/// </param>
+/// <param name="Amplitude">Its share of that drive, zero to peak, in volts.</param>
+/// <param name="Phase">Where in that drive's cycle it sits, as a fraction of one.</param>
+/// <remarks>
+/// A list rather than a single amplitude and phase, because a real electrode can be
+/// fed by more than one generator: a travelling-wave guide's rings carry a fast
+/// confining RF and a slow travelling wave at once, and a trap's endcaps carry a
+/// supplementary excitation while its ring carries the main drive.
+/// </remarks>
+public readonly record struct CompiledTap(int Drive, double Amplitude, double Phase);
 
 /// <summary>An electrode, validated and reduced to SI.</summary>
 public sealed record CompiledElectrode
@@ -178,14 +227,22 @@ public sealed record CompiledElectrode
     /// <summary>Rectangle and disc: the potential held, in volts. The DC part.</summary>
     public double Potential { get; init; }
 
-    /// <summary>
-    /// This electrode's share of the drive, zero to peak, in volts. Zero for an
-    /// electrode that only holds a DC potential.
-    /// </summary>
-    public double DriveAmplitude { get; init; }
+    /// <summary>Every generator this electrode is tapped off, in declaration order.</summary>
+    public IReadOnlyList<CompiledTap> Taps { get; init; } = [];
 
-    /// <summary>Where in the cycle this electrode sits, as a fraction of one.</summary>
-    public double DrivePhase { get; init; }
+    /// <summary>
+    /// This electrode's share of the first drive it taps, zero to peak, in volts.
+    /// Zero for an electrode that only holds a DC potential.
+    /// </summary>
+    /// <remarks>
+    /// A convenience for the common single-generator case and for diagnostics.
+    /// Anything that evaluates or decomposes the field uses <see cref="Taps"/>,
+    /// because taking the first of several would silently drop the rest.
+    /// </remarks>
+    public double DriveAmplitude => Taps.Count > 0 ? Taps[0].Amplitude : 0.0;
+
+    /// <summary>Where in that drive's cycle this electrode sits, as a fraction of one.</summary>
+    public double DrivePhase => Taps.Count > 0 ? Taps[0].Phase : 0.0;
 
     /// <summary>
     /// Whether this electrode's potential varies in time at all.
@@ -195,7 +252,7 @@ public sealed record CompiledElectrode
     /// stack - and they cost nothing extra, because an electrode whose potential is
     /// constant shares a basis solve with every other constant one.
     /// </remarks>
-    public bool IsDriven => DriveAmplitude != 0.0;
+    public bool IsDriven => Taps.Any(t => t.Amplitude != 0.0);
 
     /// <summary>
     /// Signed distance to this electrode's surface: negative inside the
@@ -450,6 +507,27 @@ public sealed record SolvedFieldDocument
     public DriveDocument? Drive { get; init; }
 
     /// <summary>
+    /// Several generators, where one is not enough. Mutually exclusive with
+    /// <see cref="Drive"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A real trap runs its main RF and a supplementary excitation at once; a real
+    /// travelling-wave guide superposes a fast confining RF on a slow travelling
+    /// wave. Each electrode names which generators it taps, and with what amplitude
+    /// and phase, through <c>taps</c>.
+    /// </para>
+    /// <para>
+    /// It costs nothing in the solver. Basis superposition is indifferent to what
+    /// the weights are functions of, so two generators reaching the same electrodes
+    /// in the same proportions are one solved pattern carrying two weights on two
+    /// clocks. What multiplies the solve count is a different spatial pattern, never
+    /// a different frequency.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<DriveDocument>? Drives { get; init; }
+
+    /// <summary>
     /// What the plane is a cross-section of: <c>translational</c> or
     /// <c>cylindrical</c>. Translational when omitted.
     /// </summary>
@@ -563,6 +641,16 @@ public sealed record StageDocument
 /// </summary>
 public sealed record DriveDocument
 {
+    /// <summary>
+    /// What this generator is called, so an electrode can name which one it taps.
+    /// </summary>
+    /// <remarks>
+    /// Needed only where a geometry declares more than one. A single unnamed drive
+    /// is what nearly every device has, and requiring a name for it would be
+    /// ceremony.
+    /// </remarks>
+    public string? Name { get; init; }
+
     /// <summary>Drive frequency.</summary>
     public QuantityValue? Frequency { get; init; }
 
@@ -618,8 +706,24 @@ public sealed record CompiledSolvedField
     /// <summary>What the plane is a cross-section of (SYM-1).</summary>
     public SolveSymmetry Symmetry { get; init; }
 
-    /// <summary>The drive this geometry is operated with, or null when static.</summary>
-    public CompiledDrive? Drive { get; init; }
+    /// <summary>
+    /// The generators this geometry is operated with. Empty when it is static.
+    /// </summary>
+    /// <remarks>
+    /// More than one where an instrument runs a confining drive and a supplementary
+    /// excitation at once. Each electrode names which it taps.
+    /// </remarks>
+    public IReadOnlyList<CompiledDrive> Drives { get; init; } = [];
+
+    /// <summary>
+    /// The primary drive - the first declared - or null when the geometry is static.
+    /// </summary>
+    /// <remarks>
+    /// A convenience for the many places that only need to know whether a geometry is
+    /// driven at all. Anything that evaluates the field uses <see cref="Drives"/>,
+    /// because taking the first of several would silently drop the rest.
+    /// </remarks>
+    public CompiledDrive? Drive => Drives.Count > 0 ? Drives[0] : null;
 
     /// <summary>
     /// The timed sequence this geometry is operated through, or empty when it holds

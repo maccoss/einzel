@@ -722,3 +722,161 @@ reproducibility on one machine is. Golden comparisons use documented tolerances
 with stated reasons. `Deterministic` and `InvariantGlobalization` are set in
 `Directory.Build.props` so that number formatting cannot vary with the host
 locale and leak into CLI output or golden files.
+
+## A parallel-plate capacitor is the worst 3-D case, and that is the wrong way round
+
+The documented multigrid limitation — coarsening does not preserve interior
+electrodes, so the convergence factor degrades — has a concrete cost that is easy to
+underestimate, because the geometry that shows it worst is the simplest one anybody
+would write.
+
+Two slabs 10 mm apart in a grounded box, 0.5 mm cells, 65 x 65 x 46 nodes:
+
+| | cycles | factor |
+| --- | --- | --- |
+| **parallel plates** | **49** | **0.652** |
+| the shipped segmented quadrupole, twelve rods | 12–13 | 0.08 |
+| a charged sphere, node-aligned coarse levels | 9 | 0.126 |
+
+**124 seconds** for the plates, against 11 for a whole segmented-quadrupole run. A
+factor of 0.65 means the V-cycle is barely doing anything and the solve is close to
+plain relaxation.
+
+The reason is structural rather than surprising once seen. A rod is thin, so
+coarsening loses it quickly and the pinning fix restores its presence; **a slab is a
+large solid Dirichlet region**, and a coarse level that half-represents a slab is
+solving a different problem over a large volume rather than a small one. The error the
+coarse grid feeds back is wrong where most of the domain is.
+
+**This is why the example corpus has no three-dimensional model.** One was written — a
+parallel-plate gap checked against `sqrt(2 d² m / (q V))`, the same closed form the
+analytic accelerating-gap example uses — and it was not shipped, for two reasons worth
+separating:
+
+- **It costs two minutes** against a gate that runs the other twenty-six examples in
+  forty-two seconds. That is the multigrid limitation, not the example.
+- **It was 3.2 per cent off**, which is the *geometry*: a finite plate in a grounded
+  box 2 mm behind it is not an infinite capacitor, and asserting `V/d` to one per cent
+  would be asserting that it is. Fixing that means a larger domain, which costs more
+  solve, not less.
+
+So the volume solver, its tricubic interpolant and its cut cells are exercised by
+`Einzel.Fields.Tests` and by the segmented-quadrupole study, and **not** by the
+release gate. That is a stated gap rather than an oversight, and the thing that closes
+it is Galerkin coarsening — which would also make the plates converge like everything
+else.
+
+## Poisson, not only Laplace
+
+Every solve here until now has been **Laplace** - a potential with no charge in it,
+fixed on conductors. SC-1's *approximate* space-charge method needs **Poisson**:
+deposit the packet's own charge onto a grid, solve grad2 phi = -rho/eps0, gather the
+field back.
+
+**The cycle already carried a right-hand side and had only ever been handed zeros.**
+The smoother subtracts it, the residual is defined against it, and the coarse levels
+receive the restricted *residual* - which is what they need whatever the fine level's
+source is. So the source costs one argument and no numerics.
+
+Checked by the **method of manufactured solutions**, which is the sharpest thing
+available: pick a potential, differentiate it analytically to get the source that
+produces it, hand the solver that source, and compare. Nothing on the exact side is
+discretised and no reference implementation is involved. With
+phi = sin(pi x) sin(pi y) on the unit square, whose Laplacian is -2 pi^2 phi exactly:
+
+| intervals | worst error | order | cycles | factor |
+| --- | --- | --- | --- | --- |
+| 32 | 8.0358e-4 | | 11 | 0.0632 |
+| 64 | 2.0082e-4 | **2.000** | 11 | 0.0659 |
+| 128 | 5.0201e-5 | **2.000** | 11 | 0.0702 |
+
+Second order to three figures, and the cycle count is grid-independent. **The order is
+the load-bearing check**: a source entering the smoother and the residual
+inconsistently would still converge - to the wrong answer - and would show it as an
+order that is not two rather than as a failure.
+
+And the control: passing no source gives **exactly** what the solver gave before one
+existed, bit for bit and in the same number of cycles. Not nearly - exactly, or every
+number this engine has published from a solved field has moved.
+
+What is left for SC-1's approximate method is the particle side: cloud-in-cell
+deposit, the same weights on the gather (or momentum is not conserved), and validation
+against the direct pairwise sum, which exists and is the reason it was built first.
+
+## Cloud-in-cell: charge onto a grid, field back off it
+
+The particle half of SC-1's approximate method. The direct pairwise sum, which is the
+reference it is validated against, costs O(N^2); particle-in-cell costs one solve plus
+O(N), which is what makes 10^4 macroparticles affordable when 10^3 already takes hours.
+
+**Charge is conserved by construction rather than by normalising.** The eight weights
+sum to exactly one whatever the position, so what goes on the grid is what was handed
+in - 500 particles, 8.010883e-14 C in, 8.010883e-14 C on the grid. Normalising
+afterwards would pass the same test while hiding a weighting error rather than
+preventing one.
+
+**Charge that leaves the grid is counted, not clamped or dropped.** A packet that has
+drifted off its own grid produces a field that is quietly too weak, which looks exactly
+like a packet more dilute than it is; clamping is worse still, piling the charge onto a
+face and producing a field that is wrong and confident.
+
+### The same weights on the way out, and why it is not a convenience
+
+A particle writes charge to a node with some weight and reads the field back from it
+with the same weight, so its own contribution cancels in the sum. Gather with a
+*better* interpolant - a tricubic, which is more accurate for a smooth field - and
+every particle feels itself, the packet heats up out of nothing, and the field looks
+entirely reasonable throughout.
+
+Measured, as a fraction of the field a neighbour one cell away would feel (2.304e4 V/m
+for this charge), against a nearest-node gather that shares no weights:
+
+| offset in the cell | matched | mismatched |
+| --- | --- | --- |
+| 0.00 | 8.05e-5 | 0.521 |
+| 0.13 | 8.32e-5 | 0.480 |
+| 0.37 | 1.01e-4 | 0.467 |
+| 0.50 | 1.15e-4 | 0.495 |
+| 0.61 | 1.29e-4 | 0.470 |
+| 0.89 | 1.68e-4 | 0.485 |
+
+**Three and a half orders of magnitude**, and the mismatched column is what makes the
+matched one a property of the *symmetry* rather than of the grid being fine. Half the
+neighbour field, felt by a particle from itself, is not a small error - it is a packet
+that expands for a reason nobody put in.
+
+It is not exactly zero, and saying so matters: the cancellation is exact on a uniform
+periodic grid with centred differences, and here the box is earthed, whose images break
+the symmetry slightly. So the assertion is a ratio to the scale that would matter, not
+a claim of zero.
+
+**Trilinear, and ACC-3 is not violated.** That requirement forbids trilinear
+interpolation on a *trajectory path*, and this is not one: it is the interpolation of a
+self-consistent field whose accuracy is bounded by the deposit anyway, and where the
+deposit/gather symmetry buys more than the extra order would. The applied field an ion
+flies through is still tricubic.
+
+### Against the closed form
+
+A uniformly charged ball, 20,000 macroparticles, 48 cells across an 8 mm earthed cube,
+against `Qr/(4πε₀R³)` inside and `Q/(4πε₀r²)` outside:
+
+| r | measured | closed form | ratio |
+| --- | --- | --- | --- |
+| 0.5 mm | 7.7384e2 | 7.1998e2 | 1.075 |
+| 1.0 mm | 1.2956e3 | 1.4400e3 | 0.900 |
+| 1.5 mm | 6.4595e2 | 6.3998e2 | 1.009 |
+| 2.0 mm | 3.6669e2 | 3.5999e2 | 1.019 |
+
+Eleven cycles at a convergence factor of 0.110. The 1.0 mm point is the ball's own
+surface, where the closed form has a kink the grid cannot resolve, and the whole
+comparison carries the earthed box: the closed form is for a sphere alone in space and
+this one sits in a cube whose images pull the potential down. **That is a boundary
+condition rather than a solver error**, and tightening it means a bigger box rather
+than a better method.
+
+### What is still missing for SC-1
+
+The **integration**: choosing the grid a drifting packet deposits onto, when to
+re-solve, and the comparison against the direct sum on the same configuration. The
+pieces are all here and nothing wires them to `PacketIntegrator` yet.

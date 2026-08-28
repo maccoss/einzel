@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "0.3",
+  "name": "orthogonal-accelerator",
+  "description": "A packet held at rest 10 mm inside a 50 kV/m extraction region, pushed out through the plane and allowed to drift 400 mm. This is the device class an extraction trap or an orthogonal accelerator belongs to, and it is two closed forms composed: sqrt(2d/a) to leave the field region and L/v to cross the drift, with v = sqrt(2 a d). A half-space uniform field is field-free on one side and uniformly retarding on the other, so an ion released inside it and moving outward is accelerated by exactly the field that would have retarded it going in.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        10.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "halfSpaceUniform",
+      "planePoint": {
+        "value": [
+          0,
+          0,
+          0
+        ],
+        "unit": "mm"
+      },
+      "inwardNormal": {
+        "value": [
+          1,
+          0,
+          0
+        ]
+      },
+      "capPotential": {
+        "value": 1000.0,
+        "unit": "V"
+      },
+      "turningDepth": {
+        "value": 20.0,
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        -400.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 1000.0,
+      "unit": "us"
+    }
+  }
+}

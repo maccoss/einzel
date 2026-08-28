@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "gas-flow-carry",
+  "description": "Arithmetic: with no electric field, collisions drive the ion toward the frame the gas is at rest in, so its steady drift IS the gas velocity and the transit is L / u = 1.0 m / 200 m/s = 5000 us. No mobility, cross section or collision model enters. The ion is launched at exactly 200 m/s (0.103642697 V for m/z 500) so there is no equilibration lag either. Ten per cent, because a single ion drifting for five milliseconds also diffuses - and because the check is enormously discriminating anyway: a run that ignored the declared flow would damp the ion to rest and travel 15.8 mm in twenty milliseconds instead of arriving at all.",
+  "model": "../models/gas-flow-carry.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 5000.0,
+      "unit": "us",
+      "tolerance": 500.0
+    }
+  ]
+}

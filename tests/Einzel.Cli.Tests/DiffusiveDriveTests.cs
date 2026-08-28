@@ -64,7 +64,7 @@ public sealed class DiffusiveDriveTests : IDisposable
             "direction": { "value": [1, 0, 0] },
             "accelerationPotential": { "value": 0.001, "unit": "V" },
             "cloud": { "ions": 1, "population": 1000,
-                       "transverseWidth": { "value": 1.0, "unit": "mm" } }
+                       "transverseSpread": { "value": 1.0, "unit": "mm" } }
           },
           "fields": [ { "type": "uniform", "field": { "value": [2000, 0, 0], "unit": "V/m" } } ],
           "detector": {

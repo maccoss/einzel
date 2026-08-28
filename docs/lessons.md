@@ -463,6 +463,125 @@ The invariant that *is* exactly true is the balance of the mutual accelerations
 themselves, checked at every stage of every step — which also covers the case the
 naive version was reaching for, an indexing error over absorbed members.
 
+## The same operator, written twice, conservative once
+
+The cylindrical Poisson operator is written in conservative form — flux through a
+ring's outer face minus its inner face, over the ring's own volume — and the
+reasoning behind it is written down. Months later the drift-diffusion solver was
+built on the same grid class, with the same `Cylindrical` flag, and its face flux
+was computed per unit area and applied to both neighbours as though their volumes
+were equal. In an axisymmetric solve they are not: a cell is a ring, so the ion
+count crossing a face is created on one side and destroyed on the other.
+
+The weight a face needs is `A_face · h / V`, identically 1 in the plane and
+`1 ± h/2r` in a cylindrical one. **On the axis it is 4** — the inner face has no
+area, so the cell is a disc rather than a ring. That is the *same* factor of four
+the Laplacian carries on the axis, and it was already documented, one file away, as
+the thing a plane operator gets wrong there.
+
+**Three things about how it hid.**
+
+*The tests were all Cartesian.* Every conservation check in the suite ran on a
+plane grid, where the weight is exactly one and a scheme with no weights at all is
+correct. They passed for a reason that did not generalise — the identical failure
+mode as the uniform-field conservation test that hid a cell-centred drift sample,
+recorded above.
+
+*The ledger did not have to close.* An electrode emptied only the initial density,
+and the ions it deleted were removed after the launched population had been
+counted. So launched, collected, remaining and the named losses were never required
+to add up, and a four per cent leak on the shipped funnel had nowhere to appear.
+Making the itemisation complete is what made the defect visible; the fix to the
+bookkeeping found the fix to the physics.
+
+*It was worst exactly where it mattered.* The weight departs from one as `h/2r`, so
+the error is negligible at the wall and total on the axis — which is where a funnel
+puts its ions, and a funnel is the device this transport mode exists for.
+
+**The check that discriminates is not the conservation figure.** A wrong weight can
+still conserve to a few per cent over a short run, and the population sum was
+99.9995% on the first off-axis fixture that exercised it. What cannot be nearly
+right is the weight itself: exactly 4 on the axis, exactly `1 ± h/2r` off it. Assert
+the quantity with an exact value, not the symptom with a tolerance.
+
+**The rule.** A conservative discretisation is a property of an *operator on a
+geometry*, not of a grid class. Sharing `Grid2D` and a `Cylindrical` flag with a
+solver that got it right transfers none of it, and the second author of an operator
+on the same mesh is the least likely person to re-derive the face areas.
+
+## A guard that guarded nothing, under a test that could not reach it
+
+Scharfetter-Gummel's exponent is `P = v h / D`, the ratio of drift to diffusion
+across one cell, and it feeds a Bernoulli function `B(x) = x / (exp(x) - 1)`. That
+function already handles a large argument **exactly** - it is zero above +40 and
+`-x` below -40, which are the true limits and not approximations to them, and it
+takes them explicitly to avoid an overflow inside `exp`.
+
+The flux clamped `P` to ±40 *before* calling it. Reading the two together, the
+clamp looks like it is protecting the exponential. It is not: the exponential
+protects itself, one function down. What the clamp actually did was cap the
+effective drift at `40 D / h`, so above a cell Peclet of 40 the density moved too
+slowly by exactly the ratio the cap imposed.
+
+**Every existing test ran below the cap.** The advection checks are at a cell
+Peclet of 16 and report 1.000000. They are correct. They could not see this.
+
+**What saw it was an expectation that was a division.** A corpus example - a drift
+tube with a declared mobility and a declared gas flow, so `L / (mu E + v_gas)` is
+arithmetic with nothing of the engine's in it - came out 6.7% long. Unclamped it
+comes out 0.86% long, which is the packet's own spread, and the convincing part is
+that the *same* 0.86% now appears with and without the flow. A residual independent
+of the drift speed is a packet effect; a residual that grows with the drift is a
+scheme effect, and only having both cases separates them.
+
+**Three things generalise.**
+
+A guard placed one level above the thing that already guards itself is not
+redundant, it is a second policy - and the outer one wins silently. Look for the
+inner guard before adding an outer one.
+
+A test whose parameter sits below the threshold of the bug is not a weak test, it
+is a test of a different regime. The suite's advection checks were not sloppy;
+nothing about them says which side of 40 they are on. Where a scheme has a
+dimensionless number in it, the tests should straddle the values that number
+switches behaviour at, and should print it.
+
+And an expectation that is *arithmetic the engine had no part in* catches a class
+of thing that self-consistency cannot. That is the whole argument for EX-1's
+corpus, and it paid for itself on the second batch.
+
+## Reading the DC of an electrode that holds none, three times
+
+A basis-superposed field is linear in the applied potentials, so an electrode's
+excitation is *two* numbers — a DC potential and a drive amplitude — and code that
+asks only about the first is asking about the half that is often zero. That has now
+been the bug three separate times, in three unrelated places:
+
+- **`einzel solve`, 3-D.** It iterated `Solve` elements and `continue`d past every
+  `Solve3D`, then answered `Elements.All(e => e.Converged)` — vacuously true over an
+  empty list. `converged: true`, exit 0, for a field it never touched.
+- **`einzel solve`, 2-D.** Fixed in three dimensions and still wrong in two: it
+  built one mask from the electrodes' DC potentials. For the shipped `quadrupole-rf`,
+  whose every electrode holds zero DC, that was a solve of an earthed box — **peak
+  potential 0 V, zero cycles, converged, exit 0.**
+- **`ModelValidator.CanDoWork`.** A source at rest is legal exactly when some field
+  could accelerate it, and the test was `Electrodes.Any(e => e.Potential != 0)`. So
+  the **Paul trap**, the archetypal device whose ions sit still until the RF moves
+  them, was refused as a model in which nothing could move an ion. The 3-D arm of
+  the same switch fell through to `_ => true` and inspected nothing at all — the
+  same bug wearing the opposite mask, one over-refusing and one under-refusing.
+
+**Why it keeps happening.** `e.Potential` is the obvious spelling, it is correct for
+every DC device, and every failure is silent and confident: an earthed box solves
+fine, and a refusal names a plausible-sounding constraint. Nothing about the
+symptom points at the drive.
+
+The generalisable rule is the one already recorded under *the evidence was computed
+and then thrown away*: **when a quantity has two parts, the shortest spelling must
+not be the one that silently drops a part.** `IsDriven` exists on both electrode
+records precisely so the complete question has a short name. It is worth grepping
+for `.Potential` the next time something driven behaves as though it were earthed.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
@@ -483,6 +602,45 @@ actually caught them were:
   Liouville's theorem is the same kind of check on the integrator, and being
   independent of energy it catches things energy conservation cannot. Both found
   bugs that presented as small, plausible drifts.
+- **Removing a refusal without removing its reason.** `CollisionSampler` refused a
+  gas flow because it had no position to evaluate one at. Threading the position in
+  made the refusal obsolete — but the trajectory run path built its gas with
+  `FromModel`, which never resolves a declared velocity field, while only the
+  diffusive path called `Resolve`. Lifting the refusal alone would have reintroduced
+  the exact failure it existed to prevent, silently. **A guard is removed correctly
+  only when the thing it guarded against is checked for directly.**
+- **A transient inside the measurement window.** A stepped gas flow read a difference
+  of 361 m/s against a declared 200, which looks like a physics discrepancy. The step
+  sat 3 mm from the launch and the ion crossed it in six microseconds, so the "before"
+  average was over three samples of an ion still accelerating from rest. Moving the
+  step past the settling distance gave 204.5. **An average is over whatever the window
+  contains, including the part that is not yet the thing being measured.**
+- **A convenience accessor that quietly became a summary.** Adding a second
+  generator turned `CompiledElectrode.DriveAmplitude` from *the* amplitude into *the
+  first tap's* amplitude, and left it as a property with the same name. Every reader
+  kept compiling. One of them was `ElectrodeOverlap.Agrees`, the check that refuses
+  two conductors occupying the same space at different excitations — so two
+  electrodes agreeing about the main RF and differing about a supplementary one were
+  judged identical, and the mask kept whichever was written last. **The one check
+  that exists to prevent a field of a geometry nobody described became a route to
+  one.** Found by asking, after the change, which readers of the old scalar were
+  asking a question the scalar no longer answers.
+- **Measuring a linear property with a measurement that cannot be linear.** A
+  stability boundary is a statement about a *frequency* - where the characteristic
+  exponent reaches one - but the obvious way to find it is to ask whether the ion was
+  lost. That requires it to travel to an electrode through the whole anharmonic
+  region, so the answer depends on where it started and no amount of care removes the
+  dependence: the shipped Paul trap's hold-converged edge is q_z = 0.85 at a 0.1 mm
+  launch and 0.82 at 0.3 mm. **The fix was not a better loss measurement but a
+  different quantity.** Reading beta off the spectrum of an ion that stays small
+  locates the linear boundary to a worst residual of 1.2e-3 and needs no journey at
+  all. When a measurement is amplitude-dependent and the thing being measured is not,
+  suspect the measurement rather than adding controls to it.
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.
+- **Running the same measurement twice, slightly differently.** Two boundary
+  searches over brackets differing only in their lower end returned 680.7 V and
+  694.4 V for the same trap. Either alone reads as a measurement; the pair says the
+  predicate is frayed, which is what sent the observation window from 60 cycles to
+  200 and put a confirmation walk into `BoundarySearch`.

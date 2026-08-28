@@ -161,9 +161,53 @@ public static class VtuWriter
         ScalarField2D field, string name, IReadOnlyList<string>? provenance = null)
     {
         ArgumentNullException.ThrowIfNull(field);
+
+        return WritePlane(field.Grid, name, provenance, (i, j) => field[i, j]);
+    }
+
+    /// <summary>Writes an ion density as VTK ImageData.</summary>
+    /// <param name="density">The density, on its grid.</param>
+    /// <param name="name">The name the array takes in ParaView.</param>
+    /// <param name="provenance">Provenance lines recorded as an XML comment.</param>
+    /// <returns>The .vti document text.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="density"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is null or blank.</exception>
+    /// <remarks>
+    /// <para>
+    /// TRN-2 makes a density the output of diffusive transport the way a trajectory
+    /// is the output of integration, and RND-8 forbids drawing lines through one.
+    /// Until this existed the prohibition had nothing on the other side of it: the
+    /// mode's principal result could not be looked at in any form, only summarised
+    /// into a transmission and a transit time. Section 21's argument for VTU in
+    /// Phase 1 - that ParaView supplies the whole visualisation story before any
+    /// shell exists - applies to a density at least as strongly as to a field.
+    /// </para>
+    /// <para>
+    /// The same ImageData a potential is written as, because it is the same grid.
+    /// What it is <em>not</em> is a scalar field on the solver's own type: a density
+    /// is per unit volume, and in a cylindrical solve the volume of a cell grows
+    /// with radius, so the array here is a density and not a count. Contouring it
+    /// gives surfaces of equal concentration, which is what a reader of a funnel
+    /// picture wants; integrating it needs the cell volumes and is why the ion
+    /// totals are reported as numbers rather than left to be measured off a picture.
+    /// </para>
+    /// </remarks>
+    public static string WriteDensityField(
+        Transport.Diffusion.DensityField density,
+        string name,
+        IReadOnlyList<string>? provenance = null)
+    {
+        ArgumentNullException.ThrowIfNull(density);
+
+        return WritePlane(density.Grid, name, provenance, (i, j) => density[i, j]);
+    }
+
+    /// <summary>Writes one scalar over a plane grid as VTK ImageData.</summary>
+    private static string WritePlane(
+        Grid2D grid, string name, IReadOnlyList<string>? provenance, Func<int, int, double> at)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        var grid = field.Grid;
         var invariant = CultureInfo.InvariantCulture;
         var text = new StringBuilder(grid.NodeCount * 24);
 
@@ -199,7 +243,7 @@ public static class VtuWriter
 
             for (var i = 0; i < grid.CountX; i++)
             {
-                text.Append(invariant, $"{field[i, j]:G17} ");
+                text.Append(invariant, $"{at(i, j):G17} ");
             }
 
             text.Append('\n');

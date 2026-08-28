@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "turn-around-time",
+  "description": "Closed form: FWHM = 2 sqrt(2 ln 2) sqrt(m k T) / (q E). The two per cent tolerance is the sampling error of 4000 ions, not a modelling allowance. The arrival spread a source temperature imposes before the ion has left: half the packet is moving the wrong way when the field switches on, and has to be turned round. FWHM = 2 sqrt(2 ln 2) sqrt(m k T) / (q E), which for m/z 500 at 300 K in a 1 kV/mm extraction field is 0.862 ns. This is the quantity a pulsed-extraction trap is designed around, it is the one part of the arrival spread no downstream optics can undo, and it depends on nothing but the ion, the temperature and the field.",
+  "model": "../models/turn-around-time.json",
+  "expect": [
+    {
+      "figureOfMerit": "turnAroundTime",
+      "value": 0.8619045040069028,
+      "unit": "ns",
+      "tolerance": 0.02
+    }
+  ]
+}

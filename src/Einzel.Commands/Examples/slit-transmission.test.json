@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "slit-transmission",
+  "description": "Closed form: erf(a / (sigma root 2)) = 0.68269. The five per cent tolerance is three standard errors of 2000 draws, not a modelling allowance. A thermal packet flown at a slit whose jaws are both grounded, so the field is exactly zero everywhere and the ions travel in straight lines. That makes the transmission pure geometry: the fraction of a Gaussian of width sigma that lies within a half-width a, which is erf(a / (sigma root 2)) - 68.27% for a slit as wide as the beam. ACC-5 asks for transmission itemised by loss surface and never as a bare percentage, and this run names both jaws separately, so a design question about which one to move has an answer. Grounding the jaws is what makes the check sharp: with any field at all the answer would depend on the solver as well as on the arithmetic.",
+  "model": "../models/slit-transmission.json",
+  "expect": [
+    {
+      "figureOfMerit": "transmission",
+      "value": 0.6826894921370857,
+      "unit": "1",
+      "tolerance": 0.05
+    }
+  ]
+}

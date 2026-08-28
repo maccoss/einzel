@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "rectilinear-trap-extraction",
+  "description": "Exact invariant: a static extraction field does no net work, bounded by ACC-4. Four flat plates around a 2 mm inscribed radius, the front one split by an extraction slot: the cross-section of a pulsed-extraction trap, in the configuration where the back plate is raised and the packet is pushed out through the slot. Extraction is a DC problem - once the RF is off, the ions fly in a static field - so this runs without any of the RF machinery, and what is asserted is that energy is conserved on the way out. The aberration that matters here is the dipole the slot introduces, which displaces the trapping centre rather than distorting the well, and it grows roughly as the square of the slot width.",
+  "model": "../models/rectilinear-trap-extraction.json",
+  "expect": [
+    {
+      "figureOfMerit": "energyDrift",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-06
+    }
+  ]
+}

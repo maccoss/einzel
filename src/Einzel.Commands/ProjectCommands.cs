@@ -15,6 +15,17 @@ public sealed record NewOutcome
     /// <summary>Whether anything was actually written.</summary>
     /// <remarks>False under <c>--dry-run</c> (CLI-4).</remarks>
     public required bool Written { get; init; }
+
+    /// <summary>
+    /// Where the example's test was written, or null when there was none to write.
+    /// </summary>
+    /// <remarks>
+    /// An example ships the assertion that makes it a reference model rather than a
+    /// file that parses (EX-1), so instantiating one brings its test along. Null for
+    /// a device template, whose parameters are meant to be changed - pinning them
+    /// with an assertion would defeat the point of starting from one.
+    /// </remarks>
+    public string? TestPath { get; init; }
 }
 
 /// <summary>One thing checked about the environment.</summary>
@@ -68,6 +79,35 @@ public static class ProjectCommands
             });
         }
 
+        // An example ships the assertion that makes it a reference model rather than
+        // a file that parses, so instantiating one brings the test with it. Written
+        // beside the model in tests/, where `einzel test` looks, so the loop from
+        // `new` to a green tick has no step the user has to know about.
+        //
+        // Only for examples. A device template is a starting point to edit, and its
+        // parameters are meant to be changed - shipping an assertion with one would
+        // pin the very numbers it exists to let you move.
+        string? testPath = null;
+
+        if (kind == "example" && ExampleModels.HasTest(name))
+        {
+            var project = ProjectLayout.Find(Path.GetDirectoryName(absolute) ?? absolute);
+
+            if (project is not null)
+            {
+                var candidate = Path.Combine(
+                    project.Tests, Path.GetFileNameWithoutExtension(absolute) + ".json");
+
+                // The same refusal the model gets, for the same reason, and quietly:
+                // an existing test is someone's own assertion and this command has no
+                // business replacing it.
+                if (!File.Exists(candidate))
+                {
+                    testPath = candidate;
+                }
+            }
+        }
+
         if (!dryRun)
         {
             var directory = Path.GetDirectoryName(absolute);
@@ -78,9 +118,31 @@ public static class ProjectCommands
             }
 
             File.WriteAllText(absolute, text);
+
+            if (testPath is not null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(testPath)!);
+
+                // The shipped test names the model as ../models/<example>.json. The
+                // file may have been given another name, so the reference is
+                // rewritten to whatever it actually landed as - otherwise the test
+                // points at a model that is not there.
+                File.WriteAllText(
+                    testPath,
+                    ExampleModels.ReadTest(name).Replace(
+                        $"../models/{name}.json",
+                        "../models/" + Path.GetFileName(absolute),
+                        StringComparison.Ordinal));
+            }
         }
 
-        return new NewOutcome { Path = absolute, Source = $"{kind}:{name}", Written = !dryRun };
+        return new NewOutcome
+        {
+            Path = absolute,
+            Source = $"{kind}:{name}",
+            Written = !dryRun,
+            TestPath = testPath,
+        };
     }
 
     /// <summary>Regenerates the platform layer of a project's AGENTS.md.</summary>

@@ -1,11 +1,39 @@
 namespace Einzel.Fields.Solved;
 
+/// <summary>One electrode's connection to one generator.</summary>
+/// <param name="Drive">Which declared drive, by index.</param>
+/// <param name="Amplitude">Its share of that drive, zero to peak, in volts.</param>
+/// <param name="Phase">Where in that drive's cycle it sits, as a fraction of one.</param>
+public readonly record struct DriveTap(int Drive, double Amplitude, double Phase);
+
 /// <summary>What one electrode is asked to hold, over time.</summary>
 /// <param name="Name">The electrode's name.</param>
 /// <param name="Direct">Its DC potential, in volts.</param>
-/// <param name="Amplitude">Its share of the drive, zero to peak, in volts.</param>
-/// <param name="Phase">Where in the cycle it sits, as a fraction of one.</param>
-public readonly record struct Excitation(string Name, double Direct, double Amplitude, double Phase);
+/// <param name="Taps">
+/// Every generator it is connected to. Usually one, and empty for an electrode held
+/// at DC — but a ring in a travelling-wave guide carries a fast confining RF
+/// <em>and</em> a slow travelling wave, and a trap endcap carries a supplementary
+/// excitation while the ring carries the main drive.
+/// </param>
+public readonly record struct Excitation(
+    string Name, double Direct, IReadOnlyList<DriveTap> Taps)
+{
+    /// <summary>An electrode tapping a single drive, the common case.</summary>
+    /// <param name="name">The electrode's name.</param>
+    /// <param name="direct">Its DC potential, in volts.</param>
+    /// <param name="amplitude">Its share of the drive.</param>
+    /// <param name="phase">Where in the cycle it sits.</param>
+    public Excitation(string name, double direct, double amplitude, double phase)
+        : this(name, direct, amplitude == 0.0 ? [] : [new DriveTap(0, amplitude, phase)])
+    {
+    }
+}
+
+/// <summary>One term in a channel's time-varying weight.</summary>
+/// <param name="Drive">Which drive's clock the phase is measured on.</param>
+/// <param name="Amplitude">The weight's amplitude, in volts.</param>
+/// <param name="Phase">Its phase within that drive's cycle.</param>
+public readonly record struct WeightTerm(int Drive, double Amplitude, double Phase);
 
 /// <summary>One solved basis, and the time-varying weight it is multiplied by.</summary>
 /// <param name="Pattern">
@@ -17,7 +45,7 @@ public readonly record struct Excitation(string Name, double Direct, double Ampl
 public sealed record DriveChannel(
     Dictionary<string, double> Pattern,
     double Direct,
-    List<(double Amplitude, double Phase)> Harmonics);
+    List<WeightTerm> Harmonics);
 
 /// <summary>
 /// Reduces a driven geometry to the fewest solves that can express it.
@@ -25,11 +53,11 @@ public sealed record DriveChannel(
 /// <remarks>
 /// <para>
 /// Two steps, and the order matters. First every electrode's potential is split
-/// into the supplies feeding it: a constant one, and one per distinct drive phase.
-/// A funnel's two hundred rings reach three supplies - a DC chain and two RF phases
-/// - however many distinct voltages the chain holds, because what makes a supply
-/// one supply is that every electrode on it moves <em>together</em>, not that they
-/// move to the same place.
+/// into the supplies feeding it: a constant one, and one per distinct (drive,
+/// phase) pair. A funnel's two hundred rings reach three supplies - a DC chain and
+/// two RF phases - however many distinct voltages the chain holds, because what
+/// makes a supply one supply is that every electrode on it moves <em>together</em>,
+/// not that they move to the same place.
 /// </para>
 /// <para>
 /// Then supplies are grouped by their <em>spatial pattern</em> rather than by their
@@ -50,7 +78,17 @@ public sealed record DriveChannel(
 /// <para>
 /// It holds only for a sinusoid. A rectangular wave shifted by a quarter cycle is
 /// not a combination of the unshifted wave and one shifted by a quarter, so there
-/// each distinct phase really is its own supply and the solve count says so.
+/// each distinct phase really is its own supply and the solve count says so. That
+/// is why the quadrature flag is <em>per drive</em>: an instrument may run a
+/// sinusoidal confinement and a switched excitation at once, and each collapses or
+/// does not on its own terms.
+/// </para>
+/// <para>
+/// <b>Several drives cost no more than one where the geometry allows.</b> Two
+/// generators reaching the same electrodes in the same proportions are one solved
+/// pattern carrying two weights on two clocks, exactly as a DC supply and an RF
+/// supply already were. What multiplies the solve count is a different <em>spatial
+/// pattern</em>, never a different frequency.
 /// </para>
 /// <para>
 /// Written over names and numbers rather than over an electrode type, so the same
@@ -63,26 +101,30 @@ public static class DriveChannels
     /// <summary>Groups excitations into the channels a solve needs.</summary>
     /// <param name="excitations">What each electrode holds, in declaration order.</param>
     /// <param name="quadrature">
-    /// Whether the drive is a sinusoid, in which case every phase resolves into two
-    /// fixed components rather than into a supply of its own.
+    /// Per drive, whether it is a sinusoid — in which case every phase on it
+    /// resolves into two fixed components rather than into a supply of its own. A
+    /// drive with no entry is treated as not sinusoidal, which costs solves and
+    /// never changes the field.
     /// </param>
     /// <returns>The channels, each with a pattern and a weight.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="excitations"/> is null.</exception>
     public static List<DriveChannel> Decompose(
-        IReadOnlyList<Excitation> excitations, bool quadrature = false)
+        IReadOnlyList<Excitation> excitations, IReadOnlyList<bool> quadrature)
     {
         ArgumentNullException.ThrowIfNull(excitations);
+        ArgumentNullException.ThrowIfNull(quadrature);
 
         var supplies = new List<Supply>();
 
-        Supply Reach(double direct, double amplitude, double phase)
+        Supply Reach(double direct, int drive, double amplitude, double phase)
         {
             var existing = supplies.FirstOrDefault(t =>
-                t.Direct == direct && t.Amplitude == amplitude && t.Phase == phase);
+                t.Direct == direct && t.Drive == drive
+                && t.Amplitude == amplitude && t.Phase == phase);
 
             if (existing is null)
             {
-                existing = new Supply([], direct, amplitude, phase);
+                existing = new Supply([], direct, drive, amplitude, phase);
                 supplies.Add(existing);
             }
 
@@ -93,41 +135,47 @@ public static class DriveChannels
         {
             // The constant supply reaches every electrode that holds a DC
             // potential, each at its own volts. One supply, however many voltages.
+            // Drive -1 marks it: no clock, so no phase to distinguish it by.
             if (excitation.Direct != 0.0)
             {
-                Reach(1.0, 0.0, 0.0).Coefficients[excitation.Name] = excitation.Direct;
+                Reach(1.0, -1, 0.0, 0.0).Coefficients[excitation.Name] = excitation.Direct;
             }
 
-            if (excitation.Amplitude == 0.0)
+            foreach (var tap in excitation.Taps)
             {
-                continue;
-            }
+                if (tap.Amplitude == 0.0)
+                {
+                    continue;
+                }
 
-            var phase = excitation.Phase - Math.Floor(excitation.Phase);
+                var phase = tap.Phase - Math.Floor(tap.Phase);
+                var sinusoidal = tap.Drive >= 0 && tap.Drive < quadrature.Count
+                    && quadrature[tap.Drive];
 
-            if (!quadrature)
-            {
-                Reach(0.0, 1.0, phase).Coefficients[excitation.Name] = excitation.Amplitude;
-                continue;
-            }
+                if (!sinusoidal)
+                {
+                    Reach(0.0, tap.Drive, 1.0, phase).Coefficients[excitation.Name] = tap.Amplitude;
+                    continue;
+                }
 
-            // CosPi and SinPi rather than Cos and Sin of a scaled argument, because
-            // they are exact at the quarter turns. Math.Sin(Math.PI) is 1.2e-16, not
-            // zero, and an antiphase electrode would otherwise acquire a quadrature
-            // component made entirely of round-off - which becomes a spurious third
-            // channel carrying a field of nothing.
-            var inPhase = excitation.Amplitude * double.CosPi(2.0 * phase);
-            var outOfPhase = excitation.Amplitude * double.SinPi(2.0 * phase);
+                // CosPi and SinPi rather than Cos and Sin of a scaled argument,
+                // because they are exact at the quarter turns. Math.Sin(Math.PI) is
+                // 1.2e-16, not zero, and an antiphase electrode would otherwise
+                // acquire a quadrature component made entirely of round-off - which
+                // becomes a spurious third channel carrying a field of nothing.
+                var inPhase = tap.Amplitude * double.CosPi(2.0 * phase);
+                var outOfPhase = tap.Amplitude * double.SinPi(2.0 * phase);
 
-            if (inPhase != 0.0)
-            {
-                Reach(0.0, 1.0, 0.0).Coefficients[excitation.Name] = inPhase;
-            }
+                if (inPhase != 0.0)
+                {
+                    Reach(0.0, tap.Drive, 1.0, 0.0).Coefficients[excitation.Name] = inPhase;
+                }
 
-            if (outOfPhase != 0.0)
-            {
-                // A quarter cycle late: cos(2 pi (f t - 1/4)) is sin(2 pi f t).
-                Reach(0.0, 1.0, 0.25).Coefficients[excitation.Name] = outOfPhase;
+                if (outOfPhase != 0.0)
+                {
+                    // A quarter cycle late: cos(2 pi (f t - 1/4)) is sin(2 pi f t).
+                    Reach(0.0, tap.Drive, 1.0, 0.25).Coefficients[excitation.Name] = outOfPhase;
+                }
             }
         }
 
@@ -156,7 +204,11 @@ public static class DriveChannels
                 ? existing with { Direct = existing.Direct + (scale * supply.Direct) }
                 : existing with
                 {
-                    Harmonics = [.. existing.Harmonics, (scale * supply.Amplitude, supply.Phase)],
+                    Harmonics =
+                    [
+                        .. existing.Harmonics,
+                        new WeightTerm(supply.Drive, scale * supply.Amplitude, supply.Phase),
+                    ],
                 };
         }
 
@@ -170,30 +222,37 @@ public static class DriveChannels
         return channels;
     }
 
+    /// <summary>Groups excitations for a geometry with a single drive.</summary>
+    /// <param name="excitations">What each electrode holds, in declaration order.</param>
+    /// <param name="quadrature">Whether that drive is a sinusoid.</param>
+    /// <returns>The channels, each with a pattern and a weight.</returns>
+    public static List<DriveChannel> Decompose(
+        IReadOnlyList<Excitation> excitations, bool quadrature = false) =>
+        Decompose(excitations, [quadrature]);
+
     /// <summary>The weight each already-solved channel carries for a given set of excitations.</summary>
     /// <param name="channels">The channels the whole sequence was decomposed into.</param>
     /// <param name="excitations">What each electrode holds during this stage.</param>
     /// <param name="quadrature">
-    /// Whether the drive is a sinusoid. Must match what <see cref="Decompose"/> was
-    /// given, or the patterns this looks up were built a different way and none of
-    /// them will be found.
+    /// Per drive, whether it is a sinusoid. Must match what <c>Decompose</c>
+    /// was given, or the patterns this looks up were built a different way and none
+    /// of them will be found.
     /// </param>
     /// <returns>The constant and oscillating parts of each channel's weight.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    public static (List<double> Direct, List<IReadOnlyList<(double Amplitude, double Phase)>> Harmonics)
+    public static (List<double> Direct, List<IReadOnlyList<WeightTerm>> Harmonics)
         Weigh(
             List<DriveChannel> channels,
             IReadOnlyList<Excitation> excitations,
-            bool quadrature = false)
+            IReadOnlyList<bool> quadrature)
     {
         ArgumentNullException.ThrowIfNull(channels);
         ArgumentNullException.ThrowIfNull(excitations);
 
         var direct = new List<double>(new double[channels.Count]);
 
-        var harmonics = new List<IReadOnlyList<(double Amplitude, double Phase)>>(
-            Enumerable.Range(0, channels.Count)
-                .Select(_ => (IReadOnlyList<(double Amplitude, double Phase)>)[]));
+        var harmonics = new List<IReadOnlyList<WeightTerm>>(
+            Enumerable.Range(0, channels.Count).Select(_ => (IReadOnlyList<WeightTerm>)[]));
 
         foreach (var group in Decompose(excitations, quadrature))
         {
@@ -216,7 +275,11 @@ public static class DriveChannels
     }
 
     private sealed record Supply(
-        Dictionary<string, double> Coefficients, double Direct, double Amplitude, double Phase);
+        Dictionary<string, double> Coefficients,
+        double Direct,
+        int Drive,
+        double Amplitude,
+        double Phase);
 
     /// <summary>
     /// Scales a supply's potentials so the leading non-zero one is exactly one, and

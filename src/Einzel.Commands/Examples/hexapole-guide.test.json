@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "0.1",
+  "name": "hexapole-guide",
+  "description": "Qualitative: an ion entering off axis is confined the length of the guide. Six rods driven in alternating phase: an RF guide rather than a mass filter, and the first device class here above four poles. Two things about it are worth more than the transmission. The geometry is one template with poleCount as a parameter - four gives a quadrupole, eight an octupole, and nothing else changes - which is what LIB-1 asks a device library to be. And the rods are sized by a *fraction* of the largest radius that fits without neighbours intersecting, because that largest radius depends on the pole count: 2.414 inscribed radii at four rods, 1.000 at six, 0.620 at eight. Carrying Denison's quadrupole ratio of 1.1468 across to a hexapole puts the rods through one another, which is now refused rather than solved. However many rods there are, the structure reduces to one basis solve, because adjacent rods are exact negatives.",
+  "model": "../models/hexapole-guide.json",
+  "expect": [
+    {
+      "figureOfMerit": "transmission",
+      "value": 1.0,
+      "unit": "1",
+      "tolerance": 1e-09,
+      "ions": 1
+    }
+  ]
+}

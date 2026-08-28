@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "0.4",
+  "name": "gas-flow-carry",
+  "description": "An ion in a gas that streams at 200 m/s down a metre of drift tube, with no electric field anywhere. Collisions drive the ion toward the frame the gas is at rest in, so with nothing pushing it the steady drift IS the gas velocity - and the transit is then L / u, one metre over two hundred metres per second, five milliseconds by arithmetic alone. No mobility, no cross section and no collision model enter the answer, which is what makes this a check on the event-driven path rather than on the gas parameters.\n\nIt is the trajectory counterpart of drift-tube-gas-flow, which does the same physics in the diffusive mode. The event-driven models refused a gas flow until the ion's position was carried into the neutral draw - a collision was scheduled from a time and a velocity with nowhere to evaluate a flow, and using the uniform drift regardless would have flown an ion through a declared jet as though the gas stood still.\n\nThe launch potential is 10 microvolts, which is 2 m/s: a source at rest is refused where no field could move the ion, and the gas is not a field. It decays in a few collisions and contributes nothing to the transit.\n\nThe tolerance is four per cent because a single ion drifting for five milliseconds also diffuses about eight millimetres, and that is 0.8 per cent of a metre - a realisation of a random walk rather than a mean over one.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        0,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.103642697,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "fieldFree"
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        1000.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-08,
+    "maximumFlightTime": {
+      "value": 20000,
+      "unit": "us"
+    },
+    "gas": {
+      "model": "langevin",
+      "pressure": {
+        "value": 0.008,
+        "unit": "mbar"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "polarizability": {
+        "value": 1.74,
+        "unit": "\u00c5^3"
+      },
+      "driftVelocity": {
+        "value": [
+          200.0,
+          0,
+          0
+        ],
+        "unit": "m/s"
+      },
+      "seed": 20260828
+    }
+  }
+}

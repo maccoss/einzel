@@ -114,7 +114,48 @@ public static class RenderCommand
             $"model {Path.GetFileName(absolute)} hash {hash}",
         };
 
-        var figure = SectionRenderer.Render(validation.Model!, spec, provenance);
+        // A diffusive model has no trajectory to draw, and RND-8 forbids inventing
+        // one. What it has instead is a density, so the transport is run and the
+        // result handed to the renderer - the same trade the trajectory path already
+        // makes, where the ion is flown to draw its path.
+        //
+        // Failure here is not fatal to the figure. A model whose transport refuses -
+        // a regime violation, a missing mobility - still has geometry and a field
+        // worth drawing, and the figure says which of the two it got.
+        //
+        // It did not, until now: the catch below discarded the exception, so a
+        // refused run and a figure that never asked for a density produced the same
+        // output and the same words. That is the fifth thing in this branch to
+        // swallow evidence about why a result is missing, and the comment above
+        // promised the opposite. The reason goes into the provenance block, which is
+        // stamped on the page (GRD-12) and returned in --json.
+        Transport.Diffusion.DensityField? density = null;
+
+        // Not gated on spec.Trajectory. That toggle means "fly the ion and draw its
+        // path", and a diffusive model has no path to draw by definition - so
+        // conflating the two made --no-trajectory silently suppress the one output
+        // such a model has. Two independent things, asked about independently.
+        if (spec.DensityContours > 0
+            && string.Equals(
+                validation.Model!.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var (built, fieldWarnings) = Fields.FieldAssembly.BuildReported(validation.Model!);
+
+                density = DiffusionRun.Execute(validation.Model!, built, fieldWarnings).Result.Density;
+            }
+            catch (EinzelException refused)
+            {
+                density = null;
+
+                provenance.Add(
+                    "no density drawn: the transport refused - "
+                    + refused.Error.Constraint);
+            }
+        }
+
+        var figure = SectionRenderer.Render(validation.Model!, spec, provenance, density);
 
         var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
 
