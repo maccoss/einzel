@@ -610,6 +610,41 @@ edge value is continued — right for a stream through a tube, wrong for the end
 jet, and the samples do not say which — so `gas.flow-imported` states what fraction
 of the tracked region was extrapolated rather than measured.
 
+## A clamp that protected nothing and capped the drift
+
+Scharfetter-Gummel's exponent `P = v h / D` is the ratio of drift to diffusion
+across one cell, and the Bernoulli function it feeds handles a large one **exactly**:
+zero above +40 and `-x` below -40 are the true limits, not approximations to them.
+
+The flux clamped `P` to ±40 before calling it. That protected nothing — Bernoulli
+guards its own exponential — and it capped the effective drift at `40 D / h`,
+whatever the field and the gas actually were.
+
+| | |
+| --- | --- |
+| Cell Peclet on the corpus drift tube, field alone | 25.4 |
+| The same with a 120 m/s gas flow | 42.3 |
+| Closed form `L / (mu E + v_gas)` | 126.7 us |
+| Measured, clamped | 135.1 us, **6.7% long** |
+| Measured, unclamped | 127.8 us, **0.86% long** |
+
+The 0.86% is the packet's own spread, and the thing that makes it convincing is
+that it is now **the same 0.86% with and without the flow** — a residual
+independent of the drift speed is a packet effect; one that grows with the drift is
+a scheme effect.
+
+**What found it, and what did not.** The advection tests already in the suite run
+at a cell Peclet of 16, below the clamp, and pass at 1.000000. They were correct
+and they could not see this. What saw it was an example whose expected number is a
+*division* — `L / (mu E + v_gas)`, with both declared rather than derived, so there
+was nothing for the engine to agree with itself about. A scheme checked only
+against its own past output keeps a defect like this indefinitely.
+
+The suite now has a case at cell Peclet 105 and 209, exact to a part in a million.
+The stability step needed no change: the Courant limit was always taken against the
+true drift, so removing the cap makes the flux agree with the step rather than
+sitting conservatively under it.
+
 ## The density is an output you can look at
 
 TRN-2 makes a density the output of this mode the way a trajectory is the output of

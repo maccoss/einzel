@@ -509,6 +509,47 @@ geometry*, not of a grid class. Sharing `Grid2D` and a `Cylindrical` flag with a
 solver that got it right transfers none of it, and the second author of an operator
 on the same mesh is the least likely person to re-derive the face areas.
 
+## A guard that guarded nothing, under a test that could not reach it
+
+Scharfetter-Gummel's exponent is `P = v h / D`, the ratio of drift to diffusion
+across one cell, and it feeds a Bernoulli function `B(x) = x / (exp(x) - 1)`. That
+function already handles a large argument **exactly** - it is zero above +40 and
+`-x` below -40, which are the true limits and not approximations to them, and it
+takes them explicitly to avoid an overflow inside `exp`.
+
+The flux clamped `P` to ±40 *before* calling it. Reading the two together, the
+clamp looks like it is protecting the exponential. It is not: the exponential
+protects itself, one function down. What the clamp actually did was cap the
+effective drift at `40 D / h`, so above a cell Peclet of 40 the density moved too
+slowly by exactly the ratio the cap imposed.
+
+**Every existing test ran below the cap.** The advection checks are at a cell
+Peclet of 16 and report 1.000000. They are correct. They could not see this.
+
+**What saw it was an expectation that was a division.** A corpus example - a drift
+tube with a declared mobility and a declared gas flow, so `L / (mu E + v_gas)` is
+arithmetic with nothing of the engine's in it - came out 6.7% long. Unclamped it
+comes out 0.86% long, which is the packet's own spread, and the convincing part is
+that the *same* 0.86% now appears with and without the flow. A residual independent
+of the drift speed is a packet effect; a residual that grows with the drift is a
+scheme effect, and only having both cases separates them.
+
+**Three things generalise.**
+
+A guard placed one level above the thing that already guards itself is not
+redundant, it is a second policy - and the outer one wins silently. Look for the
+inner guard before adding an outer one.
+
+A test whose parameter sits below the threshold of the bug is not a weak test, it
+is a test of a different regime. The suite's advection checks were not sloppy;
+nothing about them says which side of 40 they are on. Where a scheme has a
+dimensionless number in it, the tests should straddle the values that number
+switches behaviour at, and should print it.
+
+And an expectation that is *arithmetic the engine had no part in* catches a class
+of thing that self-consistency cannot. That is the whole argument for EX-1's
+corpus, and it paid for itself on the second batch.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

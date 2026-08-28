@@ -576,7 +576,24 @@ public static class DriftDiffusion
             }
         }
 
-        var peclet = Math.Clamp(drop, -40.0, 40.0);
+        // Not clamped. Bernoulli already handles a large argument exactly - it is
+        // zero above +40 and -x below -40, which are the true limits, not
+        // approximations to them - so clamping the argument before calling it does
+        // not protect anything and does throw the drift away.
+        //
+        // What it threw away: for large P the flux tends to (D/h^2) P n_here, which
+        // is (v/h) n_here, the correct upwind answer. Capping P at 40 caps the
+        // effective drift at 40 D / h whatever the field and the gas actually are.
+        // On the corpus's drift tube the cell Peclet is 25 from the field alone, and
+        // adding a 120 m/s gas flow took it to 42 - so the transit came out 6.7%
+        // long, in a model whose closed form is a division. It was found by writing
+        // an example whose expected number was arithmetic; a scheme checked only
+        // against its own past output would have kept it.
+        //
+        // The stability step is unaffected: the Courant limit is already taken
+        // against the true drift, so removing the cap makes the flux agree with the
+        // step rather than sitting conservatively under it.
+        var peclet = double.IsFinite(drop) ? drop : Math.Sign(drop) * 40.0;
 
         var flux = faceDiffusion > 0.0
             ? faceDiffusion / (spacing * spacing) * ((Bernoulli(-peclet) * here) - (Bernoulli(peclet) * there))

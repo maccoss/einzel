@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "drift-tube-diffusion",
+  "description": "Closed form: L / (mu E) with mu declared, not derived. The three per cent tolerance is the packet's own spread, not a modelling allowance - a metre-wide Gaussian arriving over a boundary has a mean transit slightly past its centroid. A 38 mm drift tube at 1 mbar, described the way the second transport mode describes things: as a density evolving in time rather than as trajectories. Above about 1e-2 mbar an ion has forgotten where it came from long before it arrives, and what survives is a distribution - so REG-1 makes statistical diffusion a peer of trajectory integration rather than a fallback from it, and RND-8 forbids drawing lines through the result. The mobility is declared rather than derived from the cross section, which is what TRN-1 asks for and is also what keeps the expected number arithmetic: 0.09 m^2/(V s) in 2 kV/m is 180 m/s, so 38 mm takes 211 us. A density has no flight time and says so; what it has is a transit-time distribution, and this is its mean.",
+  "model": "../models/drift-tube-diffusion.json",
+  "expect": [
+    {
+      "figureOfMerit": "transitTime",
+      "value": 211.11111111111111,
+      "unit": "us",
+      "tolerance": 0.03
+    }
+  ]
+}

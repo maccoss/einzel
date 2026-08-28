@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**558 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 17 examples in 29 s, every expectation a closed form, a published value, or an exact invariant.
+**559 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 20 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -340,6 +340,27 @@ that could not be flown gives null.
 this is about the endpoints, and a figure of merit that cannot represent total loss
 is not measuring transmission.
 
+### 16 · A guard one level above the thing that guards itself
+
+Not a change to the specification so much as a rule the specification implies and
+does not state. Scharfetter-Gummel's Bernoulli function handles a large argument
+exactly, taking the limits explicitly to avoid an overflow inside `exp`. The flux
+clamped that argument to ±40 *before* calling it — which protected nothing and
+capped the effective drift at `40 D / h` above a cell Peclet of 40.
+
+Measured on a drift tube whose expected transit is a division: **6.7% long
+clamped, 0.86% long unclamped**, and the 0.86% is the packet's own spread because
+it is now the same with and without a gas flow.
+
+**Every test in the suite ran below the cap**, at a cell Peclet of 16, and reported
+1.000000. They were correct and could not see it. What saw it was a corpus example
+whose expectation is arithmetic the engine had no part in.
+
+The rule worth writing into §19: **where a scheme has a dimensionless number in it,
+the tests should straddle the values that number switches behaviour at, and should
+print it.** A test below a threshold is not weak, it is a test of a different
+regime, and nothing about it says which side it is on.
+
 ---
 
 ## The shell, and the rest of §16
@@ -480,7 +501,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **17 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a funnel, a travelling-wave guide and an extraction trap. Every expectation is arithmetic, a published value, or an exact invariant. What is missing is breadth: no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode. |
+| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **20 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a funnel, a travelling-wave guide, an extraction trap, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: a multipole above four rods, a 3-D trap, an MR-TOF. |
 | `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. 17 of 17 in 29 s, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself. |
 | `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. Still one surface, because there is no second one. |
 

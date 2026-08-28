@@ -2,7 +2,7 @@
 
 What is tested, what each tier proves, and — as importantly — what is not covered.
 
-558 tests across nine assemblies. Warnings are errors; XML documentation is
+559 tests across nine assemblies. Warnings are errors; XML documentation is
 required on public API; CI builds and tests on Linux and Windows.
 
 ## The tiers
@@ -61,6 +61,9 @@ cross-code tier is unavailable — see below.
 | Scan endpoints from a parameter's minimum to its maximum | exact, both ends inside the bound |
 | Cylindrical radial face weight, on the axis and away from it | exactly 4 and exactly 1 ± h/2r |
 | An imported uniform gas field against a declared uniform one | agree to 2 ulps |
+| Diffusive centroid at cell Peclet 105 and 209 | **1.000000** and 0.999999 |
+| Diffusive transit against L/(muE) and L/(muE + v_gas) | 0.86% each, the same either way |
+| Slit transmission against erf(a / sigma root 2) | 0.6815 against 0.68269, 0.17% |
 | Trilinear gas-flow sampling against a linear field | exact to 1e-9 |
 | VTK ImageData written by this engine and read back | every node exactly |
 | Ion ledger on the shipped funnel: cylindrical, absorbing rings, gas flow | **100.0001%** (was 95.99%) |

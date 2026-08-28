@@ -500,6 +500,26 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Two gaps left, both named.** The **pressure** is still a single number for the whole model, which a differentially pumped instrument is not. And the **event-driven mode refuses a field** rather than using one: `CollisionSampler` schedules and draws a neutral velocity without a position, so threading a position through the collision path is the work.
 
+- **A clamp that guarded nothing and capped the drift, found by an expectation that was a division.** Scharfetter–Gummel's exponent `P = v h / D` feeds a Bernoulli function that already handles a large argument **exactly** — zero above +40 and `−x` below −40 are the true limits, taken explicitly to avoid an overflow inside `exp`. The flux clamped `P` to ±40 *before* calling it. Read together the clamp looks like it protects the exponential; it does not, the exponential protects itself one function down. What it did was **cap the effective drift at `40 D / h`** whatever the field and the gas actually were.
+
+  | | |
+  | --- | --- |
+  | Cell Péclet on the corpus drift tube, field alone | 25.4 |
+  | The same with a 120 m/s gas flow | 42.3 |
+  | Closed form `L / (μE + v_gas)` | 126.7 µs |
+  | Measured, clamped | 135.1 µs, **6.7% long** |
+  | Measured, unclamped | 127.8 µs, **0.86% long** |
+
+  The 0.86% is the packet's own spread, and what makes that convincing is that it is now **the same 0.86% with and without the flow**: a residual independent of the drift speed is a packet effect, one that grows with the drift is a scheme effect, and only having both cases separates them.
+
+  **Every advection test in the suite runs at cell Péclet 16, below the cap, and reports 1.000000.** They were correct and could not see this. What saw it was a corpus example whose expected number is a *division* — a drift tube with a **declared** mobility and a declared gas flow, so there was nothing for the engine to agree with itself about. The suite now has a case at cell Péclet 105 and 209, exact to a part in a million. The stability step needed no change: the Courant limit was always taken against the true drift, so removing the cap makes the flux agree with the step rather than sitting conservatively under it.
+
+  **Three rules generalise**, all in `docs/lessons.md`. A guard placed one level above the thing that already guards itself is not redundant, it is a second policy, and the outer one wins silently. **A test whose parameter sits below the threshold of a bug is not a weak test, it is a test of a different regime** — where a scheme has a dimensionless number in it, the tests should straddle the values that number switches behaviour at, and should print it. And an expectation that is arithmetic the engine had no part in catches a class of thing self-consistency cannot, which is the whole argument for EX-1's corpus.
+
+  **Corpus 17 → 20**, and the diffusive mode has examples for the first time because `transitTime` made its principal scalar assertable: `drift-tube-diffusion` against `L/(μE)` at 0.86%, `drift-tube-gas-flow` against `L/(μE + v_gas)` at the same 0.86%, and `slit-transmission` against **erf(a/σ√2) = 0.68269 at 0.17%** — the slit's jaws both grounded so the field is exactly zero and the transmission is pure geometry.
+
+  **And a flaky test made diagnosable.** `AllocationDoesNotGrowWithStepCount` failed inside the full parallel suite and passed alone, which is the worst way for a test to be wrong because it reads as a regression in the thing under test. It now takes the **cheapest of five runs** — the runtime charges one-off costs like a tier-1 recompilation to whichever window they fire in, and the property is a floor, so the minimum is the right statistic — and prints the numbers: 240 bytes over 41 steps, 240 bytes over 2030.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

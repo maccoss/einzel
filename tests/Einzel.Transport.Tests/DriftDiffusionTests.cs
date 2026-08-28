@@ -369,6 +369,63 @@ public sealed class DriftDiffusionTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ADriftWellPastTheUpwindLimitIsStillExact()
+    {
+        // The test the other advection checks could not do, because their cell
+        // Peclet numbers were too small to reach the case that was broken.
+        //
+        // Scharfetter-Gummel's exponent P = v h / D is the ratio of drift to
+        // diffusion across one cell, and the Bernoulli function it feeds handles a
+        // large one exactly: zero above +40 and -x below -40 are the true limits,
+        // not approximations. An earlier version clamped the argument to +/-40
+        // before calling it, which protected nothing and capped the effective drift
+        // at 40 D / h - so above a cell Peclet of 40 the density moved too slowly,
+        // by exactly the ratio the clamp imposed.
+        //
+        // The existing checks ran at P = 16 and never saw it. What found it was an
+        // example whose expected number was a division: a drift tube with a gas flow
+        // came out 6.7% long against L / (mu E + v_gas).
+        var grid = Grid2D.OverBox(-0.02, -0.02, 0.06, 0.02, 64, 32);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var still = Nitrogen(100.0);
+        var mobility = Mobility.FromCrossSection(still, species);
+
+        var diffusion = Mobility.DiffusionSi(
+            still.TemperatureK, species.ChargeSi, mobility.ZeroFieldSi);
+
+        var edges = new DriftDiffusion.DomainEdges(
+            Escape.Reflecting, Escape.Reflecting, Escape.Reflecting, Escape.Reflecting);
+
+        var seconds = 1e-4;
+
+        output.WriteLine("gas / m/s   cell Peclet   measured / m/s     ratio");
+
+        foreach (var speed in new[] { 200.0, 400.0 })
+        {
+            var peclet = speed * grid.SpacingX / diffusion;
+
+            Assert.True(peclet > 60.0, $"a cell Peclet of {peclet:F1} does not reach the case");
+
+            var flowing = still with { DriftVelocitySi = new Vec3(speed, 0.0, 0.0) };
+
+            var start = PointSource(grid, grid.CountX / 4, grid.CountY / 2);
+            var (fromX, _) = start.Centroid();
+
+            var result = DriftDiffusion.Run(
+                start, FieldFreeSpace.Instance, flowing, mobility, species, seconds, edges);
+
+            var (toX, _) = result.Density.Centroid();
+            var measured = (toX - fromX) / seconds;
+
+            output.WriteLine(
+                $"{speed,9:F1}   {peclet,11:F1}   {measured,14:F3}  {measured / speed,8:F6}");
+
+            Assert.InRange(measured / speed, 0.999, 1.001);
+        }
+    }
+
+    [Fact]
     public void AMovingGasStillConservesIons()
     {
         // The advection term is only conservative if the two cells sharing a face
