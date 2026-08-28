@@ -47,17 +47,49 @@ public static class DiffusionRun
     /// <param name="model">The validated model.</param>
     /// <param name="field">The field, already built.</param>
     /// <param name="fieldWarnings">Warnings the field carries.</param>
+    /// <param name="resolved">
+    /// The gas with any declared velocity field already loaded, or null when the
+    /// caller has no model directory to resolve one against.
+    /// </param>
     /// <returns>What happened.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
-    /// <exception cref="EinzelException">The model cannot be expressed as a density problem.</exception>
+    /// <exception cref="EinzelException">
+    /// The model cannot be expressed as a density problem, or it declares a velocity
+    /// field the caller did not resolve.
+    /// </exception>
     public static DiffusiveOutcome Execute(
-        CompiledModel model, IElectrostaticField field, IReadOnlyList<ValidityWarning> fieldWarnings)
+        CompiledModel model,
+        IElectrostaticField field,
+        IReadOnlyList<ValidityWarning> fieldWarnings,
+        BackgroundGas? resolved = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
 
         var species = IonSpecies.FromModel(model);
-        var gas = BackgroundGas.FromModel(model.Gas);
+
+        // A declared velocity field is a file, and resolving a path needs the model
+        // document's own directory - which a caller reached through a study or a
+        // figure of merit does not have. Refused rather than run in a gas that
+        // stands still: this is exactly the shape of the bug where driftVelocity was
+        // honoured by one transport mode and silently dropped by the other, and the
+        // whole point of GAS-1 is that a missing flow is hard to notice.
+        if (resolved is null && model.Gas.HasVelocityField)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/gas/velocityField",
+                Constraint = "this model declares a neutral velocity field, and it was not "
+                    + "resolved - the caller has no model directory to read it from",
+                Suggestion = "run it with 'einzel run', which knows where the model file is. A "
+                    + "study or a figure of merit reaches the transport without a path, and "
+                    + "running in a stationary gas instead would silently answer about a "
+                    + "different instrument",
+            });
+        }
+
+        var gas = resolved ?? BackgroundGas.FromModel(model.Gas);
 
         var declared = model.Mobility
             ?? throw new EinzelException(new EinzelError
@@ -464,9 +496,40 @@ public static class DiffusionRun
     /// </para>
     /// </remarks>
     private static List<ValidityWarning> FlowWarnings(
-        BackgroundGas gas, Mobility mobility, double strongestFieldSi, double pressureMbar)
+        BackgroundGas gas,
+        Mobility mobility,
+        double strongestFieldSi,
+        double pressureMbar,
+        Grid2D grid)
     {
         var warnings = new List<ValidityWarning>();
+
+        // An imported field covers the box it was solved on, and the tracked region
+        // need not be the same box. Outside it the edge value continues, which is
+        // right for a stream and wrong for the end of a jet - and nothing in the
+        // samples says which. So the overhang is reported rather than absorbed: the
+        // honest statement is how much of the answer was continued from an edge.
+        if (gas.Flow is SampledGasFlow sampled)
+        {
+            var fraction = sampled.FractionOutside(
+                new Vec3(grid.OriginX, grid.OriginY, 0.0),
+                new Vec3(
+                    grid.OriginX + (grid.SpacingX * (grid.CountX - 1)),
+                    grid.OriginY + (grid.SpacingY * (grid.CountY - 1)),
+                    0.0));
+
+            warnings.Add(new ValidityWarning(
+                "gas.flow-imported",
+                $"the neutral velocity is read from an imported field spanning "
+                + $"{sampled.MinimumSi.X * 1e3:G4} to {sampled.MaximumSi.X * 1e3:G4} mm axially and "
+                + $"{sampled.MinimumSi.Y * 1e3:G4} to {sampled.MaximumSi.Y * 1e3:G4} mm across. "
+                + (fraction > 0.0
+                    ? $"{fraction:P1} of the tracked region lies outside it, where the edge value "
+                        + "is continued rather than measured - right for a stream through a tube, "
+                        + "wrong for the end of a jet, and the samples do not say which"
+                    : "The tracked region lies wholly inside it"),
+                fraction > 0.0 ? WarningSeverity.Qualified : WarningSeverity.Provenance));
+        }
 
         // The fastest the field can push an ion anywhere on this grid, which is what
         // a bulk gas speed has to be read against.
@@ -558,7 +621,7 @@ public static class DiffusionRun
             }
         }
 
-        warnings.AddRange(FlowWarnings(gas, mobility, worst, pressureMbar));
+        warnings.AddRange(FlowWarnings(gas, mobility, worst, pressureMbar, grid));
 
         if (!mobility.IsWithinFit(worst, gas.NumberDensitySi))
         {

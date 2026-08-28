@@ -541,6 +541,75 @@ with it, so the explicit step on the axis is four times shorter than the unweigh
 rate says. `einzel estimate` takes the weight from the same function the run does,
 so the two still cannot disagree about what a step is.
 
+## The gas can vary from place to place
+
+A single declared vector is a stream, not a jet. Spec figure 4 requires a velocity
+**field** above 10^-2 mbar and §21 lists "gas velocity import" among Phase 3's
+deliverables, and the reason is written into GAS-1 itself: the neutral jet off an
+inlet capillary "drags ions and frequently dominates the axial DC gradient", and it
+is not uniform across a ring stack.
+
+```json
+"gas": {
+  "model": "hardSphere",
+  "pressure": { "value": 2, "unit": "mbar" },
+  "velocityField": { "path": "flow.vti", "array": "velocity" }
+}
+```
+
+**VTK ImageData, which is what this engine already writes.** No format to decide
+and no dependency to take: reading a *format* carries no licence obligation, and
+linking a library would (RND-13). The path resolves against the **model document's
+own directory**, not the working directory, so a model means the same thing
+wherever the command is run from.
+
+**ASCII only, and stated rather than discovered.** Binary, appended and compressed
+payloads are the majority of real VTK files and none is read; a file this cannot
+read is refused by name with the ParaView setting that fixes it. Same kind of
+deliberate subset as EXT-7's JSON Schema one — the alternative is base64 and zlib
+inside a reader whose whole job is to get a few thousand numbers into an array.
+
+**Einzel consumes a velocity field and does not compute one.** That boundary is the
+same one §17 draws around visualisation. A compressible flow through a
+differentially pumped stack is a CFD problem, and a half-hearted one inside an
+ion-optics engine would be worse than none, because it would look like an answer.
+
+### What is checked
+
+| Check | Result |
+| --- | --- |
+| An imported *uniform* field against a *declared* uniform one | agree to 2 ulps |
+| Trilinear against a linear field | exact, 1e-9 over the whole box |
+| Exactly at a node | the sample itself |
+| An accelerating flow against uniform at each end | strictly between, both ways |
+| A file this engine wrote, read back | every node exactly |
+
+The first is the one that makes the import trustworthy: two entirely separate paths
+to the same gas — a vector in the document, and a file read, interpolated and
+sampled per node — give the same answer. **Two ulps rather than bit-identical, and
+the reason is worth knowing:** interpolating a constant returns that constant only
+to rounding, because 30(1−f) + 30f is 29.999999999999996 for plenty of f. That is
+inherent to sampling and is not something a reader can fix.
+
+### Two refusals and a qualification
+
+**A caller that cannot resolve the path is refused, not run in a still gas.**
+Resolving needs the model file's directory, and a study or a figure of merit meets
+the transport without one. That is precisely the shape of the bug where
+`driftVelocity` was honoured by the event-driven mode and silently dropped by the
+diffusive one, so the transport refuses rather than substituting a gas that stands
+still.
+
+**A scalar array where a vector is needed is refused by name**, because a CFD export
+carries pressure and density alongside velocity and the first array in the file is
+as likely to be either.
+
+**The overhang is reported rather than absorbed.** An imported field covers the box
+it was solved on, and the tracked region need not be the same box. Outside it the
+edge value is continued — right for a stream through a tube, wrong for the end of a
+jet, and the samples do not say which — so `gas.flow-imported` states what fraction
+of the tracked region was extrapolated rather than measured.
+
 ## The density is an output you can look at
 
 TRN-2 makes a density the output of this mode the way a trajectory is the output of
@@ -566,11 +635,15 @@ identical to a figure where the density was never computed.
 
 ## Not built
 
-- **A neutral velocity *field*.** A uniform bulk velocity is honoured everywhere it
-  can be; the seam for a varying one is `IGasFlow`, with `UniformGasFlow` behind it
-  and nothing else yet. Spec figure 4 requires a *field* above 10⁻² mbar and lists
-  gas velocity import with it, and this is still what a funnel needs most: the jet
-  off an inlet capillary is not uniform across a ring stack.
+- **A gas flow in the event-driven mode.** `CollisionSampler` schedules and draws a
+  neutral velocity without a position, so it cannot evaluate a field that varies
+  with one, and it refuses rather than falling back to the uniform value. A uniform
+  `driftVelocity` it uses as it always did. Threading a position through the
+  collision path is the work.
+- **A pressure field.** GAS-1 asks for one beside the velocity field, and the
+  pressure is still a single number for the whole model. A differentially pumped
+  instrument has several, and the interfaces between them are where much of the
+  interesting physics is.
 - **Inelastic channels.** Collisions are elastic. No fragmentation, no
   collision-induced dissociation, no internal energy at all.
 - **Pressure gradients.** One pressure for the whole model. A real differentially

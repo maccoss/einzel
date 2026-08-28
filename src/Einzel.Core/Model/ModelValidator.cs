@@ -2294,6 +2294,18 @@ public static class ModelValidator
             : TryVector(gas.DriftVelocity, "/transport/gas/driftVelocity", Dimension.Velocity, p, errors)
                 ?? Vec3.Zero;
 
+        if (gas.VelocityField is { } flow && string.IsNullOrWhiteSpace(flow.Path))
+        {
+            errors.Add(Missing(
+                "/transport/gas/velocityField/path",
+                "a velocity field names the file it is read from",
+                "add {\"path\": \"flow.vti\"}, relative to this model. VTK ImageData with ASCII "
+                + "data, which is what 'einzel export' writes and what ParaView saves with the "
+                + "Ascii box ticked"));
+
+            return null;
+        }
+
         return new CompiledGas
         {
             Model = gas.Model,
@@ -2303,6 +2315,8 @@ public static class ModelValidator
             CrossSectionSi = crossSection.Value.SiValue,
             PolarizabilitySi = polarizability.Value.SiValue,
             DriftVelocitySi = drift,
+            VelocityFieldPath = gas.VelocityField?.Path,
+            VelocityFieldArray = gas.VelocityField?.Array,
             Seed = gas.Seed,
         };
     }

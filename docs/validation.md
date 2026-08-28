@@ -2,7 +2,7 @@
 
 What is tested, what each tier proves, and — as importantly — what is not covered.
 
-540 tests across nine assemblies. Warnings are errors; XML documentation is
+558 tests across nine assemblies. Warnings are errors; XML documentation is
 required on public API; CI builds and tests on Linux and Windows.
 
 ## The tiers
@@ -60,6 +60,9 @@ cross-code tier is unavailable — see below.
 | A still gas against no declared gas velocity | bit-identical at every node |
 | Scan endpoints from a parameter's minimum to its maximum | exact, both ends inside the bound |
 | Cylindrical radial face weight, on the axis and away from it | exactly 4 and exactly 1 ± h/2r |
+| An imported uniform gas field against a declared uniform one | agree to 2 ulps |
+| Trilinear gas-flow sampling against a linear field | exact to 1e-9 |
+| VTK ImageData written by this engine and read back | every node exactly |
 | Ion ledger on the shipped funnel: cylindrical, absorbing rings, gas flow | **100.0001%** (was 95.99%) |
 
 The detuned reflectron matters more than it looks: without it, a bug that simply
@@ -314,13 +317,16 @@ covering everything.
 - **Space charge is modelled by direct summation and by nothing else.** The
   pairwise sum SC-1 names as the reference exists and is checked; the *approximate*
   method it is meant to validate — particle-in-cell — does not.
-- **The gas has one bulk velocity, not a velocity field.** A uniform
-  `driftVelocity` is honoured by both transport modes, and the diffusive one takes
-  it at the face so it conserves. What spec figure 4 actually requires above
-  10⁻² mbar is a velocity *field*, and the jet off an inlet capillary is not uniform
-  across a ring stack. `IGasFlow` is the seam; `UniformGasFlow` is the only
-  implementation. Until an imported field exists, a funnel's transmission is
-  computed in a gas that is either standing still or moving all in one piece.
+- **A gas flow reaches the diffusive mode only.** An imported velocity field
+  (GAS-1) is read, sampled and conserved at the face, but `CollisionSampler`
+  schedules and draws a neutral velocity without a position, so the event-driven
+  mode refuses a field rather than falling back to the uniform value. A uniform
+  `driftVelocity` works in both.
+- **The pressure is still one number.** GAS-1 asks for a pressure *field* beside
+  the velocity field, and a differentially pumped instrument has several.
+- **Only ASCII VTK is read.** Binary, appended and compressed payloads are the
+  majority of real VTK files and none is read; such a file is refused by name
+  rather than misread.
 - **A scan reports where a transition is, not what value it is at.** ACC-6 asks for
   a boundary resolved to one part in five hundred of the scan variable, which needs
   a bisection onto the transition; `einzel scan` reports the steepest interval on

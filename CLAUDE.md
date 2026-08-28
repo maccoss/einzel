@@ -481,6 +481,25 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **What Class B still lacks needs an arbitrary waveform, not more analysis.** The secular frequency spectrum and isolation efficiency against notch width are §12 items that §9's arbitrary-waveform excitation would unblock; this build has sinusoid and rectangular only.
 
+- **GAS-1: the gas can vary from place to place.** A single declared vector is a stream, not a jet. Spec figure 4 requires a velocity **field** above 1e-2 mbar and §21 lists "gas velocity import" among Phase 3's deliverables, and GAS-1 says why in its own words: the neutral jet off an inlet capillary "drags ions and frequently dominates the axial DC gradient", and it is not uniform across a ring stack.
+
+  **VTK ImageData, which is what this engine already writes** — no format to decide and no dependency to take, because reading a *format* carries no licence obligation while linking a library would (RND-13). The path resolves against the **model document's own directory**, not the working directory, so a model means the same thing wherever the command is run from. **ASCII only, stated rather than discovered**: binary, appended and compressed payloads are most real VTK files and none is read, so such a file is refused by name with the ParaView setting that fixes it — the same kind of deliberate subset as EXT-7's JSON Schema one.
+
+  | Check | Result |
+  | --- | --- |
+  | An imported *uniform* field against a *declared* uniform one | agree to **2 ulps** |
+  | Trilinear against a linear field | exact, 1e-9 over the box |
+  | An accelerating flow against uniform at each end | strictly between, both ways |
+  | A file this engine wrote, read back | every node exactly |
+
+  The first is what makes the import trustworthy: two entirely separate paths to the same gas — a vector in the document, and a file read, interpolated and sampled per node — give the same answer. **Two ulps rather than bit-identical, and the reason is worth knowing:** interpolating a constant returns that constant only to rounding, because 30(1−f) + 30f is 29.999999999999996 for plenty of f. Inherent to sampling, not fixable in a reader.
+
+  **A caller that cannot resolve the path is refused, not run in a still gas.** Resolving needs the model file's directory, and a study or a figure of merit meets the transport without one — which is precisely the shape of the bug where `driftVelocity` was honoured by the event-driven mode and silently dropped by the diffusive one. **The overhang is reported rather than absorbed**: outside the imported extent the edge value is continued, right for a stream and wrong for the end of a jet, and the samples do not say which, so `gas.flow-imported` states what fraction of the tracked region was extrapolated. One bug found writing it, in my own overhang arithmetic: the helper conflated a **flat axis** (a 2-D import makes no claim about z, so it covers all of it) with **no overlap** (covers none), so a box far outside the field reported itself as fully covered.
+
+  **Einzel consumes a velocity field and does not compute one** — the same boundary §17 draws around visualisation. A compressible flow through a differentially pumped stack is a CFD problem, and a half-hearted one inside an ion-optics engine would be worse than none because it would look like an answer.
+
+  **Two gaps left, both named.** The **pressure** is still a single number for the whole model, which a differentially pumped instrument is not. And the **event-driven mode refuses a field** rather than using one: `CollisionSampler` schedules and draws a neutral velocity without a position, so threading a position through the collision path is the work.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

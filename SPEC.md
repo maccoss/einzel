@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**540 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 17 examples in 29 s, every expectation a closed form, a published value, or an exact invariant.
+**558 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 17 examples in 29 s, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -75,7 +75,7 @@ followed.
 | --- | --- | --- |
 | **1** · Spine, project, CLI | Model, units, symmetry, DC solver, superposition, tricubic, integrator, schema, errors, result objects, manifests, CLI, VTU | **Complete**, and its acceptance is met: ACC-1 on a reflectron, the memo's mirror pair tracked end to end, GRD-1 enforced with no bypass, an agent building a DC model from prose |
 | **2** · Extensions, sweeps, shell, figures | Both extension runners, examples corpus v1, sensitivity fields, tolerance MC, optimisation, ILGPU, WPF shell, `Einzel.Render`, installer, update mechanism | **Split.** Sweeps, sensitivity fields, both optimisers, the sandboxed extension runner and `Einzel.Render` are done. The in-process runner, ILGPU, the shell, the installer, the update mechanism and **the examples corpus** are not |
-| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Nearly done.** RF, diffusion, collisions, the sequencer, space charge by direct sum, density export and Class B boundaries are built. **Gas velocity import is not**, and Class B's spectrum and notch-width halves need an arbitrary waveform |
+| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Scope complete.** Every named deliverable is built, gas velocity import included. What is left is on the acceptance side: the funnel benchmark needs a §23 decision and an affordable driven diffusive step, and Class B's spectrum and notch-width halves need an arbitrary waveform |
 | **4** · Traps, animation, MCP | Waveform excitation, multi-notch isolation, trap sequences, device library, animation, MCP | Trap sequences and the device library are largely done ahead of schedule. Waveforms, animation and MCP are not started |
 | **5** · Generalise and release | BEM, MSH interchange, CAD import, public repository | Not started |
 
@@ -109,7 +109,7 @@ largest gap in the project, and it is not a physics gap.
 | 2 | An update offered, deferred, later accepted | **Not met** — no update mechanism |
 | 3 | Mathieu diagram reproduced | Met twice — ideal field q = 0.90684, solved round rods q = 0.90525 |
 | 3 | Quadrupole transmission against resolution | **Met** — the band closes onto the tabulated apex q = 0.70600, R rising 1.6 to 15.6, both edges bisected to ACC-6 |
-| 3 | Funnel transmission against a published benchmark | **Not met** — needs gas flow, and §23 has not settled whose geometry |
+| 3 | Funnel transmission against a published benchmark | **Not met** — gas flow now exists, so what remains is the §23 decision on whose geometry, and a driven diffusive run being affordable |
 | 3 | Cross-mode agreement in the overlap band | Met — 0.43 standard errors |
 
 ---
@@ -509,7 +509,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `GAS-1` | A gas region carries species, temperature, a pressure field , a bulk velocity field , and a collision model. The velocity field is easy to omit and hard ... | Partial | Species, temperature, pressure and collision model are declared and used by both transport modes. A uniform bulk velocity is honoured. A pressure **field** and a velocity **field** are not built. |
+| `GAS-1` | A gas region carries species, temperature, a pressure field , a bulk velocity field , and a collision model. The velocity field is easy to omit and hard ... | Partial | Species, temperature, collision model, a uniform bulk velocity, and now an imported velocity **field** - VTK ImageData, sampled trilinearly, conserved at the face, with the overhang past its extent reported. Two gaps left: the **pressure** is still a single number, and the event-driven mode refuses a field rather than using one, because it draws a neutral velocity without a position. |
 
 ### Guardrails (§4)
 
@@ -704,10 +704,13 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    against notch width. §9 lists arbitrary waveforms as an excitation an electrode
    may carry and this build has only sinusoid and rectangular, so that is the
    unblocking piece rather than more analysis.
-3. **A gas velocity field (GAS-1).** A uniform bulk velocity is honoured; spec
-   figure 4 requires a *field* above 10⁻² mbar, and the jet off an inlet capillary
-   is not uniform across a ring stack. This is what stands between the funnel and
-   Phase 3 acceptance criterion 4 — after the §23 decision above is settled.
+3. ~~**A gas velocity field (GAS-1)**~~ — **imported fields work.** VTK ImageData,
+   sampled trilinearly, conserved at the face, agreeing with a declared uniform
+   vector to two ulps. Two gaps remain and both are worth naming: the **pressure**
+   is still a single number for the whole model, which a differentially pumped
+   instrument is not; and the **event-driven mode refuses a field** rather than
+   using one, because `CollisionSampler` draws a neutral velocity without a
+   position. Threading a position through the collision path is the work.
 4. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
    the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
    is 1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900, so 900 µs

@@ -645,7 +645,12 @@ public static class RunCommand
         DateTimeOffset timestampUtc,
         bool exportVtu)
     {
-        var outcome = DiffusionRun.Execute(model, field, fieldWarnings);
+        // The one place that knows where the model file is, so the one place that can
+        // resolve a declared velocity field.
+        var resolved = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
+
+        var outcome = DiffusionRun.Execute(model, field, fieldWarnings, resolved);
         var result = outcome.Result;
 
         var left = result.Collected + result.Lost.Values.Sum();
@@ -687,7 +692,11 @@ public static class RunCommand
 
         File.WriteAllText(manifestPath, manifest.ToJson());
 
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        // The resolved gas, not a fresh one built from the document. Rebuilding here
+        // would report a model with an imported velocity field as standing still,
+        // which is the same silent drop the resolution exists to prevent - one line
+        // further down the pipe.
+        var gas = resolved;
 
         var regime = Transport.Collisions.RegimeDiagnostics.Measure(
             gas, IonSpecies.FromModel(model), 1.0, result.ElapsedSeconds, SmallestAperture(model));
