@@ -610,3 +610,35 @@ so every earlier document still reads — but a document whose ions push on each
 other genuinely is not a 0.4 document, and saying so is cheaper than an older
 build reading it, ignoring the field it does not know, and reporting a different
 flight with nothing to indicate that anything was dropped.
+
+## What the format still cannot say: a second excitation
+
+A `solve` carries **one** `drive`, with one frequency and one waveform, and each
+electrode taps it with an amplitude and a phase. Two devices need more than that, and
+both are built and working in the engine while being inexpressible in a document:
+
+- **A travelling-wave guide** superposes a fast confining RF on a slow travelling
+  wave. An electrode carries one drive tap, not two, so the shipped template has the
+  travelling wave and no radial confinement — acceptance about 0.1 mm on a 2 mm bore.
+- **A stored-waveform isolation** applies a low-frequency notched comb across a pair
+  of electrodes while the main RF confines. `RfWaveform.Harmonic` expresses the comb
+  and `OscillatingUniformField` applies it, and the notch-width trade is measured in
+  `docs/validation.md` — on the analytic quadrupole, because there is no way to
+  declare it.
+
+**The shape of the fix is a drive per supply rather than per solve.** The decomposition
+already groups electrodes into supplies by spatial pattern, and a supply is exactly
+the thing that has a frequency and a waveform; moving the drive there costs one level
+of nesting in the schema and nothing in the solver, since basis superposition is
+indifferent to what the weights are functions of. A harmonic waveform is already one
+scalar function of time however many terms it has, so an arbitrary waveform costs one
+basis solve exactly as a sinusoid does.
+
+What it would change is the **step control**, and that is worth stating: a field with
+two timescales must cap its step by the faster one.
+`DrivenSuperposedField.ShortestPeriodSeconds` takes the minimum over its members, and
+`OscillatingUniformField` reports the period of its *highest harmonic* rather than of
+its fundamental — a comb reaching order 120 carries information a hundred and twenty
+times faster than its own repeat rate, and a controller told only the fundamental
+would step over every one of those oscillations while its error estimator agreed the
+step was accurate. For the field the step was shown. It was not shown the field.

@@ -75,7 +75,7 @@ followed.
 | --- | --- | --- |
 | **1** · Spine, project, CLI | Model, units, symmetry, DC solver, superposition, tricubic, integrator, schema, errors, result objects, manifests, CLI, VTU | **Complete**, and its acceptance is met: ACC-1 on a reflectron, the memo's mirror pair tracked end to end, GRD-1 enforced with no bypass, an agent building a DC model from prose |
 | **2** · Extensions, sweeps, shell, figures | Both extension runners, examples corpus v1, sensitivity fields, tolerance MC, optimisation, ILGPU, WPF shell, `Einzel.Render`, installer, update mechanism | **Split.** Sweeps, sensitivity fields, both optimisers, the sandboxed extension runner and `Einzel.Render` are done. The in-process runner, ILGPU, the shell, the installer, the update mechanism and **the examples corpus** are not |
-| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Scope complete.** Every named deliverable is built, gas velocity import included. What is left is on the acceptance side: the funnel benchmark needs a §23 decision and an affordable driven diffusive step, and Class B's notch-width half needs an arbitrary waveform. The secular spectrum is now built and measured against the Mathieu characteristic exponent |
+| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Scope complete.** Every named deliverable is built, gas velocity import included. What is left is on the acceptance side: the funnel benchmark needs a §23 decision and an affordable driven diffusive step. **Class B is complete** - the secular spectrum against the Mathieu characteristic exponent, and isolation efficiency against notch width on an arbitrary waveform that recovers the published digital cut-off |
 | **4** · Traps, animation, MCP | Waveform excitation, multi-notch isolation, trap sequences, device library, animation, MCP | Trap sequences and the device library are largely done ahead of schedule. Waveforms, animation and MCP are not started |
 | **5** · Generalise and release | BEM, MSH interchange, CAD import, public repository | Not started |
 
@@ -516,6 +516,55 @@ the field's curvature at the centre with no ion involved, and from the secular l
 of a flown ion against the closed form — agreeing to **0.02 per cent** at low q, and
 diverging at high q exactly as the anharmonicity says it must.
 
+### 22 · Two scales in a Class B measurement that must be derived, not chosen
+
+§12 asks for isolation efficiency against notch width and says nothing about how the
+excitation is set up. Two of its scales are not free parameters, and getting either
+wrong produces a plausible table rather than a failure.
+
+**The comb spacing must equal `1/T`.** A resonance excited for a time `T` has a width
+of about `1/T`, so a comb spaced more widely has *holes* — an ion between two lines
+is driven by neither and survives an excitation meant to eject it. A first version
+used 5 kHz against a 333 Hz width, and the notch width then toggled every ion at
+once, because selectivity had nothing to do with it.
+
+**The amplitude follows from the aperture and the duration.** Resonant growth is
+linear, `x(t) = (qE/m)t/2ω`, so reaching the aperture `a` in a time `T` needs
+`E = 2amω/qT`. A first version used four orders too much and ejected every ion at
+every notch width. An amplitude picked to make a demonstration work is a
+demonstration of the amplitude.
+
+**Recommend §12 state both**, since the figure is not well posed without them: an
+isolation efficiency is a function of notch width *at a stated excitation amplitude
+and duration*, and the comb must resolve the excitation's own linewidth.
+
+A third thing the measurement showed, worth recording because it is not obvious: the
+trade only has two arms at sufficient amplitude. At the amplitude that just ejects a
+resonant ion the narrow end is free and efficiency is monotone in width; at three
+times that the narrow end loses the target and an **interior optimum** appears. A
+study run at one amplitude would report the wrong shape and be internally consistent.
+
+### 23 · A time-varying field reached through a time-free interface answers anyway
+
+Found while building the above. `SuperposedField` implements only
+`IElectrostaticField`, and a driven member answers that interface with its value at
+`t = 0` — so summing a driven element with any other silently produced **a snapshot
+of the RF at the top of its cycle**, presented as the instrument. No exception, no
+NaN, nothing in the result to distinguish it.
+
+That is the third time this exact shape has appeared: the diffusive mode stepping a
+density through a t = 0 snapshot, `einzel solve` reporting the DC pattern for a
+driven geometry, and now this. **The class is: a time-varying quantity reached
+through a time-free interface does not fail, it answers at an arbitrary instant.**
+
+Fixed structurally rather than by a check — `FieldAssembly` now chooses
+`DrivenSuperposedField` when any member is driven, so the composition is decided by
+what it contains rather than by what the caller asks for.
+
+**Recommend §10 or §11 state the rule**: any composition of fields must preserve the
+strongest interface its members implement, and a static interface over a driven
+member is a defect rather than a lossy convenience.
+
 ---
 
 ## The shell, and the rest of §16
@@ -873,28 +922,36 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    noticing what the first tranche already returned: **two defects that no test
    written from inside the project would have caught**, because both were about a
    model that validates and answers a different question.
-2. ~~**Class B analysis**~~ — **all but one piece done.** `einzel boundary` bisects
-   to ACC-6, the transmission-against-resolution curve closes onto the tabulated
-   apex (Phase 3 acceptance criterion 3), and the **secular frequency spectrum**
-   now exists — a Lomb-Scargle periodogram of a recorded trajectory, matching the
-   Mathieu characteristic exponent to 0.007–0.144 per cent across q = 0.1 to 0.85
-   with both micromotion sidebands in place, and exposed as
-   `secularFrequencyX|Y|Z`. What is left is **isolation efficiency against notch
-   width**, which needs an **arbitrary waveform**: §9 lists one as an excitation an
-   electrode may carry and this build has only sinusoid and rectangular.
-3. ~~**A gas velocity field (GAS-1)**~~ — **imported fields work.** VTK ImageData,
+2. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
+   transmission-against-resolution curve closes onto the tabulated apex (Phase 3
+   acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
+   characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
+   **isolation efficiency against notch width** is measured on an
+   `RfWaveform.Harmonic` comb that independently recovers the published digital
+   cut-off at q = 0.712. What is left is not analysis but **a way to declare it**:
+   see item 3.
+3. **A drive per supply rather than per solve.** The engine can superpose a fast
+   confining RF on a slow supplementary excitation and steps it correctly — that is
+   what the notch measurement runs on — and a *document* cannot say so, because a
+   `solve` carries one `drive` with one frequency. Two shipped devices are limited
+   by it: the travelling-wave guide has no radial confinement (acceptance 0.1 mm on
+   a 2 mm bore) and a stored-waveform isolation cannot be a model at all. The
+   decomposition already groups electrodes into supplies by spatial pattern, and a
+   supply is exactly the thing that has a frequency, so the fix costs one level of
+   schema nesting and nothing in the solver.
+4. ~~**A gas velocity field (GAS-1)**~~ — **imported fields work.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps. Two gaps remain and both are worth naming: the **pressure**
    is still a single number for the whole model, which a differentially pumped
    instrument is not; and the **event-driven mode refuses a field** rather than
    using one, because `CollisionSampler` draws a neutral velocity without a
    position. Threading a position through the collision path is the work.
-4. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
+5. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
    the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
    is 1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900, so 900 µs
    would be about 843,000 steps. Attributed by control — 15.5 ns at 0 V RF, 8.93 ns
    at 25 V, 1.067 ns at 100 V — so it is the RF and roughly as E₀². An implicit or
    operator-split step is the fix.
-5. **Particle-in-cell space charge (SC-1).** The reference method it is validated
+6. **Particle-in-cell space charge (SC-1).** The reference method it is validated
    against now exists, which is the right order and was the reason for building the
    direct sum first.

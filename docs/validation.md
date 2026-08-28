@@ -475,3 +475,131 @@ Note also that the ideal-Mathieu prediction fails here and had to: β at the *no
 q of 0.745 is 0.6156, which satisfies no low-order condition at all. The measured
 0.6769 is the one the resonance condition is about, and the difference between them
 is the effective radius plus the anharmonic shift.
+
+## The arbitrary waveform, and isolation efficiency against notch width
+
+§9 lists an arbitrary waveform among the excitations an electrode may carry, and
+§12's last unbuilt Class B figure — isolation efficiency against notch width —
+cannot be measured without one. It is a **Fourier series**, which is not a
+restriction on "arbitrary": every periodic waveform is one, and a notch is more
+naturally written as a list of harmonics with a gap in it than as the samples of
+whatever waveform happens to have that spectrum. It is also smooth by construction,
+where a sampled table is piecewise something and a discontinuity in the drive is a
+discontinuity in the acceleration.
+
+### What it must reduce to
+
+**A single term of order one is the sinusoid**, to 6.1e-16 across 721 phases.
+
+**A half turn of phase is exactly antiphase** where the argument is representable —
+exactly zero at phases k/16, and 1.0e-14 at arbitrary phases across orders 1 to 17.
+That second number is the honest limit: `2(nt + ½)` is itself rounded and the error
+grows with the order, so the exactness is a property of the convention at
+representable phases rather than a guarantee at every instant of a flight.
+
+**The Fourier series of a square wave converges on the square wave**, with textbook
+Gibbs behaviour:
+
+| terms | interior worst | edge overshoot |
+| --- | --- | --- |
+| 5 | 0.182 | 0.182 |
+| 20 | 0.051 | 0.179 |
+| 80 | 0.013 | 0.177 |
+
+The interior falls by fourteen-fold; the edge overshoot does not fall at all. **A
+series that showed no overshoot would not be a Fourier series**, so both are
+asserted.
+
+**And it recovers the published digital cut-off.** Schrader, Anderson and Russell
+(JASMS 2024) put the square-wave low-mass cut-off at q = 0.712. Driving the same
+geometry two ways:
+
+| waveform | last q through | first q lost |
+| --- | --- | --- |
+| rectangular, direct | 0.710 | 0.715 |
+| the 80-term series | **0.710** | **0.715** |
+
+Same bracket, containing the published number. That is the check that says the
+arbitrary-waveform path *drives an ion* rather than merely evaluating to the right
+numbers.
+
+**A mistake worth recording**: the first version wrote the series with zero phase on
+every term. A square wave's series is a **sine** series, so that is a square wave
+shifted a quarter cycle — a different waveform, which converged perfectly well and
+moved the cut-off to about 0.703. **A reduction that converges to the wrong thing is
+worse than one that does not converge**, because convergence is the thing being
+checked and it looked fine.
+
+### Resonant ejection
+
+A supplementary uniform field oscillating at the ion's own secular frequency pumps it
+until it leaves; the same amplitude off resonance does almost nothing. Measured at
+q = 0.4, secular 146.27 kHz, 400 V/m over 1200 RF cycles:
+
+| excitation | excursion | outcome |
+| --- | --- | --- |
+| on resonance | 4.000 mm | **ejected** |
+| half the frequency | 0.264 mm | held |
+| twice the frequency | 0.133 mm | held |
+
+### Isolation efficiency against notch width
+
+A comb of harmonics with a band removed. An ion's secular frequency is set by its
+Mathieu q and q goes as 1/m, so **a mass axis is a frequency axis** and a notch in
+frequency is a window in mass. With the target at m/z 500, q = 0.4, secular
+146.28 kHz — comb order 73.1 — and a notch over orders 71 to 75:
+
+| m/z | q | secular | order | excursion | survived |
+| --- | --- | --- | --- | --- | --- |
+| 420 | 0.4762 | 176.94 kHz | 88.5 | 4.000 mm | no |
+| 460 | 0.4348 | 160.08 kHz | 80.0 | 4.000 mm | no |
+| 490 | 0.4082 | 149.50 kHz | 74.7 | 2.308 mm | **yes** |
+| 500 | 0.4000 | 146.28 kHz | 73.1 | 1.513 mm | **yes** |
+| 510 | 0.3922 | 143.21 kHz | 71.6 | 1.932 mm | **yes** |
+| 545 | 0.3670 | 133.44 kHz | 66.7 | 4.000 mm | no |
+| 600 | 0.3333 | 120.58 kHz | 60.3 | 4.000 mm | no |
+
+**The trade needs two amplitudes to show both its arms**, and that is a finding
+rather than a test artefact:
+
+| half-width | just ejecting (76 V/m) | three times that (229 V/m) |
+| --- | --- | --- |
+| 0 | **1.00** | 0.00 — target lost |
+| 2 | 0.50 | 0.00 — target lost |
+| 6 | 0.00 | **0.75** |
+| 12 | 0.00 | 0.25 |
+
+At the amplitude that just ejects a resonant ion the narrow end is free — the
+target's off-resonance response is 1.5 mm against a 4 mm aperture — so efficiency is
+simply monotone in width. Push three times harder and the narrow end starts losing
+the target, and **an interior optimum appears at half-width 6**. Efficiency counts a
+run that lost the target as zero however many neighbours it ejected, which is not a
+scoring convention: a purified sample of nothing is not a purification.
+
+### Two scales that had to be derived rather than chosen
+
+Both first versions were wrong by orders of magnitude, in ways that produced
+plausible tables.
+
+**The comb spacing must equal 1/T.** A resonance excited for a time T has a width of
+about 1/T, so a comb spaced more widely has *holes* — an ion falling between two
+lines is driven by neither and survives an excitation meant to eject it. A first
+version used 5 kHz against a 333 Hz width, and every result was nonsense in an
+interesting way: the notch width toggled every ion at once, because selectivity had
+nothing to do with it.
+
+**The amplitude follows from the aperture and the duration.** A resonantly driven
+oscillator grows linearly, `x(t) = (qE/m)t/2ω`, so reaching the aperture `a` in a
+time `T` needs `E = 2amω/qT` — 76 V/m here. A first version used 300 V/m, four
+orders too much, and ejected every ion at every notch width. **An amplitude picked to
+make a demonstration work is a demonstration of the amplitude.**
+
+### What this does not yet reach
+
+The measurement runs on the analytic quadrupole, not on a solved geometry, because
+**the model format cannot declare a supplementary excitation**: a `solve` carries one
+`drive` with one frequency, and a stored-waveform isolation needs the main RF and a
+low-frequency comb at once, on different electrodes. That is the same limitation
+already recorded for the travelling-wave guide, which needs a fast confining RF
+superposed on a slow travelling wave. The mechanism is built and validated; what is
+missing is a way to *say* it in a document.

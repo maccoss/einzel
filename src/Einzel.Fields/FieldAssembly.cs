@@ -317,10 +317,18 @@ public static class FieldAssembly
             }
         }
 
+        // Chosen by what the sum contains, not by what the caller asks for. A
+        // SuperposedField satisfies only IElectrostaticField, and a driven member
+        // answers that interface at t = 0 - so a driven element summed with anything
+        // else would silently become a snapshot of the RF at the top of its cycle,
+        // with no exception and nothing in the result to say so. Same failure the
+        // diffusive mode was found stepping a density through.
         var field = elements.Count switch
         {
             0 => FieldFreeSpace.Instance,
             1 => elements[0],
+            _ when elements.Exists(e => e is ITimeVaryingField) =>
+                new DrivenSuperposedField(elements),
             _ => (IElectrostaticField)new SuperposedField(elements),
         };
 
