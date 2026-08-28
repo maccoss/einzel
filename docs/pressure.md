@@ -694,3 +694,82 @@ identical to a figure where the density was never computed.
 - **A density snapshot mid-run.** A run reports and exports the density at the end.
   A model whose ions have all arrived by then leaves an empty box, correctly, and
   the only way to see the packet in flight is to shorten `maximumFlightTime`.
+
+## The event-driven models see a gas that moves
+
+GAS-1 asks for an imported neutral velocity field. The diffusive mode could see one;
+the event-driven models **refused** it, and refusing was right at the time — a
+collision was drawn from a time and a velocity with no place to evaluate the flow at,
+so the alternative would have been a run that used the uniform drift and said nothing,
+flying an ion through a declared jet as though the gas stood still.
+
+The change is one argument: the ion's **position** is carried into the draw, so a
+collision samples a Maxwellian about the bulk velocity *where the ion is*.
+
+### The closed form it is checked against
+
+In a gas moving at `u` with a field `E`, an ion's steady drift is `u + μE` — the flow
+carries it, the field pushes it, and the two add, because the mobility is defined in
+the frame the gas is at rest in. So the flow's contribution is the **difference**
+between two runs, which cancels the collision model, the cross section and the
+temperature:
+
+| | along the flow | across it |
+| --- | --- | --- |
+| still gas | −5.405 m/s | 1005.209 m/s |
+| moving at 120 m/s | 114.595 | 1005.209 |
+| **difference** | **120.000** | **−0.000** |
+
+A declared 120, recovered to the printed precision, with exactly nothing across it.
+
+**And the control that makes it mean something.** A `UniformGasFlow` and a declared
+`driftVelocity` are the same gas said two ways, so with the same seed they must give
+the same *trajectory* rather than the same average — measured identical to **1e-9**.
+If the flow path and the drift path disagreed about what the neutral velocity is, that
+is where it would show.
+
+### A flow that varies with position
+
+The thing a uniform drift structurally cannot express. A gas standing still below a
+plane and moving at 200 m/s above it: the ion drifts at 465.9 m/s before the step and
+670.4 after, a difference of **204.5** against the declared 200. The residual is the
+few collisions it takes to equilibrate with the new gas.
+
+**A mistake worth recording.** The first version put the step at 3 mm, which the ion
+crosses in six microseconds — so the "before" average was over three samples of an ion
+still accelerating from rest and read 308 m/s against a steady drift of about 500. The
+difference then came out at 361 against a declared 200, which looks like a physics
+discrepancy and is a launch transient. Moving the step to 250 mm fixed it.
+
+### Two things the sampler knew and nobody read
+
+`BoundExceeded` and the new `SampledOutsideFlow` were computed and consumed by
+nothing. That is the third time evidence about a computation's own quality has been
+produced here and dropped at a seam — after `FieldAssembly.Build` discarding its
+`SolveReport` and the sweep evaluator discarding its warnings. Both now reach the
+result:
+
+- **`collisions.rate-underestimated`** (validity violation) — a sampled relative speed
+  exceeded the null-collision bound, so the rate was too low for at least one event
+  and everything depending on it is biased. A biased rate looks exactly like a correct
+  one.
+- **`gas.flow-extrapolated`** (qualified) — a collision was drawn outside the imported
+  field, where the flow is the edge value continued rather than anything measured.
+  Right for a stream, wrong for the end of a jet, and the samples cannot say which.
+
+### The trap that removing a refusal set
+
+The trajectory path built its gas with `BackgroundGas.FromModel`, which does not
+resolve a declared `velocityField` — only the diffusive path called
+`GasFlowImport.Resolve`. So lifting the refusal without also resolving there would
+have reintroduced **exactly** the failure the refusal existed to prevent: a model
+declaring a jet, flown as though the gas stood still, with nothing to say so. Both
+paths now resolve.
+
+### Still one pressure
+
+The gas **density** is a single number for the whole model, so a differentially pumped
+instrument is not yet expressible — an imported field gives the neutrals a velocity
+everywhere and the same number of them everywhere. The collision *rate* would need the
+density at the ion's position, which is the same one-argument change made here applied
+to `Schedule` rather than to the draw, plus a way to declare the field.

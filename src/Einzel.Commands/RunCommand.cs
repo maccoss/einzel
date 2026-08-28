@@ -1006,7 +1006,13 @@ public static class RunCommand
         // through to whichever mode happened to be implemented first.
         _ = TransportModes.Resolve(model.TransportMode);
 
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        // Resolved rather than merely built from the model, so a declared velocity
+        // field reaches the event-driven models too. FromModel alone would produce a
+        // gas with no flow in it and no complaint - which is the failure the sampler
+        // used to refuse a flow outright to prevent, and removing that refusal
+        // without this would have reintroduced it exactly.
+        var gas = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
         // The reportable number comes from the convergence study, not from a
         // single integration: one run has no honest uncertainty to quote.

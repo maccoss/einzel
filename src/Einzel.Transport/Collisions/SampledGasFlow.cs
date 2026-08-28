@@ -162,6 +162,17 @@ public sealed class SampledGasFlow : IGasFlow
         return result;
     }
 
+    /// <inheritdoc/>
+    public bool Covers(in Vec3 point)
+    {
+        var lower = MinimumSi;
+        var upper = MaximumSi;
+
+        return point.X >= lower.X && point.X <= upper.X
+            && point.Y >= lower.Y && point.Y <= upper.Y
+            && point.Z >= lower.Z && point.Z <= upper.Z;
+    }
+
     /// <summary>
     /// How much of a box lies outside the sampled region, as a volume fraction.
     /// </summary>

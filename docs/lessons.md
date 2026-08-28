@@ -602,6 +602,19 @@ actually caught them were:
   Liouville's theorem is the same kind of check on the integrator, and being
   independent of energy it catches things energy conservation cannot. Both found
   bugs that presented as small, plausible drifts.
+- **Removing a refusal without removing its reason.** `CollisionSampler` refused a
+  gas flow because it had no position to evaluate one at. Threading the position in
+  made the refusal obsolete — but the trajectory run path built its gas with
+  `FromModel`, which never resolves a declared velocity field, while only the
+  diffusive path called `Resolve`. Lifting the refusal alone would have reintroduced
+  the exact failure it existed to prevent, silently. **A guard is removed correctly
+  only when the thing it guarded against is checked for directly.**
+- **A transient inside the measurement window.** A stepped gas flow read a difference
+  of 361 m/s against a declared 200, which looks like a physics discrepancy. The step
+  sat 3 mm from the launch and the ion crossed it in six microseconds, so the "before"
+  average was over three samples of an ion still accelerating from rest. Moving the
+  step past the settling distance gave 204.5. **An average is over whatever the window
+  contains, including the part that is not yet the thing being measured.**
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.

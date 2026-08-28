@@ -97,6 +97,8 @@ public static class FlightTimeStudy
         var runs = new List<TrajectoryResult>(refinements);
         var warnings = new List<ValidityWarning>();
 
+        Collisions.CollisionSampler? sampler = null;
+
         for (var level = 0; level < refinements; level++)
         {
             var scale = Math.Pow(refinementRatio, -level);
@@ -111,8 +113,37 @@ public static class FlightTimeStudy
             // A fresh sampler per refinement, from the same seed, so each level
             // draws the same sequence of uniforms and the comparison is of the
             // integrator rather than of the dice.
+            sampler = collisions?.Invoke();
+
             runs.Add(TrajectoryIntegrator.Integrate(
-                initialState, species, field, refined, stopWhenNegative, collisions: collisions?.Invoke()));
+                initialState, species, field, refined, stopWhenNegative, collisions: sampler));
+        }
+
+        // What the collision sampler learned about its own validity. It used to
+        // compute both of these and have them read by nothing, which is the third
+        // time evidence about a computation's quality has been produced here and
+        // dropped at the seam - a biased collision rate looks exactly like a correct
+        // one, and so does a gas nobody imported.
+        if (sampler is { BoundExceeded: true })
+        {
+            warnings.Add(new ValidityWarning(
+                "collisions.rate-underestimated",
+                "a sampled relative speed exceeded the null-collision bound, so the collision rate "
+                + "was too low for at least one event and every result that depends on it is "
+                + "biased. The bound is the true rate plus a fixed headroom in thermal speeds, and "
+                + "an ion far faster than thermal outruns it",
+                WarningSeverity.ValidityViolation));
+        }
+
+        if (sampler is { SampledOutsideFlow: true })
+        {
+            warnings.Add(new ValidityWarning(
+                "gas.flow-extrapolated",
+                "at least one collision was drawn outside the imported velocity field, where the "
+                + "flow is the edge value continued rather than anything that was measured. That "
+                + "is right for a stream and wrong for the end of a jet, and the samples cannot "
+                + "say which",
+                WarningSeverity.Qualified));
         }
 
         foreach (var run in runs)

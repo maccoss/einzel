@@ -620,6 +620,26 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Not done:** the `solved3d` document form still spells one `drive`, though `CompiledSolvedField3D`, `Geometry3D` and the 3-D builder all carry a list already. Details in `docs/model-format.md` and `docs/device-templates.md`.
 
+- **A gas that moves, in the event-driven mode — GAS-1's last transport gap.** The diffusive mode could see an imported velocity field; the trajectory models **refused** one, and refusing was right at the time: a collision was drawn from a time and a velocity with no place to evaluate the flow at, so the alternative was a run that used the uniform drift and said nothing. The change is one argument — the ion's **position** goes into the draw, so a collision samples the Maxwellian about the bulk velocity *where the ion is*.
+
+  **Checked against `u + μE`**, which is a closed form the engine has no part in, and taken as a *difference* so it cancels the collision model, the cross section and the temperature:
+
+  | | along the flow | across it |
+  | --- | --- | --- |
+  | still gas | −5.405 m/s | 1005.209 m/s |
+  | moving at 120 m/s | 114.595 | 1005.209 |
+  | **difference** | **120.000** | **−0.000** |
+
+  And the control: a `UniformGasFlow` and a declared `driftVelocity` are the same gas said two ways, so on the same seed they must give the same *trajectory* rather than the same average — **1e-9**. A stepped flow (still below a plane, 200 m/s above) gives **204.5 m/s** of carry across the step.
+
+  **The trap that removing a refusal set, and it nearly shipped.** The trajectory path built its gas with `BackgroundGas.FromModel`, which does **not** resolve a declared `velocityField` — only the diffusive path called `GasFlowImport.Resolve`. Lifting the refusal without also resolving there would have reintroduced *exactly* the failure the refusal existed to prevent: a model declaring a jet, flown as though the gas stood still, silently. **A guard is removed correctly only when the thing it guarded against is checked for directly.**
+
+  **And two things the sampler knew that nobody read.** `BoundExceeded` and the new `SampledOutsideFlow` were computed and consumed by nothing — the third time evidence about a computation's own quality has been dropped at a seam here, after `FieldAssembly.Build` discarding its `SolveReport` and the sweep evaluator discarding its warnings. Both now reach the result: `collisions.rate-underestimated` (a biased collision rate looks exactly like a correct one) and `gas.flow-extrapolated` (outside the imported box the flow is the edge value continued, which is right for a stream and wrong for the end of a jet).
+
+  **A measurement mistake worth keeping**: the stepped-flow test first put the step 3 mm from the launch, which the ion crosses in 6 µs — so the "before" average was three samples of an ion still accelerating from rest, and the carry read 361 against a declared 200. That looks like a physics discrepancy and is a launch transient. **An average is over whatever the window contains, including the part that is not yet the thing being measured.**
+
+  **Still one pressure**: the gas *density* is a single number for the whole model, so a differentially pumped instrument is not expressible — an imported field gives the neutrals a velocity everywhere and the same number of them everywhere. Details in `docs/pressure.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

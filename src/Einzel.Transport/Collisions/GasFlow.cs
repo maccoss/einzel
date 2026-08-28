@@ -45,6 +45,20 @@ public interface IGasFlow
     /// <param name="point">Where, in metres.</param>
     /// <returns>The velocity.</returns>
     Vec3 VelocityAt(in Vec3 point);
+
+    /// <summary>
+    /// Whether this flow actually has data at a point, rather than extrapolating.
+    /// </summary>
+    /// <param name="point">The point, in metres.</param>
+    /// <returns><see langword="true"/> where the flow is defined.</returns>
+    /// <remarks>
+    /// True everywhere for a flow given as a formula, and only inside its own box for
+    /// one imported from a file. A sampled field clamps to its edge value outside,
+    /// which is a choice rather than a measurement - the gas beyond the imported
+    /// volume is whatever the last plane of it said - so a caller that flies through
+    /// that region should be able to say so rather than reporting it as data.
+    /// </remarks>
+    bool Covers(in Vec3 point) => true;
 }
 
 /// <summary>

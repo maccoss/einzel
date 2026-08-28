@@ -775,7 +775,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `GAS-1` | A gas region carries species, temperature, a pressure field , a bulk velocity field , and a collision model. The velocity field is easy to omit and hard ... | Partial | Species, temperature, collision model, a uniform bulk velocity, and now an imported velocity **field** - VTK ImageData, sampled trilinearly, conserved at the face, with the overhang past its extent reported. Two gaps left: the **pressure** is still a single number, and the event-driven mode refuses a field rather than using one, because it draws a neutral velocity without a position. |
+| `GAS-1` | A gas region carries species, temperature, a pressure field , a bulk velocity field , and a collision model. The velocity field is easy to omit and hard ... | Partial | Species, temperature, collision model, a uniform bulk velocity, and now an imported velocity **field** - VTK ImageData, sampled trilinearly, conserved at the face, with the overhang past its extent reported. Both transport modes see it: the event-driven models carry the ion's position into the neutral draw, checked against `u + mu E` at **120.000 m/s of carry against a declared 120** with -0.000 across it, and a flow field agrees with an equivalent uniform drift to **1e-9** on the same seed. `gas.flow-extrapolated` reports a collision drawn outside the imported extent. One gap left: the **density** is still a single number for the whole model, so a differentially pumped instrument is not expressible - an imported field gives the neutrals a velocity everywhere and the same number of them everywhere. |
 
 ### Guardrails (§4)
 
@@ -981,13 +981,17 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    point is a design study; see Amendment 24. Left undone: the `solved3d` document
    form still spells one `drive`, though everything below the document already
    carries a list.
-4. ~~**A gas velocity field (GAS-1)**~~ — **imported fields work.** VTK ImageData,
+4. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
-   vector to two ulps. Two gaps remain and both are worth naming: the **pressure**
-   is still a single number for the whole model, which a differentially pumped
-   instrument is not; and the **event-driven mode refuses a field** rather than
-   using one, because `CollisionSampler` draws a neutral velocity without a
-   position. Threading a position through the collision path is the work.
+   vector to two ulps; and the event-driven models no longer refuse it — the ion's
+   position is carried into the neutral draw, so a collision samples the gas where
+   the ion is. Checked against `u + μE`: the difference between a moving gas and a
+   still one is **120.000 m/s against a declared 120**, with **−0.000** across it,
+   and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
+   seed. One gap remains: the **density** is still a single number for the whole
+   model, so a differentially pumped instrument is not expressible — an imported
+   field gives the neutrals a velocity everywhere and the same number of them
+   everywhere.
 5. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
    the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
    is 1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900, so 900 µs

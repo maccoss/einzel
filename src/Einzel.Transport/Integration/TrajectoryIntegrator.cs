@@ -294,8 +294,9 @@ public static class TrajectoryIntegrator
                     // presenting as step-size underflow, which would look like a
                     // numerical failure and is a physical rate.
                     var here = state.Velocity;
+                    var at = state.Position;
 
-                    if (collisions.Collide(time.Total, ref here))
+                    if (collisions.Collide(time.Total, in at, ref here))
                     {
                         state = new PhaseState(state.Position, here);
                         derivative = DormandPrince54.Derivative(in state, field, chargeToMass, time.Total);
@@ -427,8 +428,9 @@ public static class TrajectoryIntegrator
             if (collisionDue)
             {
                 var velocity = state.Velocity;
+                var at = state.Position;
 
-                if (collisions!.Collide(time.Total, ref velocity))
+                if (collisions!.Collide(time.Total, in at, ref velocity))
                 {
                     state = new PhaseState(state.Position, velocity);
 
