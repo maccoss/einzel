@@ -43,6 +43,10 @@ public static class PoissonSolver3D
     /// Rebuilds the mask on a coarser grid from the geometry. Supplying it is what
     /// lets a solve with interior electrodes coarsen at all.
     /// </param>
+    /// <param name="source">
+    /// The right-hand side of <c>grad^2 phi = source</c>, or null for Laplace. A
+    /// charge density enters as <c>-rho / epsilon0</c>.
+    /// </param>
     /// <param name="initialGuess">A starting field, or null for zeros.</param>
     /// <returns>The potential, and how the solve went.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="mask"/> is null.</exception>
@@ -52,7 +56,8 @@ public static class PoissonSolver3D
         double tolerance = 1e-10,
         int maximumCycles = 200,
         Func<Grid3D, DirichletMask3D>? coarsen = null,
-        ScalarField3D? initialGuess = null)
+        ScalarField3D? initialGuess = null,
+        ScalarField3D? source = null)
     {
         ArgumentNullException.ThrowIfNull(mask);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tolerance);
@@ -70,7 +75,23 @@ public static class PoissonSolver3D
 
         mask.ApplyTo(potential);
 
-        var rightHandSide = new ScalarField3D(grid);
+        // Laplace when nothing is given, Poisson when something is. Same argument as
+        // in two dimensions: the cycle already carries a right-hand side, and the
+        // coarse levels receive the restricted residual whatever the fine source is.
+        // The convention the residual fixes is grad^2 phi = source, so a charge
+        // density enters as -rho/epsilon0.
+        var rightHandSide = source ?? new ScalarField3D(grid);
+
+        if (source is not null
+            && (source.Grid.CountX != grid.CountX
+                || source.Grid.CountY != grid.CountY
+                || source.Grid.CountZ != grid.CountZ))
+        {
+            throw new ArgumentException(
+                "the source is on a different grid from the mask, so its values do not "
+                + "correspond to the nodes being solved",
+                nameof(source));
+        }
         var residual = new ScalarField3D(grid);
 
         var initial = Residual(potential, rightHandSide, mask, residual);

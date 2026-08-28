@@ -802,3 +802,81 @@ number this engine has published from a solved field has moved.
 What is left for SC-1's approximate method is the particle side: cloud-in-cell
 deposit, the same weights on the gather (or momentum is not conserved), and validation
 against the direct pairwise sum, which exists and is the reason it was built first.
+
+## Cloud-in-cell: charge onto a grid, field back off it
+
+The particle half of SC-1's approximate method. The direct pairwise sum, which is the
+reference it is validated against, costs O(N^2); particle-in-cell costs one solve plus
+O(N), which is what makes 10^4 macroparticles affordable when 10^3 already takes hours.
+
+**Charge is conserved by construction rather than by normalising.** The eight weights
+sum to exactly one whatever the position, so what goes on the grid is what was handed
+in - 500 particles, 8.010883e-14 C in, 8.010883e-14 C on the grid. Normalising
+afterwards would pass the same test while hiding a weighting error rather than
+preventing one.
+
+**Charge that leaves the grid is counted, not clamped or dropped.** A packet that has
+drifted off its own grid produces a field that is quietly too weak, which looks exactly
+like a packet more dilute than it is; clamping is worse still, piling the charge onto a
+face and producing a field that is wrong and confident.
+
+### The same weights on the way out, and why it is not a convenience
+
+A particle writes charge to a node with some weight and reads the field back from it
+with the same weight, so its own contribution cancels in the sum. Gather with a
+*better* interpolant - a tricubic, which is more accurate for a smooth field - and
+every particle feels itself, the packet heats up out of nothing, and the field looks
+entirely reasonable throughout.
+
+Measured, as a fraction of the field a neighbour one cell away would feel (2.304e4 V/m
+for this charge), against a nearest-node gather that shares no weights:
+
+| offset in the cell | matched | mismatched |
+| --- | --- | --- |
+| 0.00 | 8.05e-5 | 0.521 |
+| 0.13 | 8.32e-5 | 0.480 |
+| 0.37 | 1.01e-4 | 0.467 |
+| 0.50 | 1.15e-4 | 0.495 |
+| 0.61 | 1.29e-4 | 0.470 |
+| 0.89 | 1.68e-4 | 0.485 |
+
+**Three and a half orders of magnitude**, and the mismatched column is what makes the
+matched one a property of the *symmetry* rather than of the grid being fine. Half the
+neighbour field, felt by a particle from itself, is not a small error - it is a packet
+that expands for a reason nobody put in.
+
+It is not exactly zero, and saying so matters: the cancellation is exact on a uniform
+periodic grid with centred differences, and here the box is earthed, whose images break
+the symmetry slightly. So the assertion is a ratio to the scale that would matter, not
+a claim of zero.
+
+**Trilinear, and ACC-3 is not violated.** That requirement forbids trilinear
+interpolation on a *trajectory path*, and this is not one: it is the interpolation of a
+self-consistent field whose accuracy is bounded by the deposit anyway, and where the
+deposit/gather symmetry buys more than the extra order would. The applied field an ion
+flies through is still tricubic.
+
+### Against the closed form
+
+A uniformly charged ball, 20,000 macroparticles, 48 cells across an 8 mm earthed cube,
+against `Qr/(4πε₀R³)` inside and `Q/(4πε₀r²)` outside:
+
+| r | measured | closed form | ratio |
+| --- | --- | --- | --- |
+| 0.5 mm | 7.7384e2 | 7.1998e2 | 1.075 |
+| 1.0 mm | 1.2956e3 | 1.4400e3 | 0.900 |
+| 1.5 mm | 6.4595e2 | 6.3998e2 | 1.009 |
+| 2.0 mm | 3.6669e2 | 3.5999e2 | 1.019 |
+
+Eleven cycles at a convergence factor of 0.110. The 1.0 mm point is the ball's own
+surface, where the closed form has a kink the grid cannot resolve, and the whole
+comparison carries the earthed box: the closed form is for a sphere alone in space and
+this one sits in a cube whose images pull the potential down. **That is a boundary
+condition rather than a solver error**, and tightening it means a bigger box rather
+than a better method.
+
+### What is still missing for SC-1
+
+The **integration**: choosing the grid a drifting packet deposits onto, when to
+re-solve, and the comparison against the direct sum on the same configuration. The
+pieces are all here and nothing wires them to `PacketIntegrator` yet.

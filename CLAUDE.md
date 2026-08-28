@@ -686,6 +686,24 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Left for SC-1: cloud-in-cell deposit, the same weights on the gather (or momentum is not conserved), and the comparison against the direct pairwise sum - which exists, and is why it was built first.
 
+- **Cloud-in-cell: the particle half of SC-1's approximate method.** The direct sum costs O(N^2); particle-in-cell costs one solve plus O(N), which is what makes 10^4 macroparticles affordable when 10^3 already takes hours. Charge is conserved **by construction** - the eight weights sum to exactly one whatever the position, so 8.010883e-14 C in is 8.010883e-14 C on the grid, and normalising afterwards would pass the same test while hiding a weighting error rather than preventing one. Charge that leaves the grid is **counted**, not clamped or dropped: a packet off its own grid gives a field quietly too weak, which looks exactly like a packet more dilute than it is.
+
+  **The same weights on the way out, and it is not a convenience.** A particle writes charge to a node with a weight and reads the field back with the same weight, so its own contribution cancels. Measured as a fraction of the field a neighbour one cell away feels, against a nearest-node gather sharing no weights:
+
+  | offset in the cell | matched | mismatched |
+  | --- | --- | --- |
+  | 0.00 | 8.05e-5 | 0.521 |
+  | 0.50 | 1.15e-4 | 0.495 |
+  | 0.89 | 1.68e-4 | 0.485 |
+
+  **Three and a half orders of magnitude**, and the mismatched column is what makes the matched one a property of the *symmetry* rather than of the grid being fine. Half the neighbour field felt by a particle from itself is a packet that expands for a reason nobody put in — and a tricubic gather, which is *more accurate* for a smooth field, would do exactly that. **ACC-3 is not violated**: it forbids trilinear interpolation on a *trajectory path*, and this is the interpolation of a self-consistent field whose accuracy the deposit already bounds. The applied field an ion flies through is still tricubic.
+
+  It is **not exactly zero** and the test says so: the cancellation is exact on a uniform periodic grid with centred differences, and an earthed box breaks it slightly through its images. So the assertion is a ratio to the scale that would matter, not a claim of zero.
+
+  A uniform ball of 20,000 macroparticles reproduces Qr/(4πε₀R³) and Q/(4πε₀r²) to 1–8% in 11 cycles at factor 0.110 — the residual being the earthed cube rather than the method, since the closed form is for a sphere alone in space.
+
+  **Left for SC-1:** the integration — which grid a drifting packet deposits onto, when to re-solve, and the comparison against the direct sum on the same configuration. Every piece exists; nothing wires them to `PacketIntegrator` yet. In `docs/numerics.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

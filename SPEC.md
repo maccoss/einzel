@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**615 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**620 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1011,6 +1011,11 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    manufactured solution at **observed order 2.000, 2.000** in 11 grid-independent
    cycles, with a null source giving bit-identical results to the Laplace path. The
    cycle already carried a right-hand side and had only ever been handed zeros, so it
-   cost one argument and no numerics. What is left is the particle side: cloud-in-cell
-   deposit, the same weights on the gather (or momentum is not conserved), and the
-   comparison against the direct sum.
+   cost one argument and no numerics. The **particle side is now done too**: cloud-in-cell
+   deposit conserving charge exactly, and a gather sharing the deposit's weights so
+   the self-force cancels - measured at **8e-5 of the neighbour-scale field against
+   0.5 for a gather that does not share them**, three and a half orders of magnitude,
+   which is what makes it a property of the symmetry rather than of a fine grid. A
+   uniform ball reproduces its closed form to 1-8 per cent inside an earthed box. What
+   is left is the **integration**: which grid a drifting packet deposits onto, when to
+   re-solve, and the comparison against the direct sum on the same configuration.
