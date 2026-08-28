@@ -372,6 +372,17 @@ depends on which unit you take it in, and that is precisely the ambiguity the
 evaluator exists to refuse. `mod` is Euclidean rather than truncated, so
 `mod(-1, 2)` is 1: an index counted backwards still alternates the way it should.
 
+`cosPi(x)` and `sinPi(x)` join them, and take **half turns rather than radians**.
+A multipole needs them: 2n rods at pi/n intervals is
+`rodCentre * cosPi(2 * pole / poleCount)`, and without trigonometry that geometry
+cannot be written at all.
+
+Half turns because `Math.Cos(Math.PI / 2)` is 6.1e-17 rather than zero, so a rod
+placed at a quarter turn would land a hair off axis and the multipole would carry a
+spurious dipole made of rounding. `cosPi(0.5)` is exactly zero. This is the same
+convention, for the same reason, that the drive decomposition already uses to keep
+an antiphase electrode from picking up a quadrature component of pure round-off.
+
 ## What a solve is a cross-section of
 
 ```json

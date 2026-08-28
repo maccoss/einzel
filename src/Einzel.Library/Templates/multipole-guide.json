@@ -1,0 +1,220 @@
+{
+  "schemaVersion": "0.3",
+  "name": "multipole-guide",
+  "description": "An RF multipole guide of any even order, written once. poleCount rods sit on a circle at equal angles, alternating in drive phase, which is a quadrupole at 4, a hexapole at 6 and an octupole at 8 with nothing changed but that number. What separates them is the shape of the effective potential: a 2n-pole's pseudopotential goes as r^(2n-2), so a quadrupole's well is parabolic and confines tightly about the axis while an octupole's is nearly flat across the middle and steep at the wall. That is why a guide meant to hold a wide mass range is rarely a quadrupole. Note what the rods are sized by: rodFill is a fraction of the largest radius that fits without neighbours intersecting, because that largest radius depends on the pole count and a ratio carried over from a quadrupole puts a hexapole's rods through one another. At poleCount 4 the default reproduces Denison's classical 1.1468.",
+  "parameters": {
+    "poleCount": {
+      "value": 6,
+      "unit": "1",
+      "minimum": 4,
+      "maximum": 12,
+      "description": "How many rods. Four is a quadrupole, six a hexapole, eight an octupole. Must be even, because adjacent rods alternate in drive phase and an odd count would put two like phases side by side."
+    },
+    "inscribedRadius": {
+      "value": 4,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 50,
+      "description": "Distance from the axis to the nearest rod surface. The r0 every Mathieu parameter is quoted against."
+    },
+    "rodFill": {
+      "value": 0.475,
+      "unit": "1",
+      "minimum": 0.05,
+      "maximum": 1.0,
+      "description": "Rod thickness as a fraction of the largest that fits without the rods touching. One means neighbouring rods are tangent. This is the knob rather than the rod ratio itself because the largest ratio that fits depends on the pole count - 2.414 for four rods, 1.000 for six, 0.620 for eight - so a ratio carried from a quadrupole to a hexapole puts the rods through one another. 0.475 reproduces Denison's classical quadrupole ratio of 1.1468 at poleCount 4."
+    },
+    "rfAmplitude": {
+      "value": 300,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 5000,
+      "description": "Drive amplitude, zero to peak. Adjacent rods take its negative."
+    },
+    "driveFrequency": {
+      "value": 1,
+      "unit": "MHz",
+      "minimum": 0.05,
+      "maximum": 20,
+      "description": "Drive frequency."
+    },
+    "housingClearance": {
+      "value": 1.6,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 6.0,
+      "description": "How far the grounded housing sits beyond the rods, in rod radii. A real guide has one, and it moves the field at the per-mille level."
+    },
+    "cellsPerRadius": {
+      "value": 16,
+      "unit": "1",
+      "minimum": 4,
+      "maximum": 64,
+      "description": "Mesh density, in cells across the inscribed radius. The knob a convergence study turns."
+    },
+    "launchOffset": {
+      "value": 0.4,
+      "unit": "mm",
+      "minimum": 0,
+      "maximum": 20,
+      "description": "How far off axis the ion enters. A higher-order guide should accept a larger offset than a quadrupole at the same amplitude, which is the whole point of using one."
+    },
+    "ionEnergy": {
+      "value": 10,
+      "unit": "V",
+      "minimum": 0.1,
+      "maximum": 500,
+      "description": "Axial injection energy."
+    },
+    "maximumRodRatio": {
+      "expression": "sinPi(1 / poleCount) / (1 - sinPi(1 / poleCount))",
+      "unit": "1",
+      "description": "The largest rod radius, in inscribed radii, that leaves neighbouring rods tangent rather than intersecting. From the geometry: rod centres sit on a circle of r0 + rodRadius, adjacent centres are 2(r0 + rodRadius) sin(pi/N) apart, and that must be at least twice the rod radius."
+    },
+    "rodRatio": {
+      "expression": "rodFill * maximumRodRatio",
+      "unit": "1",
+      "description": "Rod radius in inscribed radii. Derived, so it cannot exceed what fits."
+    },
+    "rodRadius": {
+      "expression": "inscribedRadius * rodRatio",
+      "unit": "mm",
+      "description": "Derived from the ratio, so a scan of the ratio moves the rods rather than leaving them behind."
+    },
+    "rodCentre": {
+      "expression": "inscribedRadius + rodRadius",
+      "unit": "mm",
+      "description": "Radius of the circle the rod centres sit on: the inscribed radius plus one rod radius, so the nearest surface is at r0 whatever the ratio is."
+    },
+    "domainHalfWidth": {
+      "expression": "rodCentre + rodRadius * housingClearance",
+      "unit": "mm",
+      "description": "Half-width of the solve domain, whose edge is the grounded housing."
+    },
+    "cellSize": {
+      "expression": "inscribedRadius / cellsPerRadius",
+      "unit": "mm",
+      "description": "Derived, so refining is one number."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "launchOffset",
+        "launchOffset",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        0,
+        0,
+        1
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "ionEnergy",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "drive": {
+          "frequency": {
+            "expression": "driveFrequency",
+            "unit": "MHz"
+          },
+          "waveform": "sinusoid"
+        },
+        "minX": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "rod",
+            "shape": "disc",
+            "repeat": {
+              "count": {
+                "expression": "poleCount"
+              },
+              "index": "pole"
+            },
+            "centreX": {
+              "expression": "rodCentre * cosPi(2 * pole / poleCount)",
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "rodCentre * sinPi(2 * pole / poleCount)",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude * (1 - 2 * mod(pole, 2))",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        0,
+        0,
+        200
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        0,
+        0,
+        -1
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-09,
+    "maximumFlightTime": {
+      "value": 1,
+      "unit": "ms"
+    }
+  }
+}

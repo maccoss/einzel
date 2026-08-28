@@ -1331,6 +1331,12 @@ public static class ModelValidator
             Expand(solve.Electrodes[i], $"{path}/electrodes/{i}", p, electrodes, errors);
         }
 
+        // Two conductors in one place at two potentials is ill-posed, and the mask
+        // keeps whichever was written last - so the solve would return the field of
+        // a geometry nobody described. Checked after expansion, because a repeated
+        // electrode only overlaps itself once its copies exist.
+        ElectrodeOverlap.Check(electrodes, path, errors);
+
         var reflect = solve.ReflectAboutX is null
             ? (double?)null
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;

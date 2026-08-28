@@ -520,6 +520,25 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **And a flaky test made diagnosable.** `AllocationDoesNotGrowWithStepCount` failed inside the full parallel suite and passed alone, which is the worst way for a test to be wrong because it reads as a regression in the thing under test. It now takes the **cheapest of five runs** — the runtime charges one-off costs like a tier-1 recompilation to whichever window they fire in, and the property is a floor, so the minimum is the right statistic — and prints the numbers: 240 bytes over 41 steps, 240 bytes over 2030.
 
+- **`multipole-guide` — every even order in one file, and the overlapping rods that found a gap.** LIB-1's test run deliberately: what does a multipole above four rods cost below `Einzel.Library`? **One function, and it was general.** A 2n-pole is 2n rods at π/n intervals, and the expression grammar had **no trigonometry** — so that geometry could not be written at all. Not awkwardly, not verbosely: not at all. The choice was three near-identical template files with coordinates longhand, or `cosPi`/`sinPi` in the grammar.
+
+  **Half turns rather than radians**, the convention the drive decomposition already chose and for the same reason: `Math.Cos(Math.PI/2)` is 6.1e-17, so a rod at a quarter turn lands a hair off axis and the multipole carries a spurious dipole made of rounding. `cosPi(0.5)` is exactly zero.
+
+  | poles | electrodes | basis solves | cycles | convergence |
+  | --- | --- | --- | --- | --- |
+  | 4 | 4 | **1** | 8 | 0.0262 |
+  | 6 | 6 | **1** | 8 | 0.0285 |
+  | 8 | 8 | **1** | 8 | 0.0236 |
+  | 12 | 12 | **1** | 8 | 0.0257 |
+
+  **Twelve rods cost what four do**, because adjacent rods are exact negatives however many there are. Exact negation is what does it — which is why the amplitude is `rfAmplitude * (1 - 2 mod(pole, 2))` rather than a cosine of the pole index: the second would be right to a rounding and would split into two channels.
+
+  **The rods have to fit, and now they cannot not.** `rodRatio ≤ sin(π/N)/(1 − sin(π/N))` — 2.414 at four rods, 1.000 at six, 0.620 at eight — so the knob is `rodFill`, a *fraction* of that maximum, and an overlapping geometry is not expressible rather than merely refused. `rodFill = 0.475` reproduces **Denison's 1.1468** at four poles through the derived chain, which is a sharp check on `sinPi` as well as on the geometry.
+
+  **A gap found by getting that wrong first.** Applying Denison's *quadrupole* ratio to six rods puts them through one another, and **the engine solved it, converged in eight cycles, and returned a field** — the acceptance measurement taken from it was really a measurement of rods closing in on the axis. A Dirichlet mask is written electrode by electrode, so where two overlap the last one wins; where both hold the same thing that is harmless and often deliberate (a fillet is built that way), and where they **disagree** the region is simultaneously at +300 V and −300 V and the field is of a geometry nobody described. `ElectrodeOverlap` now refuses that, naming both electrodes and what each holds, with three deliberate limits — tangency allowed, agreement allowed, edge profiles skipped rather than guessed at.
+
+  **What is deliberately not claimed:** whether a higher order accepts a larger offset. The template launches on a 45° diagonal, which for a quadrupole is the *widest* gap between rods — an ion enters at r = 4.95 mm and still arrives, outside the 4 mm inscribed radius — and for a hexapole is not, so the comparison measures the angular gap at least as much as the order. Measured anyway for the record: at 200 V the hexapole accepts 0.68 r₀ and the octupole 0.58, and at 300 V that **reverses** to 0.46 and 0.48. A non-monotone ordering that flips with amplitude is a sign the scanned variable is not the one that matters; settling it needs a scan over launch *angle* and an acceptance defined as a solid angle rather than one ray.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

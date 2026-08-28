@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**559 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 20 examples, every expectation a closed form, a published value, or an exact invariant.
+**570 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 21 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -361,6 +361,46 @@ the tests should straddle the values that number switches behaviour at, and shou
 print it.** A test below a threshold is not weak, it is a test of a different
 regime, and nothing about it says which side it is on.
 
+### 17 · §9's expression grammar had no trigonometry, and a multipole needs it
+
+**LIB-1's test, run deliberately.** A multipole above four rods is `2n` rods at
+`π/n` intervals, and the expression grammar could not write that — not awkwardly,
+not verbosely, but **not at all**. So the choice was three near-identical template
+files with coordinates written out longhand, or one function below the library.
+
+One function. `cosPi` and `sinPi`, dimensionless-only for the same reason `sqrt`
+is, in **half turns** rather than radians — the convention the drive decomposition
+already chose, because `Math.Cos(Math.PI / 2)` is 6.1e-17 and a rod placed at a
+quarter turn would carry a spurious dipole made of rounding.
+
+What it bought: `multipole-guide` is **one template** with `poleCount` as a
+parameter, and 4 / 6 / 8 / 12 rods each reduce to **one basis solve** (8 cycles,
+factor 0.024–0.029). Twelve rods cost what four do.
+
+**Recommend §9 note that the grammar's function set is part of what "every
+placement is a parametric expression" means.** A placement that cannot be written
+is a device that cannot be a template, and the list of functions is therefore a
+statement about which devices are expressible — not a convenience.
+
+### 18 · Two conductors could occupy the same space at different potentials
+
+Found by getting Amendment 17 wrong first. Denison's rod ratio of 1.1468 is the
+classical value for a **quadrupole**; applied to six rods it puts them through one
+another, and the engine **solved it, converged in eight cycles, and returned a
+field**. The acceptance measurement taken from it was really a measurement of rods
+closing in on the axis.
+
+A Dirichlet mask is written electrode by electrode, so where two overlap the last
+one wins. Where both hold the same thing that is harmless and often deliberate — a
+shape assembled from overlapping primitives is how a fillet gets built. Where they
+disagree the region is simultaneously at +300 V and −300 V of drive, and the field
+returned is of a geometry nobody described.
+
+**Recommend §9 or §10 state it**: overlapping conductors that disagree about their
+excitation are ill-posed and must be refused. Now done, naming both electrodes and
+what each holds, with three deliberate limits — tangency allowed, agreement
+allowed, and edge profiles skipped rather than guessed at.
+
 ---
 
 ## The shell, and the rest of §16
@@ -501,7 +541,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **20 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a funnel, a travelling-wave guide, an extraction trap, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: a multipole above four rods, a 3-D trap, an MR-TOF. |
+| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **21 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide, an extraction trap, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: a 3-D trap, an MR-TOF, and a collisional example. |
 | `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. 17 of 17 in 29 s, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself. |
 | `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. Still one surface, because there is no second one. |
 
@@ -553,7 +593,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Eight device templates as data in the model schema. Seven needed no change below `Einzel.Library`; the eighth needed one and it was the right one - see Amendments. |
+| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Nine device templates as data in the model schema. Two have needed a change below `Einzel.Library`, and both were narrow and general: `drivePhase` becoming an expression (the travelling wave), and trigonometry in the expression grammar (any multipole above four rods). The second yielded **one** template covering quadrupole, hexapole, octupole and beyond rather than three files. |
 
 ### Licensing (§20)
 
@@ -710,7 +750,7 @@ in a table.
 
 Ordered by what unblocks the most, with the reasoning rather than just the list.
 
-1. **Finish the examples corpus (EX-1).** 17 of thirty, and the gate (EX-2) is
+1. **Finish the examples corpus (EX-1).** 21 of thirty, and the gate (EX-2) is
    built and green in 29 s. What the first seventeen cost was mostly *deciding what
    can honestly be asserted*, and that work is now done — the remaining thirteen are
    breadth: a multipole above four rods, a 3-D trap, an MR-TOF, and the diffusive

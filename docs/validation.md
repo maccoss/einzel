@@ -2,7 +2,7 @@
 
 What is tested, what each tier proves, and — as importantly — what is not covered.
 
-559 tests across nine assemblies. Warnings are errors; XML documentation is
+570 tests across nine assemblies. Warnings are errors; XML documentation is
 required on public API; CI builds and tests on Linux and Windows.
 
 ## The tiers
@@ -64,6 +64,9 @@ cross-code tier is unavailable — see below.
 | Diffusive centroid at cell Peclet 105 and 209 | **1.000000** and 0.999999 |
 | Diffusive transit against L/(muE) and L/(muE + v_gas) | 0.86% each, the same either way |
 | Slit transmission against erf(a / sigma root 2) | 0.6815 against 0.68269, 0.17% |
+| Multipole maximum rod ratio against sin(pi/N)/(1 - sin(pi/N)), N = 4..12 | 1e-12 |
+| The same at N = 4, against Denison's published 1.1468 | 1.14675 |
+| Basis solves against pole count, 4 / 6 / 8 / 12 rods | 1 / 1 / 1 / 1 |
 | Trilinear gas-flow sampling against a linear field | exact to 1e-9 |
 | VTK ImageData written by this engine and read back | every node exactly |
 | Ion ledger on the shipped funnel: cylindrical, absorbing rings, gas flow | **100.0001%** (was 95.99%) |

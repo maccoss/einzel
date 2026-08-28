@@ -525,3 +525,99 @@ an ion funnel needs, or **discrete periodicity**, which is what a stacked-ring
 guide needs to be expressed compactly rather than as hundreds of rectangles.
 Both are symmetry declarations the solver would exploit, and both are the natural
 next additions.
+
+---
+
+## `multipole-guide` — every even order in one file
+
+LIB-1's test, run deliberately: **what does a multipole above four rods cost?**
+
+It cost exactly one thing below `Einzel.Library`, and it was small and general.
+The expression grammar had **no trigonometry**, so `2n` rods at `π/n` intervals
+could not be written at all — not awkwardly, not verbosely, but not at all. With
+`cosPi` and `sinPi` added it is one template with `poleCount` as a parameter:
+four is a quadrupole, six a hexapole, eight an octupole, and nothing else changes.
+
+**Half turns rather than radians**, which is the convention the drive decomposition
+already chose and for the same reason: `Math.Cos(Math.PI / 2)` is 6.1e-17 rather
+than zero, so a rod placed at a quarter turn lands a hair off axis and the
+multipole carries a spurious dipole made of rounding.
+
+### The rods have to fit, and now they cannot not
+
+| poles | largest ratio | closed form | actual | nearest gap |
+| --- | --- | --- | --- | --- |
+| 4 | 2.41421 | 2.41421 | 1.14675 | 2.970 mm |
+| 6 | 1.00000 | 1.00000 | 0.47500 | 2.100 mm |
+| 8 | 0.61991 | 0.61991 | 0.29446 | 1.607 mm |
+| 10 | 0.44721 | 0.44721 | 0.21243 | 1.298 mm |
+| 12 | 0.34920 | 0.34920 | 0.16587 | 1.087 mm |
+
+Rod centres sit on a circle of `r0 + rodRadius`, adjacent centres are
+`2(r0 + rodRadius) sin(π/N)` apart, and that must be at least twice the rod
+radius — which rearranges to `rodRatio ≤ sin(π/N) / (1 − sin(π/N))`.
+
+**So the knob is `rodFill`, a fraction of that maximum, not the ratio itself.** An
+overlapping geometry is then not expressible rather than merely refused. And
+`rodFill = 0.475` reproduces Denison's classical quadrupole ratio of **1.1468** at
+four poles, reached through the derived-parameter chain rather than written into
+it — which is a sharp check on `sinPi` as well as on the geometry.
+
+### Every order is one basis solve
+
+| poles | electrodes | basis solves | cycles | convergence factor |
+| --- | --- | --- | --- | --- |
+| 4 | 4 | **1** | 8 | 0.0262 |
+| 6 | 6 | **1** | 8 | 0.0285 |
+| 8 | 8 | **1** | 8 | 0.0236 |
+| 12 | 12 | **1** | 8 | 0.0257 |
+
+Twelve rods cost what four do. Adjacent rods alternate in phase, so they are exact
+negatives of one another however many there are, and the whole structure is one
+spatial pattern whose weight is a function of time. **Exact negation is what does
+it** — which is why the amplitude is written `rfAmplitude * (1 - 2 mod(pole, 2))`
+rather than as a cosine of the pole index: the second would be right to a rounding
+and would split into two channels.
+
+### What is not claimed, and why
+
+The obvious question is whether a higher order accepts a larger offset, and this
+template can be made to answer it — a boundary search on `launchOffset` costs
+eleven evaluations per order. **It is not claimed, because the measurement as set
+up is confounded.**
+
+The template launches at `(offset, offset)`, a 45° diagonal. For a quadrupole,
+with rods on the axes, that is the *widest* gap between rods: an ion enters at
+r = 4.95 mm and still arrives, outside the 4 mm inscribed radius. For a hexapole
+the same diagonal falls between rods at 0° and 60°, a narrower gap. So the
+comparison measures the angular gap the launch point happens to sit in at least as
+much as it measures the order.
+
+Measured anyway, for the record: at 200 V the hexapole accepts 0.68 r0 and the
+octupole 0.58; at 300 V that **reverses** to 0.46 and 0.48. A non-monotone ordering
+that flips with amplitude is a sign the variable being scanned is not the one that
+matters. Settling it needs a scan over launch *angle* as well as radius, and an
+acceptance defined as a solid angle rather than one ray.
+
+## Overlapping conductors are refused
+
+Found by getting the above wrong first. Applying Denison's 1.1468 to six rods puts
+them **through one another** — they need a centre circle 9.17 mm across and a
+hexapole gives them 8.59 mm — and the engine solved it, converged in eight cycles,
+and produced an acceptance measurement that was really a measurement of rods
+closing in on the axis.
+
+A Dirichlet mask is built by writing each electrode's nodes in turn, so where two
+overlap the last one written wins. Where both hold the same potential and drive
+that is harmless and often deliberate: a shape assembled from overlapping
+primitives is how a fillet or a shoulder gets built. **Where they disagree it is
+ill-posed** — the region is simultaneously at +300 V and −300 V of drive, and the
+field returned is the field of a geometry nobody described.
+
+`ElectrodeOverlap` refuses that case, naming both electrodes and what each holds.
+Three deliberate limits: tangency is allowed, because exactly touching is a design
+and a floating-point equality is a poor thing to refuse on; agreement is allowed,
+because the overlap is not the problem; and an **edge profile is skipped**, because
+a boundary profile touching an interior electrode is a different question and a
+check that guessed would sometimes refuse a legitimate geometry.
+
