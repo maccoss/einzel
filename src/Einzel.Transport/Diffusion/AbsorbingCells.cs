@@ -41,12 +41,17 @@ public sealed class AbsorbingCells
 
         foreach (var index in owner)
         {
-            if (index >= names.Count)
+            // Both ends. Only the upper bound was checked, so -2 read as open and an
+            // owner map built wrong in that direction would have produced a field
+            // with fewer absorbers than the geometry declared, silently. -1 is the
+            // one negative value that means anything here.
+            if (index < -1 || index >= names.Count)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(owner),
                     index,
-                    $"an absorbing cell names surface {index}, and only {names.Count} were given");
+                    $"an absorbing cell names surface {index}; the only values that mean "
+                    + $"anything are -1 for an open node and 0 to {names.Count - 1}");
             }
         }
 
@@ -58,7 +63,13 @@ public sealed class AbsorbingCells
     public IReadOnlyList<string> Names { get; }
 
     /// <summary>Whether anything absorbs at all.</summary>
-    public bool Any => _owner.Length > 0;
+    /// <remarks>
+    /// Whether any <em>node</em> is owned, not whether a map was supplied. An
+    /// electrode declared outside the density grid gives a named absorber and an
+    /// owner map with nothing in it, and reporting that as "something absorbs" would
+    /// be describing the document rather than the solve.
+    /// </remarks>
+    public bool Any => Array.Exists(_owner, index => index >= 0);
 
     /// <summary>Whether a node is inside an absorber.</summary>
     /// <param name="index">The node, row-major.</param>

@@ -147,10 +147,38 @@ public static class SectionRenderer
         {
             (kept, raw) = DrawTrajectory(paths, model, spec, field, plane, tolerance, ToPage);
         }
-        else if (spec.Trajectory)
-        {
-            var drawn = density is not null && spec.DensityContours > 0;
 
+        // Drawn whenever there is a density and contours were asked for. A density is
+        // not a trajectory, so the trajectory toggle has no say in it - and nesting
+        // this inside the "trajectories were requested" branch, which is how it was
+        // written, made --no-trajectory silently suppress the one output a diffusive
+        // model has. Two independent questions, asked independently.
+        if (density is not null && spec.DensityContours > 0)
+        {
+            densityLevels = DrawDensity(
+                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
+
+            if (densityLevels.Length == 0)
+            {
+                warnings =
+                [
+                    .. warnings,
+                    new ValidityWarning(
+                        "render.density-empty",
+                        "the density had nothing left in it to draw: by the end of the run "
+                        + "every ion had reached a boundary. What a figure of the end state "
+                        + "shows in that case is an empty box, correctly. Shorten "
+                        + "'maximumFlightTime' to draw the packet while it is still in flight",
+                        WarningSeverity.Provenance),
+                ];
+            }
+        }
+
+        // RND-8, and it is a statement about what was asked for: a trajectory was
+        // requested and this mode does not produce one. A caller who never asked has
+        // nothing to be told.
+        if (spec.Trajectory && !drawable)
+        {
             warnings =
             [
                 .. warnings,
@@ -160,33 +188,12 @@ public static class SectionRenderer
                     + "density rather than trajectories, so none were drawn. RND-8 forbids drawing "
                     + "lines through a diffusive region: they would depict something the model "
                     + "never produced"
-                    + (drawn
+                    + (densityLevels.Length > 0
                         ? ". The contours are the density itself, at decades below its peak"
-                        : ". No density was supplied either, so this figure shows the geometry "
+                        : ". No density was drawn either, so this figure shows the geometry "
                         + "and the field alone"),
                     WarningSeverity.Provenance),
             ];
-
-            if (drawn)
-            {
-                densityLevels = DrawDensity(
-                    paths, density!, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
-
-                if (densityLevels.Length == 0)
-                {
-                    warnings =
-                    [
-                        .. warnings,
-                        new ValidityWarning(
-                            "render.density-empty",
-                            "the density had nothing left in it to draw: by the end of the run "
-                            + "every ion had reached a boundary. What a figure of the end state "
-                            + "shows in that case is an empty box, correctly. Shorten "
-                            + "'maximumFlightTime' to draw the packet while it is still in flight",
-                            WarningSeverity.Provenance),
-                    ];
-                }
-            }
         }
 
         DrawFrame(paths, texts, spec, minU, maxU, minV, maxV, scale, drawWidth, drawHeight);

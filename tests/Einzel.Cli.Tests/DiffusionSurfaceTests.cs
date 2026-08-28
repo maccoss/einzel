@@ -277,4 +277,56 @@ public sealed class DiffusionSurfaceTests : IDisposable
 
         Assert.Contains("render.no-trajectories", stdout + stderr, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TurningTrajectoriesOffDoesNotTurnTheDensityOff()
+    {
+        // Two independent toggles, and they were conflated. --no-trajectory means
+        // "do not fly the ion and draw its path"; a diffusive model has no path to
+        // draw by definition, so gating the DENSITY on that flag made the one output
+        // such a model has disappear on request - silently, and for a model whose
+        // whole point is the density.
+        // Cut short so the packet is still in flight: the density a run REPORTS is
+        // the one left at the end, and for a transit that finishes there is almost
+        // nothing left to draw. That is a real limitation of drawing a final state
+        // rather than a mid-flight one, and it is not what this test is about.
+        var model = Write(
+            "midflight",
+            "diffusion",
+            Grid.Replace(
+                "\"intervalsX\": 128", "\"intervalsX\": 128", StringComparison.Ordinal));
+
+        var text = File.ReadAllText(model).Replace(
+            "\"maximumFlightTime\": { \"value\": 400, \"unit\": \"us\" }",
+            "\"maximumFlightTime\": { \"value\": 60, \"unit\": \"us\" }",
+            StringComparison.Ordinal);
+
+        Assert.DoesNotContain("\"value\": 400", text, StringComparison.Ordinal);
+        File.WriteAllText(model, text);
+
+        var (withCode, withStdout, _) = Run("render", "section", model, "--json");
+        var (withoutCode, withoutStdout, _) =
+            Run("render", "section", model, "--no-trajectory", "--json");
+
+        Assert.Equal(0, withCode);
+        Assert.Equal(0, withoutCode);
+
+        using var with = JsonDocument.Parse(withStdout);
+        using var without = JsonDocument.Parse(withoutStdout);
+
+        // Neither draws a trajectory - RND-8 - so the flag changes nothing there.
+        Assert.Equal(0, with.RootElement.GetProperty("trajectoryPoints").GetInt32());
+        Assert.Equal(0, without.RootElement.GetProperty("trajectoryPoints").GetInt32());
+
+        // And both draw the density.
+        Assert.True(
+            with.RootElement.GetProperty("paths").TryGetProperty("density", out var drawn),
+            "a diffusive model should draw its density");
+
+        Assert.True(
+            without.RootElement.GetProperty("paths").TryGetProperty("density", out var still),
+            "--no-trajectory suppressed the density, which is not a trajectory");
+
+        Assert.Equal(drawn.GetInt32(), still.GetInt32());
+    }
 }

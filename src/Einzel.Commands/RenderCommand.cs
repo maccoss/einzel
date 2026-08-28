@@ -124,8 +124,11 @@ public static class RenderCommand
         // worth drawing, and the renderer says which of the two it got.
         Transport.Diffusion.DensityField? density = null;
 
-        if (spec.Trajectory
-            && spec.DensityContours > 0
+        // Not gated on spec.Trajectory. That toggle means "fly the ion and draw its
+        // path", and a diffusive model has no path to draw by definition - so
+        // conflating the two made --no-trajectory silently suppress the one output
+        // such a model has. Two independent things, asked about independently.
+        if (spec.DensityContours > 0
             && string.Equals(
                 validation.Model!.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
         {

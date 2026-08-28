@@ -97,7 +97,13 @@ public static class FlightTimeStudy
         var runs = new List<TrajectoryResult>(refinements);
         var warnings = new List<ValidityWarning>();
 
-        Collisions.CollisionSampler? sampler = null;
+        // Accumulated across every refinement rather than read off the last one.
+        // Each level gets a fresh sampler, so keeping only the final one would drop
+        // an exceeded bound that happened at a coarser tolerance - which is the same
+        // failure this reporting exists to fix, one level in. A flag that is true on
+        // any level describes the study.
+        var boundExceeded = false;
+        var sampledOutsideFlow = false;
 
         for (var level = 0; level < refinements; level++)
         {
@@ -113,18 +119,24 @@ public static class FlightTimeStudy
             // A fresh sampler per refinement, from the same seed, so each level
             // draws the same sequence of uniforms and the comparison is of the
             // integrator rather than of the dice.
-            sampler = collisions?.Invoke();
+            var sampler = collisions?.Invoke();
 
             runs.Add(TrajectoryIntegrator.Integrate(
                 initialState, species, field, refined, stopWhenNegative, collisions: sampler));
+
+            // Read here, where the sampler that produced them is still in scope, so
+            // there is no later place for them to be lost.
+            boundExceeded |= sampler is { BoundExceeded: true };
+            sampledOutsideFlow |= sampler is { SampledOutsideFlow: true };
         }
 
-        // What the collision sampler learned about its own validity. It used to
+        // What the collision samplers learned about their own validity. They used to
         // compute both of these and have them read by nothing, which is the third
         // time evidence about a computation's quality has been produced here and
         // dropped at the seam - a biased collision rate looks exactly like a correct
-        // one, and so does a gas nobody imported.
-        if (sampler is { BoundExceeded: true })
+        // one, and so does a gas nobody imported. The first fix read only the last
+        // refinement's sampler, which is the same loss one level in.
+        if (boundExceeded)
         {
             warnings.Add(new ValidityWarning(
                 "collisions.rate-underestimated",
@@ -135,7 +147,7 @@ public static class FlightTimeStudy
                 WarningSeverity.ValidityViolation));
         }
 
-        if (sampler is { SampledOutsideFlow: true })
+        if (sampledOutsideFlow)
         {
             warnings.Add(new ValidityWarning(
                 "gas.flow-extrapolated",
