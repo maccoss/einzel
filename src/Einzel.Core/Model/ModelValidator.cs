@@ -611,6 +611,7 @@ public static class ModelValidator
         SolvedFieldDocument solve,
         string path,
         IReadOnlyList<CompiledElectrode> baseline,
+        IReadOnlyList<CompiledDrive> drives,
         StageResolver restage,
         List<EinzelError> errors)
     {
@@ -676,7 +677,9 @@ public static class ModelValidator
 
             for (var i = 0; i < declaredElectrodes.Count; i++)
             {
-                Expand(declaredElectrodes[i], $"{stagePath}/electrodes/{i}", surface, electrodes, errors);
+                Expand(
+                    declaredElectrodes[i], $"{stagePath}/electrodes/{i}", drives, surface,
+                    electrodes, errors);
             }
 
             if (!SameGeometry(baseline, electrodes, name, stagePath, errors))
@@ -857,8 +860,10 @@ public static class ModelValidator
             Name = name,
             Shape = Electrode3DShape.Box,
             Potential = potential.Value.SiValue,
-            DriveAmplitude = amplitude,
-            DrivePhase = Phase(electrode.DrivePhase, $"{path}/drivePhase", p, errors),
+            Taps = amplitude == 0.0
+                ? []
+                : [new CompiledTap(
+                    0, amplitude, Phase(electrode.DrivePhase, $"{path}/drivePhase", p, errors))],
         };
 
         switch (electrode.Shape)
@@ -1132,7 +1137,7 @@ public static class ModelValidator
                 MaxZ = maxZ.Value.SiValue,
                 CellSize = cell.Value.SiValue,
                 Tolerance = solve.Tolerance,
-                Drive = drive,
+                Drives = drive is null ? [] : [drive],
                 Stages = stages,
                 Electrodes = electrodes,
             },
@@ -1333,11 +1338,15 @@ public static class ModelValidator
             return null;
         }
 
+        // Before the electrodes, because a tap names the generator it is on and the
+        // name has to resolve to something.
+        var drives = Drives(solve.Drive, solve.Drives, path, p, errors);
+
         var electrodes = new List<CompiledElectrode>();
 
         for (var i = 0; i < solve.Electrodes.Count; i++)
         {
-            Expand(solve.Electrodes[i], $"{path}/electrodes/{i}", p, electrodes, errors);
+            Expand(solve.Electrodes[i], $"{path}/electrodes/{i}", drives, p, electrodes, errors);
         }
 
         // Two conductors in one place at two potentials is ill-posed, and the mask
@@ -1350,8 +1359,7 @@ public static class ModelValidator
             ? (double?)null
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
 
-        var drive = Drive(solve.Drive, $"{path}/drive", p, errors);
-        var stages = CompileStages(solve, $"{path}/stages", electrodes, restage, errors);
+        var stages = CompileStages(solve, $"{path}/stages", electrodes, drives, restage, errors);
 
         var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
 
@@ -1380,7 +1388,7 @@ public static class ModelValidator
 
         // An amplitude with no generator behind it is a document that thinks it
         // declared RF and did not. Silence here is the expensive kind.
-        if (drive is null && electrodes.Any(e => e.IsDriven))
+        if (drives.Count == 0 && electrodes.Any(e => e.IsDriven))
         {
             var driven = electrodes.First(e => e.IsDriven);
 
@@ -1413,7 +1421,7 @@ public static class ModelValidator
                 MaxY = maxY.Value.SiValue,
                 CellSize = cell.Value.SiValue,
                 Symmetry = symmetry,
-                Drive = drive,
+                Drives = drives,
                 Stages = stages,
                 LeftEdge = left,
                 RightEdge = right,
@@ -1425,6 +1433,213 @@ public static class ModelValidator
                 ReflectAboutX = reflect,
             },
         };
+    }
+
+
+    /// <summary>
+    /// Every generator a solve declares, from either the singular or the plural form.
+    /// </summary>
+    /// <remarks>
+    /// Both spellings exist because nearly every device has one drive and making it
+    /// a list of one would be ceremony on every template. Declaring both is refused
+    /// rather than merged: a document that says a geometry has one drive and also
+    /// says it has three is not a document with a default to fall back on.
+    /// </remarks>
+    private static List<CompiledDrive> Drives(
+        DriveDocument? single,
+        IReadOnlyList<DriveDocument>? several,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (single is not null && several is not null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/drives",
+                Constraint = "a solve declares either 'drive' or 'drives', not both",
+                Suggestion = "keep 'drives' and move the single drive into it as the first entry, "
+                    + "or delete 'drives' if one generator is all this geometry has",
+            });
+
+            return [];
+        }
+
+        if (single is not null)
+        {
+            var one = Drive(single, $"{path}/drive", p, errors);
+
+            return one is null ? [] : [one];
+        }
+
+        if (several is null)
+        {
+            return [];
+        }
+
+        var compiled = new List<CompiledDrive>(several.Count);
+
+        for (var k = 0; k < several.Count; k++)
+        {
+            var built = Drive(several[k], $"{path}/drives/{k}", p, errors);
+
+            if (built is null)
+            {
+                continue;
+            }
+
+            var name = several[k].Name ?? string.Empty;
+
+            if (name.Length == 0 && several.Count > 1)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{path}/drives/{k}/name",
+                    Constraint =
+                        "every generator needs a name when a geometry declares more than one, "
+                        + "because an electrode taps them by name",
+                    Suggestion = "add a \"name\", for example \"main\" or \"excitation\"",
+                });
+
+                continue;
+            }
+
+            if (compiled.Exists(d => d.Name == name))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{path}/drives/{k}/name",
+                    Constraint = $"two generators are both called '{name}'",
+                    Observed = new ObservedValue(k, "index"),
+                    Suggestion = "give each generator a distinct name; an electrode taps them by "
+                        + "name and a duplicate makes the tap ambiguous",
+                });
+
+                continue;
+            }
+
+            compiled.Add(built with { Name = name });
+        }
+
+        return compiled;
+    }
+
+    /// <summary>
+    /// How one electrode is connected to the generators, from either spelling.
+    /// </summary>
+    /// <remarks>
+    /// Read for every electrode whether or not the geometry declares a drive, so
+    /// that an amplitude on a static solve is caught where it is written rather than
+    /// silently ignored - which is the failure mode that makes someone spend an
+    /// afternoon wondering why the RF is not doing anything.
+    /// </remarks>
+    private static List<CompiledTap> Taps(
+        ElectrodeDocument electrode,
+        IReadOnlyList<CompiledDrive> drives,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (electrode.Taps is null)
+        {
+            var (amplitude, phase) = Tap(electrode, path, p, errors);
+
+            return amplitude == 0.0 ? [] : [new CompiledTap(0, amplitude, phase)];
+        }
+
+
+
+        if (electrode.DriveAmplitude is not null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/taps",
+                Constraint =
+                    "an electrode declares either 'driveAmplitude' or 'taps', not both",
+                Suggestion = "move the amplitude and phase into the first tap, or delete 'taps' "
+                    + "if this electrode is fed by one generator",
+            });
+
+            return [];
+        }
+
+        var taps = new List<CompiledTap>(electrode.Taps.Count);
+
+        for (var k = 0; k < electrode.Taps.Count; k++)
+        {
+            var tap = electrode.Taps[k];
+            var at = $"{path}/taps/{k}";
+
+            var index = 0;
+
+            if (tap.Drive is { } named)
+            {
+                index = -1;
+
+                for (var d = 0; d < drives.Count; d++)
+                {
+                    if (string.Equals(drives[d].Name, named, StringComparison.Ordinal))
+                    {
+                        index = d;
+                        break;
+                    }
+                }
+
+                if (index < 0)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{at}/drive",
+                        Constraint = $"no generator is called '{named}'",
+                        Observed = new ObservedValue(drives.Count, "declared generator(s)"),
+                        Suggestion = drives.Count == 0
+                            ? "declare a 'drives' block naming the generators before tapping one"
+                            : "the declared generators are: "
+                                + string.Join(", ", drives.Select(d => $"'{d.Name}'")),
+                    });
+
+                    continue;
+                }
+            }
+            else if (drives.Count > 1)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{at}/drive",
+                    Constraint =
+                        $"this geometry declares {drives.Count} generators, so a tap must name "
+                        + "which one it is on",
+                    Suggestion = "add \"drive\": with one of "
+                        + string.Join(", ", drives.Select(d => $"'{d.Name}'")),
+                });
+
+                continue;
+            }
+
+            var amplitude = tap.Amplitude is null
+                ? 0.0
+                : TryQuantity(
+                    tap.Amplitude, $"{at}/amplitude",
+                    Dimension.ElectricPotential, p, errors)?.SiValue ?? 0.0;
+
+            if (amplitude == 0.0)
+            {
+                // A tap of zero volts is a wire that carries nothing. Dropped rather
+                // than refused, because a template that ramps an amplitude over a
+                // repeat index will legitimately produce one at the ends.
+                continue;
+            }
+
+            taps.Add(new CompiledTap(index, amplitude, Phase(tap.Phase, $"{at}/phase", p, errors)));
+        }
+
+        return taps;
     }
 
     /// <summary>How one electrode taps the drive: amplitude and phase.</summary>
@@ -1629,13 +1844,14 @@ public static class ModelValidator
     private static void Expand(
         ElectrodeDocument declared,
         string path,
+        IReadOnlyList<CompiledDrive> drives,
         IReadOnlyDictionary<string, Quantity> p,
         List<CompiledElectrode> into,
         List<EinzelError> errors)
     {
         if (declared.Repeat is not { } repeat)
         {
-            var single = CompileElectrode(declared, path, p, errors);
+            var single = CompileElectrode(declared, path, drives, p, errors);
 
             if (single is not null)
             {
@@ -1698,6 +1914,7 @@ public static class ModelValidator
             var copy = CompileElectrode(
                 declared with { Repeat = null, Name = $"{name}-{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}" },
                 $"{path}/repeat/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                drives,
                 scoped,
                 errors);
 
@@ -1709,7 +1926,11 @@ public static class ModelValidator
     }
 
     private static CompiledElectrode? CompileElectrode(
-        ElectrodeDocument electrode, string path, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+        ElectrodeDocument electrode,
+        string path,
+        IReadOnlyList<CompiledDrive> drives,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
     {
         var length = Dimension.LengthDimension;
         var volt = Dimension.ElectricPotential;
@@ -1724,7 +1945,7 @@ public static class ModelValidator
                 var maxX = TryQuantity(electrode.MaxX, $"{path}/maxX", length, p, errors);
                 var maxY = TryQuantity(electrode.MaxY, $"{path}/maxY", length, p, errors);
                 var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
-                var drive = Tap(electrode, path, p, errors);
+                var taps = Taps(electrode, drives, path, p, errors);
 
                 if (minX is null || minY is null || maxX is null || maxY is null || potential is null)
                 {
@@ -1778,8 +1999,7 @@ public static class ModelValidator
                         MaxX = maxX.Value.SiValue,
                         MaxY = maxY.Value.SiValue,
                         Potential = potential.Value.SiValue,
-                        DriveAmplitude = drive.Amplitude,
-                        DrivePhase = drive.Phase,
+                        Taps = taps,
                     };
             }
 
@@ -1789,7 +2009,7 @@ public static class ModelValidator
                 var centreY = TryQuantity(electrode.CentreY, $"{path}/centreY", length, p, errors);
                 var radius = TryQuantity(electrode.Radius, $"{path}/radius", length, p, errors);
                 var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
-                var drive = Tap(electrode, path, p, errors);
+                var taps = Taps(electrode, drives, path, p, errors);
 
                 if (centreX is null || centreY is null || radius is null || potential is null)
                 {
@@ -1817,8 +2037,7 @@ public static class ModelValidator
                     CentreY = centreY.Value.SiValue,
                     Radius = radius.Value.SiValue,
                     Potential = potential.Value.SiValue,
-                    DriveAmplitude = drive.Amplitude,
-                    DrivePhase = drive.Phase,
+                    Taps = taps,
                 };
             }
 

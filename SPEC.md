@@ -565,6 +565,47 @@ what it contains rather than by what the caller asks for.
 strongest interface its members implement, and a static interface over a driven
 member is a defect rather than a lossy convenience.
 
+### 24 · "One drive per solve" was a design decision, and two devices refuted it
+
+`CompiledDrive` carried this note from the beginning:
+
+> One drive per solve, not one per electrode. A real instrument has a generator and
+> electrodes tapped off it at various amplitudes and phases, and modelling it the
+> other way round would let a document declare **two frequencies on one structure —
+> which is a different instrument and almost always a mistake.**
+
+It is not a mistake. It is what a trap is. A real travelling-wave guide superposes a
+fast confining RF on a slow travelling wave; a trap performing a stored-waveform
+isolation runs a low-frequency notched comb across its endcaps while the ring carries
+the main drive. The rule cost the shipped travelling-wave guide its radial
+confinement, and made the notch-width measurement of Amendment 22 run on an analytic
+quadrupole rather than on a solved geometry.
+
+**It cost nothing in the solver to remove**, which is the part worth recording. Basis
+superposition is indifferent to what the weights are functions of, so two generators
+reaching the same electrodes in the same proportions are one solved pattern carrying
+two weights on two clocks — exactly as a DC supply and an RF supply already were.
+Measured: 24 rings each tapping two generators reduce to **3 basis solves**, two for
+the wave's phase ramp and one for the alternating confinement.
+
+What it does change is step control, and §11 should say so: **a field with several
+timescales caps its step by the fastest.** The guide's wave repeats at 0.5 MHz and its
+confinement at 3 MHz, and the assembled field reports 333 ns.
+
+**Recommend §9 state that an electrode's excitation is a list of taps**, and that the
+number of generators a geometry carries is a property of the instrument rather than a
+modelling convenience to be minimised.
+
+**And a negative result worth as much as the capability.** Giving the guide its
+confinement did not widen its acceptance at any amplitude tried — 5 of 12 entry radii
+arrive with none, 2 at 100 V, 4 at 200 V, 3 at 400 V, 1 at 800 V. The window is narrow
+at both ends: above about 200 V on this ring pitch the confining drive's own Mathieu q
+passes the stability limit and the ion is *ejected*, and below it the well is shallow
+against a 60 V wave. The template ships with the confinement at zero, because shipping
+a default that makes a device worse would be worse than shipping none. What the tests
+assert is that the generator **reaches** the ion — the acceptance differs with it on —
+which is the claim the capability supports.
+
 ---
 
 ## The shell, and the rest of §16
@@ -930,15 +971,16 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    `RfWaveform.Harmonic` comb that independently recovers the published digital
    cut-off at q = 0.712. What is left is not analysis but **a way to declare it**:
    see item 3.
-3. **A drive per supply rather than per solve.** The engine can superpose a fast
-   confining RF on a slow supplementary excitation and steps it correctly — that is
-   what the notch measurement runs on — and a *document* cannot say so, because a
-   `solve` carries one `drive` with one frequency. Two shipped devices are limited
-   by it: the travelling-wave guide has no radial confinement (acceptance 0.1 mm on
-   a 2 mm bore) and a stored-waveform isolation cannot be a model at all. The
-   decomposition already groups electrodes into supplies by spatial pattern, and a
-   supply is exactly the thing that has a frequency, so the fix costs one level of
-   schema nesting and nothing in the solver.
+3. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
+   declares `drives` and each electrode `taps` them by name. The travelling-wave
+   guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
+   confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
+   confinement's 333 ns as its shortest period rather than the wave's. **The
+   confinement does not yet widen the acceptance** and the template ships with it at
+   zero — the usable amplitude window is narrow at both ends and finding a working
+   point is a design study; see Amendment 24. Left undone: the `solved3d` document
+   form still spells one `drive`, though everything below the document already
+   carries a list.
 4. ~~**A gas velocity field (GAS-1)**~~ — **imported fields work.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps. Two gaps remain and both are worth naming: the **pressure**

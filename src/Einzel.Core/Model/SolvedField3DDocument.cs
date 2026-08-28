@@ -156,8 +156,11 @@ public sealed record CompiledSolvedField3D
     /// <summary>Relative residual the solve must reach.</summary>
     public double Tolerance { get; init; } = 1e-9;
 
-    /// <summary>The drive, or null when static.</summary>
-    public CompiledDrive? Drive { get; init; }
+    /// <summary>The generators, empty when static.</summary>
+    public IReadOnlyList<CompiledDrive> Drives { get; init; } = [];
+
+    /// <summary>The primary drive - the first declared - or null when static.</summary>
+    public CompiledDrive? Drive => Drives.Count > 0 ? Drives[0] : null;
 
     /// <summary>The timed sequence, or empty for one state.</summary>
     public IReadOnlyList<CompiledStage3D> Stages { get; init; } = [];

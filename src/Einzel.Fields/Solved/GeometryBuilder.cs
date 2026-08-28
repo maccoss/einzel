@@ -429,7 +429,7 @@ public static class GeometryBuilder
     /// </remarks>
     private static List<Dictionary<string, double>> Patterns(CompiledSolvedField solve)
     {
-        if (solve.Drive is null && solve.Stages.Count == 0)
+        if (solve.Drives.Count == 0 && solve.Stages.Count == 0)
         {
             var single = new Dictionary<string, double>(StringComparer.Ordinal);
 
@@ -445,7 +445,7 @@ public static class GeometryBuilder
             ? solve.Stages.Select(stage => stage.Electrodes).ToList()
             : [solve.Electrodes];
 
-        var quadrature = solve.Drive is null or { Waveform: DriveWaveform.Sinusoid };
+        var (_, _, quadrature) = Clocks(solve.Drives);
 
         return
         [
@@ -463,7 +463,7 @@ public static class GeometryBuilder
     {
         ArgumentNullException.ThrowIfNull(solve);
 
-        if (solve.Drive is not null || solve.Stages.Count > 0)
+        if (solve.Drives.Count > 0 || solve.Stages.Count > 0)
         {
             return BuildDriven(solve);
         }
@@ -519,7 +519,7 @@ public static class GeometryBuilder
     private static (IElectrostaticField Field, SolveReport Report) BuildDriven(CompiledSolvedField solve)
     {
         var grid = BuildGrid(solve);
-        var drive = solve.Drive;
+        var (frequencies, waveforms, quadrature) = Clocks(solve.Drives);
 
         // Every stage's electrodes go into the decomposition together, so a pattern
         // that appears in two stages is solved once and simply weighted differently
@@ -533,15 +533,15 @@ public static class GeometryBuilder
         // A sinusoid resolves every phase into two fixed quadrature components, so
         // a structure with a phase ramp along it costs two solves rather than one
         // per electrode. Any other waveform cannot be decomposed that way and each
-        // distinct phase stays its own supply.
-        var quadrature = drive is null or { Waveform: DriveWaveform.Sinusoid };
-
+        // distinct phase stays its own supply. Decided per generator, since an
+        // instrument may run a sinusoidal confinement and a switched excitation at
+        // once and each collapses or does not on its own terms.
         var groups = DriveChannels.Decompose(
             [.. states.SelectMany(e => e).Select(Excited)], quadrature);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
-        var harmonics = new List<IReadOnlyList<(double Amplitude, double Phase)>>(groups.Count);
+        var harmonics = new List<IReadOnlyList<WeightTerm>>(groups.Count);
 
         SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
 
@@ -586,25 +586,16 @@ public static class GeometryBuilder
             }
         }
 
-        RfWaveform waveform = drive is { Waveform: DriveWaveform.Rectangular }
-            ? new RfWaveform.Rectangular(drive.DutyCycle)
-            : new RfWaveform.Sinusoid();
-
-        // A sequence with no drive still switches; it just switches between states
-        // that do not oscillate. The frequency is then only a scale for the phase
-        // argument, which nothing uses, so any positive number will do and one
-        // hertz keeps the step cap out of the way.
-        var frequency = drive?.FrequencyHz ?? 1.0;
-
         if (solve.Stages.Count == 0)
         {
-            return (new DrivenSolvedField(channels, direct, harmonics, frequency, waveform), worst);
+            return (
+                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms), worst);
         }
 
         var boundaries = new List<double>(solve.Stages.Count);
         var stageDirect = new List<IReadOnlyList<double>>(solve.Stages.Count);
         var stageHarmonics =
-            new List<IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>>>(solve.Stages.Count);
+            new List<IReadOnlyList<IReadOnlyList<WeightTerm>>>(solve.Stages.Count);
 
         var elapsed = 0.0;
 
@@ -623,7 +614,8 @@ public static class GeometryBuilder
         }
 
         var sequenced = new DrivenSolvedField(
-            channels, direct, harmonics, frequency, waveform, boundaries, stageDirect, stageHarmonics);
+            channels, direct, harmonics, frequencies, waveforms,
+            boundaries, stageDirect, stageHarmonics);
 
         return (sequenced, worst);
     }
@@ -631,5 +623,44 @@ public static class GeometryBuilder
 
     /// <summary>How a two-dimensional electrode is excited, for the shared decomposition.</summary>
     private static Excitation Excited(CompiledElectrode electrode) =>
-        new(electrode.Name, electrode.Potential, electrode.DriveAmplitude, electrode.DrivePhase);
+        new(electrode.Name, electrode.Potential, [.. electrode.Taps.Select(
+            t => new DriveTap(t.Drive, t.Amplitude, t.Phase))]);
+
+    /// <summary>
+    /// The waveform, frequency and quadrature flag of every generator a geometry
+    /// declares, in declaration order.
+    /// </summary>
+    /// <remarks>
+    /// A geometry with stages and no drive still switches; it just switches between
+    /// states that do not oscillate. There is then one nominal clock whose frequency
+    /// nothing uses, and one hertz keeps the step cap out of the way.
+    /// </remarks>
+    private static (List<double> Frequencies, List<RfWaveform> Waveforms, List<bool> Quadrature)
+        Clocks(IReadOnlyList<Core.Model.CompiledDrive> drives)
+    {
+        var frequencies = new List<double>(drives.Count);
+        var waveforms = new List<RfWaveform>(drives.Count);
+        var quadrature = new List<bool>(drives.Count);
+
+        foreach (var drive in drives)
+        {
+            frequencies.Add(drive.FrequencyHz);
+
+            waveforms.Add(drive.Waveform == DriveWaveform.Rectangular
+                ? new RfWaveform.Rectangular(drive.DutyCycle)
+                : new RfWaveform.Sinusoid());
+
+            quadrature.Add(drive.Waveform != DriveWaveform.Rectangular);
+        }
+
+        if (frequencies.Count == 0)
+        {
+            frequencies.Add(1.0);
+            waveforms.Add(new RfWaveform.Sinusoid());
+            quadrature.Add(true);
+        }
+
+        return (frequencies, waveforms, quadrature);
+    }
+
 }

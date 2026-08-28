@@ -27,7 +27,7 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
             CentreY = y,
             Radius = radius,
             Potential = potential,
-            DriveAmplitude = drive,
+            Taps = drive == 0.0 ? [] : [new CompiledTap(0, drive, 0.0)],
         };
 
     private static CompiledElectrode Box(

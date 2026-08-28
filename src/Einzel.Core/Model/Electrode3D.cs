@@ -90,14 +90,17 @@ public sealed record CompiledElectrode3D
     /// <summary>The potential held, in volts. The DC part when driven.</summary>
     public double Potential { get; init; }
 
-    /// <summary>This electrode's share of the drive, zero to peak, in volts.</summary>
-    public double DriveAmplitude { get; init; }
+    /// <summary>Every generator this electrode is tapped off, in declaration order.</summary>
+    public IReadOnlyList<CompiledTap> Taps { get; init; } = [];
 
-    /// <summary>Where in the cycle this electrode sits, as a fraction of one.</summary>
-    public double DrivePhase { get; init; }
+    /// <summary>This electrode's share of the first drive it taps, in volts.</summary>
+    public double DriveAmplitude => Taps.Count > 0 ? Taps[0].Amplitude : 0.0;
+
+    /// <summary>Where in that drive's cycle this electrode sits, as a fraction of one.</summary>
+    public double DrivePhase => Taps.Count > 0 ? Taps[0].Phase : 0.0;
 
     /// <summary>Whether this electrode's potential varies in time.</summary>
-    public bool IsDriven => DriveAmplitude != 0.0;
+    public bool IsDriven => Taps.Any(t => t.Amplitude != 0.0);
 
     /// <summary>
     /// The smallest half-extent of this electrode, in metres.

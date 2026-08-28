@@ -2,6 +2,8 @@ using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Fields;
 using Einzel.Fields.Solved;
+using Einzel.Transport;
+using Einzel.Transport.Integration;
 using Xunit.Abstractions;
 
 namespace Einzel.Library.Tests;
@@ -34,8 +36,20 @@ public sealed class TravellingWaveGuideStudy(ITestOutputHelper output)
     /// <summary>Injection speeds the transit is scanned over, as fractions of the wave speed.</summary>
     private static readonly double[] SpeedRatios = [0.6, 0.8, 1.0, 1.2, 1.4];
 
-    private static ModelDocument Template() =>
+    private static ModelDocument Whole() =>
         Io.ModelJson.Parse(DeviceTemplates.Read("travelling-wave-guide"));
+
+    /// <summary>
+    /// The guide with its confining RF switched off, leaving the travelling wave
+    /// alone.
+    /// </summary>
+    /// <remarks>
+    /// Every claim below is about the <em>wave</em> - that it travels at the
+    /// declared speed, that a phase ramp costs two solves, that an ion is carried
+    /// rather than flying ballistically - and the confining generator is a second
+    /// independent thing that would confuse all of them. It gets its own test.
+    /// </remarks>
+    private static ModelDocument Template() => With(Whole(), ("confineAmplitude", 0.0));
 
     private static ModelDocument With(ModelDocument document, params (string Name, double Value)[] overrides)
     {
@@ -227,6 +241,175 @@ public sealed class TravellingWaveGuideStudy(ITestOutputHelper output)
     }
 
     /// <summary>Flight time to the detector, or zero if the ion never arrives.</summary>
+    [Fact]
+    public void TwoGeneratorsOnOneStructureCostThreeSolves()
+    {
+        // What a real travelling-wave guide is, and what this template could not say
+        // until a solve could declare more than one generator: a slow wave whose
+        // phase ramps along the stack, and a fast confining RF on the same rings in
+        // adjacent antiphase. Each ring taps both.
+        // A non-zero confinement, because the template ships with it at zero - a tap
+        // of zero volts is a wire carrying nothing and is dropped, which is right and
+        // would make this test measure the wave alone.
+        var model = Compile(With(Whole(), ("confineAmplitude", 200.0)));
+        var solve = Solve(model);
+
+        var channels = GeometryBuilder.SolveChannels(solve);
+
+        output.WriteLine($"electrodes    {solve.Electrodes.Count}");
+        output.WriteLine($"generators    {solve.Drives.Count}");
+        output.WriteLine($"basis solves  {channels.Count}");
+
+        foreach (var drive in solve.Drives)
+        {
+            output.WriteLine($"  {drive.Name,-10} {drive.FrequencyHz / 1e6:F2} MHz");
+        }
+
+        Assert.Equal(2, solve.Drives.Count);
+
+        // Three, and each of them is accounted for: the wave's phase ramp collapses
+        // into two quadrature components however many rings there are, and the
+        // alternating confinement is one more pattern. A different *frequency* costs
+        // nothing - what costs a solve is a different spatial pattern.
+        Assert.Equal(3, channels.Count);
+
+        foreach (var channel in channels)
+        {
+            Assert.True(channel.Report.Converged);
+        }
+
+        // Every ring taps both generators, and they are different generators.
+        var ring = solve.Electrodes[0];
+
+        Assert.Equal(2, ring.Taps.Count);
+        Assert.NotEqual(ring.Taps[0].Drive, ring.Taps[1].Drive);
+    }
+
+    [Fact]
+    public void TheFieldRunsOnTheFasterClock()
+    {
+        // The step controller has to be told the truth about the fastest thing in
+        // the field. A guide whose wave repeats at 100 kHz and whose confinement
+        // oscillates at 3 MHz carries information thirty times faster than the wave,
+        // and a controller given only the wave's period would step over every
+        // confining cycle while its error estimator agreed the step was accurate -
+        // for the field the step was shown.
+        var model = Compile(With(Whole(), ("confineAmplitude", 200.0)));
+        var field = (Fields.ITimeVaryingField)FieldAssembly.Build(model);
+
+        var wave = model.Parameters["driveFrequency"].SiValue;
+        var confine = model.Parameters["confineFrequency"].SiValue;
+
+        output.WriteLine($"wave {wave / 1e6:F3} MHz, confinement {confine / 1e6:F3} MHz");
+        output.WriteLine($"shortest period {field.ShortestPeriodSeconds * 1e9:F2} ns");
+
+        Assert.True(confine > wave, "the confinement should be the faster generator");
+        Assert.Equal(1.0 / confine, field.ShortestPeriodSeconds, 1e-15);
+    }
+
+    [Fact]
+    public void TheConfiningGeneratorReachesTheIonAndDoesNotYetHelpIt()
+    {
+        // The deficiency the second generator was built for, and an honest account of
+        // how far it got. A travelling wave has deep wells along the axis and almost
+        // no radial restoring force, so a real guide superposes a fast confining RF
+        // on the same rings in adjacent antiphase - which this template could not say
+        // at all until a solve could carry two generators.
+        //
+        // It can say it now, and on this geometry it does not help. Measured as the
+        // fraction of entry radii that arrive, which is stable where a "widest radius
+        // through" is not: the acceptance edge is ragged, and the same geometry gave
+        // 0.65 mm on one radius grid and 0.20 mm on another.
+        output.WriteLine("confinement   arrivals of 12   fraction");
+
+        var accepted = new List<double>();
+
+        foreach (var volts in new[] { 0.0, 200.0, 800.0 })
+        {
+            var arrivals = 0;
+            var samples = 0;
+
+            for (var radius = 0.1; radius <= 1.25; radius += 0.1)
+            {
+                samples++;
+
+                var model = Compile(With(
+                    Whole(), ("confineAmplitude", volts), ("entryRadius", radius)));
+
+                if (Arrives(model))
+                {
+                    arrivals++;
+                }
+            }
+
+            output.WriteLine($"{volts,10:F0} V   {arrivals,14}   {(double)arrivals / samples,8:F3}");
+
+            accepted.Add((double)arrivals / samples);
+        }
+
+        // What is asserted is that the second generator REACHES the ion - the
+        // acceptance is different with it on, so it is neither inert nor being
+        // silently dropped somewhere between the document and the trajectory. That is
+        // the claim this capability supports.
+        Assert.NotEqual(accepted[0], accepted[2], 1e-9);
+
+        // And that a large amplitude makes things worse, which is the measurement
+        // rather than a disappointment: the confining drive's own Mathieu q passes
+        // 0.9 near 200 V on this pitch, so at 800 V the ion is RF-unstable and is
+        // ejected rather than held. An excitation that ejects is still an excitation
+        // that arrived.
+        Assert.True(
+            accepted[2] < accepted[0],
+            $"800 V should eject rather than confine on this geometry: "
+            + $"{accepted[2]:F3} against {accepted[0]:F3}");
+    }
+
+    // What is deliberately NOT claimed, and why.
+    //
+    // That a confining RF improves this guide. Every amplitude tried either did
+    // nothing or made things worse - 5/12 entry radii arrive with none, 2/12 at
+    // 100 V, 4/12 at 200 V, 3/12 at 400 V, 1/12 at 800 V, and 1/12 at 200 V and
+    // 400 V with the frequency halved to deepen the well.
+    //
+    // The window is narrow at both ends. Above about 200 V on this ring pitch the
+    // confining drive's own Mathieu q passes the stability limit and the ion is
+    // ejected; below it the pseudopotential well is shallow against a 60 V wave, and
+    // the alternating field decays as exp(-2 pi r / pitch) so what reaches the axis
+    // is a small fraction of what sits at the rings. Whether a working point exists
+    // is a two-dimensional question in wave and confinement amplitude together, and
+    // it is a design study rather than a test.
+    //
+    // The template therefore ships with the confinement at zero volts. Shipping a
+    // default that makes a device worse would be worse than shipping none.
+
+    private static bool Arrives(CompiledModel model)
+    {
+        var field = FieldAssembly.Build(model);
+        var species = IonSpecies.FromModel(model);
+
+        var launch = new PhaseState(
+            model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
+
+        var point = model.DetectorPoint;
+        var normal = model.DetectorNormal;
+
+        TrajectoryStopFunction detector =
+            (in PhaseState state) => Vec3.Dot(state.Position - point, normal);
+
+        var result = TrajectoryIntegrator.Integrate(
+            launch,
+            species,
+            field,
+            new IntegrationSettings
+            {
+                RelativeTolerance = 1e-8,
+                MaximumFlightTime = model.MaximumFlightTimeSi,
+            },
+            detector);
+
+        return result.Outcome == TrajectoryOutcome.StopConditionMet;
+    }
+
     private static double Transit(ModelDocument document)
     {
         var model = Compile(document);

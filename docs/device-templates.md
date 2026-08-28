@@ -771,3 +771,54 @@ for a driven geometry, and the 3-D verb reporting `converged: true` for a field 
 never touched. **Reading only the DC of a driven electrode is a recurring mistake
 here**, and it is worth grepping for the next time something driven behaves as
 though it were earthed.
+
+## The travelling-wave guide gets its second generator, and it does not help yet
+
+The shipped guide now declares **two** generators — a slow travelling wave whose phase
+ramps along the stack, and a fast confining RF on the same rings in adjacent antiphase
+— which is what a real stacked-ring travelling-wave guide is and what this template
+could not say at all until a solve could carry more than one drive.
+
+| | |
+| --- | --- |
+| Electrodes | 24 rings, each tapping both generators |
+| Generators | wave at 0.5 MHz, confinement at 3 MHz |
+| Basis solves | **3** — two for the wave's phase ramp, one for the alternating confinement |
+| Shortest period the field reports | **333.33 ns**, the confinement's, not the wave's |
+
+**And the confinement does not widen the acceptance.** Measured as the fraction of
+entry radii from 0.1 to 1.2 mm that arrive, on a 2 mm bore:
+
+| confinement | arrivals of 12 |
+| --- | --- |
+| none | **5** |
+| 100 V | 2 |
+| 200 V | 4 |
+| 400 V | 3 |
+| 800 V | 1 |
+| 200 V at half the frequency | 1 |
+| 400 V at half the frequency | 1 |
+
+**The window is narrow at both ends, and that is the explanation rather than a
+disappointment.** Above about 200 V on this ring pitch the confining drive's own
+Mathieu q passes the stability limit, so the ion is RF-*unstable* and is ejected
+rather than held — at 800 V the confinement removes ions that would otherwise have
+arrived. Below it the pseudopotential well is shallow against a 60 V wave, and the
+alternating field decays as `exp(−2πr/pitch)` so what reaches the axis is a small
+fraction of what sits at the rings.
+
+Whether a working point exists is a two-dimensional question in wave and confinement
+amplitude together, and it is a design study rather than a test. **The template
+therefore ships with the confinement at zero volts**: shipping a default that makes a
+device worse would be worse than shipping none.
+
+What the tests assert is the part that is settled — the generator is declarable, costs
+one extra solve, sets the step by the faster clock, and **reaches the ion**: the
+acceptance differs with it on, so it is neither inert nor being silently dropped
+somewhere between the document and the trajectory. An excitation that ejects is still
+an excitation that arrived.
+
+**A statistic that had to be replaced.** The first measurement was "the widest entry
+radius that still arrives", which read 0.65 mm on one radius grid and 0.20 mm on
+another for the same geometry — a maximum over a ragged set is a maximum over noise.
+Counting arrivals over a fixed grid is the same measurement made stable.

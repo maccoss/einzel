@@ -611,34 +611,88 @@ other genuinely is not a 0.4 document, and saying so is cheaper than an older
 build reading it, ignoring the field it does not know, and reporting a different
 flight with nothing to indicate that anything was dropped.
 
-## What the format still cannot say: a second excitation
+## Several generators on one geometry
 
-A `solve` carries **one** `drive`, with one frequency and one waveform, and each
-electrode taps it with an amplitude and a phase. Two devices need more than that, and
-both are built and working in the engine while being inexpressible in a document:
+A `solve` may declare `drives` instead of `drive`, and each electrode names which ones
+it taps and with what amplitude and phase:
 
-- **A travelling-wave guide** superposes a fast confining RF on a slow travelling
-  wave. An electrode carries one drive tap, not two, so the shipped template has the
-  travelling wave and no radial confinement — acceptance about 0.1 mm on a 2 mm bore.
-- **A stored-waveform isolation** applies a low-frequency notched comb across a pair
-  of electrodes while the main RF confines. `RfWaveform.Harmonic` expresses the comb
-  and `OscillatingUniformField` applies it, and the notch-width trade is measured in
-  `docs/validation.md` — on the analytic quadrupole, because there is no way to
-  declare it.
+```json
+"drives": [
+  { "name": "wave",    "frequency": { "value": 0.5, "unit": "MHz" } },
+  { "name": "confine", "frequency": { "value": 3.0, "unit": "MHz" } }
+],
+"electrodes": [
+  {
+    "name": "ring",
+    "repeat": { "count": { "expression": "ringCount" }, "index": "ring" },
+    "potential": { "value": 0, "unit": "V" },
+    "taps": [
+      { "drive": "wave",
+        "amplitude": { "expression": "rfAmplitude", "unit": "V" },
+        "phase": { "expression": "-waveDirection * ring / ringsPerWave", "unit": "1" } },
+      { "drive": "confine",
+        "amplitude": { "expression": "confineAmplitude", "unit": "V" },
+        "phase": { "expression": "mod(ring, 2) / 2", "unit": "1" } }
+    ]
+  }
+]
+```
 
-**The shape of the fix is a drive per supply rather than per solve.** The decomposition
-already groups electrodes into supplies by spatial pattern, and a supply is exactly
-the thing that has a frequency and a waveform; moving the drive there costs one level
-of nesting in the schema and nothing in the solver, since basis superposition is
-indifferent to what the weights are functions of. A harmonic waveform is already one
-scalar function of time however many terms it has, so an arbitrary waveform costs one
-basis solve exactly as a sinusoid does.
+`drive` and `driveAmplitude`/`drivePhase` remain the short form for the common case of
+one generator, and declaring both spellings is **refused** rather than merged: a
+document that says a geometry has one drive and also says it has three is not a
+document with a default to fall back on. Every generator needs a `name` once there is
+more than one, since a tap resolves by name; duplicates and unknown names are refused,
+and the error lists the generators that exist.
 
-What it would change is the **step control**, and that is worth stating: a field with
-two timescales must cap its step by the faster one.
-`DrivenSuperposedField.ShortestPeriodSeconds` takes the minimum over its members, and
-`OscillatingUniformField` reports the period of its *highest harmonic* rather than of
-its fundamental — a comb reaching order 120 carries information a hundred and twenty
-times faster than its own repeat rate, and a controller told only the fundamental
-would step over every one of those oscillations while its error estimator agreed the
-step was accurate. For the field the step was shown. It was not shown the field.
+**Why the format said "one" and what changed its mind.** The original note in
+`CompiledDrive` read: *"one drive per solve ... modelling it the other way round would
+let a document declare two frequencies on one structure — which is a different
+instrument and almost always a mistake."* Two devices refuted it. A real
+travelling-wave guide superposes a fast confining RF on a slow travelling wave, and a
+trap performing a stored-waveform isolation runs a low-frequency notched comb across
+its endcaps while the ring carries the main drive. **Two frequencies on one structure
+is not a mistake; it is what a trap is.**
+
+### It costs nothing in the solver
+
+Basis superposition is indifferent to what the weights are functions of. Two
+generators reaching the same electrodes in the same proportions are **one solved
+pattern carrying two weights on two clocks**, exactly as a DC supply and an RF supply
+already were. What multiplies the solve count is a different *spatial pattern*, never
+a different frequency.
+
+Measured on the shipped travelling-wave guide, whose 24 rings each tap both
+generators: **3 basis solves**. Two for the wave — a sinusoidal phase ramp collapses
+into a fixed quadrature pair however many rings there are — and one for the
+alternating confinement.
+
+The quadrature collapse is decided **per generator**, because an instrument may run a
+sinusoidal confinement and a switched excitation at once and each collapses or does
+not on its own terms.
+
+### It does change the step control
+
+A field with two timescales must cap its step by the faster one.
+`DrivenSolvedField.ShortestPeriodSeconds` is the minimum over generators, and for a
+harmonic waveform it is the period of the **highest term** rather than of the
+fundamental — a comb reaching order 120 carries information a hundred and twenty times
+faster than its own repeat rate, and a controller told only the fundamental would step
+over every one of those oscillations while its error estimator agreed the step was
+accurate. For the field the step was shown. It was not shown the field.
+
+Measured: the guide's wave repeats at 0.5 MHz and its confinement at 3 MHz, and the
+assembled field reports **333.33 ns** — the confinement's period, not the wave's.
+
+### What is still one drive
+
+**Three-dimensional solves.** `CompiledSolvedField3D` and `Geometry3D` carry a list
+and the builder uses it, so nothing below the document is limited; the `solved3d`
+document form has not been given the `drives` spelling. It is the same change and it
+has not been needed yet.
+
+**Analytic elements.** An `OscillatingUniformField` is its own generator with its own
+frequency, superposed through `DrivenSuperposedField`, which is how the notch-width
+measurement in `docs/validation.md` is done. A solved geometry with a supplementary
+uniform excitation would be that superposition, and nothing in the format declares
+one.

@@ -23,8 +23,11 @@ public sealed record Geometry3D(
     IReadOnlyList<CompiledElectrode3D> Electrodes,
     double Tolerance = 1e-10)
 {
-    /// <summary>The drive this geometry is operated with, or null when static.</summary>
-    public Core.Model.CompiledDrive? Drive { get; init; }
+    /// <summary>The generators this geometry is operated with. Empty when static.</summary>
+    public IReadOnlyList<Core.Model.CompiledDrive> Drives { get; init; } = [];
+
+    /// <summary>The primary drive - the first declared - or null when static.</summary>
+    public Core.Model.CompiledDrive? Drive => Drives.Count > 0 ? Drives[0] : null;
 
     /// <summary>The timed sequence it is operated through, or empty for one state.</summary>
     public IReadOnlyList<CompiledStage3D> Stages { get; init; } = [];
@@ -217,7 +220,7 @@ public static class GeometryBuilder3D
     {
         ArgumentNullException.ThrowIfNull(geometry);
 
-        if (geometry.Drive is null && geometry.Stages.Count == 0)
+        if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
             var (statik, staticReport) = Build(geometry);
             return (statik, staticReport);
@@ -228,7 +231,7 @@ public static class GeometryBuilder3D
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
-        var harmonics = new List<IReadOnlyList<(double Amplitude, double Phase)>>(groups.Count);
+        var harmonics = new List<IReadOnlyList<WeightTerm>>(groups.Count);
 
         SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
 
@@ -244,23 +247,18 @@ public static class GeometryBuilder3D
             }
         }
 
-        var drive = geometry.Drive;
-
-        Analytic.RfWaveform waveform = drive is { Waveform: Core.Model.DriveWaveform.Rectangular }
-            ? new Analytic.RfWaveform.Rectangular(drive.DutyCycle)
-            : new Analytic.RfWaveform.Sinusoid();
-
-        var frequency = drive?.FrequencyHz ?? 1.0;
+        var (frequencies, waveforms, quadrature) = Clocks(geometry.Drives);
 
         if (geometry.Stages.Count == 0)
         {
-            return (new DrivenSolvedField(channels, direct, harmonics, frequency, waveform), worst);
+            return (
+                new DrivenSolvedField(channels, direct, harmonics, frequencies, waveforms), worst);
         }
 
         var boundaries = new List<double>(geometry.Stages.Count);
         var stageDirect = new List<IReadOnlyList<double>>(geometry.Stages.Count);
         var stageHarmonics =
-            new List<IReadOnlyList<IReadOnlyList<(double Amplitude, double Phase)>>>(geometry.Stages.Count);
+            new List<IReadOnlyList<IReadOnlyList<WeightTerm>>>(geometry.Stages.Count);
 
         var elapsed = 0.0;
 
@@ -270,14 +268,15 @@ public static class GeometryBuilder3D
             boundaries.Add(elapsed);
 
             var weights = DriveChannels.Weigh(
-                groups, [.. stage.Electrodes.Select(Excited)], Quadrature(geometry));
+                groups, [.. stage.Electrodes.Select(Excited)], quadrature);
 
             stageDirect.Add(weights.Direct);
             stageHarmonics.Add(weights.Harmonics);
         }
 
         var sequenced = new DrivenSolvedField(
-            channels, direct, harmonics, frequency, waveform, boundaries, stageDirect, stageHarmonics);
+            channels, direct, harmonics, frequencies, waveforms,
+            boundaries, stageDirect, stageHarmonics);
 
         return (sequenced, worst);
     }
@@ -303,7 +302,7 @@ public static class GeometryBuilder3D
     {
         ArgumentNullException.ThrowIfNull(geometry);
 
-        if (geometry.Drive is null && geometry.Stages.Count == 0)
+        if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
             var grid = BuildGrid(geometry);
             var mask = BuildMask(geometry, grid);
@@ -318,11 +317,41 @@ public static class GeometryBuilder3D
     }
 
     /// <summary>
-    /// Whether the drive is a sinusoid, so every phase resolves into two fixed
-    /// quadrature components rather than into a supply of its own.
+    /// The waveform, frequency and quadrature flag of every generator, in
+    /// declaration order.
     /// </summary>
-    private static bool Quadrature(Geometry3D geometry) =>
-        geometry.Drive is null or { Waveform: Core.Model.DriveWaveform.Sinusoid };
+    /// <remarks>
+    /// A geometry with stages and no drive still switches; it just switches between
+    /// states that do not oscillate. There is then one nominal clock whose frequency
+    /// nothing uses, and one hertz keeps the step cap out of the way.
+    /// </remarks>
+    private static (List<double> Frequencies, List<Analytic.RfWaveform> Waveforms, List<bool> Quadrature)
+        Clocks(IReadOnlyList<Core.Model.CompiledDrive> drives)
+    {
+        var frequencies = new List<double>(drives.Count);
+        var waveforms = new List<Analytic.RfWaveform>(drives.Count);
+        var quadrature = new List<bool>(drives.Count);
+
+        foreach (var drive in drives)
+        {
+            frequencies.Add(drive.FrequencyHz);
+
+            waveforms.Add(drive.Waveform == Core.Model.DriveWaveform.Rectangular
+                ? new Analytic.RfWaveform.Rectangular(drive.DutyCycle)
+                : new Analytic.RfWaveform.Sinusoid());
+
+            quadrature.Add(drive.Waveform != Core.Model.DriveWaveform.Rectangular);
+        }
+
+        if (frequencies.Count == 0)
+        {
+            frequencies.Add(1.0);
+            waveforms.Add(new Analytic.RfWaveform.Sinusoid());
+            quadrature.Add(true);
+        }
+
+        return (frequencies, waveforms, quadrature);
+    }
 
     private static List<DriveChannel> Groups(Geometry3D geometry)
     {
@@ -330,8 +359,10 @@ public static class GeometryBuilder3D
             ? geometry.Stages.Select(stage => stage.Electrodes).ToList()
             : [geometry.Electrodes];
 
+        var (_, _, quadrature) = Clocks(geometry.Drives);
+
         return DriveChannels.Decompose(
-            [.. states.SelectMany(e => e).Select(Excited)], Quadrature(geometry));
+            [.. states.SelectMany(e => e).Select(Excited)], quadrature);
     }
 
     private static List<ChannelSolve> SolveGroups(
@@ -361,7 +392,8 @@ public static class GeometryBuilder3D
 
     /// <summary>How a three-dimensional electrode is excited, for the shared decomposition.</summary>
     private static Excitation Excited(CompiledElectrode3D electrode) =>
-        new(electrode.Name, electrode.Potential, electrode.DriveAmplitude, electrode.DrivePhase);
+        new(electrode.Name, electrode.Potential, [.. electrode.Taps.Select(
+            t => new DriveTap(t.Drive, t.Amplitude, t.Phase))]);
 
     /// <summary>Fixes every node inside an electrode, and says whether it found any.</summary>
     private static bool Rasterise(

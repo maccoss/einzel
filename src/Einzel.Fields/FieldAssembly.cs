@@ -291,7 +291,7 @@ public static class FieldAssembly
                         solve.Electrodes,
                         solve.Tolerance)
                     {
-                        Drive = solve.Drive,
+                        Drives = solve.Drives,
                         Stages = solve.Stages,
                     };
 
