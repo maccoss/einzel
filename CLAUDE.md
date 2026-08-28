@@ -656,6 +656,22 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   The general lesson, in `docs/lessons.md`: **a convenience accessor that quietly becomes a summary keeps every caller compiling and changes what some of them mean.** After widening a scalar into a list, ask which readers of the scalar were asking a question it no longer answers.
 
+- **The corpus has no 3-D example, and finding out why was worth more than the example.** One was written — a parallel-plate gap checked against `sqrt(2d²m/(qV))`, the same closed form the analytic accelerating-gap example uses. It was not shipped:
+
+  | | cycles | factor |
+  | --- | --- | --- |
+  | **parallel plates, 2 slabs in a grounded box** | **49** | **0.652** |
+  | the shipped segmented quadrupole, 12 rods | 12–13 | 0.08 |
+  | a charged sphere, node-aligned coarse levels | 9 | 0.126 |
+
+  **124 seconds** for the plates, against 11 for a whole segmented-quadrupole *run*, and against a gate that does the other twenty-six examples in forty-two. A factor of 0.65 means the V-cycle is barely doing anything.
+
+  **The simplest 3-D geometry anybody would write is the worst case for the documented interior-electrode limitation**, and that is the wrong way round. A rod is thin, so coarsening loses it fast and the pinning fix restores its presence; **a slab is a large solid Dirichlet region**, so a coarse level that half-represents it is solving a different problem over most of the domain rather than a corner of it.
+
+  It was also **3.2% off**, which is the geometry rather than the solver — a finite plate in a grounded box 2 mm behind it is not an infinite capacitor, and asserting V/d to 1% would be asserting that it is. Fixing that needs a *larger* domain, so more solve, not less.
+
+  So the volume solver, its tricubic interpolant and its cut cells are exercised by `Einzel.Fields.Tests` and the segmented-quadrupole study, and **not by the release gate** — a stated gap rather than an oversight. Galerkin coarsening closes it, and would make the plates converge like everything else. In `docs/numerics.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

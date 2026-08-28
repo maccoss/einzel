@@ -722,3 +722,46 @@ reproducibility on one machine is. Golden comparisons use documented tolerances
 with stated reasons. `Deterministic` and `InvariantGlobalization` are set in
 `Directory.Build.props` so that number formatting cannot vary with the host
 locale and leak into CLI output or golden files.
+
+## A parallel-plate capacitor is the worst 3-D case, and that is the wrong way round
+
+The documented multigrid limitation — coarsening does not preserve interior
+electrodes, so the convergence factor degrades — has a concrete cost that is easy to
+underestimate, because the geometry that shows it worst is the simplest one anybody
+would write.
+
+Two slabs 10 mm apart in a grounded box, 0.5 mm cells, 65 x 65 x 46 nodes:
+
+| | cycles | factor |
+| --- | --- | --- |
+| **parallel plates** | **49** | **0.652** |
+| the shipped segmented quadrupole, twelve rods | 12–13 | 0.08 |
+| a charged sphere, node-aligned coarse levels | 9 | 0.126 |
+
+**124 seconds** for the plates, against 11 for a whole segmented-quadrupole run. A
+factor of 0.65 means the V-cycle is barely doing anything and the solve is close to
+plain relaxation.
+
+The reason is structural rather than surprising once seen. A rod is thin, so
+coarsening loses it quickly and the pinning fix restores its presence; **a slab is a
+large solid Dirichlet region**, and a coarse level that half-represents a slab is
+solving a different problem over a large volume rather than a small one. The error the
+coarse grid feeds back is wrong where most of the domain is.
+
+**This is why the example corpus has no three-dimensional model.** One was written — a
+parallel-plate gap checked against `sqrt(2 d² m / (q V))`, the same closed form the
+analytic accelerating-gap example uses — and it was not shipped, for two reasons worth
+separating:
+
+- **It costs two minutes** against a gate that runs the other twenty-six examples in
+  forty-two seconds. That is the multigrid limitation, not the example.
+- **It was 3.2 per cent off**, which is the *geometry*: a finite plate in a grounded
+  box 2 mm behind it is not an infinite capacitor, and asserting `V/d` to one per cent
+  would be asserting that it is. Fixing that means a larger domain, which costs more
+  solve, not less.
+
+So the volume solver, its tricubic interpolant and its cut cells are exercised by
+`Einzel.Fields.Tests` and by the segmented-quadrupole study, and **not** by the
+release gate. That is a stated gap rather than an oversight, and the thing that closes
+it is Galerkin coarsening — which would also make the plates converge like everything
+else.
