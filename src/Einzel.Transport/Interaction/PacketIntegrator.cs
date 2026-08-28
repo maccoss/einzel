@@ -96,7 +96,7 @@ public static class PacketIntegrator
         IReadOnlyList<PhaseState> launch,
         IonSpecies species,
         IElectrostaticField field,
-        CoulombInteraction? interaction,
+        ISelfField? interaction,
         IntegrationSettings settings,
         TrajectoryStopFunction stopWhenNegative)
     {
@@ -251,7 +251,7 @@ public static class PacketIntegrator
         double step,
         IElectrostaticField field,
         double chargeToMass,
-        CoulombInteraction? interaction,
+        ISelfField? interaction,
         double time,
         Vec3[] scratch,
         PhaseState[] result,
@@ -348,7 +348,7 @@ public static class PacketIntegrator
         bool[] active,
         IElectrostaticField field,
         double chargeToMass,
-        CoulombInteraction? interaction,
+        ISelfField? interaction,
         double time,
         Vec3[] scratch,
         PhaseDerivative[] into,

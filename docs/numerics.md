@@ -880,3 +880,117 @@ than a better method.
 The **integration**: choosing the grid a drifting packet deposits onto, when to
 re-solve, and the comparison against the direct sum on the same configuration. The
 pieces are all here and nothing wires them to `PacketIntegrator` yet.
+
+## Particle-in-cell, wired to the packet integrator
+
+SC-1 asks for a direct pairwise sum and an approximate method validated against it.
+Both are now `ISelfField` — positions in, accelerations accumulated out — which is
+what lets the two be handed the same configuration and differenced. A caller that had
+to know which one it held would end up knowing why, and the choice would stop being
+the model's.
+
+### Three design questions, answered in the code
+
+**Which grid does a drifting packet deposit onto?** Its own, in its own frame. A
+packet crossing a metre-long analyzer cannot have a grid over the instrument at any
+resolution that resolves the packet, so the box is built around the packet and
+centred on the centroid — and every deposit and gather is done relative to that
+centroid. **Uniform translation is therefore exact**, measured at 1e-11 across a
+250 mm displacement, and costs nothing.
+
+**When to re-solve?** On *shape*, not on position or a step count. Translation is
+already exact, so the only thing that ages between solves is the packet's shape:
+the criterion is a fractional change in RMS radius, defaulting to 5%. That is a
+statement about the approximation rather than a number chosen to make something
+finish.
+
+**What is the boundary?** An earthed box, which a packet in flight is not in. Centring
+the box is what keeps that cheap — a centred distribution in a symmetric earthed box
+induces almost no field at its own centre — and `Padding` buys the residual down and
+is reported.
+
+### The finding: a linear gather costs 27× the integrator steps
+
+The first version used cloud-in-cell for both deposit and gather, on the argument that
+ACC-3's ban on trilinear interpolation is about *trajectory paths* and this is a
+self-consistent field whose accuracy the deposit already bounds. **That argument is
+right about accuracy and wrong about cost**, and the step controller does not care
+about the distinction.
+
+A trilinear gather is continuous and its derivative is not: the force kinks at every
+cell face, and an embedded Runge–Kutta estimator reads a kink as error. Measured on a
+free-flight packet, against the direct sum's 25 steps:
+
+| nodes across the box | steps, linear | steps, quadratic |
+| --- | --- | --- |
+| 16 | 274 | **45** |
+| 32 | 383 | **65** |
+| 64 | 656 | **95** |
+
+The step count tracking the node count is what identifies the mechanism: more nodes
+means more faces per unit path, and a fixed overhead would not scale.
+
+The fix keeps the property that made the linear choice necessary. A **quadratic
+B-spline** (triangular-shaped cloud) uses twenty-seven nodes instead of eight, is
+continuously differentiable, and is used for the deposit *and* the gather — so the
+self-force still cancels, which is the whole reason the two must share a shape. The
+weights sum to exactly one for any offset, so charge is still conserved by
+construction, and that identity holding for *any* offset is what lets the index be
+clamped at a face without losing charge.
+
+### What it costs, and where it starts paying
+
+| macroparticles | direct sum | particle-in-cell | ratio |
+| --- | --- | --- | --- |
+| 250 | 0.57 s | 3.50 s | 0.16 |
+| 500 | 1.95 s | 4.62 s | 0.42 |
+| 1000 | 7.84 s | 6.47 s | **1.21** |
+| 2000 | 35.01 s | 10.92 s | **3.21** |
+
+**The crossing is near 850 macroparticles**, and it is worth stating plainly rather
+than quoting the asymptotics: below that the reference method is simply faster, and a
+run that reaches for the approximate one there is paying for nothing. What the table
+shows is the direct sum's share growing as N² while the grid's does not.
+
+Absolute times are from one machine and are not asserted; the test asserts only that
+the ratio rises with N, which is the only claim a wall-clock measurement on a shared
+runner can honestly make.
+
+### Against the reference
+
+A ball of 4,000 macroparticles, self-force binned by radius:
+
+| r/R | direct | grid | ratio |
+| --- | --- | --- | --- |
+| 0.1 | 1.5897e8 | 1.5915e8 | 1.0011 |
+| 0.3 | 3.6507e8 | 3.5928e8 | 0.9842 |
+| 0.5 | 5.7025e8 | 5.7375e8 | 1.0061 |
+| 0.7 | 7.8024e8 | 7.7132e8 | 0.9886 |
+| 0.9 | 9.6628e8 | 8.8094e8 | 0.9117 |
+
+The outermost bin is the worst and has to be: it straddles the ball's surface, where
+the density steps to zero, and a smoothed deposit and a point-softened sum disagree
+about a discontinuity by construction. The body of the packet agrees to about a per
+cent.
+
+**And end to end**, which is the check that says nothing accumulates over a flight
+that was not already there in one evaluation: a packet released in free space expands
+under nothing but its own charge, from 0.384 mm RMS to **1.907 mm by the direct sum
+and 1.916 mm by the grid — 0.5 per cent apart** over 2 µs.
+
+### A trade that showed itself
+
+Rebuilding the box on every refresh throws away the previous potential and the
+Dirichlet mask with it, so a freshly built box carries headroom above the requested
+padding and is kept while the packet grows into it. At 1.6× headroom that cut rebuilds
+from 32 to 4 — and cost accuracy: the outermost bin fell from 0.94 to **0.83**, because
+a bigger box at a fixed node count resolves the packet with fewer cells. At 1.15× the
+rebuilds are 11 and the accuracy is back. The headroom is resolution traded for
+allocation, and the packet is only a few cells across either way, which is what makes
+the trade visible at all.
+
+### Still to do
+
+The method is not yet reachable from a model document: `"spaceCharge": "direct"` is
+the only value the format takes, and `"pic"` needs the schema entry and a way to
+declare the node count and padding.

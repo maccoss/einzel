@@ -636,6 +636,16 @@ actually caught them were:
   locates the linear boundary to a worst residual of 1.2e-3 and needs no journey at
   all. When a measurement is amplitude-dependent and the thing being measured is not,
   suspect the measurement rather than adding controls to it.
+- **An argument that was right about accuracy and wrong about cost.** ACC-3 forbids
+  trilinear interpolation on a trajectory path. Particle-in-cell's gather looked
+  exempt - it is a self-consistent field whose accuracy the deposit already bounds,
+  and the gather must share the deposit's weights or the self-force does not cancel -
+  so the first version used it. The reasoning holds; what it missed is that a
+  trilinear force is kinked at every cell face and an embedded Runge-Kutta estimator
+  reads a kink as error. **The packet took 27 times the integrator steps**, which no
+  accuracy argument would have predicted. A quadratic B-spline is smooth, keeps the
+  deposit/gather symmetry, and takes it back to 2x. When exempting something from a
+  smoothness rule, ask what else reads the derivative.
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.

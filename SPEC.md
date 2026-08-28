@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**627 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**635 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -970,17 +970,31 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
 Everything struck through was on this list and is now done; it is kept because *why*
 each turned out to be cheap or expensive is worth more than the fact of it.
 
-1. **Wire particle-in-cell to the packet integrator (SC-1).** Both halves now exist
-   and nothing joins them. `PoissonSolver2D` and `PoissonSolver3D` take a source, so
-   `grad²φ = −ρ/ε₀` is solved rather than only Laplace; `CloudInCell` deposits charge
-   conserving it exactly and gathers the field with the deposit's own weights, so the
-   self-force cancels to **8e-5 of the neighbour-scale field against 0.5 for a gather
-   that does not share them**. What is left is the *integration*, and the questions in
-   it are design rather than numerics: **which grid a drifting packet deposits onto**
-   (its own, co-moving, or the instrument's), **when to re-solve** (every step is
-   correct and unaffordable; every few is a choice that needs a stated error), and the
-   comparison against the direct sum on the same configuration — which is the whole
-   reason the direct sum was built first.
+1. ~~**Wire particle-in-cell to the packet integrator (SC-1)**~~ — **done, and it
+   found something.** Both methods are now `ISelfField` peers, so they can be handed
+   the same configuration and differenced. The grid is the packet's own and lives in
+   the packet's frame, which makes uniform translation **exact** (1e-11 across
+   250 mm) and free; the refresh criterion is therefore written on *shape*, since
+   shape is the only thing that ages. Against the reference: **0.5 per cent** on a
+   flown packet's widening, about a per cent through the body of a static one.
+
+   **The finding is that a linear gather costs 27× the integrator steps.** The
+   previous commit argued that ACC-3's ban on trilinear interpolation does not reach
+   a self-consistent field whose accuracy the deposit already bounds. That is right
+   about accuracy and wrong about cost: a trilinear force kinks at every cell face and
+   an embedded Runge–Kutta estimator reads a kink as error. Measured at 274/383/656
+   steps on 16/32/64 nodes against the direct sum's 25 — the count tracking the node
+   count is what identifies the mechanism. A quadratic B-spline keeps the
+   deposit/gather symmetry, is continuously differentiable, and takes it to
+   45/65/95.
+
+   **Where it starts paying: about 850 macroparticles.** Below that the reference is
+   simply faster and reaching for the approximation buys nothing; at 2,000 the grid is
+   3.2× ahead. Worth stating as a crossing rather than as asymptotics.
+
+   Left undone: the method is not reachable from a document. `"spaceCharge": "direct"`
+   is the only value the format takes, and `"pic"` needs a schema entry and a way to
+   declare the node count and padding.
 
 2. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
    the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step

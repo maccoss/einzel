@@ -712,6 +712,28 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Left for SC-1:** the integration — which grid a drifting packet deposits onto, when to re-solve, and the comparison against the direct sum on the same configuration. Every piece exists; nothing wires them to `PacketIntegrator` yet. In `docs/numerics.md`.
 
+- **Particle-in-cell, wired to the packet integrator — and an argument of mine that was right about accuracy and wrong about cost.** Both methods are now `ISelfField` peers (positions in, accelerations accumulated out), which is what lets them be handed the same configuration and differenced. SC-1's "validated against" means nothing without that.
+
+  **Three design questions, answered in the code.** The grid is *the packet's own, in the packet's frame* — a packet crossing a metre cannot have a grid over the instrument at any useful resolution — so every deposit and gather is relative to the centroid and **uniform translation is exact** (1e-11 across 250 mm) and free. Because translation is exact, the only thing that ages is *shape*, so the refresh criterion is a fractional change in RMS radius rather than a step count. And the boundary is an earthed box, which a packet in flight is not in; centring it is what keeps that cheap, since a centred distribution induces almost no field at its own centre.
+
+  **The finding.** The cloud-in-cell commit argued that ACC-3's ban on trilinear interpolation does not reach a self-consistent field whose accuracy the deposit already bounds, and that the deposit/gather symmetry buys more than the extra order would. **Right about accuracy, wrong about cost** — a trilinear force kinks at every cell face and an embedded Runge–Kutta estimator reads a kink as error:
+
+  | nodes | steps, linear | steps, quadratic |
+  | --- | --- | --- |
+  | 16 | 274 | **45** |
+  | 32 | 383 | **65** |
+  | 64 | 656 | **95** |
+
+  against the direct sum's 25. **The step count tracking the node count is what identifies the mechanism** — more nodes, more faces per unit path; a fixed overhead would not scale. A quadratic B-spline (27 nodes, not 8) is continuously differentiable, is used for deposit *and* gather so the self-force still cancels, and its weights still sum to exactly one for *any* offset — which is what lets the index be clamped at a face without losing charge.
+
+  **Where it starts paying: about 850 macroparticles** — 0.16× at 250, 1.21× at 1000, 3.21× at 2000. Worth stating as a crossing rather than as asymptotics: below it the reference method is simply faster and reaching for the approximation buys nothing.
+
+  **Against the reference**: 0.5% on a flown packet's widening over 2 µs (0.384 → 1.907 mm direct, 1.916 mm grid), about a per cent through the body of a static ball. The outermost radial bin is the worst and has to be — it straddles the surface, where a smoothed deposit and a point-softened sum disagree about a discontinuity by construction.
+
+  **A trade that showed itself**: keeping the box across refreshes needs headroom above the requested padding, and at 1.6× that cut rebuilds from 32 to 4 and cost the surface bin 0.94 → 0.83, because a bigger box at fixed nodes resolves the packet with fewer cells. 1.15× keeps the accuracy at 11 rebuilds.
+
+  **Not reachable from a document yet**: `"spaceCharge": "direct"` is the only value the format takes. Details in `docs/numerics.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
