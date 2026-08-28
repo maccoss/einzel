@@ -439,6 +439,11 @@ public static class FiguresOfMerit
     /// packet's own measured extent rather than from its declared spreads - a drawn
     /// cloud is a sample, and its realised radius is what the sum is actually over.
     /// </para>
+    /// <para>
+    /// Which method computes the mutual force is the model's choice and nothing here
+    /// depends on the answer: both are <c>ISelfField</c>, which is what makes SC-1's
+    /// "validated against the reference" a thing that can be done at all.
+    /// </para>
     /// </remarks>
     private static CloudFlight FlyTogether(
         CompiledModel model,
@@ -450,13 +455,23 @@ public static class FiguresOfMerit
     {
         var population = model.Cloud.Population ?? model.Cloud.Ions;
 
-        var interaction = new Transport.Interaction.CoulombInteraction(
-            population,
-            cloud.Length,
-            species.ChargeSi,
-            species.MassSi,
-            Transport.Interaction.CoulombInteraction.SpacingSoftening(
-                RealisedRadius(cloud), cloud.Length));
+        Transport.Interaction.ISelfField interaction =
+            string.Equals(model.SpaceChargeMode, "pic", StringComparison.Ordinal)
+                ? new Transport.Interaction.ParticleInCell(
+                    population,
+                    cloud.Length,
+                    species.ChargeSi,
+                    species.MassSi,
+                    model.SpaceChargeGrid?.Nodes ?? 32,
+                    model.SpaceChargeGrid?.Padding ?? 4.0,
+                    model.SpaceChargeGrid?.RefreshTolerance ?? 0.05)
+                : new Transport.Interaction.CoulombInteraction(
+                    population,
+                    cloud.Length,
+                    species.ChargeSi,
+                    species.MassSi,
+                    Transport.Interaction.CoulombInteraction.SpacingSoftening(
+                        RealisedRadius(cloud), cloud.Length));
 
         var result = Transport.Interaction.PacketIntegrator.Fly(
             cloud, species, field, interaction, settings, detector);

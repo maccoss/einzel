@@ -406,11 +406,27 @@ public sealed record TransportDocument
     /// cost is quadratic in the trajectory count and the whole packet must be
     /// advanced in lockstep, so it is opt-in rather than a default: a thousand-ion
     /// cloud costs about half a million pair evaluations per stage, seven stages per
-    /// step. A string rather than a flag because particle-in-cell will be a third
-    /// value, and a boolean would have to be replaced rather than extended.
+    /// step.
+    /// </para>
+    /// <para>
+    /// <c>pic</c> deposits the packet's charge onto its own grid, solves Poisson once,
+    /// and gathers the field back - SC-1's approximate method, validated against
+    /// <c>direct</c>. It costs one solve plus O(N) rather than O(N squared), but the
+    /// solve is not free: <strong>the crossing is near 850 trajectories</strong>, and
+    /// below that the reference method is simply faster. Configure it with
+    /// <see cref="SpaceChargeGrid"/>.
     /// </para>
     /// </remarks>
     public string SpaceCharge { get; init; } = "none";
+
+    /// <summary>
+    /// The grid <c>"spaceCharge": "pic"</c> deposits onto, or null for its defaults.
+    /// </summary>
+    /// <remarks>
+    /// Refused where the method is not <c>pic</c>, rather than ignored: a block that
+    /// configures nothing is a document that thinks it configured something.
+    /// </remarks>
+    public SpaceChargeGridDocument? SpaceChargeGrid { get; init; }
 
 }
 
@@ -535,4 +551,40 @@ public sealed record GasDocument
     /// from its manifest (PRJ-3).
     /// </summary>
     public int Seed { get; init; } = 20_240_101;
+}
+
+/// <summary>The grid a particle-in-cell space-charge solve uses.</summary>
+/// <remarks>
+/// Both numbers are approximation knobs rather than conveniences, so both are
+/// declarable and both are reported on the result: the node count sets how well the
+/// packet is resolved, and the padding sets how nearly the earthed box stands in for
+/// free space. They pull against each other at a fixed cost, which is what makes them
+/// worth stating rather than burying.
+/// </remarks>
+public sealed record SpaceChargeGridDocument
+{
+    /// <summary>
+    /// Nodes across the box. Rounded up to a power of two, so 32 and 48 are the same
+    /// mesh.
+    /// </summary>
+    public int? Nodes { get; init; }
+
+    /// <summary>Box half-width as a multiple of the packet's RMS radius.</summary>
+    /// <remarks>
+    /// A packet in flight is in free space and this puts it in an earthed box.
+    /// Centring the box on the packet is what keeps that cheap - a centred
+    /// distribution induces almost no field at its own centre - and this buys the
+    /// residual down, at the cost of resolving the packet with fewer cells.
+    /// </remarks>
+    public double? Padding { get; init; }
+
+    /// <summary>
+    /// Fractional change in the packet's RMS radius that forces a new solve.
+    /// </summary>
+    /// <remarks>
+    /// The grid travels with the packet, so uniform translation is exact and costs
+    /// nothing; the only thing that ages between solves is the packet's shape. That
+    /// is why the criterion is written on shape rather than on a step count.
+    /// </remarks>
+    public double? RefreshTolerance { get; init; }
 }

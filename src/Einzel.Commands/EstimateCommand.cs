@@ -207,6 +207,168 @@ public static class EstimateCommand
         };
     }
 
+    /// <summary>What the mutual force will cost, by whichever method computes it.</summary>
+    /// <remarks>
+    /// <para>
+    /// GRD-8 gates an operation above a cost threshold and needs a number to gate
+    /// on without doing the work. Direct space charge is the first thing here whose
+    /// cost is <em>quadratic</em> in a number a user types: raising a cloud from 150
+    /// trajectories to 2,000 is a factor of 178, and 87 seconds becomes four hours.
+    /// A linear intuition is exactly wrong, so the basis says so in words.
+    /// </para>
+    /// <para>
+    /// <b>Particle-in-cell is linear in that same number and is not simply cheaper.</b>
+    /// It pays for one Poisson solve per refresh whatever the cloud, so below the
+    /// crossing the reference method is faster - and an estimate that reported the
+    /// asymptotics would recommend the approximation exactly where it loses. Both are
+    /// costed in the same currency, pair-equivalents a stage, so their ratio at a
+    /// given cloud is something the basis can state rather than imply.
+    /// </para>
+    /// <para>
+    /// The step count is the one thing here that is not knowable in advance - it is
+    /// whatever the adaptive controller decides - so it is taken from the flight
+    /// time and a step scale, and the estimate is an order of magnitude rather than
+    /// the exact number the diffusive estimate can give.
+    /// </para>
+    /// </remarks>
+    private static (double Seconds, string Basis) SelfField(CompiledModel model)
+    {
+        var trajectories = Math.Max(model.Cloud.Ions, 2);
+        var pairs = 0.5 * trajectories * (trajectories - 1.0);
+        var steps = EstimatedSteps;
+
+        // Seven Dormand-Prince stages, each evaluating the mutual force.
+        //
+        // Measured on this codebase: 150 trajectories through the rectilinear trap
+        // took 87 s over roughly eleven thousand steps, which is 8.7e8 pair
+        // evaluations. Rounded to one figure, because it is a rate on one machine.
+        double Cost(double workPerStage) => workPerStage * StagesPerStep * steps / PairsPerSecond;
+
+        var nodes = model.SpaceChargeGrid?.Nodes ?? 32;
+
+        // Two terms, because the node count is now something a document sets and the
+        // one it scales is the one that dominates. The gather is linear in the cloud;
+        // the solve is cubic in the node count and does not see the cloud at all.
+        var gridWork =
+            (PicGatherPerTrajectory * trajectories)
+            + (PicSolveWork * Math.Pow(nodes / (double)PicCalibrationNodes, 3.0));
+
+        if (!string.Equals(model.SpaceChargeMode, "pic", StringComparison.Ordinal))
+        {
+            var basis =
+                $"Space charge is summed over every pair: {trajectories:N0} trajectories give {pairs:N0} "
+                + $"pairs, {StagesPerStep} stages a step and about {steps:N0} steps, at {PairsPerSecond:G2} "
+                + "pair evaluations a second. THE COST IS QUADRATIC IN THE TRAJECTORY COUNT, so doubling "
+                + "the cloud quadruples this - the linear intuition is exactly wrong here. Lower "
+                + "\"ions\" and raise \"population\" to keep the packet's charge while computing fewer "
+                + "of them."
+                + (trajectories > PicCrossingTrajectories
+                    ? $" Above about {PicCrossingTrajectories:N0} trajectories the grid method is the "
+                        + $"cheaper one - here by about {pairs / gridWork:N1}x - so \"spaceCharge\": "
+                        + "\"pic\" is worth considering, bearing in mind that this one is the reference "
+                        + "it was validated against."
+                    : string.Empty);
+
+            return (Cost(pairs), basis);
+        }
+
+        // Linear in the cloud and cubic in the node count, calibrated on two things
+        // actually measured: the two methods cross near 850 macroparticles at 32 nodes,
+        // and the work there splits about 43 to 57 between solving and gathering.
+        // Anchoring on measurements rather than on a fitted rate keeps the number a
+        // reader acts on exact.
+        var picBasis =
+            $"Space charge is deposited onto a grid and solved: {trajectories:N0} trajectories, "
+            + $"{StagesPerStep} stages a step and about {steps:N0} steps. THE COST IS LINEAR IN THE "
+            + "TRAJECTORY COUNT AND CUBIC IN THE NODE COUNT, so doubling the cloud doubles the "
+            + "gather while the solve is paid for whatever the cloud - which is why it is not "
+            + "simply cheaper than the sum: at the default "
+            + $"{PicCalibrationNodes} nodes the two methods cross near "
+            + $"{PicCrossingTrajectories:N0} trajectories"
+            + (gridWork > pairs
+                ? $", and here the pairwise sum is about {gridWork / pairs:N1}x faster. "
+                    + $"\"spaceCharge\": \"direct\" is also the reference method."
+                : $", and this cloud is above it by about {pairs / gridWork:N1}x.")
+            + (nodes == PicCalibrationNodes
+                ? string.Empty
+                : $" THE SOLVE IS CUBIC IN THE NODE COUNT: {nodes} nodes rather than "
+                    + $"{PicCalibrationNodes} is "
+                    + $"{Math.Pow(nodes / (double)PicCalibrationNodes, 3.0):N1}x that part of the "
+                    + "work, and a finer grid is not a better answer here - accuracy has an optimum "
+                    + "near one cell per mean macroparticle spacing.");
+
+        return (Cost(gridWork), picBasis);
+    }
+
+    /// <summary>Dormand-Prince stages that each evaluate the mutual force.</summary>
+    private const int StagesPerStep = 7;
+
+    /// <summary>Pair evaluations a second, measured on this codebase's own runs.</summary>
+    private const double PairsPerSecond = 1e7;
+
+    /// <summary>Where the grid method starts beating the pairwise sum.</summary>
+    /// <remarks>
+    /// Measured rather than derived: 0.16x at 250 macroparticles, 0.42x at 500, 1.21x
+    /// at 1,000, 3.21x at 2,000. It is the number worth stating because it is the one
+    /// a reader acts on - quoting the asymptotics alone would recommend the
+    /// approximation exactly where it loses.
+    /// </remarks>
+    private const double PicCrossingTrajectories = 850.0;
+
+    /// <summary>The node count the crossing was measured at.</summary>
+    private const int PicCalibrationNodes = 32;
+
+    /// <summary>
+    /// How the grid method's work splits between gathering and solving, at the
+    /// calibration node count.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured by running the same packet at 16, 32, 64 and 128 nodes and at 200 and
+    /// 800 macroparticles - eight points, two knobs. A two-term fit of
+    /// <c>solves x c_solve x nodes^3 + calls x c_gather x N</c> lands within 12% at
+    /// every point except the smallest grid, where a per-solve overhead the model does
+    /// not carry becomes visible. At 32 nodes and the crossing cloud that split is
+    /// about 43% solve to 57% gather.
+    /// </para>
+    /// <para>
+    /// It matters because the two scale with different things: 200 macroparticles took
+    /// <b>0.99 s at 16 nodes and 124 s at 128</b>, a factor of 126 for a knob a
+    /// document can now set. An estimate blind to it would gate on a number missing
+    /// its dominant term.
+    /// </para>
+    /// </remarks>
+    private const double PicSolveFraction = 0.43;
+
+    /// <summary>
+    /// The solve's work at <see cref="PicCalibrationNodes"/>, in pair-equivalents.
+    /// </summary>
+    private const double PicSolveWork =
+        PicSolveFraction * 0.5 * PicCrossingTrajectories * (PicCrossingTrajectories - 1.0);
+
+    /// <summary>
+    /// The gather's work per trajectory, in the pairwise sum's own currency.
+    /// </summary>
+    /// <remarks>
+    /// Both constants are pinned by one measured fact and one measured ratio: at
+    /// <see cref="PicCrossingTrajectories"/> and <see cref="PicCalibrationNodes"/> the
+    /// two methods cost the same, and <see cref="PicSolveFraction"/> says how that
+    /// total divides. Costing both in pair-equivalents is what lets the estimate
+    /// compare them at all, and ties the model to something measured rather than to a
+    /// rate that was fitted.
+    /// </remarks>
+    private const double PicGatherPerTrajectory =
+        (1.0 - PicSolveFraction) * 0.5 * (PicCrossingTrajectories - 1.0);
+
+    /// <summary>
+    /// Steps a packet flight takes, as an order of magnitude.
+    /// </summary>
+    /// <remarks>
+    /// The one quantity here that is not knowable before the run: it is whatever the
+    /// adaptive controller decides. Ten thousand is what the shipped templates take.
+    /// </remarks>
+    private const double EstimatedSteps = 1e4;
+
     /// <summary>
     /// What a diffusive run will cost, from the mesh and the mobility alone.
     /// </summary>
@@ -226,62 +388,6 @@ public static class EstimateCommand
     /// intuition about which regime is expensive.
     /// </para>
     /// </remarks>
-    /// <summary>What the pairwise sum will cost.</summary>
-    /// <remarks>
-    /// <para>
-    /// GRD-8 gates an operation above a cost threshold and needs a number to gate
-    /// on without doing the work. Direct space charge is the first thing here whose
-    /// cost is <em>quadratic</em> in a number a user types: raising a cloud from 150
-    /// trajectories to 2,000 is a factor of 178, and 87 seconds becomes four hours.
-    /// A linear intuition is exactly wrong, so the basis says so in words.
-    /// </para>
-    /// <para>
-    /// The step count is the one thing here that is not knowable in advance - it is
-    /// whatever the adaptive controller decides - so it is taken from the flight
-    /// time and a step scale, and the estimate is an order of magnitude rather than
-    /// the exact number the diffusive estimate can give.
-    /// </para>
-    /// </remarks>
-    private static (double Seconds, string Basis) SelfField(CompiledModel model)
-    {
-        var trajectories = Math.Max(model.Cloud.Ions, 2);
-        var pairs = 0.5 * trajectories * (trajectories - 1.0);
-
-        // Seven Dormand-Prince stages, each summing every pair.
-        var perStep = StagesPerStep * pairs;
-
-        // Measured on this codebase: 150 trajectories through the rectilinear trap
-        // took 87 s over roughly eleven thousand steps, which is 8.7e8 pair
-        // evaluations. Rounded to one figure, because it is a rate on one machine.
-        var steps = EstimatedSteps;
-        var seconds = perStep * steps / PairsPerSecond;
-
-        var basis =
-            $"Space charge is summed over every pair: {trajectories:N0} trajectories give {pairs:N0} "
-            + $"pairs, {StagesPerStep} stages a step and about {steps:N0} steps, at {PairsPerSecond:G2} "
-            + "pair evaluations a second. THE COST IS QUADRATIC IN THE TRAJECTORY COUNT, so doubling "
-            + "the cloud quadruples this - the linear intuition is exactly wrong here. Lower "
-            + "\"ions\" and raise \"population\" to keep the packet's charge while computing fewer "
-            + "of them.";
-
-        return (seconds, basis);
-    }
-
-    /// <summary>Dormand-Prince stages that each evaluate the mutual force.</summary>
-    private const int StagesPerStep = 7;
-
-    /// <summary>Pair evaluations a second, measured on this codebase's own runs.</summary>
-    private const double PairsPerSecond = 1e7;
-
-    /// <summary>
-    /// Steps a packet flight takes, as an order of magnitude.
-    /// </summary>
-    /// <remarks>
-    /// The one quantity here that is not knowable before the run: it is whatever the
-    /// adaptive controller decides. Ten thousand is what the shipped templates take.
-    /// </remarks>
-    private const double EstimatedSteps = 1e4;
-
     private static (double Seconds, double MemoryMiB, string Basis) Diffusive(CompiledModel model)
     {
         var grid = DiffusionRun.GridFor(model);

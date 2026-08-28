@@ -106,6 +106,15 @@ public sealed class ParticleInCell : ISelfField
 
         Padding = padding;
         RefreshTolerance = refreshTolerance;
+
+        // Both the cell and the spacing go as the packet's radius, so the ratio is a
+        // property of the configuration alone and is knowable before anything flies.
+        var matched = 2.0 * padding * Math.Cbrt(macroparticles);
+
+        CellsPerSpacing = matched / nodes;
+
+        MatchedNodes = (int)Math.Pow(
+            2.0, Math.Max(3.0, Math.Ceiling(Math.Log2(matched))));
     }
 
     /// <inheritdoc/>
@@ -125,6 +134,42 @@ public sealed class ParticleInCell : ISelfField
 
     /// <summary>Fractional change in RMS radius that forces a new solve.</summary>
     public double RefreshTolerance { get; }
+
+    /// <summary>
+    /// The cell size this configuration gives, as a multiple of the mean spacing
+    /// between macroparticles.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The accuracy of this method has an optimum rather than a floor, and this is
+    /// the number that locates it.</b> Measured against the direct sum taken to its
+    /// own point limit, on a 400-macroparticle ball: <b>3.68 cells gives -15.1%,
+    /// 1.84 gives -4.2%, 0.92 gives +0.08%, 0.46 gives +4.4%</b>. Too coarse
+    /// over-smooths and under-pushes; too fine stops representing a density and starts
+    /// representing the macroparticles as lumps, which pushes too hard.
+    /// </para>
+    /// <para>
+    /// It needs no run and no packet size to compute, because both the cell and the
+    /// spacing scale with the packet's radius and it cancels: the ratio is
+    /// 2 * padding * cbrt(N) / nodes. That is what lets a caller be told before the
+    /// work rather than after.
+    /// </para>
+    /// <para>
+    /// The far side is the one worth a warning, because <em>raising</em> the node count
+    /// is what someone does when they want a better answer. The fix is
+    /// <see cref="MatchedNodes"/>, and it is a reduction as often as an increase.
+    /// </para>
+    /// </remarks>
+    public double CellsPerSpacing { get; }
+
+    /// <summary>
+    /// The node count whose cell is the mean macroparticle spacing.
+    /// </summary>
+    /// <remarks>
+    /// Rounded up to a power of two, because <c>Grid3D.OverBox</c> does that anyway -
+    /// reporting 59 when the mesh will be 64 would be advice nobody could act on.
+    /// </remarks>
+    public int MatchedNodes { get; }
 
     /// <summary>
     /// How much bigger than the requested padding a freshly built box is made.

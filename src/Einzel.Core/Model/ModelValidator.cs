@@ -140,6 +140,7 @@ public static class ModelValidator
             Mobility = transport.Mobility,
             DensityGrid = transport.DensityGrid,
             SpaceChargeMode = transport.SpaceCharge,
+            SpaceChargeGrid = transport.SpaceChargeGrid,
             Parameters = surface,
         };
 
@@ -2139,7 +2140,8 @@ public static class ModelValidator
         CompiledGas Gas,
         CompiledMobility? Mobility,
         CompiledDensityGrid? DensityGrid,
-        string SpaceCharge);
+        string SpaceCharge,
+        CompiledSpaceChargeGrid? SpaceChargeGrid);
 
     private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
@@ -2266,7 +2268,7 @@ public static class ModelValidator
             }
         }
 
-        if (transport.SpaceCharge is not ("none" or "direct"))
+        if (transport.SpaceCharge is not ("none" or "direct" or "pic"))
         {
             errors.Add(new EinzelError
             {
@@ -2276,15 +2278,19 @@ public static class ModelValidator
                 Observed = new ObservedValue(0.0, transport.SpaceCharge),
                 Suggestion = "\"none\" flies each ion through a field that does not know the others "
                     + "exist; \"direct\" sums every pair, which is the reference method and costs "
-                    + "the square of the trajectory count",
+                    + "the square of the trajectory count; \"pic\" deposits the packet onto its own "
+                    + "grid and solves once, which is cheaper above about 850 trajectories and "
+                    + "dearer below",
             });
 
             return null;
         }
 
+        var chargeGrid = SpaceChargeGrid(transport, errors);
+
         return new TransportValues(
             transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample,
-            gas, mobility, densityGrid, transport.SpaceCharge);
+            gas, mobility, densityGrid, transport.SpaceCharge, chargeGrid);
     }
 
     /// <summary>
@@ -2298,6 +2304,86 @@ public static class ModelValidator
     /// gas would be silently dropped. Refusing is better than any of the three,
     /// because each would produce a result that looks like the one asked for.
     /// </remarks>
+    /// <summary>Validates the particle-in-cell grid, and refuses one that does nothing.</summary>
+    /// <remarks>
+    /// A block declared against a method that cannot use it is refused rather than
+    /// ignored, which is the same rule an unrecognised property already follows: a
+    /// document that configures a solve it is not running has been misunderstood by
+    /// its author, and silence is the expensive answer.
+    /// </remarks>
+    private static CompiledSpaceChargeGrid? SpaceChargeGrid(
+        TransportDocument transport, List<EinzelError> errors)
+    {
+        if (transport.SpaceChargeGrid is not { } grid)
+        {
+            return string.Equals(transport.SpaceCharge, "pic", StringComparison.Ordinal)
+                ? new CompiledSpaceChargeGrid(32, 4.0, 0.05)
+                : null;
+        }
+
+        if (!string.Equals(transport.SpaceCharge, "pic", StringComparison.Ordinal))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/spaceChargeGrid",
+                Constraint =
+                    "only the particle-in-cell method uses a grid, and this model asks for "
+                    + $"'{transport.SpaceCharge}'",
+                Observed = new ObservedValue(0.0, transport.SpaceCharge),
+                Suggestion = "set \"spaceCharge\": \"pic\" to use this block, or remove it",
+            });
+
+            return null;
+        }
+
+        var nodes = grid.Nodes ?? 32;
+        var padding = grid.Padding ?? 4.0;
+        var refresh = grid.RefreshTolerance ?? 0.05;
+
+        if (nodes < 8)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/spaceChargeGrid/nodes",
+                Constraint = "a packet needs at least eight nodes across its box to be resolved at all",
+                Observed = new ObservedValue(nodes, "1"),
+                Suggestion = "32 is the default and resolves a packet's radius with a few cells",
+            });
+        }
+
+        if (padding <= 1.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/spaceChargeGrid/padding",
+                Constraint =
+                    "the box must be wider than the packet, or its earthed walls are inside the charge",
+                Observed = new ObservedValue(padding, "1"),
+                Suggestion = "4 is the default: a box four RMS radii across, which stands in for "
+                    + "free space well because the packet sits at its centre",
+            });
+        }
+
+        if (refresh <= 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/spaceChargeGrid/refreshTolerance",
+                Constraint = "a tolerance of zero re-solves at every stage, which is what the grid "
+                    + "method exists to avoid",
+                Observed = new ObservedValue(refresh, "1"),
+                Suggestion = "0.05 is the default: re-solve when the packet's RMS radius has moved "
+                    + "five per cent",
+            });
+        }
+
+        return errors.Count > 0 ? null : new CompiledSpaceChargeGrid(nodes, padding, refresh);
+    }
+
     private static void ValidateSpaceChargeIsComputable(CompiledModel model, List<EinzelError> errors)
     {
         if (!model.ModelsSpaceCharge)
@@ -2339,8 +2425,9 @@ public static class ModelValidator
             {
                 Code = ErrorCodes.RegimeInvalid,
                 Path = "/transport/spaceCharge",
-                Constraint = "the direct space-charge method advances the whole packet in lockstep and "
-                    + "has no collision hook, so a declared gas would take no part in the run",
+                Constraint = $"the '{model.SpaceChargeMode}' space-charge method advances the whole "
+                    + "packet in lockstep and has no collision hook, so a declared gas would take no "
+                    + "part in the run",
                 Observed = new ObservedValue(model.Gas.PressureSi, "Pa"),
                 Suggestion = "remove the gas, or set \"spaceCharge\": \"none\" and read the screening "
                     + "estimate the run reports instead",

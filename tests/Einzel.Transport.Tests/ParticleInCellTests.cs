@@ -388,6 +388,194 @@ public sealed class ParticleInCellTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TighteningTheRefreshToleranceConvergesOnTheReference()
+    {
+        // The refresh criterion is the one number in this method that is a choice
+        // rather than a consequence, so it needs evidence that it is a *controlled*
+        // approximation - that tightening it goes somewhere, and somewhere is the
+        // method it approximates. Otherwise 5% is a number that made something finish.
+        //
+        // The direction is a prediction rather than something explained afterwards. A
+        // field held across a refresh is the field of a packet denser than the one
+        // being pushed, so a stale field always pushes too hard: every tolerance
+        // should come out WIDE, and tightening should reduce it monotonically.
+        const int Macroparticles = 400;
+        const double Population = 2.0e6;
+        const double RadiusSi = 0.5e-3;
+        const double Flight = 2.0e-6;
+
+        var start = Ball(Macroparticles, RadiusSi, seed: 31);
+
+        var reference = Widen(
+            new CoulombInteraction(
+                Population, Macroparticles, Elementary, 500.0 * Dalton,
+                CoulombInteraction.SpacingSoftening(RadiusSi, Macroparticles)),
+            start,
+            Flight).RmsMm;
+
+        output.WriteLine($"reference (direct sum)  {reference:F4} mm");
+        output.WriteLine("tolerance     rms mm      error    solves");
+
+        double[] tolerances = [0.30, 0.15, 0.05, 0.02];
+
+        var errors = new double[tolerances.Length];
+
+        for (var k = 0; k < tolerances.Length; k++)
+        {
+            var run = Widen(
+                new ParticleInCell(
+                    Population,
+                    Macroparticles,
+                    Elementary,
+                    500.0 * Dalton,
+                    nodes: 32,
+                    refreshTolerance: tolerances[k]),
+                start,
+                Flight);
+
+            errors[k] = run.RmsMm / reference - 1.0;
+
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{tolerances[k],9:F2}  {run.RmsMm,9:F4}  {errors[k],8:P2}  {run.Solves,8}"));
+        }
+
+        // Monotone, which is the convergence claim and the assertion with teeth: a
+        // knob that did not converge would still pass a sign test at every value.
+        for (var k = 1; k < errors.Length; k++)
+        {
+            Assert.True(
+                errors[k] < errors[k - 1],
+                $"tightening {tolerances[k - 1]} to {tolerances[k]} did not help: "
+                + $"{errors[k - 1]:P2} to {errors[k]:P2}");
+        }
+
+        // Wide at the coarse end, by a wide margin, where staleness is the whole
+        // story: 12.7% at a tolerance of 0.30.
+        Assert.True(errors[0] > 0.05, $"a stale field should push too hard: {errors[0]:P2}");
+
+        // And it lands on the reference: 1.0% at the shipped default and -0.5% at
+        // 0.02. It crosses zero rather than approaching from one side, and that is
+        // NOT a failure of the prediction above - it is staleness falling below the
+        // OTHER difference between the two methods, which is that they smooth the
+        // self-field at different scales and in different shapes. That residual is
+        // measured separately, in TheGridAndTheSumAgreeAtMatchedSmoothing, and it is
+        // why the two are only comparable once the smoothing scales are matched.
+        Assert.InRange(Math.Abs(errors[^1]), 0.0, 0.02);
+    }
+
+    [Fact]
+    public void TheGridAndTheSumAgreeAtMatchedSmoothing()
+    {
+        // What "validated against the reference" actually requires, and it is not what
+        // a first reading suggests. NEITHER method computes the point-charge field of
+        // the macroparticles: the sum softens at short range and the grid smooths at
+        // the cell, so a comparison at whatever settings each happens to default to is
+        // a comparison of two different smoothing lengths. Agreement there is a
+        // coincidence of magnitudes, and disagreement is not evidence of a defect.
+        //
+        // So the comparison is made at a scale both can be told: take the sum's
+        // softening to zero, which is a limit it HAS, and bracket that limit with grid
+        // cells either side of the mean macroparticle spacing.
+        const int Macroparticles = 216;
+        const double Population = 2.0e6;
+        const double RadiusSi = 0.5e-3;
+        const double Flight = 2.0e-6;
+        const double Padding = 4.0;
+
+        var start = Ball(Macroparticles, RadiusSi, seed: 31);
+
+        var spacing = CoulombInteraction.SpacingSoftening(RadiusSi, Macroparticles);
+
+        double Sum(double softening) => Widen(
+            new CoulombInteraction(
+                Population, Macroparticles, Elementary, 500.0 * Dalton, softening),
+            start,
+            Flight).RmsMm;
+
+        // The sum has a limit and reaches it: a further tenfold reduction in softening
+        // moves the answer by a fraction of a per cent.
+        var softened = Sum(spacing);
+        var nearlyPoint = Sum(0.1 * spacing);
+        var point = Sum(0.01 * spacing);
+
+        output.WriteLine($"mean macroparticle spacing  {spacing * 1e3:F5} mm");
+        output.WriteLine($"sum, softened at spacing    {softened:F5} mm");
+        output.WriteLine($"sum, softening / 10         {nearlyPoint:F5} mm");
+        output.WriteLine($"sum, softening / 100        {point:F5} mm  <- the limit");
+
+        Assert.Equal(point, nearlyPoint, 0.005 * point);
+
+        // The default softening is NOT that limit, and by a margin larger than any
+        // agreement this class claims elsewhere. That is the whole point: the
+        // reference has an approximation in it too, so an unmatched comparison
+        // measures the difference between two smoothings.
+        Assert.True(
+            softened < 0.98 * point,
+            $"the sum's own softening should matter: {softened:F5} against {point:F5} mm");
+
+        output.WriteLine(string.Empty);
+        output.WriteLine("  nodes    cell mm    cell/spacing     rms mm     vs limit");
+
+        // OverBox rounds each axis up to a power of two, so 24 and 32 would be the
+        // same mesh - these three are three distinct meshes, chosen to straddle a cell
+        // of one spacing (3.0, 1.5 and 0.75 of it at this macroparticle count).
+        int[] counts = [16, 32, 64];
+
+        var rms = new double[counts.Length];
+
+        for (var k = 0; k < counts.Length; k++)
+        {
+            rms[k] = Widen(
+                new ParticleInCell(
+                    Population, Macroparticles, Elementary, 500.0 * Dalton,
+                    nodes: counts[k], padding: Padding, refreshTolerance: 0.05),
+                start,
+                Flight).RmsMm;
+
+            var cell = 2.0 * Padding * RadiusSi / counts[k];
+
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{counts[k],7}  {cell * 1e3,9:F5}  {cell / spacing,13:F2}  {rms[k],10:F5}  "
+                + $"{rms[k] / point - 1.0,10:P2}"));
+        }
+
+        // The limit is BRACKETED by the grid resolution, which is a stronger statement
+        // than any single agreement number: a coarse cell over-smooths, so the field it
+        // gathers is too weak and the packet comes out narrow; a cell below the spacing
+        // stops representing a density and starts representing the macroparticles as
+        // lumps, which pushes too hard. The reference sits between them.
+        Assert.True(rms[0] < point, $"a coarse grid should under-push: {rms[0]:F5} mm");
+        Assert.True(rms[2] > point, $"a fine grid should over-push: {rms[2]:F5} mm");
+
+        // Monotone through the bracket, so it is a crossing rather than scatter.
+        Assert.True(rms[1] > rms[0], $"{rms[0]:F5} then {rms[1]:F5} mm");
+        Assert.True(rms[2] > rms[1], $"{rms[1]:F5} then {rms[2]:F5} mm");
+
+        // And the crossing is near a cell of one spacing rather than anywhere in the
+        // bracket: the middle mesh, at 1.5 spacings, is already within a few per cent.
+        // Measured at a cell of 0.92 spacings on a larger packet: 0.08%.
+        Assert.Equal(point, rms[1], 0.06 * point);
+
+        // Accuracy here has an OPTIMUM rather than a floor, which is the result worth
+        // keeping: refining past the match is not a free improvement, and raising the
+        // node count is exactly what a reader does when they want a better answer.
+        // That is why the ratio is reported on every run.
+        var matched = new ParticleInCell(
+            Population, Macroparticles, Elementary, 500.0 * Dalton,
+            nodes: counts[2], padding: Padding);
+
+        output.WriteLine(string.Empty);
+        output.WriteLine(
+            $"at {counts[2]} nodes the run reports {matched.CellsPerSpacing:F2} cells per spacing "
+            + $"and advises {matched.MatchedNodes}");
+
+        Assert.Equal(0.75, matched.CellsPerSpacing, 0.01);
+        Assert.Equal(64, matched.MatchedNodes);
+    }
+
+    [Fact]
     public void TheCostStopsGrowingWithTheSquareOfThePacket()
     {
         // Why the approximate method exists. The direct sum is O(N^2) on every

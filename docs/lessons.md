@@ -636,6 +636,28 @@ actually caught them were:
   locates the linear boundary to a worst residual of 1.2e-3 and needs no journey at
   all. When a measurement is amplitude-dependent and the thing being measured is not,
   suspect the measurement rather than adding controls to it.
+- **A reference method has approximations in it too, and comparing against it at
+  default settings compares two of them.** Particle-in-cell was reported as agreeing
+  with the direct pairwise sum "to a few per cent". Both numbers were right and the
+  comparison was not meaningful: the sum softens at the mean macroparticle spacing and
+  the grid smooths at the cell, so what was being measured was the difference between
+  two smoothing lengths that happened to be comparable. Taking the sum to its own point
+  limit (softening / 100, worth **3.5%**) and setting the cell to the mean spacing gives
+  **0.08%** - a much stronger claim, and one that says what makes them agree. **Before
+  quoting an agreement, ask what each side approximates and whether the two can be set
+  to the same thing.**
+
+- **Refinement is not always an improvement, and the case where it is not is the one
+  someone will walk into.** Halving the particle-in-cell cell size past the mean
+  macroparticle spacing makes the answer *worse* - -15.1%, -4.2%, +0.08%, +4.4% across a
+  16x range, with an optimum in the middle. Raising a resolution number is what a reader
+  does when they want a better answer, and here it silently buys a worse one. Two things
+  follow: the optimum has to be *reported* rather than left to be discovered, and a
+  "converges under refinement" test would have passed on the wrong side of it. Checked
+  by control rather than asserted - holding the cell fixed and raising the macroparticle
+  count took the error from 4.42% to 1.55% to 0.93%, which is what makes it a sampling
+  artefact rather than a resolution one.
+
 - **An argument that was right about accuracy and wrong about cost.** ACC-3 forbids
   trilinear interpolation on a trajectory path. Particle-in-cell's gather looked
   exempt - it is a self-consistent field whose accuracy the deposit already bounds,

@@ -885,7 +885,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `SC-1` | For Class T runs the space-charge approximation parameters are validated against the direct method on a reference population. | Partial | The direct pairwise sum is built and validated (third law to 1e-14, uniform-sphere closed form to 5%). The approximate method it exists to validate - particle-in-cell - is not built. |
+| `SC-1` | For Class T runs the space-charge approximation parameters are validated against the direct method on a reference population. | **Met** | Both methods are `ISelfField` peers and are validated against each other **at matched smoothing**, which is what the requirement needs and what an unmatched comparison cannot give: the sum taken to its own point limit (softening/100, worth 3.5%) against a grid cell of 0.92 mean macroparticle spacings agrees to **0.08%**. Both approximation parameters are declared (`spaceChargeGrid`) and both are reported. The direct sum itself is validated by third law to 1e-14 and the uniform-sphere closed form to 5%. |
 
 ### Sequencer (§9)
 
@@ -992,9 +992,38 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    simply faster and reaching for the approximation buys nothing; at 2,000 the grid is
    3.2× ahead. Worth stating as a crossing rather than as asymptotics.
 
-   Left undone: the method is not reachable from a document. `"spaceCharge": "direct"`
-   is the only value the format takes, and `"pic"` needs a schema entry and a way to
-   declare the node count and padding.
+   **And it is now declarable** — `"spaceCharge": "pic"` with an optional
+   `spaceChargeGrid` block carrying `nodes`, `padding` and `refreshTolerance`, refused
+   against any other method rather than ignored. Closing that gap forced two
+   measurements the earlier claim of agreement did not survive:
+
+   **The reference has an approximation in it too, and the old comparison measured the
+   difference between two of them.** The direct sum softens at the mean macroparticle
+   spacing and the grid smooths at the cell, so "agreeing to a few per cent" at each
+   method's defaults was a coincidence of comparable smoothing lengths. Taking the sum
+   to its own point limit is worth **3.5%**, and against *that* the grid at a cell of
+   0.92 spacings agrees to **0.08%**.
+
+   **Accuracy has an optimum rather than a floor**, which is the opposite of every
+   other resolution knob here: −15.1%, −4.2%, +0.08%, +4.4% at 3.68, 1.84, 0.92 and
+   0.46 cells per mean macroparticle spacing. Refining past the match makes it worse,
+   and refining is what a reader does when they want a better answer. Confirmed as a
+   *sampling* artefact rather than a resolution one by holding the cell fixed and
+   raising the macroparticle count — 4.42% to 1.55% to 0.93% as macroparticles per cell
+   go 0.012 to 0.049 to 0.195. `spacecharge.grid-resolution` now reports the ratio on
+   every run whether or not it crosses a threshold, and names the node count that would
+   match.
+
+   The estimate had to learn the same lesson: 200 macroparticles take **0.99 s at 16
+   nodes and 124 s at 128**, so a cost model blind to a knob a document can now set was
+   gating on a number missing its dominant term. It is two terms now — linear in the
+   cloud, cubic in the node count — pinned by the measured crossing and a measured
+   43/57 split, and it tracks the measured 54× ratio to within 10%.
+
+   Still undone: the refresh criterion converges (12.68% → 6.16% → 1.01% → −0.54% as
+   the tolerance tightens 0.30 → 0.02) but nothing chooses it automatically, and the
+   solve is a full multigrid V-cycle from scratch at every refresh rather than a few
+   cycles from the previous answer.
 
 2. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
    the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
@@ -1149,6 +1178,10 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    the self-force cancels - measured at **8e-5 of the neighbour-scale field against
    0.5 for a gather that does not share them**, three and a half orders of magnitude,
    which is what makes it a property of the symmetry rather than of a fine grid. A
-   uniform ball reproduces its closed form to 1-8 per cent inside an earthed box. What
-   is left is the **integration**: which grid a drifting packet deposits onto, when to
-   re-solve, and the comparison against the direct sum on the same configuration.
+   uniform ball reproduces its closed form to 1-8 per cent inside an earthed box. The
+   **integration is now done as well**, and the method is declarable: the grid is the
+   packet's own and lives in the packet's frame (so translation is exact and the
+   refresh criterion is written on shape), and the comparison against the direct sum is
+   made **at matched smoothing** - 0.08% at a cell of 0.92 mean macroparticle spacings,
+   against 3.5% for the sum's own default softening. See item 1 of "What to do next"
+   for what that comparison had to correct, and for the two knobs it made reportable.

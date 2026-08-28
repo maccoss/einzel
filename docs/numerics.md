@@ -989,8 +989,114 @@ rebuilds are 11 and the accuracy is back. The headroom is resolution traded for
 allocation, and the packet is only a few cells across either way, which is what makes
 the trade visible at all.
 
-### Still to do
+### Declaring it, and the two knobs
 
-The method is not yet reachable from a model document: `"spaceCharge": "direct"` is
-the only value the format takes, and `"pic"` needs the schema entry and a way to
-declare the node count and padding.
+`"spaceCharge": "pic"` with an optional sibling block:
+
+```json
+"transport": {
+  "spaceCharge": "pic",
+  "spaceChargeGrid": { "nodes": 32, "padding": 4.0, "refreshTolerance": 0.05 }
+}
+```
+
+Both numbers are approximation knobs rather than conveniences, so both are declarable
+and both are reported on the result. A `spaceChargeGrid` against any other method is
+**refused rather than ignored**, which is the rule an unrecognised property already
+follows: a document that configures a solve it is not running has been misunderstood by
+its author, and silence is the expensive answer.
+
+`einzel estimate` costs both methods in the same currency - pair-equivalents a stage -
+so it can state their **ratio at this cloud** rather than the asymptotics. That
+distinction matters: particle-in-cell is linear where the sum is quadratic, so quoting
+the asymptotics alone recommends it everywhere, including the majority of clouds where
+it loses to the method it approximates.
+
+### The refresh criterion is a controlled approximation
+
+The one number in this method that is a choice rather than a consequence, so it needs
+evidence that tightening it goes somewhere - and that somewhere is the reference. On a
+400-macroparticle packet flown 2 us:
+
+| refreshTolerance | rms mm | vs the direct sum | solves |
+| --- | --- | --- | --- |
+| 0.30 | 2.1254 | +12.68% | 7 |
+| 0.15 | 2.0025 | +6.16% | 12 |
+| **0.05** (default) | **1.9054** | **+1.01%** | 32 |
+| 0.02 | 1.8761 | -0.54% | 72 |
+
+**The sign at the coarse end was predicted rather than explained afterwards**: a field
+held across a refresh is the field of a packet *denser* than the one being pushed, so a
+stale field always pushes too hard. It comes out wide at every tolerance where staleness
+dominates, and monotonically less so as it tightens.
+
+**It crosses zero at 0.02, and that is not the prediction failing.** It is staleness
+falling below the *other* difference between the two methods, which is the next section
+and is the more useful finding.
+
+### The two methods must be compared at matched smoothing
+
+Neither computes the point-charge field of the macroparticles. **The direct sum softens
+at short range** - Plummer, at the mean macroparticle spacing - and **the grid smooths
+at the cell**. So a comparison at whatever each happens to default to is a comparison of
+two different smoothing lengths: agreement there is a coincidence of magnitudes, and
+disagreement is not evidence of a defect.
+
+The sum has a limit it can be taken to and the grid has a scale it can be set to, so the
+comparison can be made properly. Taking the softening down:
+
+| softening | rms mm |
+| --- | --- |
+| the mean spacing (default) | 1.87142 |
+| / 10 | 1.93896 |
+| / 100 | **1.94027** - the point limit |
+
+**The reference's own softening is worth 3.5%**, which is larger than any agreement
+claimed against it elsewhere in this document.
+
+Against that limit, by cell size, on the same packet:
+
+| nodes | cell mm | cell / spacing | rms mm | vs the limit |
+| --- | --- | --- | --- | --- |
+| 16 | 0.25000 | 3.68 | 1.64705 | **-15.1%** |
+| 32 | 0.12500 | 1.84 | 1.85939 | -4.2% |
+| 64 | 0.06250 | 0.92 | 1.94189 | **+0.08%** |
+| 128 | 0.03125 | 0.46 | 2.02595 | **+4.4%** |
+
+**At a cell of about the mean macroparticle spacing the two agree to 0.08%** - far
+stronger than the few per cent an unmatched comparison gives, and it says *what makes
+them agree* rather than reporting that they do.
+
+**And accuracy here has an optimum rather than a floor.** Refining past the match makes
+it worse, which is the opposite of what refinement does everywhere else in this engine
+and is exactly what someone does when they want a better answer.
+
+**Confirmed as a sampling artefact rather than a resolution one**, by holding the cell
+fixed at 128 nodes and raising the macroparticle count:
+
+| macroparticles | per cell | vs the limit |
+| --- | --- | --- |
+| 400 | 0.012 | +4.42% |
+| 1,600 | 0.049 | +1.55% |
+| 6,400 | 0.195 | +0.93% |
+
+So the error is set by **macroparticles per cell**, not by the cell in absolute terms:
+below about one macroparticle per cell the deposit stops representing a density and
+starts representing lumps, and the mutual force comes out too strong. That is the
+classical finite-grid heating of a particle-in-cell scheme, found here independently
+rather than assumed.
+
+`spacecharge.grid-resolution` reports the ratio **whether or not it crosses a
+threshold** (REG-2's rule applied to a different quantity - a reader who sees 0.92 knows
+the run was checked, and one who sees nothing cannot tell that from its not having
+been), as a validity violation outside 0.7 to 2.0, and it names the node count that
+would match. It needs no run to compute, because the cell and the spacing both scale
+with the packet radius and it cancels: the ratio is `2 x padding x cbrt(N) / nodes`.
+
+### A trap in measuring any of this
+
+`Grid3D.OverBox` rounds each axis up to a power of two, so **asking for 24 and asking
+for 32 gives the same mesh**. A first version of the node-count table above ran
+16/24/32/48/64 and produced two pairs of identical numbers; read without knowing that,
+it says the answer is insensitive to resolution over a fourfold range. It is already
+written down for the 3-D solver, and it caught me again here.

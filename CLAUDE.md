@@ -732,7 +732,26 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **A trade that showed itself**: keeping the box across refreshes needs headroom above the requested padding, and at 1.6× that cut rebuilds from 32 to 4 and cost the surface bin 0.94 → 0.83, because a bigger box at fixed nodes resolves the packet with fewer cells. 1.15× keeps the accuracy at 11 rebuilds.
 
-  **Not reachable from a document yet**: `"spaceCharge": "direct"` is the only value the format takes. Details in `docs/numerics.md`.
+  **Now declarable, and closing that gap broke the agreement claim above.** `"spaceCharge": "pic"` takes an optional `spaceChargeGrid` block (`nodes`, `padding`, `refreshTolerance`), refused against any other method rather than ignored. Two measurements came out of making the knobs sayable, and both matter more than the wiring.
+
+  **A reference method has approximations in it too.** The direct sum softens at the mean macroparticle spacing; the grid smooths at the cell. So "they agree to a few per cent" was comparing two different smoothing lengths that happened to be comparable — agreement there is a coincidence of magnitudes and disagreement would not have been evidence of a defect. The sum has a limit it can be taken to (softening/100, worth **3.5%**) and the grid has a scale it can be set to, so the comparison can be made properly: at a cell of **0.92 mean spacings the two agree to 0.08%**.
+
+  **And accuracy has an optimum rather than a floor** — the opposite of every other resolution knob in this engine:
+
+  | cells per mean spacing | vs the sum's point limit |
+  | --- | --- |
+  | 3.68 | **−15.1%** |
+  | 1.84 | −4.2% |
+  | 0.92 | **+0.08%** |
+  | 0.46 | **+4.4%** |
+
+  Refining past the match makes it *worse*, and refining is exactly what someone does when they want a better answer. **Confirmed as a sampling artefact rather than a resolution one** by holding the cell fixed at 128 nodes and raising the macroparticle count: 4.42% → 1.55% → 0.93% as macroparticles per cell go 0.012 → 0.049 → 0.195. Below about one macroparticle per cell the deposit stops representing a density and starts representing lumps. `spacecharge.grid-resolution` reports the ratio on **every** run whether or not it crosses a threshold (REG-2's rule on a new quantity), as a validity violation outside 0.7–2.0, and names the node count that would match — computable with no run at all, since the cell and the spacing both scale with the packet radius and it cancels to `2·padding·∛N/nodes`.
+
+  **The estimate was blind to a term that now varies 500-fold.** 200 macroparticles take **0.99 s at 16 nodes and 124 s at 128**; the cost model had one linear-in-trajectories term because nodes were not declarable when it was written. Two terms now — linear in the cloud for the gather, cubic in the node count for the solve — pinned by the measured crossing and a measured 43/57 split, tracking the measured 54× ratio to within 10%.
+
+  **The refresh criterion is a controlled approximation, measured**: +12.68 / +6.16 / +1.01 / −0.54 % as the tolerance tightens 0.30 → 0.15 → 0.05 → 0.02. The sign at the coarse end was *predicted* — a field held across a refresh is the field of a denser packet, so it always pushes too hard — and the crossing to negative at 0.02 is staleness falling below the smoothing difference above, not the prediction failing.
+
+  **A trap that caught me again**: `Grid3D.OverBox` rounds each axis up to a power of two, so 24 and 32 are the same mesh. A first node-count table ran 16/24/32/48/64 and produced two pairs of identical numbers, which reads as insensitivity to resolution over a fourfold range. Already written down for the 3-D solver. Details in `docs/numerics.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
