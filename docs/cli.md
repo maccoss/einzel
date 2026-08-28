@@ -57,6 +57,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel scan <study.json>` | One parameter across a range: one row per point, and a curve |
+| `einzel boundary <study.json>` | Bisect onto a stability boundary, to ACC-6 (Class B) |
 | `einzel optimise <study.json>` | Search the declared parameters for a better design |
 | `einzel preview <model.json>` | A fast, deliberately inexact look, marked as such (GRD-5) |
 | `einzel test [dir]` | Run the project's tests |

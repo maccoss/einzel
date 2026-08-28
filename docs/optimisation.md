@@ -9,6 +9,9 @@ Nothing in it knows what a mirror or a quadrupole is.
   tolerance binds first.
 - **Parameter scan** (`ParameterScan`) — one parameter across a declared range on a
   grid, one row per point. What a curve is made of.
+- **Boundary search** (`BoundarySearch`) — bisection onto the value where a figure
+  crosses a threshold, to ACC-6's one part in five hundred. What a Class B
+  stability edge is made of.
 - **Sensitivity fields** (`SensitivityFields`) — FLD-1's cached derivative of
   potential with respect to each channel, so a perturbed geometry is a weighted
   sum rather than a solve.
@@ -19,9 +22,9 @@ This page is about the last, with the scan below it.
 
 ## From the command line
 
-All three drivers are reachable as `einzel sweep`, `einzel scan` and
-`einzel optimise`, over a study file that names a figure of merit rather than
-carrying a function. See [CLI](cli.md#studies).
+All four drivers are reachable as `einzel sweep`, `einzel scan`,
+`einzel boundary` and `einzel optimise`, over a study file that names a figure of
+merit rather than carrying a function. See [CLI](cli.md#studies).
 
 ## What an optimiser is given
 
@@ -328,11 +331,121 @@ JSON has no infinity and a null would be indistinguishable from a value that was
 never computed. On a mass filter that vanishing is the cut-off, and scoring it as
 "no change" would rank the one interesting interval last.
 
-## What a scan is not, yet
+## What a scan is not, and what is
 
-Class B proper. ACC-6 wants a boundary resolved to one part in five hundred of the
-scan variable, which needs a bisection onto the transition rather than a grid
-across it; the steepest interval is the honest precursor and says how coarse it is.
-The mass-filter peak shape against a scan line, and the secular frequency spectrum
-against notch width, need the same machinery plus figures of merit that do not
-exist yet.
+Class B proper, which is the next section.
+
+---
+
+# Class B boundaries
+
+## Bisection, because a grid cannot afford ACC-6
+
+ACC-6 asks for a boundary resolved to **one part in five hundred of the scan**.
+A grid reaches that by having 501 points in it. Bisection reaches it by halving
+the bracket, which takes `log2(500) ≈ 9` steps plus the two that establish the
+bracket — **eleven evaluations against five hundred and one**, measured.
+
+```json
+{
+  "name": "low-mass-cutoff",
+  "model": "../models/quadrupole-rf.json",
+  "figureOfMerit": "transmission",
+  "ions": 1,
+  "boundary": {
+    "parameter": "rfAmplitude",
+    "from": 573, "to": 900, "unit": "V",
+    "threshold": 0.5,
+    "inside": "above",
+    "resolution": 0.002
+  }
+}
+```
+
+```
+einzel boundary studies/low-mass-cutoff.json
+```
+
+## Four decisions
+
+**The result is an interval, and the midpoint is a convention.** A bisection does
+not produce a value with an error bar around it — it produces a bracket known to
+contain the crossing. So the boundary comes back as a GRD-1 envelope whose
+`uncertainty` *is* that bracket, and the CLI prints both. Quoting the midpoint
+alone would quote a boundary more precisely than it was measured.
+
+**A figure that stops existing is outside, always.** A low-mass cut-off is
+precisely the value at which the ion stops arriving, so a search that treated a
+missing figure as a failed evaluation would refuse to look for the thing being
+looked for. Same for a value the model's own bounds refuse.
+
+**A bracket whose ends agree is refused, not guessed at.** Bisection assumes the
+predicate flips once across the bracket, which is true of a cut-off and false of a
+band — so a band is found by bracketing each edge separately. The refusal says
+which end gave what, and points at `einzel scan` for finding the bracket.
+
+**A search coarser than ACC-6 says so.** `boundary.below-acc6` is a qualification
+on the result, not a refusal: a coarse boundary is still a boundary, and the
+reader needs to know which one they have.
+
+## Measured: the low-mass cut-off on solved round rods
+
+| | |
+| --- | --- |
+| Tabulated Mathieu cut-off, a = 0 line | q = 0.90804 |
+| This engine, ideal analytic field | q = 0.90684 |
+| **This engine, solved round rods, bisected** | **q = 0.90508, bracketed to ±0.00039** |
+| Cost | **11 evaluations, 5.5 s** |
+| A grid to the same resolution | 501 evaluations |
+
+0.33% below the tabulated ideal and in the right direction: round rods carry a
+12-pole a hyperbola does not, and the whole diagram sits slightly inside the ideal
+one.
+
+## Measured: transmission against resolution
+
+Spec §21 makes this a Phase 3 acceptance criterion and §12 puts it in Class B.
+Both are the same measurement: hold U/V fixed, scan V, and the width of the
+stability band **is** the width in mass — because q goes as V/m, a band of
+relative width dV/V passes a band of relative width dm/m, and the resolution is
+its reciprocal. Both edges are bisected.
+
+| U/V | a/q | q low | q high | q centre | band width | R = V/dV |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.100 | 0.200 | 0.40521 | 0.77519 | 0.59020 | 0.36999 | 1.6 |
+| 0.130 | 0.260 | 0.53383 | 0.74246 | 0.63815 | 0.20863 | 3.1 |
+| 0.150 | 0.300 | 0.62226 | 0.72179 | 0.67203 | 0.09953 | 6.8 |
+| 0.160 | 0.320 | 0.66781 | 0.71203 | 0.68992 | 0.04421 | 15.6 |
+
+**The band closes onto the tabulated apex.** The first stability region's apex is
+at a = 0.23699, q = 0.70600, so the scan line runs out at U/V = a/2q = 0.16785 —
+and the band centre walks monotonically to **q = 0.68992, 2.28% below the apex**,
+while the resolution rises tenfold. Neither the apex nor the cut-off is a number
+this engine produced.
+
+Both halves are asserted, because either alone is much weaker: a filter whose band
+narrows onto the *wrong* q has the wrong geometry, and one that sits at the right q
+with a band that never narrows is not filtering.
+
+## The mistake that made the first version wrong
+
+The stability criterion was "did the ion strike a rod within twenty RF cycles".
+Near the low-q edge the instability is weak and takes far longer than twenty cycles
+to grow past the inscribed radius, so **that version called the whole low-q region
+stable** and the bracket had no edge in it — the search correctly refused, saying
+both ends were inside.
+
+The criterion has to be reaching the *detector*, which is what a transmission means
+everywhere else here, and the window has to be the transit time. A stability test
+whose window is shorter than the instability's growth time measures the window.
+
+## What Class B still does not have
+
+- **Stability diagram reconstruction in a–q space.** Two edges per scan line and a
+  line per point is affordable now, but nothing draws or exports the region.
+- **Secular frequency spectrum, and isolation efficiency against notch width.**
+  Both need an arbitrary-waveform excitation that §9 lists and this build does not
+  have.
+- **A peak *shape*, as opposed to its edges.** The band's width is measured by
+  bisecting where transmission crosses a half; the profile in between is a scan,
+  and nothing yet fits one.

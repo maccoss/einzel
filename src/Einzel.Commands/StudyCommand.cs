@@ -159,6 +159,59 @@ public sealed record ScanOutcome
 public sealed record ScanTransition(
     double Low, double High, double? Change, bool FigureVanishes, double WidthFraction);
 
+/// <summary>What a Class B boundary search found.</summary>
+public sealed record BoundaryOutcome
+{
+    /// <summary>The study file, as an absolute path.</summary>
+    public required string StudyPath { get; init; }
+
+    /// <summary>The model that was searched, as an absolute path.</summary>
+    public required string ModelPath { get; init; }
+
+    /// <summary>Which figure of merit located the boundary, and its unit.</summary>
+    public required FigureOfMeritInfo FigureOfMerit { get; init; }
+
+    /// <summary>Which parameter the boundary lies along.</summary>
+    public required string Parameter { get; init; }
+
+    /// <summary>The unit the boundary is quoted in.</summary>
+    public required string Unit { get; init; }
+
+    /// <summary>The threshold the figure crosses, and which side is inside.</summary>
+    public required double Threshold { get; init; }
+
+    /// <summary><c>above</c> or <c>below</c>.</summary>
+    public required string Inside { get; init; }
+
+    /// <summary>
+    /// The boundary, as a GRD-1 envelope whose interval is the final bracket.
+    /// </summary>
+    /// <remarks>
+    /// Not a value with an error bar: a bisection produces an interval known to
+    /// contain the crossing, and the midpoint is a convention laid over it. Quoting
+    /// the midpoint without the bracket would be quoting a boundary more precisely
+    /// than it was measured.
+    /// </remarks>
+    public MeasuredJson? Boundary { get; init; }
+
+    /// <summary>Evaluations spent.</summary>
+    public required int Evaluations { get; init; }
+
+    /// <summary>
+    /// The bracket width as a fraction of the range - ACC-6's own currency.
+    /// </summary>
+    public required double ResolvedFraction { get; init; }
+
+    /// <summary>Whether the requested resolution was reached.</summary>
+    public required bool Converged { get; init; }
+
+    /// <summary>Warnings the search carries, and every one its evaluations earned.</summary>
+    public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
+
+    /// <summary>Files written, relative to the project root.</summary>
+    public required IReadOnlyList<string> Artifacts { get; init; }
+}
+
 /// <summary>What an optimisation found.</summary>
 public sealed record OptimiseOutcome
 {
@@ -561,6 +614,88 @@ public static class StudyCommand
                 Write(project, absolute, "scan", outcome),
                 WriteManifest(
                     project, absolute, "scan", File.ReadAllText(modelPath), document.SchemaVersion,
+                    document.Transport?.Mode ?? "trajectory", study.Seed, extension,
+                    DateTimeOffset.UtcNow),
+            ],
+        };
+    }
+
+    /// <summary>Locates a Class B boundary by bisection.</summary>
+    /// <param name="studyPath">Path to the study file.</param>
+    /// <param name="project">Where artifacts belong.</param>
+    /// <param name="dryRun">Report what would be done and compute nothing (CLI-4).</param>
+    /// <returns>The outcome.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="project"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="studyPath"/> is null or blank.</exception>
+    /// <exception cref="EinzelException">The study or the model does not validate.</exception>
+    /// <remarks>
+    /// The half of §12's Class B that a scan cannot do. A scan says which of its
+    /// intervals the figure moves fastest across; this says where the crossing is,
+    /// to ACC-6's one part in five hundred, for about eleven evaluations instead of
+    /// five hundred and one.
+    /// </remarks>
+    public static BoundaryOutcome Boundary(string studyPath, ProjectLayout project, bool dryRun = false)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        var (study, modelPath, absolute) = Load(studyPath);
+        var figure = Figure(Required(study.FigureOfMerit));
+        var (axis, threshold, sense, resolution, budget) = StudyBinding.Boundary(study);
+        var document = ModelJson.Parse(File.ReadAllText(modelPath));
+
+        var unit = study.Boundary!.Unit!;
+        var inside = sense.ToString().ToLowerInvariant();
+
+        if (dryRun)
+        {
+            return new BoundaryOutcome
+            {
+                StudyPath = absolute,
+                ModelPath = modelPath,
+                FigureOfMerit = figure,
+                Parameter = axis.Parameter,
+                Unit = unit,
+                Threshold = threshold,
+                Inside = inside,
+                Evaluations = 0,
+                ResolvedFraction = double.NaN,
+                Converged = false,
+                Artifacts = [],
+            };
+        }
+
+        var ledger = new WarningLedger();
+
+        var evaluate = Evaluate(
+            figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
+
+        var result = BoundarySearch.Run(
+            document, axis, evaluate, threshold, sense, resolution, budget);
+
+        var outcome = new BoundaryOutcome
+        {
+            StudyPath = absolute,
+            ModelPath = modelPath,
+            FigureOfMerit = figure,
+            Parameter = axis.Parameter,
+            Unit = unit,
+            Threshold = threshold,
+            Inside = inside,
+            Boundary = MeasuredJson.From(result.Boundary, unit),
+            Evaluations = result.Evaluations,
+            ResolvedFraction = result.ResolvedFraction,
+            Converged = result.MetAccuracyTarget,
+            Warnings = [.. result.Warnings, .. ledger.Collected],
+            Artifacts = [],
+        };
+
+        return outcome with
+        {
+            Artifacts =
+            [
+                Write(project, absolute, "boundary", outcome),
+                WriteManifest(
+                    project, absolute, "boundary", File.ReadAllText(modelPath), document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
                     DateTimeOffset.UtcNow),
             ],

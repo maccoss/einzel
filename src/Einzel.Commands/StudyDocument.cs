@@ -104,6 +104,9 @@ public sealed record StudyDocument
     /// <summary>Scan: the one parameter to vary, and over what range.</summary>
     public ScanDocument? Scan { get; init; }
 
+    /// <summary>Boundary: the parameter and bracket a Class B search bisects.</summary>
+    public BoundaryDocument? Boundary { get; init; }
+
     /// <summary>Optimisation: <c>nelderMead</c> or <c>cmaEs</c>.</summary>
     public string Algorithm { get; init; } = "nelderMead";
 
@@ -155,6 +158,50 @@ public sealed record ScanDocument
 
     /// <summary><c>linear</c> or <c>logarithmic</c>.</summary>
     public string Spacing { get; init; } = "linear";
+}
+
+/// <summary>One boundary a Class B search locates, as it appears in a file.</summary>
+/// <remarks>
+/// ACC-6: "Class B boundary resolution &lt;= 1/500 of scan." A scan brackets a
+/// transition with a grid and costs 501 evaluations to reach that; this bisects
+/// onto it and costs about eleven. What it is for is §12's Class B list - a
+/// stability boundary, a low-mass cut-off for a funnel or an RF guide - where the
+/// question is not what the curve looks like but where exactly it crosses.
+/// </remarks>
+public sealed record BoundaryDocument
+{
+    /// <summary>The declared parameter the boundary is located along.</summary>
+    public string? Parameter { get; init; }
+
+    /// <summary>One end of the bracket. Must be on the opposite side from <see cref="To"/>.</summary>
+    public double From { get; init; }
+
+    /// <summary>The other end.</summary>
+    public double To { get; init; }
+
+    /// <summary>Unit of both ends; must match the parameter's dimension.</summary>
+    public string? Unit { get; init; }
+
+    /// <summary>
+    /// The value of the figure of merit that separates inside from outside.
+    /// </summary>
+    /// <remarks>
+    /// For a stability boundary measured by transmission, one half: an ion either
+    /// gets through or does not, and a figure that has stopped existing is always
+    /// outside whatever the threshold is.
+    /// </remarks>
+    public double Threshold { get; init; } = 0.5;
+
+    /// <summary><c>above</c> or <c>below</c>: which side of the threshold is inside.</summary>
+    public string Inside { get; init; } = "above";
+
+    /// <summary>
+    /// Bracket width to stop at, as a fraction of the range. ACC-6 asks for 0.002.
+    /// </summary>
+    public double Resolution { get; init; } = 1.0 / 500.0;
+
+    /// <summary>Ceiling on evaluations, in case the figure is not monotone here.</summary>
+    public int MaximumEvaluations { get; init; } = 60;
 }
 
 /// <summary>Turns a study document into the objects the sweep drivers take.</summary>
@@ -254,6 +301,59 @@ public static class StudyBinding
             Suggestion = "one of: linear, logarithmic",
         }),
     };
+
+    /// <summary>The bracket a boundary search bisects, and which side is inside.</summary>
+    /// <param name="study">The study.</param>
+    /// <returns>The axis, the threshold, the sense, and the resolution.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="study"/> is null.</exception>
+    /// <exception cref="EinzelException">The boundary block is missing or incomplete.</exception>
+    public static (ScanAxis Axis, double Threshold, BoundarySense Sense, double Resolution, int Budget)
+        Boundary(StudyDocument study)
+    {
+        ArgumentNullException.ThrowIfNull(study);
+
+        if (study.Boundary is not { } boundary)
+        {
+            throw Missing(
+                "boundary",
+                "a boundary search needs a 'boundary' block naming a parameter and a bracket");
+        }
+
+        if (string.IsNullOrWhiteSpace(boundary.Parameter))
+        {
+            throw Missing("boundary/parameter", "a boundary search names the parameter it varies");
+        }
+
+        if (string.IsNullOrWhiteSpace(boundary.Unit))
+        {
+            throw Missing(
+                "boundary/unit",
+                "a bracket needs a unit; use '1' for a dimensionless parameter such as a Mathieu q");
+        }
+
+        var sense = boundary.Inside.ToLowerInvariant() switch
+        {
+            "above" => BoundarySense.Above,
+            "below" => BoundarySense.Below,
+            _ => throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/boundary/inside",
+                Constraint = $"'{boundary.Inside}' is not a side",
+                Suggestion = "one of: above, below",
+            }),
+        };
+
+        // Two points, because a bracket is its ends. The count is unused by the
+        // search and is here only because ScanAxis carries one.
+        var axis = new ScanAxis(
+            boundary.Parameter,
+            Quantity.From(boundary.From, boundary.Unit),
+            Quantity.From(boundary.To, boundary.Unit),
+            2);
+
+        return (axis, boundary.Threshold, sense, boundary.Resolution, boundary.MaximumEvaluations);
+    }
 
     /// <summary>The design variables an optimisation searches.</summary>
     /// <param name="study">The study.</param>

@@ -20,19 +20,19 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**531 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 17 examples in 29 s, every expectation a closed form, a published value, or an exact invariant.
+**540 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 17 examples in 29 s, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
-| **Met**, with evidence | 63 |
+| **Met**, with evidence | 64 |
 | **Partial**, with a stated gap | 14 |
-| **Not built** | 38 |
+| **Not built** | 37 |
 | **Unverified** — plausible but unmeasured | 3 |
 | Total tagged in r06 | 118 |
 
-A count is a weak summary and it flatters the project: the 38 not built are
+A count is a weak summary and it flatters the project: the 37 not built are
 concentrated in the update mechanism, distribution, the shell and MCP, which are
-whole assemblies that do not exist, while the 63 met are spread across the parts
+whole assemblies that do not exist, while the 64 met are spread across the parts
 that carry numbers. The useful reading is the register, not the total.
 
 **And the register under-counts whole sections, because it is tag-driven.** §16
@@ -75,7 +75,7 @@ followed.
 | --- | --- | --- |
 | **1** · Spine, project, CLI | Model, units, symmetry, DC solver, superposition, tricubic, integrator, schema, errors, result objects, manifests, CLI, VTU | **Complete**, and its acceptance is met: ACC-1 on a reflectron, the memo's mirror pair tracked end to end, GRD-1 enforced with no bypass, an agent building a DC model from prose |
 | **2** · Extensions, sweeps, shell, figures | Both extension runners, examples corpus v1, sensitivity fields, tolerance MC, optimisation, ILGPU, WPF shell, `Einzel.Render`, installer, update mechanism | **Split.** Sweeps, sensitivity fields, both optimisers, the sandboxed extension runner and `Einzel.Render` are done. The in-process runner, ILGPU, the shell, the installer, the update mechanism and **the examples corpus** are not |
-| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Mostly done.** RF, diffusion, collisions, the sequencer, space charge by direct sum and density export are built. **Gas velocity import and Class B analysis are not** |
+| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Nearly done.** RF, diffusion, collisions, the sequencer, space charge by direct sum, density export and Class B boundaries are built. **Gas velocity import is not**, and Class B's spectrum and notch-width halves need an arbitrary waveform |
 | **4** · Traps, animation, MCP | Waveform excitation, multi-notch isolation, trap sequences, device library, animation, MCP | Trap sequences and the device library are largely done ahead of schedule. Waveforms, animation and MCP are not started |
 | **5** · Generalise and release | BEM, MSH interchange, CAD import, public repository | Not started |
 
@@ -108,7 +108,7 @@ largest gap in the project, and it is not a physics gap.
 | 2 | A publication-quality vector figure generated headlessly in CI | Met |
 | 2 | An update offered, deferred, later accepted | **Not met** — no update mechanism |
 | 3 | Mathieu diagram reproduced | Met twice — ideal field q = 0.90684, solved round rods q = 0.90525 |
-| 3 | Quadrupole transmission against resolution | **Not met** — needs Class B analysis |
+| 3 | Quadrupole transmission against resolution | **Met** — the band closes onto the tabulated apex q = 0.70600, R rising 1.6 to 15.6, both edges bisected to ACC-6 |
 | 3 | Funnel transmission against a published benchmark | **Not met** — needs gas flow, and §23 has not settled whose geometry |
 | 3 | Cross-mode agreement in the overlap band | Met — 0.43 standard errors |
 
@@ -419,7 +419,7 @@ in a table.
 | `ACC-3` | Field interpolation contribution ≤ 0.5 × | **Met** | Tricubic enforced; a forbidden interpolant is refused on a trajectory path. Bilinear measured at 9.4e-6 against bicubic 6.4e-8. |
 | `ACC-4` | Energy drift, static field ≤ 1 ppm Cheap conserved-quantity diagnostic | **Met** | 1e-9 to 1e-15 in static fields. Reports NaN in a driven field, where energy drift is not a diagnostic. |
 | `ACC-5` | Class S transmission interval ≤ 1% abs, 95% Drives minimum ensemble size per point | **Met** | Losses itemised by the surface name the author wrote; checked against erf for a slit at 0.95 sigma on 20,000 ions. A transmission of **zero** is now expressible - see Amendment 15, where it was not. |
-| `ACC-6` | Class B boundary resolution ≤ 1/500 of scan Enough to resolve a mass filter peak shape | Not built | `einzel scan` reports the steepest interval on its grid and how coarse that grid is; it does not bisect onto a boundary. |
+| `ACC-6` | Class B boundary resolution ≤ 1/500 of scan Enough to resolve a mass filter peak shape | **Met** | `einzel boundary` bisects onto the crossing and reports it as an envelope whose interval **is** the bracket. Measured: a step at a known value bracketed to 1 part in 512 in 11 evaluations, against 501 for a grid; the quadrupole low-mass cut-off at **q = 0.90508 +/- 0.00039** against a tabulated 0.90804. |
 | `ACC-7` | Rendered geometric tolerance ≤ 0.1% of extent Default decimation bound for vector output; recorded per | **Met** | Ramer-Douglas-Peucker measured tight against its bound: 4,000 points to 577 at a worst deviation of 0.010000 mm against 0.01. |
 
 ### Agent instructions (§3)
@@ -697,10 +697,13 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    noticing what the first tranche already returned: **two defects that no test
    written from inside the project would have caught**, because both were about a
    model that validates and answers a different question.
-2. **Class B analysis, on the scan driver that now exists.** ACC-6 wants a boundary
-   bisected onto rather than bracketed by a grid; mass-filter peak shape against a
-   scan line needs figures of merit that do not exist. This is Phase 3 acceptance
-   criterion 3.
+2. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, and the
+   transmission-against-resolution curve closes onto the tabulated apex, which is
+   Phase 3 acceptance criterion 3. What is left of §12's Class B needs an
+   **arbitrary waveform**: the secular frequency spectrum, and isolation efficiency
+   against notch width. §9 lists arbitrary waveforms as an excitation an electrode
+   may carry and this build has only sinusoid and rectangular, so that is the
+   unblocking piece rather than more analysis.
 3. **A gas velocity field (GAS-1).** A uniform bulk velocity is honoured; spec
    figure 4 requires a *field* above 10⁻² mbar, and the jet off an inlet capillary
    is not uniform across a ring stack. This is what stands between the funnel and

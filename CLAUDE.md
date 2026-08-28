@@ -456,6 +456,31 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Still missing:** thirteen more, and the gap is breadth rather than machinery — no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode.
 
+- **Class B: bisection onto a boundary, and Phase 3 acceptance criterion 3.** ACC-6 asks for a boundary resolved to **one part in five hundred of the scan**. A grid reaches that by having 501 points in it; `BoundarySearch` halves the bracket instead, which is `log2(500)` steps plus the two that establish it — **11 evaluations against 501, measured**.
+
+  **The result is an interval and the midpoint is a convention.** A bisection does not produce a value with an error bar around it, it produces a bracket known to contain the crossing, so the boundary comes back as a GRD-1 envelope whose `uncertainty` *is* that bracket, with `Evidence.Search` carrying the evaluations and the width. Three refusals that matter: a figure that **stops existing is outside, always** — a cut-off is precisely where the ion stops arriving, so treating its absence as a failed evaluation would refuse to look for the thing being looked for; a bracket whose **ends agree is refused rather than guessed at**, naming both and pointing at `einzel scan`; and a search coarser than ACC-6 is **qualified rather than refused**, because a coarse boundary is still a boundary and the reader needs to know which one they have.
+
+  | | |
+  | --- | --- |
+  | Tabulated Mathieu cut-off, a = 0 | q = 0.90804 |
+  | This engine, ideal analytic field | q = 0.90684 |
+  | **Solved round rods, bisected** | **q = 0.90508 ± 0.00039**, 11 evaluations, 5.5 s |
+
+  **And transmission against resolution, which is Phase 3's acceptance criterion 3.** Hold U/V fixed, scan V, and the width of the stability band *is* the width in mass — q goes as V/m, so a band of relative width dV/V passes one of relative width dm/m.  Both edges bisected:
+
+  | U/V | q low | q high | q centre | R = V/dV |
+  | --- | --- | --- | --- | --- |
+  | 0.100 | 0.40521 | 0.77519 | 0.59020 | 1.6 |
+  | 0.130 | 0.53383 | 0.74246 | 0.63815 | 3.1 |
+  | 0.150 | 0.62226 | 0.72179 | 0.67203 | 6.8 |
+  | 0.160 | 0.66781 | 0.71203 | 0.68992 | 15.6 |
+
+  **The band closes onto the tabulated apex.** The first stability region's apex is at a = 0.23699, q = 0.70600, so the scan line runs out at U/V = a/2q = 0.16785 — and the centre walks monotonically to **0.68992, 2.28% below**, while R rises tenfold. Both halves are asserted, because either alone is much weaker: a band narrowing onto the *wrong* q is the wrong geometry, and one sitting at the right q that never narrows is not filtering.
+
+  **The first version was wrong for a reason worth keeping.** Its stability criterion was "did the ion strike a rod within twenty RF cycles". Near the low-q edge the instability is weak and takes far longer than that to grow past the inscribed radius, so it **called the whole low-q region stable** and the bracket had no edge in it — the search correctly refused, saying both ends were inside. The criterion has to be reaching the *detector*, and the window has to be the transit time: **a stability test whose window is shorter than the instability's growth time measures the window.**
+
+  **What Class B still lacks needs an arbitrary waveform, not more analysis.** The secular frequency spectrum and isolation efficiency against notch width are §12 items that §9's arbitrary-waveform excitation would unblock; this build has sinusoid and rectangular only.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

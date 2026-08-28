@@ -114,6 +114,7 @@ public static class Program
             "sweep" => Sweep(options),
             "optimise" or "optimize" => Optimise(options),
             "scan" => Scan(options),
+            "boundary" => Boundary(options),
             "preview" => Preview(options),
             "test" => Test(options),
             "verify" => Verify(options),
@@ -342,6 +343,72 @@ public static class Program
         }
 
         return (int)ExitCode.Success;
+    }
+
+    private static int Boundary(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel boundary <study.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("run 'einzel schema --study' for the shape of a study file");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var studyPath = Path.GetFullPath(options.Positional[0]);
+        var root = options.Value("project") ?? InferProjectRoot(studyPath);
+        var outcome = StudyCommand.Boundary(studyPath, new ProjectLayout(root), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome, outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        if (outcome.Artifacts.Count == 0)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"would bisect for {outcome.Parameter} where {outcome.FigureOfMerit.Name} crosses "
+                + $"{outcome.Threshold:G6} in {outcome.ModelPath}"));
+
+            return (int)ExitCode.Success;
+        }
+
+        if (outcome.Boundary is { } boundary)
+        {
+            // The bracket, not a value with an error bar. A bisection proves
+            // containment; the midpoint is a convention laid over it, and printing
+            // the midpoint alone would quote the boundary more precisely than it was
+            // measured.
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{outcome.Parameter,-14} {boundary.Value:G8} {outcome.Unit}, "
+                + $"bracketed [{boundary.Uncertainty.Lower:G8}, {boundary.Uncertainty.Upper:G8}]"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{"where",-14} {outcome.FigureOfMerit.Name} crosses {outcome.Threshold:G6} "
+                + $"{outcome.FigureOfMerit.Unit} (inside is {outcome.Inside})"));
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{"resolved",-14} 1 part in {1.0 / Math.Max(outcome.ResolvedFraction, 1e-12):F0} of "
+                + $"the range in {outcome.Evaluations} evaluations; ACC-6 asks for 1 in 500, and a "
+                + $"grid would cost 501"));
+        }
+
+        Warn(outcome.Warnings);
+
+        Console.Out.WriteLine();
+
+        foreach (var artifact in outcome.Artifacts)
+        {
+            Console.Out.WriteLine($"wrote {artifact}");
+        }
+
+        return outcome.Converged ? (int)ExitCode.Success : (int)ExitCode.ConvergenceFailure;
     }
 
     /// <summary>The first line of a failure, for a table cell.</summary>
@@ -1684,6 +1751,7 @@ public static class Program
           verify [dir]                  are the stored results still the answer?
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           scan <study.json>             one parameter across a range, one row per point
+          boundary <study.json>         bisect onto a stability boundary (Class B, ACC-6)
           optimise <study.json>         search the declared parameters for a better design
           export <model.json>           write the solved field as VTK ImageData
           compare <model.json>          run both transport modes and report the disagreement

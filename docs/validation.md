@@ -2,7 +2,7 @@
 
 What is tested, what each tier proves, and — as importantly — what is not covered.
 
-531 tests across nine assemblies. Warnings are errors; XML documentation is
+540 tests across nine assemblies. Warnings are errors; XML documentation is
 required on public API; CI builds and tests on Linux and Windows.
 
 ## The tiers
@@ -37,6 +37,9 @@ cross-code tier is unavailable — see below.
 | Axisymmetric convergence order, 32 to 256 cells | 1.84 / 2.00 / 1.95 |
 | Total energy across an einzel lens | 6.4e-10 |
 | Low-mass cut-off on **solved** round rods, against tabulated Mathieu | q = 0.90525 against 0.90804, 0.31% |
+| The same, bisected to ACC-6 rather than scanned | **q = 0.90508 ± 0.00039** in 11 evaluations |
+| Mass-filter band centre against the tabulated apex q = 0.70600 | 0.68992, 2.28% below, approached monotonically |
+| Boundary bisection against a step placed at a known value | bracket contains it, 1 part in 512, 11 evaluations |
 | Funnel basis solves against ring count (8 / 24 / 48 rings) | 2 / 2 / 2 |
 | Sequenced run against the same flight stitched from two runs | 1.3e-9 relative |
 | 3D harmonic quadratic, reproduced exactly | 4.3e-13 relative |
