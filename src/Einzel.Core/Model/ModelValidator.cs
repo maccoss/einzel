@@ -261,11 +261,11 @@ public static class ModelValidator
         // start-at-rest device incapable of moving an ion.
         CompiledFieldKind.Solved2D =>
             field.Solve is { } solve
-            && solve.Electrodes.Any(e => e.Potential != 0.0 || e.DriveAmplitude != 0.0),
+            && solve.Electrodes.Any(e => e.Potential != 0.0 || e.IsDriven),
 
         CompiledFieldKind.Solved3D =>
             field.Solve3D is { } volume
-            && volume.Electrodes.Any(e => e.Potential != 0.0 || e.DriveAmplitude != 0.0),
+            && volume.Electrodes.Any(e => e.Potential != 0.0 || e.IsDriven),
 
         _ => true,
     };

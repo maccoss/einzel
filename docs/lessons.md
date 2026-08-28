@@ -615,6 +615,16 @@ actually caught them were:
   average was over three samples of an ion still accelerating from rest. Moving the
   step past the settling distance gave 204.5. **An average is over whatever the window
   contains, including the part that is not yet the thing being measured.**
+- **A convenience accessor that quietly became a summary.** Adding a second
+  generator turned `CompiledElectrode.DriveAmplitude` from *the* amplitude into *the
+  first tap's* amplitude, and left it as a property with the same name. Every reader
+  kept compiling. One of them was `ElectrodeOverlap.Agrees`, the check that refuses
+  two conductors occupying the same space at different excitations — so two
+  electrodes agreeing about the main RF and differing about a supplementary one were
+  judged identical, and the mask kept whichever was written last. **The one check
+  that exists to prevent a field of a geometry nobody described became a route to
+  one.** Found by asking, after the change, which readers of the old scalar were
+  asking a question the scalar no longer answers.
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.

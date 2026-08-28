@@ -82,14 +82,45 @@ public static class ElectrodeOverlap
     }
 
     /// <summary>Whether two electrodes hold the same thing, so overlapping is harmless.</summary>
-    private static bool Agrees(CompiledElectrode a, CompiledElectrode b) =>
-        a.Potential == b.Potential
-        && a.DriveAmplitude == b.DriveAmplitude
-        && (a.DriveAmplitude == 0.0 || a.DrivePhase == b.DrivePhase);
+    /// <remarks>
+    /// Over <em>every</em> tap, not over the first. An electrode may be fed by more
+    /// than one generator, and comparing <c>DriveAmplitude</c> - which is the first
+    /// tap - would call two electrodes identical when they agreed about the main RF
+    /// and differed about a supplementary excitation. The mask keeps whichever was
+    /// written last, so that is a field of a geometry nobody described, arrived at
+    /// through the one check that exists to prevent it.
+    /// </remarks>
+    private static bool Agrees(CompiledElectrode a, CompiledElectrode b)
+    {
+        if (a.Potential != b.Potential || a.Taps.Count != b.Taps.Count)
+        {
+            return false;
+        }
+
+        // Order matters, and that is the conservative reading: two electrodes whose
+        // taps are the same set in a different order really do hold the same thing,
+        // and calling them different costs a spurious refusal rather than a silent
+        // wrong field. Templates write their taps in one order anyway.
+        for (var k = 0; k < a.Taps.Count; k++)
+        {
+            if (a.Taps[k].Drive != b.Taps[k].Drive
+                || a.Taps[k].Amplitude != b.Taps[k].Amplitude
+                || a.Taps[k].Phase != b.Taps[k].Phase)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static string Describe(CompiledElectrode e) =>
         e.IsDriven
-            ? $"{e.Potential:G6} V DC with {e.DriveAmplitude:G6} V of drive at phase {e.DrivePhase:G4}"
+            ? $"{e.Potential:G6} V DC with "
+                + string.Join(
+                    ", ",
+                    e.Taps.Select(t =>
+                        $"{t.Amplitude:G6} V of drive {t.Drive} at phase {t.Phase:G4}"))
             : $"{e.Potential:G6} V";
 
     /// <summary>Whether two electrodes share any point.</summary>

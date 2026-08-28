@@ -648,6 +648,14 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Remaining for EX-1: an MR-TOF, a thermalisation, and a three-dimensional geometry.
 
+- **A review of the night's own work, and the defect it found.** Adding a second generator turned `CompiledElectrode.DriveAmplitude` from *the* amplitude into *the first tap's* amplitude, and left it as a property with the same name. Everything kept compiling. One reader was `ElectrodeOverlap.Agrees` — the check that refuses two conductors occupying the same space at different excitations — so **two electrodes agreeing about the main RF and differing about a supplementary one were judged identical**, and the Dirichlet mask kept whichever was written last. The one check that exists to prevent a field of a geometry nobody described had become a route to one.
+
+  Now compared over **every** tap, with order significant (the conservative reading: two electrodes whose taps are the same set in a different order really do hold the same thing, so refusing them costs a spurious complaint rather than a silent wrong field). **Three tests, and all three were run with the fix reverted** — two fail with the bug restored, which is what makes them tests of the bug rather than tests that a file exists.
+
+  Also swept: `CanDoWork` now asks `IsDriven` rather than the first tap's amplitude, and `einzel schema` was checked to carry `drives`, `taps` and `TapTermDocument` — AGT-7 says the format an agent reads cannot drift from the code, and a reflection-generated schema is only as good as the records it reflects over.
+
+  The general lesson, in `docs/lessons.md`: **a convenience accessor that quietly becomes a summary keeps every caller compiling and changes what some of them mean.** After widening a scalar into a list, ask which readers of the scalar were asking a question it no longer answers.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

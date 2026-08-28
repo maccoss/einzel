@@ -30,6 +30,19 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
             Taps = drive == 0.0 ? [] : [new CompiledTap(0, drive, 0.0)],
         };
 
+    private static CompiledElectrode Tapped(
+        string name, double x, params CompiledTap[] taps) =>
+        new()
+        {
+            Name = name,
+            Shape = ElectrodeShape.Disc,
+            CentreX = x,
+            CentreY = 0.0,
+            Radius = 1.0e-3,
+            Potential = 0.0,
+            Taps = taps,
+        };
+
     private static CompiledElectrode Box(
         string name, double minX, double minY, double maxX, double maxY, double potential = 0.0) =>
         new()
@@ -157,5 +170,66 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
         };
 
         Assert.Empty(Check(profile, Disc("rod", 0.0, 0.0, 0.010, potential: -500.0)));
+    }
+
+    [Fact]
+    public void ElectrodesThatAgreeOnlyAboutTheirFirstGeneratorAreRefused()
+    {
+        // The defect a second generator introduced. An electrode may be fed by more
+        // than one supply, and DriveAmplitude is the FIRST tap - so a check written
+        // against it calls two electrodes identical when they agree about the main RF
+        // and differ about a supplementary excitation. The mask keeps whichever was
+        // written last, which is a field of a geometry nobody described, arrived at
+        // through the one check that exists to prevent exactly that.
+        var errors = new List<EinzelError>();
+
+        ElectrodeOverlap.Check(
+            [
+                Tapped("a", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.0)),
+                Tapped("b", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.5)),
+            ],
+            "/fields/0/solve",
+            errors);
+
+        var error = Assert.Single(errors);
+
+        Assert.Contains("'a'", error.Constraint, StringComparison.Ordinal);
+        Assert.Contains("'b'", error.Constraint, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ElectrodesThatAgreeAboutEveryGeneratorAreAllowed()
+    {
+        // The control. Overlapping is not the problem - disagreeing is - and a shape
+        // assembled from overlapping primitives is how a fillet gets built.
+        var errors = new List<EinzelError>();
+
+        ElectrodeOverlap.Check(
+            [
+                Tapped("a", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.25)),
+                Tapped("b", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.25)),
+            ],
+            "/fields/0/solve",
+            errors);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void AnElectrodeWithAnExtraGeneratorIsNotTheSameElectrode()
+    {
+        // One tap against two, agreeing on the one they share. Different counts are
+        // different excitations, and the shorter one is not a prefix of the longer.
+        var errors = new List<EinzelError>();
+
+        ElectrodeOverlap.Check(
+            [
+                Tapped("a", 0.0, new CompiledTap(0, 300.0, 0.0)),
+                Tapped("b", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.0)),
+            ],
+            "/fields/0/solve",
+            errors);
+
+        Assert.Single(errors);
     }
 }
