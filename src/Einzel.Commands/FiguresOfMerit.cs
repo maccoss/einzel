@@ -93,6 +93,9 @@ public static class FiguresOfMerit
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
         new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true),
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
+        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false),
+        new("secularFrequencyY", "kHz", "The same along y.", false),
+        new("secularFrequencyZ", "kHz", "The same along z.", false),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
@@ -162,6 +165,9 @@ public static class FiguresOfMerit
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
             "confined" => model => Confined(model, energySpread, ions, report),
             "transitTime" => model => Transit(model, report),
+            "secularFrequencyX" => model => Secular(model, 0, report),
+            "secularFrequencyY" => model => Secular(model, 1, report),
+            "secularFrequencyZ" => model => Secular(model, 2, report),
             _ => throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.InternalError,
@@ -646,6 +652,87 @@ public static class FiguresOfMerit
     /// all gives null.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The strongest line below the drive in one component of the ion's motion.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Section 12 asks for the secular frequency spectrum as a Class B figure, and a
+    /// figure of merit needs one number out of it: the dominant line. What makes it
+    /// worth having as a scannable quantity rather than a diagnostic is that a
+    /// nonlinear resonance is <em>defined</em> by a condition on these frequencies,
+    /// so a scan that reports where the ion is lost and a scan that reports its
+    /// secular frequency can be read against each other.
+    /// </para>
+    /// <para>
+    /// The search band is 2 to 90 per cent of the drive, taken from the field's own
+    /// shortest period rather than from a parameter with a guessable name. The upper
+    /// end stops below the drive on purpose: the micromotion at the drive frequency
+    /// is the largest line in most spectra and is not the secular motion, so
+    /// including it would report the drive back to the caller as a discovery.
+    /// </para>
+    /// <para>
+    /// Null for a static field, with a warning. That is not a failed measurement - a
+    /// static field has no secular motion to have a frequency, and reporting an
+    /// ion's ordinary oscillation in a DC well under this name would be answering a
+    /// different question.
+    /// </para>
+    /// </remarks>
+    private static double? Secular(
+        CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (launch, species, field, settings, detector) = Setup(model, report: report);
+
+        if (field is not Fields.ITimeVaryingField driven)
+        {
+            report?.Invoke(new Core.Results.ValidityWarning(
+                "secular.no-drive",
+                "this model declares no time-varying field, so there is no secular motion to have a "
+                + "frequency. A secular frequency is the slow oscillation an ion makes in the "
+                + "effective well of an RF field, and a static field has no such well - the ion "
+                + "simply moves in the field it is in",
+                Core.Results.WarningSeverity.ValidityViolation));
+
+            return null;
+        }
+
+        var period = driven.ShortestPeriodSeconds;
+        var recorder = new TrajectoryRecorder(period / 16.0);
+
+        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
+
+        if (recorder.Samples.Count < 4)
+        {
+            return null;
+        }
+
+        try
+        {
+            var spectrum = Analysis.SecularSpectrum.From(
+                recorder.Samples, axis, 0.02 / period, 0.90 / period, 4000);
+
+            var peak = spectrum.Peak();
+
+            if (peak is null)
+            {
+                return null;
+            }
+
+            Forward(peak.Warnings, report);
+
+            var (value, _, _, _) = peak;
+
+            return value.SiValue;
+        }
+        catch (ArgumentException)
+        {
+            // No variance along this axis: the ion never moved in this direction, so
+            // it has no spectrum here. Absent rather than zero - zero hertz is a real
+            // answer and a reader cannot tell the two apart if both print as zero.
+            return null;
+        }
+    }
+
     /// <summary>
     /// How many distinct ions an energy-spread ensemble actually has.
     /// </summary>

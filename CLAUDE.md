@@ -568,6 +568,30 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Corpus 21 → 23 (`paul-trap-held` at q_z = 0.30, `paul-trap-ejected` at q_z = 1.20 — bracketing the published boundary from both sides, deliberately wide, because an example that pinned the edge would be pinning this geometry's edge and calling it Mathieu's). Details in `docs/device-templates.md` and `docs/optimisation.md`.
 
+- **The secular frequency spectrum, and the resonance it named.** §12 lists it as a Class B figure; the reason to build it now was that the trap above had a loss band nothing could identify. **A nonlinear resonance is *defined* by a frequency condition** — `n_z β_z + n_r β_r = 2` for a multipole of order n_z + n_r — so a scan over amplitude can establish that a band exists and can never say what it is.
+
+  **Lomb–Scargle rather than a DFT, and that is the load-bearing choice.** A trajectory is sampled at accepted integration steps, which cluster where the physics is hard — `TrajectoryRecorder` working as designed — so the series is **not uniform**. A DFT would need it resampled first, which is inventing values the integrator never computed and then measuring them. Lomb–Scargle is the closed-form least-squares fit of a sinusoid at each trial frequency and needs no such step.
+
+  Checked against the Mathieu characteristic exponent — a continued fraction in a and q, evaluated **in the test** rather than shipped, because comparing the engine's β to the engine's spectrum would be testing self-consistency:
+
+  | q | β | expected | measured |
+  | --- | --- | --- | --- |
+  | 0.10 | 0.070850 | 35.425 kHz | 35.374 kHz (−0.144%) |
+  | 0.30 | 0.216059 | 108.030 kHz | 108.037 kHz (+0.007%) |
+  | 0.50 | 0.373744 | 186.872 kHz | 186.937 kHz (+0.035%) |
+  | 0.70 | 0.563066 | 281.533 kHz | 281.500 kHz (−0.012%) |
+  | 0.85 | 0.772950 | 386.475 kHz | 386.507 kHz (+0.008%) |
+
+  **The sidebands are the sharper check**: finding the lowest line right says the slow motion has the right frequency, but finding the drive split into a *pair* straddling it — 813.19 against 813.13 kHz, 1186.94 against 1186.87 — says the motion has the form Mathieu's solution gives. The reported uncertainty is 1/T, because a record of finite length cannot locate a line more finely however fine the trial spacing; `spectrum.short-record` and `spectrum.peak-at-band-edge` say when that bites.
+
+  **The band is the octupole.** β_z = 0.6769, β_r = 0.3225, so **2β_z + 2β_r = 1.9989** — order four, met to 0.055% at the band centre and a hundred times worse either side. Nine candidate conditions are searched and one is always nearest, so what makes this an identification rather than a fit is that **order four was predicted in advance**: the trap is symmetric about its centre plane and about the axis, so every odd multipole vanishes and four is the first available. It is independently corroborated by the field, where the curvature ratio departs from −2 by an amount that grows with radius.
+
+  **And the effective radius is now confirmed twice over, from routes sharing nothing but the solved field** — the curvature at the centre with no ion involved (3.8195 mm), and the secular line of a flown ion against Mathieu at q × (r0/r0_eff)². They agree to **0.02% at q = 0.27**, 0.04% at 0.40, 0.28% at 0.54 — and diverge to 3.1% at 0.80, which is the other half of the same statement rather than a failure: the trap is an ideal quadrupole of radius 3.82 mm *to the extent the ion stays small*. That is why the stability boundary cannot be predicted from the effective radius alone — a boundary measurement requires the ion to travel all the way to an electrode, through the anharmonic region.
+
+  **The ideal-Mathieu prediction was wrong and had to be**: β at the *nominal* q of 0.745 is 0.6156, which satisfies no low-order condition. Working in the nominal geometry rather than the solved one is what made the resonance unidentifiable in the first place.
+
+  Exposed as `secularFrequencyX|Y|Z`, so a study can scan or optimise against it. Refused with `secular.no-drive` for a static field — a secular frequency is the slow oscillation in an RF field's *effective* well, and a static field has no such well. The band searched is 2–90% of the drive, taken from the field's own shortest period and stopping below the drive deliberately, because micromotion at the drive is the largest line in most spectra and reporting it back would be reporting the input as a discovery. Details in `docs/validation.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

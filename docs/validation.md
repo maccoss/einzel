@@ -378,3 +378,100 @@ dotnet test tests/Einzel.Fields.Tests                         # one assembly
 
 The Library suite takes a couple of minutes: it tunes mirror separations by
 bisection, and each evaluation is a solve plus several flights.
+
+## The secular spectrum, against the Mathieu characteristic exponent
+
+An ion in an RF field moves on two timescales: a slow **secular** oscillation in the
+effective well and a fast **micromotion** at the drive. Mathieu theory puts the lines
+at `(2n ± β) Ω / 2` for integer `n`, with β given by a continued fraction in `a` and
+`q` alone — a closed form this engine has no part in, evaluated in the test rather
+than shipped, because a test comparing the engine's β to the engine's spectrum would
+be testing self-consistency.
+
+| q | β (closed form) | expected | measured | departure |
+| --- | --- | --- | --- | --- |
+| 0.10 | 0.070850 | 35.425 kHz | 35.374 kHz | −0.144 % |
+| 0.30 | 0.216059 | 108.030 kHz | 108.037 kHz | +0.007 % |
+| 0.50 | 0.373744 | 186.872 kHz | 186.937 kHz | +0.035 % |
+| 0.70 | 0.563066 | 281.533 kHz | 281.500 kHz | −0.012 % |
+| 0.85 | 0.772950 | 386.475 kHz | 386.507 kHz | +0.008 % |
+
+Every one is inside the record's own resolution of 5 kHz, which is what the
+assertion is against — a periodogram over 200 µs cannot locate a line more finely
+than 1/T however finely the trial frequencies are spaced, and the reported interval
+is that width.
+
+**The sidebands are the sharper check.** Finding the lowest line in the right place
+says the slow motion has the right frequency; finding the drive split into a *pair*
+straddling it says the motion has the form Mathieu's solution gives. At q = 0.5:
+
+| line | expected | measured |
+| --- | --- | --- |
+| secular, n = 0 | 186.87 kHz | 186.89 kHz (power 0.958) |
+| lower sideband, n = 1 | 813.13 kHz | 813.19 kHz (power 0.036) |
+| upper sideband, n = −1 | 1186.87 kHz | 1186.94 kHz (power 0.009) |
+
+**Lomb–Scargle rather than a DFT, and that is the load-bearing choice.** A trajectory
+is sampled at accepted integration steps, which cluster where the physics is hard —
+`TrajectoryRecorder` working as designed — so the series is *not* uniformly spaced. A
+DFT would need it resampled onto a uniform grid first, which is inventing values the
+integrator never computed and then measuring them. Lomb–Scargle is the closed-form
+least-squares fit of a sinusoid at each trial frequency and needs no such step.
+
+## Two independent routes to the same effective radius
+
+The Paul trap's electrodes are flat annuli, so the field at its centre is stronger
+than its declared 4 mm inscribed radius implies. That effective radius is measurable
+two entirely different ways, sharing nothing but the solved field:
+
+- **From the field.** The curvature at the centre, `dEz/dz = 2V/r0²`, with no ion
+  involved at all. **3.8195 mm.**
+- **From a trajectory.** Fly an ion for two hundred RF cycles, take the periodogram,
+  and compare the secular line against Mathieu's closed form evaluated at
+  `q × (r0/r0_eff)²`.
+
+| amplitude | q nominal | q effective | predicted | measured | ratio |
+| --- | --- | --- | --- | --- | --- |
+| 200 V | 0.2444 | 0.2681 | 96.154 kHz | 96.133 kHz | **0.9998** |
+| 300 V | 0.3666 | 0.4021 | 147.095 kHz | 147.035 kHz | **0.9996** |
+| 400 V | 0.4888 | 0.5361 | 202.327 kHz | 201.750 kHz | 0.9972 |
+| 600 V | 0.7332 | 0.8041 | 347.360 kHz | 336.413 kHz | 0.9685 |
+
+**Two hundredths of a per cent at low q**, from a field curvature and a flight time.
+And the departure at high q is the other half of the same statement rather than a
+failure: the trap is an ideal quadrupole of radius 3.82 mm *to the extent the ion
+stays small*, and stops being one as the excursion grows. That is the anharmonicity
+arriving on schedule, and it is why the stability boundary — which is measured by an
+ion travelling all the way to an electrode — cannot be predicted from the effective
+radius alone.
+
+## Naming a nonlinear resonance
+
+The same trap loses its ion in a narrow band at 605–614 V, sixty volts inside what
+the Mathieu chart calls stable. A loss scan can establish that the band is real —
+identical at twice the mesh and twice the hold, absent at a quarter of the hold and
+at a third of the launch offset — and can never say *what* it is, because a
+resonance is defined by a condition on frequencies.
+
+| amplitude | β_z | β_r | best condition | value | miss |
+| --- | --- | --- | --- | --- | --- |
+| 560 V | 0.6109 | 0.2809 | 2β_z + 2β_r | 1.7836 | 0.2164 |
+| **610 V** | **0.6769** | **0.3225** | **2β_z + 2β_r** | **1.9989** | **0.0011** |
+| 660 V | 0.7500 | 0.3507 | 6β_r | 2.1042 | 0.1042 |
+
+`n_z β_z + n_r β_r = 2` at order four is an **octupole** resonance, met to 0.055 per
+cent at the band centre and a hundred times worse either side.
+
+**Why that is an identification rather than a fit.** Nine candidate conditions are
+searched and one of them is always nearest, so a near miss on an arbitrary one would
+prove nothing. Order four is the one predicted in advance: the trap is symmetric
+about its own centre plane and about the axis, so every odd multipole vanishes and
+four is the first order available. And it is independently corroborated by the field
+measurement — the curvature ratio `dEz/dz ÷ dEr/dr` departs from its exact −2 by an
+amount that *grows with radius*, which is an even multipole seen without flying
+anything.
+
+Note also that the ideal-Mathieu prediction fails here and had to: β at the *nominal*
+q of 0.745 is 0.6156, which satisfies no low-order condition at all. The measured
+0.6769 is the one the resonance condition is about, and the difference between them
+is the effective radius plus the anharmonic shift.

@@ -239,6 +239,17 @@ Python objectives will register into the same place when extensions land.
 | `normalisedEmittance` | µm | The same area against transverse momentum, so acceleration does not change it |
 | `confined` | 1 | Fraction still inside when the run ends: struck nothing, reached no detector. What a trap is measured by |
 | `transitTime` | µs | Mean time for a diffusive run's density to reach the collecting boundary. What a density has instead of a flight time |
+| `secularFrequencyX` | kHz | Strongest line below the drive in the ion's motion along x — the slow oscillation in the effective RF well |
+| `secularFrequencyY` | kHz | The same along y |
+| `secularFrequencyZ` | kHz | The same along z |
+
+**The secular frequencies need a driven field** and return nothing for a static one,
+with `secular.no-drive` saying why: a secular frequency is the slow oscillation an
+ion makes in the *effective* well of an RF field, and a static field has no such
+well. The band searched is 2–90 per cent of the drive, taken from the field's own
+shortest period. It stops below the drive deliberately — micromotion at the drive
+frequency is the largest line in most spectra and is not the secular motion, so
+including it would report the drive back to the caller as a discovery.
 
 **`confined` is the one that is not an arrival**, and it exists because every other
 figure here counts ions that got somewhere. A trapped ion by definition never gets

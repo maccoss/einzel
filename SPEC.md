@@ -75,7 +75,7 @@ followed.
 | --- | --- | --- |
 | **1** · Spine, project, CLI | Model, units, symmetry, DC solver, superposition, tricubic, integrator, schema, errors, result objects, manifests, CLI, VTU | **Complete**, and its acceptance is met: ACC-1 on a reflectron, the memo's mirror pair tracked end to end, GRD-1 enforced with no bypass, an agent building a DC model from prose |
 | **2** · Extensions, sweeps, shell, figures | Both extension runners, examples corpus v1, sensitivity fields, tolerance MC, optimisation, ILGPU, WPF shell, `Einzel.Render`, installer, update mechanism | **Split.** Sweeps, sensitivity fields, both optimisers, the sandboxed extension runner and `Einzel.Render` are done. The in-process runner, ILGPU, the shell, the installer, the update mechanism and **the examples corpus** are not |
-| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Scope complete.** Every named deliverable is built, gas velocity import included. What is left is on the acceptance side: the funnel benchmark needs a §23 decision and an affordable driven diffusive step, and Class B's spectrum and notch-width halves need an arbitrary waveform |
+| **3** · RF and pressure | Time-domain RF, statistical diffusion, collision models, gas velocity import, sequencer, space charge, Class B analysis, density export | **Scope complete.** Every named deliverable is built, gas velocity import included. What is left is on the acceptance side: the funnel benchmark needs a §23 decision and an affordable driven diffusive step, and Class B's notch-width half needs an arbitrary waveform. The secular spectrum is now built and measured against the Mathieu characteristic exponent |
 | **4** · Traps, animation, MCP | Waveform excitation, multi-notch isolation, trap sequences, device library, animation, MCP | Trap sequences and the device library are largely done ahead of schedule. Waveforms, animation and MCP are not started |
 | **5** · Generalise and release | BEM, MSH interchange, CAD import, public repository | Not started |
 
@@ -481,6 +481,41 @@ from a check never made. Two limits are stated rather than papered over: the wal
 stays inside the declared range, and its first step is the bracket width, so a flip
 narrower than that is stepped over.
 
+### 21 · A resonance can be found and not named, and §12 has no vocabulary for one
+
+The Paul trap of Amendment 19 loses its ion in a narrow band at q_z = 0.739–0.750,
+sixty volts inside the stable region. §12's Class B figures can establish that the
+band is there — a scan over amplitude, with controls at twice the mesh, twice the
+hold, a quarter of the hold and a third of the launch offset — and can say nothing
+about **what** it is, because a nonlinear resonance is defined by a condition on
+*frequencies*: `n_z β_z + n_r β_r = 2` for a multipole of order `n_z + n_r`.
+
+§12 does list "secular frequency spectrum" as a Class B figure, and it is now built.
+Lomb–Scargle rather than a DFT, because a trajectory is sampled at accepted
+integration steps and is therefore not uniform, and resampling it first would be
+inventing values the integrator never computed. Checked against Mathieu's
+characteristic exponent to **0.007–0.144 per cent** across q = 0.1 to 0.85, with both
+micromotion sidebands where theory puts them.
+
+With it, the band is the **octupole**: β_z = 0.6769 and β_r = 0.3225 give
+`2β_z + 2β_r = 1.9989`, an order-four condition met to 0.055 per cent and a hundred
+times worse either side. Order four is the leading multipole this geometry's symmetry
+permits, so it was predicted before it was fitted.
+
+**Recommend §12 name the resonance condition as a reportable quantity**, not merely
+the spectrum it is computed from. The spectrum is a diagnostic a human reads; the
+condition is a *number* — which order, met how closely — and it is what a tolerance
+study or an optimiser would have to be pointed at to avoid one. Nothing in the
+current register asks for it, and the trap needed it on its first real use.
+
+A second thing that fell out. **The ideal-Mathieu prediction was wrong and had to
+be**: β at the *nominal* q is 0.6156, which satisfies no low-order condition at all.
+The measured 0.6769 differs because the effective radius is 3.82 mm rather than the
+declared 4.00. That effective radius is now confirmed two independent ways — from
+the field's curvature at the centre with no ion involved, and from the secular line
+of a flown ion against the closed form — agreeing to **0.02 per cent** at low q, and
+diverging at high q exactly as the anharmonicity says it must.
+
 ---
 
 ## The shell, and the rest of §16
@@ -838,13 +873,15 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    noticing what the first tranche already returned: **two defects that no test
    written from inside the project would have caught**, because both were about a
    model that validates and answers a different question.
-2. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, and the
-   transmission-against-resolution curve closes onto the tabulated apex, which is
-   Phase 3 acceptance criterion 3. What is left of §12's Class B needs an
-   **arbitrary waveform**: the secular frequency spectrum, and isolation efficiency
-   against notch width. §9 lists arbitrary waveforms as an excitation an electrode
-   may carry and this build has only sinusoid and rectangular, so that is the
-   unblocking piece rather than more analysis.
+2. ~~**Class B analysis**~~ — **all but one piece done.** `einzel boundary` bisects
+   to ACC-6, the transmission-against-resolution curve closes onto the tabulated
+   apex (Phase 3 acceptance criterion 3), and the **secular frequency spectrum**
+   now exists — a Lomb-Scargle periodogram of a recorded trajectory, matching the
+   Mathieu characteristic exponent to 0.007–0.144 per cent across q = 0.1 to 0.85
+   with both micromotion sidebands in place, and exposed as
+   `secularFrequencyX|Y|Z`. What is left is **isolation efficiency against notch
+   width**, which needs an **arbitrary waveform**: §9 lists one as an excitation an
+   electrode may carry and this build has only sinusoid and rectangular.
 3. ~~**A gas velocity field (GAS-1)**~~ — **imported fields work.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps. Two gaps remain and both are worth naming: the **pressure**
