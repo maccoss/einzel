@@ -1187,6 +1187,10 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    tolerance**, because a run that ignored the declared flow would not arrive at all —
    it would damp to rest and cover 15.8 mm in twenty milliseconds.
 
+   Worth finishing, and worth noticing what the first tranche already returned: **two
+   defects that no test written from inside the project would have caught**, because
+   both were about a model that validates and answers a different question.
+
 4. **Galerkin coarsening, or operator-dependent interpolation.** Named here for the
    first time as work rather than as a caveat, because three separate things now wait
    on it: the 3-D corpus example above, any large rod geometry, and the general
@@ -1246,76 +1250,3 @@ each turned out to be cheap or expensive is worth more than the fact of it.
 | Governance if this becomes a collaboration | Open |
 
 ---
-
-## What to do next
-
-Ordered by what unblocks the most, with the reasoning rather than just the list.
-
-1. **Finish the examples corpus (EX-1).** 26 of thirty, and the gate (EX-2) is
-   built and green. What the first seventeen cost was mostly *deciding what can
-   honestly be asserted*, and that work is now done — the remaining four are breadth:
-   an MR-TOF, a thermalisation, and a three-dimensional geometry. The three added
-   last are worth the pattern they set: **`travelling-wave-capture` and
-   `travelling-wave-ballistic` are a pair**, and neither is worth much alone. A
-   transit that matches the wave in one case and the injection speed in the other
-   would be a coincidence twice over; a transit that matches the wave *whatever* the
-   injection speed is capture. And `gas-flow-carry` is discriminating far past its
-   ten per cent tolerance, because a run that ignored the declared flow would not
-   arrive at all — it would damp to rest and cover 15.8 mm in twenty milliseconds. Worth finishing, and worth
-   noticing what the first tranche already returned: **two defects that no test
-   written from inside the project would have caught**, because both were about a
-   model that validates and answers a different question.
-2. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
-   transmission-against-resolution curve closes onto the tabulated apex (Phase 3
-   acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
-   characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
-   **isolation efficiency against notch width** is measured on an
-   `RfWaveform.Harmonic` comb that independently recovers the published digital
-   cut-off at q = 0.712. What is left is not analysis but **a way to declare it**:
-   see item 3.
-3. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
-   declares `drives` and each electrode `taps` them by name. The travelling-wave
-   guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
-   confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
-   confinement's 333 ns as its shortest period rather than the wave's. **The
-   confinement does not yet widen the acceptance** and the template ships with it at
-   zero — the usable amplitude window is narrow at both ends and finding a working
-   point is a design study; see Amendment 24. Left undone: the `solved3d` document
-   form still spells one `drive`, though everything below the document already
-   carries a list.
-4. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
-   sampled trilinearly, conserved at the face, agreeing with a declared uniform
-   vector to two ulps; and the event-driven models no longer refuse it — the ion's
-   position is carried into the neutral draw, so a collision samples the gas where
-   the ion is. Checked against `u + μE`: the difference between a moving gas and a
-   still one is **120.000 m/s against a declared 120**, with **−0.000** across it,
-   and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
-   seed. One gap remains: the **density** is still a single number for the whole
-   model, so a differentially pumped instrument is not expressible — an imported
-   field gives the neutrals a velocity everywhere and the same number of them
-   everywhere.
-5. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
-   the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
-   is 1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900, so 900 µs
-   would be about 843,000 steps. Attributed by control — 15.5 ns at 0 V RF, 8.93 ns
-   at 25 V, 1.067 ns at 100 V — so it is the RF and roughly as E₀². An implicit or
-   operator-split step is the fix.
-6. **Particle-in-cell space charge (SC-1).** The reference method it is validated
-   against exists, which is the right order and was the reason for building the direct
-   sum first - and the **field half is now done too**. `PoissonSolver2D` takes a
-   source, so grad2 phi = -rho/eps0 is solved rather than only Laplace: checked by
-   manufactured solution at **observed order 2.000, 2.000** in 11 grid-independent
-   cycles, with a null source giving bit-identical results to the Laplace path. The
-   cycle already carried a right-hand side and had only ever been handed zeros, so it
-   cost one argument and no numerics. The **particle side is now done too**: cloud-in-cell
-   deposit conserving charge exactly, and a gather sharing the deposit's weights so
-   the self-force cancels - measured at **8e-5 of the neighbour-scale field against
-   0.5 for a gather that does not share them**, three and a half orders of magnitude,
-   which is what makes it a property of the symmetry rather than of a fine grid. A
-   uniform ball reproduces its closed form to 1-8 per cent inside an earthed box. The
-   **integration is now done as well**, and the method is declarable: the grid is the
-   packet's own and lives in the packet's frame (so translation is exact and the
-   refresh criterion is written on shape), and the comparison against the direct sum is
-   made **at matched smoothing** - 0.08% at a cell of 0.92 mean macroparticle spacings,
-   against 3.5% for the sum's own default softening. See item 1 of "What to do next"
-   for what that comparison had to correct, and for the two knobs it made reportable.
