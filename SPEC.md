@@ -954,6 +954,112 @@ in a table.
 ## What to do next
 
 Ordered by what unblocks the most, with the reasoning rather than just the list.
+Everything struck through was on this list and is now done; it is kept because *why*
+each turned out to be cheap or expensive is worth more than the fact of it.
+
+1. **Wire particle-in-cell to the packet integrator (SC-1).** Both halves now exist
+   and nothing joins them. `PoissonSolver2D` and `PoissonSolver3D` take a source, so
+   `grad²φ = −ρ/ε₀` is solved rather than only Laplace; `CloudInCell` deposits charge
+   conserving it exactly and gathers the field with the deposit's own weights, so the
+   self-force cancels to **8e-5 of the neighbour-scale field against 0.5 for a gather
+   that does not share them**. What is left is the *integration*, and the questions in
+   it are design rather than numerics: **which grid a drifting packet deposits onto**
+   (its own, co-moving, or the instrument's), **when to re-solve** (every step is
+   correct and unaffordable; every few is a choice that needs a stated error), and the
+   comparison against the direct sum on the same configuration — which is the whole
+   reason the direct sum was built first.
+
+2. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
+   the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
+   is 1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900, so 900 µs
+   would be about 843,000 steps. Attributed by control — 15.5 ns at 0 V RF, 8.93 ns
+   at 25 V, 1.067 ns at 100 V — so it is the RF and roughly as E₀². An implicit or
+   operator-split step is the fix. This is the last thing standing between the funnel
+   benchmark and a number.
+
+3. **Finish the examples corpus (EX-1).** 26 of thirty, and the gate (EX-2) is built
+   and green. What the first seventeen cost was mostly *deciding what can honestly be
+   asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
+   thermalisation, and a three-dimensional geometry.
+
+   The last is **deliberately deferred and the reason is a finding**: a parallel-plate
+   gap in 3-D takes 49 multigrid cycles at a factor of 0.652 and 124 seconds, against
+   a gate that runs the other twenty-six in forty-two. A large solid Dirichlet slab is
+   the worst case for the documented interior-electrode limitation, which makes the
+   simplest geometry anybody would write the most expensive one. Galerkin coarsening
+   closes it.
+
+   The three added most recently set a pattern worth keeping. **`travelling-wave-capture`
+   and `travelling-wave-ballistic` are a pair, and neither is worth much alone**: a
+   transit matching the wave in one case and the injection speed in the other would be
+   a coincidence twice over; a transit matching the wave *whatever* the injection speed
+   is capture. And **`gas-flow-carry` is discriminating far past its ten per cent
+   tolerance**, because a run that ignored the declared flow would not arrive at all —
+   it would damp to rest and cover 15.8 mm in twenty milliseconds.
+
+4. **Galerkin coarsening, or operator-dependent interpolation.** Named here for the
+   first time as work rather than as a caveat, because three separate things now wait
+   on it: the 3-D corpus example above, any large rod geometry, and the general
+   degradation of the convergence factor with refinement that the shipped templates
+   are sized around rather than free of.
+
+5. **Two narrower gaps, both stated where they bite.** The gas **density** is a single
+   number for the whole model, so a differentially pumped instrument is not
+   expressible — an imported field gives the neutrals a velocity everywhere and the
+   same number of them everywhere; the collision *rate* would need the density at the
+   ion's position, which is the same one-argument change already made to the neutral
+   draw. And the **`solved3d` document form still spells one `drive`**, though
+   `CompiledSolvedField3D`, `Geometry3D` and the 3-D builder all carry a list already.
+
+6. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
+   transmission-against-resolution curve closes onto the tabulated apex (Phase 3
+   acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
+   characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
+   **isolation efficiency against notch width** is measured on an
+   `RfWaveform.Harmonic` comb that independently recovers the published digital
+   cut-off at q = 0.712.
+
+7. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
+   declares `drives` and each electrode `taps` them by name. The travelling-wave
+   guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
+   confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
+   confinement's 333 ns as its shortest period rather than the wave's. **The
+   confinement does not yet widen the acceptance** and the template ships with it at
+   zero — the usable amplitude window is narrow at both ends and finding a working
+   point is a design study; see Amendment 24.
+
+8. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
+   sampled trilinearly, conserved at the face, agreeing with a declared uniform
+   vector to two ulps; and the event-driven models no longer refuse it — the ion's
+   position is carried into the neutral draw, so a collision samples the gas where
+   the ion is. Checked against `u + μE`: the difference between a moving gas and a
+   still one is **120.000 m/s against a declared 120**, with **−0.000** across it,
+   and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
+   seed.
+
+## Open decisions
+
+§23's list, with what has been settled since.
+
+| Decision | State |
+| --- | --- |
+| Availability on NuGet, GitHub, and as a mark | Open |
+| Spike the FLD-1 linearity assumption before Phase 2 | **Closed.** Run, failed, fixed by cut cells. The two-week estimate was right and the spike returned a negative result first, which is what a spike is for |
+| Whether hidden-line 3D vector output is worth building | Open, and cheaper to leave open than it looks: there is no raster path either |
+| Whether the provenance stamp on figures is default-on | **Closed in practice** — default-on, with the taint on the page |
+| Whether to write the VTU writer or take a dependency | **Closed.** Written. Under a week, and it now writes fields, trajectories, 3D volumes and densities |
+| What triggers revisiting code signing | Open |
+| What the defect-floor policy file contains | Open, and untestable until there are releases |
+| What the agent acceptance suite measures and what gates a release | **Closed.** See Amendment 11 |
+| Whether the in-process extension runner is worth shipping at all | Open, and the evidence so far says sandboxed-only is sufficient: nothing has hit the 49 ms granularity floor |
+| Whether the funnel benchmark uses a published geometry or one of ours | **Open, and now blocking.** It gates a Phase 3 acceptance criterion, and the study should not be built before it is settled |
+| Governance if this becomes a collaboration | Open |
+
+---
+
+## What to do next
+
+Ordered by what unblocks the most, with the reasoning rather than just the list.
 
 1. **Finish the examples corpus (EX-1).** 26 of thirty, and the gate (EX-2) is
    built and green. What the first seventeen cost was mostly *deciding what can
