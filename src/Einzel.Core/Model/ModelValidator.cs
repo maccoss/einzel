@@ -141,6 +141,7 @@ public static class ModelValidator
             DensityGrid = transport.DensityGrid,
             SpaceChargeMode = transport.SpaceCharge,
             SpaceChargeGrid = transport.SpaceChargeGrid,
+            DensityStep = transport.DensityStep,
             Parameters = surface,
         };
 
@@ -2141,7 +2142,8 @@ public static class ModelValidator
         CompiledMobility? Mobility,
         CompiledDensityGrid? DensityGrid,
         string SpaceCharge,
-        CompiledSpaceChargeGrid? SpaceChargeGrid);
+        CompiledSpaceChargeGrid? SpaceChargeGrid,
+        CompiledDensityStep DensityStep);
 
     private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
@@ -2287,10 +2289,11 @@ public static class ModelValidator
         }
 
         var chargeGrid = SpaceChargeGrid(transport, errors);
+        var densityStep = DensityStep(transport, errors);
 
         return new TransportValues(
             transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample,
-            gas, mobility, densityGrid, transport.SpaceCharge, chargeGrid);
+            gas, mobility, densityGrid, transport.SpaceCharge, chargeGrid, densityStep);
     }
 
     /// <summary>
@@ -2304,6 +2307,97 @@ public static class ModelValidator
     /// gas would be silently dropped. Refusing is better than any of the three,
     /// because each would produce a result that looks like the one asked for.
     /// </remarks>
+    /// <summary>
+    /// Validates the density time-stepping choice, and refuses one that does nothing.
+    /// </summary>
+    /// <remarks>
+    /// Only the diffusive mode has a density to step, so a block against a trajectory
+    /// model is refused rather than ignored - the same rule an unrecognised property
+    /// follows. A gain above one against the explicit scheme is refused for a sharper
+    /// reason: the explicit scheme is bounded by its own stability limit and cannot
+    /// take a longer step, so honouring the block would mean silently ignoring half of
+    /// it, and the author would conclude the scheme is slow rather than that the
+    /// request went nowhere.
+    /// </remarks>
+    private static CompiledDensityStep DensityStep(
+        TransportDocument transport, List<EinzelError> errors)
+    {
+        var fallback = new CompiledDensityStep("explicit", 1.0);
+
+        if (transport.DensityStep is not { } step)
+        {
+            return fallback;
+        }
+
+        if (!string.Equals(transport.Mode, "diffusion", StringComparison.Ordinal))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/densityStep",
+                Constraint =
+                    "only the diffusive mode has a density to step, and this model asks for "
+                    + $"'{transport.Mode}'",
+                Observed = new ObservedValue(0.0, transport.Mode),
+                Suggestion = "set \"mode\": \"diffusion\" to use this block, or remove it",
+            });
+
+            return fallback;
+        }
+
+        if (step.Scheme is not ("explicit" or "implicit"))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/densityStep/scheme",
+                Constraint = "a density is stepped by one of the schemes this build has",
+                Observed = new ObservedValue(0.0, step.Scheme),
+                Suggestion = "\"explicit\" is forward Euler, bounded by the faster of the "
+                    + "diffusion and Courant limits; \"implicit\" is backward Euler, which has "
+                    + "no stability limit and charges Gauss-Seidel sweeps instead",
+            });
+
+            return fallback;
+        }
+
+        var gain = step.Gain ?? 1.0;
+
+        if (gain < 1.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/transport/densityStep/gain",
+                Constraint = "a gain below one asks for a shorter step than stability needs, "
+                    + "which costs accuracy nothing and time everything",
+                Observed = new ObservedValue(gain, "1"),
+                Suggestion = "1 steps at the stability limit; the shipped funnel runs 10.8x "
+                    + "faster at 64 for 0.108% error",
+            });
+
+            return fallback;
+        }
+
+        if (gain > 1.0 && !string.Equals(step.Scheme, "implicit", StringComparison.Ordinal))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/densityStep/gain",
+                Constraint =
+                    "the explicit scheme is bounded by its own stability limit and cannot take "
+                    + "a longer step",
+                Observed = new ObservedValue(gain, "1"),
+                Suggestion = "set \"scheme\": \"implicit\" to use a gain, or remove it",
+            });
+
+            return fallback;
+        }
+
+        return errors.Count > 0 ? fallback : new CompiledDensityStep(step.Scheme, gain);
+    }
+
     /// <summary>Validates the particle-in-cell grid, and refuses one that does nothing.</summary>
     /// <remarks>
     /// A block declared against a method that cannot use it is refused rather than

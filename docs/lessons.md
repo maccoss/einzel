@@ -636,6 +636,30 @@ actually caught them were:
   locates the linear boundary to a worst residual of 1.2e-3 and needs no journey at
   all. When a measurement is amplitude-dependent and the thing being measured is not,
   suspect the measurement rather than adding controls to it.
+- **A stability test cannot see a wrong operator, and a positivity test cannot
+  either.** Backward Euler on the Scharfetter-Gummel coefficients is unconditionally
+  stable and stays non-negative at every Gauss-Seidel sweep, and both properties
+  survive a genuinely wrong assembly - gathering a neighbour with *this* cell's outward
+  coefficient instead of its inward one passed every stability and non-negativity test
+  in the suite. What caught it was the **Boltzmann equilibrium**, which the scheme is
+  built to hold exactly and which moved by factors of 6 to 18. The rule: when a scheme
+  has an exact fixed point, the test that matters is that it sits there - the
+  well-behavedness tests are satisfied by too many wrong schemes to discriminate.
+
+- **A convergence study needs the packet still in the domain.** A first version of the
+  implicit order test compared densities after a window long enough for the packet to
+  have been collected. What remained was a residue, and the relative L2 difference
+  between two nearly empty fields came out at 39 to 71 per cent and scaled with nothing.
+  It reads as a broken scheme. The same measurement over a window the packet has not
+  left is clean. **A norm over a field that is mostly gone is a norm over what is left.**
+
+- **The reference in a convergence study carries its own error, so the linear quantity
+  is not what it looks like.** Comparing an implicit run at gain g against an explicit
+  reference, the two are (g - 1) base steps apart, not g - so what must be constant is
+  error/(g - 1), and dividing by g makes a correct first-order scheme look like it is
+  converging at the wrong rate. Only visible because the gains spanned a factor of
+  eight; at two gains either reading fits.
+
 - **A reference method has approximations in it too, and comparing against it at
   default settings compares two of them.** Particle-in-cell was reported as agreeing
   with the direct pairwise sum "to a few per cent". Both numbers were right and the

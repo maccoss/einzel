@@ -108,6 +108,19 @@ public static class EstimateCommand
     /// </remarks>
     private const double MegaCellsPerSecond = 2.4;
 
+    /// <summary>
+    /// Gauss-Seidel sweeps an implicit density step is assumed to take.
+    /// </summary>
+    /// <remarks>
+    /// Measured at 3.0 on the shipped funnel at gains from 4 to 256 and 4.9 at 1024,
+    /// and it is <em>not</em> a property of the gain: what decides it is how far past
+    /// the diffusion limit the step lands, and on a problem already at that limit it
+    /// reaches 88.7. So this is the figure for the case the implicit scheme exists for
+    /// - a drift-limited driven structure - and the basis says as much rather than
+    /// implying the number is general.
+    /// </remarks>
+    private const double SweepsPerStep = 3.0;
+
     /// <summary>Estimates a model's cost.</summary>
     /// <param name="modelPath">Path to the model file.</param>
     /// <returns>The estimate.</returns>
@@ -439,11 +452,28 @@ public static class EstimateCommand
 
         var weight = new Transport.Diffusion.DensityField(grid, cylindrical).LargestRadialWeight();
 
-        var (step, limit) = Transport.Diffusion.DriftDiffusion.StepFor(
+        var (stable, limit) = Transport.Diffusion.DriftDiffusion.StepFor(
             grid, diffusion, fastestDrift, weight);
 
+        // The implicit scheme steps past the stability limit and pays Gauss-Seidel
+        // sweeps for it, so both halves have to enter the estimate or it is an
+        // estimate of a run nobody asked for. Ignoring the gain would over-state the
+        // cost by that factor - the safe direction, but GRD-8 gates on this number and
+        // a gate that refuses a run costing a minute is as wrong as one that waves
+        // through an hour.
+        var implicitly = model.DensityStep.IsImplicit;
+
+        var step = implicitly ? stable * model.DensityStep.Gain : stable;
+
         var steps = Math.Max(1.0, Math.Ceiling(model.MaximumFlightTimeSi / step));
-        var cells = steps * grid.NodeCount;
+
+        // Measured at 3.0 on the shipped funnel across gains from 4 to 256, rising to
+        // 4.9 at 1024. A sweep costs about what an explicit step costs - it is the
+        // same pass over the same coefficients - so this is the multiplier on the work
+        // and not a small correction.
+        var sweeps = implicitly ? SweepsPerStep : 1.0;
+
+        var cells = steps * sweeps * grid.NodeCount;
 
         var seconds = cells / (MegaCellsPerSecond * 1e6);
 
@@ -454,7 +484,12 @@ public static class EstimateCommand
             seconds,
             memory,
             $"diffusive run: {grid.CountX} by {grid.CountY} nodes, a stability-limited step of "
-            + $"{step:G3} s set by {limit}, so about {steps:N0} steps over "
+            + $"{stable:G3} s set by {limit}, "
+            + (implicitly
+                ? $"stepped implicitly at {model.DensityStep.Gain:N0}x that - {step:G3} s - so "
+                    + $"about {steps:N0} steps at an assumed {sweeps:F1} Gauss-Seidel sweeps each "
+                    + "over "
+                : $"so about {steps:N0} steps over ")
             + $"{model.MaximumFlightTimeSi * 1e6:G4} us, at {MegaCellsPerSecond:G2} million cell "
             + "updates per second measured on this codebase. "
             + (analytic
@@ -462,6 +497,12 @@ public static class EstimateCommand
                     + "drift limit costs nothing to evaluate."
                 : "The drift limit is NOT included, because it needs a field this has not solved - "
                     + "so the real step can only be smaller and this is a lower bound.")
+            + (implicitly
+                ? " The sweep count is the one quantity here that is not knowable in advance - it "
+                    + "depends on how far past the DIFFUSION limit the step lands, not on the gain "
+                    + "itself - so this is an order of magnitude where the explicit estimate is "
+                    + "exact."
+                : string.Empty)
             + " Note that the diffusion coefficient goes as one over pressure: a thinner gas is "
             + "MORE expensive here, not less");
     }

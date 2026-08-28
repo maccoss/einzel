@@ -420,6 +420,15 @@ public sealed record TransportDocument
     public string SpaceCharge { get; init; } = "none";
 
     /// <summary>
+    /// How the density is stepped in time, or null for the explicit default.
+    /// </summary>
+    /// <remarks>
+    /// Only the diffusive mode has a density to step. Refused against a trajectory
+    /// model rather than ignored, for the reason <see cref="SpaceChargeGrid"/> is.
+    /// </remarks>
+    public DensityStepDocument? DensityStep { get; init; }
+
+    /// <summary>
     /// The grid <c>"spaceCharge": "pic"</c> deposits onto, or null for its defaults.
     /// </summary>
     /// <remarks>
@@ -587,4 +596,47 @@ public sealed record SpaceChargeGridDocument
     /// is why the criterion is written on shape rather than on a step count.
     /// </remarks>
     public double? RefreshTolerance { get; init; }
+}
+
+/// <summary>How a diffusive run advances its density in time.</summary>
+/// <remarks>
+/// <para>
+/// The explicit scheme is bounded by the faster of two limits: diffusion, and the
+/// Courant condition on how fast the drift crosses a cell. In a driven structure the
+/// second is severe for a reason worth knowing - the ponderomotive well's gradient is
+/// steepest at an electrode edge, which is exactly where the density is almost zero,
+/// so <strong>the step is set by a region where nothing is happening</strong>. On the
+/// shipped ion funnel at 2 mbar that is 195 ps against a diffusion limit of 747 ns.
+/// </para>
+/// <para>
+/// The implicit scheme has no stability limit and charges Gauss-Seidel sweeps instead.
+/// <strong>Whether that is a bargain depends on which limit was binding</strong>: the
+/// iteration's difficulty is set by the diffusive part of the operator, so a step long
+/// by Courant's standard but still short by diffusion's converges in about three
+/// sweeps - 10.8x the speed for 0.108% on that funnel - while a problem already at its
+/// diffusion limit needs tens of sweeps and comes out slower than stepping explicitly.
+/// </para>
+/// </remarks>
+public sealed record DensityStepDocument
+{
+    /// <summary>
+    /// <c>explicit</c>, the default, or <c>implicit</c>.
+    /// </summary>
+    public string Scheme { get; init; } = "explicit";
+
+    /// <summary>
+    /// How many times the explicit stability limit to step, for the implicit scheme.
+    /// </summary>
+    /// <remarks>
+    /// Backward Euler is first order, so <strong>the error is linear in this</strong>:
+    /// measured on the shipped funnel over 5 us at 0.008, 0.028, 0.108, 0.427 and
+    /// 1.673 per cent for gains of 4, 16, 64, 256 and 1024. Over a longer flight it
+    /// <em>falls</em> rather than accumulating - 0.057 per cent at gain 64 over 50 us
+    /// against 0.108 over 5 - because the error is concentrated in the initial
+    /// transient, while the speedup grows from 10.8x to 21.1x because the explicit
+    /// cost is linear in the window and the sweeps per step are not. There is no
+    /// default above one because what gain is acceptable is an accuracy question, and
+    /// nothing here measures the accuracy of a step it has not taken.
+    /// </remarks>
+    public double? Gain { get; init; }
 }

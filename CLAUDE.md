@@ -753,6 +753,34 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **A trap that caught me again**: `Grid3D.OverBox` rounds each axis up to a power of two, so 24 and 32 are the same mesh. A first node-count table ran 16/24/32/48/64 and produced two pairs of identical numbers, which reads as insensitivity to resolution over a fourfold range. Already written down for the 3-D solver. Details in `docs/numerics.md`.
 
+- **A driven diffusive run is affordable, and the trade has to be stated both ways.** `"densityStep": { "scheme": "implicit", "gain": 64 }` — backward Euler on the same Scharfetter-Gummel coefficients, solved by red-black Gauss-Seidel. On the shipped funnel at 2 mbar, where the ponderomotive well's gradient at a ring edge sets a 195 ps Courant limit against a 747 ns diffusion limit:
+
+  | gain | steps | sweeps/step | speedup | error |
+  | --- | --- | --- | --- | --- |
+  | 4 | 6,404 | 3.0 | 1.4x | 0.008% |
+  | 16 | 1,601 | 3.0 | 4.7x | 0.028% |
+  | 64 | 401 | 3.0 | **10.8x** | **0.108%** |
+  | 256 | 101 | 4.0 | 17.7x | 0.427% |
+  | 1024 | 26 | 4.9 | 21.4x | 1.673% |
+
+  So 843,000 steps over 900 µs become about 13,000, and a run that took hours takes minutes. **The error is exactly linear in the step**, which is textbook first-order backward Euler and is itself a check that the path is right rather than merely stable.
+
+  **And it does not accumulate over a longer flight — it falls, while the speedup grows.** The same comparison over 50 µs rather than 5 gives **21.1× at gain 64 for 0.057%** (against 10.8% for 0.108%), and **120× at gain 1024 for 0.894%** (against 21.4× for 1.673%). The error is concentrated in the initial transient where the density changes fastest; the explicit cost is linear in the window while the implicit sweeps-per-step stays at three. So the short-window figures are the pessimistic ones.
+
+  **The explicit step was set by a region where nothing is happening** — the well is steepest at an electrode edge, which is exactly where the density is almost zero.
+
+  **The load-bearing property is not the stability, it is that positivity survives a partial solve.** The update is `n' = (n + dt Σ b n'_neighbour) / (1 + dt Σ a)` and every term in it is non-negative, so each sweep is a non-negative combination of non-negative numbers and the iterate is a valid density however far from converged. A scheme that went negative on the way would be unusable however stable it was.
+
+  **And it is not a general speed-up**, which is the half easiest to leave out. The Gauss-Seidel iteration's difficulty is set by the *diffusive* part of the operator, so a step long by Courant's standard and still short by diffusion's costs three sweeps — while a plain drift tube already near its diffusion limit climbs from 11 sweeps a step at gain 1 to **88.7 at gain 16** and comes out slower than stepping explicitly. `diffusion.implicit-not-paying` says so on the run.
+
+  **What says it is correct rather than merely stable is the Boltzmann equilibrium.** Scharfetter-Gummel is built so its zero-flux state is exactly `B(−P)/B(P) = exp(P)`; that is a property of the *space* discretisation, so backward Euler must hold it at any step. It holds to **8.9e-16 in log density over three decades at a gain of 1000, in two steps and two sweeps** — one sweep per step, because the previous density *is* the answer and Gauss-Seidel recognises it immediately. **Verified by breaking the solve** the way a real mistake would (gathering a neighbour with this cell's outward coefficient): every stability and non-negativity test still passed, and the equilibrium moved by factors of 6 to 18. **A stability test cannot see a wrong operator and neither can a positivity test.**
+
+  **The flux is assembled once now**, which the explicit path wanted anyway — it was recomputing two exponentials per face per step, about a million times over on a driven funnel. **Bit-identical**, asserted rather than assumed over four configurations spanning Cartesian and cylindrical meshes, still and moving gas, interior absorbers and every edge kind: density, collected count and every named loss to the last bit. That needed keeping the *factored* form — `scale`, `B(−P)` and `B(P)` stored separately rather than the two products — because `(w·s·b)·n` and `w·(s·(b·n))` differ in the last bit. The ledger reads the same expression for the same reason; a first version used `Out × density` and came back 1–3 ulps out.
+
+  **Two measurement mistakes worth keeping.** A convergence study whose window let the packet be collected compares two nearly empty fields — the relative difference came out at 39–71% and scaled with nothing, which reads as a broken scheme. And the reference in such a study **carries its own error**: at gain g the two runs are (g−1) base steps apart, not g, so what must be constant is error/(g−1), and dividing by g makes a correct first-order scheme look wrong.
+
+  **Not done:** nothing chooses the gain. Both limits are computable before the run, but what gain is acceptable is an accuracy question and nothing here measures the accuracy of a step it has not taken. Richardson extrapolation over a doubled step would, at three solves a step instead of one. Details in `docs/pressure.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
@@ -831,7 +859,11 @@ Einzel.Update      release check, download, staging, version policy
 Einzel.Wpf         shell, viewport, panels
 ```
 
-CLI, MCP server, and WPF shell are **peers, not a stack** — all three drive the same serializable command objects.
+CLI, MCP server, and WPF shell are **peers, not a stack** — all three drive the same serializable command objects. A shell that shelled out could not drive an interactive viewport at frame rate; a hundred milliseconds of process start per slider drag is not a shell.
+
+**The shell is a named deliverable, and the Windows GUI capability was part of why C# was chosen** — a rationale r06 never records, which is SPEC.md Amendment 25. **Windows-only is the decision, not an accident of WPF**: Avalonia was considered and not chosen because the shell is not planned for use outside Windows, and that gets revisited if the need appears. It stays cheap to revisit because of invariant 1 (no UI type below the shell — everything above `Einzel.Wpf` builds and runs on Linux, and CI runs there) and Amendment 25's CLI-expressibility, which together make a later cross-platform shell a replacement of a presentation layer rather than a rewrite. **Windows-only applies to the shell and to nothing else** — that is the misreading to guard against, since "the GUI is Windows-only" and "the project is Windows-only" are one word apart and the second would undo the Linux CI that keeps the first one cheap. What is wanted is interactive geometry, the solved field drawn over it, and animation. §22's scope-creep risk is managed by UI-1's prohibition (the shell owns layout, input, the viewport and the update check, and owns no physics, no validation, no format knowledge and no render output), not by deferring the window.
+
+**The thesis is the pair, and neither half is the product**: an agent drives the entire design process through CLI and MCP, and a human sees and manipulates the same design in a window. Amendment 25 strengthens AGT-2 to make that work — **every shell action should be expressible as a CLI invocation and journalled as one**. The shell still drives command objects in-process; what changes is that its journal is a list of commands somebody could run. A capability with no command spelling then cannot be added to the window, and a human's session hands over to an agent in the same vocabulary. The thing to review when the shell is written is the in-process path acquiring an argument the command form has no spelling for.
 
 Four invariants. Violating one is a design bug, not a shortcut:
 

@@ -668,6 +668,114 @@ leaves an empty box — correctly — and says so as `render.density-empty` with
 change that would produce a picture, since drawing nothing and saying nothing looks
 identical to a figure where the density was never computed.
 
+## An implicit step, and when it is worth taking
+
+The explicit scheme is bounded by the faster of two limits: diffusion, `h²/2dD`, and
+Courant, `h/v`. In a driven structure the second is severe and for a reason worth
+stating — the ponderomotive well's gradient is steepest at an electrode edge, which is
+exactly where the density is almost zero. **The step is set by a region where nothing
+is happening.**
+
+Backward Euler has no stability limit. It is solved by red-black Gauss-Seidel on the
+same assembled Scharfetter-Gummel coefficients the explicit path uses, and the
+load-bearing property is not the stability:
+
+> **Positivity survives a partial solve.** The update is
+> `n' = (n + dt Σ b n'_neighbour) / (1 + dt Σ a)`, and every term in it is
+> non-negative — the densities, the flux coefficients and the step. Each sweep is a
+> non-negative combination of non-negative numbers, so the iterate is a valid density
+> however far from converged it is. A scheme that went negative on the way would be
+> unusable however stable it was, because a negative density is a quantity that has
+> stopped meaning anything.
+
+### It pays where Courant binds and costs where diffusion does
+
+The gain buys steps and charges sweeps, and how many sweeps depends on which limit the
+explicit scheme was up against. **The Gauss-Seidel iteration's difficulty is set by the
+diffusive part of the operator**, so a step that is long by Courant's standard but
+still short by diffusion's converges in a few sweeps.
+
+The shipped ion funnel at 2 mbar, 5 µs of flight, 257 × 129 nodes — drift limit 195 ps
+against a diffusion limit of 747 ns, a factor of 3,800:
+
+| scheme | gain | steps | sweeps/step | wall | speedup | vs explicit |
+| --- | --- | --- | --- | --- | --- | --- |
+| explicit | 1 | 25,615 | — | 69.07 s | 1.0× | — |
+| implicit | 4 | 6,404 | 3.0 | 50.58 s | 1.4× | 0.008% |
+| implicit | 16 | 1,601 | 3.0 | 14.80 s | 4.7× | 0.028% |
+| implicit | 64 | 401 | 3.0 | 6.39 s | **10.8×** | **0.108%** |
+| implicit | 256 | 101 | 4.0 | 3.90 s | 17.7× | 0.427% |
+| implicit | 1024 | 26 | 4.9 | 3.22 s | 21.4× | 1.673% |
+
+**The error is exactly linear in the step** — 0.008 / 0.028 / 0.108 / 0.427 / 1.673 per
+cent for gains rising fourfold — which is textbook first-order backward Euler and is
+itself a check that the implicit path is right rather than merely stable.
+
+**And it does not accumulate over a longer flight; it falls.** The same comparison over
+50 µs rather than 5:
+
+| scheme | gain | steps | sweeps/step | wall | speedup | vs explicit |
+| --- | --- | --- | --- | --- | --- | --- |
+| explicit | 1 | 256,143 | — | 709.45 s | 1.0× | — |
+| implicit | 4 | 64,036 | 3.0 | 577.00 s | 1.2× | 0.004% |
+| implicit | 16 | 16,009 | 3.0 | 127.50 s | 5.6× | 0.015% |
+| implicit | 64 | 4,003 | 3.0 | 33.69 s | **21.1×** | **0.057%** |
+| implicit | 256 | 1,001 | 4.0 | 12.64 s | 56.1× | 0.225% |
+| implicit | 1024 | 251 | 5.0 | 5.91 s | **120.1×** | 0.894% |
+
+At gain 64 the error **halves** against the 5 µs window, 0.108% to 0.057%, and at 1024
+it goes 1.673% to 0.894%. The backward-Euler error is concentrated in the initial
+transient, where the density is changing fastest; once the packet has settled into the
+well the scheme tracks it. So the shorter window's figures are the pessimistic ones, and
+a real 900 µs run is better than either table says.
+
+**The speedup grows with the window for the same reason the sweeps do not**: the
+explicit cost is linear in the flight while the implicit one stays at three sweeps a
+step. 10.8× at 5 µs becomes 21.1× at 50 µs, at the same gain and a smaller error.
+
+**And the opposite case, stated because it is equally true.** A plain drift tube whose
+explicit limit is already near its diffusion limit gets no such bargain: the sweeps per
+step climb from 11.0 at gain 1 to 88.7 at gain 16, and at a useful accuracy the
+implicit scheme is *slower* than stepping explicitly. Quoting only the funnel would be
+selling a general speed-up that does not exist.
+
+So the funnel's 843,000 steps over 900 µs become about 13,000 at gain 64, and a run
+that took hours takes minutes.
+
+### What says it is correct rather than merely stable
+
+Stability and positivity are cheap to satisfy and cannot see a wrong operator. What can
+is the **Boltzmann equilibrium**: Scharfetter-Gummel is built so that its zero-flux
+state is exactly `n_there/n_here = B(-P)/B(P) = exp(P)`, with P precisely `q dφ/kT`. That
+is a property of the *space* discretisation, so backward Euler must hold it at any step
+— the right-hand side is already the fixed point.
+
+**It holds to 8.9e-16 in log density over three decades, at a step a thousand times the
+explicit limit, in two steps and two sweeps.** One sweep per step, because the previous
+density *is* the answer and Gauss-Seidel recognises it immediately.
+
+The test was verified by breaking the solve the way a real mistake would — gathering a
+neighbour with this cell's outward coefficient instead of its inward one. That stays
+non-negative and stays stable, and **the non-negativity tests still passed**; the
+equilibrium moved by factors of 6 to 18.
+
+### What it cost elsewhere: the flux is now assembled once
+
+Both schemes read one `FaceCoefficients`, built once per run. Everything that decides a
+face coefficient — the mesh, the mobility, the field, the gas, the face weight — is
+fixed for the whole run, so the explicit path stopped recomputing two exponentials per
+face per step, which a driven funnel was paying about a million times over.
+
+**The refactor is bit-identical**, asserted rather than assumed: over four
+configurations spanning Cartesian and cylindrical meshes, still and moving gas,
+interior absorbers and all four edge kinds, the density field, the collected count and
+every named loss come back the same to the last bit. That required keeping the
+*factored* form — storing `scale`, `B(-P)` and `B(P)` separately rather than the two
+products — because `(w·s·b)·n` and `w·(s·(b·n))` differ in the last bit, and a refactor
+of the code carrying every validated diffusion figure here deserves the one check with
+no slack in it. The ledger reads the same expression for the same reason; a first
+version used `Out × density` and came back 1 to 3 ulps out.
+
 ## Not built
 
 - **A gas flow in the event-driven mode.** `CollisionSampler` schedules and draws a
@@ -684,13 +792,12 @@ identical to a figure where the density was never computed.
 - **Pressure gradients.** One pressure for the whole model. A real differentially
   pumped instrument has several, and the interfaces between them are where much of
   the interesting physics is.
-- **An affordable driven run.** The ponderomotive well's gradient at the ring edges
-  sets the Courant limit, and it is severe: on the shipped funnel at 2 mbar the step
-  is **1.067 ns against a diffusion limit of 5.2 µs**, a factor of 4,900, so 900 µs
-  is about 843,000 steps. Attributed by control rather than asserted — 15.5 ns at
-  0 V of RF, 8.93 ns at 25 V, 1.067 ns at 100 V, so it is the drive and roughly as
-  E₀². An implicit or operator-split step is the fix; the explicit one is what makes
-  the rest of this mode cheap and it is the wrong trade here.
+- **A default that chooses the scheme.** The implicit step below is opt-in and takes
+  a gain the caller picks. Both limits are computable before the run, so their ratio
+  could pick the scheme and set the gain — but what the gain should be is an
+  *accuracy* question, and nothing here measures the accuracy of a step it has not
+  taken. Richardson extrapolation over a doubled step would, at three solves a step
+  instead of one.
 - **A density snapshot mid-run.** A run reports and exports the density at the end.
   A model whose ions have all arrived by then leaves an empty box, correctly, and
   the only way to see the packet in flight is to shorten `maximumFlightTime`.

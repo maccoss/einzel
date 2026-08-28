@@ -97,6 +97,9 @@ public sealed record CompiledModel
     /// </summary>
     public CompiledSpaceChargeGrid? SpaceChargeGrid { get; init; }
 
+    /// <summary>How a diffusive run advances its density in time.</summary>
+    public CompiledDensityStep DensityStep { get; init; } = new("explicit", 1.0);
+
     /// <summary>The ion's launch speed, in metres per second.</summary>
     /// <returns>The speed after acceleration, including the energy offset.</returns>
     /// <remarks>
@@ -251,3 +254,12 @@ public sealed record CompiledDensityGrid(
 /// <param name="Padding">Box half-width as a multiple of the packet's RMS radius.</param>
 /// <param name="RefreshTolerance">Fractional change in RMS radius that forces a solve.</param>
 public sealed record CompiledSpaceChargeGrid(int Nodes, double Padding, double RefreshTolerance);
+
+/// <summary>A density time-stepping choice, validated.</summary>
+/// <param name="Scheme"><c>explicit</c> or <c>implicit</c>.</param>
+/// <param name="Gain">How many times the explicit stability limit to step.</param>
+public sealed record CompiledDensityStep(string Scheme, double Gain)
+{
+    /// <summary>Whether the implicit scheme was asked for.</summary>
+    public bool IsImplicit => string.Equals(Scheme, "implicit", StringComparison.Ordinal);
+}

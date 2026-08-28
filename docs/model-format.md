@@ -552,6 +552,54 @@ interpolate within a step.
 Asking for it is a regime violation with a distinct exit code, not a silent
 substitution.
 
+### How the density is stepped
+
+```json
+"transport": {
+  "mode": "diffusion",
+  "densityStep": { "scheme": "implicit", "gain": 64 }
+}
+```
+
+`explicit`, the default, is forward Euler, bounded by the faster of two limits:
+diffusion, and the Courant condition on how fast the drift crosses a cell. `implicit`
+is backward Euler, which has **no stability limit** and charges Gauss-Seidel sweeps
+instead. `gain` is how many times the explicit stability limit to step, and is refused
+against the explicit scheme rather than ignored — that scheme cannot take a longer step,
+and honouring half a block would leave an author concluding the solver is slow rather
+than that the request went nowhere.
+
+**Which to use is a property of the model, which is why it is in the document.** The
+Gauss-Seidel iteration's difficulty is set by the *diffusive* part of the operator, so a
+step long by Courant's standard but still short by diffusion's converges in about three
+sweeps — while a problem already at its diffusion limit needs tens and comes out slower
+than stepping explicitly.
+
+The driven case is what this is for. A ponderomotive well's gradient is steepest at an
+electrode edge, which is exactly where the density is almost zero, so the explicit step
+is set by a region where nothing is happening: on the shipped ion funnel at 2 mbar,
+195 ps against a diffusion limit of 747 ns.
+
+| gain | steps | sweeps/step | speedup | error |
+| --- | --- | --- | --- | --- |
+| 4 | 6,404 | 3.0 | 1.4× | 0.008% |
+| 16 | 1,601 | 3.0 | 4.7× | 0.028% |
+| 64 | 401 | 3.0 | **10.8×** | **0.108%** |
+| 256 | 101 | 4.0 | 17.7× | 0.427% |
+| 1024 | 26 | 4.9 | 21.4× | 1.673% |
+
+**Backward Euler is first order, so the error is linear in the gain** — which is what
+the table shows, and there is no default above one because what gain is acceptable is an
+accuracy question and nothing here measures the accuracy of a step it has not taken. A
+run reports the step it took, the sweeps it took per step, and the fraction of the
+explicit work it did, whether or not any of those crosses a threshold; and
+`diffusion.implicit-not-paying` says so when the sweeps cost more than the step saved.
+
+**Positivity survives a partial solve**, which is what makes the scheme usable at all:
+every term in the Gauss-Seidel update is non-negative, so the iterate is a valid density
+however far from converged it is. What an unconverged solve costs is *conservation*, and
+`diffusion.implicit-unconverged` reports the residual the ledger is closed to.
+
 ### Space charge
 
 ```json

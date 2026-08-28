@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**635 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**665 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -62,6 +62,10 @@ Two of those four are load-bearing for requirements that are otherwise met on
 paper. Without a shell, AGT-2 ("nothing exists only in the window") cannot be
 violated *or* confirmed; without `Einzel.Update`, GRD-11's defect taint has no
 published floor to compare a version against.
+
+`Einzel.Wpf` is a **deliverable rather than a permission**, and the Windows GUI
+capability was part of why the toolchain is C# - a rationale r06 never records. See
+[the shell section](#the-shell-and-the-rest-of-16) and Amendment 25.
 
 ---
 
@@ -578,6 +582,74 @@ what it contains rather than by what the caller asks for.
 strongest interface its members implement, and a static interface over a driven
 member is a defect rather than a lossy convenience.
 
+### 25 · The shell is a deliverable, and r06 does not say why the toolchain suits it
+
+**r06 names WPF, Helix Toolkit and a DirectX 11 viewport, and never says why C# was
+chosen.** The reason is not incidental: **the Windows GUI capability was part of the
+language decision.** An unrecorded rationale is one a later decision cannot respect,
+and the question will be asked.
+
+**Windows-only is the decision, not an accident of WPF.** Avalonia was considered and
+not chosen, because the shell is not planned for use outside Windows. If that need
+appears it gets revisited then — a decision deferred rather than foreclosed, and worth
+recording as deferred so that nobody later reads "WPF" as a constraint somebody failed
+to notice.
+
+**What makes deferring it cheap is architectural rather than optimistic**, which is the
+part that has to stay true for the position to hold:
+
+- **Invariant 1** — no UI type below the shell. Every assembly above `Einzel.Wpf`
+  builds and runs on Linux, and CI runs there from the first commit. `Einzel.Render`
+  produces a publication figure headlessly with no display, no window manager and no
+  font server (RND-1).
+- **AGT-2 as strengthened below** — every shell action is expressible as a CLI
+  invocation. A capability cannot accumulate in the window that has nowhere else to
+  live.
+
+Together those make a later cross-platform shell a **replacement of a presentation
+layer**, not a rewrite. **Windows-only applies to the shell and to nothing else** — and
+that is the misreading to guard against, because "the GUI is Windows-only" and "the
+project is Windows-only" are one word apart and the second would quietly undo the
+Linux CI that keeps the first one cheap.
+
+**And the shell is wanted, not merely permitted.** This document's own §16 section
+previously closed by quoting §22's scope-creep risk and concluding that a shell should
+be built "when a *human* workflow is blocked without it, not when the feature list
+looks incomplete." That is a sequencing rule dressed as a scoping rule, and it reads
+as though the GUI were a hazard. **Interactive geometry, fields drawn over that
+geometry, and animation are intended outcomes.** §22's risk is a thing to manage —
+the guard is UI-1's prohibition, not deferral.
+
+**The thesis is the pair, and neither half is the product.** An agent must be able to
+drive the entire design process; a human must be able to see and manipulate the same
+design interactively. The reason those are one requirement rather than two is AGT-2.
+
+**AGT-2 is right and right for a reason r06 does not give.** r06 says every capability
+reachable from the window is reachable from the CLI *through the same command objects*,
+and heads the diagram **SURFACES · PEERS, NOT A STACK**. That is the correct
+architecture — a shell that shells out cannot drive an interactive viewport at frame
+rate, and a hundred milliseconds of process start per slider drag is not a shell. But
+it leaves the guarantee resting on discipline, and an invariant checked against one
+surface is one that has already been broken by the time anyone notices.
+
+**Recommend AGT-2 additionally require that every shell action be *expressible* as a
+CLI invocation, and be journalled as one.** The shell keeps driving command objects
+in-process; what changes is that the journal is a list of commands somebody could run.
+Three things fall out of it that discipline alone does not give:
+
+- **A capability that cannot be written as a command cannot be added to the window**,
+  which is AGT-2 enforced by construction rather than by review.
+- **A human's session hands over to an agent**, and an agent's to a human, because the
+  journal is the same vocabulary both use. That is the whole point of the pairing and
+  it does not work if the window's actions are anonymous.
+- **PRJ-3's manifest and the journal converge.** A run is already regenerable from its
+  manifest; this makes an interactive *session* regenerable the same way.
+
+The cost is real and worth stating: two representations of every action, and a
+temptation to let the in-process path acquire an argument the command form has no
+spelling for. That is the specific thing to review when the shell is written, and it is
+the same failure mode as the validation one below.
+
 ### 24 · "One drive per solve" was a design decision, and two devices refuted it
 
 `CompiledDrive` carried this note from the beginning:
@@ -631,6 +703,18 @@ the shell must *not* own, and AGT-2 — the invariant that nothing exists only i
 the window — is the load-bearing claim that the shell is a peer rather than the
 product.
 
+**It is a named deliverable, and the toolchain was chosen partly for it.** The
+Windows GUI capability was part of the reason for C#; r06 names WPF and Helix Toolkit
+on DirectX 11 and does not record that rationale, which Amendment 25 adds. What is
+wanted is **interactive geometry, the solved field drawn over it, and animation** —
+outcomes, not contingencies.
+
+**The thesis is the pair.** An agent drives the entire design process through the CLI
+and MCP; a human sees and manipulates the same design in a window. Those are one
+requirement rather than two because of AGT-2, and Amendment 25 strengthens it: every
+shell action should be *expressible* as a CLI invocation and journalled as one, so a
+human's session hands over to an agent and back in the same vocabulary.
+
 **None of it is built.** `Einzel.Wpf` does not exist. Every view §16 requires:
 
 | View | State | What it needs beyond a window |
@@ -673,10 +757,17 @@ the window is the obvious way to do it and the wrong one.
 
 **Scope, which §22 names as a standing risk.** "Scope creep into building a
 visualization application. The pull is constant and each step is individually
-reasonable." Not having a shell has so far cost the project nothing that matters
-and has kept §17's boundary honest: what leaves Einzel is a vector figure, a VTU
-file and ParaView. The shell should be built when a *human* workflow is blocked
-without it, not when the feature list looks incomplete.
+reasonable." The risk is real and the guard against it is **UI-1's prohibition**, not
+deferral: the shell owns layout, input, the interactive viewport and the update check,
+and owns no physics, no validation rules, no file-format knowledge and no render
+output. §17's boundary is what keeps the pull bounded — what leaves Einzel is a vector
+figure, a VTU file and ParaView, and the viewport is for *working*, not for
+publishing.
+
+**What not having a shell has cost so far is one thing, and it is not nothing:
+AGT-2 is untested.** Every other invariant here is checked by something. That one is
+checked by nothing, because there is no second surface — and the cheapest second
+surface is MCP, not the window.
 
 ## The requirement register
 
@@ -712,7 +803,7 @@ in a table.
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
 | `AGT-1` | The model is text Declarative, schema-validated, diffable JSON. A model file plus referenced artifacts fully determines a run. | **Met** | Schema-versioned JSON, currently 0.5. `einzel schema` generates the JSON Schema by reflection over the document records. An unrecognised property is **refused**, not ignored - see Amendment 14. |
-| `AGT-2` | Nothing exists only in the shell Every capability reachable from the window is reachable from the CLI and from MCP, through the same command objects. This ... | Partial | Every capability is a command object and the CLI drives them. Untested against a second surface, because neither MCP nor the shell exists. |
+| `AGT-2` | Nothing exists only in the shell Every capability reachable from the window is reachable from the CLI and from MCP, through the same command objects. This ... | Partial | Every capability is a command object and the CLI drives them. Untested against a second surface, because neither MCP nor the shell exists - and an invariant checked against one surface is one that has already been broken by the time anyone notices. **Amendment 25** strengthens it: every shell action should also be *expressible* as a CLI invocation and journalled as one, which enforces it by construction rather than by review and is what lets a human session hand over to an agent. |
 | `AGT-3` | Errors are recovery instructions Machine-readable code, offending path, violated constraint, observed value, suggested correction. | **Met** | Code, JSON Pointer path, constraint, observed value, suggestion, severity. Validation collects every error rather than throwing on the first. |
 | `AGT-4` | Results carry their own uncertainty See §4. No quantitative result is ever returned as a bare number. | **Met** | GRD-1 enforced by reflection over the public surface of `Measured`, verified by injecting a violation and watching it fail. |
 | `AGT-5` | Feedback loops are cheap A preview tier returns in seconds and is permanently labelled. | **Met** | `einzel preview` is 9 ms against a full run on the shipped reflectron, tainted on the number itself, and writes nothing. |
@@ -1025,12 +1116,55 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    solve is a full multigrid V-cycle from scratch at every refresh rather than a few
    cycles from the previous answer.
 
-2. **Make a driven diffusive run affordable.** The ponderomotive well's gradient at
+2. ~~**Make a driven diffusive run affordable**~~ — **done, with a trade that has to
+   be stated both ways.** `"densityStep": { "scheme": "implicit", "gain": 64 }` is
+   backward Euler on the same Scharfetter-Gummel coefficients, solved by red-black
+   Gauss-Seidel. **21.1× the speed for 0.057% error** on the shipped funnel at 2 mbar
+   over a 50 µs window, so its 843,000 steps over 900 µs become about 13,000 and a run
+   that took hours takes minutes. **The error does not accumulate over a longer flight,
+   it falls** — the same gain gives 0.108% over 5 µs and 0.057% over 50 — because
+   backward Euler's error is concentrated in the initial transient, while the speedup
+   grows because the explicit cost is linear in the window and the sweeps per step are
+   not.
+
+   **The load-bearing property is not the stability, it is that positivity survives a
+   partial solve.** Every term in the update is non-negative, so the iterate is a valid
+   density however far from converged it is — a scheme that went negative on the way
+   would be unusable however stable, because a negative density has stopped meaning
+   anything.
+
+   **And it is not a general speed-up, which is the half that would be easy to leave
+   out.** The Gauss-Seidel iteration's difficulty is set by the *diffusive* part of the
+   operator, so a step long by Courant's standard but still short by diffusion's costs
+   about three sweeps — while a plain drift tube, already near its diffusion limit,
+   climbs from 11 sweeps a step at gain 1 to 88.7 at gain 16 and comes out **slower**
+   than stepping explicitly. Both are measured and both are documented.
+
+   **What says it is correct rather than merely stable is the Boltzmann equilibrium**,
+   which Scharfetter-Gummel is built to hold exactly and which backward Euler must
+   therefore hold at any step. It holds to **8.9e-16 in log density over three decades
+   at a gain of 1000, in two steps and two sweeps** — one sweep per step, because the
+   previous density *is* the answer. Verified by breaking the solve the way a real
+   mistake would: the non-negativity tests still passed, and the equilibrium moved by
+   factors of 6 to 18.
+
+   **The flux is now assembled once**, which the explicit path wanted anyway: it was
+   recomputing two exponentials per face per step. **Bit-identical**, asserted over four
+   configurations spanning Cartesian and cylindrical meshes, still and moving gas,
+   interior absorbers and every edge kind — density, collected count and every named
+   loss, to the last bit.
+
+   Still undone: nothing chooses the gain. Both limits are computable before the run,
+   but what gain is acceptable is an *accuracy* question and nothing here measures the
+   accuracy of a step it has not taken. Richardson extrapolation over a doubled step
+   would, at three solves a step instead of one.
+
+   ~~The ponderomotive well's gradient at
    the ring edges sets the explicit step: on the shipped funnel at 2 mbar the step
    is 1.067 ns against a diffusion limit of 5.2 µs, a factor of 4,900, so 900 µs
    would be about 843,000 steps. Attributed by control — 15.5 ns at 0 V RF, 8.93 ns
    at 25 V, 1.067 ns at 100 V — so it is the RF and roughly as E₀². An implicit or
-   operator-split step is the fix. This is the last thing standing between the funnel
+   operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
 3. **Finish the examples corpus (EX-1).** 26 of thirty, and the gate (EX-2) is built
