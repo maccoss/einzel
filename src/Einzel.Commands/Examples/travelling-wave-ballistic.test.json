@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "travelling-wave-ballistic",
+  "description": "Arithmetic, and exact: with the wave amplitude at zero every ring holds nothing and the flight is field-free, so the transit is 27 mm over the injection speed of 1500 m/s - 18.0 us to the last figure the integrator can carry. The control for travelling-wave-capture, which covers the same distance in 9.0 us because the wave carries it at twice its own speed.",
+  "model": "../models/travelling-wave-ballistic.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 18.0,
+      "unit": "us",
+      "tolerance": 1e-05
+    }
+  ]
+}

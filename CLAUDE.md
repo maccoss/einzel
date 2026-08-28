@@ -640,6 +640,14 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Still one pressure**: the gas *density* is a single number for the whole model, so a differentially pumped instrument is not expressible — an imported field gives the neutrals a velocity everywhere and the same number of them everywhere. Details in `docs/pressure.md`.
 
+- **Corpus 23 → 26, exercising what the night built.** Three examples, each with an expectation that is arithmetic and nothing else.
+
+  **`gas-flow-carry`** — no field at all, a gas streaming at 200 m/s down a metre of tube. Collisions drive the ion toward the frame the gas is at rest in, so the steady drift *is* the gas velocity and the transit is L/u = **5000 µs by arithmetic**; measured 4904.5. The ion is launched at exactly 200 m/s (0.103642697 V for m/z 500) so there is no equilibration lag either. **The ten per cent tolerance understates how discriminating it is**: with the flow ignored the same ion damps to rest and covers **15.8 mm in twenty milliseconds** instead of arriving.
+
+  **`travelling-wave-capture` and `travelling-wave-ballistic` are a pair, and neither is worth much alone.** Injected at *half* the wave speed: with the wave on the transit is the distance over the **wave's** speed — 27 mm / 3000 m/s = 9.0 µs, measured 8.697 — and with it off, 27 mm / 1500 m/s = **18.000000 µs exactly**, because a guide with no amplitude is field-free and the analytic drift is exact. A transit matching the wave in one case and the injection speed in the other would be a coincidence twice over; a transit matching the wave *whatever* the injection speed is capture. That is the distinction an earlier version of this measurement got wrong by comparing two captured transits to each other.
+
+  Remaining for EX-1: an MR-TOF, a thermalisation, and a three-dimensional geometry.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

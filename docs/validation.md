@@ -215,9 +215,9 @@ Tests that enforce rules rather than measure physics.
 
 EX-1 asks for thirty validated reference models "spanning every device class, each
 with a prose description, expected results, and assertion tolerances", and EX-2
-makes them a release gate. Seventeen exist, and the gate is built: every example is
-materialised into a real project and driven through `einzel test` via
-`Program.Main`, in 29 seconds.
+makes them a release gate. **Twenty-six exist**, and the gate is built: every example
+is materialised into a real project and driven through `einzel test` via
+`Program.Main`.
 
 **Every expectation is arithmetic, a published value, or an exact invariant.** That
 is what makes the corpus a check on the engine rather than on its own past output -
@@ -239,10 +239,33 @@ golden file.
 | `quadrupole-rf-stable` / `-unstable` | the tabulated Mathieu cut-off q = 0.90804 | transmits 1.0 at q = 0.70, 0.0 at q = 0.95 |
 | `ion-funnel-rf` / `-no-rf` | the RF is what confines | threads the stack; lost on a named ring |
 | `travelling-wave-guide` | an ion is carried the length of the guide | arrives |
+| `travelling-wave-capture` | the distance over the **wave's** speed, 27 mm / 3000 m/s | 8.697 µs against 9.0 |
+| `travelling-wave-ballistic` | the same distance over the **injection** speed, 1500 m/s | **exactly 18.000000 µs** |
+| `gas-flow-carry` | L / u with no field, 1 m / 200 m/s | 4904.5 µs against 5000 |
+| `paul-trap-held` / `-ejected` | the tabulated 3-D trap boundary q_z = 0.90804 | confined at q_z = 0.30, lost at 1.20 |
+| `hexapole-guide`, `multipole` orders | the rods fit and the ion is guided | arrives |
+| `slit-transmission` | erf of a slit with the field exactly zero | 0.95σ at 20,000 ions |
+| `drift-tube-diffusion`, `drift-tube-gas-flow` | L / (μE) and L / (μE + u) | the diffusive mode |
 
-The quadrupole pair is the one worth noticing: neither number comes from this
-engine, and **bracketing a published boundary from both sides is a stronger claim
-than either model alone**.
+**Two pairs and a control are what carry the weight here.** The quadrupole pair
+brackets a published boundary from both sides, which is a stronger claim than either
+model alone; the Paul trap pair does the same for the three-dimensional boundary,
+deliberately wide, because an example that pinned the edge would be pinning *this
+geometry's* edge and calling it Mathieu's.
+
+The travelling-wave pair is the sharpest of the three and the reason is worth stating.
+Injected at **half** the wave speed, the ion covers 27 mm in 8.697 µs with the wave on
+and in exactly 18.000000 µs with it off. A transit that matched the wave in one case
+and the injection speed in the other would be a coincidence twice over; **a transit
+that matches the wave whatever the injection speed is capture.** An earlier version of
+this measurement compared two *captured* transits to each other, found them 0.75 µs
+apart, and concluded there was no capture — two numbers being close proves nothing when
+their ballistic values were close too.
+
+And `gas-flow-carry` is far more discriminating than its ten per cent tolerance
+suggests. With the declared flow ignored, the same ion damps to rest and covers
+**15.8 mm in twenty milliseconds** rather than arriving at all — so the check is not
+"is the transit about right" but "is the gas moving at all".
 
 **Two defects came out of writing the first seventeen**, both of the kind no test
 written from inside the project would catch, because both were about a model that

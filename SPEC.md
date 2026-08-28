@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**570 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 23 examples, every expectation a closed form, a published value, or an exact invariant.
+**606 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -746,7 +746,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **23 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide, an extraction trap, a 3-D Paul trap held and ejected, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: an MR-TOF and a collisional example. |
+| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **26 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide captured and ballistic, an extraction trap, a 3-D Paul trap held and ejected, an ion carried by a moving gas, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: an MR-TOF, a thermalisation, and a three-dimensional geometry. |
 | `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. 17 of 17 in 29 s, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself. |
 | `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. Still one surface, because there is no second one. |
 
@@ -955,11 +955,17 @@ in a table.
 
 Ordered by what unblocks the most, with the reasoning rather than just the list.
 
-1. **Finish the examples corpus (EX-1).** 23 of thirty, and the gate (EX-2) is
+1. **Finish the examples corpus (EX-1).** 26 of thirty, and the gate (EX-2) is
    built and green. What the first seventeen cost was mostly *deciding what can
-   honestly be asserted*, and that work is now done — the remaining seven are
-   breadth: an MR-TOF, a collisional example, and more of the diffusive mode, which
-   `transitTime` now makes assertable. Worth finishing, and worth
+   honestly be asserted*, and that work is now done — the remaining four are breadth:
+   an MR-TOF, a thermalisation, and a three-dimensional geometry. The three added
+   last are worth the pattern they set: **`travelling-wave-capture` and
+   `travelling-wave-ballistic` are a pair**, and neither is worth much alone. A
+   transit that matches the wave in one case and the injection speed in the other
+   would be a coincidence twice over; a transit that matches the wave *whatever* the
+   injection speed is capture. And `gas-flow-carry` is discriminating far past its
+   ten per cent tolerance, because a run that ignored the declared flow would not
+   arrive at all — it would damp to rest and cover 15.8 mm in twenty milliseconds. Worth finishing, and worth
    noticing what the first tranche already returned: **two defects that no test
    written from inside the project would have caught**, because both were about a
    model that validates and answers a different question.
