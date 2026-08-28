@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**620 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**622 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -445,14 +445,27 @@ measurement rather than an optional extra — the same standing that grid conver
 already has under ACC-3.
 
 **And with the launch amplitude, which is the sharper half.** The same trap's
-hold-converged edge is q_z = 0.860 at a 0.1 mm launch, 0.824 at 0.3 mm and 0.635 at
+hold-converged edge is q_z = 0.85 at a 0.1 mm launch, 0.82 at 0.3 mm and 0.64 at
 0.6 mm. The Mathieu equation is linear, so an ideal trap's boundary *cannot* depend
 on how far off centre the ion started — a trajectory scaled by a constant is another
-trajectory. A real one's does, and the dependence is not small. Worse, there is no
-clean small-amplitude limit to extrapolate to, for a structural reason: a
-measurement that registers a loss only when the ion **reaches** an electrode is never
-a small-amplitude measurement, whatever it was launched at. The launch offset sets
-how much of the journey is spent in the anharmonic region, not whether any of it is.
+trajectory. A real one's does, and the dependence is not small.
+
+**The reason is structural, and the fix is to stop measuring it that way.** A
+measurement that registers a loss only when the ion **reaches** an electrode requires
+it to cross the whole anharmonic region, so it is never a small-amplitude measurement
+whatever it was launched at. The *linear* boundary is a statement about a frequency,
+and §12's own secular-frequency spectrum measures it without the ion going anywhere:
+calibrating β(V) against Mathieu over a range where the ion stays small fits to a
+worst residual of **1.2e-3**, gives an effective radius of **3.8137 mm** against
+**3.8195** from the field's curvature with no ion involved, and puts β = 1 at
+q_nominal = 0.8254 — **bracketed** by the two ejection edges rather than equal to
+either.
+
+**Recommend §12 distinguish the two**, because they are different quantities and only
+one of them is the design parameter: a *linear* stability boundary, which is where β
+reaches one and is a property of the field; and an *ejection* threshold, which is where
+a particular ion launched a particular way leaves within a particular hold, and is what
+an instrument actually does.
 
 The same geometry also carries a **narrow band of loss at q_z = 0.739–0.750**, sixty
 volts inside the main edge, which survives a mesh doubling and a hold doubling and

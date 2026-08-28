@@ -270,6 +270,183 @@ public sealed class PaulTrapResonanceStudy(ITestOutputHelper output)
             + $"and the worst is {100.0 * worstLow:F3}");
     }
 
+    /// <summary>The published Mathieu boundary on the a = 0 line, where beta reaches one.</summary>
+    /// <remarks>
+    /// Taken from the literature rather than from the continued fraction above,
+    /// deliberately. That expansion has a near-singularity exactly at beta = 1 - the
+    /// n = 1 denominator (beta - 2)^2 goes to one there - and it puts the crossing at
+    /// q = 0.9117, four parts in a thousand off the tabulated value. It is accurate
+    /// where it is used below, at beta from 0.3 to 0.8, and not at the endpoint.
+    /// </remarks>
+    private const double TabulatedBoundaryQ = 0.90804;
+
+    /// <summary>q per volt for this ion in this geometry, from the closed form.</summary>
+    private static double PerVolt(CompiledModel model)
+    {
+        var species = IonSpecies.FromModel(model);
+        var radius = model.Parameters["inscribedRadius"].SiValue;
+        var omega = 2.0 * Math.PI * model.Parameters["driveFrequency"].SiValue;
+
+        return 4.0 * species.ChargeSi / (species.MassSi * omega * omega * radius * radius);
+    }
+
+    /// <summary>The measured axial exponent at one drive amplitude.</summary>
+    private static double MeasuredBeta(double volts, double offsetMm)
+    {
+        var (samples, _, drive) = Fly(volts, offsetMm, 200);
+
+        return BetaFrom(Line(samples, 0, drive), drive);
+    }
+
+    [Fact]
+    public void BetaDoesNotDependOnHowFarOffCentreTheIonStarted()
+    {
+        // The premise of the measurement below. Mathieu's equation is linear, so its
+        // characteristic exponent is a property of the field and the working point
+        // and not of the orbit - if what is measured here moved with the launch
+        // amplitude, it would not be beta and the calibration would be of something
+        // else.
+        //
+        // It holds where the ion is small and degrades as it is not, which is the
+        // anharmonicity showing up in the frequency rather than in a loss.
+        output.WriteLine("   volts    0.05 mm    0.20 mm     spread");
+
+        var worstLow = 0.0;
+        var atHighQ = 0.0;
+
+        foreach (var volts in new[] { 300.0, 450.0, 600.0 })
+        {
+            var small = MeasuredBeta(volts, 0.05);
+            var large = MeasuredBeta(volts, 0.20);
+            var spread = Math.Abs(large - small) / (0.5 * (large + small));
+
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{volts,8:F0}   {small,8:F5}   {large,8:F5}   {spread,8:E2}"));
+
+            if (volts <= 450.0)
+            {
+                worstLow = Math.Max(worstLow, spread);
+            }
+            else
+            {
+                atHighQ = spread;
+            }
+        }
+
+        // A fourfold change in launch amplitude moves beta by well under a per cent
+        // where the ion is small.
+        Assert.True(worstLow < 0.01, $"beta moved {worstLow:E2} with the launch amplitude");
+
+        // And measurably more where it is not, which is the control: a beta that did
+        // not shift at all at 600 V would mean the field had no anharmonicity, and the
+        // curvature measurement in PaulTrapStudy says it does.
+        Assert.True(
+            atHighQ > worstLow,
+            $"the anharmonic shift should grow with q: {atHighQ:E2} against {worstLow:E2}");
+    }
+
+    [Fact]
+    public void TheLinearBoundaryIsMeasurableWithoutTheIonReachingAnElectrode()
+    {
+        // The measurement the ejection scan structurally cannot make. A stability
+        // boundary found by asking "did the ion reach an electrode" requires the ion
+        // to travel from wherever it started all the way to z0, through the whole
+        // anharmonic region - so it is never a small-amplitude measurement, whatever
+        // it was launched at, and it comes out amplitude-dependent.
+        //
+        // beta needs no journey. It is read off the spectrum of an ion that stays
+        // small, so the linear boundary can be located by calibrating beta(V) against
+        // Mathieu and asking where the calibration puts beta = 1.
+        var model = Compile(Trap());
+        var perVolt = PerVolt(model);
+        var declared = model.Parameters["inscribedRadius"].SiValue * 1e3;
+
+        var points = new List<(double Volts, double Beta)>();
+
+        foreach (var volts in new[] { 300.0, 390.0, 480.0, 570.0 })
+        {
+            points.Add((volts, MeasuredBeta(volts, 0.10)));
+        }
+
+        // One free number fitted across the whole curve rather than read at one
+        // point: the scale s with beta_measured(V) = beta_Mathieu(q_nominal(V) * s).
+        // Golden section on the summed squared relative misfit.
+        double Misfit(double scale)
+        {
+            var total = 0.0;
+
+            foreach (var (volts, measured) in points)
+            {
+                var predicted = Beta(0.0, volts * perVolt * scale);
+
+                total += Math.Pow((measured / predicted) - 1.0, 2.0);
+            }
+
+            return total;
+        }
+
+        double lo = 1.0, hi = 1.25;
+
+        for (var k = 0; k < 80; k++)
+        {
+            var a = lo + ((hi - lo) / 3.0);
+            var b = hi - ((hi - lo) / 3.0);
+
+            if (Misfit(a) < Misfit(b))
+            {
+                hi = b;
+            }
+            else
+            {
+                lo = a;
+            }
+        }
+
+        var scale = 0.5 * (lo + hi);
+        var effective = declared / Math.Sqrt(scale);
+
+        output.WriteLine("   volts   q_nom   beta_meas  beta_pred    ratio");
+
+        var worst = 0.0;
+
+        foreach (var (volts, measured) in points)
+        {
+            var predicted = Beta(0.0, volts * perVolt * scale);
+
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{volts,8:F0}  {volts * perVolt,6:F4}   {measured,8:F5}   {predicted,8:F5}  "
+                + $"{measured / predicted,7:F4}"));
+
+            worst = Math.Max(worst, Math.Abs((measured / predicted) - 1.0));
+        }
+
+        var boundaryVolts = TabulatedBoundaryQ / scale / perVolt;
+
+        output.WriteLine($"fitted scale        {scale:F5}");
+        output.WriteLine($"effective radius    {effective:F4} mm against {declared:F4} declared");
+        output.WriteLine($"worst residual      {worst:E2}");
+        output.WriteLine($"beta = 1 at         {boundaryVolts:F1} V, q_nominal {TabulatedBoundaryQ / scale:F5}");
+        output.WriteLine("hold-converged ejection edges: 665-670 V at 0.3 mm, 695-700 V at 0.1 mm");
+
+        // The curve is one ideal quadrupole across the whole range, which is what
+        // makes the endpoint worth extrapolating to at all.
+        Assert.True(worst < 0.01, $"the fit leaves {worst:E2}, so this is not one quadrupole");
+
+        // And the radius it implies is the one the FIELD gives, measured with no ion
+        // involved at all - 3.8195 mm from the curvature at a 0.4 mm sampling radius,
+        // drifting downward as that radius shrinks. Two routes sharing nothing but the
+        // solved field.
+        Assert.Equal(3.814, effective, 0.05);
+
+        // The ejection edges bracket it. Neither is the linear boundary and the
+        // measurement cannot make them one: a smaller launch survives past it because
+        // the anharmonic frequency shift halts the growth before z0, and a larger one
+        // is lost below it. That the two straddle the beta-derived value is the check.
+        Assert.InRange(boundaryVolts, 670.0, 697.0);
+    }
+
     [Fact]
     public void TheResonanceConditionIsSatisfiedInTheBandAndNotOutsideIt()
     {

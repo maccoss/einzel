@@ -676,27 +676,75 @@ closer in means a stronger field at the centre than `r0` implies, which is a sma
 effective radius, which is a larger `q` per volt, which is ejection at a **lower**
 amplitude. That accounts for the sign and for 0.828 of the 0.908.
 
-### But the boundary is amplitude-dependent, and an ideal one cannot be
+### The ejection edge is amplitude-dependent, and it is not the linear boundary
 
 | launch offset | hold-converged edge | q_z |
 | --- | --- | --- |
-| 0.1 mm | 700–704 V | 0.855–0.860 |
-| 0.3 mm | 674 V | **0.8236** |
+| 0.1 mm | 695–700 V | 0.849–0.856 |
+| 0.3 mm | 665–670 V | 0.813–0.819 |
 | 0.6 mm | ~520 V | 0.635 |
 
 The Mathieu equation is linear, so a trajectory scaled by a constant is another
 trajectory and **an ideal trap's stability boundary cannot depend on how far off
-centre the ion started**. This one depends on it strongly. That is the anharmonicity
-in the table above doing its work, and it is *not* the finite hold masquerading as
-physics — the 0.1 mm edge moves only 704 → 700 V between 200 and 800 cycles, and
-the 0.3 mm edge does not move at all.
+centre the ion started**. This edge depends on it strongly, and it is **hold-converged**
+— 800 and 2000 RF cycles give the same answer at both offsets, so this is not the
+observation window.
 
-So the scale factor is not the whole account: 0.828 matches the 0.3 mm figure and
-not the 0.1 mm one, which makes that agreement **partly coincidence**. The reason
-there is no clean small-amplitude limit to compare against is structural — a
-measurement that only registers a loss when the ion *reaches* z0 is never a
-small-amplitude measurement, whatever it was launched at. The launch offset sets how
-much of the journey is spent in the anharmonic region, not whether any of it is.
+**The reason is structural and it is not fixable by measuring more carefully.** A
+boundary found by asking *did the ion reach an electrode* requires the ion to travel
+from wherever it started all the way to z0, through the whole anharmonic region. So it
+is never a small-amplitude measurement, whatever it was launched at — the launch offset
+sets how much of the journey is spent in the anharmonic region, not whether any of it
+is. A small launch survives past the linear boundary because the anharmonic frequency
+shift halts the growth before z0; a larger one is lost below it.
+
+### The linear boundary, measured without the ion going anywhere
+
+β needs no journey. It is read off the spectrum of an ion that stays small, so the
+linear boundary can be located by calibrating β(V) against Mathieu across a range where
+the ion *is* small, and asking where the calibration puts β = 1.
+
+**β is amplitude-independent where it should be**, which is the premise:
+
+| amplitude | β at 0.05 mm | β at 0.20 mm | spread |
+| --- | --- | --- | --- |
+| 300 V | 0.29554 | 0.29495 | 2.0e-3 |
+| 450 V | 0.46746 | 0.46540 | 4.4e-3 |
+| 600 V | 0.69923 | 0.68749 | 1.7e-2 |
+
+A fourfold change in launch amplitude moves β by two parts in a thousand at low q, and
+measurably more at high q — which is the anharmonicity appearing in the *frequency*
+rather than in a loss, and is the control that says the shift is real and small.
+
+Fitting one number — the scale `s` with `β_measured(V) = β_Mathieu(q_nominal(V)·s)` —
+across four amplitudes:
+
+| | measured | predicted | ratio |
+| --- | --- | --- | --- |
+| 300 V | 0.29524 | 0.29515 | 1.0003 |
+| 390 V | 0.39470 | 0.39442 | 1.0007 |
+| 480 V | 0.50618 | 0.50590 | 1.0006 |
+| 570 V | 0.64114 | 0.64191 | 0.9988 |
+
+**Worst residual 1.2e-3.** The trap is one ideal quadrupole across the whole range, of
+effective radius **3.8137 mm** — against **3.8195 mm** from the field curvature with no
+ion involved at all, and in the direction that measurement's own δ-dependence predicts
+(3.8195 at a 0.4 mm sampling radius, 3.8286 at 0.6, 3.8438 at 0.8, so falling as δ→0).
+**Two routes sharing nothing but the solved field, agreeing to 0.15 per cent.**
+
+That puts β = 1 — the published boundary q = 0.90804 — at **675.5 V, q_nominal =
+0.82543**. And the two ejection edges **bracket it**: 665–670 V at 0.3 mm and
+695–700 V at 0.1 mm.
+
+**A caveat about the tool.** The endpoint is anchored to the *tabulated* 0.90804 rather
+than to the continued fraction used everywhere else here, deliberately: that expansion
+has a near-singularity exactly at β = 1, where its n = 1 denominator `(β−2)²` goes to
+one, and it puts the crossing at q = 0.9117 — four parts in a thousand off. It is
+accurate where it is used, at β from 0.3 to 0.8, and not at the endpoint.
+
+**So the 9.4 per cent shortfall from the tabulated boundary is one geometric factor,
+now measured three independent ways** — the field's curvature at the centre, the secular
+frequency of a flown ion, and the ejection edges that straddle it.
 
 ### A resonance band inside the stable region, found by the confirmation walk
 

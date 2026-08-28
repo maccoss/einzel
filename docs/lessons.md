@@ -625,6 +625,17 @@ actually caught them were:
   that exists to prevent a field of a geometry nobody described became a route to
   one.** Found by asking, after the change, which readers of the old scalar were
   asking a question the scalar no longer answers.
+- **Measuring a linear property with a measurement that cannot be linear.** A
+  stability boundary is a statement about a *frequency* - where the characteristic
+  exponent reaches one - but the obvious way to find it is to ask whether the ion was
+  lost. That requires it to travel to an electrode through the whole anharmonic
+  region, so the answer depends on where it started and no amount of care removes the
+  dependence: the shipped Paul trap's hold-converged edge is q_z = 0.85 at a 0.1 mm
+  launch and 0.82 at 0.3 mm. **The fix was not a better loss measurement but a
+  different quantity.** Reading beta off the spectrum of an ion that stays small
+  locates the linear boundary to a worst residual of 1.2e-3 and needs no journey at
+  all. When a measurement is amplitude-dependent and the thing being measured is not,
+  suspect the measurement rather than adding controls to it.
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.
