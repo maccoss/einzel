@@ -765,3 +765,40 @@ So the volume solver, its tricubic interpolant and its cut cells are exercised b
 release gate. That is a stated gap rather than an oversight, and the thing that closes
 it is Galerkin coarsening — which would also make the plates converge like everything
 else.
+
+## Poisson, not only Laplace
+
+Every solve here until now has been **Laplace** - a potential with no charge in it,
+fixed on conductors. SC-1's *approximate* space-charge method needs **Poisson**:
+deposit the packet's own charge onto a grid, solve grad2 phi = -rho/eps0, gather the
+field back.
+
+**The cycle already carried a right-hand side and had only ever been handed zeros.**
+The smoother subtracts it, the residual is defined against it, and the coarse levels
+receive the restricted *residual* - which is what they need whatever the fine level's
+source is. So the source costs one argument and no numerics.
+
+Checked by the **method of manufactured solutions**, which is the sharpest thing
+available: pick a potential, differentiate it analytically to get the source that
+produces it, hand the solver that source, and compare. Nothing on the exact side is
+discretised and no reference implementation is involved. With
+phi = sin(pi x) sin(pi y) on the unit square, whose Laplacian is -2 pi^2 phi exactly:
+
+| intervals | worst error | order | cycles | factor |
+| --- | --- | --- | --- | --- |
+| 32 | 8.0358e-4 | | 11 | 0.0632 |
+| 64 | 2.0082e-4 | **2.000** | 11 | 0.0659 |
+| 128 | 5.0201e-5 | **2.000** | 11 | 0.0702 |
+
+Second order to three figures, and the cycle count is grid-independent. **The order is
+the load-bearing check**: a source entering the smoother and the residual
+inconsistently would still converge - to the wrong answer - and would show it as an
+order that is not two rather than as a failure.
+
+And the control: passing no source gives **exactly** what the solver gave before one
+existed, bit for bit and in the same number of cycles. Not nearly - exactly, or every
+number this engine has published from a solved field has moved.
+
+What is left for SC-1's approximate method is the particle side: cloud-in-cell
+deposit, the same weights on the gather (or momentum is not conserved), and validation
+against the direct pairwise sum, which exists and is the reason it was built first.

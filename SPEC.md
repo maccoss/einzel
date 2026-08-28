@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**609 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**615 tests across nine assemblies, green on Windows; last verified on Linux at 570.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1005,5 +1005,12 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
    at 25 V, 1.067 ns at 100 V — so it is the RF and roughly as E₀². An implicit or
    operator-split step is the fix.
 6. **Particle-in-cell space charge (SC-1).** The reference method it is validated
-   against now exists, which is the right order and was the reason for building the
-   direct sum first.
+   against exists, which is the right order and was the reason for building the direct
+   sum first - and the **field half is now done too**. `PoissonSolver2D` takes a
+   source, so grad2 phi = -rho/eps0 is solved rather than only Laplace: checked by
+   manufactured solution at **observed order 2.000, 2.000** in 11 grid-independent
+   cycles, with a null source giving bit-identical results to the Laplace path. The
+   cycle already carried a right-hand side and had only ever been handed zeros, so it
+   cost one argument and no numerics. What is left is the particle side: cloud-in-cell
+   deposit, the same weights on the gather (or momentum is not conserved), and the
+   comparison against the direct sum.

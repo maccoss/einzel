@@ -672,6 +672,20 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   So the volume solver, its tricubic interpolant and its cut cells are exercised by `Einzel.Fields.Tests` and the segmented-quadrupole study, and **not by the release gate** — a stated gap rather than an oversight. Galerkin coarsening closes it, and would make the plates converge like everything else. In `docs/numerics.md`.
 
+- **Poisson, not only Laplace - the field half of SC-1's approximate method.** Every solve here has been Laplace: a potential with no charge in it, fixed on conductors. Particle-in-cell needs grad2 phi = -rho/eps0. **The cycle already carried a right-hand side and had only ever been handed zeros** - the smoother subtracts it, the residual is defined against it, and the coarse levels get the restricted *residual*, which is what they need whatever the fine source is. One argument, no numerics.
+
+  Checked by **manufactured solution**, the sharpest thing available: pick a potential, differentiate it analytically for the source that produces it, compare. Nothing on the exact side is discretised. With phi = sin(pi x) sin(pi y), Laplacian -2 pi^2 phi:
+
+  | intervals | worst error | order | cycles | factor |
+  | --- | --- | --- | --- | --- |
+  | 32 | 8.0358e-4 | | 11 | 0.0632 |
+  | 64 | 2.0082e-4 | **2.000** | 11 | 0.0659 |
+  | 128 | 5.0201e-5 | **2.000** | 11 | 0.0702 |
+
+  **The order is the load-bearing check**: a source entering the smoother and the residual inconsistently would still converge - to the wrong answer - and would show it as an order that is not two rather than as a failure. And a null source gives **exactly** the old Laplace answer in the same cycle count; not nearly, or every number published from a solved field has moved.
+
+  Left for SC-1: cloud-in-cell deposit, the same weights on the gather (or momentum is not conserved), and the comparison against the direct pairwise sum - which exists, and is why it was built first.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
