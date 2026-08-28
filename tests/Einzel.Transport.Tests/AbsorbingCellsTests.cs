@@ -36,6 +36,21 @@ public sealed class AbsorbingCellsTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void TheRefusalStaysMeaningfulWhenThereAreNoAbsorbersAtAll()
+    {
+        // AGT-3: an error is a recovery instruction, and "the only values that mean
+        // anything are -1 and 0 to -1" instructs nobody. The upper bound is one less
+        // than the name count, which is -1 when there are no names.
+        var error = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new AbsorbingCells([0], []));
+
+        output.WriteLine(error.Message.Split('\n')[0]);
+
+        Assert.DoesNotContain("0 to -1", error.Message, StringComparison.Ordinal);
+        Assert.Contains("no absorbers were given", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AnythingAbsorbsMeansANodeIsOwnedNotThatAMapWasSupplied()
     {
         // An electrode declared outside the density grid gives a named absorber and

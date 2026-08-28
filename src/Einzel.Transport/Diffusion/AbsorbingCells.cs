@@ -50,8 +50,12 @@ public sealed class AbsorbingCells
                 throw new ArgumentOutOfRangeException(
                     nameof(owner),
                     index,
-                    $"an absorbing cell names surface {index}; the only values that mean "
-                    + $"anything are -1 for an open node and 0 to {names.Count - 1}");
+                    $"an absorbing cell names surface {index}; "
+                    + (names.Count == 0
+                        ? "no absorbers were given, so -1 for an open node is the only value "
+                            + "that means anything"
+                        : $"the only values that mean anything are -1 for an open node and "
+                            + $"0 to {names.Count - 1}"));
             }
         }
 

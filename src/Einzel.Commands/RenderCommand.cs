@@ -121,7 +121,14 @@ public static class RenderCommand
         //
         // Failure here is not fatal to the figure. A model whose transport refuses -
         // a regime violation, a missing mobility - still has geometry and a field
-        // worth drawing, and the renderer says which of the two it got.
+        // worth drawing, and the figure says which of the two it got.
+        //
+        // It did not, until now: the catch below discarded the exception, so a
+        // refused run and a figure that never asked for a density produced the same
+        // output and the same words. That is the fifth thing in this branch to
+        // swallow evidence about why a result is missing, and the comment above
+        // promised the opposite. The reason goes into the provenance block, which is
+        // stamped on the page (GRD-12) and returned in --json.
         Transport.Diffusion.DensityField? density = null;
 
         // Not gated on spec.Trajectory. That toggle means "fly the ion and draw its
@@ -138,9 +145,13 @@ public static class RenderCommand
 
                 density = DiffusionRun.Execute(validation.Model!, built, fieldWarnings).Result.Density;
             }
-            catch (EinzelException)
+            catch (EinzelException refused)
             {
                 density = null;
+
+                provenance.Add(
+                    "no density drawn: the transport refused - "
+                    + refused.Error.Constraint);
             }
         }
 
