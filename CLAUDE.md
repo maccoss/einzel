@@ -911,6 +911,39 @@ The platform layer of `AGENTS.md` is **generated (`einzel agents-md`) and versio
 
 Sequencing principles: seams first (transport mode, symmetry, accuracy class, device library, extension host stubbed in Phase 1 with one implementation behind each); the schema and CLI are Phase 1 deliverables so the agent thesis is de-risked early; VTU export lands in Phase 1 so ParaView supplies the whole visualization story a year before the shell exists.
 
+## Galerkin coarsening: built, and chosen against the cheaper hierarchy
+
+`A_coarse = R A_fine P` — coarse levels built from the fine operator rather than from
+the geometry, so they cannot lose it. **The finest level is untouched**: cut cells and
+the geometry-driven smoother stay exactly as they were, because that is where the
+accuracy comes from.
+
+Two 1 mm slabs at a 0.25 mm cell: **1 level and a 274,625-node bottom becomes 6 levels
+and 27**, 45 cycles becomes 13, 160 s becomes 13 s. **The cycle count stops depending on
+the mesh** — 14 at 65³ against 13 at 129³, where it was 6 against 45. And it is the
+**same answer**, 1.1e-7 to 4.0e-7 relative, which is what separates it from the fast
+wrong one (deeper *rediscretised* coarsening was 30× faster and gave 486 V of 100).
+
+**Neither hierarchy dominates, so the solver picks from the geometry before solving
+anything**: 11.9× on the slabs, 4.6× on four rods, **0.64× on a sphere** — a loss, where
+the cheap hierarchy already reached a small bottom and the 27-point stencil is overhead.
+The criterion is the size of the bottom the cheap hierarchy can reach; the threshold is
+20,000 nodes and is measured rather than derived. `SolveReport.Galerkin` says which ran.
+
+Two things that were easy to get wrong and are worth knowing. **A 27-point stencil is
+closed under this coarsening** (restriction one cell, operator one, prolongation one =
+three fine cells = one coarse), so the hierarchy needs one operator type. And
+**`halfH2` stays at the finest level's value all the way down**, because the coarse
+operator inherited the fine one's units — recomputing it per level would be wrong by 4×
+per level and would still converge, to something else.
+
+**A test that failed on correct code, the right way round.** The first operator check
+asserted `R A P` reproduces the rediscretised 7-point Laplacian. That holds in *one*
+dimension; in three the transfers are tensor products and `R_b P_b = [1/8, 3/4, 1/8]`,
+so the off-axis entries belong there. Deriving what they should be instead pinned every
+coefficient against arithmetic the code had no part in — centre 27/64, face −3/128, edge
+−5/256, corner −3/512, to 1e-13, row summing to exactly zero.
+
 ## A solver limitation to know about
 
 **Measured, and worse than it reads below.** `SolveReport` now carries `Levels`,

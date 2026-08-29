@@ -144,6 +144,197 @@ public sealed class GalerkinOperator3D
         return built;
     }
 
+    /// <summary>
+    /// Forms <c>R A P</c> from a coarse operator and the grid below it.
+    /// </summary>
+    /// <param name="fine">The operator to coarsen, itself a Galerkin level.</param>
+    /// <param name="coarse">The grid below it.</param>
+    /// <returns>The coarser operator.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Twenty-seven points is closed under this coarsening</b>, which is what lets the
+    /// hierarchy use one operator type all the way down. Restriction reaches one fine
+    /// cell, the operator one more and prolongation one more, so a coarse row reaches at
+    /// most three fine cells - and three fine cells is one and a half coarse ones, so
+    /// one. Nothing beyond the twenty-seven can be non-zero.
+    /// </para>
+    /// <para>
+    /// There is no mask here and there should not be. A Galerkin level has no geometry:
+    /// what a conductor left behind is a row whose diagonal is zero, which is the same
+    /// statement in the only vocabulary this level has.
+    /// </para>
+    /// </remarks>
+    public static GalerkinOperator3D Form(GalerkinOperator3D fine, Grid3D coarse)
+    {
+        ArgumentNullException.ThrowIfNull(fine);
+        ArgumentNullException.ThrowIfNull(coarse);
+
+        var built = new GalerkinOperator3D(coarse);
+
+        var fineGrid = fine.Grid;
+
+        var column = new double[fineGrid.NodeCount];
+        var applied = new double[fineGrid.NodeCount];
+
+        var stamp = new int[fineGrid.NodeCount];
+        var generation = 0;
+
+        var touched = new List<int>(32);
+        var rows = new List<int>(512);
+
+        for (var ck = 0; ck < coarse.CountZ; ck++)
+        {
+            for (var cj = 0; cj < coarse.CountY; cj++)
+            {
+                for (var ci = 0; ci < coarse.CountX; ci++)
+                {
+                    generation++;
+
+                    touched.Clear();
+                    rows.Clear();
+
+                    SpreadOnto(column, touched, fineGrid, fine, ci, cj, ck);
+
+                    RowsOf(rows, stamp, generation, fineGrid, fine, touched);
+
+                    EvaluateWide(column, applied, rows, fine);
+
+                    Gather(built, applied, rows, fineGrid, coarse, ci, cj, ck);
+
+                    foreach (var node in touched)
+                    {
+                        column[node] = 0.0;
+                    }
+                }
+            }
+        }
+
+        return built;
+    }
+
+    /// <summary>Prolongs a unit coarse vector onto a Galerkin level.</summary>
+    private static void SpreadOnto(
+        double[] column,
+        List<int> touched,
+        Grid3D fineGrid,
+        GalerkinOperator3D fine,
+        int ci,
+        int cj,
+        int ck)
+    {
+        for (var dk = -1; dk <= 1; dk++)
+        {
+            for (var dj = -1; dj <= 1; dj++)
+            {
+                for (var di = -1; di <= 1; di++)
+                {
+                    var fi = (2 * ci) + di;
+                    var fj = (2 * cj) + dj;
+                    var fk = (2 * ck) + dk;
+
+                    if (fi < 0 || fj < 0 || fk < 0
+                        || fi >= fineGrid.CountX || fj >= fineGrid.CountY || fk >= fineGrid.CountZ)
+                    {
+                        continue;
+                    }
+
+                    var node = fineGrid.Index(fi, fj, fk);
+
+                    // A row with no equation is this level's word for a conductor.
+                    if (fine.Diagonal(node) == 0.0)
+                    {
+                        continue;
+                    }
+
+                    column[node] = Weight(di) * Weight(dj) * Weight(dk);
+                    touched.Add(node);
+                }
+            }
+        }
+    }
+
+    /// <summary>The rows of a Galerkin level whose value can be non-zero.</summary>
+    private static void RowsOf(
+        List<int> rows,
+        int[] stamp,
+        int generation,
+        Grid3D grid,
+        GalerkinOperator3D fine,
+        List<int> touched)
+    {
+        foreach (var seed in touched)
+        {
+            Mark(rows, stamp, generation, seed);
+
+            var (si, sj, sk) = Unpack(grid, seed);
+
+            for (var entry = 0; entry < Entries; entry++)
+            {
+                var (di, dj, dk) = Offset(entry);
+
+                var ni = si + di;
+                var nj = sj + dj;
+                var nk = sk + dk;
+
+                if (ni < 0 || nj < 0 || nk < 0
+                    || ni >= grid.CountX || nj >= grid.CountY || nk >= grid.CountZ)
+                {
+                    continue;
+                }
+
+                var node = grid.Index(ni, nj, nk);
+
+                if (fine.Diagonal(node) == 0.0)
+                {
+                    continue;
+                }
+
+                Mark(rows, stamp, generation, node);
+            }
+        }
+    }
+
+    /// <summary>Applies a Galerkin level's operator to the prolonged column.</summary>
+    private static void EvaluateWide(
+        double[] column, double[] applied, List<int> rows, GalerkinOperator3D fine)
+    {
+        var grid = fine.Grid;
+
+        foreach (var node in rows)
+        {
+            var (i, j, k) = Unpack(grid, node);
+
+            var value = 0.0;
+
+            for (var entry = 0; entry < Entries; entry++)
+            {
+                var coefficient = fine.Coefficient(node, entry);
+
+                if (coefficient == 0.0)
+                {
+                    continue;
+                }
+
+                var (di, dj, dk) = Offset(entry);
+
+                var ni = i + di;
+                var nj = j + dj;
+                var nk = k + dk;
+
+                if (ni < 0 || nj < 0 || nk < 0
+                    || ni >= grid.CountX || nj >= grid.CountY || nk >= grid.CountZ)
+                {
+                    continue;
+                }
+
+                value += coefficient * column[grid.Index(ni, nj, nk)];
+            }
+
+            applied[node] = value;
+        }
+    }
+
     /// <summary>Prolongs a unit coarse vector onto the fine grid.</summary>
     /// <remarks>
     /// A fixed fine node holds no correction, so prolongation skips it - exactly as the

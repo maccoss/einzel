@@ -56,6 +56,16 @@ public sealed record SolveReport(
     /// exactly the cost multigrid exists to remove.
     /// </remarks>
     public long CoarsestNodes { get; init; }
+
+    /// <summary>Whether the coarse levels came from the fine operator.</summary>
+    /// <remarks>
+    /// Neither hierarchy dominates - the rediscretised one is cheap to build and can
+    /// stop coarsening immediately on a thin electrode, and the Galerkin one always
+    /// reaches a few dozen nodes but pays an assembly for it. The solver picks from the
+    /// geometry, so this says which it picked rather than leaving a reader to infer it
+    /// from a level count.
+    /// </remarks>
+    public bool Galerkin { get; init; }
 }
 
 /// <summary>

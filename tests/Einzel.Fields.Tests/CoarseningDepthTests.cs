@@ -49,7 +49,11 @@ public sealed class CoarseningDepthTests(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// So this test guards a constant somebody will reasonably want to raise, having
-    /// seen that raising it makes everything faster.
+    /// seen that raising it makes everything faster. It is asserted against the
+    /// <em>rediscretised</em> hierarchy specifically, because that is the one the guard
+    /// belongs to: the Galerkin hierarchy descends all the way and stays correct, which
+    /// is asserted separately in <c>GalerkinOperatorTests</c>. Removing the guard is
+    /// still wrong; removing the need for it is what Galerkin did.
     /// </para>
     /// </remarks>
     [Fact]
@@ -62,7 +66,7 @@ public sealed class CoarseningDepthTests(ITestOutputHelper output)
 
         var (potential, report) = PoissonSolver3D.Solve(
             mask, geometry.Tolerance, maximumCycles: 200,
-            coarsen: GeometryBuilder3D.Coarsener(geometry));
+            coarsen: GeometryBuilder3D.Coarsener(geometry), galerkin: false);
 
         var peak = 0.0;
 
@@ -113,7 +117,7 @@ public sealed class CoarseningDepthTests(ITestOutputHelper output)
 
         var (_, report) = PoissonSolver3D.Solve(
             mask, geometry.Tolerance, maximumCycles: 200,
-            coarsen: GeometryBuilder3D.Coarsener(geometry));
+            coarsen: GeometryBuilder3D.Coarsener(geometry), galerkin: false);
 
         output.WriteLine(
             $"{report.Levels} level(s), coarsest {report.CoarsestNodes:N0} of "

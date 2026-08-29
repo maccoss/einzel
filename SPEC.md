@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**667 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**673 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1191,13 +1191,34 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    defects that no test written from inside the project would have caught**, because
    both were about a model that validates and answers a different question.
 
-4. **Galerkin coarsening, or operator-dependent interpolation.** Named here as work
-   rather than as a caveat, because three separate things wait on it: the 3-D corpus
-   example above, any large rod geometry, and the degradation of the convergence factor
-   with refinement that the shipped templates are sized around rather than free of.
+4. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
+   restores the property multigrid is supposed to have.** `A_coarse = R A_fine P`: the
+   coarse levels are built from the fine operator rather than from the geometry, so they
+   cannot lose it. The finest level is untouched — it keeps its cut cells and its
+   geometry-driven smoother, because that is where the accuracy comes from.
 
-   **Now measured rather than asserted, and the measurement is worse than the caveat
-   said.** `Representable` stops coarsening once a coarse cell would exceed the smallest
+   On two 1 mm slabs at a 0.25 mm cell: **1 level and a 274,625-node bottom becomes 6
+   levels and 27**, 45 cycles becomes 13, and 160 seconds becomes 13. **The cycle count
+   stops depending on the mesh** — 14 at 65³ against 13 at 129³, where before it was 6
+   against 45.
+
+   **And it is the same answer**, which is what separates it from the fast wrong one.
+   Deeper *rediscretised* coarsening was thirty times faster and gave 486 V of 100
+   applied; the two hierarchies agree to 1.1e-7 to 4.0e-7 relative, the tolerance both
+   were driven to.
+
+   **Neither hierarchy dominates, so the solver picks.** Galerkin is 11.9× on the slabs,
+   4.6× on four rods and **0.64× on a sphere** — a loss, because there the cheap
+   hierarchy already reached a 4,913-node bottom and the 27-point stencil and the
+   assembly are pure overhead. What separates the cases is the size of the bottom the
+   cheap hierarchy can reach, which needs no solve to evaluate, so that is what the
+   choice is made on. `SolveReport.Galerkin` says which ran.
+
+   Still to do: the two-dimensional solver has the same seam and does not need it (it
+   already reaches 9 to 99 nodes), and the 3-D corpus example is now affordable and not
+   yet written.
+
+   **The measurement that motivated it, kept because it is what made the case.** `Representable` stops coarsening once a coarse cell would exceed the smallest
    electrode dimension, and that is a *physical* size — so refinement adds levels at the
    top and never removes the bottom. The 3-D V-cycle descends **0 to 2 levels on every
    device geometry**, against 4 to 6 with no interior electrode, and the bottom level's

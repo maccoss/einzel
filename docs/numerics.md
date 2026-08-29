@@ -730,6 +730,79 @@ electrodes, so the convergence factor degrades — has a concrete cost that is e
 underestimate, because the geometry that shows it worst is the simplest one anybody
 would write.
 
+## Galerkin coarsening, and the choice between two hierarchies
+
+`A_coarse = R A_fine P`. Rediscretising on a coarse grid asks the geometry what it looks
+like at that spacing, and past a point the answer is "a different shape" — a 1 mm slab
+four levels down is smaller than a cell and gets pinned to a single node. The triple
+product never looks at the geometry, so it cannot lose it.
+
+**The finest level is untouched.** It keeps its cut cells and its geometry-driven
+smoother, because that is where the accuracy comes from and none of it is in question.
+Only the coarse levels change.
+
+### What it bought
+
+Two 1 mm slabs in a grounded box:
+
+| cell | mode | levels | coarsest | cycles | factor | sweeps | wall | peak V |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.5 mm | rediscretised | 0 | 274,625 | 6 | 0.015 | 2,412 | 26.2 s | 100.00 |
+| 0.5 mm | **Galerkin** | **5** | **27** | 14 | 0.180 | 644 | **2.1 s** | 100.00 |
+| 0.25 mm | rediscretised | 1 | 274,625 | 45 | 0.596 | 18,270 | 159.5 s | 100.00 |
+| 0.25 mm | **Galerkin** | **6** | **27** | **13** | 0.170 | 650 | **13.4 s** | 100.00 |
+
+**The cycle count stops depending on the mesh** — 14 at 65³ against 13 at 129³, where
+before it was 6 against 45. That is the property multigrid is supposed to have and did
+not have here on any device geometry.
+
+**And it is the same answer**, which is the assertion that separates this from the fast
+wrong one. Deeper *rediscretised* coarsening was thirty times faster and gave 486 V of
+100 applied; the two hierarchies here agree to **1.1e-7, 4.0e-7, 2.4e-9 and 7.4e-8**
+relative on the four geometries — the tolerance both were driven to. A coarse hierarchy
+changes how the fine problem is solved, not what it is.
+
+### Neither hierarchy dominates, so the solver picks
+
+| geometry | rediscretised | Galerkin | ratio |
+| --- | --- | --- | --- |
+| slabs, 129³ | 159.5 s | 13.4 s | **11.9×** |
+| four rods, 65³ | 5.2 s | 1.1 s | **4.6×** |
+| a 2 mm sphere, 65³ | 1.1 s | 1.7 s | **0.64×** — a loss |
+
+The sphere is where the cheap hierarchy already reached a small bottom (4,913 nodes), and
+there the twenty-seven point stencil and the `R A P` assembly are pure overhead. What
+separates the cases is **the size of the bottom level the cheap hierarchy can reach**, so
+that is what the choice is made on — and it needs no solve to evaluate. The threshold is
+20,000 nodes, which is measured rather than derived: above it the bottom is relaxed by up
+to four hundred sweeps over a grid that does not shrink when the mesh is refined.
+
+`SolveReport.Galerkin` says which ran, so the choice is never invisible.
+
+### Two things worth keeping about how it was built
+
+**A 27-point stencil is closed under this coarsening**, which is why the hierarchy needs
+one operator type. Restriction reaches one fine cell, the operator one more, prolongation
+one more — three fine cells is one and a half coarse ones, so one.
+
+**`halfH2` stays at the finest level's value all the way down.** The fine equation is
+`-(A phi) = halfH2 * rhs`, and restricting it gives `-(R A P) e = halfH2 * (R r)`. The
+coarse operator inherited the fine operator's units rather than being rediscretised in
+its own, so a hierarchy that recomputed `halfH2` per level would be wrong by a factor of
+four per level — and would still converge, to something else.
+
+### The test that was wrong and failed on correct code
+
+The first version of the operator check asserted that `R A P` reproduces the
+rediscretised seven-point Laplacian. **That identity holds in one dimension and not in
+three**: the transfers are tensor products, so
+`R A P = sum over axes of (R_a A_a P_a) x (R_b P_b) x (R_c P_c)` and `R_b P_b` is
+`[1/8, 3/4, 1/8]`, not the identity. The off-axis entries belong there.
+
+Working out what they should be instead turned a weak test into one that pins every
+coefficient against arithmetic the code had no part in — centre `27/64`, face `-3/128`,
+edge `-5/256`, corner `-3/512`, all to 1e-13, and the row summing to exactly zero.
+
 ## The three-dimensional V-cycle barely descends, and the guard is right
 
 **A cycle is not a unit of work, and cycle counts are what get compared.** The section

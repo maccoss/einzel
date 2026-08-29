@@ -177,6 +177,137 @@ public sealed class GalerkinOperatorTests(ITestOutputHelper output)
         Assert.True(worst < 1e-12 * scale, $"a row summed to {worst:E3}");
     }
 
+    /// <summary>
+    /// The Galerkin hierarchy descends to the bottom and gives the same answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two claims that matter, and they have to be made together. Descending
+    /// further is easy and was measured being <b>thirty times faster and wrong</b> -
+    /// 486 V of 100 applied - when the coarse levels were rediscretised. So depth
+    /// without agreement is not progress, and agreement without depth is not the point.
+    /// </para>
+    /// <para>
+    /// Measured on two 1 mm slabs at a 0.25 mm cell: the rediscretised hierarchy reaches
+    /// one level and a bottom of 274,625 nodes, taking 45 cycles and 160 seconds; the
+    /// Galerkin one reaches six levels and a bottom of 27, taking 13 cycles and 13
+    /// seconds. And <b>the cycle count stops depending on the mesh</b> - 14 at 65 cubed
+    /// against 13 at 129 cubed, where before it was 6 against 45 - which is the property
+    /// multigrid is supposed to have and did not.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ItReachesTheBottomAndAgreesWithTheRediscretisedAnswer()
+    {
+        var geometry = Plates(0.0005);
+
+        var grid = GeometryBuilder3D.BuildGrid(geometry);
+        var mask = GeometryBuilder3D.BuildMask(geometry, grid);
+
+        var (rediscretised, plain) = PoissonSolver3D.Solve(
+            mask, geometry.Tolerance, maximumCycles: 200,
+            coarsen: GeometryBuilder3D.Coarsener(geometry), galerkin: false);
+
+        var (galerkin, deep) = PoissonSolver3D.Solve(
+            GeometryBuilder3D.BuildMask(geometry, grid), geometry.Tolerance,
+            maximumCycles: 200,
+            coarsen: GeometryBuilder3D.Coarsener(geometry), galerkin: true);
+
+        var worst = 0.0;
+        var scale = 0.0;
+
+        for (var n = 0; n < rediscretised.Values.Length; n++)
+        {
+            worst = Math.Max(worst, Math.Abs(rediscretised.Values[n] - galerkin.Values[n]));
+            scale = Math.Max(scale, Math.Abs(rediscretised.Values[n]));
+        }
+
+        output.WriteLine(
+            $"rediscretised: {plain.Levels} level(s), coarsest {plain.CoarsestNodes:N0}, "
+            + $"{plain.Cycles} cycles at {plain.ConvergenceFactor:F3}");
+
+        output.WriteLine(
+            $"galerkin:      {deep.Levels} level(s), coarsest {deep.CoarsestNodes:N0}, "
+            + $"{deep.Cycles} cycles at {deep.ConvergenceFactor:F3}");
+
+        output.WriteLine($"agreement:     {worst:E3} V of {scale:F2} V = {worst / scale:E2}");
+
+        Assert.True(plain.Converged && deep.Converged, "a reference solve did not converge");
+
+        // It reaches a bottom a direct solve would find trivial, where the
+        // rediscretised hierarchy leaves the entire fine grid.
+        Assert.True(deep.Levels >= 4, $"only {deep.Levels} level(s)");
+        Assert.True(deep.CoarsestNodes < 200, $"bottom of {deep.CoarsestNodes:N0} nodes");
+        Assert.True(deep.CoarsestNodes * 100 < plain.CoarsestNodes, "no deeper than before");
+
+        // And it is the same answer, to the tolerance both were driven to. This is the
+        // assertion that separates this from the fast wrong one.
+        Assert.True(
+            worst < 1e-5 * scale,
+            $"the two hierarchies disagree by {worst:E3} V of {scale:F2} V");
+
+        Assert.True(deep.Galerkin, "the report should say which hierarchy ran");
+        Assert.False(plain.Galerkin);
+    }
+
+    /// <summary>
+    /// The solver picks the hierarchy from the geometry, and picks the faster one.
+    /// </summary>
+    /// <remarks>
+    /// Neither dominates: measured wall clock, Galerkin is 12x on the slabs, 4.6x on
+    /// four rods and <b>0.64x on a sphere</b> - a loss, because there the rediscretised
+    /// hierarchy already reached a small bottom and the twenty-seven point stencil is
+    /// pure overhead. What separates the cases is the size of the bottom level the
+    /// cheap hierarchy can reach, so that is what the choice is made on.
+    /// </remarks>
+    [Fact]
+    public void AThinSlabChoosesGalerkinAndAFatSphereDoesNot()
+    {
+        var slab = Chosen(Plates(0.0005));
+        var ball = Chosen(Sphere(0.00125));
+
+        output.WriteLine($"slabs  -> {(slab ? "galerkin" : "rediscretised")}");
+        output.WriteLine($"sphere -> {(ball ? "galerkin" : "rediscretised")}");
+
+        Assert.True(slab, "a thin slab leaves the whole fine grid as the bottom level");
+        Assert.False(ball, "a fat sphere already coarsens to a small bottom");
+    }
+
+    private static bool Chosen(Geometry3D geometry)
+    {
+        var grid = GeometryBuilder3D.BuildGrid(geometry);
+        var mask = GeometryBuilder3D.BuildMask(geometry, grid);
+
+        var (_, report) = PoissonSolver3D.Solve(
+            mask, geometry.Tolerance, maximumCycles: 200,
+            coarsen: GeometryBuilder3D.Coarsener(geometry));
+
+        return report.Galerkin;
+    }
+
+    /// <summary>Two 1 mm slabs across a 5 mm gap, small enough for a test suite.</summary>
+    private static Geometry3D Plates(double cell) => new(
+        -0.006, -0.006, -0.005, 0.006, 0.006, 0.005, cell,
+        [
+            Box("lower", -0.004, -0.004, -0.0035, 0.004, 0.004, -0.0025, 100.0),
+            Box("upper", -0.004, -0.004, 0.0025, 0.004, 0.004, 0.0035, 0.0),
+        ]);
+
+    private static CompiledElectrode3D Box(
+        string name, double x0, double y0, double z0, double x1, double y1, double z1, double v) =>
+        new()
+        {
+            Name = name,
+            Shape = Electrode3DShape.Box,
+            MinX = x0,
+            MinY = y0,
+            MinZ = z0,
+            MaxX = x1,
+            MaxY = y1,
+            MaxZ = z1,
+            Potential = v,
+        };
+
     /// <summary>Whether any fine node near a coarse one is fixed.</summary>
     /// <remarks>
     /// A coarse row reaches fine nodes up to three cells away through the product, so
