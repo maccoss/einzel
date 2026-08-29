@@ -603,50 +603,72 @@ not be the one that silently drops a part.** `IsDriven` exists on both electrode
 records precisely so the complete question has a short name. It is worth grepping
 for `.Potential` the next time something driven behaves as though it were earthed.
 
-## An ion that sits still cannot be integrated to the switch
+## A model that underflows at its sequencer switch, and two wrong diagnoses
 
-**This one is not fixed.** It is written down because the diagnosis went a long way and
-the next person should not start over.
+**This one is not fixed.** It is written down at this length because the diagnosis is
+half done and two plausible explanations have already been eliminated - which is worth
+more to whoever picks it up than the symptom alone.
 
-Writing a corpus example for pulsed extraction - two plates, both at zero for a 2 µs
-hold, then ±500 V - the run comes back `StepSizeUnderflow` at t = 1.9999999999978482 µs
-after 63 accepted steps, with the ion still exactly where it launched. The reported
-flight time is the hold and nothing else.
+A pulsed-extraction model - two plates, both at zero for a 2 us hold, then plus and minus
+500 V - comes back `StepSizeUnderflow` at t = 1.9999999999978482 us after 63 accepted
+steps, with the ion wherever it had got to. The reported flight time is the hold.
 
-What is established:
+### What is eliminated
 
-- **It is not the turning-point step cap.** That cap is already disabled when the field
-  is an `ITimeVaryingField`, and a sequenced solve is one.
-- **It is not the RF period cap.** `DrivenSolvedField.ShortestPeriodSeconds` returns 1.0
-  when there are no drives, so the period cap is 50 ms and never binds.
-- **It is the approach to the switch.** `NextSwitchAfter` returns a boundary strictly
-  after the current time, and the step is cut to `switchAt - time.Total`. The ion is at
-  rest with zero field, so nothing else advances the clock, and every step is the cut
-  one. It lands short and the next step is cut again.
-- **The shortfall is 2.15e-15 s on 2e-6 s, a relative 1.1e-9** - far larger than
-  round-off in a compensated accumulator, so the time is not merely failing to land
-  exactly. Sixty-three steps is also not the shape of a geometric halving from 2 µs.
+**Not the ion being at rest.** The first hypothesis was that an ion with exactly zero
+velocity makes the relative error norm unsatisfiable. Launching it at 1e-6 V, 1e-3 V and
+1 V of accelerating potential - creeping, slow, and moving 1.24 mm during the hold - all
+underflow at exactly 2.000000 us. Speed is irrelevant.
 
-What was tried and did not work: guarding the cut with `toSwitch < MinimumStep` and
-stepping over the boundary instead. It changed the reported uncertainty (the refinement
-levels began to disagree, 1.089 to 2.911 µs) without changing the outcome, which says
-some levels complete and others do not - so the failure is tolerance-dependent, and that
-points at step *rejection* rather than at the cut alone. **That change was reverted**:
-an unjustified edit to the integrator that carries every validated number in this engine
-is not worth leaving in for a hypothesis that did not hold.
+**Not the turning-point step cap**, which is already disabled when the field is an
+`ITimeVaryingField`, and a sequenced solve is one. **Not the RF period cap**, which is
+1.0 s when there are no drives.
 
-The collision path has the guard this one lacks - `if (toEvent < settings.MinimumStep)`
-applies the event rather than cutting the step to nothing - and its comment says exactly
-why: *"an ion drifting in 1 mbar of nitrogen underflowed after eight steps and 32 ns of a
-300 µs flight, and reported StepSizeUnderflow - a numerical failure standing in for
-ordinary physics."* The same sentence describes this. The fix is probably of the same
-shape and the diagnosis needs finishing first, with the step controller instrumented to
-show whether the steps are being rejected or accepted.
+**Not the switch, the zero first stage, or the stopping surface.**
+`SwitchCrossingTests` builds the same shape - a plate at zero for a microsecond, then at
+200 V - straight from `GeometryBuilder`, and crosses it in 123 steps both with and
+without a stopping surface ahead of the ion. So the sequencer's landing logic, the
+discontinuity itself, and the detector are all fine.
 
-**What it blocks:** the corpus has no pulsed-extraction example, which is the one Phase 4
-capability it does not exercise. Two real defects were found on the way to it and both
-are fixed (below), so the trip was not wasted - but the example itself is not shippable
-and was not shipped.
+**Not the facing pair either.** The failing model has two electrodes at plus and minus
+half the voltage, which share one basis solve because they are exact negatives, and in
+the first stage both are at zero - a pattern of nothing. The same arrangement crosses its
+switch in 112 steps and is then pushed into the upper plate, which is what a pair does to
+an ion on the axis between them.
+
+### A control that was not one
+
+The second wrong step is worth recording because it is the more embarrassing. Running the
+same model with **both** stages at 1000 V completed, and that looked like a control
+isolating "a change at the switch" as the trigger. It was not: with the field on from the
+start the ion reached the detector at 0.879 us and **never got to the switch at all**. A
+run that finishes early says nothing about crossing.
+
+*A control has to reach the thing being controlled for.* Checking that the successful run
+actually exercised the mechanism would have taken one glance at its flight time.
+
+### What is left
+
+Four candidates are gone: the ion's speed, the turning-point cap, the switch itself with
+its stopping surface, and the facing pair. What is left is the **model path**: the failing
+case goes through `FieldAssembly` from a full document and the passing ones use
+`GeometryBuilder.Build(solve).Field` directly. **That is the next experiment** - the same
+geometry through `FieldAssembly`. If it underflows, the composition wrapper is implicated
+and `DrivenSuperposedField` is where to look; if not, it is something else about that
+specific document, and the remaining differences are its cell size and its detector
+geometry.
+
+A speculative guard mirroring the collision path's `if (toEvent < MinimumStep)` was tried
+and **reverted**. It changed which refinement levels completed - the reported uncertainty
+went from 1.7e-12 to 0.911 us - without changing the outcome. An unjustified edit to the
+integrator that carries every validated number in this engine is not worth leaving in for
+a hypothesis that did not hold.
+
+### What it blocks
+
+The corpus has no pulsed-extraction example, which is the one Phase 4 capability it does
+not exercise. Two real defects were found on the way and both are fixed, so the trip paid
+for itself - but the example is not shippable and was not shipped.
 
 ## Reading the DC of an electrode that holds none, a fourth time
 

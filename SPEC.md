@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**740 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**743 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1129,15 +1129,19 @@ in a table.
    not the stages (the fourth sighting of one pattern, the third in that function), and a
    stage `set` to an expression being read as its absent literal zero.
 
-   **The example is not shippable**, because an ion held at rest through the first stage
-   underflows on the approach to the switch: `StepSizeUnderflow` at 1.999999999998 µs
-   after 63 steps, ion unmoved. Not the turning-point cap and not the period cap; the
-   shortfall is 1.1e-9 relative, which is far more than round-off, and a guard mirroring
-   the collision path's changed which refinement levels completed without changing the
-   outcome — so it is tolerance-dependent and probably about step rejection rather than
-   the cut alone. That speculative change was reverted. Full diagnosis in
-   `docs/lessons.md`; the next step is instrumenting the step controller to see whether
-   the steps near the switch are being rejected or accepted.
+   **The example is not shippable**: the run gives `StepSizeUnderflow` at
+   1.999999999998 µs after 63 steps. Two explanations have been eliminated. It is *not*
+   the ion being at rest — launching it at 1e-6, 1e-3 and 1 V all underflow at exactly
+   the same instant — and it is *not* the switch, the zero first stage or the stopping
+   surface: `SwitchCrossingTests` crosses the same shape in 123 steps, with and without a
+   surface ahead, built straight from `GeometryBuilder`. So the sequencer's landing logic
+   and the discontinuity itself are fine.
+
+   A run with both stages energised looked like a control and was not — it reached the
+   detector at 0.879 µs and never got to the switch. *A control has to reach the thing
+   being controlled for.* The next experiment is to put the same geometry through
+   `FieldAssembly` rather than `GeometryBuilder`, which is now the narrowest remaining
+   difference. Full diagnosis in `docs/lessons.md`.
 
    **This is the top of the list**: it is a defect rather than a gap, it blocks a Phase 4
    deliverable from being demonstrated, and the machinery it blocks (traps, pulsed

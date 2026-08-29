@@ -1019,16 +1019,20 @@ Two findings from Stage 1 that bear on the spec:
   should mean there is a design question, since the surface it would evaluate against is
   the one the stage is changing.
 
-  **Not fixed: an ion at rest cannot be integrated to the switch.** The run underflows at
-  t = 1.9999999999978482 µs after 63 steps with the ion where it launched. Established:
-  it is not the turning-point cap (already off for a time-varying field), not the RF
-  period cap (1.0 s when undriven), and the shortfall is 1.1e-9 *relative* — far more
-  than round-off, so the failure is not merely a compensated accumulator missing the
-  boundary. A guard mirroring the collision path's changed the refinement levels'
-  disagreement without changing the outcome, which says the failure is
-  tolerance-dependent and points at step *rejection*. **That change was reverted** rather
-  than left in the integrator that carries every validated number here. Full diagnosis in
-  `docs/lessons.md`.
+  **Not fixed, and two wrong diagnoses recorded with it.** The run gives
+  `StepSizeUnderflow` at 1.9999999999978482 µs after 63 steps. It is **not** the ion being
+  at rest — at 1e-6, 1e-3 and 1 V of launch potential it underflows at exactly the same
+  instant — and it is **not** the switch, the zero first stage or the stopping surface:
+  `SwitchCrossingTests` crosses the same shape in 123 steps, with and without a surface
+  ahead, built straight from `GeometryBuilder`. The sequencer's landing logic and the
+  discontinuity are fine.
+
+  A run with both stages energised *looked* like a control and was not: it reached the
+  detector at 0.879 µs and never got to the switch. **A control has to reach the thing
+  being controlled for.** The narrowest remaining difference is `FieldAssembly` versus
+  `GeometryBuilder`, and that is the next experiment. A speculative integrator guard was
+  tried and **reverted** rather than left in the code that carries every validated number
+  here. Full diagnosis in `docs/lessons.md`.
 
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
