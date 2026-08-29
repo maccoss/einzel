@@ -48,6 +48,10 @@ public static class PoissonSolver3D
     /// charge density enters as <c>-rho / epsilon0</c>.
     /// </param>
     /// <param name="initialGuess">A starting field, or null for zeros.</param>
+    /// <param name="galerkin">
+    /// Whether to build the coarse levels from the fine operator rather than from the
+    /// geometry, or null to decide from the geometry - which is the usual case.
+    /// </param>
     /// <returns>The potential, and how the solve went.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="mask"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The tolerance or the cycle ceiling is not positive.</exception>
@@ -57,7 +61,8 @@ public static class PoissonSolver3D
         int maximumCycles = 200,
         Func<Grid3D, DirichletMask3D>? coarsen = null,
         ScalarField3D? initialGuess = null,
-        ScalarField3D? source = null)
+        ScalarField3D? source = null,
+        bool? galerkin = null)
     {
         ArgumentNullException.ThrowIfNull(mask);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(tolerance);
@@ -98,16 +103,37 @@ public static class PoissonSolver3D
 
         if (initial == 0.0)
         {
-            return (potential, new SolveReport(true, 0, 0.0, 0.0, 0.0));
+            return (potential, new SolveReport(true, 0, 0.0, 0.0, 0.0)
+            {
+                CoarsestNodes = grid.NodeCount,
+            });
         }
 
         var current = initial;
         var cycles = 0;
         var stalled = 0;
+        var work = new CycleWork();
+
+        // Built once, not per cycle: the operator does not change while the solve runs,
+        // and forming it is the expensive part of using it.
+        var hierarchy = (galerkin ?? WorthGalerkin(mask))
+            ? GalerkinHierarchy3D.Build(
+                OperatorStencil3D.Assemble(mask, potential),
+                mask,
+                0.5 * grid.SpacingX * grid.SpacingX)
+            : null;
 
         while (cycles < maximumCycles && current > tolerance * initial)
         {
-            Cycle(potential, rightHandSide, mask, coarsen);
+            if (hierarchy is null)
+            {
+                Cycle(potential, rightHandSide, mask, coarsen, work, 0);
+            }
+            else
+            {
+                GalerkinCycle(potential, rightHandSide, mask, hierarchy, work);
+            }
+
             cycles++;
 
             var next = Residual(potential, rightHandSide, mask, residual);
@@ -136,7 +162,33 @@ public static class PoissonSolver3D
 
         var factor = cycles > 0 ? Math.Pow(current / initial, 1.0 / cycles) : 0.0;
 
-        return (potential, new SolveReport(current <= tolerance * initial, cycles, initial, current, factor));
+        return (
+            potential,
+            new SolveReport(current <= tolerance * initial, cycles, initial, current, factor)
+            {
+                Levels = hierarchy?.Levels ?? work.Levels,
+                Sweeps = work.Sweeps + (hierarchy?.Sweeps ?? 0L),
+                CoarsestNodes = hierarchy is null ? work.CoarsestNodes : hierarchy.Coarsest.NodeCount,
+                Galerkin = hierarchy is not null,
+            });
+    }
+
+    /// <summary>
+    /// What a solve did, as opposed to how many cycles it took to do it.
+    /// </summary>
+    /// <remarks>
+    /// Threaded through the recursion rather than derived afterwards, because how far
+    /// a cycle descends depends on the geometry at every level and there is no way to
+    /// work it out from the outside without repeating the decision - and a second
+    /// implementation of a decision is a second decision.
+    /// </remarks>
+    private sealed class CycleWork
+    {
+        public int Levels { get; set; }
+
+        public long Sweeps { get; set; }
+
+        public long CoarsestNodes { get; set; }
     }
 
     /// <summary>Smoothing sweeps before coarsening and after correcting.</summary>
@@ -166,16 +218,23 @@ public static class PoissonSolver3D
     /// The fine operator was never wrong. The bottom of the hierarchy was.
     /// </para>
     /// </remarks>
-    private static void SolveCoarsest(
+    /// <summary>Relaxes the bottom level, and returns how many sweeps that took.</summary>
+    /// <remarks>
+    /// The sweep count is returned rather than discarded because on a geometry that
+    /// cannot coarsen this <em>is</em> the solve: the whole V-cycle reduces to this
+    /// call on the finest grid, and a "cycle" that reports as one unit of work is
+    /// several hundred sweeps over the full mesh.
+    /// </remarks>
+    private static int SolveCoarsest(
         ScalarField3D potential, ScalarField3D rightHandSide, DirichletMask3D mask)
     {
-        var work = new ScalarField3D(mask.Grid);
+        var scratch = new ScalarField3D(mask.Grid);
 
-        var initial = Residual(potential, rightHandSide, mask, work);
+        var initial = Residual(potential, rightHandSide, mask, scratch);
 
         if (initial == 0.0)
         {
-            return;
+            return 0;
         }
 
         for (var sweep = 0; sweep < CoarsestSweeps; sweep++)
@@ -185,11 +244,13 @@ public static class PoissonSolver3D
             // Checked every few sweeps rather than every one: a residual sweep costs
             // about what a smoothing sweep does, and doubling the price of the
             // bottom level to stop a little earlier is not a trade worth making.
-            if (sweep % 8 == 7 && Residual(potential, rightHandSide, mask, work) <= 1e-3 * initial)
+            if (sweep % 8 == 7 && Residual(potential, rightHandSide, mask, scratch) <= 1e-3 * initial)
             {
-                return;
+                return sweep + 1;
             }
         }
+
+        return CoarsestSweeps;
     }
 
     /// <summary>
@@ -250,11 +311,115 @@ public static class PoissonSolver3D
     /// </remarks>
     private const double ResolvedBy = 1.0;
 
+    /// <summary>
+    /// Whether rediscretising the coarse levels would leave the bottom of the V too big.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Neither hierarchy dominates, so the solver works out which it is looking at
+    /// rather than being told.</b> The rediscretised one is cheap to build and stops
+    /// coarsening once a coarse cell would exceed the smallest electrode - a physical
+    /// size that does not move when the mesh is refined, so on a thin electrode it can
+    /// stop immediately and leave the whole fine grid as the bottom level. The Galerkin
+    /// one always reaches a few dozen nodes, and pays an assembly proportional to the
+    /// fine grid for it.
+    /// </para>
+    /// <para>
+    /// Measured both ways on the same geometries, wall clock:
+    /// </para>
+    /// <list type="table">
+    /// <item><description>
+    /// two 1 mm slabs, 129 cubed: 45 cycles and 160 s rediscretised against 13 cycles
+    /// and 13 s - <b>12x</b>, and the bottom level goes from 274,625 nodes to 27
+    /// </description></item>
+    /// <item><description>
+    /// four rods, 65 cubed: 31 cycles and 5.2 s against 8 and 1.1 s - <b>4.6x</b>
+    /// </description></item>
+    /// <item><description>
+    /// a 2 mm sphere, 65 cubed: 13 cycles and 1.1 s against 14 and 1.7 s -
+    /// <b>0.64x</b>, a loss
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// The sphere is the case where the rediscretised hierarchy already worked, and
+    /// there the twenty-seven point stencil and the assembly are pure overhead. What
+    /// separates it from the others is the size of the bottom level it reaches - 4,913
+    /// nodes against 35,937 and 274,625 - so that is what this asks about. The threshold
+    /// is where the bottom relaxation stops being cheap, and it is a measured boundary
+    /// rather than a derived one.
+    /// </para>
+    /// </remarks>
+    private static bool WorthGalerkin(DirichletMask3D mask)
+    {
+        var at = mask.Grid;
+
+        while (at.CanCoarsen && Representable(at.Coarsen(), mask))
+        {
+            at = at.Coarsen();
+        }
+
+        return at.NodeCount > RediscretisedBottomLimit;
+    }
+
+    /// <summary>
+    /// How many nodes the rediscretised hierarchy may leave at the bottom before the
+    /// Galerkin one is worth its assembly.
+    /// </summary>
+    /// <remarks>
+    /// Twenty thousand: above it the bottom level is relaxed by up to four hundred
+    /// sweeps over a grid that does not shrink when the mesh is refined, which is the
+    /// cost multigrid exists to remove. Below it the bottom solve is a few million node
+    /// updates and the cheaper hierarchy wins.
+    /// </remarks>
+    private const int RediscretisedBottomLimit = 20_000;
+
+    /// <summary>
+    /// One V-cycle whose finest level is the geometry and whose coarse levels are not.
+    /// </summary>
+    /// <remarks>
+    /// <b>The finest level is untouched</b>: it smooths against the mask, with its cut
+    /// cells, exactly as it always did - that is where the accuracy comes from and none
+    /// of it is in question here. What changes is only what happens below, and the
+    /// change is that the coarse problem is the same problem coarsened rather than a
+    /// different one rediscretised.
+    /// </remarks>
+    private static void GalerkinCycle(
+        ScalarField3D potential,
+        ScalarField3D rightHandSide,
+        DirichletMask3D mask,
+        GalerkinHierarchy3D hierarchy,
+        CycleWork work)
+    {
+        for (var sweep = 0; sweep < PreSmooth; sweep++)
+        {
+            Smooth(potential, rightHandSide, mask);
+        }
+
+        work.Sweeps += PreSmooth;
+
+        var residual = new ScalarField3D(mask.Grid);
+
+        Residual(potential, rightHandSide, mask, residual);
+
+        var correction = hierarchy.Correct(residual, mask);
+
+        GalerkinHierarchy3D.Apply(correction, potential, mask);
+
+        for (var sweep = 0; sweep < PostSmooth; sweep++)
+        {
+            Smooth(potential, rightHandSide, mask);
+        }
+
+        work.Sweeps += PostSmooth;
+    }
+
     private static void Cycle(
         ScalarField3D potential,
         ScalarField3D rightHandSide,
         DirichletMask3D mask,
-        Func<Grid3D, DirichletMask3D>? coarsen)
+        Func<Grid3D, DirichletMask3D>? coarsen,
+        CycleWork work,
+        int depth)
     {
         var grid = mask.Grid;
 
@@ -263,9 +428,13 @@ public static class PoissonSolver3D
             Smooth(potential, rightHandSide, mask);
         }
 
+        work.Sweeps += PreSmooth;
+
         if (!grid.CanCoarsen || !Representable(grid.Coarsen(), mask))
         {
-            SolveCoarsest(potential, rightHandSide, mask);
+            work.Levels = Math.Max(work.Levels, depth);
+            work.CoarsestNodes = grid.NodeCount;
+            work.Sweeps += SolveCoarsest(potential, rightHandSide, mask);
             return;
         }
 
@@ -278,7 +447,13 @@ public static class PoissonSolver3D
         var coarseResidual = Restrict(residual, coarseGrid, coarseMask);
         var correction = new ScalarField3D(coarseGrid);
 
-        Cycle(correction, coarseResidual, coarseMask, coarsen is null ? null : g => coarsen(g));
+        Cycle(
+            correction,
+            coarseResidual,
+            coarseMask,
+            coarsen is null ? null : g => coarsen(g),
+            work,
+            depth + 1);
 
         Prolong(correction, potential, mask);
 
@@ -286,6 +461,8 @@ public static class PoissonSolver3D
         {
             Smooth(potential, rightHandSide, mask);
         }
+
+        work.Sweeps += PostSmooth;
     }
 
     private static void Smooth(ScalarField3D potential, ScalarField3D rightHandSide, DirichletMask3D mask)

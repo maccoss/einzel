@@ -46,7 +46,7 @@ public sealed class CostAndProvenanceTests : IDisposable
     }
 
     /// <summary>A drift tube at a declared pressure, driven by a uniform field.</summary>
-    private static string Tube(double pressureMbar) => $$"""
+    private static string Tube(double pressureMbar, string densityStep = "") => $$"""
     {
       "schemaVersion": "0.4",
       "name": "tube",
@@ -68,7 +68,7 @@ public sealed class CostAndProvenanceTests : IDisposable
       },
       "transport": {
         "mode": "diffusion",
-        "maximumFlightTime": { "value": 400, "unit": "us" },
+        "maximumFlightTime": { "value": 400, "unit": "us" },{{densityStep}}
         "densityGrid": {
           "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 40, "unit": "mm" },
           "minY": { "value": -6, "unit": "mm" }, "maxY": { "value": 6, "unit": "mm" },
@@ -84,12 +84,12 @@ public sealed class CostAndProvenanceTests : IDisposable
     }
     """;
 
-    private string Write(string name, double pressureMbar)
+    private string Write(string name, double pressureMbar, string densityStep = "")
     {
         Assert.Equal(0, Run("init", _root).ExitCode);
 
         var path = Path.Combine(_root, "models", $"{name}.json");
-        File.WriteAllText(path, Tube(pressureMbar));
+        File.WriteAllText(path, Tube(pressureMbar, densityStep));
 
         return path;
     }
@@ -124,6 +124,44 @@ public sealed class CostAndProvenanceTests : IDisposable
         // And it says it included both limits, rather than leaving a reader to guess
         // whether the number is a bound or a prediction.
         Assert.Contains("Both stability limits are included", basis, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheEstimatedStepCountIsExactForAnImplicitRunToo()
+    {
+        // The exactness above is what makes the estimate worth gating on, and adding a
+        // branch to the cost model is exactly how such a property gets lost - the
+        // estimate would keep reporting the explicit step count while the run took a
+        // sixty-fourth as many, and it would look conservative rather than wrong.
+        //
+        // Both sides multiply the same stability limit by the same declared gain, so
+        // this stays exact for the same reason the explicit one does.
+        var model = Write(
+            "implicit-tube",
+            1.0,
+            """
+
+        "densityStep": { "scheme": "implicit", "gain": 64 },
+""");
+
+        var (estimateCode, estimate, _) = Run("estimate", model, "--json");
+        Assert.Equal(0, estimateCode);
+
+        var basis = JsonDocument.Parse(estimate).RootElement.GetProperty("basis").GetString()!;
+
+        var (runCode, run, _) = Run("run", model, "--json");
+        Assert.Equal(0, runCode);
+
+        var actual = Steps(run);
+
+        Assert.Contains($"about {actual:N0} steps", basis, StringComparison.Ordinal);
+
+        // And it says what it did rather than reporting a step count with no scheme
+        // attached: the sweeps are a multiplier on the work and an assumption, and a
+        // reader has to be able to tell that from the exact part.
+        Assert.Contains("stepped implicitly at 64x", basis, StringComparison.Ordinal);
+        Assert.Contains("Gauss-Seidel sweeps", basis, StringComparison.Ordinal);
+        Assert.Contains("not knowable in advance", basis, StringComparison.Ordinal);
     }
 
     [Fact]

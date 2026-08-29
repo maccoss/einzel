@@ -1,0 +1,203 @@
+{
+  "schemaVersion": "0.5",
+  "name": "parallel-plate-gap-3d",
+  "description": "An ion released at rest between two square plates and accelerated across the gap, with the field SOLVED IN THREE DIMENSIONS rather than declared. Two 40 mm plates 10 mm apart at 1000 V give 100 kV/m between them, so m/z 500 crosses the middle 8 mm in sqrt(2 d m / (q E)). Nothing here is symmetric enough to reduce to a plane or an axis: a square plate in a cubic box is a genuinely three-dimensional solve, which is the point of having it in the corpus. The expected number is the same arithmetic the analytic accelerating-gap example uses, so what is being checked is the SOLVER rather than the integrator.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "parameters": {
+    "gap": {
+      "value": 10.0,
+      "unit": "mm",
+      "description": "Distance between the facing plate surfaces. The closed form uses THIS, not the distance between plate centres - putting a 1 mm plate's centre on the gap boundary makes the real gap 9 mm and the field 11.111% high, which is exactly what a first version of this measured."
+    },
+    "plateHalfWidth": {
+      "value": 20.0,
+      "unit": "mm",
+      "description": "Half the plate edge. Four times the gap, which is what it takes for the field on the axis to reach V/d to a part in a hundred thousand - a smaller plate is measurably not an infinite capacitor."
+    },
+    "plateThickness": {
+      "value": 1.0,
+      "unit": "mm"
+    },
+    "behind": {
+      "value": 10.0,
+      "unit": "mm",
+      "description": "How far the grounded domain boundary sits behind each plate. The boundary is a conductor too, and putting it close to the plate is putting a third electrode in the problem."
+    },
+    "appliedVolts": {
+      "value": 1000.0,
+      "unit": "V",
+      "description": "The potential DIFFERENCE across the gap, applied as plus and minus half of it. Splitting it matters and is not cosmetic: the grounded domain boundary is a third electrode, so holding one plate at zero makes the boundary an extension of that plate and the problem asymmetric about the mid-plane even though the geometry is not. That asymmetry is worth 0.31% of the field at the ends of the flight; splitting the voltage takes it to 0.0005%, and both figures are mesh-converged."
+    },
+    "flightHalf": {
+      "value": 4.0,
+      "unit": "mm",
+      "description": "Half the flown distance. Kept a millimetre clear of both surfaces so the ion neither starts inside metal nor ends in the fringe of the far plate."
+    },
+    "halfGap": {
+      "expression": "gap / 2",
+      "unit": "mm"
+    },
+    "outerZ": {
+      "expression": "halfGap + plateThickness + behind",
+      "unit": "mm"
+    },
+    "span": {
+      "expression": "plateHalfWidth + behind",
+      "unit": "mm"
+    }
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "0",
+        "0",
+        "-flightHalf"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        0,
+        0,
+        1
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved3d",
+      "solve3d": {
+        "minX": {
+          "expression": "-span",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-span",
+          "unit": "mm"
+        },
+        "minZ": {
+          "expression": "-outerZ",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "span",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "span",
+          "unit": "mm"
+        },
+        "maxZ": {
+          "expression": "outerZ",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "value": 1.0,
+          "unit": "mm"
+        },
+        "tolerance": 1e-10,
+        "electrodes": [
+          {
+            "name": "lower",
+            "shape": "box",
+            "minX": {
+              "expression": "-plateHalfWidth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-plateHalfWidth",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-halfGap - plateThickness",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "plateHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "plateHalfWidth",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "appliedVolts / 2",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "upper",
+            "shape": "box",
+            "minX": {
+              "expression": "-plateHalfWidth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-plateHalfWidth",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "plateHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "plateHalfWidth",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "halfGap + plateThickness",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-appliedVolts / 2",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "0",
+        "0",
+        "flightHalf"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        0,
+        0,
+        -1
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 10.0,
+      "unit": "us"
+    }
+  }
+}

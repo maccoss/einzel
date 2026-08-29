@@ -636,6 +636,74 @@ actually caught them were:
   locates the linear boundary to a worst residual of 1.2e-3 and needs no journey at
   all. When a measurement is amplitude-dependent and the thing being measured is not,
   suspect the measurement rather than adding controls to it.
+- **A stability test cannot see a wrong operator, and a positivity test cannot
+  either.** Backward Euler on the Scharfetter-Gummel coefficients is unconditionally
+  stable and stays non-negative at every Gauss-Seidel sweep, and both properties
+  survive a genuinely wrong assembly - gathering a neighbour with *this* cell's outward
+  coefficient instead of its inward one passed every stability and non-negativity test
+  in the suite. What caught it was the **Boltzmann equilibrium**, which the scheme is
+  built to hold exactly and which moved by factors of 6 to 18. The rule: when a scheme
+  has an exact fixed point, the test that matters is that it sits there - the
+  well-behavedness tests are satisfied by too many wrong schemes to discriminate.
+
+- **A convergence study needs the packet still in the domain.** A first version of the
+  implicit order test compared densities after a window long enough for the packet to
+  have been collected. What remained was a residue, and the relative L2 difference
+  between two nearly empty fields came out at 39 to 71 per cent and scaled with nothing.
+  It reads as a broken scheme. The same measurement over a window the packet has not
+  left is clean. **A norm over a field that is mostly gone is a norm over what is left.**
+
+- **The reference in a convergence study carries its own error, so the linear quantity
+  is not what it looks like.** Comparing an implicit run at gain g against an explicit
+  reference, the two are (g - 1) base steps apart, not g - so what must be constant is
+  error/(g - 1), and dividing by g makes a correct first-order scheme look like it is
+  converging at the wrong rate. Only visible because the gains spanned a factor of
+  eight; at two gains either reading fits.
+
+- **Conservation is not positivity, and a conservation test passes with positivity
+  broken.** The quadratic B-spline deposit clamps its three-node stencil onto the grid
+  at a boundary; leaving the *offset* unclamped with it makes the middle weight
+  `0.75 - u^2` negative — at the very edge the weights are **1.125, −0.25, 0.125**. They
+  sum to one, so charge is exact and every existing test was satisfied; a positive
+  macroparticle was depositing a negative density, and the gather shares those weights so
+  the self-field was built from it. **The argument that let it through was written down
+  in the commit message**: the weights "sum to exactly one for any offset, which is what
+  lets the index be clamped at a face without losing charge". True, and it settles a
+  different question than the one that mattered. When a property is invoked to license a
+  shortcut, check that it is the property the shortcut needs.
+
+- **A reference method has approximations in it too, and comparing against it at
+  default settings compares two of them.** Particle-in-cell was reported as agreeing
+  with the direct pairwise sum "to a few per cent". Both numbers were right and the
+  comparison was not meaningful: the sum softens at the mean macroparticle spacing and
+  the grid smooths at the cell, so what was being measured was the difference between
+  two smoothing lengths that happened to be comparable. Taking the sum to its own point
+  limit (softening / 100, worth **3.5%**) and setting the cell to the mean spacing gives
+  **0.08%** - a much stronger claim, and one that says what makes them agree. **Before
+  quoting an agreement, ask what each side approximates and whether the two can be set
+  to the same thing.**
+
+- **Refinement is not always an improvement, and the case where it is not is the one
+  someone will walk into.** Halving the particle-in-cell cell size past the mean
+  macroparticle spacing makes the answer *worse* - -15.1%, -4.2%, +0.08%, +4.4% across a
+  16x range, with an optimum in the middle. Raising a resolution number is what a reader
+  does when they want a better answer, and here it silently buys a worse one. Two things
+  follow: the optimum has to be *reported* rather than left to be discovered, and a
+  "converges under refinement" test would have passed on the wrong side of it. Checked
+  by control rather than asserted - holding the cell fixed and raising the macroparticle
+  count took the error from 4.42% to 1.55% to 0.93%, which is what makes it a sampling
+  artefact rather than a resolution one.
+
+- **An argument that was right about accuracy and wrong about cost.** ACC-3 forbids
+  trilinear interpolation on a trajectory path. Particle-in-cell's gather looked
+  exempt - it is a self-consistent field whose accuracy the deposit already bounds,
+  and the gather must share the deposit's weights or the self-force does not cancel -
+  so the first version used it. The reasoning holds; what it missed is that a
+  trilinear force is kinked at every cell face and an embedded Runge-Kutta estimator
+  reads a kink as error. **The packet took 27 times the integrator steps**, which no
+  accuracy argument would have predicted. A quadratic B-spline is smooth, keeps the
+  deposit/gather symmetry, and takes it back to 2x. When exempting something from a
+  smoothness rule, ask what else reads the derivative.
 - **Factorial experiments over code reading.** Two binary switches and four runs
   localised a divergence to a feature nobody suspected, faster than reading the
   diff would have.

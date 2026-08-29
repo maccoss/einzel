@@ -92,6 +92,79 @@ public sealed class CloudInCellTests(ITestOutputHelper output)
         Assert.Equal(expected, measured, 1e-12 * expected);
     }
 
+    /// <summary>
+    /// No node ever receives a negative share of a positive particle's charge.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Conservation is not positivity, and the conservation test passes with this
+    /// broken.</b> The quadratic weights sum to one for any offset, which is what makes
+    /// charge exact - and it is also what makes the failure invisible to every test that
+    /// checks charge. Within half a cell of a boundary the three-node stencil has to be
+    /// clamped onto the grid, and if the offset is left unclamped with it the middle
+    /// weight <c>0.75 - u^2</c> goes negative: at the very edge the three weights are
+    /// <b>1.125, -0.25, 0.125</b>, summing to one.
+    /// </para>
+    /// <para>
+    /// A positive macroparticle depositing a negative density is not a density, and the
+    /// gather shares these weights, so the self-field near the box edge is built from
+    /// it. Swept across the whole axis rather than sampled in the middle, because the
+    /// middle is exactly where this cannot happen.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoDepositWeightIsEverNegative()
+    {
+        var grid = Grid3D.OverBox(0.0, 0.0, 0.0, 0.008, 0.008, 0.008, 0.001);
+
+        const double Charge = 1.0e-15;
+
+        // The deposit stores -rho/epsilon0, so a POSITIVE charge makes every node it
+        // touches negative. A weight that went negative would show up here as a
+        // positive node, which is what is being looked for.
+        var worst = 0.0;
+        var worstAt = 0.0;
+        var sums = 0.0;
+
+        // Every position the deposit accepts, edges included: Inside() admits the whole
+        // closed range, so a particle exactly on the boundary is a case that happens.
+        for (var step = 0; step <= 2000; step++)
+        {
+            var t = step / 2000.0;
+
+            var at = new Vec3(
+                grid.OriginX + (t * (grid.CountX - 1) * grid.SpacingX),
+                0.004,
+                0.004);
+
+            var deposit = CloudInCell.Charge(grid, [at], [Charge], CloudShape.Quadratic);
+
+            var highest = 0.0;
+
+            foreach (var value in deposit.Source.Values)
+            {
+                highest = Math.Max(highest, value);
+            }
+
+            if (highest > worst)
+            {
+                worst = highest;
+                worstAt = t * (grid.CountX - 1);
+            }
+
+            sums = Math.Max(sums, Math.Abs((TotalCharge(deposit.Source) / Charge) - 1.0));
+        }
+
+        output.WriteLine($"worst wrong-signed node {worst:E3} at x = {worstAt:F3} cells");
+        output.WriteLine($"worst charge error      {sums:E3}");
+
+        // The property the sum-to-one test cannot see.
+        Assert.True(worst <= 0.0, $"a node took {worst:E3} of the wrong sign");
+
+        // And charge is still exact, so the fix did not buy positivity with conservation.
+        Assert.True(sums < 1e-12, $"charge off by {sums:E3}");
+    }
+
     [Fact]
     public void ChargeThatLeavesTheGridIsCountedRatherThanClamped()
     {

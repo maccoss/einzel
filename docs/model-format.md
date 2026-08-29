@@ -552,6 +552,54 @@ interpolate within a step.
 Asking for it is a regime violation with a distinct exit code, not a silent
 substitution.
 
+### How the density is stepped
+
+```json
+"transport": {
+  "mode": "diffusion",
+  "densityStep": { "scheme": "implicit", "gain": 64 }
+}
+```
+
+`explicit`, the default, is forward Euler, bounded by the faster of two limits:
+diffusion, and the Courant condition on how fast the drift crosses a cell. `implicit`
+is backward Euler, which has **no stability limit** and charges Gauss-Seidel sweeps
+instead. `gain` is how many times the explicit stability limit to step, and is refused
+against the explicit scheme rather than ignored — that scheme cannot take a longer step,
+and honouring half a block would leave an author concluding the solver is slow rather
+than that the request went nowhere.
+
+**Which to use is a property of the model, which is why it is in the document.** The
+Gauss-Seidel iteration's difficulty is set by the *diffusive* part of the operator, so a
+step long by Courant's standard but still short by diffusion's converges in about three
+sweeps — while a problem already at its diffusion limit needs tens and comes out slower
+than stepping explicitly.
+
+The driven case is what this is for. A ponderomotive well's gradient is steepest at an
+electrode edge, which is exactly where the density is almost zero, so the explicit step
+is set by a region where nothing is happening: on the shipped ion funnel at 2 mbar,
+195 ps against a diffusion limit of 747 ns.
+
+| gain | steps | sweeps/step | speedup | error |
+| --- | --- | --- | --- | --- |
+| 4 | 6,404 | 3.0 | 1.4× | 0.008% |
+| 16 | 1,601 | 3.0 | 4.7× | 0.028% |
+| 64 | 401 | 3.0 | **10.8×** | **0.108%** |
+| 256 | 101 | 4.0 | 17.7× | 0.427% |
+| 1024 | 26 | 4.9 | 21.4× | 1.673% |
+
+**Backward Euler is first order, so the error is linear in the gain** — which is what
+the table shows, and there is no default above one because what gain is acceptable is an
+accuracy question and nothing here measures the accuracy of a step it has not taken. A
+run reports the step it took, the sweeps it took per step, and the fraction of the
+explicit work it did, whether or not any of those crosses a threshold; and
+`diffusion.implicit-not-paying` says so when the sweeps cost more than the step saved.
+
+**Positivity survives a partial solve**, which is what makes the scheme usable at all:
+every term in the Gauss-Seidel update is non-negative, so the iterate is a valid density
+however far from converged it is. What an unconverged solve costs is *conservation*, and
+`diffusion.implicit-unconverged` reports the residual the ledger is closed to.
+
 ### Space charge
 
 ```json
@@ -566,8 +614,47 @@ a run says which it is either way — the screening estimate is reported whether
 not it crosses a threshold.
 
 `direct` sums every pair. It is the reference method SC-1 names, and it is a
-string rather than a flag because particle-in-cell will be a third value and a
-boolean would have to be replaced rather than extended.
+string rather than a flag because there is a third value and a boolean would have
+had to be replaced rather than extended.
+
+`pic` deposits the packet's charge onto its own grid, solves Poisson once, and
+gathers the field back. It costs one solve plus O(N) rather than O(N²) — but the
+solve is paid for whatever the cloud, so **the crossing is near 850 trajectories**
+and below that the reference method is simply faster.
+
+```json
+"transport": {
+  "spaceCharge": "pic",
+  "spaceChargeGrid": { "nodes": 32, "padding": 4.0, "refreshTolerance": 0.05 }
+}
+```
+
+Every field is optional and every default is shown. A `spaceChargeGrid` declared
+against any other method is **refused rather than ignored**, the same rule an
+unrecognised property follows: a document that configures a solve it is not
+running has been misunderstood by its author.
+
+**`nodes` has an optimum rather than a floor**, and it is the one thing to know
+before turning it. The grid smooths the mutual force at the scale of one cell, so
+too coarse under-pushes and too fine stops representing a density at all —
+measured against the direct sum taken to its own point limit at **−15.1%, −4.2%,
++0.08% and +4.4%** for cells of 3.68, 1.84, 0.92 and 0.46 mean macroparticle
+spacings. Raising it past the match buys a worse answer *and* a cubic cost, so
+`spacecharge.grid-resolution` reports the ratio on every run whether or not it
+crosses a threshold, and names the node count that would match.
+
+`padding` sets the box half-width in packet RMS radii. A packet in flight is in
+free space and this puts it in an earthed box; centring the box on the packet is
+what makes that cheap, since a centred distribution induces almost no field at its
+own centre.
+
+`refreshTolerance` is the fractional change in RMS radius that forces a new solve.
+The grid travels with the packet, so uniform translation is **exact** (1e-11 across
+250 mm) and free — which is why the criterion is written on shape rather than on a
+step count, shape being the only thing that ages. Tightening it converges:
+**+12.68%, +6.16%, +1.01%, −0.54%** at 0.30, 0.15, 0.05 and 0.02, always wide at
+the coarse end because a field held across a refresh is the field of a *denser*
+packet than the one being pushed.
 
 **The weighting is the cloud's own two fields.** `ions` is how many trajectories
 are computed; `population` is how many ions are physically present. Each computed
@@ -577,10 +664,15 @@ applied field is bit-identical to the unweighted case, and only the pairwise sum
 notices. Lowering `ions` while keeping `population` is how a dense packet becomes
 affordable, and it is a declared approximation rather than a hidden one.
 
-**The cost is quadratic in `ions`**, and `einzel estimate` says so in words as
-well as in a number, because the linear intuition is exactly wrong: 150
+**The direct sum's cost is quadratic in `ions`**, and `einzel estimate` says so in
+words as well as in a number, because the linear intuition is exactly wrong: 150
 trajectories through the shipped trap took 87 seconds and 2,000 would take about
-four hours. Trajectory integration is otherwise excluded from the estimate — its
+four hours. **The grid's is linear in `ions` and cubic in `nodes`** — 200
+macroparticles take 0.99 s at 16 nodes and 124 s at 128 — so the estimate costs
+both in the same currency and states their ratio *at this cloud* rather than the
+asymptotics. Quoting the asymptotics alone would recommend the approximation
+everywhere, including the majority of clouds where it loses to the method it
+approximates. Trajectory integration is otherwise excluded from the estimate — its
 cost depends on a path that depends on a field not yet solved — so this is the one
 transport cost stated in advance.
 
@@ -591,7 +683,7 @@ each would produce a result that looks like the one asked for:
 | --- | --- |
 | Fewer than two trajectories | nobody to push on |
 | A cloud with no spatial spread | an unbounded self-field, not a large one |
-| A declared gas | the packet advances in lockstep and has no collision hook, so the gas would take no part in the run |
+| A declared gas | either method advances the packet in lockstep and has no collision hook, so the gas would take no part in the run |
 
 What it gives up, stated rather than discovered: the packet integrator **cannot
 land exactly on a declared field discontinuity**, because a shared step cannot land

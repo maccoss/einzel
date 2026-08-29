@@ -27,7 +27,7 @@ namespace Einzel.Transport.Interaction;
 /// makes the substitution honest.
 /// </para>
 /// </remarks>
-public sealed class CoulombInteraction
+public sealed class CoulombInteraction : ISelfField
 {
     /// <summary>Coulomb's constant, 1/(4 pi eps0), in N m^2 / C^2.</summary>
     public const double CoulombConstantSi = 1.0 / (4.0 * Math.PI * SpaceCharge.PermittivitySi);
@@ -66,8 +66,15 @@ public sealed class CoulombInteraction
         SofteningLengthSi = softeningLengthSi;
     }
 
-    /// <summary>Real ions represented by one computed trajectory.</summary>
+    /// <inheritdoc/>
     public double Weight { get; }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The reference SC-1 asks an approximate method to be validated against, so it
+    /// says so rather than naming an implementation.
+    /// </remarks>
+    public string Method => "direct";
 
     /// <summary>The Plummer softening length, in metres.</summary>
     /// <remarks>

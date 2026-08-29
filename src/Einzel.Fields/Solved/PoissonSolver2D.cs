@@ -15,7 +15,58 @@ public sealed record SolveReport(
     int Cycles,
     double InitialResidual,
     double FinalResidual,
-    double ConvergenceFactor);
+    double ConvergenceFactor)
+{
+    /// <summary>How many coarse levels the V-cycle actually descended.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Without this a cycle count means different amounts of work in different
+    /// runs, and the numbers get compared anyway.</b> Coarsening stops once a coarse
+    /// cell would exceed the smallest electrode dimension, and that is a
+    /// <em>physical</em> size - so it does not move when the mesh is refined. A
+    /// geometry with a thin electrode can descend zero levels, in which case the whole
+    /// solve is relaxation on the finest grid and a "cycle" contains hundreds of
+    /// sweeps rather than four.
+    /// </para>
+    /// <para>
+    /// Measured: two 1 mm slabs in a 32 mm box descend <b>0 levels at a 0.5 mm cell
+    /// and 1 at 0.25 mm</b>, while the same box with no interior electrode at all
+    /// descends 5 and 6. So the grid-independent cycle count this solver is documented
+    /// as having is a property of the boundary-only case, and every device geometry in
+    /// the library is running a one- to three-level method.
+    /// </para>
+    /// </remarks>
+    public int Levels { get; init; }
+
+    /// <summary>Smoothing sweeps over every level, summed across all cycles.</summary>
+    /// <remarks>
+    /// The unit of work a cycle count is usually taken to stand for, reported because
+    /// here it does not: at zero levels a cycle is up to four hundred sweeps and at
+    /// several it is a handful per level. Two runs whose cycle counts differ by eight
+    /// can differ by a factor of a hundred in sweeps, in the other direction.
+    /// </remarks>
+    public long Sweeps { get; init; }
+
+    /// <summary>Nodes on the coarsest level the cycle reached.</summary>
+    /// <remarks>
+    /// The quantity that says whether this is multigrid. A true V-cycle bottoms out at
+    /// a handful of nodes whatever the fine mesh; here the bottom level is pinned to a
+    /// physical cell size, so its node count is <em>fixed in absolute terms</em> and
+    /// refining the fine grid does not make the bottom solve any cheaper. That is
+    /// exactly the cost multigrid exists to remove.
+    /// </remarks>
+    public long CoarsestNodes { get; init; }
+
+    /// <summary>Whether the coarse levels came from the fine operator.</summary>
+    /// <remarks>
+    /// Neither hierarchy dominates - the rediscretised one is cheap to build and can
+    /// stop coarsening immediately on a thin electrode, and the Galerkin one always
+    /// reaches a few dozen nodes but pays an assembly for it. The solver picks from the
+    /// geometry, so this says which it picked rather than leaving a reader to infer it
+    /// from a level count.
+    /// </remarks>
+    public bool Galerkin { get; init; }
+}
 
 /// <summary>
 /// Geometric multigrid for Laplace's equation on a uniform Cartesian grid.
@@ -72,6 +123,23 @@ public static class PoissonSolver2D
     /// </para>
     /// </remarks>
     private const int MinimumInteriorFixedNodes = 128;
+
+    /// <summary>
+    /// What a solve did, as opposed to how many cycles it took to do it.
+    /// </summary>
+    /// <remarks>
+    /// Threaded through the recursion rather than derived afterwards, because how far
+    /// a cycle descends depends on the geometry at every level and working it out from
+    /// the outside would mean a second implementation of the same decision.
+    /// </remarks>
+    private sealed class CycleWork
+    {
+        public int Levels { get; set; }
+
+        public long Sweeps { get; set; }
+
+        public long CoarsestNodes { get; set; }
+    }
 
     private const int PreSmooth = 2;
     private const int PostSmooth = 2;
@@ -150,15 +218,19 @@ public static class PoissonSolver2D
         // A geometry with no free nodes, or one already solved, is not an error.
         if (initial == 0.0)
         {
-            return (potential, new SolveReport(true, 0, 0.0, 0.0, 0.0));
+            return (potential, new SolveReport(true, 0, 0.0, 0.0, 0.0)
+            {
+                CoarsestNodes = grid.NodeCount,
+            });
         }
 
         var current = initial;
         var cycles = 0;
+        var work = new CycleWork();
 
         for (; cycles < maximumCycles; cycles++)
         {
-            VCycle(potential, rightHandSide, mask, coarsen);
+            VCycle(potential, rightHandSide, mask, coarsen, work, 0);
             current = Residual(potential, rightHandSide, mask, residual);
 
             if (current <= tolerance * initial)
@@ -172,20 +244,34 @@ public static class PoissonSolver2D
             ? Math.Pow(current / initial, 1.0 / cycles)
             : 0.0;
 
-        return (potential, new SolveReport(current <= tolerance * initial, cycles, initial, current, factor));
+        return (
+            potential,
+            new SolveReport(current <= tolerance * initial, cycles, initial, current, factor)
+            {
+                Levels = work.Levels,
+                Sweeps = work.Sweeps,
+                CoarsestNodes = work.CoarsestNodes,
+            });
     }
 
     private static void VCycle(
         ScalarField2D potential,
         ScalarField2D rightHandSide,
         DirichletMask mask,
-        Func<Grid2D, DirichletMask>? coarsen)
+        Func<Grid2D, DirichletMask>? coarsen,
+        CycleWork work,
+        int depth)
     {
         var grid = potential.Grid;
 
         if (!grid.CanCoarsen)
         {
             Smooth(potential, rightHandSide, mask, CoarseSmooth);
+
+            work.Levels = Math.Max(work.Levels, depth);
+            work.CoarsestNodes = grid.NodeCount;
+            work.Sweeps += CoarseSmooth;
+
             return;
         }
 
@@ -203,10 +289,17 @@ public static class PoissonSolver2D
         if (mask.InteriorGeometryCount > 0 && coarseMask.InteriorGeometryCount < minimum)
         {
             Smooth(potential, rightHandSide, mask, CoarseSmooth);
+
+            work.Levels = Math.Max(work.Levels, depth);
+            work.CoarsestNodes = grid.NodeCount;
+            work.Sweeps += CoarseSmooth;
+
             return;
         }
 
         Smooth(potential, rightHandSide, mask, PreSmooth);
+
+        work.Sweeps += PreSmooth;
 
         var residual = new ScalarField2D(grid);
         Residual(potential, rightHandSide, mask, residual);
@@ -219,10 +312,12 @@ public static class PoissonSolver2D
         // electrode's.
         coarseMask.ZeroCutPotentials();
 
-        VCycle(coarseCorrection, coarseRhs, coarseMask, coarsen);
+        VCycle(coarseCorrection, coarseRhs, coarseMask, coarsen, work, depth + 1);
 
         Prolong(coarseCorrection, potential, mask);
         Smooth(potential, rightHandSide, mask, PostSmooth);
+
+        work.Sweeps += PostSmooth;
     }
 
     /// <summary>

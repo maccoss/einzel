@@ -454,7 +454,11 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Also added: **`transitTime`**, the mean transit of a diffusive run, because without it the diffusive mode's principal scalar could not be asserted by a project test or ranked by a study — half of REG-1's peer pair was outside the machinery that keeps the other half honest.
 
-  **Still missing:** thirteen more, and the gap is breadth rather than machinery — no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode.
+  **`parallel-plate-gap-3d` is the corpus's first genuinely three-dimensional example**, and it exists because Galerkin coarsening made it affordable — it was deferred at 124 s against a gate that runs everything else in 42. Two square plates in a cubic box, reducing to neither a cross-section nor an axis, reproducing `sqrt(2 d m / (q E))` to **1.2e-6** in under two seconds. Since the expectation is the same arithmetic the analytic accelerating-gap example uses, what is checked is the **solver** rather than the integrator.
+
+**Two mistakes cost three orders of magnitude each, and both are the model author's rather than the engine's.** The gap in the closed form is between the **facing surfaces**, so putting a 1 mm plate's centre on the gap boundary makes the real gap 9 mm — the field came out **11.111% high**, which is exactly 1000/0.009 and is how it was caught. And **the grounded domain boundary is a third electrode**: holding one plate at 0 V makes the boundary an extension of it, so the problem is asymmetric about the mid-plane although the geometry is not. Worth 0.31% of the field at the ends of the flight and 0.11% of the answer; applying ±V/2 instead gives 0.0005% and 1.2e-6. **Both were mesh-converged** — identical at 1 mm and 0.5 mm cells — so neither was the discretisation artefact the first reading assumed, and the engine's own `CONVERGENCE_ORDER_BELOW_NOMINAL` warning pointing at "a finer grid" was pointing at the wrong fix.
+
+**Still missing:** twelve more, and the gap is breadth rather than machinery — no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode.
 
 - **Class B: bisection onto a boundary, and Phase 3 acceptance criterion 3.** ACC-6 asks for a boundary resolved to **one part in five hundred of the scan**. A grid reaches that by having 501 points in it; `BoundarySearch` halves the bracket instead, which is `log2(500)` steps plus the two that establish it — **11 evaluations against 501, measured**.
 
@@ -712,6 +716,77 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Left for SC-1:** the integration — which grid a drifting packet deposits onto, when to re-solve, and the comparison against the direct sum on the same configuration. Every piece exists; nothing wires them to `PacketIntegrator` yet. In `docs/numerics.md`.
 
+- **Particle-in-cell, wired to the packet integrator — and an argument of mine that was right about accuracy and wrong about cost.** Both methods are now `ISelfField` peers (positions in, accelerations accumulated out), which is what lets them be handed the same configuration and differenced. SC-1's "validated against" means nothing without that.
+
+  **Three design questions, answered in the code.** The grid is *the packet's own, in the packet's frame* — a packet crossing a metre cannot have a grid over the instrument at any useful resolution — so every deposit and gather is relative to the centroid and **uniform translation is exact** (1e-11 across 250 mm) and free. Because translation is exact, the only thing that ages is *shape*, so the refresh criterion is a fractional change in RMS radius rather than a step count. And the boundary is an earthed box, which a packet in flight is not in; centring it is what keeps that cheap, since a centred distribution induces almost no field at its own centre.
+
+  **The finding.** The cloud-in-cell commit argued that ACC-3's ban on trilinear interpolation does not reach a self-consistent field whose accuracy the deposit already bounds, and that the deposit/gather symmetry buys more than the extra order would. **Right about accuracy, wrong about cost** — a trilinear force kinks at every cell face and an embedded Runge–Kutta estimator reads a kink as error:
+
+  | nodes | steps, linear | steps, quadratic |
+  | --- | --- | --- |
+  | 16 | 274 | **45** |
+  | 32 | 383 | **65** |
+  | 64 | 656 | **95** |
+
+  against the direct sum's 25. **The step count tracking the node count is what identifies the mechanism** — more nodes, more faces per unit path; a fixed overhead would not scale. A quadratic B-spline (27 nodes, not 8) is continuously differentiable, is used for deposit *and* gather so the self-force still cancels, and its weights still sum to exactly one for *any* offset — which is what lets the index be clamped at a face without losing charge.
+
+  **Where it starts paying: about 850 macroparticles** — 0.16× at 250, 1.21× at 1000, 3.21× at 2000. Worth stating as a crossing rather than as asymptotics: below it the reference method is simply faster and reaching for the approximation buys nothing.
+
+  **Against the reference**: 0.5% on a flown packet's widening over 2 µs (0.384 → 1.907 mm direct, 1.916 mm grid), about a per cent through the body of a static ball. The outermost radial bin is the worst and has to be — it straddles the surface, where a smoothed deposit and a point-softened sum disagree about a discontinuity by construction.
+
+  **A trade that showed itself**: keeping the box across refreshes needs headroom above the requested padding, and at 1.6× that cut rebuilds from 32 to 4 and cost the surface bin 0.94 → 0.83, because a bigger box at fixed nodes resolves the packet with fewer cells. 1.15× keeps the accuracy at 11 rebuilds.
+
+  **A defect a code review found in exactly this, and the argument of mine that let it through.** The quadratic deposit clamps its three-node stencil onto the grid at a boundary, and leaving the *offset* unclamped with it makes the middle weight `0.75 − u²` **negative** — at the edge the weights are 1.125, −0.25, 0.125. They sum to one, so charge stayed exact and **every test passed at 673 green**; what was wrong is that a positive macroparticle deposited a negative density, and the gather shares those weights. The licensing argument is written down two paragraphs up — "the weights still sum to exactly one for *any* offset, which is what lets the index be clamped at a face without losing charge" — which is true and settles a different question. **Conservation is not positivity.** Clamping the offset too degrades the quadratic shape into the linear one exactly where the third node would leave the grid, which is the right thing for it to do. `NoDepositWeightIsEverNegative` sweeps the whole axis, because the middle is where this cannot happen.
+
+  **Now declarable, and closing that gap broke the agreement claim above.** `"spaceCharge": "pic"` takes an optional `spaceChargeGrid` block (`nodes`, `padding`, `refreshTolerance`), refused against any other method rather than ignored. Two measurements came out of making the knobs sayable, and both matter more than the wiring.
+
+  **A reference method has approximations in it too.** The direct sum softens at the mean macroparticle spacing; the grid smooths at the cell. So "they agree to a few per cent" was comparing two different smoothing lengths that happened to be comparable — agreement there is a coincidence of magnitudes and disagreement would not have been evidence of a defect. The sum has a limit it can be taken to (softening/100, worth **3.5%**) and the grid has a scale it can be set to, so the comparison can be made properly: at a cell of **0.92 mean spacings the two agree to 0.08%**.
+
+  **And accuracy has an optimum rather than a floor** — the opposite of every other resolution knob in this engine:
+
+  | cells per mean spacing | vs the sum's point limit |
+  | --- | --- |
+  | 3.68 | **−15.1%** |
+  | 1.84 | −4.2% |
+  | 0.92 | **+0.08%** |
+  | 0.46 | **+4.4%** |
+
+  Refining past the match makes it *worse*, and refining is exactly what someone does when they want a better answer. **Confirmed as a sampling artefact rather than a resolution one** by holding the cell fixed at 128 nodes and raising the macroparticle count: 4.42% → 1.55% → 0.93% as macroparticles per cell go 0.012 → 0.049 → 0.195. Below about one macroparticle per cell the deposit stops representing a density and starts representing lumps. `spacecharge.grid-resolution` reports the ratio on **every** run whether or not it crosses a threshold (REG-2's rule on a new quantity), as a validity violation outside 0.7–2.0, and names the node count that would match — computable with no run at all, since the cell and the spacing both scale with the packet radius and it cancels to `2·padding·∛N/nodes`.
+
+  **The estimate was blind to a term that now varies 500-fold.** 200 macroparticles take **0.99 s at 16 nodes and 124 s at 128**; the cost model had one linear-in-trajectories term because nodes were not declarable when it was written. Two terms now — linear in the cloud for the gather, cubic in the node count for the solve — pinned by the measured crossing and a measured 43/57 split, tracking the measured 54× ratio to within 10%.
+
+  **The refresh criterion is a controlled approximation, measured**: +12.68 / +6.16 / +1.01 / −0.54 % as the tolerance tightens 0.30 → 0.15 → 0.05 → 0.02. The sign at the coarse end was *predicted* — a field held across a refresh is the field of a denser packet, so it always pushes too hard — and the crossing to negative at 0.02 is staleness falling below the smoothing difference above, not the prediction failing.
+
+  **A trap that caught me again**: `Grid3D.OverBox` rounds each axis up to a power of two, so 24 and 32 are the same mesh. A first node-count table ran 16/24/32/48/64 and produced two pairs of identical numbers, which reads as insensitivity to resolution over a fourfold range. Already written down for the 3-D solver. Details in `docs/numerics.md`.
+
+- **A driven diffusive run is affordable, and the trade has to be stated both ways.** `"densityStep": { "scheme": "implicit", "gain": 64 }` — backward Euler on the same Scharfetter-Gummel coefficients, solved by red-black Gauss-Seidel. On the shipped funnel at 2 mbar, where the ponderomotive well's gradient at a ring edge sets a 195 ps Courant limit against a 747 ns diffusion limit:
+
+  | gain | steps | sweeps/step | speedup | error |
+  | --- | --- | --- | --- | --- |
+  | 4 | 6,404 | 3.0 | 1.4x | 0.008% |
+  | 16 | 1,601 | 3.0 | 4.7x | 0.028% |
+  | 64 | 401 | 3.0 | **10.8x** | **0.108%** |
+  | 256 | 101 | 4.0 | 17.7x | 0.427% |
+  | 1024 | 26 | 4.9 | 21.4x | 1.673% |
+
+  So 843,000 steps over 900 µs become about 13,000, and a run that took hours takes minutes. **The error is exactly linear in the step**, which is textbook first-order backward Euler and is itself a check that the path is right rather than merely stable.
+
+  **And it does not accumulate over a longer flight — it falls, while the speedup grows.** The same comparison over 50 µs rather than 5 gives **21.1× at gain 64 for 0.057%** (against 10.8% for 0.108%), and **120× at gain 1024 for 0.894%** (against 21.4× for 1.673%). The error is concentrated in the initial transient where the density changes fastest; the explicit cost is linear in the window while the implicit sweeps-per-step stays at three. So the short-window figures are the pessimistic ones.
+
+  **The explicit step was set by a region where nothing is happening** — the well is steepest at an electrode edge, which is exactly where the density is almost zero.
+
+  **The load-bearing property is not the stability, it is that positivity survives a partial solve.** The update is `n' = (n + dt Σ b n'_neighbour) / (1 + dt Σ a)` and every term in it is non-negative, so each sweep is a non-negative combination of non-negative numbers and the iterate is a valid density however far from converged. A scheme that went negative on the way would be unusable however stable it was.
+
+  **And it is not a general speed-up**, which is the half easiest to leave out. The Gauss-Seidel iteration's difficulty is set by the *diffusive* part of the operator, so a step long by Courant's standard and still short by diffusion's costs three sweeps — while a plain drift tube already near its diffusion limit climbs from 11 sweeps a step at gain 1 to **88.7 at gain 16** and comes out slower than stepping explicitly. `diffusion.implicit-not-paying` says so on the run.
+
+  **What says it is correct rather than merely stable is the Boltzmann equilibrium.** Scharfetter-Gummel is built so its zero-flux state is exactly `B(−P)/B(P) = exp(P)`; that is a property of the *space* discretisation, so backward Euler must hold it at any step. It holds to **8.9e-16 in log density over three decades at a gain of 1000, in two steps and two sweeps** — one sweep per step, because the previous density *is* the answer and Gauss-Seidel recognises it immediately. **Verified by breaking the solve** the way a real mistake would (gathering a neighbour with this cell's outward coefficient): every stability and non-negativity test still passed, and the equilibrium moved by factors of 6 to 18. **A stability test cannot see a wrong operator and neither can a positivity test.**
+
+  **The flux is assembled once now**, which the explicit path wanted anyway — it was recomputing two exponentials per face per step, about a million times over on a driven funnel. **Bit-identical**, asserted rather than assumed over four configurations spanning Cartesian and cylindrical meshes, still and moving gas, interior absorbers and every edge kind: density, collected count and every named loss to the last bit. That needed keeping the *factored* form — `scale`, `B(−P)` and `B(P)` stored separately rather than the two products — because `(w·s·b)·n` and `w·(s·(b·n))` differ in the last bit. The ledger reads the same expression for the same reason; a first version used `Out × density` and came back 1–3 ulps out.
+
+  **Two measurement mistakes worth keeping.** A convergence study whose window let the packet be collected compares two nearly empty fields — the relative difference came out at 39–71% and scaled with nothing, which reads as a broken scheme. And the reference in such a study **carries its own error**: at gain g the two runs are (g−1) base steps apart, not g, so what must be constant is error/(g−1), and dividing by g makes a correct first-order scheme look wrong.
+
+  **Not done:** nothing chooses the gain. Both limits are computable before the run, but what gain is acceptable is an accuracy question and nothing here measures the accuracy of a step it has not taken. Richardson extrapolation over a doubled step would, at three solves a step instead of one. Details in `docs/pressure.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
@@ -790,7 +865,11 @@ Einzel.Update      release check, download, staging, version policy
 Einzel.Wpf         shell, viewport, panels
 ```
 
-CLI, MCP server, and WPF shell are **peers, not a stack** — all three drive the same serializable command objects.
+CLI, MCP server, and WPF shell are **peers, not a stack** — all three drive the same serializable command objects. A shell that shelled out could not drive an interactive viewport at frame rate; a hundred milliseconds of process start per slider drag is not a shell.
+
+**The shell is a named deliverable, and the Windows GUI capability was part of why C# was chosen** — a rationale r06 never records, which is SPEC.md Amendment 25. **Windows-only is the decision, not an accident of WPF**: Avalonia was considered and not chosen because the shell is not planned for use outside Windows, and that gets revisited if the need appears. It stays cheap to revisit because of invariant 1 (no UI type below the shell — everything above `Einzel.Wpf` builds and runs on Linux, and CI runs there) and Amendment 25's CLI-expressibility, which together make a later cross-platform shell a replacement of a presentation layer rather than a rewrite. **Windows-only applies to the shell and to nothing else** — that is the misreading to guard against, since "the GUI is Windows-only" and "the project is Windows-only" are one word apart and the second would undo the Linux CI that keeps the first one cheap. What is wanted is interactive geometry, the solved field drawn over it, and animation. §22's scope-creep risk is managed by UI-1's prohibition (the shell owns layout, input, the viewport and the update check, and owns no physics, no validation, no format knowledge and no render output), not by deferring the window.
+
+**The thesis is the pair, and neither half is the product**: an agent drives the entire design process through CLI and MCP, and a human sees and manipulates the same design in a window. Amendment 25 strengthens AGT-2 to make that work — **every shell action should be expressible as a CLI invocation and journalled as one**. The shell still drives command objects in-process; what changes is that its journal is a list of commands somebody could run. A capability with no command spelling then cannot be added to the window, and a human's session hands over to an agent in the same vocabulary. The thing to review when the shell is written is the in-process path acquiring an argument the command form has no spelling for.
 
 Four invariants. Violating one is a design bug, not a shortcut:
 
@@ -838,7 +917,63 @@ The platform layer of `AGENTS.md` is **generated (`einzel agents-md`) and versio
 
 Sequencing principles: seams first (transport mode, symmetry, accuracy class, device library, extension host stubbed in Phase 1 with one implementation behind each); the schema and CLI are Phase 1 deliverables so the agent thesis is de-risked early; VTU export lands in Phase 1 so ParaView supplies the whole visualization story a year before the shell exists.
 
+## Galerkin coarsening: built, and chosen against the cheaper hierarchy
+
+`A_coarse = R A_fine P` — coarse levels built from the fine operator rather than from
+the geometry, so they cannot lose it. **The finest level is untouched**: cut cells and
+the geometry-driven smoother stay exactly as they were, because that is where the
+accuracy comes from.
+
+Two 1 mm slabs at a 0.25 mm cell: **1 level and a 274,625-node bottom becomes 6 levels
+and 27**, 45 cycles becomes 13, 160 s becomes 13 s. **The cycle count stops depending on
+the mesh** — 14 at 65³ against 13 at 129³, where it was 6 against 45. And it is the
+**same answer**, 1.1e-7 to 4.0e-7 relative, which is what separates it from the fast
+wrong one (deeper *rediscretised* coarsening was 30× faster and gave 486 V of 100).
+
+**Neither hierarchy dominates, so the solver picks from the geometry before solving
+anything**: 11.9× on the slabs, 4.6× on four rods, **0.64× on a sphere** — a loss, where
+the cheap hierarchy already reached a small bottom and the 27-point stencil is overhead.
+The criterion is the size of the bottom the cheap hierarchy can reach; the threshold is
+20,000 nodes and is measured rather than derived. `SolveReport.Galerkin` says which ran.
+
+Two things that were easy to get wrong and are worth knowing. **A 27-point stencil is
+closed under this coarsening** (restriction one cell, operator one, prolongation one =
+three fine cells = one coarse), so the hierarchy needs one operator type. And
+**`halfH2` stays at the finest level's value all the way down**, because the coarse
+operator inherited the fine one's units — recomputing it per level would be wrong by 4×
+per level and would still converge, to something else.
+
+**A test that failed on correct code, the right way round.** The first operator check
+asserted `R A P` reproduces the rediscretised 7-point Laplacian. That holds in *one*
+dimension; in three the transfers are tensor products and `R_b P_b = [1/8, 3/4, 1/8]`,
+so the off-axis entries belong there. Deriving what they should be instead pinned every
+coefficient against arithmetic the code had no part in — centre 27/64, face −3/128, edge
+−5/256, corner −3/512, to 1e-13, row summing to exactly zero.
+
 ## A solver limitation to know about
+
+**Measured, and worse than it reads below.** `SolveReport` now carries `Levels`,
+`Sweeps` and `CoarsestNodes`, and `einzel solve` prints them. What they say: the 3-D
+V-cycle descends **0-2 levels on every device geometry** (4-6 with no interior
+electrode), because `Representable` stops at a *physical* cell size — so refinement adds
+levels at the top and never removes the bottom. Two 1 mm slabs bottom out at **274,625
+nodes at 65³ and still 274,625 at 129³**; the shipped segmented quadrupole bottoms out
+at 9,537; the shipped **2-D** templates bottom out at **9-99**, because the two solvers
+coarsen by different rules. At a 0.5 mm cell the slabs coarsen *zero* times, so their
+"6 cycles at factor 0.015" is 400 relaxation sweeps a cycle over the finest grid — which
+is why a 65³ Laplace solve takes 36 seconds. **A cycle is not a unit of work and the
+factors below were being compared as though it were.**
+
+**The guard is load-bearing, established by removing it**: letting the 0.25 mm slabs
+descend further takes 45 cycles and 145 s down to 5 cycles and 4 s, and gives **486 V of
+100 applied**, reported as converged. Only the maximum principle catches it. A plausible
+alternative explanation — coarse masks carrying the electrodes' real potentials, so each
+cycle injects 100 V — was checked and is wrong: coarse correction fields start at zero
+and never have a mask applied. What actually happens is that a 1 mm slab four levels
+down is smaller than a cell and gets **pinned to a single node**, so the coarse problem
+constrains the error at two points where the fine one constrains it over two planes.
+That is precisely what `R A P` fixes. Details in `docs/numerics.md`.
+
 
 The multigrid V-cycle assumes coarsening preserves the problem. That holds for boundary-only Dirichlet geometries — Stage 3 measured 8→7→7→7 cycles from 32 to 256 intervals — but **not for interior electrodes** such as rods or apertures. An electrode occupies a fixed physical size, so each coarsening halves how many nodes represent it, and past a few levels it is not represented at all; the coarse grid then solves a different problem and its correction, prolonged back, drives the iteration apart. Four discs in a box reached **1e134 V** that way.
 

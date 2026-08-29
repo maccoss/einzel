@@ -89,7 +89,16 @@ public sealed record CompiledModel
 
     /// <summary>Whether the mutual Coulomb force is being modelled.</summary>
     public bool ModelsSpaceCharge =>
-        string.Equals(SpaceChargeMode, "direct", StringComparison.Ordinal);
+        string.Equals(SpaceChargeMode, "direct", StringComparison.Ordinal)
+        || string.Equals(SpaceChargeMode, "pic", StringComparison.Ordinal);
+
+    /// <summary>
+    /// The grid a particle-in-cell solve uses, or null where the method is not it.
+    /// </summary>
+    public CompiledSpaceChargeGrid? SpaceChargeGrid { get; init; }
+
+    /// <summary>How a diffusive run advances its density in time.</summary>
+    public CompiledDensityStep DensityStep { get; init; } = new("explicit", 1.0);
 
     /// <summary>The ion's launch speed, in metres per second.</summary>
     /// <returns>The speed after acceleration, including the energy offset.</returns>
@@ -239,3 +248,18 @@ public sealed record CompiledMobility(
 /// <param name="IntervalsY">Cells across y.</param>
 public sealed record CompiledDensityGrid(
     double MinX, double MinY, double MaxX, double MaxY, int IntervalsX, int IntervalsY);
+
+/// <summary>A particle-in-cell space-charge grid, validated and in SI.</summary>
+/// <param name="Nodes">Nodes across the box.</param>
+/// <param name="Padding">Box half-width as a multiple of the packet's RMS radius.</param>
+/// <param name="RefreshTolerance">Fractional change in RMS radius that forces a solve.</param>
+public sealed record CompiledSpaceChargeGrid(int Nodes, double Padding, double RefreshTolerance);
+
+/// <summary>A density time-stepping choice, validated.</summary>
+/// <param name="Scheme"><c>explicit</c> or <c>implicit</c>.</param>
+/// <param name="Gain">How many times the explicit stability limit to step.</param>
+public sealed record CompiledDensityStep(string Scheme, double Gain)
+{
+    /// <summary>Whether the implicit scheme was asked for.</summary>
+    public bool IsImplicit => string.Equals(Scheme, "implicit", StringComparison.Ordinal);
+}

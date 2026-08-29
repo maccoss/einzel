@@ -52,6 +52,10 @@ public static class DiffusionRun
     /// caller has no model directory to resolve one against.
     /// </param>
     /// <returns>What happened.</returns>
+    /// <param name="scheme">Which time discretisation to step the density with.</param>
+    /// <param name="stepGain">
+    /// How many times the explicit stability limit to step, for the implicit scheme.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">
     /// The model cannot be expressed as a density problem, or it declares a velocity
@@ -61,7 +65,9 @@ public static class DiffusionRun
         CompiledModel model,
         IElectrostaticField field,
         IReadOnlyList<ValidityWarning> fieldWarnings,
-        BackgroundGas? resolved = null)
+        BackgroundGas? resolved = null,
+        Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
+        double stepGain = 1.0)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -142,8 +148,23 @@ public static class DiffusionRun
             field = effective;
         }
 
+        // The model's own choice, unless a caller overrode it - which is how a study
+        // measuring the two schemes against each other on one document works.
+        var chosen = scheme;
+        var gain = stepGain;
+
+        if (scheme == Transport.Diffusion.StepScheme.Explicit && stepGain == 1.0)
+        {
+            chosen = model.DensityStep.IsImplicit
+                ? Transport.Diffusion.StepScheme.Implicit
+                : Transport.Diffusion.StepScheme.Explicit;
+
+            gain = model.DensityStep.Gain;
+        }
+
         var result = DriftDiffusion.Run(
-            density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers);
+            density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
+            scheme: chosen, stepGain: gain);
 
         // The seed's overlap with metal joins the same ledger the run fills, so the
         // itemisation adds back up to the launched population.
@@ -160,6 +181,7 @@ public static class DiffusionRun
         }
 
         warnings.AddRange(RegimeWarnings(gas, mobility, field, grid, declared));
+        warnings.AddRange(StepWarnings(result));
 
         if (effective is not null)
         {
@@ -167,6 +189,86 @@ public static class DiffusionRun
         }
 
         return new DiffusiveOutcome(result, used, grid, launched, warnings);
+    }
+
+    /// <summary>
+    /// What the time discretisation cost and bought, reported either way.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// REG-2's rule on a different quantity: reported whether or not anything crosses
+    /// a threshold, because a reader who sees "3.1 sweeps a step" knows the run was
+    /// checked and one who sees nothing cannot tell that from its not having been.
+    /// </para>
+    /// <para>
+    /// The number that decides whether the implicit scheme was worth using is
+    /// <b>sweeps per step</b>, and it is only knowable afterwards. Below about ten it
+    /// is a bargain - the step is long by Courant's standard and still short by
+    /// diffusion's, which is the driven case this exists for. Above it the sweeps are
+    /// buying back what the longer step saved, and past the explicit step count they
+    /// have bought back more.
+    /// </para>
+    /// <para>
+    /// Backward Euler is first order, so the accuracy cost is stated as the gain
+    /// rather than estimated: the error is linear in it, measured over 5 us on the
+    /// shipped funnel at 0.008, 0.028, 0.108, 0.427 and 1.673 per cent for gains of 4,
+    /// 16, 64, 256 and 1024 - and <em>falling</em> over a longer flight rather than
+    /// accumulating, 0.057 per cent at gain 64 over 50 us. Nothing here measures the
+    /// accuracy of a step it has not taken, and saying so is better than an estimate
+    /// with no evidence under it.
+    /// </para>
+    /// </remarks>
+    private static List<ValidityWarning> StepWarnings(DiffusionResult result)
+    {
+        if (result.Scheme != Transport.Diffusion.StepScheme.Implicit)
+        {
+            return [];
+        }
+
+        var perStep = result.Steps > 0 ? result.Sweeps / (double)result.Steps : 0.0;
+
+        var warnings = new List<ValidityWarning>
+        {
+            new(
+                "diffusion.implicit-step",
+                $"the density was stepped implicitly at {result.StepGain:N0}x the explicit "
+                + $"stability limit - {result.StepSeconds * 1e9:F3} ns - taking {result.Steps:N0} "
+                + $"steps at {perStep:F1} Gauss-Seidel sweeps each, so about "
+                + $"{perStep / result.StepGain:P0} of the explicit work. Backward Euler is first "
+                + "order, so the time-discretisation "
+                + $"error is about {result.StepGain:N0}x what the explicit scheme would leave",
+                WarningSeverity.Provenance),
+        };
+
+        // Past this the sweeps are buying back what the step saved. Ten is where the
+        // measured funnel case stops being a bargain: it runs at 3 to 5 sweeps a step
+        // and 10.8x the speed, while a problem already at its diffusion limit reaches
+        // 88 sweeps a step and comes out slower than stepping explicitly.
+        if (perStep >= result.StepGain)
+        {
+            warnings.Add(new ValidityWarning(
+                "diffusion.implicit-not-paying",
+                $"{perStep:F1} Gauss-Seidel sweeps a step against a gain of {result.StepGain:N0} "
+                + "means the inner solve cost more than the longer step saved. That happens when "
+                + "the explicit limit was already the diffusion one rather than Courant's - the "
+                + "implicit scheme only pays where drift sets the step. Try the explicit scheme, "
+                + "or a smaller gain",
+                WarningSeverity.ValidityViolation));
+        }
+
+        if (result.WorstSweepChange > 1e-8)
+        {
+            warnings.Add(new ValidityWarning(
+                "diffusion.implicit-unconverged",
+                "an implicit step stopped with its last Gauss-Seidel sweep still moving the "
+                + $"density by {result.WorstSweepChange:E2} of its peak, rather than converging. "
+                + "The density is still non-negative - every term in the sweep is - but the ion "
+                + "ledger is only closed to about that, because what conservation needs is the "
+                + "converged answer",
+                WarningSeverity.ValidityViolation));
+        }
+
+        return warnings;
     }
 
     /// <summary>The grid the density is tracked on.</summary>

@@ -730,6 +730,175 @@ electrodes, so the convergence factor degrades — has a concrete cost that is e
 underestimate, because the geometry that shows it worst is the simplest one anybody
 would write.
 
+## Galerkin coarsening, and the choice between two hierarchies
+
+`A_coarse = R A_fine P`. Rediscretising on a coarse grid asks the geometry what it looks
+like at that spacing, and past a point the answer is "a different shape" — a 1 mm slab
+four levels down is smaller than a cell and gets pinned to a single node. The triple
+product never looks at the geometry, so it cannot lose it.
+
+**The finest level is untouched.** It keeps its cut cells and its geometry-driven
+smoother, because that is where the accuracy comes from and none of it is in question.
+Only the coarse levels change.
+
+### What it bought
+
+Two 1 mm slabs in a grounded box:
+
+| cell | mode | levels | coarsest | cycles | factor | sweeps | wall | peak V |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.5 mm | rediscretised | 0 | 274,625 | 6 | 0.015 | 2,412 | 26.2 s | 100.00 |
+| 0.5 mm | **Galerkin** | **5** | **27** | 14 | 0.180 | 644 | **2.1 s** | 100.00 |
+| 0.25 mm | rediscretised | 1 | 274,625 | 45 | 0.596 | 18,270 | 159.5 s | 100.00 |
+| 0.25 mm | **Galerkin** | **6** | **27** | **13** | 0.170 | 650 | **13.4 s** | 100.00 |
+
+**The cycle count stops depending on the mesh** — 14 at 65³ against 13 at 129³, where
+before it was 6 against 45. That is the property multigrid is supposed to have and did
+not have here on any device geometry.
+
+**And it is the same answer**, which is the assertion that separates this from the fast
+wrong one. Deeper *rediscretised* coarsening was thirty times faster and gave 486 V of
+100 applied; the two hierarchies here agree to **1.1e-7, 4.0e-7, 2.4e-9 and 7.4e-8**
+relative on the four geometries — the tolerance both were driven to. A coarse hierarchy
+changes how the fine problem is solved, not what it is.
+
+### Neither hierarchy dominates, so the solver picks
+
+| geometry | rediscretised | Galerkin | ratio |
+| --- | --- | --- | --- |
+| slabs, 129³ | 159.5 s | 13.4 s | **11.9×** |
+| four rods, 65³ | 5.2 s | 1.1 s | **4.6×** |
+| a 2 mm sphere, 65³ | 1.1 s | 1.7 s | **0.64×** — a loss |
+
+The sphere is where the cheap hierarchy already reached a small bottom (4,913 nodes), and
+there the twenty-seven point stencil and the `R A P` assembly are pure overhead. What
+separates the cases is **the size of the bottom level the cheap hierarchy can reach**, so
+that is what the choice is made on — and it needs no solve to evaluate. The threshold is
+20,000 nodes, which is measured rather than derived: above it the bottom is relaxed by up
+to four hundred sweeps over a grid that does not shrink when the mesh is refined.
+
+`SolveReport.Galerkin` says which ran, so the choice is never invisible.
+
+### Two things worth keeping about how it was built
+
+**A 27-point stencil is closed under this coarsening**, which is why the hierarchy needs
+one operator type. Restriction reaches one fine cell, the operator one more, prolongation
+one more — three fine cells is one and a half coarse ones, so one.
+
+**`halfH2` stays at the finest level's value all the way down.** The fine equation is
+`-(A phi) = halfH2 * rhs`, and restricting it gives `-(R A P) e = halfH2 * (R r)`. The
+coarse operator inherited the fine operator's units rather than being rediscretised in
+its own, so a hierarchy that recomputed `halfH2` per level would be wrong by a factor of
+four per level — and would still converge, to something else.
+
+### The test that was wrong and failed on correct code
+
+The first version of the operator check asserted that `R A P` reproduces the
+rediscretised seven-point Laplacian. **That identity holds in one dimension and not in
+three**: the transfers are tensor products, so
+`R A P = sum over axes of (R_a A_a P_a) x (R_b P_b) x (R_c P_c)` and `R_b P_b` is
+`[1/8, 3/4, 1/8]`, not the identity. The off-axis entries belong there.
+
+Working out what they should be instead turned a weak test into one that pins every
+coefficient against arithmetic the code had no part in — centre `27/64`, face `-3/128`,
+edge `-5/256`, corner `-3/512`, all to 1e-13, and the row summing to exactly zero.
+
+## The three-dimensional V-cycle barely descends, and the guard is right
+
+**A cycle is not a unit of work, and cycle counts are what get compared.** The section
+below quotes 49 cycles against 12-13 against 9 as though they measured the same thing.
+They do not: a cycle at zero coarse levels is several hundred smoothing sweeps over the
+finest grid, and a cycle at five levels is a handful per level.
+
+`SolveReport` now carries `Levels`, `Sweeps` and `CoarsestNodes`, threaded through the
+recursion in both solvers, and `einzel solve` prints them - with
+`<- not multigrid: it never coarsened` where the depth is zero.
+
+### What it says
+
+`Representable` stops coarsening once a coarse cell would exceed the smallest electrode
+dimension. **That is a physical size, so it does not move when the mesh is refined**:
+levels get added at the top and the bottom stays where it was.
+
+| geometry | 33³ | 65³ | 129³ | 257³ | coarsest cell |
+| --- | --- | --- | --- | --- | --- |
+| two 1 mm slabs | 0 | 0 | 1 | 2 | frozen at 0.5 mm |
+| four 1.2 mm rods | 0 | 1 | 2 | — | frozen at 0.625 mm |
+| a 2 mm sphere | 1 | 2 | 3 | — | frozen at 1.25 mm |
+| **no interior electrode** | **4** | **5** | **6** | — | 10 mm, fully coarsened |
+
+So the grid-independent cycle count this solver is documented as having - 8→7→7→7 from
+32 to 256 - is a property of the **boundary-only** case, which is the one row with no
+electrodes in it.
+
+| geometry | cell | nodes | levels | coarsest | cycles | factor | sweeps | wall |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| slabs | 0.5 mm | 65³ | **0** | **274,625** | 6 | 0.015 | 2,412 | 36.0 s |
+| slabs | 0.25 mm | 129³ | 1 | **274,625** | 45 | 0.596 | 18,270 | 176.3 s |
+| rods | 0.3125 mm | 65³ | 1 | 35,937 | 31 | 0.475 | 3,650 | 6.1 s |
+| sphere | 0.625 mm | 33³ | 1 | **4,913** | 13 | 0.155 | 1,734 | 0.3 s |
+| sphere | 0.3125 mm | 65³ | 2 | **4,913** | 13 | 0.158 | 1,786 | 1.3 s |
+
+**The sphere is what health looks like**: eight times the nodes, cycle count flat at 13,
+sweeps 1,734 → 1,786. **The slabs are the pathology**: the bottom level is the entire
+fine grid at 65³, and still 274,625 nodes at 129³. The bottom of the V does not shrink,
+which is precisely the cost multigrid exists to remove.
+
+Two consequences worth stating plainly. **At a 0.5 mm cell the slabs coarsen zero
+times** - the "6 cycles at factor 0.015" is 400 relaxation sweeps per cycle on the
+finest grid, which is why a 65³ Laplace solve takes 36 seconds. And **adding the first
+coarse level makes it worse, not better** (slabs 6 → 45 cycles, rods 3 → 31), because
+zero levels is brute-force relaxation that works and one level is a two-level method
+whose coarse correction is poor.
+
+### It is a three-dimensional problem, not a dimensional necessity
+
+The two solvers coarsen by different rules: the 2-D one descends while the coarse mask
+still holds an interior node, the 3-D one while a coarse cell is no larger than the
+smallest electrode. On shipped templates:
+
+| | levels | coarsest |
+| --- | --- | --- |
+| einzel lens (2-D) | 5 | **99 nodes** |
+| quadrupole (2-D) | 6 | **9 nodes** |
+| ion funnel (2-D) | 5 | 27 nodes |
+| rectilinear trap (2-D) | 6 | 15 nodes |
+| **segmented quadrupole (3-D)** | **2** | **9,537 nodes** |
+
+### The guard is load-bearing, measured by removing it
+
+Raising `ResolvedBy` lets the cycle descend further. On the 0.25 mm slabs:
+
+| ResolvedBy | levels | cycles | sweeps | wall | peak V of 100 applied |
+| --- | --- | --- | --- | --- | --- |
+| **1.0** (shipped) | 1 | 45 | 18,270 | 144.9 s | **100.00** |
+| 2.0 | 2 | 5 | 1,274 | 5.4 s | **486.75** |
+| 4.0 | 3 | 4 | 344 | 3.6 s | **516.29** |
+| unlimited | 6 | 5 | 130 | 4.2 s | **464.15** |
+
+**Deeper coarsening is thirty times faster, converges cleanly, and is wrong.** It
+reports converged at a healthy factor; only the maximum principle catches it, which is
+the argument for keeping that check as a tolerance-free test rather than a diagnostic.
+
+**The mechanism is sharper than "a coarse grid is cruder", and one plausible explanation
+was checked and rejected.** The coarse levels solve for the *error*, so a coarse mask
+carrying the electrodes' real potentials would inject a spurious 100 V per cycle - which
+would explain the magnitude neatly. It is not that: coarse correction fields are created
+zero and never have a mask applied, so their fixed nodes are correctly zero. What
+actually happens is that **at four levels down a 1 mm slab is smaller than a cell and is
+pinned to a single node**, so the coarse problem constrains the error at two isolated
+points where the fine problem constrains it over two whole planes. The correction is a
+solution to a different problem.
+
+**That is exactly what Galerkin coarsening fixes**, and this is the measurement that
+turns "Galerkin is the right answer" from an assertion into a conclusion: the coarse
+operator would be `R A P`, inheriting the fine Dirichlet structure through the operator
+rather than re-rasterising the geometry - so the coarse problem would be the same
+problem coarsened, and the guard could be removed rather than tuned.
+
+`CoarseningDepthTests` pins both halves: the slabs hold the maximum principle *because*
+they refuse to coarsen, and zero levels means the coarsest grid is the finest one.
+
 Two slabs 10 mm apart in a grounded box, 0.5 mm cells, 65 x 65 x 46 nodes:
 
 | | cycles | factor |
@@ -880,3 +1049,223 @@ than a better method.
 The **integration**: choosing the grid a drifting packet deposits onto, when to
 re-solve, and the comparison against the direct sum on the same configuration. The
 pieces are all here and nothing wires them to `PacketIntegrator` yet.
+
+## Particle-in-cell, wired to the packet integrator
+
+SC-1 asks for a direct pairwise sum and an approximate method validated against it.
+Both are now `ISelfField` — positions in, accelerations accumulated out — which is
+what lets the two be handed the same configuration and differenced. A caller that had
+to know which one it held would end up knowing why, and the choice would stop being
+the model's.
+
+### Three design questions, answered in the code
+
+**Which grid does a drifting packet deposit onto?** Its own, in its own frame. A
+packet crossing a metre-long analyzer cannot have a grid over the instrument at any
+resolution that resolves the packet, so the box is built around the packet and
+centred on the centroid — and every deposit and gather is done relative to that
+centroid. **Uniform translation is therefore exact**, measured at 1e-11 across a
+250 mm displacement, and costs nothing.
+
+**When to re-solve?** On *shape*, not on position or a step count. Translation is
+already exact, so the only thing that ages between solves is the packet's shape:
+the criterion is a fractional change in RMS radius, defaulting to 5%. That is a
+statement about the approximation rather than a number chosen to make something
+finish.
+
+**What is the boundary?** An earthed box, which a packet in flight is not in. Centring
+the box is what keeps that cheap — a centred distribution in a symmetric earthed box
+induces almost no field at its own centre — and `Padding` buys the residual down and
+is reported.
+
+### The finding: a linear gather costs 27× the integrator steps
+
+The first version used cloud-in-cell for both deposit and gather, on the argument that
+ACC-3's ban on trilinear interpolation is about *trajectory paths* and this is a
+self-consistent field whose accuracy the deposit already bounds. **That argument is
+right about accuracy and wrong about cost**, and the step controller does not care
+about the distinction.
+
+A trilinear gather is continuous and its derivative is not: the force kinks at every
+cell face, and an embedded Runge–Kutta estimator reads a kink as error. Measured on a
+free-flight packet, against the direct sum's 25 steps:
+
+| nodes across the box | steps, linear | steps, quadratic |
+| --- | --- | --- |
+| 16 | 274 | **45** |
+| 32 | 383 | **65** |
+| 64 | 656 | **95** |
+
+The step count tracking the node count is what identifies the mechanism: more nodes
+means more faces per unit path, and a fixed overhead would not scale.
+
+The fix keeps the property that made the linear choice necessary. A **quadratic
+B-spline** (triangular-shaped cloud) uses twenty-seven nodes instead of eight, is
+continuously differentiable, and is used for the deposit *and* the gather — so the
+self-force still cancels, which is the whole reason the two must share a shape. The
+weights sum to exactly one for any offset, so charge is still conserved by
+construction, and that identity holding for *any* offset is what lets the index be
+clamped at a face without losing charge.
+
+### What it costs, and where it starts paying
+
+| macroparticles | direct sum | particle-in-cell | ratio |
+| --- | --- | --- | --- |
+| 250 | 0.57 s | 3.50 s | 0.16 |
+| 500 | 1.95 s | 4.62 s | 0.42 |
+| 1000 | 7.84 s | 6.47 s | **1.21** |
+| 2000 | 35.01 s | 10.92 s | **3.21** |
+
+**The crossing is near 850 macroparticles**, and it is worth stating plainly rather
+than quoting the asymptotics: below that the reference method is simply faster, and a
+run that reaches for the approximate one there is paying for nothing. What the table
+shows is the direct sum's share growing as N² while the grid's does not.
+
+Absolute times are from one machine and are not asserted; the test asserts only that
+the ratio rises with N, which is the only claim a wall-clock measurement on a shared
+runner can honestly make.
+
+### Against the reference
+
+A ball of 4,000 macroparticles, self-force binned by radius:
+
+| r/R | direct | grid | ratio |
+| --- | --- | --- | --- |
+| 0.1 | 1.5897e8 | 1.5915e8 | 1.0011 |
+| 0.3 | 3.6507e8 | 3.5928e8 | 0.9842 |
+| 0.5 | 5.7025e8 | 5.7375e8 | 1.0061 |
+| 0.7 | 7.8024e8 | 7.7132e8 | 0.9886 |
+| 0.9 | 9.6628e8 | 8.8094e8 | 0.9117 |
+
+The outermost bin is the worst and has to be: it straddles the ball's surface, where
+the density steps to zero, and a smoothed deposit and a point-softened sum disagree
+about a discontinuity by construction. The body of the packet agrees to about a per
+cent.
+
+**And end to end**, which is the check that says nothing accumulates over a flight
+that was not already there in one evaluation: a packet released in free space expands
+under nothing but its own charge, from 0.384 mm RMS to **1.907 mm by the direct sum
+and 1.916 mm by the grid — 0.5 per cent apart** over 2 µs.
+
+### A trade that showed itself
+
+Rebuilding the box on every refresh throws away the previous potential and the
+Dirichlet mask with it, so a freshly built box carries headroom above the requested
+padding and is kept while the packet grows into it. At 1.6× headroom that cut rebuilds
+from 32 to 4 — and cost accuracy: the outermost bin fell from 0.94 to **0.83**, because
+a bigger box at a fixed node count resolves the packet with fewer cells. At 1.15× the
+rebuilds are 11 and the accuracy is back. The headroom is resolution traded for
+allocation, and the packet is only a few cells across either way, which is what makes
+the trade visible at all.
+
+### Declaring it, and the two knobs
+
+`"spaceCharge": "pic"` with an optional sibling block:
+
+```json
+"transport": {
+  "spaceCharge": "pic",
+  "spaceChargeGrid": { "nodes": 32, "padding": 4.0, "refreshTolerance": 0.05 }
+}
+```
+
+Both numbers are approximation knobs rather than conveniences, so both are declarable
+and both are reported on the result. A `spaceChargeGrid` against any other method is
+**refused rather than ignored**, which is the rule an unrecognised property already
+follows: a document that configures a solve it is not running has been misunderstood by
+its author, and silence is the expensive answer.
+
+`einzel estimate` costs both methods in the same currency - pair-equivalents a stage -
+so it can state their **ratio at this cloud** rather than the asymptotics. That
+distinction matters: particle-in-cell is linear where the sum is quadratic, so quoting
+the asymptotics alone recommends it everywhere, including the majority of clouds where
+it loses to the method it approximates.
+
+### The refresh criterion is a controlled approximation
+
+The one number in this method that is a choice rather than a consequence, so it needs
+evidence that tightening it goes somewhere - and that somewhere is the reference. On a
+400-macroparticle packet flown 2 us:
+
+| refreshTolerance | rms mm | vs the direct sum | solves |
+| --- | --- | --- | --- |
+| 0.30 | 2.1254 | +12.68% | 7 |
+| 0.15 | 2.0025 | +6.16% | 12 |
+| **0.05** (default) | **1.9054** | **+1.01%** | 32 |
+| 0.02 | 1.8761 | -0.54% | 72 |
+
+**The sign at the coarse end was predicted rather than explained afterwards**: a field
+held across a refresh is the field of a packet *denser* than the one being pushed, so a
+stale field always pushes too hard. It comes out wide at every tolerance where staleness
+dominates, and monotonically less so as it tightens.
+
+**It crosses zero at 0.02, and that is not the prediction failing.** It is staleness
+falling below the *other* difference between the two methods, which is the next section
+and is the more useful finding.
+
+### The two methods must be compared at matched smoothing
+
+Neither computes the point-charge field of the macroparticles. **The direct sum softens
+at short range** - Plummer, at the mean macroparticle spacing - and **the grid smooths
+at the cell**. So a comparison at whatever each happens to default to is a comparison of
+two different smoothing lengths: agreement there is a coincidence of magnitudes, and
+disagreement is not evidence of a defect.
+
+The sum has a limit it can be taken to and the grid has a scale it can be set to, so the
+comparison can be made properly. Taking the softening down:
+
+| softening | rms mm |
+| --- | --- |
+| the mean spacing (default) | 1.87142 |
+| / 10 | 1.93896 |
+| / 100 | **1.94027** - the point limit |
+
+**The reference's own softening is worth 3.5%**, which is larger than any agreement
+claimed against it elsewhere in this document.
+
+Against that limit, by cell size, on the same packet:
+
+| nodes | cell mm | cell / spacing | rms mm | vs the limit |
+| --- | --- | --- | --- | --- |
+| 16 | 0.25000 | 3.68 | 1.64705 | **-15.1%** |
+| 32 | 0.12500 | 1.84 | 1.85939 | -4.2% |
+| 64 | 0.06250 | 0.92 | 1.94189 | **+0.08%** |
+| 128 | 0.03125 | 0.46 | 2.02595 | **+4.4%** |
+
+**At a cell of about the mean macroparticle spacing the two agree to 0.08%** - far
+stronger than the few per cent an unmatched comparison gives, and it says *what makes
+them agree* rather than reporting that they do.
+
+**And accuracy here has an optimum rather than a floor.** Refining past the match makes
+it worse, which is the opposite of what refinement does everywhere else in this engine
+and is exactly what someone does when they want a better answer.
+
+**Confirmed as a sampling artefact rather than a resolution one**, by holding the cell
+fixed at 128 nodes and raising the macroparticle count:
+
+| macroparticles | per cell | vs the limit |
+| --- | --- | --- |
+| 400 | 0.012 | +4.42% |
+| 1,600 | 0.049 | +1.55% |
+| 6,400 | 0.195 | +0.93% |
+
+So the error is set by **macroparticles per cell**, not by the cell in absolute terms:
+below about one macroparticle per cell the deposit stops representing a density and
+starts representing lumps, and the mutual force comes out too strong. That is the
+classical finite-grid heating of a particle-in-cell scheme, found here independently
+rather than assumed.
+
+`spacecharge.grid-resolution` reports the ratio **whether or not it crosses a
+threshold** (REG-2's rule applied to a different quantity - a reader who sees 0.92 knows
+the run was checked, and one who sees nothing cannot tell that from its not having
+been), as a validity violation outside 0.7 to 2.0, and it names the node count that
+would match. It needs no run to compute, because the cell and the spacing both scale
+with the packet radius and it cancels: the ratio is `2 x padding x cbrt(N) / nodes`.
+
+### A trap in measuring any of this
+
+`Grid3D.OverBox` rounds each axis up to a power of two, so **asking for 24 and asking
+for 32 gives the same mesh**. A first version of the node-count table above ran
+16/24/32/48/64 and produced two pairs of identical numbers; read without knowing that,
+it says the answer is insensitive to resolution over a fourfold range. It is already
+written down for the 3-D solver, and it caught me again here.

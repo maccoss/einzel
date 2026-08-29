@@ -236,7 +236,9 @@ public sealed class SpaceChargeSurfaceTests : IDisposable
     public void AnUnknownMethodNamesTheOnesThisBuildHas()
     {
         // AGT-3: an error is a recovery instruction. "particleInCell" is the value
-        // someone will try next, and it is the one that is not built.
+        // someone will try, and the method IS built - under a different spelling. An
+        // error that only said "unknown" would leave a reader believing the platform
+        // cannot do the thing it can do.
         var model = Tube(Packet, "particleInCell");
 
         var (exitCode, stdout, stderr) = Run("validate", model, "--json");
@@ -247,5 +249,6 @@ public sealed class SpaceChargeSurfaceTests : IDisposable
 
         Assert.Contains("/transport/spaceCharge", text, StringComparison.Ordinal);
         Assert.Contains("direct", text, StringComparison.Ordinal);
+        Assert.Contains("pic", text, StringComparison.Ordinal);
     }
 }

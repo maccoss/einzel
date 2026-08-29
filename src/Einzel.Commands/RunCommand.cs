@@ -445,7 +445,7 @@ public static class RunCommand
             [
                 .. fieldWarnings,
                 .. SpaceChargeWarnings(
-                    charge, limit, model.ModelsSpaceCharge,
+                    charge, limit, model,
                     (double)charge.Population / Math.Max(1, model.Cloud.Ions)),
             ];
 
@@ -542,10 +542,67 @@ public static class RunCommand
     /// hear that before they do rather than after.
     /// </para>
     /// </remarks>
-    private static IReadOnlyList<ValidityWarning> SpaceChargeWarnings(
-        SpaceChargeEstimate charge, double limit, bool modelled, double weight)
+    /// <summary>
+    /// Reports the grid's cell against the mean spacing between macroparticles, and
+    /// warns where that ratio puts the answer outside the band it was measured in.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// REG-2's rule, applied to a different quantity: reported whether or not it
+    /// crosses a threshold, because a reader who sees the ratio knows the run was
+    /// checked and one who sees nothing cannot tell that from its not having been.
+    /// </para>
+    /// <para>
+    /// <b>The accuracy here has an optimum rather than a floor</b>, which is the part
+    /// that needs saying out loud. Against the direct sum taken to its own point
+    /// limit: 3.68 cells per spacing gives -15.1%, 1.84 gives -4.2%, 0.92 gives
+    /// +0.08%, 0.46 gives +4.4%. So the intuitive move - raise the node count for a
+    /// better answer - makes it worse past the match, and does so silently. Confirmed
+    /// as a sampling artefact rather than a resolution one by holding the cell fixed
+    /// and raising the macroparticle count: at 128 nodes the error falls 4.42% to
+    /// 1.55% to 0.93% as macroparticles per cell go 0.012 to 0.049 to 0.195.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<ValidityWarning> GridResolutionWarnings(
+        CompiledSpaceChargeGrid? grid, int macroparticles)
     {
-        if (modelled)
+        if (grid is null || macroparticles < 2)
+        {
+            return [];
+        }
+
+        var matched = 2.0 * grid.Padding * Math.Cbrt(macroparticles);
+        var ratio = matched / grid.Nodes;
+
+        var advice = (int)Math.Pow(2.0, Math.Max(3.0, Math.Ceiling(Math.Log2(matched))));
+
+        var band = ratio is >= 0.7 and <= 2.0
+            ? "which is the band this method was measured in"
+            : ratio < 0.7
+                ? $"which is finer than the packet has structure. Below about 0.7 the cells hold "
+                    + "less than one macroparticle each, so the deposit resolves lumps rather than "
+                    + $"a density and the mutual force comes out too strong. Try {advice} nodes, or "
+                    + "raise \"ions\""
+                : $"which over-smooths the packet: the gathered force is too weak and the packet "
+                    + $"comes out narrow. Try {advice} nodes";
+
+        return
+        [
+            new ValidityWarning(
+                "spacecharge.grid-resolution",
+                $"the grid's cell is {ratio:F2} of the mean spacing between macroparticles, {band}. "
+                + "Accuracy here has an optimum at about one rather than improving with refinement, "
+                + "so this number is reported whether or not it is a problem",
+                ratio is >= 0.7 and <= 2.0
+                    ? WarningSeverity.Provenance
+                    : WarningSeverity.ValidityViolation),
+        ];
+    }
+
+    private static IReadOnlyList<ValidityWarning> SpaceChargeWarnings(
+        SpaceChargeEstimate charge, double limit, CompiledModel model, double weight)
+    {
+        if (model.ModelsSpaceCharge)
         {
             // The estimate exists to say "this matters and the engine is not doing
             // it". Here the engine is doing it, so repeating the warning would be
@@ -556,17 +613,36 @@ public static class RunCommand
             // the trajectories are macroparticles rather than ions wherever the
             // population exceeds them. A reader who does not know that is reading a
             // sampled packet as a real one.
+            //
+            // The two methods approximate different things and each says which,
+            // because "space charge was modelled" is not enough to read a number by:
+            // the direct sum softens at short range, and the grid method smooths at
+            // the cell and stands the packet in an earthed box.
+            var grid = model.SpaceChargeGrid;
+
+            var method = grid is null
+                ? "by direct summation over every pair"
+                : $"on a grid of {grid.Nodes} nodes across a box {grid.Padding:F1} RMS radii wide, "
+                    + $"re-solved when the packet's RMS radius moves {grid.RefreshTolerance:P0}";
+
+            var approximation = grid is null
+                ? "the force between two of them closer together than the mean macroparticle "
+                    + "spacing is softened rather than Coulombic"
+                : "the mutual force is smoothed at the scale of one cell, and the packet is solved "
+                    + "in an earthed box centred on itself rather than in free space";
+
             return
             [
                 new ValidityWarning(
                     "spacecharge.modelled",
-                    $"the ions in this packet push on each other, by direct summation over every pair. "
+                    $"the ions in this packet push on each other, {method}. "
                     + $"The screening estimate for the same packet is "
                     + $"{charge.TimingFraction / 1e-6:F2} ppm and is reported alongside as a cross-check, "
                     + $"not as the answer. Each trajectory carries the charge and the mass of "
-                    + $"{weight:F1} real ions, and the force between two of them closer together than "
-                    + "the mean macroparticle spacing is softened rather than Coulombic",
+                    + $"{weight:F1} real ions, and {approximation}",
                     WarningSeverity.Provenance),
+
+                .. GridResolutionWarnings(grid, model.Cloud.Ions),
             ];
         }
 
