@@ -645,6 +645,105 @@ The stability step needed no change: the Courant limit was always taken against 
 true drift, so removing the cap makes the flux agree with the step rather than
 sitting conservatively under it.
 
+## Crossing between the two modes (SEQ-1)
+
+§9 says an instrument is a timed state machine of "ordered phases with durations,
+excitation overrides, **transport mode**, and transition conditions", and SEQ-1
+adds that "a phase boundary may change transport mode; the conversion is explicit,
+reported, and named as a source of uncertainty".
+
+That is a real instrument's ordinary behaviour, not an exotic case. Ions are
+collected and thermalised in a gas-filled trap, where the description is a
+density; then extracted into vacuum and flown, where it is trajectories. Until
+now the two modes were peers that could not hand anything to each other.
+
+**The third clause is the substance.** These are not two encodings of one state.
+One direction discards information; the other needs information the source does
+not have, and the only honest thing is to assume it and say so.
+
+### Trajectories to a density: the velocities are gone
+
+A density field is a scalar per cell. There is nowhere for a velocity
+distribution to live — and that is not an implementation limit, it is what the
+diffusive description *is*. Drift-diffusion holds precisely because the velocity
+distribution has relaxed to the local equilibrium, so carrying one would be
+carrying a quantity the model assumes away. Also gone: which ion was where, so
+nothing downstream can correlate an outcome with a starting condition.
+
+Bilinear deposit, and the population is conserved **by construction** — the four
+weights sum to exactly one whatever the position, so no normalising pass is
+needed. Normalising afterwards would pass the same test while hiding a weighting
+error rather than preventing one, which is the argument the cloud-in-cell deposit
+already makes.
+
+An ion outside the grid is **counted, not clamped**. Clamping piles the escaped
+population onto the boundary and makes a leaky instrument look confining.
+
+### A density to trajectories: the velocities are invented
+
+Position can be sampled — the density *is* a distribution over position. Velocity
+cannot: a density says nothing whatever about how fast anything is moving. What is
+assumed is the assumption the diffusive description already made — a Maxwellian at
+the gas temperature, plus the local drift μE.
+
+That is the right assumption and it is still an assumption. It is exactly right
+while the ions are in the gas that thermalised them, and wrong the moment anything
+has happened faster than the momentum-transfer time. `transport.velocity-assumed`
+is a **validity violation** for that reason: a caller reading a flight time
+computed from invented velocities, who does not know they were invented, has been
+misled by the platform.
+
+### What was checked
+
+| | |
+| --- | --- |
+| Deposited population against declared | **exact** (4.0e6 to 1e-12) |
+| Gaussian cloud's centroid, 20,000 ions | 10.0197 mm against 10.0000 |
+| Its spread, x and y | 3.9544 / 3.9949 mm against 4.0000 |
+| Equipartition of drawn velocities, 300 K | **1.0021** |
+| The same at 1200 K | **1.0021** |
+| Drift added, against μE | 18.472423 against **18.472423** m/s |
+| A 4000 m/s beam, after a round trip | 0.2 m/s |
+
+The two temperatures matter: one alone is consistent with a thermal draw *and*
+with a constant that happens to match. The drift is taken as a difference between
+two runs at the same seed, so the thermal part cancels and what is left is checked
+against arithmetic the conversion has no part in.
+
+### The discriminating check is cylindrical
+
+**In an axisymmetric field a cell is a ring whose volume grows with radius**, so a
+uniform density holds far more ions at the wall than on the axis. Drawing cells by
+their density *value* would over-sample the axis — and the resulting packet looks
+entirely reasonable: a cloud, in the right place, of about the right extent.
+
+What separates the two is a closed form. For a uniform density in a cylinder of
+radius R the radial distribution is p(r) ∝ r, so the mean radius is **2R/3**.
+Weighting by density alone gives a uniform p(r) and **R/2**.
+
+| | mean radius |
+| --- | --- |
+| Measured, 40,000 samples | **13.5177 mm** |
+| 2R/3, population-weighted | 13.3333 mm |
+| R/2, density-weighted — wrong | 10.0000 mm |
+
+Run with the weighting removed it gives **10.0245 mm**, and **only that one test
+of the ten fails**. The other nine pass, which is the whole point: a wrong
+cylindrical weighting produces a packet nothing about the picture would question.
+
+The azimuth is drawn uniformly, because an axisymmetric density genuinely does not
+distinguish points on a ring. That is information the conversion *creates* rather
+than carries, and it is why a round trip is not the identity even in distribution
+for a packet that was never axisymmetric.
+
+### Not built
+
+The conversion exists and is tested; **a stage cannot yet name a transport mode**.
+Wiring it needs a schema bump, the validator, and a `run` that executes a sequence
+across modes — including sampling the field inside the diffusive loop, which
+`DriftDiffusion.Run` currently does once with a comment saying a sequenced run
+would need it otherwise.
+
 ## The density is an output you can look at
 
 TRN-2 makes a density the output of this mode the way a trajectory is the output of

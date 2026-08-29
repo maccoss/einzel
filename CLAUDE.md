@@ -846,6 +846,26 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Not built:** streamable HTTP hosted in process by the shell, which §15 makes the primary transport and which needs the shell. The tools sit above the transport, so that is a wrapper rather than a rewrite. Details in `docs/live-session.md`.
 
+- **A packet can cross between the two transport descriptions (SEQ-1's conversion).** §9 says an instrument is a timed state machine of "ordered phases with durations, excitation overrides, **transport mode**, and transition conditions", and SEQ-1 adds that a phase boundary may change it. That is ordinary instrument behaviour rather than an exotic case — ions are collected and thermalised in a gas-filled trap, where the description is a density, then extracted into vacuum and flown, where it is trajectories. The two modes have been peers since REG-1's seam was built and could not hand anything to each other.
+
+  **The third clause of SEQ-1 is the substance: "named as a source of uncertainty".** These are not two encodings of one state. **Trajectories to a density loses the velocities entirely** — a density field is a scalar per cell and there is nowhere for a distribution to live, which is not an implementation limit but what the diffusive description *is*: drift-diffusion holds precisely because the velocities have relaxed to the local equilibrium. **A density to trajectories has to invent them**, drawn Maxwellian at the gas temperature plus the local drift — the assumption the diffusive description already made, exactly right while the ions are in the gas that thermalised them and wrong the moment anything happens faster than the momentum-transfer time. `transport.velocity-assumed` is a **non-suppressible violation** for that reason: a caller who reads a flight time computed from invented velocities and does not know they were invented has been misled by the platform.
+
+  | | |
+  | --- | --- |
+  | Deposited population against declared | **exact** (1e-12) |
+  | Equipartition of drawn velocities, 300 K and 1200 K | **1.0021** each |
+  | Drift added, against μE | 18.472423 against **18.472423** m/s |
+  | A Gaussian cloud's centroid, 20,000 ions | 10.0197 mm against 10.0000 |
+  | A 4000 m/s beam after a round trip | 0.2 m/s |
+
+  Two temperatures because one alone is consistent with a thermal draw *and* with a constant that happens to match; the drift is a difference between two runs at one seed, so the thermal part cancels.
+
+  **The discriminating check is cylindrical, and it is the one a plausible implementation fails.** A cell is a ring whose volume grows with radius, so a uniform density holds far more ions at the wall than on the axis — drawing cells by their density *value* over-samples the axis and produces a packet that looks entirely reasonable. The closed form separates them: p(r) ∝ r gives mean radius **2R/3 = 13.3333 mm, measured 13.5177**, against **R/2 = 10.0** for the wrong weighting. Run the wrong way it gives 10.0245, and **only that one test of the ten fails**.
+
+  Population is conserved **by construction** — the four bilinear weights sum to one whatever the position — rather than by a normalising pass, which would pass the same test while hiding a weighting error rather than preventing one. An ion outside the grid is **counted, not clamped**, because clamping piles the escaped population onto the boundary and makes a leaky instrument look confining. And the azimuth of a cylindrical sample is drawn uniformly, which is information the conversion *creates*: a round trip is not the identity even in distribution for a packet that was never axisymmetric.
+
+  **Not built:** a stage cannot yet name a transport mode. Wiring needs a schema bump, the validator, and a `run` executing a sequence across modes — including sampling the field inside the diffusive loop, which `DriftDiffusion.Run` does once with a comment already saying a sequenced run would need otherwise. Details in `docs/pressure.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
