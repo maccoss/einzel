@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "sequenced-uniform",
+  "description": "Closed form: the hold, plus sqrt(2 d m / (q E)) from rest across a uniform field. 2 us + 3.219358580 us = 5.219358580 us. Unlike the plate version there is no geometry error in this at all - the field is analytic and exactly the declared 20 kV/m - so the tolerance is tight and what it measures is the integrator and the switch, not a fringe. THE EXPECTED NUMBER IS ARITHMETIC THIS ENGINE HAD NO PART IN. TEETH, verified by reverting the fix rather than predicted. With an analytic element not following the timeline this model has no phases at all, so its field is zero forever and it is REFUSED at validation - 'the accelerating potential may only be zero when a field can accelerate the ion'. It fails before the ion is launched, which is a better failure than a wrong number, and the one refusal covers both the analytic-phase defect and the can-anything-accelerate check reading only one configuration. Measured 5.2193585800816775 against 5.219358580, agreeing to 1.6e-11 - five orders inside the tolerance, because an analytic field has no geometry error to absorb. The field-free second element pins the other half: an element the timeline does not move is left static rather than wrapped in a switch.",
+  "model": "../models/sequenced-uniform.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 5.21935858,
+      "unit": "us",
+      "tolerance": 1e-06
+    }
+  ]
+}

@@ -54,6 +54,36 @@ public sealed record ModelDocument
     /// </summary>
     public IReadOnlyList<FieldDocument>? Fields { get; init; }
 
+    /// <summary>
+    /// The instrument as a timed state machine: ordered phases, each with a duration
+    /// and the parameter values that hold during it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Section 9's words are that "an instrument is a timed state machine", and the
+    /// emphasis is on <i>instrument</i>. A phase holds across the whole model, so every
+    /// element follows it - which is what makes setting one parameter move everything
+    /// written over it, including derived parameters and including elements other than
+    /// the one the timeline was written next to.
+    /// </para>
+    /// <para>
+    /// How an element follows depends on what it is. A solved geometry re-weights the
+    /// channels it has already solved; an analytic one is compiled once per phase and
+    /// switched. An element no phase moves stays static rather than being wrapped.
+    /// </para>
+    /// <para>
+    /// A phase sets <b>parameters</b>, not electrode settings. Potentials are already
+    /// expressions over parameters, so this costs no new vocabulary: the same override
+    /// mechanism a sweep uses to perturb a design is what a sequence uses to operate one.
+    /// </para>
+    /// <para>
+    /// A single-element model may still declare <c>stages</c> on its solve, which is the
+    /// older spelling and means the same thing. Declaring both is refused rather than
+    /// merged: an instrument has one timeline.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<StageDocument>? Sequence { get; init; }
+
     /// <summary>The surface that ends the flight.</summary>
     public DetectorDocument? Detector { get; init; }
 
@@ -141,16 +171,17 @@ public static class ModelSchema
 {
     /// <summary>The schema version this build writes.</summary>
     /// <remarks>
-    /// 0.3 adds the source cloud, 0.5 the mutual Coulomb force. Both additive, so
-    /// every earlier document still reads - but a document whose ions push on each
-    /// other genuinely is not a 0.4 document, and saying so is cheaper than an older
-    /// build reading it, ignoring the field it does not know, and reporting a
-    /// different flight with no indication that anything was dropped.
+    /// 0.3 adds the source cloud, 0.5 the mutual Coulomb force, 0.6 the model-level
+    /// sequence. All additive, so every earlier document still reads - but a document
+    /// whose ions push on each other genuinely is not a 0.4 document, and saying so is
+    /// cheaper than an older build reading it, ignoring the field it does not know, and
+    /// reporting a different flight with no indication that anything was dropped.
     /// </remarks>
-    public const string CurrentVersion = "0.5";
+    public const string CurrentVersion = "0.6";
 
     /// <summary>Versions this build can read.</summary>
-    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3", "0.4", "0.5"];
+    public static IReadOnlyList<string> SupportedVersions { get; } =
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"];
 }
 
 /// <summary>The ion being tracked.</summary>

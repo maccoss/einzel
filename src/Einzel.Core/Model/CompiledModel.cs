@@ -162,6 +162,34 @@ public sealed record CompiledField
     /// <summary>Which kind of element this is.</summary>
     public required CompiledFieldKind Kind { get; init; }
 
+    /// <summary>
+    /// This element as it stands during each phase of the instrument's timeline, when
+    /// the timeline changes it. Empty otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For the analytic kinds, which have nowhere else to put a phase.</b> A solved
+    /// geometry carries its phases in <see cref="CompiledSolvedField.Stages"/>, because
+    /// there a phase re-weights channels that are already solved. An analytic element has
+    /// no channels: a phase simply gives it different numbers, so it needs a whole
+    /// compiled copy per phase.
+    /// </para>
+    /// <para>
+    /// <b>Empty when the timeline does not reach this element</b>, which is a real
+    /// distinction rather than an optimisation. An element whose expressions do not
+    /// depend on any parameter a phase sets is genuinely static, and wrapping it in a
+    /// switch would give the assembly extra switch instants to land on and make a
+    /// static element answer a time-varying interface for no reason.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<CompiledField> Phases { get; init; } = [];
+
+    /// <summary>
+    /// The instant each phase ends, cumulative from zero. Empty when there is no
+    /// timeline, and otherwise one entry per phase.
+    /// </summary>
+    public IReadOnlyList<double> PhaseBoundariesSeconds { get; init; } = [];
+
     /// <summary>Uniform only: the field vector, in volts per metre.</summary>
     public Vec3 Field { get; init; }
 

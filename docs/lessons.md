@@ -32,18 +32,50 @@ assembly**, so a per-element stage cannot carry one: two elements would name
 different modes for the same instant, and there is no superposition of transport
 modes the way there is of fields.
 
-**Refused rather than patched.** The two coherent readings need work this does not
-do: either the timeline is the instrument's and every element recompiles at each
-stage - which is what the rationale describes and what SEQ-1 needs anyway - or a
-stage is scoped to its element, which is a different feature from the documented
-one. Making the incoherent case inexpressible is the honest state until that is
-settled.
+**Refused first, then fixed.** The refusal - a sequenced model may have one field
+element - was the honest state while the two coherent readings were open. The
+right one is the documented one: the timeline is the instrument's, and every
+element recompiles against each phase.
 
-No shipped model or template has more than one field element, so this refused
-nothing that exists. **It was a latent defect, and latent is not the same as
-harmless** - it was reachable by anyone writing a two-element sequenced model,
-which is a perfectly ordinary thing to write, and the wrong answer it gave was a
-plausible one.
+`Timeline` now resolves the phases **once for the model**, before any element is
+compiled, and hands the same parameter surfaces to all of them. That also fixes a
+second thing the per-element version got wrong: a malformed stage used to be
+reported once per field element, turning one typo into a wall of identical
+complaints.
+
+### And the first fix reached only half the elements
+
+A code review of that change found the same defect still live one layer along.
+`CompileField`'s analytic branches - `fieldFree`, `uniform`, `halfSpaceUniform` -
+compile from the base parameter surface and never looked at the timeline at all,
+because a `CompiledField` for those kinds has nowhere to put a phase. So a model
+whose sequence set a parameter used by a `halfSpaceUniform` cap potential had the
+solved elements follow and the analytic one frozen at baseline, validating
+cleanly. A model whose *only* elements are analytic compiled a full timeline that
+nothing consumed - the sequence was a silent no-op.
+
+**The comment that hid it is the part worth keeping.** `Restage` was a closure
+"because only the solve branch needs it, and threading the declared parameters
+through every field kind to reach it would put the sequencer in the signature of
+things that have nothing to do with it". That argument reads as sound and is
+exactly backwards: the analytic kinds have everything to do with the sequencer,
+because a phase gives them different numbers. A rationale written for one version
+of the code kept the next version from noticing what it had missed.
+
+Fixed with `SequencedField`, a generic switch, rather than a per-phase branch
+inside each analytic field. A special case layered on shared infrastructure is
+the shape a fix takes when it is not deep enough, and there would be one more of
+them every time a field kind is added.
+
+Two refusals remain, and both are about a document saying two things at once. Two
+elements each declaring stages is two timelines over one instrument. And declaring
+both the model's `sequence` and an element's `stages` is refused rather than
+merged - the same argument that refuses a geometry declaring both `drive` and
+`drives`.
+
+**Latent is not the same as harmless.** No shipped model had two field elements,
+so nothing existing was wrong - but a two-element sequenced model is a perfectly
+ordinary thing to write, and the wrong answer it gave was a plausible one.
 
 ## A harness that lies in the direction of "the thing under test is broken"
 
