@@ -763,6 +763,22 @@ the momentum genuinely is discarded, and this is what discarding it looks like f
 outside. Position, the one thing both descriptions carry, survives to the fourth
 decimal.
 
+**The first phase may be the trap**, which is the ordering the requirement was
+written about — ions are collected and thermalised in a gas, and only then extracted.
+Seeded through `DiffusionRun.Seed`, the same function a wholly diffusive `einzel run`
+uses, rather than a second implementation: `run` and `test` once computed one flight
+time two ways and disagreed by 1.3e-10, and the fix was to collapse them.
+
+**Reusing that path corrected two numbers.** A first version of the orchestrator
+built its grid with `new Grid2D(...)` where `GridFor` uses `Grid2D.OverBox`, which
+rounds intervals up to a power of two — so one model got *two different grids*
+depending on which path ran it. And its mobility helper ignored `Derived`, so a
+mobility the document derived from a cross section came back as the stored value
+rather than the re-derived one. A third gap closed with them: the diffusive leg
+passed no absorbers, so electrodes did not absorb during a diffusive phase —
+the defect that once made every diffusive transmission an upper bound with nothing
+saying so, reintroduced locally.
+
 **A trajectory leg starting part-way along the timeline is flown against a
 `TimeShiftedField`.** The integrator always starts at t = 0, so a leg beginning at
 21 µs has to be handed an instrument shifted by 21 µs rather than a start time it
@@ -772,12 +788,6 @@ core carries every validated number here, and refactoring it to add a case besid
 it is how those get quietly lost.
 
 ### Not built
-
-**The first phase cannot be diffusive.** Seeding a density from the source lives in
-`DiffusionRun`'s path and is not reachable from the orchestrator, so that case is
-refused with a reason rather than silently mishandled. For the trap-then-extract
-instrument SEQ-1 is about, the first phase *is* the trap, so this is a real
-limitation and not a corner.
 
 **Nothing is wired to the CLI.** `einzel run` still forks on the model's own mode;
 `SequencedRun` is reachable from code and tests only. Per-phase outcomes need to

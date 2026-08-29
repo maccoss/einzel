@@ -316,4 +316,146 @@ public sealed class SequencedRunTests(ITestOutputHelper output)
             compiled.Cloud.Ions,
             first.Trajectories + first.Arrived + first.Losses.Sum(l => l.Ions));
     }
+
+    /// <summary>The same instrument, but starting in the trap.</summary>
+    /// <remarks>
+    /// Written out rather than patched from <see cref="Model"/>. An edit that matches
+    /// nothing is a test that silently stops testing anything, which has now happened
+    /// three times in this session alone.
+    /// </remarks>
+    private const string TrapFirst = """
+    {
+      "schemaVersion": "0.6",
+      "name": "trap-then-extract",
+      "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+      "source": {
+        "position": { "value": [10, 0, 0], "unit": "mm" },
+        "direction": { "value": [1, 0, 0] },
+        "accelerationPotential": { "value": 5, "unit": "V" },
+        "cloud": {
+          "ions": 200,
+          "seed": 7,
+          "temperature": { "value": 300, "unit": "K" },
+          "transverseSpread": { "value": 0.5, "unit": "mm" },
+          "longitudinalSpread": { "value": 0.5, "unit": "mm" }
+        }
+      },
+      "sequence": [
+        { "name": "trap",    "duration": { "value": 20, "unit": "us" }, "mode": "diffusion" },
+        { "name": "settle",  "duration": { "value": 5, "unit": "us" },  "mode": "diffusion" },
+        { "name": "extract", "duration": { "value": 5, "unit": "us" },  "mode": "trajectory" }
+      ],
+      "fields": [{ "type": "fieldFree" }],
+      "detector": {
+        "planePoint": { "value": [60, 0, 0], "unit": "mm" },
+        "normal": { "value": [-1, 0, 0] }
+      },
+      "transport": {
+        "mode": "trajectory",
+        "maximumFlightTime": { "value": 1, "unit": "ms" },
+        "mobility": { "zeroField": { "value": 0.09, "unit": "m^2/(V s)" } },
+        "densityGrid": {
+          "minX": { "value": 0, "unit": "mm" }, "maxX": { "value": 40, "unit": "mm" },
+          "minY": { "value": -10, "unit": "mm" }, "maxY": { "value": 10, "unit": "mm" },
+          "intervalsX": 64, "intervalsY": 32
+        },
+        "gas": {
+          "model": "hardSphere",
+          "pressure": { "value": 1, "unit": "mbar" },
+          "mass": { "value": 28.0134, "unit": "Da" },
+          "crossSection": { "value": 250, "unit": "Å^2" }
+        }
+      }
+    }
+    """;
+
+    /// <summary>
+    /// The trap-then-extract instrument: the first phase is the trap, and it is diffusive.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the instrument SEQ-1 exists for</b>, and the ordering is not incidental
+    /// to it: ions are collected and thermalised in a gas-filled trap, where the right
+    /// description is a density, and only then extracted into vacuum and flown. A build
+    /// that could only start in the trajectory description could not express the device
+    /// the requirement was written about.
+    /// </para>
+    /// <para>
+    /// The seed is <c>DiffusionRun.Seed</c> — the same function a wholly diffusive
+    /// <c>einzel run</c> uses — rather than a second one written here. <c>run</c> and
+    /// <c>test</c> once computed one flight time two ways and disagreed by 1.3e-10, and
+    /// the fix was to collapse them to one implementation.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheFirstPhaseMayBeTheTrap()
+    {
+        var validation = ModelValidator.Validate(ModelJson.Parse(TrapFirst));
+
+        Assert.True(
+            validation.IsValid,
+            string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+
+        var compiled = validation.Model!;
+        var (field, _) = FieldAssembly.BuildReported(compiled);
+
+        var outcome = SequencedRun.Execute(
+            compiled, field, BackgroundGas.FromModel(compiled.Gas));
+
+        foreach (var phase in outcome.Phases)
+        {
+            output.WriteLine(
+                $"{phase.Name,-8} {phase.Mode,-11} population {phase.Population,10:G6}  "
+                + $"x {phase.CentroidMm[0],7:F3} mm  "
+                + (phase.Converted ? "converted" : "carried"));
+        }
+
+        // Two diffusive phases back to back, then one trajectory phase. The first
+        // converts nothing - it seeds - and the second needs no conversion either,
+        // because the description has not changed.
+        Assert.Equal(["diffusion", "diffusion", "trajectory"], outcome.Phases.Select(p => p.Mode));
+        Assert.Equal([false, false, true], outcome.Phases.Select(p => p.Converted));
+        Assert.Equal(1, outcome.Conversions);
+
+        // The packet is where the source put it, not at the origin: a seed that ignored
+        // the source position would still produce a plausible-looking density.
+        Assert.Equal(10.0, outcome.Phases[0].CentroidMm[0], 0.5);
+    }
+
+    /// <summary>
+    /// A phase that does not change the mode converts nothing.
+    /// </summary>
+    /// <remarks>
+    /// The control on the conversion count. Every boundary would look like a conversion
+    /// if the orchestrator asked "is this a new phase" rather than "is this a new
+    /// description", and a run that converted at every phase boundary would lose the
+    /// velocity distribution repeatedly for no reason.
+    /// </remarks>
+    [Fact]
+    public void APhaseThatKeepsTheModeConvertsNothing()
+    {
+        var validation = ModelValidator.Validate(ModelJson.Parse(
+            Model.Replace("\"mode\": \"diffusion\"", "\"mode\": \"trajectory\"",
+                StringComparison.Ordinal)));
+
+        Assert.True(
+            validation.IsValid,
+            string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+
+        var compiled = validation.Model!;
+
+        Assert.False(compiled.ChangesTransportMode);
+
+        var (field, _) = FieldAssembly.BuildReported(compiled);
+
+        var outcome = SequencedRun.Execute(
+            compiled, field, BackgroundGas.FromModel(compiled.Gas));
+
+        Assert.Equal(0, outcome.Conversions);
+        Assert.All(outcome.Phases, p => Assert.False(p.Converted));
+
+        // And nothing claims a conversion cost that was never paid.
+        Assert.DoesNotContain(outcome.Warnings, w => w.Code == "transport.velocity-assumed");
+        Assert.DoesNotContain(outcome.Warnings, w => w.Code == "transport.mode-changed-in-sequence");
+    }
 }

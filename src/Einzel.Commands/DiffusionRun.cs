@@ -330,7 +330,7 @@ public static class DiffusionRun
     /// the honest translation - the model said the ions start at a point, and the
     /// cell is as close to a point as the grid can express.
     /// </remarks>
-    private static DensityField Seed(CompiledModel model, Grid2D grid, bool cylindrical)
+    internal static DensityField Seed(CompiledModel model, Grid2D grid, bool cylindrical)
     {
         var density = new DensityField(grid, cylindrical);
 
@@ -413,7 +413,7 @@ public static class DiffusionRun
     /// complete.
     /// </para>
     /// </remarks>
-    private static (AbsorbingCells Cells, IReadOnlyDictionary<string, double> SeedLoss) Absorb(
+    internal static (AbsorbingCells Cells, IReadOnlyDictionary<string, double> SeedLoss) Absorb(
         CompiledModel model, Grid2D grid, DensityField density)
     {
         var names = new List<string>();
@@ -487,7 +487,7 @@ public static class DiffusionRun
     /// absorbs. Reflecting where the instrument has a wall would make ions bounce
     /// off vacuum.
     /// </remarks>
-    private static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)
+    internal static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)
     {
         var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
 

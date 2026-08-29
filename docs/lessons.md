@@ -6,6 +6,34 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## Four helpers already existed, and writing them again got two of them wrong
+
+`SequencedRun` needed a density grid, a seed, absorbing cells, domain edges and a
+mobility. `DiffusionRun` had all five. I wrote four of them again, and two came out
+different:
+
+- the grid, built with `new Grid2D(...)` where `GridFor` uses `Grid2D.OverBox`,
+  which **rounds each axis up to a power of two** - so one model got two different
+  grids depending on which path ran it;
+- the mobility, which ignored `Derived` - so a mobility the document derived from a
+  cross section came back as the *stored* zero-field value rather than the one
+  re-derived against the gas actually resolved for the run.
+
+A third was not wrong so much as absent: the diffusive leg passed **no absorbers**,
+so electrodes did not absorb during a diffusive phase. That is precisely the defect
+that once made every diffusive transmission an upper bound with nothing saying so,
+reintroduced locally a year later by someone writing the call from memory.
+
+None of the three would have failed a test of the new code. Each produces a
+plausible answer that simply differs from what `einzel run` gives for the same
+model - which is the same shape as `run` and `test` disagreeing by 1.3e-10 in energy
+drift, and has the same fix: **collapse to one implementation.**
+
+**What makes this worth writing down is how it was found**, which was not by a
+failing test. It was by asking what the CLI would have to report and noticing the
+answer would have to come from somewhere - and the somewhere already existed. A
+duplicate is invisible from inside the code that contains it.
+
 ## A stage moved a global parameter and only its own element followed
 
 The sequencer's documented rationale is that a stage sets a *parameter* rather than

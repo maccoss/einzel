@@ -207,27 +207,26 @@ public static class SequencedRun
             {
                 if (states is null)
                 {
-                    throw new EinzelException(new EinzelError
-                    {
-                        Code = ErrorCodes.SchemaInvalid,
-                        Path = "/sequence/0/mode",
-                        Constraint = "the first phase is diffusive and this build seeds a "
-                            + "density from the source only through einzel run's diffusive path",
-                        Suggestion = "make the first phase trajectory, or run the model "
-                            + "wholly in the diffusive mode. A sequence that starts in the "
-                            + "description it starts in needs no conversion, and that path "
-                            + "is not wired here yet",
-                    });
+                    // A trap-then-extract instrument starts in the trap, so the first
+                    // phase being diffusive is the ordinary case rather than a corner.
+                    // Seeded by the same function `einzel run` uses for a wholly
+                    // diffusive model - one implementation, because `run` and `test`
+                    // once computed one flight time two ways and disagreed by 1.3e-10.
+                    density = DiffusionRun.Seed(
+                        model, DiffusionRun.GridFor(model), Cylindrical(model));
                 }
+                else
+                {
+                    var forward = PacketConversion.ToDensity(
+                        states, states.Length * perTrajectory,
+                        DiffusionRun.GridFor(model), Cylindrical(model));
 
-                var forward = PacketConversion.ToDensity(
-                    states, Population(model), Grid(model), Cylindrical(model));
-
-                density = forward.Density;
-                warnings.AddRange(forward.Warnings);
-                states = null;
-                converted = true;
-                conversions++;
+                    density = forward.Density;
+                    warnings.AddRange(forward.Warnings);
+                    states = null;
+                    converted = true;
+                    conversions++;
+                }
             }
 
             // Run the phase in its own mode, for its own duration.
@@ -317,29 +316,20 @@ public static class SequencedRun
             ? declared
             : Math.Max(model.Cloud.Ions, 1);
 
-    private static Grid2D Grid(CompiledModel model) =>
-        model.DensityGrid is { } declared
-            ? new Grid2D(
-                declared.MinX, declared.MinY,
-                (declared.MaxX - declared.MinX) / declared.IntervalsX,
-                (declared.MaxY - declared.MinY) / declared.IntervalsY,
-                declared.IntervalsX + 1, declared.IntervalsY + 1)
-            : throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = "/transport/densityGrid",
-                Constraint = "a phase of this run is diffusive and there is no density grid "
-                    + "to put the packet on",
-                Suggestion = "add a \"densityGrid\" to the transport block covering where "
-                    + "the packet will be during the diffusive phase",
-            });
-
     private static bool Cylindrical(CompiledModel model) =>
         model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
 
+    /// <summary>The mobility this run drifts at.</summary>
+    /// <remarks>
+    /// <b>`Derived` is the part that is easy to drop.</b> A mobility the document derived
+    /// from a cross section carries a stored zero-field value that is not the one to use -
+    /// the derivation has to be redone against the gas actually resolved for this run.
+    /// A first version of this helper read the stored value unconditionally, which is a
+    /// different mobility from the one `einzel run` uses on the same model.
+    /// </remarks>
     private static Mobility Mobility(
         CompiledModel model, BackgroundGas gas, IonSpecies species) =>
-        model.Mobility is { } declared
+        model.Mobility is { Derived: false } declared
             ? new Mobility(declared.ZeroFieldSi, declared.Alpha, declared.ValidToTownsend)
             : Transport.Diffusion.Mobility.FromCrossSection(gas, species);
 
@@ -418,21 +408,6 @@ public static class SequencedRun
         return ([.. flying], arrived, lost);
     }
 
-    /// <summary>
-    /// What the density does at the edges of its grid: the detector collects, the rest
-    /// absorb, and a cylindrical axis reflects because there is no other side of it.
-    /// </summary>
-    private static DriftDiffusion.DomainEdges Edges(CompiledModel model)
-    {
-        var axis = Cylindrical(model) ? Escape.Reflecting : Escape.Absorbing;
-
-        return model.DetectorNormal.X < 0.0
-            ? new DriftDiffusion.DomainEdges(
-                Escape.Collecting, Escape.Absorbing, axis, Escape.Absorbing)
-            : new DriftDiffusion.DomainEdges(
-                Escape.Absorbing, Escape.Collecting, axis, Escape.Absorbing);
-    }
-
     /// <summary>Steps the density for one phase.</summary>
     private static DensityField Diffuse(
         DensityField density,
@@ -443,6 +418,14 @@ public static class SequencedRun
         double startedAt,
         CompiledPhase phase)
     {
+        var grid = DiffusionRun.GridFor(model);
+
+        // The electrodes absorb during a diffusive phase exactly as they do in a wholly
+        // diffusive run. Leaving them out would let a density pass through metal, which
+        // is the defect that made every diffusive transmission an upper bound with
+        // nothing saying so.
+        var (absorbers, _) = DiffusionRun.Absorb(model, grid, density);
+
         var result = DriftDiffusion.Run(
             density,
             Instant(field, startedAt),
@@ -450,7 +433,8 @@ public static class SequencedRun
             Mobility(model, gas, species),
             species,
             phase.DurationSeconds,
-            Edges(model));
+            DiffusionRun.EdgesFor(model, grid),
+            absorbers);
 
         return result.Density;
     }
