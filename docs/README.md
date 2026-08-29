@@ -26,6 +26,7 @@ states the intent and these pages state the reality; both are noted.
 | [Agent acceptance](agent-acceptance.md) | The prose-task suite, what it measures, and what gates a release |
 | [Lessons](lessons.md) | Bugs that presented as physics and were arithmetic |
 | [CLI](cli.md) | Command reference, exit codes, and the agent loop |
+| [Live session](live-session.md) | The shared attributed journal, and the MCP server over it |
 | [Literature targets](literature-targets.md) | Published instruments to reproduce, and what each needs |
 | [Validation](validation.md) | The test tiers, what each proves, and what is not covered |
 | [Spec findings](spec-findings.md) | Places where building it revealed something about the specification |

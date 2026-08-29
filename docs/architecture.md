@@ -19,12 +19,27 @@ Engine outward. Each references only what is above it in this list.
 | `Einzel.Commands` | Command objects: every operation as one serialisable thing |
 | `Einzel.Cli` | The primary surface |
 
-Not yet built: `Einzel.Compute`, `Einzel.Mcp`, `Einzel.Update`, `Einzel.Wpf`.
+| `Einzel.Mcp` | The live-session server, over one shared attributed journal |
 
-The CLI, the future MCP server, and the future shell are **peers, not a stack**.
-All three drive the same command objects. That is what makes "nothing exists only
-in the window" enforceable rather than aspirational: a capability added to one
-surface is added to the command layer, and the others get it for free.
+Not yet built: `Einzel.Compute`, `Einzel.Update`, `Einzel.Wpf`.
+
+The CLI, the MCP server, and the future shell are **peers, not a stack**. All
+three drive the same command objects. That is what makes "nothing exists only in
+the window" enforceable rather than aspirational: a capability added to one surface
+is added to the command layer, and the others get it for free.
+
+**Two of the three now exist, and the peer relationship is asserted rather than
+described.** Every MCP tool returns `CommandJson.Write` of the same outcome record
+the CLI serialises for `--json`, and a test compares the two **byte for byte**.
+One serialiser, one command object, so the surfaces cannot drift — and a warning
+added to a result reaches an MCP client by being on the record rather than by
+anyone remembering to copy it across.
+
+`einzel-mcp` is a separate executable rather than a verb on `einzel`, which is the
+peer relationship taken seriously in the other direction: spec figure 6 says the
+project-folder loop has "no protocol, no session, no network", and a `serve` verb
+inside `einzel` would put a server in the binary whose distinguishing property is
+that it is not one. See [the live session](live-session.md).
 
 ## The four invariants
 

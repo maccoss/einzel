@@ -6,6 +6,31 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## A harness that lies in the direction of "the thing under test is broken"
+
+The MCP server, driven by hand - a file of JSON-RPC piped into it - produced
+**nothing at all** on stdout. Not a malformed reply, not an error: silence. That
+reads unambiguously as a server that does not work, and the next half hour went
+into the server.
+
+With a logger attached the SDK said both requests were handled and both responses
+were sent. What happens is that a file on stdin hits EOF immediately, the transport
+tears down, and the outbound writes are dropped on the way out. A real client holds
+stdin open for the life of the session and never sees it. The harness was the
+artefact.
+
+**When a harness and the thing under test disagree, establish which one is the
+artefact before changing either.** The trap here is that the harness was simpler,
+and a simpler thing is easy to assume is the trustworthy one - but simpler meant it
+was missing the one property (a stdin that stays open) the thing under test depends
+on. What settled it in a minute was asking the SDK to narrate, rather than reasoning
+about which side was wrong.
+
+A second, smaller one from the same afternoon: `Environment.ProcessPath` under
+`dotnet test` is the **test host**, which is itself an apphost, so passing it a dll
+to run fails with "Failed to run as a self-contained app". Launch the apphost the
+build already produces.
+
 ## The measurement that measured the wrong thing
 
 The first comparison of bicubic against bilinear interpolation used a **solved**

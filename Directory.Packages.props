@@ -12,6 +12,20 @@
     RND-15), never referenced from this file.
   -->
   <ItemGroup>
+    <!--
+      The official MCP C# SDK, which section 20's dependency table names and
+      marks "verify current version and licence". Verified: 2.2.0 declares
+      Apache-2.0 as an SPDX expression in its own nuspec, and its whole
+      transitive closure is ten Microsoft.Extensions.* packages, all MIT.
+
+      The .Core package rather than the full one: it carries the server, the
+      tool primitives and the stdio transport, and leaves behind the
+      Microsoft.Extensions.Hosting integration this does not use.
+    -->
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Test stack. MIT / Apache-2.0. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />

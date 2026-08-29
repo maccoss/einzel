@@ -53,7 +53,6 @@ Einzel.Io  Project  Extensions  Render  Commands  Cli
 
 ```
 Einzel.Compute      the SIMD and ILGPU dispatch layer (CMP-1, PERF-5)
-Einzel.Mcp          the live-session server (MCP-1)
 Einzel.Update       release check, staging, version policy (all of UPD, DST)
 Einzel.Wpf          the shell (§16, UI-1) - all eleven required views
 ```
@@ -729,14 +728,15 @@ human's session hands over to an agent and back in the same vocabulary.
 | Regime inspector | Not built | REG-2's numbers are computed on every run already |
 | Project view with model-drift and engine-drift state | Not built | `einzel verify` computes both |
 | Extension manager | Not built | The manifest carries trust level, versions and compatible range; LIC-2 wants licences surfaced and nothing does |
-| Journal with agent and human attribution | Not built | Needs MCP-1's shared linear undo stack, which needs the MCP server |
+| Journal with agent and human attribution | Not built | The journal itself is built and lives in `Einzel.Commands`, with `SessionTools.Journal` exposed for exactly this - the window renders it and redraws the viewport when it changes. This row is now presentation over something that works |
 | Update notice with UPD-3's deferral options | Not built | Needs the whole of §18 |
 
 **The pattern in that table is the interesting part.** Almost every row is
 "presentation over something that already works" — which is what AGT-2 is supposed
-to produce, and is weak evidence that it has. Only three rows need genuinely new
-capability: the 3D viewport needs a raster path, the animation timeline needs
-RND-7, and the journal needs MCP.
+to produce, and is weak evidence that it has. Only two rows now need genuinely new
+capability: the 3D viewport needs a raster path, and the animation timeline needs
+scrubbing. The journal row was the third and is no longer - MCP-1 is met, and
+`SessionTools.Journal` is exposed so the window can render it.
 
 **But the invariant is untested, and that is the honest position.** AGT-2 says
 every capability reachable from the window is reachable from the CLI through the
@@ -915,7 +915,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `MCP-1` | Mutations are attributed and the undo stack is shared and linear. | Not built | `Einzel.Mcp` does not exist. Phase 4. |
+| `MCP-1` | Mutations are attributed and the undo stack is shared and linear. | **Met** | `SessionJournal` in `Einzel.Commands`, served by `Einzel.Mcp` over stdio. Attribution is taken from the client's `initialize` handshake rather than from a tool argument, so an agent has no spelling with which to sign an edit as anybody else - asserted in two halves, the name that comes back and the absence of any parameter that could have offered another. The stack is shared: an agent over the wire reverses an edit made in process, and the entry names both parties. Linear because an undo is itself an entry, so walking back twice appends twice rather than popping. Both claims checked by mutation: private per-author stacks fail three of six journal tests, a popping undo fails a different two, and moving attribution into a tool parameter fails three of five protocol tests. Streamable HTTP hosted by the shell - the primary transport - waits on the shell; the tools are above the transport, so it is a wrapper rather than a rewrite. `docs/live-session.md` |
 
 ### Performance (§8)
 
@@ -1581,6 +1581,61 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    density field at the model's single declared temperature. That assumption was
    already made by there being one `temperature` in the document, but it is now the
    only thing about the gas that cannot vary from place to place.
+
+10. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
+    `journal`, `undo` and `attribution` existed only in the `Einzel.Commands`
+    assembly *description string* - the same "named in a csproj and nowhere else"
+    state `ITransportMode` was in before its seam was built. So "build MCP" was
+    really "build the journal, then put a protocol on it", and §15 says as much: the
+    server's distinct value is shared live state, and "everything else it could do,
+    the CLI does at least as well and with less machinery". A journal only one party
+    can write to is a file, and a file needs no server.
+
+    **Attribution comes from the `initialize` handshake, not from a tool parameter.**
+    An `author` argument would make the attribution something the *mutating party
+    fills in*, which is a signature rather than an attribution - an agent could sign
+    a change as the person it is working with, by mistake or because a model decided
+    that read better. The client declares itself once, before any tool exists to
+    call. The test is in two halves and the second is what makes the first a property
+    rather than a default: the name that comes back is `agent:surveyor/3.1`, **and**
+    `model_edit`'s schema has exactly `description` and `content`, so there was no
+    argument through which another could have been offered. A tool that took an
+    author and ignored it would pass the first half alone.
+
+    **Shared and linear are two claims.** Shared means one stack rather than one per
+    party, which is the point rather than a hazard: two private stacks over one
+    document would let each party reverse changes the other had already built on, and
+    the document would reach a state neither of them authored. Linear falls out of the
+    walk back being over ordinary edits only. And **undo appends rather than pops**,
+    because a popping stack loses the fact that somebody undid something, and who -
+    which is exactly what MCP-1 asks to be recorded.
+
+    All three checked by mutation rather than by assertion count: private per-author
+    stacks fail three of six journal tests, a popping undo fails a *different* two,
+    and moving attribution into a tool parameter fails three of five protocol tests.
+
+    **The tool surface is deliberately not a second CLI**, and the server says so in
+    its own instructions - the failure to guard against is an agent looking for `run`
+    and `sweep`, not finding them, and concluding the platform cannot do those things.
+    Every result is `CommandJson.Write` of the same outcome record the CLI serialises
+    for `--json`, asserted **byte for byte**, which makes AGT-2 literal instead of
+    claimed and carries GRD-2 for free: a warning reaches an MCP client by being on
+    the record rather than by anyone remembering to copy it across. That is the seam
+    this project has already dropped evidence at three times.
+
+    **What remains needs the shell.** §15 makes streamable HTTP hosted in process the
+    primary transport and stdio "a convenience" - the right ordering for a finished
+    platform and the wrong one to build in, since the convenience runs today. The
+    tools are built above the transport, so adding HTTP is a wrapper. A full `run` is
+    also held back deliberately: it belongs where there is a progress surface and a
+    viewport to put the answer in, and `einzel run` is one process launch away
+    meanwhile. `Einzel.Wpf` is now the only assembly on the "what does not exist" list
+    that MCP-1's shell row depends on.
+
+    **The first non-test dependency the project has taken**, and §20's table asks for
+    the licence to be verified rather than assumed: `ModelContextProtocol.Core` 2.2.0
+    declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
+    transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
 ## Open decisions
 

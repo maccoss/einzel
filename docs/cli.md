@@ -460,6 +460,24 @@ engine, which is what makes stale guidance *detectable* - guidance written for o
 version sitting in a project driven by another is worse than none, because an
 agent trusts it and cannot see the drift.
 
+## The other surface
+
+`einzel-mcp` is a separate executable, not a verb here, and that is deliberate.
+Spec figure 6 draws two agent loops: this one — a project folder, "no protocol, no
+session, no network" — and a live session where a person has the model open and an
+agent joins them on it. A `serve` verb inside `einzel` would put a server in the
+binary whose distinguishing property is that it is not one.
+
+```
+einzel-mcp models/reflectron.json --human mike
+```
+
+It exposes the session and nothing else: read, edit, undo, journal, validate,
+preview. Everything in this page stays here, because §15 says so in as many words —
+"everything else it could do, the CLI does at least as well and with less
+machinery". Its results are the same JSON `--json` emits, byte for byte. See
+[the live session](live-session.md).
+
 ## Contract
 
 **Results on stdout, diagnostics on stderr.** A script may pipe stdout to a JSON
