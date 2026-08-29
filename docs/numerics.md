@@ -730,6 +730,102 @@ electrodes, so the convergence factor degrades — has a concrete cost that is e
 underestimate, because the geometry that shows it worst is the simplest one anybody
 would write.
 
+## The three-dimensional V-cycle barely descends, and the guard is right
+
+**A cycle is not a unit of work, and cycle counts are what get compared.** The section
+below quotes 49 cycles against 12-13 against 9 as though they measured the same thing.
+They do not: a cycle at zero coarse levels is several hundred smoothing sweeps over the
+finest grid, and a cycle at five levels is a handful per level.
+
+`SolveReport` now carries `Levels`, `Sweeps` and `CoarsestNodes`, threaded through the
+recursion in both solvers, and `einzel solve` prints them - with
+`<- not multigrid: it never coarsened` where the depth is zero.
+
+### What it says
+
+`Representable` stops coarsening once a coarse cell would exceed the smallest electrode
+dimension. **That is a physical size, so it does not move when the mesh is refined**:
+levels get added at the top and the bottom stays where it was.
+
+| geometry | 33³ | 65³ | 129³ | 257³ | coarsest cell |
+| --- | --- | --- | --- | --- | --- |
+| two 1 mm slabs | 0 | 0 | 1 | 2 | frozen at 0.5 mm |
+| four 1.2 mm rods | 0 | 1 | 2 | — | frozen at 0.625 mm |
+| a 2 mm sphere | 1 | 2 | 3 | — | frozen at 1.25 mm |
+| **no interior electrode** | **4** | **5** | **6** | — | 10 mm, fully coarsened |
+
+So the grid-independent cycle count this solver is documented as having - 8→7→7→7 from
+32 to 256 - is a property of the **boundary-only** case, which is the one row with no
+electrodes in it.
+
+| geometry | cell | nodes | levels | coarsest | cycles | factor | sweeps | wall |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| slabs | 0.5 mm | 65³ | **0** | **274,625** | 6 | 0.015 | 2,412 | 36.0 s |
+| slabs | 0.25 mm | 129³ | 1 | **274,625** | 45 | 0.596 | 18,270 | 176.3 s |
+| rods | 0.3125 mm | 65³ | 1 | 35,937 | 31 | 0.475 | 3,650 | 6.1 s |
+| sphere | 0.625 mm | 33³ | 1 | **4,913** | 13 | 0.155 | 1,734 | 0.3 s |
+| sphere | 0.3125 mm | 65³ | 2 | **4,913** | 13 | 0.158 | 1,786 | 1.3 s |
+
+**The sphere is what health looks like**: eight times the nodes, cycle count flat at 13,
+sweeps 1,734 → 1,786. **The slabs are the pathology**: the bottom level is the entire
+fine grid at 65³, and still 274,625 nodes at 129³. The bottom of the V does not shrink,
+which is precisely the cost multigrid exists to remove.
+
+Two consequences worth stating plainly. **At a 0.5 mm cell the slabs coarsen zero
+times** - the "6 cycles at factor 0.015" is 400 relaxation sweeps per cycle on the
+finest grid, which is why a 65³ Laplace solve takes 36 seconds. And **adding the first
+coarse level makes it worse, not better** (slabs 6 → 45 cycles, rods 3 → 31), because
+zero levels is brute-force relaxation that works and one level is a two-level method
+whose coarse correction is poor.
+
+### It is a three-dimensional problem, not a dimensional necessity
+
+The two solvers coarsen by different rules: the 2-D one descends while the coarse mask
+still holds an interior node, the 3-D one while a coarse cell is no larger than the
+smallest electrode. On shipped templates:
+
+| | levels | coarsest |
+| --- | --- | --- |
+| einzel lens (2-D) | 5 | **99 nodes** |
+| quadrupole (2-D) | 6 | **9 nodes** |
+| ion funnel (2-D) | 5 | 27 nodes |
+| rectilinear trap (2-D) | 6 | 15 nodes |
+| **segmented quadrupole (3-D)** | **2** | **9,537 nodes** |
+
+### The guard is load-bearing, measured by removing it
+
+Raising `ResolvedBy` lets the cycle descend further. On the 0.25 mm slabs:
+
+| ResolvedBy | levels | cycles | sweeps | wall | peak V of 100 applied |
+| --- | --- | --- | --- | --- | --- |
+| **1.0** (shipped) | 1 | 45 | 18,270 | 144.9 s | **100.00** |
+| 2.0 | 2 | 5 | 1,274 | 5.4 s | **486.75** |
+| 4.0 | 3 | 4 | 344 | 3.6 s | **516.29** |
+| unlimited | 6 | 5 | 130 | 4.2 s | **464.15** |
+
+**Deeper coarsening is thirty times faster, converges cleanly, and is wrong.** It
+reports converged at a healthy factor; only the maximum principle catches it, which is
+the argument for keeping that check as a tolerance-free test rather than a diagnostic.
+
+**The mechanism is sharper than "a coarse grid is cruder", and one plausible explanation
+was checked and rejected.** The coarse levels solve for the *error*, so a coarse mask
+carrying the electrodes' real potentials would inject a spurious 100 V per cycle - which
+would explain the magnitude neatly. It is not that: coarse correction fields are created
+zero and never have a mask applied, so their fixed nodes are correctly zero. What
+actually happens is that **at four levels down a 1 mm slab is smaller than a cell and is
+pinned to a single node**, so the coarse problem constrains the error at two isolated
+points where the fine problem constrains it over two whole planes. The correction is a
+solution to a different problem.
+
+**That is exactly what Galerkin coarsening fixes**, and this is the measurement that
+turns "Galerkin is the right answer" from an assertion into a conclusion: the coarse
+operator would be `R A P`, inheriting the fine Dirichlet structure through the operator
+rather than re-rasterising the geometry - so the coarse problem would be the same
+problem coarsened, and the guard could be removed rather than tuned.
+
+`CoarseningDepthTests` pins both halves: the slabs hold the maximum principle *because*
+they refuse to coarsen, and zero levels means the coarsest grid is the finest one.
+
 Two slabs 10 mm apart in a grounded box, 0.5 mm cells, 65 x 65 x 46 nodes:
 
 | | cycles | factor |

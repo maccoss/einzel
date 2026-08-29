@@ -913,6 +913,29 @@ Sequencing principles: seams first (transport mode, symmetry, accuracy class, de
 
 ## A solver limitation to know about
 
+**Measured, and worse than it reads below.** `SolveReport` now carries `Levels`,
+`Sweeps` and `CoarsestNodes`, and `einzel solve` prints them. What they say: the 3-D
+V-cycle descends **0-2 levels on every device geometry** (4-6 with no interior
+electrode), because `Representable` stops at a *physical* cell size — so refinement adds
+levels at the top and never removes the bottom. Two 1 mm slabs bottom out at **274,625
+nodes at 65³ and still 274,625 at 129³**; the shipped segmented quadrupole bottoms out
+at 9,537; the shipped **2-D** templates bottom out at **9-99**, because the two solvers
+coarsen by different rules. At a 0.5 mm cell the slabs coarsen *zero* times, so their
+"6 cycles at factor 0.015" is 400 relaxation sweeps a cycle over the finest grid — which
+is why a 65³ Laplace solve takes 36 seconds. **A cycle is not a unit of work and the
+factors below were being compared as though it were.**
+
+**The guard is load-bearing, established by removing it**: letting the 0.25 mm slabs
+descend further takes 45 cycles and 145 s down to 5 cycles and 4 s, and gives **486 V of
+100 applied**, reported as converged. Only the maximum principle catches it. A plausible
+alternative explanation — coarse masks carrying the electrodes' real potentials, so each
+cycle injects 100 V — was checked and is wrong: coarse correction fields start at zero
+and never have a mask applied. What actually happens is that a 1 mm slab four levels
+down is smaller than a cell and gets **pinned to a single node**, so the coarse problem
+constrains the error at two points where the fine one constrains it over two planes.
+That is precisely what `R A P` fixes. Details in `docs/numerics.md`.
+
+
 The multigrid V-cycle assumes coarsening preserves the problem. That holds for boundary-only Dirichlet geometries — Stage 3 measured 8→7→7→7 cycles from 32 to 256 intervals — but **not for interior electrodes** such as rods or apertures. An electrode occupies a fixed physical size, so each coarsening halves how many nodes represent it, and past a few levels it is not represented at all; the coarse grid then solves a different problem and its correction, prolonged back, drives the iteration apart. Four discs in a box reached **1e134 V** that way.
 
 Measured convergence factors with interior electrodes degrade with refinement rather than holding steady: 0.028 / 0.061 / 0.141 at 32 / 64 / 128 intervals with a grounded box, and 0.43 at 64 intervals without one. **This is mitigated, not solved.** The shipped templates are sized where it demonstrably converges, `InteriorElectrodeSolveTests` asserts the maximum principle (no potential anywhere may exceed the applied value — the cheapest exact check that a solve has not diverged), and a retention check refuses the clearest dissolving coarsenings. A real fix is Galerkin coarsening or operator-dependent interpolation, and it should happen before anyone solves a large rod geometry.

@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**665 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**667 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1191,11 +1191,36 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    defects that no test written from inside the project would have caught**, because
    both were about a model that validates and answers a different question.
 
-4. **Galerkin coarsening, or operator-dependent interpolation.** Named here for the
-   first time as work rather than as a caveat, because three separate things now wait
-   on it: the 3-D corpus example above, any large rod geometry, and the general
-   degradation of the convergence factor with refinement that the shipped templates
-   are sized around rather than free of.
+4. **Galerkin coarsening, or operator-dependent interpolation.** Named here as work
+   rather than as a caveat, because three separate things wait on it: the 3-D corpus
+   example above, any large rod geometry, and the degradation of the convergence factor
+   with refinement that the shipped templates are sized around rather than free of.
+
+   **Now measured rather than asserted, and the measurement is worse than the caveat
+   said.** `Representable` stops coarsening once a coarse cell would exceed the smallest
+   electrode dimension, and that is a *physical* size — so refinement adds levels at the
+   top and never removes the bottom. The 3-D V-cycle descends **0 to 2 levels on every
+   device geometry**, against 4 to 6 with no interior electrode, and the bottom level's
+   node count does not fall as the mesh refines: two 1 mm slabs bottom out at **274,625
+   nodes at 65³ and still 274,625 at 129³**. The shipped segmented quadrupole bottoms
+   out at 9,537 nodes; the shipped 2-D templates bottom out at **9 to 99**. It is a
+   three-dimensional problem, not a dimensional necessity — the two solvers use
+   different coarsening rules.
+
+   **The guard is load-bearing, and that was established by removing it.** Letting the
+   0.25 mm slabs descend further takes the solve from 45 cycles and 145 seconds to 5
+   cycles and 4 seconds — and to **486 V of 100 applied**. It reports converged at a
+   healthy factor; only the maximum principle catches it. At four levels down a 1 mm
+   slab is smaller than a cell and is pinned to a single node, so the coarse problem
+   constrains the error at two isolated points where the fine problem constrains it over
+   two planes. `R A P` inherits that structure through the operator instead, which is
+   why Galerkin removes the guard rather than tuning it.
+
+   `SolveReport` now carries `Levels`, `Sweeps` and `CoarsestNodes` so none of this is
+   invisible again: a cycle at zero levels is four hundred sweeps over the finest grid
+   and a cycle at five levels is a handful per level, and the convergence factors in
+   `docs/numerics.md` were being compared across geometries as though a cycle were a
+   unit of work.
 
 5. **Two narrower gaps, both stated where they bite.** The gas **density** is a single
    number for the whole model, so a differentially pumped instrument is not

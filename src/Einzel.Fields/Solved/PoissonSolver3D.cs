@@ -98,16 +98,20 @@ public static class PoissonSolver3D
 
         if (initial == 0.0)
         {
-            return (potential, new SolveReport(true, 0, 0.0, 0.0, 0.0));
+            return (potential, new SolveReport(true, 0, 0.0, 0.0, 0.0)
+            {
+                CoarsestNodes = grid.NodeCount,
+            });
         }
 
         var current = initial;
         var cycles = 0;
         var stalled = 0;
+        var work = new CycleWork();
 
         while (cycles < maximumCycles && current > tolerance * initial)
         {
-            Cycle(potential, rightHandSide, mask, coarsen);
+            Cycle(potential, rightHandSide, mask, coarsen, work, 0);
             cycles++;
 
             var next = Residual(potential, rightHandSide, mask, residual);
@@ -136,7 +140,32 @@ public static class PoissonSolver3D
 
         var factor = cycles > 0 ? Math.Pow(current / initial, 1.0 / cycles) : 0.0;
 
-        return (potential, new SolveReport(current <= tolerance * initial, cycles, initial, current, factor));
+        return (
+            potential,
+            new SolveReport(current <= tolerance * initial, cycles, initial, current, factor)
+            {
+                Levels = work.Levels,
+                Sweeps = work.Sweeps,
+                CoarsestNodes = work.CoarsestNodes,
+            });
+    }
+
+    /// <summary>
+    /// What a solve did, as opposed to how many cycles it took to do it.
+    /// </summary>
+    /// <remarks>
+    /// Threaded through the recursion rather than derived afterwards, because how far
+    /// a cycle descends depends on the geometry at every level and there is no way to
+    /// work it out from the outside without repeating the decision - and a second
+    /// implementation of a decision is a second decision.
+    /// </remarks>
+    private sealed class CycleWork
+    {
+        public int Levels { get; set; }
+
+        public long Sweeps { get; set; }
+
+        public long CoarsestNodes { get; set; }
     }
 
     /// <summary>Smoothing sweeps before coarsening and after correcting.</summary>
@@ -166,16 +195,23 @@ public static class PoissonSolver3D
     /// The fine operator was never wrong. The bottom of the hierarchy was.
     /// </para>
     /// </remarks>
-    private static void SolveCoarsest(
+    /// <summary>Relaxes the bottom level, and returns how many sweeps that took.</summary>
+    /// <remarks>
+    /// The sweep count is returned rather than discarded because on a geometry that
+    /// cannot coarsen this <em>is</em> the solve: the whole V-cycle reduces to this
+    /// call on the finest grid, and a "cycle" that reports as one unit of work is
+    /// several hundred sweeps over the full mesh.
+    /// </remarks>
+    private static int SolveCoarsest(
         ScalarField3D potential, ScalarField3D rightHandSide, DirichletMask3D mask)
     {
-        var work = new ScalarField3D(mask.Grid);
+        var scratch = new ScalarField3D(mask.Grid);
 
-        var initial = Residual(potential, rightHandSide, mask, work);
+        var initial = Residual(potential, rightHandSide, mask, scratch);
 
         if (initial == 0.0)
         {
-            return;
+            return 0;
         }
 
         for (var sweep = 0; sweep < CoarsestSweeps; sweep++)
@@ -185,11 +221,13 @@ public static class PoissonSolver3D
             // Checked every few sweeps rather than every one: a residual sweep costs
             // about what a smoothing sweep does, and doubling the price of the
             // bottom level to stop a little earlier is not a trade worth making.
-            if (sweep % 8 == 7 && Residual(potential, rightHandSide, mask, work) <= 1e-3 * initial)
+            if (sweep % 8 == 7 && Residual(potential, rightHandSide, mask, scratch) <= 1e-3 * initial)
             {
-                return;
+                return sweep + 1;
             }
         }
+
+        return CoarsestSweeps;
     }
 
     /// <summary>
@@ -254,7 +292,9 @@ public static class PoissonSolver3D
         ScalarField3D potential,
         ScalarField3D rightHandSide,
         DirichletMask3D mask,
-        Func<Grid3D, DirichletMask3D>? coarsen)
+        Func<Grid3D, DirichletMask3D>? coarsen,
+        CycleWork work,
+        int depth)
     {
         var grid = mask.Grid;
 
@@ -263,9 +303,13 @@ public static class PoissonSolver3D
             Smooth(potential, rightHandSide, mask);
         }
 
+        work.Sweeps += PreSmooth;
+
         if (!grid.CanCoarsen || !Representable(grid.Coarsen(), mask))
         {
-            SolveCoarsest(potential, rightHandSide, mask);
+            work.Levels = Math.Max(work.Levels, depth);
+            work.CoarsestNodes = grid.NodeCount;
+            work.Sweeps += SolveCoarsest(potential, rightHandSide, mask);
             return;
         }
 
@@ -278,7 +322,13 @@ public static class PoissonSolver3D
         var coarseResidual = Restrict(residual, coarseGrid, coarseMask);
         var correction = new ScalarField3D(coarseGrid);
 
-        Cycle(correction, coarseResidual, coarseMask, coarsen is null ? null : g => coarsen(g));
+        Cycle(
+            correction,
+            coarseResidual,
+            coarseMask,
+            coarsen is null ? null : g => coarsen(g),
+            work,
+            depth + 1);
 
         Prolong(correction, potential, mask);
 
@@ -286,6 +336,8 @@ public static class PoissonSolver3D
         {
             Smooth(potential, rightHandSide, mask);
         }
+
+        work.Sweeps += PostSmooth;
     }
 
     private static void Smooth(ScalarField3D potential, ScalarField3D rightHandSide, DirichletMask3D mask)

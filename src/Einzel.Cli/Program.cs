@@ -891,6 +891,19 @@ public static class Program
                 $"          {element.Cycles} cycles at factor {element.ConvergenceFactor:F4}, "
                 + $"residual {element.RelativeResidual:E2} of initial"));
 
+            // A cycle is not a unit of work, and it reads as one. At zero levels the
+            // V-cycle never coarsened and the whole solve was relaxation on the finest
+            // grid, which is a different answer to "how did it go" than a factor
+            // alone suggests.
+            var descent = element.Levels == 0
+                ? "  <- not multigrid: it never coarsened"
+                : string.Empty;
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"          {element.Levels} coarse level(s), {element.Sweeps:N0} sweep(s), "
+                + $"coarsest {element.CoarsestNodes:N0} node(s){descent}"));
+
             Console.Out.WriteLine(string.Create(
                 invariant, $"          peak |phi| {element.PeakPotentialVolts:G6} V"));
 

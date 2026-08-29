@@ -43,6 +43,33 @@ public sealed record SolvedElement
     /// <summary>V-cycles taken.</summary>
     public required int Cycles { get; init; }
 
+    /// <summary>Coarse levels the V-cycle descended.</summary>
+    /// <remarks>
+    /// <b>Reported because a cycle is not a unit of work and gets read as one.</b>
+    /// Coarsening stops once a coarse cell would exceed the smallest electrode
+    /// dimension, which is a <em>physical</em> size and does not move when the mesh is
+    /// refined - so a geometry with a thin electrode can descend zero levels, and then
+    /// the whole solve is relaxation on the finest grid. Zero here means this was not
+    /// multigrid.
+    /// </remarks>
+    public int Levels { get; init; }
+
+    /// <summary>Smoothing sweeps over every level, summed across all cycles.</summary>
+    /// <remarks>
+    /// The unit of work the cycle count is usually taken to stand for. Two solves
+    /// whose cycle counts differ by eight can differ by a hundredfold in sweeps, in
+    /// the other direction.
+    /// </remarks>
+    public long Sweeps { get; init; }
+
+    /// <summary>Nodes on the coarsest level reached.</summary>
+    /// <remarks>
+    /// The number that says whether this is multigrid: a true V-cycle bottoms out at a
+    /// handful of nodes whatever the fine mesh, and a bottom level whose node count
+    /// does not fall as the mesh refines is the cost multigrid exists to remove.
+    /// </remarks>
+    public long CoarsestNodes { get; init; }
+
     /// <summary>Residual reduction per cycle.</summary>
     public required double ConvergenceFactor { get; init; }
 
@@ -178,6 +205,9 @@ public static class SolveCommand
                         FixedNodes = channel.Mask.FixedCount,
                         CutLinks = channel.Mask.Cuts?.CutCount ?? 0,
                         Cycles = channel.Report.Cycles,
+                        Levels = channel.Report.Levels,
+                        Sweeps = channel.Report.Sweeps,
+                        CoarsestNodes = channel.Report.CoarsestNodes,
                         ConvergenceFactor = channel.Report.ConvergenceFactor,
                         RelativeResidual = channel.Report.InitialResidual > 0.0
                             ? channel.Report.FinalResidual / channel.Report.InitialResidual
@@ -218,6 +248,9 @@ public static class SolveCommand
                     FixedNodes = channel.Mask.FixedCount,
                     CutLinks = channel.Mask.Cuts?.CutCount ?? 0,
                     Cycles = channel.Report.Cycles,
+                    Levels = channel.Report.Levels,
+                    Sweeps = channel.Report.Sweeps,
+                    CoarsestNodes = channel.Report.CoarsestNodes,
                     ConvergenceFactor = channel.Report.ConvergenceFactor,
                     RelativeResidual = channel.Report.InitialResidual > 0.0
                         ? channel.Report.FinalResidual / channel.Report.InitialResidual
