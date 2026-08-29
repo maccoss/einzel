@@ -14,6 +14,13 @@ namespace Einzel.Transport;
 /// </remarks>
 public readonly record struct IonSpecies
 {
+    /// <summary>The elementary charge, in coulombs - and one electronvolt in joules.</summary>
+    /// <remarks>
+    /// The two are the same number by definition, which is why an energy in joules
+    /// divided by this is that energy in electronvolts.
+    /// </remarks>
+    public const double ElementaryChargeSi = 1.602176634e-19;
+
     private IonSpecies(double massSi, double chargeSi)
     {
         MassSi = massSi;

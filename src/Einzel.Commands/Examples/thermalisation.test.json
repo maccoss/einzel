@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "thermalisation",
+  "description": "Closed form: equipartition, so the mean kinetic energy of an ion left in a gas long enough is (3/2)kT = 38.778 meV at 300 K, whatever it started with. The sharpest check the event-driven collision models have, because the closed form is not something the engine knows: it tests the scattering kinematics, the Maxwellian draw and the isotropy of the deflection at once, and getting the centre-of-mass share wrong settles the ions at the wrong temperature. Launched at 5 eV - 129 times the target - so a run that merely failed to heat them would not pass. The tolerance is statistical rather than numerical: a single ion's kinetic energy has a spread of 82% of its own mean at equilibrium, so 240 ions carry about 5% of standard error and the band is three of those. The tolerance is statistical rather than numerical, and relative. A single ion's kinetic energy has a spread of 82% of its own mean at equilibrium, so 240 ions carry about 5.3% of standard error; twelve per cent is a shade over two of those. It is still a real assertion, because the launch energy is 129 times the target and a run that failed to thermalise would miss by four orders.",
+  "model": "../models/thermalisation.json",
+  "expect": [
+    {
+      "figureOfMerit": "meanKineticEnergy",
+      "value": 0.038778,
+      "unit": "eV",
+      "tolerance": 0.12
+    }
+  ]
+}

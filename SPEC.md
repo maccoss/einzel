@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**673 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 27 examples, every expectation a closed form, a published value, or an exact invariant.
+**676 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 28 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1167,7 +1167,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **Finish the examples corpus (EX-1).** 27 of thirty, and the gate (EX-2) is built
+3. **Finish the examples corpus (EX-1).** 28 of thirty, and the gate (EX-2) is built
    and green. What the first seventeen cost was mostly *deciding what can honestly be
    asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
    thermalisation, and a three-dimensional geometry.
@@ -1190,7 +1190,19 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    neither was a discretisation artefact a finer grid would have removed, which is what
    the first reading assumed.
 
-   Remaining: an MR-TOF and a thermalisation.
+   ~~Remaining: an MR-TOF and a thermalisation.~~ **`thermalisation` now ships** —
+   0.039339 eV against (3/2)kT = 0.038778 on 240 ions, 1.45% high against a 5.3%
+   standard error. It needed a new figure, `meanKineticEnergy`, because equipartition is
+   the sharpest check the collision models have and was measured only in a unit test.
+
+   **Building it found two defects, both larger than the example.** A declared gas took
+   no part in *any* figure of merit — the single-ion path never built a collision
+   sampler — so `run` and `test` disagreed by 95 µs on every model with a gas. And
+   `gas-flow-carry`'s tolerance was written as if absolute where the format compares a
+   relative error, so it admitted any positive answer: **an example in the release gate
+   that could not fail.** Both recorded in `docs/lessons.md`.
+
+   Remaining: an MR-TOF.
 
    The three added most recently set a pattern worth keeping. **`travelling-wave-capture`
    and `travelling-wave-ballistic` are a pair, and neither is worth much alone**: a

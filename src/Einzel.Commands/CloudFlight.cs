@@ -58,4 +58,23 @@ public sealed record CloudFlight(
     IReadOnlyList<PhaseState> Arrived,
     IReadOnlyList<LossChannel> Losses,
     int Collisions = 0,
-    int ScatteredIons = 0);
+    int ScatteredIons = 0)
+{
+    /// <summary>
+    /// Members still in flight at the time limit, having struck nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The states a packet that never arrives still has. A thermalised cloud in a gas
+    /// has no preferred direction and reaches no detector, so everything measurable
+    /// about it is here rather than in <see cref="Arrived"/> - and a figure that read
+    /// the arrivals would be selecting the fast members and reporting a temperature too
+    /// high.
+    /// </para>
+    /// <para>
+    /// Distinct from the loss channel of the same name, which counts them. This carries
+    /// what they were doing.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<PhaseState> Remaining { get; init; } = [];
+}

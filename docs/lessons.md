@@ -660,7 +660,34 @@ actually caught them were:
   converging at the wrong rate. Only visible because the gains spanned a factor of
   eight; at two gains either reading fits.
 
-- **Conservation is not positivity, and a conservation test passes with positivity
+- **A figure of merit and the run that reports it must be the same computation, and
+  saying so once does not keep it true.** `einzel run` flew its ions through a declared
+  gas and `einzel test` flew the same model in vacuum, because the figure-of-merit path
+  built the launch, the field and the detector but never a collision sampler. They
+  disagreed by 95 us on the corpus example whose entire subject is a gas carrying an ion,
+  and nothing compared them. **This is the second time**: `run` and `test` computing a
+  flight time two ways was found and fixed once already, by collapsing them to one
+  implementation - and the gas then arrived on only one side of the seam. A shared entry
+  point is not the same as a shared computation, and every argument added to one of them
+  is a chance for the two to drift apart again.
+
+- **An example whose expected value coincides with the broken answer can never catch the
+  break.** `gas-flow-carry` launches its ion at exactly the gas velocity so the transit
+  is `L/u` by arithmetic - and in vacuum an ion launched at that speed covers the same
+  distance in the same time. The vacuum answer was not close to the expectation, it *was*
+  the expectation, and closer to it than the physical answer. **When choosing the
+  conditions that make an example's arithmetic clean, check that they do not also make
+  the failure mode invisible.**
+
+- **A tolerance in the wrong units is an assertion that cannot fail.** Expectations in
+  the test format compare a *relative* error, and one example's tolerance read `500.0` -
+  written as plus or minus 500 us on 5000. As a fraction that admits any positive answer,
+  so the example was in the release gate asserting nothing, and its own description said
+  "discriminating far past its ten per cent tolerance" - the same misreading, written
+  down. An audit of all 29 expectations found one other at 50%. **A number whose units
+  are ambiguous should be read against what it would mean if taken the other way**, and
+  here one reading was a tenth and the other five hundred.
+, and a conservation test passes with positivity
   broken.** The quadratic B-spline deposit clamps its three-node stencil onto the grid
   at a boundary; leaving the *offset* unclamped with it makes the middle weight
   `0.75 - u^2` negative — at the very edge the weights are **1.125, −0.25, 0.125**. They

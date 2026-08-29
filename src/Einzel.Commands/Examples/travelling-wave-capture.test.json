@@ -1,14 +1,14 @@
 {
   "schemaVersion": "0.1",
   "name": "travelling-wave-capture",
-  "description": "Arithmetic: a captured ion rides a moving well, so its transit is the distance over the WAVE's speed regardless of how fast it was injected. The wave speed is ringsPerWave x ringPitch x driveFrequency = 6 x 1 mm x 0.5 MHz = 3000 m/s over 27 mm, which is 9.0 us. Injected at half that speed. Run beside travelling-wave-ballistic, which gives 18.0 us with the wave off - the pair is what says the ion is carried rather than flying.",
+  "description": "Arithmetic: a captured ion rides a moving well, so its transit is the distance over the WAVE's speed regardless of how fast it was injected. The wave speed is ringsPerWave x ringPitch x driveFrequency = 6 x 1 mm x 0.5 MHz = 3000 m/s over 27 mm, which is 9.0 us. Injected at half that speed. Run beside travelling-wave-ballistic, which gives 18.0 us with the wave off - the pair is what says the ion is carried rather than flying. The tolerance is RELATIVE. It read 0.5, which is fifty per cent - loose enough to be nearly no assertion, though it did still exclude the 18 us ballistic answer this example is paired against. Ten per cent is a real bound: the measured transit spans 8.754 to 8.875 us across injection speeds from 0.6 to 1.4 of the wave speed.",
   "model": "../models/travelling-wave-capture.json",
   "expect": [
     {
       "figureOfMerit": "flightTime",
       "value": 9.0,
       "unit": "us",
-      "tolerance": 0.5
+      "tolerance": 0.1
     }
   ]
 }

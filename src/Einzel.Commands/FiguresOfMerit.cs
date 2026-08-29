@@ -93,6 +93,7 @@ public static class FiguresOfMerit
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
         new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true),
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
+        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false),
         new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false),
         new("secularFrequencyY", "kHz", "The same along y.", false),
         new("secularFrequencyZ", "kHz", "The same along z.", false),
@@ -164,6 +165,7 @@ public static class FiguresOfMerit
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
             "confined" => model => Confined(model, energySpread, ions, report),
+            "meanKineticEnergy" => model => MeanKineticEnergy(model, report),
             "transitTime" => model => Transit(model, report),
             "secularFrequencyX" => model => Secular(model, 0, report),
             "secularFrequencyY" => model => Secular(model, 1, report),
@@ -218,7 +220,7 @@ public static class FiguresOfMerit
     private static TrajectoryResult? Single(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
-        var (launch, species, field, settings, detector) = Setup(model, report: report);
+        var (launch, species, field, settings, detector, collisions) = Setup(model, report: report);
 
         // The same convergence study 'run' reports from, and the finest level of it,
         // because that is the number 'run' publishes.
@@ -237,7 +239,8 @@ public static class FiguresOfMerit
         // from it, so reporting the coarse value with an interval around it would be
         // centring the answer on the least accurate point available. The cost is
         // three integrations per evaluation instead of one, which a sweep pays.
-        var study = FlightTimeStudy.Run(launch, species, field, settings, detector);
+        var study = FlightTimeStudy.Run(
+            launch, species, field, settings, detector, collisions: collisions);
 
         var (_, _, _, studyWarnings) = study.FlightTime;
         Forward(studyWarnings, report);
@@ -290,8 +293,10 @@ public static class FiguresOfMerit
             var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
             var offset = spread * fraction;
 
-            var (launch, species, field, settings, detector) = Setup(model, offset, report);
-            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+            var (launch, species, field, settings, detector, collisions) = Setup(model, offset, report);
+
+            var result = TrajectoryIntegrator.Integrate(
+                launch, species, field, settings, detector, collisions: collisions?.Invoke());
 
             if (result.Outcome == TrajectoryOutcome.StopConditionMet)
             {
@@ -332,7 +337,7 @@ public static class FiguresOfMerit
     {
         ArgumentNullException.ThrowIfNull(model);
 
-        var (nominal, species, field, settings, detector) = Setup(model, report: report);
+        var (nominal, species, field, settings, detector, _) = Setup(model, report: report);
         // The declared direction, so a packet at rest still knows which way is
         // downstream. For a moving ion it is redundant and ignored.
         var cloud = IonCloud.Draw(in nominal, species, model.Cloud, model.SourceDirection);
@@ -349,6 +354,7 @@ public static class FiguresOfMerit
         var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
         var collisions = 0;
         var scattered = 0;
+        var remaining = new List<PhaseState>();
 
         for (var index = 0; index < cloud.Length; index++)
         {
@@ -400,6 +406,12 @@ public static class FiguresOfMerit
             };
 
             losses[channel] = losses.GetValueOrDefault(channel) + 1;
+
+            if (result.Outcome == TrajectoryOutcome.MaximumFlightTimeReached
+                && result.StruckSurface is null)
+            {
+                remaining.Add(result.FinalState);
+            }
         }
 
         return new CloudFlight(
@@ -413,7 +425,10 @@ public static class FiguresOfMerit
                 .ThenBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new LossChannel(pair.Key, pair.Value))],
             collisions,
-            scattered);
+            scattered)
+        {
+            Remaining = [.. remaining],
+        };
     }
 
     /// <summary>
@@ -696,7 +711,7 @@ public static class FiguresOfMerit
     private static double? Secular(
         CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
     {
-        var (launch, species, field, settings, detector) = Setup(model, report: report);
+        var (launch, species, field, settings, detector, collisions) = Setup(model, report: report);
 
         if (field is not Fields.ITimeVaryingField driven)
         {
@@ -830,8 +845,10 @@ public static class FiguresOfMerit
         {
             var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
 
-            var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
-            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+            var (launch, species, field, settings, detector, collisions) = Setup(model, spread * fraction, report);
+
+            var result = TrajectoryIntegrator.Integrate(
+                launch, species, field, settings, detector, collisions: collisions?.Invoke());
 
             if (result.Outcome == TrajectoryOutcome.StopConditionMet)
             {
@@ -860,6 +877,59 @@ public static class FiguresOfMerit
     /// escaped - which makes the three outcomes distinct: struck, escaped, held.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The mean kinetic energy the packet ends the flight with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Equipartition is the sharpest check the event-driven collision models have,
+    /// and until now it was outside the machinery that keeps every other figure
+    /// honest.</b> An ion left in a gas long enough must arrive at <c>(3/2)kT</c>
+    /// whatever it started with - a closed form this engine has no part in, which tests
+    /// the scattering kinematics, the Maxwellian draw and the isotropy of the deflection
+    /// at once. It was measured in a unit test and could not be asserted by a project
+    /// test or ranked by a study, which is the same gap <c>transitTime</c> was added to
+    /// close for the diffusive mode.
+    /// </para>
+    /// <para>
+    /// <b>Over the ions still in flight, not the ones that arrived.</b> A thermalised
+    /// packet has no preferred direction, so which members reach a detector is a
+    /// question about geometry rather than about temperature - and selecting on arrival
+    /// would select the fast ones and report a temperature that is too high.
+    /// </para>
+    /// <para>
+    /// Through the cloud path rather than the single-ion one, so the ion count is the
+    /// document's and each member gets its own collision stream from the declared seed.
+    /// A temperature is a statistic, and taking it over the twenty-one ions a study
+    /// happens to default to would give it an eighteen per cent standard error whatever
+    /// the model asked for.
+    /// </para>
+    /// <para>
+    /// In joules, because an evaluator returns SI and the catalogue's unit is applied
+    /// above it. Returning electronvolts here converted twice and reported 3e17 eV,
+    /// which is the same rule - SI internally, units at the boundary - broken from the
+    /// inside.
+    /// </para>
+    /// </remarks>
+    private static double? MeanKineticEnergy(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var species = IonSpecies.FromModel(model);
+
+        var flight = FlyCloud(model, report);
+
+        var total = 0.0;
+
+        foreach (var state in flight.Remaining)
+        {
+            total += 0.5 * species.MassSi * state.Velocity.LengthSquared;
+        }
+
+        // Nobody survived to have a temperature. Absent rather than zero: zero is a
+        // real answer and a reader cannot tell the two apart if both print as zero.
+        return flight.Remaining.Count == 0 ? null : total / flight.Remaining.Count;
+    }
+
     private static double? Confined(
         CompiledModel model,
         double spread,
@@ -878,8 +948,10 @@ public static class FiguresOfMerit
         {
             var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
 
-            var (launch, species, field, settings, detector) = Setup(model, spread * fraction, report);
-            var result = TrajectoryIntegrator.Integrate(launch, species, field, settings, detector);
+            var (launch, species, field, settings, detector, collisions) = Setup(model, spread * fraction, report);
+
+            var result = TrajectoryIntegrator.Integrate(
+                launch, species, field, settings, detector, collisions: collisions?.Invoke());
 
             if (result.Outcome == TrajectoryOutcome.MaximumFlightTimeReached
                 && result.StruckSurface is null)
@@ -935,7 +1007,8 @@ public static class FiguresOfMerit
     }
 
     private static (PhaseState Launch, IonSpecies Species, IElectrostaticField Field,
-        IntegrationSettings Settings, TrajectoryStopFunction Detector) Setup(
+        IntegrationSettings Settings, TrajectoryStopFunction Detector,
+        Func<Transport.Collisions.CollisionSampler>? Collisions) Setup(
         CompiledModel model,
         double energyOffset = 0.0,
         Action<Core.Results.ValidityWarning>? report = null)
@@ -978,6 +1051,22 @@ public static class FiguresOfMerit
             MaximumFlightTime = model.MaximumFlightTimeSi,
         };
 
-        return (launch, species, field, settings, detector);
+        // A DECLARED GAS TAKES PART, which it did not before: every figure of merit
+        // reached through here flew in vacuum however much gas the document declared,
+        // so `einzel run` and `einzel test` disagreed on any model with one. The corpus
+        // example whose entire subject is a gas carrying an ion passed with the gas
+        // block deleted, to the last digit.
+        //
+        // A factory rather than an instance because the flight-time study integrates
+        // three times at three tolerances and each pass needs its own stream - sharing
+        // one would let the second refinement continue the first's draws.
+        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+
+        var collisions = gas.IsPresent
+            ? () => new Transport.Collisions.CollisionSampler(
+                gas, species.MassSi, species.ChargeSi, model.Gas.Seed)
+            : (Func<Transport.Collisions.CollisionSampler>?)null;
+
+        return (launch, species, field, settings, detector, collisions);
     }
 }
