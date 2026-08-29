@@ -351,7 +351,7 @@ public static class FiguresOfMerit
         var arrived = new List<PhaseState>(cloud.Length);
         var losses = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        var gas = DiffusionRun.GasFor(model);
         var collisions = 0;
         var scattered = 0;
         var remaining = new List<PhaseState>();
@@ -1060,7 +1060,7 @@ public static class FiguresOfMerit
         // A factory rather than an instance because the flight-time study integrates
         // three times at three tolerances and each pass needs its own stream - sharing
         // one would let the second refinement continue the first's draws.
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+        var gas = DiffusionRun.GasFor(model);
 
         var collisions = gas.IsPresent
             ? () => new Transport.Collisions.CollisionSampler(

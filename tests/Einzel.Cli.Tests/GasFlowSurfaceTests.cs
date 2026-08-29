@@ -254,8 +254,16 @@ public sealed class GasFlowSurfaceTests : IDisposable
             () => Commands.DiffusionRun.Execute(validation.Model!, field, warnings));
 
         Assert.Equal("/transport/gas/velocityField", failure.Error.Path);
-        Assert.Contains("not resolved", failure.Error.Constraint, StringComparison.Ordinal);
+        Assert.Contains(
+            "no model directory", failure.Error.Constraint, StringComparison.Ordinal);
         Assert.Contains("einzel run", failure.Error.Suggestion!, StringComparison.Ordinal);
+
+        // The refusal no longer lives in DiffusionRun. It is BackgroundGas.FromModel's,
+        // which is the function that cannot read a file - so every caller without a
+        // path gets it rather than only the ones somebody remembered to guard. This
+        // test used to assert a phrase from the local guard; what it asserts now is
+        // that the behaviour survived being moved, which is the thing worth pinning.
+        Assert.Equal(Core.Errors.ErrorCodes.SchemaInvalid, failure.Error.Code);
     }
 
     [Fact]

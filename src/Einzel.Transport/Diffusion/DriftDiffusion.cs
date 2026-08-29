@@ -155,6 +155,10 @@ public static class DriftDiffusion
         var next = new DensityField(grid, initial.Cylindrical);
 
         var sign = Math.Sign(species.ChargeSi);
+
+        // The density the declared mobility belongs to. A pressure field grades the
+        // gas away from it, and mobility goes as the reciprocal of density, so this
+        // is the reference the scaling is against rather than the value used.
         var number = gas.NumberDensitySi;
 
         // Sampled once. The field does not change during a diffusive run - a
@@ -400,7 +404,15 @@ public static class DriftDiffusion
                 var electric = field.ElectricFieldAt(in point);
 
                 var strength = Math.Sqrt((electric.X * electric.X) + (electric.Y * electric.Y));
-                var local = mobility.At(strength, number);
+
+                // Sampled per node, like the flow below and for the same reason. The
+                // mobility carries two separate density dependences and this moves
+                // both: it goes as 1/n outright, and its field expansion is in E/n.
+                // Where no pressure field is declared this is the model's own
+                // density at every node, the ratio is exactly one, and the result is
+                // bit-identical to what it was.
+                var here = gas.NumberDensityAt(in point);
+                var local = mobility.At(strength, here, number);
 
                 var k = (j * grid.CountX) + i;
 

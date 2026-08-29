@@ -756,7 +756,10 @@ public static class AgentSuite
     {
         try
         {
-            var validation = ModelValidator.Validate(Io.ModelJson.Parse(File.ReadAllText(path)), null);
+            var validation = ModelValidator.Validate(
+                Io.ModelJson.Parse(File.ReadAllText(path)),
+                null,
+                Path.GetDirectoryName(Path.GetFullPath(path)));
 
             checks.Add(new AgentCheck(
                 "the model validates",

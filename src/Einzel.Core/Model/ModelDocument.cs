@@ -280,6 +280,48 @@ public sealed record GasFlowDocument
     public string? Array { get; init; }
 }
 
+/// <summary>An imported field of gas pressure.</summary>
+/// <remarks>
+/// Referenced rather than embedded (PRJ-2), like the velocity field: a CFD result is
+/// thousands of numbers and a model document is meant to stay small, text and
+/// diffable.
+/// </remarks>
+public sealed record GasPressureFieldDocument
+{
+    /// <summary>Path to the .vti file, relative to the model document.</summary>
+    public string? Path { get; init; }
+
+    /// <summary>
+    /// Which array in the file holds the pressure, or null for the first one.
+    /// </summary>
+    /// <remarks>
+    /// A CFD export usually carries several - pressure, density, velocity, a
+    /// temperature - so naming it is the difference between reading the pressure and
+    /// reading whatever happened to be written first.
+    /// </remarks>
+    public string? Array { get; init; }
+
+    /// <summary>The unit the file's numbers are in - "Pa", "mbar", "torr".</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Required, and for the reason a scalar's unit is.</b> Section 9 makes
+    /// <c>{"energy": 4000}</c> a validation error on purpose, because unit ambiguity
+    /// is the commonest source of silent wrongness and an agent building from prose
+    /// is the actor most likely to introduce it. Nothing about that argument weakens
+    /// when the number becomes a hundred thousand numbers: vacuum work is quoted in
+    /// mbar and torr at least as often as in pascals, and a file read as pascals when
+    /// it holds mbar is a gas a hundred times too thin, which looks entirely
+    /// plausible.
+    /// </para>
+    /// <para>
+    /// The velocity field has no such field because a CFD velocity is metres per
+    /// second essentially always. That is an asymmetry with a reason rather than an
+    /// oversight.
+    /// </para>
+    /// </remarks>
+    public string? Unit { get; init; }
+}
+
 /// <summary>A field element. The discriminator is <see cref="Type"/>.</summary>
 /// <remarks>
 /// A single record with a discriminator rather than a polymorphic hierarchy, so
@@ -554,6 +596,27 @@ public sealed record GasDocument
     /// specific statement.
     /// </remarks>
     public GasFlowDocument? VelocityField { get; init; }
+
+    /// <summary>
+    /// An imported <em>pressure</em> field, which is the other half of a
+    /// differentially pumped instrument (GAS-1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A velocity field on its own gives the neutrals a velocity everywhere and the
+    /// same number of them everywhere. A funnel behind an inlet capillary spans
+    /// decades of pressure between its entrance and its exit, and every collision
+    /// rate, mean free path, mobility and diffusion coefficient in it varies with
+    /// that.
+    /// </para>
+    /// <para>
+    /// <see cref="Pressure"/> stays required and becomes the <em>reference</em>: it
+    /// is the density the declared or derived mobility belongs to, and the field
+    /// grades away from it. Both are reported on every run so a reader can see how
+    /// far apart they are.
+    /// </para>
+    /// </remarks>
+    public GasPressureFieldDocument? PressureField { get; init; }
 
     /// <summary>
     /// Seed for the collision random stream, so a collisional run is reproducible

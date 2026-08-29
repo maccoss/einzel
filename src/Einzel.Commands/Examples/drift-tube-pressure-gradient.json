@@ -1,0 +1,128 @@
+{
+  "schemaVersion": "0.4",
+  "name": "drift-tube-pressure-gradient",
+  "description": "A 38 mm drift tube whose gas thickens along it, from 1 mbar where the packet starts to 2 mbar at the detector. This is what a differentially pumped instrument looks like, and until a pressure field could be imported it was not expressible: a model could declare a neutral velocity everywhere and only ever the same number of neutrals everywhere. GAS-1 asks for both. THE EXPECTED NUMBER IS AN INTEGRAL THIS ENGINE HAS NO PART IN. An ion drifts further between collisions in a thinner gas, so it is mu times n that is constant - which is why the literature tabulates REDUCED mobility - and the drift speed is therefore mu_ref n_ref E / n(x). The transit is the integral of dx over that, which is the integral of n(x) dx divided by mu_ref n_ref E: the uniform answer scaled by the MEAN density along the path. For a linear ramp that mean is the average of the two ends, so 1.5 mbar against a declared 1 mbar, and 0.09 m^2/(V s) in 2 kV/m is 180 m/s, so 38 mm at uniform 1 mbar takes 211.1 us and this takes 1.5 times that. The mobility is declared rather than derived, per TRN-1, which is also what keeps the expectation arithmetic. The unit is required on the file for the reason section 9 requires it on a scalar: vacuum work is quoted in mbar and torr at least as often as in pascals, and a file read as pascals when it holds mbar is a gas a hundred times too thin, which looks entirely plausible and never announces itself. The test has teeth far past its tolerance: ignoring the gradient gives 211 us against 317, a third out. What it deliberately cannot see is the ARRANGEMENT - a drift transit depends only on the integral of n along the path, so any reflection of the profile gives the same answer. That is a property of the physics rather than a weakness to design away, and it is why the unit tests pin the arrangement separately by reversing a ramp and asserting the two differ. The imported field spans the tracked grid exactly, so nothing is extrapolated and no part of the answer is an edge value continued.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        2,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.001,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "population": 10000,
+      "transverseSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      },
+      "longitudinalSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "value": [
+          2000.0,
+          0,
+          0
+        ],
+        "unit": "V/m"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        40.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "diffusion",
+    "maximumFlightTime": {
+      "value": 1500,
+      "unit": "us"
+    },
+    "mobility": {
+      "zeroField": {
+        "value": 0.09,
+        "unit": "m^2/(V s)"
+      }
+    },
+    "densityGrid": {
+      "minX": {
+        "value": -2,
+        "unit": "mm"
+      },
+      "maxX": {
+        "value": 40,
+        "unit": "mm"
+      },
+      "minY": {
+        "value": -6,
+        "unit": "mm"
+      },
+      "maxY": {
+        "value": 6,
+        "unit": "mm"
+      },
+      "intervalsX": 128,
+      "intervalsY": 32
+    },
+    "gas": {
+      "model": "hardSphere",
+      "pressure": {
+        "value": 1,
+        "unit": "mbar"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "crossSection": {
+        "value": 250,
+        "unit": "Å^2"
+      },
+      "pressureField": {
+        "path": "drift-tube-pressure-gradient.pressure.vti",
+        "array": "pressure",
+        "unit": "mbar"
+      }
+    }
+  }
+}

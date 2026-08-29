@@ -40,12 +40,7 @@ namespace Einzel.Transport.Collisions;
 /// </remarks>
 public sealed class SampledGasFlow : IGasFlow
 {
-    private readonly double[] _values;
-    private readonly int _countX;
-    private readonly int _countY;
-    private readonly int _countZ;
-    private readonly Vec3 _origin;
-    private readonly Vec3 _spacing;
+    private readonly SampledGrid _grid;
 
     /// <summary>Creates a flow from samples on a uniform grid.</summary>
     /// <param name="countX">Nodes along x, at least one.</param>
@@ -62,29 +57,28 @@ public sealed class SampledGasFlow : IGasFlow
     /// <exception cref="ArgumentException">The sample count does not match the extent.</exception>
     public SampledGasFlow(
         int countX, int countY, int countZ, Vec3 originSi, Vec3 spacingSi, double[] values)
+        : this(new SampledGrid(3, countX, countY, countZ, originSi, spacingSi, values))
     {
-        ArgumentNullException.ThrowIfNull(values);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(countX);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(countY);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(countZ);
+    }
 
-        var expected = 3L * countX * countY * countZ;
+    /// <summary>Creates a flow from a three-component sampled grid.</summary>
+    /// <param name="grid">The samples.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <exception cref="ArgumentException">The grid does not carry three components.</exception>
+    public SampledGasFlow(SampledGrid grid)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
 
-        if (values.Length != expected)
+        if (grid.Components != 3)
         {
             throw new ArgumentException(
-                $"{values.Length} numbers for an extent of {countX}x{countY}x{countZ} with three "
-                + $"components, which needs {expected}",
-                nameof(values));
+                $"a velocity needs three components and this grid carries {grid.Components}",
+                nameof(grid));
         }
 
-        _countX = countX;
-        _countY = countY;
-        _countZ = countZ;
-        _origin = originSi;
-        _spacing = spacingSi;
-        _values = values;
+        _grid = grid;
 
+        var values = grid.Values;
         var fastest = 0.0;
         var moving = false;
 
@@ -110,68 +104,23 @@ public sealed class SampledGasFlow : IGasFlow
     public double FastestSpeedSi { get; }
 
     /// <summary>The lower corner of the sampled region, in metres.</summary>
-    public Vec3 MinimumSi => _origin;
+    public Vec3 MinimumSi => _grid.MinimumSi;
 
     /// <summary>The upper corner, in metres.</summary>
-    public Vec3 MaximumSi => new(
-        _origin.X + (_spacing.X * (_countX - 1)),
-        _origin.Y + (_spacing.Y * (_countY - 1)),
-        _origin.Z + (_spacing.Z * (_countZ - 1)));
+    public Vec3 MaximumSi => _grid.MaximumSi;
 
     /// <inheritdoc/>
     public Vec3 VelocityAt(in Vec3 point)
     {
-        var (i, fx) = Cell(point.X, _origin.X, _spacing.X, _countX);
-        var (j, fy) = Cell(point.Y, _origin.Y, _spacing.Y, _countY);
-        var (k, fz) = Cell(point.Z, _origin.Z, _spacing.Z, _countZ);
+        Span<double> v = stackalloc double[3];
 
-        var result = Vec3.Zero;
+        _grid.SampleInto(in point, v);
 
-        for (var dz = 0; dz <= 1; dz++)
-        {
-            var wz = dz == 0 ? 1.0 - fz : fz;
-
-            if (wz == 0.0)
-            {
-                continue;
-            }
-
-            for (var dy = 0; dy <= 1; dy++)
-            {
-                var wy = dy == 0 ? 1.0 - fy : fy;
-
-                if (wy == 0.0)
-                {
-                    continue;
-                }
-
-                for (var dx = 0; dx <= 1; dx++)
-                {
-                    var wx = dx == 0 ? 1.0 - fx : fx;
-
-                    if (wx == 0.0)
-                    {
-                        continue;
-                    }
-
-                    result += At(i + dx, j + dy, k + dz) * (wx * wy * wz);
-                }
-            }
-        }
-
-        return result;
+        return new Vec3(v[0], v[1], v[2]);
     }
 
     /// <inheritdoc/>
-    public bool Covers(in Vec3 point)
-    {
-        var lower = MinimumSi;
-        var upper = MaximumSi;
-
-        return point.X >= lower.X && point.X <= upper.X
-            && point.Y >= lower.Y && point.Y <= upper.Y
-            && point.Z >= lower.Z && point.Z <= upper.Z;
-    }
+    public bool Covers(in Vec3 point) => _grid.Covers(in point);
 
     /// <summary>
     /// How much of a box lies outside the sampled region, as a volume fraction.
@@ -186,90 +135,6 @@ public sealed class SampledGasFlow : IGasFlow
     /// the size of the region where the answer was extrapolated rather than
     /// measured.
     /// </remarks>
-    public double FractionOutside(Vec3 minimumSi, Vec3 maximumSi)
-    {
-        var lower = MinimumSi;
-        var upper = MaximumSi;
-
-        var covered =
-            Covered(minimumSi.X, maximumSi.X, lower.X, upper.X, _countX == 1)
-            * Covered(minimumSi.Y, maximumSi.Y, lower.Y, upper.Y, _countY == 1)
-            * Covered(minimumSi.Z, maximumSi.Z, lower.Z, upper.Z, _countZ == 1);
-
-        return Math.Clamp(1.0 - covered, 0.0, 1.0);
-    }
-
-    /// <summary>
-    /// What fraction of a box's extent along one axis the field covers.
-    /// </summary>
-    /// <remarks>
-    /// Three cases, and an earlier version collapsed two of them that are opposites.
-    /// A field with one node on an axis does not <em>resolve</em> that axis, so it
-    /// makes no claim about it and covers all of it - that is what a
-    /// two-dimensional import looks like. A box with no thickness on an axis is
-    /// either inside or outside, with nothing in between. Everything else is the
-    /// ordinary overlap, and a non-overlapping interval covers none of it rather
-    /// than all of it, which is the case that was wrong: a box a long way outside
-    /// the field reported itself as fully covered.
-    /// </remarks>
-    private static double Covered(
-        double boxLow, double boxHigh, double fieldLow, double fieldHigh, bool fieldIsFlat)
-    {
-        if (fieldIsFlat)
-        {
-            return 1.0;
-        }
-
-        var span = boxHigh - boxLow;
-
-        if (span <= 0.0)
-        {
-            return boxLow >= fieldLow && boxLow <= fieldHigh ? 1.0 : 0.0;
-        }
-
-        var low = Math.Max(boxLow, fieldLow);
-        var high = Math.Min(boxHigh, fieldHigh);
-
-        return high > low ? (high - low) / span : 0.0;
-    }
-
-    private Vec3 At(int i, int j, int k)
-    {
-        i = Math.Clamp(i, 0, _countX - 1);
-        j = Math.Clamp(j, 0, _countY - 1);
-        k = Math.Clamp(k, 0, _countZ - 1);
-
-        var index = 3 * (((k * _countY) + j) * _countX + i);
-
-        return new Vec3(_values[index], _values[index + 1], _values[index + 2]);
-    }
-
-    /// <summary>The cell a coordinate falls in, and how far across it.</summary>
-    private static (int Index, double Fraction) Cell(
-        double value, double origin, double spacing, int count)
-    {
-        if (count == 1 || spacing == 0.0)
-        {
-            return (0, 0.0);
-        }
-
-        var position = (value - origin) / spacing;
-
-        // Clamped rather than refused. Outside the box the edge value continues,
-        // and how much of the tracked region that covers is reported separately by
-        // FractionOutside rather than silently absorbed here.
-        if (position <= 0.0)
-        {
-            return (0, 0.0);
-        }
-
-        if (position >= count - 1)
-        {
-            return (count - 2, 1.0);
-        }
-
-        var index = (int)position;
-
-        return (index, position - index);
-    }
+    public double FractionOutside(Vec3 minimumSi, Vec3 maximumSi) =>
+        _grid.FractionOutside(minimumSi, maximumSi);
 }

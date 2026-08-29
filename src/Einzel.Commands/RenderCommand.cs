@@ -97,7 +97,8 @@ public static class RenderCommand
 
         var absolute = Path.GetFullPath(modelPath);
         var text = File.ReadAllText(absolute);
-        var validation = ModelValidator.Validate(ModelJson.Parse(text), null);
+        var validation = ModelValidator.Validate(
+            ModelJson.Parse(text), null, Path.GetDirectoryName(absolute));
 
         if (!validation.IsValid)
         {

@@ -212,7 +212,8 @@ public static class TestCommand
         try
         {
             document = Io.ModelJson.Parse(File.ReadAllText(modelPath));
-            var validation = ModelValidator.Validate(document, null);
+            var validation = ModelValidator.Validate(
+                document, null, Path.GetDirectoryName(modelPath));
 
             if (!validation.IsValid)
             {

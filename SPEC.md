@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**676 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 29 examples, every expectation a closed form, a published value, or an exact invariant.
+**701 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -850,8 +850,8 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **26 of the thirty**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide captured and ballistic, an extraction trap, a 3-D Paul trap held and ejected, an ion carried by a moving gas, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Missing: an MR-TOF, a thermalisation, and a three-dimensional geometry - the last deliberately, and the reason is a finding: a parallel-plate gap in 3-D takes **49 multigrid cycles at a factor of 0.652** and 124 seconds, against a gate that runs the other twenty-six in forty-two. A large solid Dirichlet slab is the worst case for the documented interior-electrode limitation, which makes the simplest geometry anybody would write the most expensive one. See `docs/numerics.md`. |
-| `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. 17 of 17 in 29 s, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself. |
+| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **30 of the thirty by count**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide captured and ballistic, an extraction trap, a 3-D Paul trap held and ejected, an ion carried by a moving gas, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Every named gap is now filled - an MR-TOF, a thermalisation, a three-dimensional geometry and a graded gas - so the count is met and the coverage question is the live one: what is still uncovered is a multipole above four rods in the diffusive mode, a sequenced extraction, and a 3-D geometry with a drive. **Recommend restating EX-1's target as coverage rather than a number.** The 3-D example was deferred once and the reason was a finding: a parallel-plate gap took **49 multigrid cycles at a factor of 0.652** and 124 seconds until Galerkin coarsening landed. A large solid Dirichlet slab is the worst case for the documented interior-electrode limitation, which makes the simplest geometry anybody would write the most expensive one. See `docs/numerics.md`. |
+| `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. **30 of 30 in 46 s**, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself, and it materialises an example's data files beside its model - which is what lets an imported gas field be covered by the gate at all. |
 | `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. Still one surface, because there is no second one. |
 
 ### Extensions (§12)
@@ -879,7 +879,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `GAS-1` | A gas region carries species, temperature, a pressure field , a bulk velocity field , and a collision model. The velocity field is easy to omit and hard ... | Partial | Species, temperature, collision model, a uniform bulk velocity, and now an imported velocity **field** - VTK ImageData, sampled trilinearly, conserved at the face, with the overhang past its extent reported. Both transport modes see it: the event-driven models carry the ion's position into the neutral draw, checked against `u + mu E` at **120.000 m/s of carry against a declared 120** with -0.000 across it, and a flow field agrees with an equivalent uniform drift to **1e-9** on the same seed. `gas.flow-extrapolated` reports a collision drawn outside the imported extent. One gap left: the **density** is still a single number for the whole model, so a differentially pumped instrument is not expressible - an imported field gives the neutrals a velocity everywhere and the same number of them everywhere. |
+| `GAS-1` | A gas region carries species, temperature, a pressure field , a bulk velocity field , and a collision model. The velocity field is easy to omit and hard ... | **Met** | Species, temperature, collision model, a uniform bulk velocity, and now an imported velocity **field** - VTK ImageData, sampled trilinearly, conserved at the face, with the overhang past its extent reported. Both transport modes see it: the event-driven models carry the ion's position into the neutral draw, checked against `u + mu E` at **120.000 m/s of carry against a declared 120** with -0.000 across it, and a flow field agrees with an equivalent uniform drift to **1e-9** on the same seed. `gas.flow-extrapolated` reports a collision drawn outside the imported extent. **And the pressure is a field too**, so a differentially pumped instrument is now expressible: `pressureField` with a required unit, read as a density through n = p/kT, with mobility scaled as 1/n (which nothing here did before) and both collision models thinned against a majorant taken at the densest gas anywhere. A field at twice the declared pressure gives a **bit-identical trajectory** to declaring twice the pressure, under both collision models, and agrees to 1e-6 through the diffusive path. The regime numbers are computed where the gas is thickest, because a description that fails anywhere in the instrument has failed. One assumption left, stated: a single **temperature**, which the document already carried. |
 
 ### Guardrails (§4)
 
@@ -1167,7 +1167,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **Finish the examples corpus (EX-1).** 29 of thirty, and the gate (EX-2) is built
+3. **Finish the examples corpus (EX-1).** 30 of thirty, and the gate (EX-2) is built
    and green. What the first seventeen cost was mostly *deciding what can honestly be
    asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
    thermalisation, and a three-dimensional geometry.
@@ -1212,10 +1212,46 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    the decoupling rather than pretending to measure focusing. A real analyzer fixes the
    oscillation count, which the model format cannot declare.
 
-   **All three of the named remaining examples are done.** The count says 29 of thirty
-   because the list said "four are breadth" and then named three; the fourth was never
-   specified, so what thirty means is now the open question rather than which example is
-   missing. **Recommend restating EX-1's target as the coverage it wants rather than a
+   **Corpus 29 to 30, and the corpus can carry a data file now.** The embedded-resource
+   glob was `*.json` only, so neither imported gas field — velocity or pressure — could
+   appear in an example at all, and so neither could be covered by the EX-2 gate that
+   runs on every change. `ExampleModels.Assets`/`WriteAssets` write an example's data
+   files beside its model, under their whole file name so two examples cannot collide
+   over a `pressure.vti`.
+
+   `drift-tube-pressure-gradient` is the first: a 38 mm tube whose gas thickens from
+   1 mbar at the packet to 2 mbar at the detector. **The expectation is an integral this
+   engine has no part in** — the drift speed is `mu_ref n_ref E / n(x)`, so the transit
+   is the integral of `n(x) dx` over `mu_ref n_ref E`, which is the uniform answer
+   scaled by the *mean* density along the path; for a linear ramp that is the average of
+   the ends, 1.5. Predicted 316.667 us, measured **320.236, 1.13% out** — the packet's
+   own spread, matching the 0.86% the uniform drift-tube example already reports.
+   Discriminating far past its 5% tolerance: ignoring the gradient gives 211 us, a third
+   away.
+
+   What it deliberately cannot see is the *arrangement* — a drift transit depends only
+   on the integral along the path, so any reflection of the profile gives the same
+   answer. That is a property of the physics rather than a weakness to design away, and
+   it is why the arrangement is pinned separately by the reversed-ramp unit test.
+
+   **It needed one change below the corpus, and that change is the more useful half.**
+   `einzel test` could not test a model with an imported field at all: the seam between
+   a study and the transport is a `Func<CompiledModel, double?>` with nowhere to put a
+   path, so a figure of merit met `BackgroundGas.FromModel` and was refused. A compiled
+   model now carries `SourceDirectory` — where its document was read from — set by every
+   loader, so any consumer can resolve a referenced file. **Null stays the safe value**:
+   a model compiled from a string has no directory and its consumer is refused rather
+   than run in a gas the document does not describe, so a loader that forgets degrades
+   to the refusal.
+
+   Still refused, and stated: the sweep drivers in `Einzel.Sweeps` work from a
+   `ModelDocument` rather than a path, so a *study* over a model with an imported field
+   is not yet runnable.
+
+   **All the named remaining examples are done.** The count is 30 of thirty by number,
+   which is the wrong way to read it: the list said "four are breadth" and then named
+   three, so what thirty means was already the open question rather than which example
+   is missing. **Recommend restating EX-1's target as the coverage it wants rather than a
    number** — what is genuinely uncovered is a multipole above four rods in the
    *diffusive* mode, a sequenced extraction, and a 3-D geometry with a drive.
 
@@ -1283,12 +1319,12 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `docs/numerics.md` were being compared across geometries as though a cycle were a
    unit of work.
 
-5. **Two narrower gaps, both stated where they bite.** The gas **density** is a single
-   number for the whole model, so a differentially pumped instrument is not
-   expressible — an imported field gives the neutrals a velocity everywhere and the
-   same number of them everywhere; the collision *rate* would need the density at the
-   ion's position, which is the same one-argument change already made to the neutral
-   draw.
+5. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
+   **density** was a single number for the whole model, so a differentially pumped
+   instrument was not expressible: an imported field gave the neutrals a velocity
+   everywhere and the same number of them everywhere. `pressureField` closes it — see
+   item 9, which also carries the physics that was missing underneath it (mobility goes
+   as 1/n) and the two tests that had no teeth until a mutation was run against them.
 
    ~~And the `solved3d` document form still spells one `drive`~~ — **closed.** A
    `solve3d` now takes `drives` and its electrodes take `taps`, so a volume geometry can
@@ -1328,6 +1364,97 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    still one is **120.000 m/s against a declared 120**, with **−0.000** across it,
    and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
    seed.
+
+9. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
+   last quantity about a gas here that was a single number for a whole model, so an
+   imported flow gave the neutrals a velocity everywhere and *the same number of them
+   everywhere*. `pressureField` on the gas block, VTK ImageData like the velocity
+   field, with **the unit required on the file** — §9's own rule, because a file read
+   as pascals when it holds mbar is a gas a hundred times too thin and looks entirely
+   plausible.
+
+   The physics that had been missing: **mobility goes as the reciprocal of density**,
+   and nothing here did that. μN is the constant, which is why the literature
+   tabulates *reduced* mobility; the declared `pressure` becomes the reference the
+   declared or derived mobility belongs to, and the field grades away from it. There
+   are two separate density dependences and they are not the same one — this factor
+   is how *much* gas, the existing E/N expansion is how hard the ion is pushed
+   *between* collisions.
+
+   **A graded density turns Langevin into a null-collision method**, which is the
+   same mechanism hard spheres already used for a speed-dependent rate, reached a
+   second way: schedule at the highest density anywhere, accept with probability
+   n(x)/n_max. Both bounds are now majorants over the whole field, because an event
+   is scheduled before it is known where the ion will be when it lands. The thinning
+   is short-circuited where the density is uniform, and that is load-bearing rather
+   than an optimisation: it would otherwise accept with probability exactly one and
+   *still consume a random draw*, moving every seeded result this engine has
+   published.
+
+   | | |
+   | --- | --- |
+   | A field at 2× the declared pressure vs *declaring* 2× the pressure, event-driven | **bit-identical trajectory**, both collision models |
+   | The same, through the diffusive path and the CLI | 3515.229021382981**5** vs **1** µs |
+   | Mobility at half and twice the reference density | 2.000000 / 0.500000 |
+   | The scaled form at the declared density | **bit-identical** to the unscaled one |
+   | Langevin thinning at three points of a 4× ramp | 0.25 / 0.625 / 1.00 to 0.01 |
+   | A field in mbar vs the same field in Pa | 1e-9 |
+   | 151 existing transport tests | unchanged |
+
+   **Two tests that had no teeth, found by running the mutation.** The equivalence
+   test used Langevin only, and a mutation making the local density read return the
+   declared scalar *did not fail it* — the Langevin branch short-circuits its thinning
+   where the density is uniform, so a flat imported field never reads a position at
+   all. Correct behaviour, and no test of the read. And the graded-gas test asserted
+   only that a ramp collides more than the thin gas alone, which with the density read
+   at the wrong place still passes because the count lands *close to* the thin gas.
+   What discriminates is **reversing the ramp** — same densities, same box, opposite
+   arrangement, so anything blind to position gives the two an identical count.
+   11,458 against 19,700.
+
+   **And the same seam broke a fourth time, in the file whose comment says it is the
+   third.** `SampledOutsideDensity` was added to `CollisionSampler` beside
+   `SampledOutsideFlow`, and on the first draft was dropped in exactly the place the
+   surrounding comment warns about — declared, set, read by nothing, everything
+   compiling and every test passing while a run extrapolating its gas past the imported
+   box said so nowhere. Reading the comment is not the same as being protected by it.
+   Now `gas.pressure-extrapolated`, with a CLI test that drives it end to end, because
+   the wiring is what keeps breaking rather than the computation. The rule needs a
+   second half: **adding a quantity to a type that already reports several is not the
+   same as reporting it**, and the existing reporting code is exactly where the eye
+   slides past.
+
+   **The cost gate had to be re-derived, and the first version was 50% out.** GRD-8's
+   claim for this mode is that `estimate` and `run` call the same step function and
+   agree exactly. A graded gas moves the mobility and so both stability limits — and
+   the first version took the thinnest gas *anywhere in the imported field* where the
+   run takes its limit from per-node arrays *over the tracked grid*. A CFD field is
+   usually solved on a larger box than the ions are tracked through: here it ran to
+   0.5 mbar while the grid reached 0.75, and the estimate said **2,252 steps against
+   an actual 1,502**. Now 1,126/1,126 uniform and 1,502/1,502 graded. Found by
+   comparing the two numbers, not by reading the code.
+
+   The same asymmetry runs through the diagnostics and had to be got right in both
+   directions: **E/N is worst where the gas is thinnest**, the **Knudsen number and
+   collision counts are worst where it is thickest**, and reading the declared
+   pressure for either reports a regime the instrument is in nowhere.
+
+   **A refusal moved to where it cannot be forgotten.** Resolving a declared field
+   needs the model document's directory, which a study or a figure of merit does not
+   have; the rule to refuse rather than run in a gas the document does not describe
+   was right, but lived as a guard at each of four call sites *naming `velocityField`*
+   — and three were already silent about a pressure field.
+   `BackgroundGas.FromModel` now refuses an unresolved field itself, with
+   `WithoutImportedFields` as the deliberate exception whose name says what it gives
+   up. It immediately caught a real one: `einzel run` on a diffusive model reached
+   `FromModel` through `GasFlowImport.Resolve` itself. Two call sites that *did* have
+   the path — `einzel compare` and the diffusive cost estimate — now resolve rather
+   than refuse, which they should always have done.
+
+   **Still assumed: one temperature.** What is imported is a pressure field read as a
+   density field at the model's single declared temperature. That assumption was
+   already made by there being one `temperature` in the document, but it is now the
+   only thing about the gas that cannot vary from place to place.
 
 ## Open decisions
 

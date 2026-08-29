@@ -104,6 +104,7 @@ public static class FlightTimeStudy
         // any level describes the study.
         var boundExceeded = false;
         var sampledOutsideFlow = false;
+        var sampledOutsideDensity = false;
 
         for (var level = 0; level < refinements; level++)
         {
@@ -128,14 +129,19 @@ public static class FlightTimeStudy
             // there is no later place for them to be lost.
             boundExceeded |= sampler is { BoundExceeded: true };
             sampledOutsideFlow |= sampler is { SampledOutsideFlow: true };
+            sampledOutsideDensity |= sampler is { SampledOutsideDensity: true };
         }
 
-        // What the collision samplers learned about their own validity. They used to
-        // compute both of these and have them read by nothing, which is the third
-        // time evidence about a computation's quality has been produced here and
-        // dropped at the seam - a biased collision rate looks exactly like a correct
-        // one, and so does a gas nobody imported. The first fix read only the last
-        // refinement's sampler, which is the same loss one level in.
+        // What the collision samplers learned about their own validity. These used to
+        // be computed and read by nothing, which is a pattern this project has now hit
+        // four times - a biased collision rate looks exactly like a correct one, and so
+        // does a gas nobody imported. The first fix read only the last refinement's
+        // sampler, which is the same loss one level in.
+        //
+        // The density one was added with the pressure field and was, on the first
+        // draft, dropped in exactly the same place as the two above it. Adding a
+        // quantity to a sampler is not the same as reporting it, and the shortest
+        // spelling remains the one that loses it.
         if (boundExceeded)
         {
             warnings.Add(new ValidityWarning(
@@ -145,6 +151,18 @@ public static class FlightTimeStudy
                 + "biased. The bound is the true rate plus a fixed headroom in thermal speeds, and "
                 + "an ion far faster than thermal outruns it",
                 WarningSeverity.ValidityViolation));
+        }
+
+        if (sampledOutsideDensity)
+        {
+            warnings.Add(new ValidityWarning(
+                "gas.pressure-extrapolated",
+                "at least one collision was drawn outside the imported pressure field, where the "
+                + "density is the edge value continued rather than anything that was measured. A "
+                + "pressure gradient is steepest at the ends of a pumped region, which is exactly "
+                + "where continuing the last plane is most likely to be wrong - and every "
+                + "collision rate, mean free path and mobility there is scaled by it",
+                WarningSeverity.Qualified));
         }
 
         if (sampledOutsideFlow)

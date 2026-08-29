@@ -74,6 +74,7 @@ public sealed class ExampleCorpusTests(ITestOutputHelper output) : IDisposable
         foreach (var name in ExampleModels.Names)
         {
             File.WriteAllText(Path.Combine(_root, "models", name + ".json"), ExampleModels.Read(name));
+            ExampleModels.WriteAssets(name, Path.Combine(_root, "models"));
             File.WriteAllText(Path.Combine(_root, "tests", name + ".json"), ExampleModels.ReadTest(name));
         }
 

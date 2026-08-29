@@ -351,6 +351,27 @@ quality, the type that returns it may not have a shape that makes discarding the
 evidence the shortest spelling.** `.Field` was one character shorter than handling
 the report, and that was the whole mechanism.
 
+**It has now happened four times, and the fourth is the one worth reading.** After
+`FieldAssembly.Build` dropping its `SolveReport`, the sweep evaluator dropping its
+warnings, and `CollisionSampler.BoundExceeded` / `SampledOutsideFlow` being computed
+and consumed by nobody — a pressure field was added, `SampledOutsideDensity` was added
+beside its sibling on the sampler, and on the first draft it was **dropped in exactly
+the same place as the two above it, in a file whose comment already said this was the
+third time.**
+
+Reading the comment is not the same as being protected by it. The property was
+declared, set, and never read; the code compiled, every test passed, and a run that
+extrapolated its gas density past the imported box said nothing about it. What fixed it
+was not vigilance but a question asked deliberately after the fact — *grep for every
+new public member and check something reads it* — and then a test that drives the
+warning end to end through the CLI, because the wiring is what keeps breaking rather
+than the computation.
+
+So the rule needs a second half. The first is that discarding evidence must not be the
+shortest spelling. The second: **adding a quantity to a type that already reports
+several is not the same as reporting it**, and the existing reporting code is exactly
+where the eye slides past.
+
 A companion, found in the same review: `SolveOutcome.Converged` was
 `Elements.All(e => e.Converged)`, which is `true` for an empty list. `einzel solve`
 read only the two-dimensional element, skipped every three-dimensional one, and
@@ -581,6 +602,104 @@ and then thrown away*: **when a quantity has two parts, the shortest spelling mu
 not be the one that silently drops a part.** `IsDriven` exists on both electrode
 records precisely so the complete question has a short name. It is worth grepping
 for `.Potential` the next time something driven behaves as though it were earthed.
+
+## The mutation passed four tests and failed two, and the four were the interesting ones
+
+A gas whose density varies from place to place needed the collision rate read at the
+ion rather than off the declared pressure. Six tests were written for it, all passing.
+Then the check that matters: **restore the bug and see which fail.**
+
+Making `BackgroundGas.NumberDensityAt` ignore the field and return the declared scalar
+failed only *two* of the six — and neither was the headline test, the one asserting
+that a field at twice the declared pressure gives a bit-identical trajectory to
+declaring twice the pressure.
+
+The reason is worth keeping. That test used the Langevin model, whose rate does not
+contain the relative speed — so in a **uniform** gas every scheduled event is real and
+there is no thinning step at all. The branch is short-circuited on `IsGraded`, which is
+correct and deliberate (a thinning that always accepts would still consume a random
+draw and move every seeded result in the engine). A *flat* imported field is uniform.
+So the test never reached the mutated line. It was a real test of the scheduled rate
+and the null-collision bound, and no test whatever of the local read.
+
+The second weak one was subtler. A ramp from n to 4n across the box was asserted to
+collide *more than* the uniform thin gas — which sounds discriminating and is not. With
+the density read at the wrong place the effective rate collapses back to roughly the
+thin one, the count lands **close to** that end of the bracket, and a bare "more than"
+survives on noise.
+
+Both were fixed by making the test contain the thing it claims to test:
+
+- The equivalence test runs under **both** collision models, and hard spheres read the
+  local density unconditionally.
+- The ramp test **reverses itself**. The same densities over the same box arranged the
+  other way round is a configuration that *any* position-blind reading gives an
+  identical count for. 11,458 against 19,700.
+
+**A test passes a mutation when the path it exercises does not contain the mutated
+line.** That is not a weak test in general — it may be an excellent test of something
+else — but it is not evidence about the mutation, and counting it as corroboration is
+how a suite comes to have a hole exactly where its author thought it was strongest. So
+run the mutation, read *which* tests failed, and treat every test that did not as
+untested rather than as confirmation.
+
+The corollary is about brackets. An assertion of the form "between A and B" is only as
+good as the distance from the true value to whichever end the bug moves it to. When a
+bug's effect is to collapse a quantity onto one end of its own bracket, the bracket
+cannot see it — and a *symmetry* the bug destroys (here, reversal) can.
+
+## A guard written four times, silent about the fifth thing
+
+Resolving a declared gas field needs the model document's own directory, which a study
+or a figure of merit reaching the transport does not have. The rule was right and had
+been reasoned about carefully: refuse, rather than run in a gas the document does not
+describe, because a run that quietly uses a still uniform gas succeeds and answers about
+a different instrument.
+
+It was implemented as a guard at each of **four call sites**, and each named
+`velocityField` — because that was the only importable quantity when they were written.
+Adding a pressure field meant every one of them was now silent about half of what it
+was guarding.
+
+The fix was to move the check to the function that *cannot* read a file:
+`BackgroundGas.FromModel` refuses an unresolved field itself, and
+`WithoutImportedFields` is the deliberate exception, named for what it gives up rather
+than for what it does. This is the same rule as `FieldAssembly.Build` throwing rather
+than discarding its `SolveReport`, and as `Setup` using `BuildReported` where it has a
+sink: **make the shortest spelling the safe one.**
+
+It found a real defect within minutes of being written — and, pleasingly, in the
+*importer*. `GasFlowImport.Resolve` began by calling `FromModel`, so the guard fired on
+the one caller that was about to do the right thing, and `einzel run` on a diffusive
+model with a declared field was refused. A guard that catches its own author on the
+first run is a guard placed where the mistake actually lives.
+
+The general form: **when a rule is enforced once per caller, adding a case to the rule
+means auditing every caller, and the audit is invisible if you forget.** Enforce it
+where the callers converge.
+
+## A ratio of two ceilings is one
+
+A test compared the transit through a drift tube at one pressure against the same tube
+with an imported field at half of it. The mobility scaling says the ratio should be
+0.5; it read 0.908, which is close enough to one to look like the scaling not working
+at all.
+
+The scaling was fine. The field was 50 V/m over 38 mm — under two volts of push — and
+at 1 mbar almost nothing reached the detector inside the declared flight time:
+**0.05 ions of 10,000 collected**, with a "mean transit" of 3869 µs against a ceiling of
+4000. The thinner run collected 1982 and genuinely finished. What was being compared was
+a real transit against a truncated one.
+
+This is the **incomplete arrival** trap that `einzel compare` already documents and
+warns about — a mean transit over the subset that arrived is not a transit time, and
+the two subsets are not the same ions — met again from a direction where nothing was
+watching for it. The accessor now asserts the packet arrived before reading a transit
+off it, which is where the check belongs: at the point the number is taken, not at each
+place it is used.
+
+**A summary statistic computed over a truncated population is not a smaller version of
+the right answer. It is a measurement of the truncation.**
 
 ## The pattern
 

@@ -98,6 +98,16 @@ public sealed class CollisionSampler
     /// </remarks>
     public bool SampledOutsideFlow { get; private set; }
 
+    /// <summary>Whether any collision was drawn outside the imported density field.</summary>
+    /// <remarks>
+    /// The same statement the flow makes, about the other imported quantity. Outside
+    /// the box the edge density continues, which for a differentially pumped
+    /// instrument is the one place it is most likely to be wrong - the gradient is
+    /// steepest at the ends of a pumped region, and continuing the last plane says
+    /// the gradient stopped there.
+    /// </remarks>
+    public bool SampledOutsideDensity { get; private set; }
+
     /// <summary>Time of the next scheduled collision event, in seconds.</summary>
     public double NextEventSeconds { get; private set; } = double.PositiveInfinity;
 
@@ -133,13 +143,38 @@ public sealed class CollisionSampler
             SampledOutsideFlow = true;
         }
 
+        if (_gas.Density is { } graded && !graded.Covers(in position))
+        {
+            SampledOutsideDensity = true;
+        }
+
         if (_gas.Model == CollisionModel.Langevin)
         {
-            // No rejection step at all: the Langevin rate does not contain the
-            // speed, so every scheduled event is a real one.
-            Scatter(in position, ref velocity);
-            Collisions++;
-            scattered = true;
+            // The Langevin rate does not contain the speed, so in a uniform gas
+            // every scheduled event is a real one and there is no rejection step at
+            // all. A graded gas makes the rate position-dependent instead, and the
+            // null-collision method is what turns a varying rate into a constant
+            // scheduled one plus a thinning - the same mechanism the hard-sphere
+            // branch below already runs for a speed-dependent rate, reached a second
+            // way.
+            //
+            // Short-circuited on IsGraded rather than written unconditionally, and
+            // that is load-bearing: with a uniform density the thinning would accept
+            // with probability exactly one and still consume a random draw, moving
+            // every subsequent number in the stream. A seeded run has to be
+            // bit-identical to what it was before a pressure field could be declared.
+            if (!_gas.IsGraded
+                || _random.NextDouble() * _gas.HighestNumberDensitySi
+                    <= _gas.NumberDensityAt(in position))
+            {
+                Scatter(in position, ref velocity);
+                Collisions++;
+                scattered = true;
+            }
+            else
+            {
+                NullEvents++;
+            }
         }
         else if (_gas.Model == CollisionModel.HardSphere)
         {
@@ -147,7 +182,10 @@ public sealed class CollisionSampler
             var relative = (velocity - neutral).Length;
 
             var bound = Bound(velocity.Length);
-            var trueRate = _gas.NumberDensitySi * _gas.CrossSectionSi * relative;
+            // At the ion, not at the model. Identical to the declared density
+            // wherever no field is imported, and the bound below already covers the
+            // densest region, so the rejection thins correctly to the local rate.
+            var trueRate = _gas.NumberDensityAt(in position) * _gas.CrossSectionSi * relative;
 
             if (trueRate > bound)
             {
@@ -175,7 +213,8 @@ public sealed class CollisionSampler
     {
         var rate = _gas.Model switch
         {
-            CollisionModel.Langevin => _gas.NumberDensitySi * _gas.LangevinRateSi(_ionMass, _charge),
+            CollisionModel.Langevin =>
+                _gas.HighestNumberDensitySi * _gas.LangevinRateSi(_ionMass, _charge),
             CollisionModel.HardSphere => Bound(speedSi),
             _ => 0.0,
         };
@@ -192,8 +231,15 @@ public sealed class CollisionSampler
     }
 
     /// <summary>The rate that bounds the true one from above, for the null method.</summary>
+    /// <remarks>
+    /// Taken at the densest gas anywhere, because an event is scheduled before it is
+    /// known where the ion will be when it lands. A rate bounding the densest region
+    /// bounds every region; one taken at the declared density would be exceeded
+    /// wherever the field is denser than declared, and an exceeded bound biases the
+    /// rate low. Equal to the declared density wherever no field is imported.
+    /// </remarks>
     private double Bound(double speedSi) =>
-        _gas.NumberDensitySi * _gas.CrossSectionSi
+        _gas.HighestNumberDensitySi * _gas.CrossSectionSi
         * (speedSi + (ThermalHeadroom * _gas.ThermalSpeedSi));
 
     /// <summary>Draws one neutral velocity from the Maxwellian, plus the bulk flow there.</summary>

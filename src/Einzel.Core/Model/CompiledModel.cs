@@ -20,6 +20,25 @@ namespace Einzel.Core.Model;
 /// </remarks>
 public sealed record CompiledModel
 {
+    /// <summary>The directory the model document was read from, or null.</summary>
+    /// <remarks>
+    /// <para>
+    /// A model may reference files - an imported gas velocity or pressure field - and
+    /// PRJ-2 says it references them rather than embedding them, resolved against the
+    /// model document's own directory so that a model means the same thing wherever
+    /// the command is run from. Carrying that directory on the compiled model is what
+    /// lets any consumer resolve one.
+    /// </para>
+    /// <para>
+    /// <b>Null is the safe value, not the convenient one.</b> A model compiled from a
+    /// string in memory has no directory, and a consumer handed one is refused rather
+    /// than run in a gas the document does not describe. So a loader that forgets to
+    /// set this degrades to the refusal rather than to a silent wrong answer, which is
+    /// the direction a mistake here should fail in.
+    /// </para>
+    /// </remarks>
+    public string? SourceDirectory { get; init; }
+
     /// <summary>The document this was compiled from, for hashing and round-trip.</summary>
     public required ModelDocument Source { get; init; }
 
@@ -215,6 +234,29 @@ public sealed record CompiledGas
 
     /// <summary>Whether a velocity field was declared.</summary>
     public bool HasVelocityField => !string.IsNullOrWhiteSpace(VelocityFieldPath);
+
+    /// <summary>Path to an imported pressure field, as declared, or null.</summary>
+    /// <remarks>
+    /// Carried as written, for the reason the velocity field's path is: resolving it
+    /// needs the model file's own directory and validation does not read files.
+    /// </remarks>
+    public string? PressureFieldPath { get; init; }
+
+    /// <summary>Which array in that file holds the pressure, or null for the first.</summary>
+    public string? PressureFieldArray { get; init; }
+
+    /// <summary>
+    /// What one of the file's numbers is in pascals - 1 for Pa, 100 for mbar.
+    /// </summary>
+    /// <remarks>
+    /// Resolved at validation, where the unit registry is, so that a bad unit is an
+    /// AGT-3 error against the document rather than a surprise at load time. The
+    /// array itself stays in whatever the file wrote.
+    /// </remarks>
+    public double PressureFieldScale { get; init; } = 1.0;
+
+    /// <summary>Whether a pressure field was declared.</summary>
+    public bool HasPressureField => !string.IsNullOrWhiteSpace(PressureFieldPath);
 
     /// <summary>Seed for the collision random stream.</summary>
     public int Seed { get; init; } = 20_240_101;

@@ -45,8 +45,16 @@ public static class ModelValidator
     /// </param>
     /// <returns>The compiled model, or the errors that prevented it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
+    /// <param name="sourceDirectory">
+    /// The directory the document was read from, which the paths it references are
+    /// resolved against. Null for a document compiled from a string, and a consumer
+    /// that needs to read one of those files is then refused rather than given a
+    /// model whose declared gas field is silently absent.
+    /// </param>
     public static ModelValidation Validate(
-        ModelDocument document, IReadOnlyDictionary<string, Quantity>? overrides)
+        ModelDocument document,
+        IReadOnlyDictionary<string, Quantity>? overrides,
+        string? sourceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -121,6 +129,7 @@ public static class ModelValidator
 
         var model = new CompiledModel
         {
+            SourceDirectory = sourceDirectory,
             Source = document,
             MassSi = mass.Value,
             ChargeSi = charge.Value,
@@ -2722,6 +2731,69 @@ public static class ModelValidator
             return null;
         }
 
+        var pressureScale = 1.0;
+
+        if (gas.PressureField is { } graded)
+        {
+            if (string.IsNullOrWhiteSpace(graded.Path))
+            {
+                errors.Add(Missing(
+                    "/transport/gas/pressureField/path",
+                    "a pressure field names the file it is read from",
+                    "add {\"path\": \"pressure.vti\", \"unit\": \"Pa\"}, relative to this "
+                    + "model. VTK ImageData with ASCII data, which is what 'einzel export' writes "
+                    + "and what ParaView saves with the Ascii box ticked"));
+
+                return null;
+            }
+
+            // Required rather than defaulted to pascals, and this is section 9's own
+            // argument rather than a new one: a file read as pascals when it holds
+            // mbar is a gas a hundred times too thin, which is entirely plausible and
+            // never announces itself. Vacuum work is quoted in mbar and torr at least
+            // as often as in pascals.
+            if (string.IsNullOrWhiteSpace(graded.Unit))
+            {
+                errors.Add(Missing(
+                    "/transport/gas/pressureField/unit",
+                    "a pressure field states what its numbers are in",
+                    "add \"unit\": \"Pa\", or \"mbar\", or \"torr\". A whole array is no less "
+                    + "ambiguous than a single number, and this is the same rule that makes "
+                    + "{\"energy\": 4000} a validation error"));
+
+                return null;
+            }
+
+            if (!UnitRegistry.TryResolve(graded.Unit!, out var unit) || unit is null)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.UnitsUnknown,
+                    Path = "/transport/gas/pressureField/unit",
+                    Constraint = $"'{graded.Unit}' is not a unit this engine knows",
+                    Suggestion = "use 'Pa', 'mbar' or 'torr'",
+                });
+
+                return null;
+            }
+
+            if (unit.Dimension != Dimension.Pressure)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.UnitsIncompatible,
+                    Path = "/transport/gas/pressureField/unit",
+                    Constraint = $"'{graded.Unit}' is not a pressure",
+                    Suggestion = "use 'Pa', 'mbar' or 'torr'. The field holds pressures, which "
+                        + "become number densities through n = p/kT at the declared temperature",
+                });
+
+                return null;
+            }
+
+            pressureScale = unit.SiFactor;
+        }
+
         return new CompiledGas
         {
             Model = gas.Model,
@@ -2733,6 +2805,9 @@ public static class ModelValidator
             DriftVelocitySi = drift,
             VelocityFieldPath = gas.VelocityField?.Path,
             VelocityFieldArray = gas.VelocityField?.Array,
+            PressureFieldPath = gas.PressureField?.Path,
+            PressureFieldArray = gas.PressureField?.Array,
+            PressureFieldScale = pressureScale,
             Seed = gas.Seed,
         };
     }

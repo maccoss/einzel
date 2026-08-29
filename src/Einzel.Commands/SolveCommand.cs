@@ -145,7 +145,8 @@ public static class SolveCommand
         var absolute = Path.GetFullPath(modelPath);
         var text = File.ReadAllText(absolute);
         var document = Io.ModelJson.Parse(text);
-        var validation = ModelValidator.Validate(document, null);
+        var validation = ModelValidator.Validate(
+            document, null, Path.GetDirectoryName(absolute));
 
         if (!validation.IsValid)
         {

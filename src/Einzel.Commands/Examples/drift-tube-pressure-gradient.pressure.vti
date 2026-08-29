@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<VTKFile type="ImageData" version="1.0" byte_order="LittleEndian">
+  <ImageData WholeExtent="0 4 0 2 0 0" Origin="-0.002 -0.006 0" Spacing="0.0105 0.006 1">
+    <Piece Extent="0 4 0 2 0 0">
+      <PointData Scalars="pressure">
+        <DataArray type="Float64" Name="pressure" NumberOfComponents="1" format="ascii">
+          0.89473684210526316 1.1710526315789473 1.4473684210526316 1.7236842105263159 2
+          0.89473684210526316 1.1710526315789473 1.4473684210526316 1.7236842105263159 2
+          0.89473684210526316 1.1710526315789473 1.4473684210526316 1.7236842105263159 2
+        </DataArray>
+      </PointData>
+      <CellData/>
+    </Piece>
+  </ImageData>
+</VTKFile>

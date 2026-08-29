@@ -1006,7 +1006,8 @@ public static class RunCommand
             };
         }
 
-        var validation = ModelValidator.Validate(document);
+        var validation = ModelValidator.Validate(
+            document, null, Path.GetDirectoryName(full));
 
         return new ValidateOutcome
         {
@@ -1041,7 +1042,8 @@ public static class RunCommand
         }
 
         var document = ModelJson.Parse(File.ReadAllText(validation.ModelPath));
-        var model = ModelValidator.Validate(document).Model!;
+        var model = ModelValidator.Validate(
+            document, null, Path.GetDirectoryName(validation.ModelPath)).Model!;
 
         // Reported, not bare. A solve that missed its tolerance produces a field
         // indistinguishable from one that met it, so the evidence has to travel
