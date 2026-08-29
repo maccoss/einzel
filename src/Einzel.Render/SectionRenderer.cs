@@ -36,6 +36,24 @@ public static class SectionRenderer
     private const string Equipotential = "#7a8390";
     private const string TrajectoryInk = "#b3452a";
 
+    /// <summary>Ink for dimensions, distinct from both the geometry and the trajectory.</summary>
+    private const string DimensionInk = "#1f6feb";
+
+    /// <summary>Gap between a feature and the start of its extension line, in page mm.</summary>
+    private const double ExtensionGapMm = 1.0;
+
+    /// <summary>How far an extension line runs past the dimension line, in page mm.</summary>
+    private const double ExtensionOvershootMm = 1.5;
+
+    /// <summary>Arrowhead length, in page millimetres.</summary>
+    private const double ArrowLengthMm = 2.0;
+
+    /// <summary>Arrowhead half-width, in page millimetres.</summary>
+    private const double ArrowHalfWidthMm = 0.6;
+
+    /// <summary>How far the text sits off the dimension line, in page millimetres.</summary>
+    private const double TextLiftMm = 1.8;
+
     /// <summary>Radius of the marker showing where the ion is, in page millimetres.</summary>
     private const double HeadRadiusMm = 0.9;
 
@@ -360,6 +378,8 @@ public static class SectionRenderer
                     WarningSeverity.Provenance),
             ];
         }
+
+        DrawDimensions(paths, texts, DimensionCompiler.Compile(spec, model), plane, ToPage);
 
         DrawFrame(paths, texts, spec, minU, maxU, minV, maxV, scale, drawWidth, drawHeight);
 
@@ -743,6 +763,118 @@ public static class SectionRenderer
                 }
             }
         }
+    }
+
+    /// <summary>Draws the declared dimensions, measuring each as it goes.</summary>
+    /// <remarks>
+    /// <para>
+    /// Extension lines from the two points, a dimension line between them offset
+    /// perpendicular, an arrowhead at each end, and the measured length at the middle.
+    /// The convention is the ordinary drafting one, which is what makes a drawing
+    /// readable by somebody who has never seen this program.
+    /// </para>
+    /// <para>
+    /// <b>Drawn after everything else and before the frame</b>, so a dimension sits over
+    /// the geometry it measures rather than under it - the one thing on the page that is
+    /// an annotation rather than a depiction, and the one that has to stay legible.
+    /// </para>
+    /// </remarks>
+    private static void DrawDimensions(
+        List<ScenePath> paths,
+        List<SceneText> texts,
+        IReadOnlyList<CompiledDimension> dimensions,
+        SectionPlane plane,
+        Func<double, double, PagePoint> toPage)
+    {
+        foreach (var dimension in dimensions)
+        {
+            var (fromU, fromV) = plane.Project(dimension.FromSi);
+            var (toU, toV) = plane.Project(dimension.ToSi);
+
+            var a = toPage(fromU, fromV);
+            var b = toPage(toU, toV);
+
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+            var length = Math.Sqrt((dx * dx) + (dy * dy));
+
+            // A span that projects to a point on this plane has no direction to offset
+            // along and no length to show. Skipped rather than drawn as a dot, which
+            // would look like a dimension of zero rather than like a dimension seen end
+            // on.
+            if (!(length > 1e-9))
+            {
+                continue;
+            }
+
+            // Anticlockwise perpendicular, so a positive offset is consistently one side
+            // of the span whichever way round the ends were given.
+            var nx = -dy / length;
+            var ny = dx / length;
+
+            var offsetX = nx * dimension.OffsetMm;
+            var offsetY = ny * dimension.OffsetMm;
+
+            var lineA = new PagePoint(a.X + offsetX, a.Y + offsetY);
+            var lineB = new PagePoint(b.X + offsetX, b.Y + offsetY);
+
+            var style = new PathStyle(DimensionInk, 0.15);
+
+            // Extension lines, starting clear of the feature and running a little past
+            // the dimension line, which is the drafting convention and is what stops
+            // them reading as part of the geometry.
+            paths.Add(new ScenePath(
+                [
+                    new PagePoint(a.X + (nx * ExtensionGapMm), a.Y + (ny * ExtensionGapMm)),
+                    new PagePoint(
+                        a.X + (nx * (dimension.OffsetMm + ExtensionOvershootMm)),
+                        a.Y + (ny * (dimension.OffsetMm + ExtensionOvershootMm))),
+                ],
+                false, style, "dimension"));
+
+            paths.Add(new ScenePath(
+                [
+                    new PagePoint(b.X + (nx * ExtensionGapMm), b.Y + (ny * ExtensionGapMm)),
+                    new PagePoint(
+                        b.X + (nx * (dimension.OffsetMm + ExtensionOvershootMm)),
+                        b.Y + (ny * (dimension.OffsetMm + ExtensionOvershootMm))),
+                ],
+                false, style, "dimension"));
+
+            paths.Add(new ScenePath([lineA, lineB], false, style, "dimension"));
+
+            Arrow(paths, lineA, dx / length, dy / length);
+            Arrow(paths, lineB, -dx / length, -dy / length);
+
+            // Above the line, on the side away from the feature, so the text never sits
+            // on top of what it measures.
+            texts.Add(new SceneText(
+                dimension.Text(),
+                new PagePoint(
+                    ((lineA.X + lineB.X) / 2.0) + (nx * TextLiftMm),
+                    ((lineA.Y + lineB.Y) / 2.0) + (ny * TextLiftMm)),
+                5.5,
+                TextAnchor.Middle,
+                DimensionInk,
+                "dimension"));
+        }
+    }
+
+    /// <summary>A filled arrowhead at a point, pointing along a unit direction.</summary>
+    private static void Arrow(List<ScenePath> paths, PagePoint at, double ux, double uy)
+    {
+        var backX = at.X + (ux * ArrowLengthMm);
+        var backY = at.Y + (uy * ArrowLengthMm);
+
+        paths.Add(new ScenePath(
+            [
+                at,
+                new PagePoint(backX - (uy * ArrowHalfWidthMm), backY + (ux * ArrowHalfWidthMm)),
+                new PagePoint(backX + (uy * ArrowHalfWidthMm), backY - (ux * ArrowHalfWidthMm)),
+            ],
+            true,
+            new PathStyle(null, 0.0, DimensionInk),
+            "dimension"));
     }
 
     /// <summary>Reads a field at an instant, whether or not it has one.</summary>

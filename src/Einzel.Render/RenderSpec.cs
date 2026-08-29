@@ -130,6 +130,15 @@ public sealed record RenderSpec
     /// </remarks>
     public double DecimationFraction { get; init; } = 1e-3;
 
+    /// <summary>Dimensions to draw on the figure.</summary>
+    /// <remarks>
+    /// The memo's own figures are line drawings <em>with</em> dimensions, and a section
+    /// without them says what the instrument looks like and not how big any of it is.
+    /// What is declared is the two points a dimension spans; the length is measured when
+    /// the figure is drawn, so it cannot part company with the geometry.
+    /// </remarks>
+    public IReadOnlyList<DimensionDocument>? Dimensions { get; init; }
+
     /// <summary>The instant to draw a time-varying field at, in seconds.</summary>
     /// <remarks>
     /// Ignored by a static field. A driven or sequenced one is a different field at every

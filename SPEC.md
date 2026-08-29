@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**735 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**737 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1106,6 +1106,22 @@ in a table.
    same size, and a film of a packet spreading shows a packet doing nothing. Not a
    flicker — a lie. Anchored across the animation, later frames show fewer contours,
    because the density really is lower.
+
+12. ~~**Dimensioned callouts**~~ — **done.** The memo's own figures are line drawings
+   *with* dimensions, and a section without them says what the instrument looks like and
+   not how big any of it is.
+
+   **The number is measured, never written down.** A `dimensions` entry declares the two
+   points it spans; the length is computed when the figure is drawn. `label` names the
+   span and does not carry the value, because a typed number is a second statement of
+   something the model already says and the two part company at the first parameter
+   change — which is precisely what a dimensioned drawing exists to prevent.
+
+   **And the points may be expressions over the model's parameters.** §9's rule for a
+   model, "every placement is a parametric expression, never a baked number", is not
+   weaker for a drawing of it. Changing `turningDepth` from 50 to 80 mm and re-rendering
+   the same spec gives `penetration 50 mm` then `penetration 80 mm` with no edit in
+   between; the test asserts exactly that — one spec, two models, two measurements.
 
 ## Open decisions
 

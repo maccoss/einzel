@@ -1,5 +1,6 @@
 using System.Globalization;
 using Einzel.Core.Model;
+using Einzel.Core.Units;
 using Einzel.Io;
 using Einzel.Library;
 using Einzel.Render;
@@ -28,6 +29,104 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
             validation.IsValid ? string.Empty : validation.Errors[0].Constraint);
 
         return validation.Model!;
+    }
+
+    /// <summary>A dimension is measured from the geometry, never written down.</summary>
+    /// <remarks>
+    /// <para>
+    /// The memo's own figures are line drawings <em>with</em> dimensions, and a section
+    /// without them says what the instrument looks like and not how big any of it is.
+    /// </para>
+    /// <para>
+    /// <b>What a dimension declares is the two points it spans.</b> The length is the
+    /// distance between them, computed when the figure is drawn - so it cannot part
+    /// company with the model, which is the whole reason to dimension a drawing rather
+    /// than annotate it. A typed number would be a second statement of something the
+    /// model already says.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADimensionIsMeasuredRatherThanDeclared()
+    {
+        var lens = Compile("einzel-lens");
+
+        var spec = new RenderSpec
+        {
+            Equipotentials = 0,
+            Dimensions =
+            [
+                new DimensionDocument
+                {
+                    From = new VectorValue([-30.0, 0.0, 0.0], "mm"),
+                    To = new VectorValue([30.0, 0.0, 0.0], "mm"),
+                    Label = "span",
+                },
+            ],
+        };
+
+        var figure = SectionRenderer.Render(lens, spec);
+
+        var text = figure.Scene.Texts.Single(t => t.Layer == "dimension");
+
+        output.WriteLine(text.Text);
+
+        // 60 mm between the two declared points, measured and formatted here rather than
+        // taken from anything the caller wrote.
+        Assert.Equal("span 60 mm", text.Text);
+
+        // Two extension lines, a dimension line and two arrowheads.
+        Assert.Equal(5, figure.Scene.Paths.Count(p => p.Layer == "dimension"));
+    }
+
+    /// <summary>A dimension over parameters follows the model when they change.</summary>
+    /// <remarks>
+    /// Section 9's rule for a model - "every placement is a parametric expression, never
+    /// a baked number" - is not weaker for a drawing of it. A dimension written over the
+    /// model's own parameters describes the geometry rather than where the geometry used
+    /// to be, and this is the assertion that says so: one figure spec, two models, two
+    /// different measurements and no edit in between.
+    /// </remarks>
+    [Fact]
+    public void AParametricDimensionFollowsTheModel()
+    {
+        var spec = new RenderSpec
+        {
+            Equipotentials = 0,
+            Dimensions =
+            [
+                new DimensionDocument
+                {
+                    From = new VectorValue([0.0, 0.0, 0.0], "mm") { Expression = ["0", "0", "0"] },
+                    To = new VectorValue([0.0, 0.0, 0.0], "mm")
+                    {
+                        Expression = ["boreRadius", "0", "0"],
+                    },
+                    Label = "bore",
+                },
+            ],
+        };
+
+        static string Measured(CompiledModel model, RenderSpec spec) =>
+            SectionRenderer.Render(model, spec).Scene.Texts
+                .Single(t => t.Layer == "dimension").Text;
+
+        var document = ModelJson.Parse(DeviceTemplates.Read("einzel-lens"));
+
+        var nominal = ModelValidator.Validate(document, null).Model!;
+        var widened = ModelValidator.Validate(
+            document,
+            new Dictionary<string, Quantity>(StringComparer.Ordinal)
+            {
+                ["boreRadius"] = Quantity.From(9.0, "mm"),
+            }).Model!;
+
+        var before = Measured(nominal, spec);
+        var after = Measured(widened, spec);
+
+        output.WriteLine($"{before}  ->  {after}");
+
+        Assert.NotEqual(before, after);
+        Assert.Equal("bore 9 mm", after);
     }
 
     /// <summary>

@@ -159,7 +159,7 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
   **What marching squares got wrong first:** cases 1 and 14 both emit `(Left, Bottom)`, so segment orientation is *not* consistent and a head-to-tail join breaks the contour at every complementary crossing. A rectangular conductor came out as four runs instead of one — identical on screen until the path is filled or dashed, and not free: joining undirected took the lens from 10 conductor runs to 6, the quadrupole's equipotentials from 338 paths to 28, and its PDF from **112 KB to 13 KB** for the same drawing.
 
-  **Not built:** `render still` (raster — nothing here rasterises) and `render animation` (needs RND-7's explicit non-linear time mapping, displayed throughout playback). Both are named by the CLI and refused with a reason rather than falling through as unknown verbs, because "not built yet" and "you spelled it wrong" are different problems. Also missing: dimensioned callouts, which the memo's own figures have. Details in `docs/rendering.md`.
+  **Not built:** `render still` (raster — nothing here rasterises) and `render animation` (needs RND-7's explicit non-linear time mapping, displayed throughout playback). Both are named by the CLI and refused with a reason rather than falling through as unknown verbs, because "not built yet" and "you spelled it wrong" are different problems. Dimensioned callouts now exist - see below. Details in `docs/rendering.md`.
 
 - **The CLI is the primary surface and now has most of §15.** `init | new | validate | estimate | preview | solve | run | compare | sweep | optimise | test | verify | export | render | ext | schema | templates | examples | agents-md | doctor`, plus the CLI-1..6 contract: `--json` on every verb, results on stdout and diagnostics on stderr, `--dry-run` on every mutating command, distinct exit codes per failure class, deterministic ordering. Cold start 73–147 ms against PERF-8's 500 ms. **Not built: `self-update`**, which needs `Einzel.Update`. `render section`, `render animation` and `ext list|test|register` now exist; `render still` and the in-process extension runner do not.
 
@@ -970,6 +970,28 @@ Two findings from Stage 1 that bear on the spec:
 
   The unit is in the flag's name, as `--width-mm` already does it: a bare `--at` would be
   ambiguous between microseconds and seconds by a factor of a million.
+
+- **A dimension is measured, never written down.** The memo's own figures are line
+  drawings *with* dimensions, and a section without them says what the instrument looks
+  like and not how big any of it is. What a `dimensions` entry declares is **the two
+  points it spans**; the length is the distance between them, computed when the figure is
+  drawn. `label` names the span — "drift", "bore" — and does not carry the value, because
+  a typed number is a second statement of something the model already says and the two
+  part company at the first parameter change.
+
+  **The points may be expressions over the model's own parameters**, so a dimension
+  describes the geometry rather than where the geometry used to be. Changing
+  `turningDepth` from 50 to 80 mm and re-rendering the *same figure spec* gives
+  `penetration 50 mm` then `penetration 80 mm`, with no edit in between — which is what
+  the test asserts: one spec, two models, two measurements. §9's rule for a model, "every
+  placement is a parametric expression, never a baked number", is not weaker for a
+  drawing of it.
+
+  Ordinary drafting convention: extension lines clear of the feature and past the
+  dimension line, an offset dimension line, arrowheads, and the measurement above it on
+  the side away from what it measures. The offset is signed so two dimensions over one
+  feature can go opposite ways, and the unit is chosen from the magnitude because one
+  figure may carry a 300 mm drift and a 50 µm channel.
 
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 

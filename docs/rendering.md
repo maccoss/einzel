@@ -453,11 +453,52 @@ state. A density that was never computed is not the density at that instant, and
 silently substituting the last one would make a figure of a finished run look like a
 figure of a running one.
 
+## A dimension is measured, never written down
+
+The memo's own figures are line drawings *with dimensions*, and a section without them
+says what the instrument looks like and not how big any of it is.
+
+What a dimension declares is **the two points it spans**. The length is the distance
+between them, computed when the figure is drawn:
+
+```json
+"dimensions": [
+  { "from": {"value": [-100, 0, 0], "unit": "mm"},
+    "to":   {"value": [0, 0, 0], "unit": "mm"},
+    "label": "drift", "offsetMm": 10 },
+  { "from": {"expression": ["0", "0", "0"]},
+    "to":   {"expression": ["turningDepth", "0", "0"]},
+    "label": "penetration", "offsetMm": -8 }
+]
+```
+
+`label` names the span - "drift", "bore". **It does not carry the value.** A typed number
+would be a second statement of something the model already says, and the two would part
+company at the first parameter change, which is exactly what a dimensioned drawing exists
+to prevent.
+
+**And the points may be expressions**, over the same parameters the model is written in.
+Section 9's rule for a model - "every placement is a parametric expression, never a baked
+number" - is not weaker for a drawing of it. Changing `turningDepth` from 50 mm to 80 mm
+and re-rendering the *same figure spec* gives `penetration 50 mm` and then
+`penetration 80 mm`, with no edit in between. That is the assertion the test makes: one
+spec, two models, two measurements.
+
+Drawn to the ordinary drafting convention - extension lines starting clear of the feature
+and running a little past the dimension line, a dimension line offset perpendicular,
+arrowheads, and the measurement above the line on the side away from what it measures.
+The convention is what makes a drawing readable by somebody who has never seen this
+program. The offset is signed, so two dimensions over one feature can go to opposite
+sides.
+
+The unit is chosen from the magnitude, because one figure may dimension a 300 mm drift
+and a 50 µm channel and neither is readable in the other's unit. A span that projects to
+a point on the section plane is skipped rather than drawn as a dot, which would read as a
+dimension of zero rather than as one seen end on.
+
 ## Not built
 
 - **`render still`** - a raster projection. Nothing in this build rasterises.
-- **Dimensioned callouts.** The memo's own figures are line drawings *with
-  dimensions*, and there is no way to declare one yet.
 - **Filled density bands, and a colour scale.** Contour lines carry the levels in
   the provenance; a filled and keyed plot would carry them on the page.
 
