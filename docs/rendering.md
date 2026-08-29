@@ -280,6 +280,48 @@ from its declared domain and never touches the flight. Moved onto an analytic re
 it fails immediately. Third time tonight that a test exercised a path not containing the
 line under test.
 
+### The field moves, and the cycle closes
+
+An animation of a driven structure drew the same instant on every frame. A driven field
+implements the time-free `IElectrostaticField` as well as `ITimeVaryingField`, and
+**answers the time-free one at t = 0 without failing** — so the renderer got a field, a
+plausible one, and the same one every time.
+
+That is the fourth appearance of one defect: `einzel solve` reporting the DC pattern of
+a driven geometry, the diffusive mode stepping a density through a snapshot of the RF, a
+`SuperposedField` becoming a snapshot when a driven member was summed into it, and now
+this. **A time-varying quantity reached through a time-free interface does not fail; it
+answers at an arbitrary instant.**
+
+The instant is now declarable — `atSeconds` on a render spec, defaulting to the launch —
+and an animation supplies each frame's own. A section of a driven model carries
+`render.field-at-instant` either way, because a figure of a driven structure is a frame
+of a film whether or not it is drawn as one.
+
+The check is exact. A 1 MHz sinusoid has a 1 µs period; over one period, at the quarter
+points:
+
+| t | 0 | T/4 | T/2 | 3T/4 | T |
+| --- | --- | --- | --- | --- | --- |
+| equipotential paths | 20 | **0** | 20 | **0** | 20 |
+
+The drive passes through zero at the quarter points, so there is no field to contour. At
+`T` it is the **same drawing as at 0, to the last bit** — a sinusoid is exactly periodic
+and nothing between the field and the page is not. At `T/2` the two rod pairs have
+swapped sign, so it is neither.
+
+### The contour levels are fixed once, or they flicker
+
+Levels are spread over the field's range, and a driven field's range changes through the
+cycle. Taken per frame they would be spread over whatever range that instant happened to
+have — and **at a zero crossing that is rounding noise**, so the frame would fill with
+contours of nothing. The same defect as a page chosen per frame, in the other axis.
+
+`SectionRenderer.PotentialRange` samples a couple of dozen instants across the animation
+on a coarse grid — coarse is enough, because the extremes of a Laplace solution are on
+its boundaries, and this is a range rather than a contour. Fixed once, the contours move
+because the field moves.
+
 ### The head is marked, and interpolated onto the instant
 
 A polyline that grows says only where the ion has *been*. The head is a small closed
@@ -358,8 +400,8 @@ after.
 through as an unknown command, because "not built yet" and "you spelled it wrong" are
 different problems and an agent should not have to guess which it hit.
 
-Also not built for animations: **a moving field**. A sequenced instrument switches its
-electrodes between stages, and every frame here draws the field as it is at t = 0. The
-geometry is right and the equipotentials are the first stage's. Since the phases already
-exist to name the stages, the fix is to rebuild the field per phase rather than per
-frame - a handful of solves, not three hundred.
+Also not built for animations: **geometry that moves**. A stage may change what an
+electrode holds and not where it is, which is a rule the sequencer already enforces, so
+the conductors are the same on every frame by construction. That is correct rather than
+a limitation — but a mechanism with a moving part is not expressible at all, in the model
+format or here.

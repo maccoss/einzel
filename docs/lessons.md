@@ -648,6 +648,39 @@ good as the distance from the true value to whichever end the bug moves it to. W
 bug's effect is to collapse a quantity onto one end of its own bracket, the bracket
 cannot see it — and a *symmetry* the bug destroys (here, reversal) can.
 
+## A time-varying quantity read through a time-free interface, four times
+
+`ITimeVaryingField` extends `IElectrostaticField`. That is the right relationship - a
+driven field *is* a field - and it has one consequence that has now cost four separate
+defects: **a caller holding the base interface gets an answer, at t = 0, without
+anything failing.**
+
+1. `einzel solve` built its mask from the electrodes' DC potentials. For the shipped
+   RF quadrupole, whose electrodes hold zero DC and all their potential as drive, that
+   was a solve of a grounded box reported as `converged: true`, exit 0.
+2. The diffusive mode accepted a driven geometry and stepped a density through the RF at
+   the top of its cycle - a static field that exists for no length of time - and reported
+   a transit distribution with no warning anywhere.
+3. `SuperposedField` implements only `IElectrostaticField`, so **a driven element summed
+   with anything else silently became a snapshot**. Fixed structurally: `FieldAssembly`
+   picks a driven superposition when any member is driven, so the composition is chosen
+   by what it contains rather than by what the caller asks for.
+4. The renderer drew equipotentials through `PotentialAt(point)`, so every frame of an
+   animation showed the same instant. The picture was plausible - at t = 0 a sinusoid is
+   at its peak, so it was the field at full amplitude - which is why nobody looked.
+
+None of these threw. Each produced a field that is *a* field the instrument has, at
+*an* instant, and nothing on the output said which.
+
+The structural fix is the one made in (3): choose the implementation by what the thing
+contains, not by what the caller asks for. Where that is not available, the fix is to
+make the instant an argument rather than a default - which is what (4) did, and it
+brought a warning with it, because a section of a driven structure is a frame of a film
+whether or not it is drawn as one.
+
+**The thing to grep for is a call to the base interface on a value that might be
+driven.** It will not be a compile error and it will not be a wrong-looking number.
+
 ## The test used a solved model, and the bug was in the analytic branch
 
 Three times in one night a test passed with its bug restored, each for the same reason

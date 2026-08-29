@@ -135,6 +135,23 @@ public static class AnimationRenderer
                 WarningSeverity.Provenance));
         }
 
+        // Fixed once over the whole animation, because a driven field's range changes
+        // through the cycle and levels taken per frame would make the contours flicker -
+        // which reads as a noisy field rather than as moving levels. A couple of dozen
+        // instants is enough for a range: the extremes of a Laplace solution are on its
+        // boundaries.
+        var wanted = Math.Min(frames.Count, 24);
+        var probes = new List<double>(wanted);
+
+        for (var k = 0; k < wanted; k++)
+        {
+            var index = wanted == 1 ? 0 : k * (frames.Count - 1) / (wanted - 1);
+
+            probes.Add(frames[index].SimulatedSeconds);
+        }
+
+        var range = SectionRenderer.PotentialRange(model, spec, field, probes);
+
         var rendered = new List<RenderedFrame>(frames.Count);
 
         foreach (var frame in frames)
@@ -149,7 +166,8 @@ public static class AnimationRenderer
                 Field = field,
                 FieldWarnings = fieldWarnings,
                 Trajectory = samples,
-                UpToSeconds = frame.SimulatedSeconds,
+                AtSeconds = frame.SimulatedSeconds,
+                PotentialRange = range,
                 Banner = Banner(frame),
             };
 

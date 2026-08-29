@@ -130,6 +130,15 @@ public sealed record RenderSpec
     /// </remarks>
     public double DecimationFraction { get; init; } = 1e-3;
 
+    /// <summary>The instant to draw a time-varying field at, in seconds.</summary>
+    /// <remarks>
+    /// Ignored by a static field. A driven or sequenced one is a different field at every
+    /// moment, and drawing it without saying which moment is what the time-free interface
+    /// silently does - so the instant is declarable, defaults to the launch, and is
+    /// reported on the figure either way.
+    /// </remarks>
+    public double AtSeconds { get; init; }
+
     /// <summary>The time mapping, when this spec is for an animation.</summary>
     /// <remarks>
     /// Null for a section, which is a single instant and has no timeline. Required for

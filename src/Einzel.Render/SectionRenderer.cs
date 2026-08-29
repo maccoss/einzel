@@ -94,19 +94,40 @@ public static class SectionRenderer
         /// is what the first version did.
         /// </para>
         /// <para>
-        /// <see cref="UpToSeconds"/> is what truncates it for drawing, so every frame
+        /// <see cref="AtSeconds"/> is what truncates it for drawing, so every frame
         /// draws a prefix of one flight on one page.
         /// </para>
         /// </remarks>
         public IReadOnlyList<TrajectorySample>? Trajectory { get; init; }
 
-        /// <summary>Draw the trajectory only up to this instant, in seconds.</summary>
+        /// <summary>The instant this frame shows, in seconds.</summary>
         /// <remarks>
-        /// Null draws all of it. When set, the last point is marked, because a frame of
-        /// an animation shows where the ion <em>is</em> and a polyline that grows says
-        /// only where it has been.
+        /// <para>
+        /// One instant, used for both halves of what a frame depicts: the trajectory is
+        /// drawn up to it and the field is sampled at it. Two fields that had to agree
+        /// would be one too many - a frame is a moment, and the ion and the electrodes
+        /// are in it together.
+        /// </para>
+        /// <para>
+        /// Null draws the whole flight and samples the field at
+        /// <see cref="RenderSpec.AtSeconds"/>. When set, the trajectory's last point is
+        /// marked, because a frame of an animation shows where the ion <em>is</em> and a
+        /// polyline that grows says only where it has been.
+        /// </para>
         /// </remarks>
-        public double? UpToSeconds { get; init; }
+        public double? AtSeconds { get; init; }
+
+        /// <summary>
+        /// The potential range the equipotential levels are spread over, or null to take
+        /// it from this frame alone.
+        /// </summary>
+        /// <remarks>
+        /// Supplied by an animation, because a driven field's range changes through the
+        /// cycle and levels chosen per frame would make the contours flicker - the same
+        /// defect as a page chosen per frame, in the other axis. Fixed once over the
+        /// whole animation, the contours move because the field moves.
+        /// </remarks>
+        public (double Low, double High)? PotentialRange { get; init; }
 
         /// <summary>A line stamped across the top of the page.</summary>
         /// <remarks>
@@ -208,10 +229,44 @@ public static class SectionRenderer
 
         var equipotentialStyle = new PathStyle(Equipotential, 0.13, Dash: DashStyle.Solid, Opacity: 0.85);
 
+        // The instant this figure is of. A static field ignores it; a driven or
+        // sequenced one does not, and until now was sampled through the time-free
+        // interface it also implements - which answers at t = 0 without failing. That
+        // is the same defect that had `einzel solve` reporting the DC pattern of a
+        // driven geometry and the diffusive mode stepping a density through a snapshot
+        // of the RF, met a third time in the renderer.
+        var at = plan?.AtSeconds ?? spec.AtSeconds;
+
+        if (field is ITimeVaryingField)
+        {
+            warnings =
+            [
+                .. warnings,
+                new ValidityWarning(
+                    "render.field-at-instant",
+                    $"this field varies with time, so the equipotentials are the field at "
+                    + $"t = {at * 1e6:G6} us and not a field the instrument holds. A figure of a "
+                    + "driven structure is a frame of a film whether or not it is drawn as one",
+                    WarningSeverity.Provenance),
+            ];
+        }
+
         if (spec.Equipotentials > 0)
         {
             DrawEquipotentials(
-                paths, field, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage, equipotentialStyle);
+                paths,
+                field,
+                at,
+                plan?.PotentialRange,
+                plane,
+                spec,
+                minU,
+                minV,
+                spanU,
+                spanV,
+                tolerance,
+                ToPage,
+                equipotentialStyle);
         }
 
         DrawConductors(paths, model, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
@@ -234,11 +289,11 @@ public static class SectionRenderer
                 ? (0, 0)
                 : DrawSupplied(
                     paths,
-                    plan?.UpToSeconds is { } until ? Until(flown, until) : flown,
+                    plan?.AtSeconds is { } until ? Until(flown, until) : flown,
                     plane,
                     tolerance,
                     ToPage,
-                    plan?.UpToSeconds is not null);
+                    plan?.AtSeconds is not null);
         }
 
         // Drawn whenever there is a density and contours were asked for. A density is
@@ -465,6 +520,8 @@ public static class SectionRenderer
     private static void DrawEquipotentials(
         List<ScenePath> paths,
         IElectrostaticField field,
+        double atSeconds,
+        (double Low, double High)? range,
         SectionPlane plane,
         RenderSpec spec,
         double minU,
@@ -482,20 +539,27 @@ public static class SectionRenderer
         var stepV = spanV / (rows - 1);
 
         var values = Contours.Sample(
-            plane, minU, minV, stepU, stepV, columns, rows, point => field.PotentialAt(in point));
+            plane, minU, minV, stepU, stepV, columns, rows, Sampler(field, atSeconds));
 
         var low = double.PositiveInfinity;
         var high = double.NegativeInfinity;
 
-        foreach (var value in values)
+        if (range is { } fixedRange)
         {
-            if (!double.IsFinite(value))
+            (low, high) = fixedRange;
+        }
+        else
+        {
+            foreach (var value in values)
             {
-                continue;
-            }
+                if (!double.IsFinite(value))
+                {
+                    continue;
+                }
 
-            low = Math.Min(low, value);
-            high = Math.Max(high, value);
+                low = Math.Min(low, value);
+                high = Math.Max(high, value);
+            }
         }
 
         if (!double.IsFinite(low) || high - low <= 0.0)
@@ -661,6 +725,91 @@ public static class SectionRenderer
                 }
             }
         }
+    }
+
+    /// <summary>Reads a field at an instant, whether or not it has one.</summary>
+    /// <remarks>
+    /// A driven field implements the time-free interface too and answers at t = 0
+    /// through it, silently. Asking for the instant explicitly is the difference between
+    /// a figure of a moment and a figure of an arbitrary moment.
+    /// </remarks>
+    private static Func<Vec3, double> Sampler(IElectrostaticField field, double atSeconds) =>
+        field is ITimeVaryingField driven
+            ? point => driven.PotentialAt(in point, atSeconds)
+            : point => field.PotentialAt(in point);
+
+    /// <summary>The potential range a field covers over a set of instants.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="spec">What would be drawn.</param>
+    /// <param name="field">The field, already built.</param>
+    /// <param name="instants">The instants to cover, in seconds.</param>
+    /// <returns>The lowest and highest potential over all of them, or null if none.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// What an animation fixes its contour levels from. A driven field's range changes
+    /// through the cycle, so levels taken per frame would make the contours flicker -
+    /// which reads as the field being noisy rather than as the levels moving. Fixed
+    /// once, they move because the field moves.
+    /// </para>
+    /// <para>
+    /// Sampled on a coarser grid than the drawing, because the extremes of a Laplace
+    /// solution are on its boundaries and a coarse grid finds those perfectly well.
+    /// This is a range, not a contour.
+    /// </para>
+    /// </remarks>
+    public static (double Low, double High)? PotentialRange(
+        CompiledModel model,
+        RenderSpec spec,
+        IElectrostaticField field,
+        IReadOnlyList<double> instants)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(instants);
+
+        if (instants.Count == 0)
+        {
+            return null;
+        }
+
+        var plane = PlaneFor(model, spec);
+        var (minU, minV, maxU, maxV) = Extent(model, plane, null);
+
+        var spanU = maxU - minU;
+        var spanV = maxV - minV;
+
+        if (!(spanU > 0.0) || !(spanV > 0.0))
+        {
+            return null;
+        }
+
+        const int Columns = 96;
+
+        var rows = Math.Max(8, (int)Math.Round(Columns * spanV / spanU));
+        var stepU = spanU / (Columns - 1);
+        var stepV = spanV / (rows - 1);
+
+        var low = double.PositiveInfinity;
+        var high = double.NegativeInfinity;
+
+        foreach (var instant in instants)
+        {
+            foreach (var value in Contours.Sample(
+                plane, minU, minV, stepU, stepV, Columns, rows, Sampler(field, instant)))
+            {
+                if (!double.IsFinite(value))
+                {
+                    continue;
+                }
+
+                low = Math.Min(low, value);
+                high = Math.Max(high, value);
+            }
+        }
+
+        return double.IsFinite(low) && high > low ? (low, high) : null;
     }
 
     /// <summary>The samples up to an instant, with the last one landing exactly on it.</summary>

@@ -893,10 +893,29 @@ Two findings from Stage 1 that bear on the spec:
   comes out is numbered vector frames plus a `frames.json` schedule; assembling them is
   an out-of-process step with a tool the user supplies.
 
-  **Not built: a moving field.** A sequenced instrument switches its electrodes between
-  stages and every frame draws the field at t = 0. The phases already name the stages, so
-  the fix is to rebuild per phase rather than per frame — a handful of solves, not three
-  hundred.
+  **The field moves too, and finding that it did not was the fourth sighting of one
+  defect.** A driven field implements the time-free `IElectrostaticField` as well as
+  `ITimeVaryingField` and **answers the time-free one at t = 0 without failing**, so the
+  renderer drew the same instant on every frame — after `einzel solve` reporting the DC
+  pattern of a driven geometry, the diffusive mode stepping a density through a snapshot
+  of the RF, and `SuperposedField` becoming a snapshot when a driven member was summed
+  into it. The instant is now declarable (`atSeconds` on a render spec) and every frame
+  supplies its own; a section of a driven model carries `render.field-at-instant` either
+  way, because a figure of a driven structure is a frame of a film whether or not it is
+  drawn as one.
+
+  Checked exactly, over one period of a 1 MHz quadrupole: **20, 0, 20, 0, 20**
+  equipotential paths at 0, T/4, T/2, 3T/4, T. The drive is through zero at the quarter
+  points so there is nothing to contour; at T it is the *same drawing as at 0, to the last
+  bit*; at T/2 the rod pairs have swapped sign. **The contour levels had to be fixed once
+  across the animation** — a driven field's range changes through the cycle, and levels
+  taken per frame would be spread over rounding noise at a zero crossing and fill the
+  frame with contours of nothing. Same defect as a page chosen per frame, in the other
+  axis.
+
+  **Not built: geometry that moves.** A stage may change what an electrode holds and not
+  where it is, which the sequencer already enforces, so the conductors are identical on
+  every frame by construction. A mechanism with a moving part is not expressible at all.
 
 - **The scaffolded reflectron drew its turning point 105 metres off a 160 mm page**, and
   had done since sections were built. A model with no declared solve domain takes its

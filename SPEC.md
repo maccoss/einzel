@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**730 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**731 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1060,9 +1060,24 @@ in a table.
    it because every one of them uses a device template, and every template declares a
    solve domain.
 
-   Left: **a moving field**. A sequenced instrument switches electrodes between stages
-   and every frame draws the field at t = 0. The phases already name the stages, so the
-   fix is a solve per phase rather than per frame.
+   **And the field moves, which it did not at first — the fourth sighting of one
+   defect.** A driven field implements the time-free `IElectrostaticField` as well and
+   answers it at t = 0 without failing, so every frame drew the same instant. After
+   `einzel solve` reporting a driven geometry's DC pattern, the diffusive mode stepping a
+   density through a snapshot of the RF, and `SuperposedField` becoming a snapshot when a
+   driven member was summed in. The instant is now declarable and every frame supplies
+   its own, with `render.field-at-instant` on a static section either way.
+
+   Checked exactly over one period of a 1 MHz quadrupole: **20, 0, 20, 0, 20**
+   equipotential paths at 0, T/4, T/2, 3T/4, T. Nothing to contour at the zero crossings;
+   the same drawing at T as at 0, to the last bit; the rod pairs swapped at T/2. The
+   contour levels had to be **fixed once across the animation**, because a driven field's
+   range changes through the cycle and per-frame levels would spread over rounding noise
+   at a zero crossing — the page defect again, in the other axis.
+
+   Left: **geometry that moves**. A stage may change what an electrode holds and not
+   where it is, so the conductors are identical on every frame by construction; a
+   mechanism with a moving part is not expressible in the model format at all.
 
 ## Open decisions
 

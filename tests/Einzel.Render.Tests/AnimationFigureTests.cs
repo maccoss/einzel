@@ -195,6 +195,98 @@ public sealed class AnimationFigureTests(ITestOutputHelper output)
         Assert.Equal(1, reversals);
     }
 
+    /// <summary>
+    /// A driven field moves through the frames, and the cycle closes exactly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It did not, and the reason is a defect this project has now met four times.</b>
+    /// A driven field implements the time-free <c>IElectrostaticField</c> as well, and
+    /// answers it at t = 0 without failing - so the renderer drew the same instant on
+    /// every frame. The same shape as <c>einzel solve</c> reporting the DC pattern of a
+    /// driven geometry, the diffusive mode stepping a density through a snapshot of the
+    /// RF, and a superposed driven field becoming a snapshot when summed.
+    /// </para>
+    /// <para>
+    /// The check is exact rather than approximate, which is what makes it worth having.
+    /// A sinusoid at 1 MHz has a 1 µs period; frames land on the quarter points, and:
+    /// the field at t = 0 and at t = T is the <em>same drawing</em>, the quarter and
+    /// three-quarter points have <em>no</em> equipotentials because the drive is through
+    /// zero, and the half cycle is neither.
+    /// </para>
+    /// <para>
+    /// The vanishing quarter points also say the levels are fixed across the animation
+    /// rather than taken per frame. Per-frame levels would spread the contour set over
+    /// whatever range the field had at that instant - so at a zero crossing they would
+    /// be spread over rounding noise, and the frame would be full of contours of
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADrivenFieldMovesAndItsCycleCloses()
+    {
+        // 1 MHz, so a 1 µs period. At 0.25 µs/s and 8 frames a second, one frame is
+        // 1/32 µs and the quarter points are frames 8, 16, 24 and 32.
+        var animation = new AnimationSpec
+        {
+            FramesPerSecond = 8,
+            Phases = [new AnimationPhase(1.0 * Micro, 0.25 * Micro, "one RF cycle")],
+        };
+
+        var frames = AnimationRenderer.Render(
+            Compile("quadrupole-rf"),
+            new RenderSpec { Equipotentials = 10, SampleColumns = 160 },
+            animation);
+
+        Assert.Equal(33, frames.Count);
+
+        static List<ScenePath> Equipotentials(AnimationRenderer.RenderedFrame frame) =>
+            [.. frame.Figure.Scene.Paths.Where(p => p.Layer == "equipotentials")];
+
+        var atZero = Equipotentials(frames[0]);
+        var atQuarter = Equipotentials(frames[8]);
+        var atHalf = Equipotentials(frames[16]);
+        var atThreeQuarters = Equipotentials(frames[24]);
+        var atFull = Equipotentials(frames[32]);
+
+        output.WriteLine(
+            $"contours at 0, T/4, T/2, 3T/4, T: {atZero.Count}, {atQuarter.Count}, "
+            + $"{atHalf.Count}, {atThreeQuarters.Count}, {atFull.Count}");
+
+        // The drive passes through zero a quarter and three quarters of the way round,
+        // so there is no field to contour there at all.
+        Assert.Empty(atQuarter);
+        Assert.Empty(atThreeQuarters);
+
+        Assert.NotEmpty(atZero);
+        Assert.NotEmpty(atHalf);
+
+        // A full period later it is the same drawing, to the last bit - a sinusoid is
+        // exactly periodic and nothing between here and the page is not.
+        Assert.Equal(atZero.Count, atFull.Count);
+
+        for (var k = 0; k < atZero.Count; k++)
+        {
+            Assert.Equal(atZero[k].Points.Count, atFull[k].Points.Count);
+
+            for (var i = 0; i < atZero[k].Points.Count; i++)
+            {
+                Assert.Equal(atZero[k].Points[i].X, atFull[k].Points[i].X);
+                Assert.Equal(atZero[k].Points[i].Y, atFull[k].Points[i].Y);
+            }
+        }
+
+        // And half a period later it is not, because the quadrupole's two pairs have
+        // swapped sign. Compared by geometry rather than by count, since a reversed
+        // quadrupole draws the same NUMBER of contours in the other diagonal.
+        var moved = atZero.Count != atHalf.Count
+            || Enumerable.Range(0, Math.Min(atZero.Count, atHalf.Count)).Any(k =>
+                atZero[k].Points.Count != atHalf[k].Points.Count
+                || Math.Abs(atZero[k].Points[0].X - atHalf[k].Points[0].X) > 1e-6);
+
+        Assert.True(moved, "half a period later the field is drawn identically");
+    }
+
     /// <summary>A model with no trajectories is refused rather than filmed.</summary>
     /// <remarks>
     /// RND-8 forbids drawing lines through a diffusive region, and a run reports the
