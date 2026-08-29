@@ -329,4 +329,94 @@ public sealed class ModelFormatGuardTests
 
         Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
     }
+
+    private const string TwoSolvesOneStaged =
+        """
+          "fields": [{
+            "type": "solved2d",
+            "solve": {
+              "minX": { "value": -5, "unit": "mm" }, "minY": { "value": -5, "unit": "mm" },
+              "maxX": { "value": 5, "unit": "mm" }, "maxY": { "value": 5, "unit": "mm" },
+              "cellSize": { "value": 0.5, "unit": "mm" },
+              "stages": [
+                { "name": "hold", "duration": { "value": 100, "unit": "us" } },
+                { "name": "push", "duration": { "value": 10, "unit": "us" },
+                  "set": { "volts": { "value": 900, "unit": "V" } } }
+              ],
+              "electrodes": [{
+                "name": "a", "shape": "rectangle",
+                "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 2, "unit": "mm" },
+                "minY": { "value": 1, "unit": "mm" }, "maxY": { "value": 2, "unit": "mm" },
+                "potential": { "expression": "volts", "unit": "V" }
+              }]
+            }
+          }, {
+            "type": "solved2d",
+            "solve": {
+              "minX": { "value": -5, "unit": "mm" }, "minY": { "value": -5, "unit": "mm" },
+              "maxX": { "value": 5, "unit": "mm" }, "maxY": { "value": 5, "unit": "mm" },
+              "cellSize": { "value": 0.5, "unit": "mm" },
+              "electrodes": [{
+                "name": "b", "shape": "rectangle",
+                "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 2, "unit": "mm" },
+                "minY": { "value": -2, "unit": "mm" }, "maxY": { "value": -1, "unit": "mm" },
+                "potential": { "expression": "volts", "unit": "V" }
+              }]
+            }
+          }],
+        """;
+
+    /// <summary>
+    /// A sequence belongs to the instrument, so a model with one may have one element.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The defect this closes made a model that validated cleanly give two electrodes
+    /// with identical expressions different voltages.</b> A stage sets a model
+    /// <em>parameter</em>, but only its own element is recompiled against the stage's
+    /// surface — so with `"potential": "volts"` on an electrode in each of two elements,
+    /// the staged one went to 900 V during the push and the other stayed at 300, with no
+    /// diagnostic anywhere.
+    /// </para>
+    /// <para>
+    /// The stage design's own rationale is the claim that fails: setting a parameter
+    /// "moves everything that depends on it at once". It moves everything in one element.
+    /// </para>
+    /// <para>
+    /// Refused rather than patched, because the coherent readings need work this does not
+    /// do — either the timeline is the instrument's and every element recompiles at each
+    /// stage, which is what SEQ-1's transport mode per phase will need anyway, or a stage
+    /// is scoped to its element, which is a different feature from the documented one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ASequenceAndASecondElementIsRefused()
+    {
+        var validation = Validate(TwoSolvesOneStaged, OnAxis);
+
+        Assert.False(
+            validation.IsValid,
+            "a sequenced model with a second element compiles two electrodes with the "
+            + "same expression to different voltages");
+
+        var refusal = Assert.Single(
+            validation.Errors,
+            e => e.Constraint.Contains("field elements", StringComparison.Ordinal));
+
+        Assert.Contains("identical expressions", refusal.Suggestion!, StringComparison.Ordinal);
+    }
+
+    /// <summary>And a sequence on a single element is still fine.</summary>
+    /// <remarks>
+    /// The control. A refusal that also refused the shipped case would be a regression
+    /// wearing the clothes of a fix, and `sequenced-extraction` is in the release gate.
+    /// </remarks>
+    [Fact]
+    public void ASequenceOnTheOnlyElementIsStillAccepted()
+    {
+        var validation = Validate(StagedSolve, OnAxis);
+
+        Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+        Assert.Equal(2, validation.Model!.Fields[0].Solve!.Stages.Count);
+    }
 }

@@ -517,7 +517,94 @@ public static class ModelValidator
             }
         }
 
+        Sequenced(fields, errors);
+
         return compiled;
+    }
+
+    /// <summary>
+    /// A sequence belongs to the instrument, so only one element may declare one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A stage sets a model parameter, but only its own element is recompiled
+    /// against it.</b> That is the defect this refuses. Two electrodes whose potentials
+    /// are the *same expression* over the same parameter end up holding different
+    /// voltages when one of them is in a staged element and the other is not - measured
+    /// at 900 V against 300 V, on a model that validated cleanly with no diagnostic
+    /// anywhere.
+    /// </para>
+    /// <para>
+    /// The stage design's own rationale is the claim that fails: setting a parameter
+    /// "moves everything that depends on it at once, including the derived parameters".
+    /// It moves everything in one element.
+    /// </para>
+    /// <para>
+    /// Refused rather than patched, because the two coherent readings need work this
+    /// does not do. Either the timeline is the instrument's and every element recompiles
+    /// against each stage - which is what the rationale describes and what SEQ-1's
+    /// transport mode per phase requires, since a mode is a property of the run and not
+    /// of one electrode assembly - or a stage is scoped to its element, which is a
+    /// different feature and not the one documented. Making the incoherent case
+    /// inexpressible is the honest state until that is settled.
+    /// </para>
+    /// <para>
+    /// No shipped model or template has more than one field element, so this refuses
+    /// nothing that exists. It is a latent defect being closed rather than a live one.
+    /// </para>
+    /// </remarks>
+    private static void Sequenced(IReadOnlyList<FieldDocument> fields, List<EinzelError> errors)
+    {
+        var staged = new List<int>();
+
+        for (var i = 0; i < fields.Count; i++)
+        {
+            if (fields[i].Solve?.Stages is { Count: > 0 }
+                || fields[i].Solve3d?.Stages is { Count: > 0 })
+            {
+                staged.Add(i);
+            }
+        }
+
+        if (staged.Count == 0)
+        {
+            return;
+        }
+
+        if (staged.Count > 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/fields/{staged[1]}/solve/stages",
+                Constraint = "more than one element declares a sequence, and an instrument "
+                    + $"has one timeline: elements {string.Join(", ", staged)} each declare "
+                    + "stages",
+                Suggestion = "declare the sequence on one element. Two timelines over the "
+                    + "same parameters would each switch at their own instants, and the "
+                    + "document would say two things about what the instrument is doing",
+            });
+
+            return;
+        }
+
+        if (fields.Count > 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/fields/{staged[0]}/solve/stages",
+                Constraint = $"element {staged[0]} declares a sequence and the model has "
+                    + $"{fields.Count} field elements, of which only the sequenced one is "
+                    + "recomputed at each stage",
+                Suggestion = "a stage sets a model parameter, so an electrode in another "
+                    + "element written over that same parameter would keep its baseline "
+                    + "value while this element followed the stage - two electrodes with "
+                    + "identical expressions holding different voltages, with nothing to "
+                    + "say so. Put the sequenced geometry in one element, or drop the "
+                    + "sequence",
+            });
+        }
     }
 
     /// <summary>Resolves the parameter surface as it stands during one stage.</summary>

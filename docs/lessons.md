@@ -6,6 +6,45 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## A stage moved a global parameter and only its own element followed
+
+The sequencer's documented rationale is that a stage sets a *parameter* rather than
+electrode settings, because "potentials are already expressions over parameters, so
+setting one moves everything that depends on it at once - including the derived
+parameters". That is the argument for the whole design, and across elements it is
+false.
+
+`CompileStages` re-resolves the **whole model parameter surface** with the stage's
+overrides, and then re-expands **only that solve's** electrodes against it. So a
+model with two elements, an electrode in each written as the same expression
+`"potential": "volts"`, and stages on the first:
+
+    A base potential: 300      B base potential: 300
+    A during push:    900      B during push:    300
+
+Two electrodes with identical expressions holding different voltages, on a model
+that **validated cleanly**, with no diagnostic anywhere.
+
+Found while scoping SEQ-1, not by a failing test - the question was where a
+transport mode could live, and the answer turned out to be that the timeline is
+already in the wrong place. **A mode is a property of the run, not of one electrode
+assembly**, so a per-element stage cannot carry one: two elements would name
+different modes for the same instant, and there is no superposition of transport
+modes the way there is of fields.
+
+**Refused rather than patched.** The two coherent readings need work this does not
+do: either the timeline is the instrument's and every element recompiles at each
+stage - which is what the rationale describes and what SEQ-1 needs anyway - or a
+stage is scoped to its element, which is a different feature from the documented
+one. Making the incoherent case inexpressible is the honest state until that is
+settled.
+
+No shipped model or template has more than one field element, so this refused
+nothing that exists. **It was a latent defect, and latent is not the same as
+harmless** - it was reachable by anyone writing a two-element sequenced model,
+which is a perfectly ordinary thing to write, and the wrong answer it gave was a
+plausible one.
+
 ## A harness that lies in the direction of "the thing under test is broken"
 
 The MCP server, driven by hand - a file of JSON-RPC piped into it - produced
