@@ -454,7 +454,11 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Also added: **`transitTime`**, the mean transit of a diffusive run, because without it the diffusive mode's principal scalar could not be asserted by a project test or ranked by a study — half of REG-1's peer pair was outside the machinery that keeps the other half honest.
 
-  **Still missing:** thirteen more, and the gap is breadth rather than machinery — no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode.
+  **`parallel-plate-gap-3d` is the corpus's first genuinely three-dimensional example**, and it exists because Galerkin coarsening made it affordable — it was deferred at 124 s against a gate that runs everything else in 42. Two square plates in a cubic box, reducing to neither a cross-section nor an axis, reproducing `sqrt(2 d m / (q E))` to **1.2e-6** in under two seconds. Since the expectation is the same arithmetic the analytic accelerating-gap example uses, what is checked is the **solver** rather than the integrator.
+
+**Two mistakes cost three orders of magnitude each, and both are the model author's rather than the engine's.** The gap in the closed form is between the **facing surfaces**, so putting a 1 mm plate's centre on the gap boundary makes the real gap 9 mm — the field came out **11.111% high**, which is exactly 1000/0.009 and is how it was caught. And **the grounded domain boundary is a third electrode**: holding one plate at 0 V makes the boundary an extension of it, so the problem is asymmetric about the mid-plane although the geometry is not. Worth 0.31% of the field at the ends of the flight and 0.11% of the answer; applying ±V/2 instead gives 0.0005% and 1.2e-6. **Both were mesh-converged** — identical at 1 mm and 0.5 mm cells — so neither was the discretisation artefact the first reading assumed, and the engine's own `CONVERGENCE_ORDER_BELOW_NOMINAL` warning pointing at "a finer grid" was pointing at the wrong fix.
+
+**Still missing:** twelve more, and the gap is breadth rather than machinery — no multipole above four rods, no 3-D trap, no MR-TOF, and nothing in the diffusive mode.
 
 - **Class B: bisection onto a boundary, and Phase 3 acceptance criterion 3.** ACC-6 asks for a boundary resolved to **one part in five hundred of the scan**. A grid reaches that by having 501 points in it; `BoundarySearch` halves the bracket instead, which is `log2(500)` steps plus the two that establish it — **11 evaluations against 501, measured**.
 

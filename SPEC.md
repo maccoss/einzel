@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**673 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 26 examples, every expectation a closed form, a published value, or an exact invariant.
+**673 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 27 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1167,17 +1167,30 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **Finish the examples corpus (EX-1).** 26 of thirty, and the gate (EX-2) is built
+3. **Finish the examples corpus (EX-1).** 27 of thirty, and the gate (EX-2) is built
    and green. What the first seventeen cost was mostly *deciding what can honestly be
    asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
    thermalisation, and a three-dimensional geometry.
 
-   The last is **deliberately deferred and the reason is a finding**: a parallel-plate
-   gap in 3-D takes 49 multigrid cycles at a factor of 0.652 and 124 seconds, against
-   a gate that runs the other twenty-six in forty-two. A large solid Dirichlet slab is
-   the worst case for the documented interior-electrode limitation, which makes the
-   simplest geometry anybody would write the most expensive one. Galerkin coarsening
-   closes it.
+   ~~The last is deliberately deferred~~ — **`parallel-plate-gap-3d` now ships**, which
+   is the deferral closed by item 4: two square plates in a cubic box, reducing to
+   neither a cross-section nor an axis, reproducing `sqrt(2 d m / (q E))` to **a part in
+   a million** in under two seconds. The whole gate is 27 examples in 42 s.
+
+   **Two mistakes cost three orders of magnitude each, and both are in the example's own
+   description because both are things a model author makes.** The gap in the closed
+   form is between the *facing surfaces*, so placing a 1 mm plate's centre on the gap
+   boundary makes the real gap 9 mm — the field came out **11.111% high**, which is
+   exactly 1000/0.009. And the applied voltage has to be split as ±V/2 rather than V and
+   zero, because **the grounded domain boundary is a third electrode**: holding one
+   plate at zero makes the boundary an extension of it, and the problem is asymmetric
+   about the mid-plane although the geometry is not. That is worth 0.31% of the field at
+   the ends of the flight and 0.11% of the answer; splitting it gives 0.0005% and
+   1.2e-6. **Both were mesh-converged** — identical at 1 mm and 0.5 mm cells — so
+   neither was a discretisation artefact a finer grid would have removed, which is what
+   the first reading assumed.
+
+   Remaining: an MR-TOF and a thermalisation.
 
    The three added most recently set a pattern worth keeping. **`travelling-wave-capture`
    and `travelling-wave-ballistic` are a pair, and neither is worth much alone**: a

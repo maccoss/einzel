@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "parallel-plate-gap-3d",
+  "description": "Closed form: t = sqrt(2 d m / (q E)) with E = V/gap. The corpus's first genuinely three-dimensional geometry - two square plates in a cubic box, which reduces to neither a cross-section nor an axis. Since the expected number is the same arithmetic the analytic accelerating-gap example uses, what is being checked here is the SOLVER: the field is computed rather than declared, and it reproduces 0.910572 us to a part in a million. Two things had to be right for that, and getting either wrong costs three orders of magnitude. The gap in the closed form is between the FACING SURFACES, so placing a 1 mm plate's centre on the gap boundary makes the real gap 9 mm and the field 11.111% high. And the applied voltage is split as plus and minus half rather than V and zero, because the grounded domain boundary is a third electrode: holding one plate at zero makes the boundary an extension of it, which is worth 0.31% of the field at the ends of the flight and 0.11% of the answer. Both figures are mesh-converged, so neither is a discretisation artefact that a finer grid would remove.",
+  "model": "../models/parallel-plate-gap-3d.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 0.910572113,
+      "unit": "us",
+      "tolerance": 1e-05
+    }
+  ]
+}
