@@ -603,72 +603,63 @@ not be the one that silently drops a part.** `IsDriven` exists on both electrode
 records precisely so the complete question has a short name. It is worth grepping
 for `.Potential` the next time something driven behaves as though it were earthed.
 
-## A model that underflows at its sequencer switch, and two wrong diagnoses
+## The refinement ladder tightened a floor into meaninglessness
 
-**This one is not fixed.** It is written down at this length because the diagnosis is
-half done and two plausible explanations have already been eliminated - which is worth
-more to whoever picks it up than the symptom alone.
+**Root cause found; the fix is one line and is not taken, because its cost needs a
+decision.** Characterised by `SequencedSourceTests.AnIonAtRestUnderflowsInTheRefinementLadder`.
 
-A pulsed-extraction model - two plates, both at zero for a 2 us hold, then plus and minus
-500 V - comes back `StepSizeUnderflow` at t = 1.9999999999978482 us after 63 accepted
-steps, with the ion wherever it had got to. The reported flight time is the hold.
+A pulsed-extraction model - two plates at zero for a 2 us hold, then plus and minus
+500 V - gives `StepSizeUnderflow` at exactly the switch after 63 accepted steps. A fixed
+count, invariant under tolerance, cell size, flight time and the ion's speed, which is
+the signature of a step being *rejected* at every size rather than a controller
+converging.
 
-### What is eliminated
+### The cause
 
-**Not the ion being at rest.** The first hypothesis was that an ion with exactly zero
-velocity makes the relative error norm unsatisfiable. Launching it at 1e-6 V, 1e-3 V and
-1 V of accelerating potential - creeping, slow, and moving 1.24 mm during the hold - all
-underflow at exactly 2.000000 us. Speed is irrelevant.
+`FlightTimeStudy` refines by scaling the relative tolerance **and both absolute floors**
+by the same factor. At its deepest rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** -
+ten picometres per second, against thermal speeds of hundreds of metres. For an ion
+starting from rest the normalised velocity error is then unsatisfiable at any step size.
 
-**Not the turning-point step cap**, which is already disabled when the field is an
-`ITimeVaryingField`, and a sequenced solve is one. **Not the RF period cap**, which is
-1.0 s when there are no drives.
+Isolated by tightening each of the three alone: the relative tolerance and the position
+floor both cross the switch; the velocity floor alone reproduces `StepSizeUnderflow after
+63 steps`. And the floor is load-bearing - it is what stops `ErrorNorm` being a
+position-error controller, which section 11's own findings turn on.
 
-**Not the switch, the zero first stage, or the stopping surface.**
-`SwitchCrossingTests` builds the same shape - a plate at zero for a microsecond, then at
-200 V - straight from `GeometryBuilder`, and crosses it in 123 steps both with and
-without a stopping surface ahead of the ion. So the sequencer's landing logic, the
-discontinuity itself, and the detector are all fine.
+`einzel preview` completes and gives 2.9106 us, against a closed form of
+2 + 0.910572113. The physics and the model were always right; only the ladder was not.
 
-**Not the facing pair either.** The failing model has two electrodes at plus and minus
-half the voltage, which share one basis solve because they are exact negatives, and in
-the first stage both are at zero - a pattern of nothing. The same arrangement crosses its
-switch in 112 steps and is then pushed into the upper plate, which is what a pair does to
-an ion on the axis between them.
+### Why the fix is not taken
 
-### A control that was not one
+Holding `AbsoluteVelocityTolerance` makes it pass, leaves the reflectron's flight time
+**bit-identical**, and makes its interval **17 times narrower** - 1.48e-10 us against
+2.58e-09 - because the interval becomes a measured residual instead of a saturated floor.
 
-The second wrong step is worth recording because it is the more embarrassing. Running the
-same model with **both** stages at 1000 V completed, and that looked like a control
-isolating "a change at the switch" as the trigger. It was not: with the field on from the
-start the ion reached the detector at 0.879 us and **never got to the switch at all**. A
-run that finishes early says nothing about crossing.
+It also breaks `IntegratorBehaviourTests.AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`,
+and the reason is the interesting part: **that model's bit-exact agreement between rungs
+depended on the ladder over-tightening the very floor at issue.** With the floor held the
+rungs differ at 1e-12, so the residual no longer collapses and
+`convergence.at-resolution` - a feature built for a real problem an agent found - loses
+its only physical exercise. Neither `refinementRatio` near one (1.001 still diverges at
+1.7e-12) nor loosened floors reconstructs the collapse through the public API.
 
-*A control has to reach the thing being controlled for.* Checking that the successful run
-actually exercised the mechanism would have taken one glance at its flight time.
+So the trade is: a class of model that cannot be integrated at all, against the test
+coverage of a reporting path. That is a judgement call about the numerical core, not a
+bug fix, and it is left for a decision.
 
-### What is left
+### Four eliminations, and a control that was not one
 
-Four candidates are gone: the ion's speed, the turning-point cap, the switch itself with
-its stopping surface, and the facing pair. What is left is the **model path**: the failing
-case goes through `FieldAssembly` from a full document and the passing ones use
-`GeometryBuilder.Build(solve).Field` directly. **That is the next experiment** - the same
-geometry through `FieldAssembly`. If it underflows, the composition wrapper is implicated
-and `DrivenSuperposedField` is where to look; if not, it is something else about that
-specific document, and the remaining differences are its cell size and its detector
-geometry.
+Recorded because each cost time. **Not the ion's speed** - at 1e-6, 1e-3 and 1 V it fails
+identically. **Not the turning-point cap**, off for a time-varying field. **Not the switch
+or the stopping surface** - `SwitchCrossingTests` crosses the same shape in 123 steps.
+**Not the facing pair**, which crosses in 112. **Not `FieldAssembly`** - a single
+integration through it passes at every tolerance from 1e-8 to 1e-14.
 
-A speculative guard mirroring the collision path's `if (toEvent < MinimumStep)` was tried
-and **reverted**. It changed which refinement levels completed - the reported uncertainty
-went from 1.7e-12 to 0.911 us - without changing the outcome. An unjustified edit to the
-integrator that carries every validated number in this engine is not worth leaving in for
-a hypothesis that did not hold.
-
-### What it blocks
-
-The corpus has no pulsed-extraction example, which is the one Phase 4 capability it does
-not exercise. Two real defects were found on the way and both are fixed, so the trip paid
-for itself - but the example is not shippable and was not shipped.
+And the one to remember: a run with both stages energised completed, and that looked like
+a control isolating "a change at the switch". It was not - with the field on from the
+start the ion reached the detector at 0.879 us and **never got to the switch**. *A control
+has to reach the thing being controlled for*, and checking that the successful run
+exercised the mechanism would have taken one glance at its flight time.
 
 ## Reading the DC of an electrode that holds none, a fourth time
 

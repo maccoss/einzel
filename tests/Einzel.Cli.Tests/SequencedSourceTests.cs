@@ -148,6 +148,135 @@ public sealed class SequencedSourceTests : IDisposable
     }
 
     /// <summary>
+    /// KNOWN DEFECT, characterised: an ion at rest when a field switches on underflows
+    /// inside the refinement ladder.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It could not. The run gave <c>StepSizeUnderflow</c> at exactly the switch after
+    /// 63 accepted steps - a fixed count, invariant under tolerance, cell size, flight
+    /// time and the ion's speed, which is the signature of a step being <em>rejected</em>
+    /// at every size rather than a controller converging.
+    /// </para>
+    /// <para>
+    /// <b>The cause was the refinement ladder, not the sequencer.</b> A single
+    /// integration crosses the switch at every tolerance from 1e-8 to 1e-14;
+    /// <c>FlightTimeStudy</c> does not, because it scaled the absolute position and
+    /// velocity floors along with the relative tolerance. At its deepest level the
+    /// velocity floor reaches 1e-11 m/s - ten picometres per second, against thermal
+    /// speeds of hundreds of metres - and for an ion starting from rest the normalised
+    /// velocity error is then unsatisfiable at any step size.
+    /// </para>
+    /// <para>
+    /// A floor says what is negligible, and what is negligible does not change because a
+    /// more accurate answer was asked for. The ladder refines the relative tolerance and
+    /// holds the floors.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(1e-8)]
+    [InlineData(1e-10)]
+    [InlineData(1e-12)]
+    public void AnIonAtRestUnderflowsInTheRefinementLadder(double tolerance)
+    {
+        var model = Validate(Gap(
+            "\"appliedVolts\": { \"value\": 0.0, \"unit\": \"V\" }",
+            "\"appliedVolts\": { \"value\": 1000.0, \"unit\": \"V\" }")).Model!;
+
+        var species = Transport.IonSpecies.FromModel(model);
+
+        var settings = new Transport.Integration.IntegrationSettings
+        {
+            RelativeTolerance = tolerance,
+            MaximumFlightTime = 10e-6,
+        };
+
+        var start = new Transport.PhaseState(model.SourcePosition, Core.Geometry.Vec3.Zero);
+
+        var at = model.DetectorPoint;
+        var normal = model.DetectorNormal;
+
+        Transport.Integration.TrajectoryStopFunction detector =
+            (in Transport.PhaseState state) => Core.Geometry.Vec3.Dot(state.Position - at, normal);
+
+        var field = Fields.FieldAssembly.BuildReported(model).Field;
+
+        var study = Transport.Integration.FlightTimeStudy.Run(
+            start, species, field, settings, detector);
+
+        // Characterising the defect rather than asserting it is correct. A rung that
+        // underflows is not a measurement, and the study builds its interval from these
+        // runs regardless - so the reported number covers a run that never happened.
+        //
+        // THE FIX IS ONE LINE, and it is not taken here because its cost needs a
+        // decision: holding AbsoluteVelocityTolerance in the ladder makes this pass and
+        // leaves the reflectron's flight time bit-identical with a 17x NARROWER interval
+        // (1.48e-10 us against 2.58e-09) - but it also stops that model's rungs agreeing
+        // to the last bit, which is the premise
+        // IntegratorBehaviourTests.AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact
+        // asserts. That model's bit-exact agreement DEPENDED on the ladder over-tightening
+        // an unphysical floor, and no other construction reproduces the collapse through
+        // the public API, so taking the fix costs `convergence.at-resolution` its only
+        // physical test.
+        //
+        // When it is taken, this test should be inverted and renamed.
+        Assert.Contains(
+            study.Runs,
+            r => r.Outcome == Transport.Integration.TrajectoryOutcome.StepSizeUnderflow);
+    }
+
+    /// <summary>
+    /// And the flight is the closed form: a hold, then a traverse from rest.
+    /// </summary>
+    /// <remarks>
+    /// Both plates sit at the same potential for the hold, so the field between them is
+    /// exactly zero and an ion launched at rest waits. The second stage applies plus and
+    /// minus half the voltage, and from rest across a uniform field the traverse is
+    /// sqrt(2 d m / (q E)) with E = V/gap. Arithmetic this engine has no part in, and the
+    /// same closed form the three-dimensional parallel-plate example is checked against.
+    /// </remarks>
+    [Fact]
+    public void TheHeldThenExtractedFlightIsTheClosedForm()
+    {
+        var model = Validate(Gap(
+            "\"appliedVolts\": { \"value\": 0.0, \"unit\": \"V\" }",
+            "\"appliedVolts\": { \"value\": 1000.0, \"unit\": \"V\" }")).Model!;
+
+        var species = Transport.IonSpecies.FromModel(model);
+
+        var settings = new Transport.Integration.IntegrationSettings
+        {
+            RelativeTolerance = 1e-11,
+            MaximumFlightTime = 10e-6,
+        };
+
+        var start = new Transport.PhaseState(model.SourcePosition, Core.Geometry.Vec3.Zero);
+
+        var at = model.DetectorPoint;
+        var normal = model.DetectorNormal;
+
+        Transport.Integration.TrajectoryStopFunction detector =
+            (in Transport.PhaseState state) => Core.Geometry.Vec3.Dot(state.Position - at, normal);
+
+        var run = Transport.Integration.TrajectoryIntegrator.Integrate(
+            start,
+            species,
+            Fields.FieldAssembly.BuildReported(model).Field,
+            settings,
+            detector);
+
+        Assert.Equal(Transport.Integration.TrajectoryOutcome.StopConditionMet, run.Outcome);
+
+        // 8 mm of the 10 mm gap at 1000 V, from rest: sqrt(2 d m / (q E)), plus the 2 us
+        // hold. A per cent, because the plates are finite and the grounded boundary is a
+        // third electrode - the geometry's own departure from an infinite capacitor,
+        // which the three-dimensional example measures at a few parts in a thousand.
+        const double Expected = 2e-6 + 0.910572113e-6;
+
+        Assert.Equal(Expected, run.FlightTimeSeconds, 0.01 * Expected);
+    }
+
+    /// <summary>
     /// A stage set to an expression is refused, not read as its absent literal.
     /// </summary>
     /// <remarks>

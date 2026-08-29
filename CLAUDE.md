@@ -1019,20 +1019,23 @@ Two findings from Stage 1 that bear on the spec:
   should mean there is a design question, since the surface it would evaluate against is
   the one the stage is changing.
 
-  **Not fixed, and two wrong diagnoses recorded with it.** The run gives
-  `StepSizeUnderflow` at 1.9999999999978482 µs after 63 steps. It is **not** the ion being
-  at rest — at 1e-6, 1e-3 and 1 V of launch potential it underflows at exactly the same
-  instant — and it is **not** the switch, the zero first stage or the stopping surface:
-  `SwitchCrossingTests` crosses the same shape in 123 steps, with and without a surface
-  ahead, built straight from `GeometryBuilder`. The sequencer's landing logic and the
-  discontinuity are fine.
+  **Root cause found; the one-line fix is left for a decision.** `FlightTimeStudy`
+  refines by scaling the relative tolerance *and both absolute floors*, and at its deepest
+  rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** — ten picometres per second,
+  against thermal speeds of hundreds of metres. For an ion starting from rest the
+  normalised velocity error is then unsatisfiable at any step size, so the step halves 63
+  times. Isolated by tightening each of the three alone: only the velocity floor
+  reproduces it, and that floor is what stops `ErrorNorm` being a position-error
+  controller. `einzel preview`, one run, gives **2.9106 µs against a closed form of
+  2 + 0.910572113** — the model was always right.
 
-  A run with both stages energised *looked* like a control and was not: it reached the
-  detector at 0.879 µs and never got to the switch. **A control has to reach the thing
-  being controlled for.** The narrowest remaining difference is `FieldAssembly` versus
-  `GeometryBuilder`, and that is the next experiment. A speculative integrator guard was
-  tried and **reverted** rather than left in the code that carries every validated number
-  here. Full diagnosis in `docs/lessons.md`.
+  Holding the floor makes it pass, leaves the reflectron **bit-identical**, and makes its
+  interval **17× narrower** — a measured residual instead of a saturated floor. It also
+  breaks the test that documents `convergence.at-resolution`, because **that model's
+  bit-exact rung agreement depended on the ladder over-tightening the very floor at
+  issue**. A class of unintegrable model against the coverage of a reporting path: a
+  judgement call about the numerical core, not a bug fix. Characterised by
+  `AnIonAtRestUnderflowsInTheRefinementLadder`; full diagnosis in `docs/lessons.md`.
 
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 

@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**743 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**747 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1129,19 +1129,27 @@ in a table.
    not the stages (the fourth sighting of one pattern, the third in that function), and a
    stage `set` to an expression being read as its absent literal zero.
 
-   **The example is not shippable**: the run gives `StepSizeUnderflow` at
-   1.999999999998 µs after 63 steps. Two explanations have been eliminated. It is *not*
-   the ion being at rest — launching it at 1e-6, 1e-3 and 1 V all underflow at exactly
-   the same instant — and it is *not* the switch, the zero first stage or the stopping
-   surface: `SwitchCrossingTests` crosses the same shape in 123 steps, with and without a
-   surface ahead, built straight from `GeometryBuilder`. So the sequencer's landing logic
-   and the discontinuity itself are fine.
+   **Root cause found; the one-line fix is not taken, and that is the decision to
+   make.** `FlightTimeStudy` refines by scaling the relative tolerance *and both absolute
+   floors*. At its deepest rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** — ten
+   picometres per second, against thermal speeds of hundreds of metres — and for an ion
+   starting from rest the normalised velocity error is unsatisfiable at any step size.
+   Isolated by tightening each of the three alone: only the velocity floor reproduces it.
+   That floor is load-bearing; it is what stops `ErrorNorm` being a position-error
+   controller. `einzel preview`, which does one run, gives **2.9106 µs against a closed
+   form of 2 + 0.910572113**.
 
-   A run with both stages energised looked like a control and was not — it reached the
-   detector at 0.879 µs and never got to the switch. *A control has to reach the thing
-   being controlled for.* The next experiment is to put the same geometry through
-   `FieldAssembly` rather than `GeometryBuilder`, which is now the narrowest remaining
-   difference. Full diagnosis in `docs/lessons.md`.
+   Holding the floor makes it pass, leaves the reflectron **bit-identical**, and makes
+   its interval **17× narrower** (1.48e-10 µs against 2.58e-09) — a measured residual
+   instead of a saturated floor. It also breaks
+   `AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`, because **that
+   model's bit-exact agreement between rungs depended on the ladder over-tightening the
+   very floor at issue**, and no other construction reproduces the collapse through the
+   public API. So the trade is a class of model that cannot be integrated at all against
+   the coverage of a reporting path — a judgement call about the numerical core rather
+   than a bug fix. Characterised by
+   `SequencedSourceTests.AnIonAtRestUnderflowsInTheRefinementLadder`; full diagnosis in
+   `docs/lessons.md`.
 
    **This is the top of the list**: it is a defect rather than a gap, it blocks a Phase 4
    deliverable from being demonstrated, and the machinery it blocks (traps, pulsed
