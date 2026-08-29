@@ -605,51 +605,49 @@ for `.Potential` the next time something driven behaves as though it were earthe
 
 ## The refinement ladder tightened a floor into meaninglessness
 
-**Root cause found; the fix is one line and is not taken, because its cost needs a
-decision.** Characterised by `SequencedSourceTests.AnIonAtRestUnderflowsInTheRefinementLadder`.
-
 A pulsed-extraction model - two plates at zero for a 2 us hold, then plus and minus
-500 V - gives `StepSizeUnderflow` at exactly the switch after 63 accepted steps. A fixed
+500 V - gave `StepSizeUnderflow` at exactly the switch after 63 accepted steps. A fixed
 count, invariant under tolerance, cell size, flight time and the ion's speed, which is
 the signature of a step being *rejected* at every size rather than a controller
 converging.
 
-### The cause
-
-`FlightTimeStudy` refines by scaling the relative tolerance **and both absolute floors**
-by the same factor. At its deepest rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** -
+`FlightTimeStudy` refined by scaling the relative tolerance **and both absolute floors**
+by the same factor. At its deepest rung `AbsoluteVelocityTolerance` reached **1e-11 m/s** -
 ten picometres per second, against thermal speeds of hundreds of metres. For an ion
 starting from rest the normalised velocity error is then unsatisfiable at any step size.
 
 Isolated by tightening each of the three alone: the relative tolerance and the position
-floor both cross the switch; the velocity floor alone reproduces `StepSizeUnderflow after
-63 steps`. And the floor is load-bearing - it is what stops `ErrorNorm` being a
-position-error controller, which section 11's own findings turn on.
+floor both cross the switch; the velocity floor alone reproduces it. And that floor is
+load-bearing - it is what stops `ErrorNorm` being a position-error controller, which
+section 11's own findings turn on.
 
-`einzel preview` completes and gives 2.9106 us, against a closed form of
-2 + 0.910572113. The physics and the model were always right; only the ladder was not.
+**A floor states what is negligible, and what is negligible does not change because a
+more accurate answer was asked for.** The ladder now refines the relative tolerance and
+the position floor, and holds the velocity floor.
 
-### Why the fix is not taken
+### What the fix cost, and what that revealed
 
-Holding `AbsoluteVelocityTolerance` makes it pass, leaves the reflectron's flight time
-**bit-identical**, and makes its interval **17 times narrower** - 1.48e-10 us against
-2.58e-09 - because the interval becomes a measured residual instead of a saturated floor.
+The reflectron's flight time is **bit-identical** either way. Its interval narrows
+seventeenfold - 1.48e-10 us against 2.58e-09 - because it becomes a measured residual
+instead of a saturated floor.
 
-It also breaks `IntegratorBehaviourTests.AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`,
-and the reason is the interesting part: **that model's bit-exact agreement between rungs
-depended on the ladder over-tightening the very floor at issue.** With the floor held the
-rungs differ at 1e-12, so the residual no longer collapses and
-`convergence.at-resolution` - a feature built for a real problem an agent found - loses
-its only physical exercise. Neither `refinementRatio` near one (1.001 still diverges at
-1.7e-12) nor loosened floors reconstructs the collapse through the public API.
+But it broke `AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`, and the
+reason is the part worth keeping: **that model's bit-exact agreement between its two
+finest rungs depended on the ladder over-tightening the very floor at issue.** The test
+had been asserting a coincidence - and asserting it carefully, with the premise checked
+rather than assumed, which is the only reason the breakage was legible rather than
+mysterious.
 
-So the trade is: a class of model that cannot be integrated at all, against the test
-coverage of a reporting path. That is a judgement call about the numerical core, not a
-bug fix, and it is left for a decision.
+Nothing reachable through the study's own API reproduces the collapse: a refinement ratio
+of 1.001 still diverges at 1.7e-12, and loosened floors make the rungs differ *more*
+rather than less. **A rule that can only be exercised by a coincidence is a rule with no
+test**, so the rule was given a name - `FlightTimeStudy.ConvergenceResidual` - and is now
+tested directly on hand-built runs that agree to the bit. That is a better test than the
+one it replaces: it states the rule instead of hoping a model will demonstrate it.
 
 ### Four eliminations, and a control that was not one
 
-Recorded because each cost time. **Not the ion's speed** - at 1e-6, 1e-3 and 1 V it fails
+Recorded because each cost time. **Not the ion's speed** - at 1e-6, 1e-3 and 1 V it failed
 identically. **Not the turning-point cap**, off for a time-varying field. **Not the switch
 or the stopping surface** - `SwitchCrossingTests` crosses the same shape in 123 steps.
 **Not the facing pair**, which crosses in 112. **Not `FieldAssembly`** - a single

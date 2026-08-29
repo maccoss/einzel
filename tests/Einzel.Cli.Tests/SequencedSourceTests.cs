@@ -148,8 +148,8 @@ public sealed class SequencedSourceTests : IDisposable
     }
 
     /// <summary>
-    /// KNOWN DEFECT, characterised: an ion at rest when a field switches on underflows
-    /// inside the refinement ladder.
+    /// An ion at rest when a field switches on can be integrated - through the
+    /// refinement ladder, not only through a single run.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -177,7 +177,7 @@ public sealed class SequencedSourceTests : IDisposable
     [InlineData(1e-8)]
     [InlineData(1e-10)]
     [InlineData(1e-12)]
-    public void AnIonAtRestUnderflowsInTheRefinementLadder(double tolerance)
+    public void AnIonAtRestSurvivesTheRefinementLadder(double tolerance)
     {
         var model = Validate(Gap(
             "\"appliedVolts\": { \"value\": 0.0, \"unit\": \"V\" }",
@@ -204,25 +204,19 @@ public sealed class SequencedSourceTests : IDisposable
         var study = Transport.Integration.FlightTimeStudy.Run(
             start, species, field, settings, detector);
 
-        // Characterising the defect rather than asserting it is correct. A rung that
-        // underflows is not a measurement, and the study builds its interval from these
-        // runs regardless - so the reported number covers a run that never happened.
+        // Every rung, not just the one whose number is reported. A ladder with a rung
+        // that underflowed reports an interval built from a run that never happened.
         //
-        // THE FIX IS ONE LINE, and it is not taken here because its cost needs a
-        // decision: holding AbsoluteVelocityTolerance in the ladder makes this pass and
-        // leaves the reflectron's flight time bit-identical with a 17x NARROWER interval
-        // (1.48e-10 us against 2.58e-09) - but it also stops that model's rungs agreeing
-        // to the last bit, which is the premise
-        // IntegratorBehaviourTests.AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact
-        // asserts. That model's bit-exact agreement DEPENDED on the ladder over-tightening
-        // an unphysical floor, and no other construction reproduces the collapse through
-        // the public API, so taking the fix costs `convergence.at-resolution` its only
-        // physical test.
-        //
-        // When it is taken, this test should be inverted and renamed.
-        Assert.Contains(
-            study.Runs,
-            r => r.Outcome == Transport.Integration.TrajectoryOutcome.StepSizeUnderflow);
+        // It did: the ladder scaled AbsoluteVelocityTolerance to 1e-11 m/s at its
+        // deepest rung - ten picometres per second - and for an ion starting from rest
+        // the normalised velocity error is then unsatisfiable at any step size, so the
+        // step halved 63 times and reported StepSizeUnderflow. Only the velocity floor
+        // does this; the relative tolerance and the position floor both cross the switch
+        // on their own.
+        foreach (var run in study.Runs)
+        {
+            Assert.Equal(Transport.Integration.TrajectoryOutcome.StopConditionMet, run.Outcome);
+        }
     }
 
     /// <summary>

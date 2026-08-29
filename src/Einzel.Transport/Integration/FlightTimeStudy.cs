@@ -110,11 +110,31 @@ public static class FlightTimeStudy
         {
             var scale = Math.Pow(refinementRatio, -level);
 
+            // The VELOCITY floor is held; the relative tolerance and the position floor
+            // refine. The asymmetry is measured rather than assumed: tightening the
+            // velocity floor alone reproduces the failure below, and tightening the
+            // position floor alone does not.
+            //
+            // A floor states what is negligible, and for velocity that does not change
+            // because a more accurate answer was asked for. Scaled, the deepest rung
+            // reached 1e-11 m/s - ten picometres per second, against thermal speeds of
+            // hundreds of metres - which is not an accuracy requirement but round-off.
+            // And it is load-bearing: this floor is what stops ErrorNorm being a
+            // position-error controller, which section 11's findings turn on.
+            //
+            // What scaling it cost: an ion at rest when a field switches on could not be
+            // integrated at all. The normalised velocity error is then unsatisfiable at
+            // any step size, so the step halves 63 times and reports StepSizeUnderflow -
+            // a numerical failure standing in for ordinary physics, the same sentence
+            // the collision path already carries. A pulsed-extraction trap is the
+            // archetype, and it could not be run.
+            //
+            // The reflectron's flight time is bit-identical either way; its interval
+            // narrows seventeenfold, from a saturated floor to a measured residual.
             var refined = settings with
             {
                 RelativeTolerance = settings.RelativeTolerance * scale,
                 AbsolutePositionTolerance = settings.AbsolutePositionTolerance * scale,
-                AbsoluteVelocityTolerance = settings.AbsoluteVelocityTolerance * scale,
             };
 
             // A fresh sampler per refinement, from the same seed, so each level
@@ -189,32 +209,10 @@ public static class FlightTimeStudy
         }
 
         var finest = runs[^1];
-        var residual = Math.Abs(runs[^2].FlightTimeSeconds - finest.FlightTimeSeconds);
-
-        // One unit in the last place of the answer: the smallest difference this
-        // arithmetic can express, and therefore the smallest uncertainty it can
-        // honestly claim.
-        var resolution = Math.Abs(finest.FlightTimeSeconds) is var magnitude and > 0.0
-            ? Math.BitIncrement(magnitude) - magnitude
-            : double.Epsilon;
-
-        var atResolution = residual <= resolution;
+        var (residual, atResolution) = ConvergenceResidual(runs);
 
         if (atResolution)
         {
-            // The finest two levels agreed to the bit, so the pair says nothing
-            // about how far either is from the truth. Fall back to the whole ladder,
-            // and to one ulp if even that collapses.
-            //
-            // A zero here is what GRD-1 exists to prevent. It is not "no
-            // uncertainty" - it is an uncertainty smaller than the comparison can
-            // see - and it printed as "+/- 0", which a reader takes for an exact
-            // number and a paper cannot defend. An agent asked to quote a defensible
-            // result refused this one and measured its own ladder instead, which is
-            // the right instinct and should not have been necessary.
-            residual = Math.Max(
-                Math.Abs(runs[0].FlightTimeSeconds - finest.FlightTimeSeconds), resolution);
-
             warnings.Add(new ValidityWarning(
                 "convergence.at-resolution",
                 $"the two finest refinements agreed to within one unit in the last place, so this "
@@ -266,6 +264,65 @@ public static class FlightTimeStudy
             warnings);
 
         return new FlightTimeStudyResult(measured, runs);
+    }
+
+    /// <summary>
+    /// The convergence residual a ladder of runs supports, and whether it collapsed.
+    /// </summary>
+    /// <param name="runs">The runs, coarsest first, at least two.</param>
+    /// <returns>
+    /// The half-width to report, and whether it is a floor set by double precision
+    /// rather than a measured convergence.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="runs"/> is null.</exception>
+    /// <exception cref="ArgumentException">There are fewer than two runs.</exception>
+    /// <remarks>
+    /// <para>
+    /// The residual is the difference between the two finest runs. When they agree to
+    /// within one unit in the last place the pair says nothing about how far either is
+    /// from the truth, so it falls back to the whole ladder, and to one ulp if even that
+    /// collapses.
+    /// </para>
+    /// <para>
+    /// <b>A zero here is what GRD-1 exists to prevent.</b> It is not "no uncertainty" -
+    /// it is an uncertainty smaller than the comparison can see - and it printed as
+    /// "+/- 0", which a reader takes for an exact number and a paper cannot defend. An
+    /// agent asked to quote a defensible result refused one and measured its own ladder
+    /// instead, which is the right instinct and should not have been necessary.
+    /// </para>
+    /// <para>
+    /// Named and public because it is the rule rather than a step: buried inside the
+    /// study it could only be exercised by finding a model whose rungs happen to agree
+    /// to the bit, and the model that used to do that only did so because the ladder was
+    /// over-tightening a floor it no longer touches.
+    /// </para>
+    /// </remarks>
+    public static (double ResidualSi, bool AtResolution) ConvergenceResidual(
+        IReadOnlyList<TrajectoryResult> runs)
+    {
+        ArgumentNullException.ThrowIfNull(runs);
+
+        if (runs.Count < 2)
+        {
+            throw new ArgumentException(
+                $"a convergence residual needs at least two runs and was given {runs.Count}",
+                nameof(runs));
+        }
+
+        var finest = runs[^1];
+        var residual = Math.Abs(runs[^2].FlightTimeSeconds - finest.FlightTimeSeconds);
+
+        // One unit in the last place of the answer: the smallest difference this
+        // arithmetic can express, and therefore the smallest uncertainty it can
+        // honestly claim.
+        var resolution = Math.Abs(finest.FlightTimeSeconds) is var magnitude and > 0.0
+            ? Math.BitIncrement(magnitude) - magnitude
+            : double.Epsilon;
+
+        return residual <= resolution
+            ? (Math.Max(
+                Math.Abs(runs[0].FlightTimeSeconds - finest.FlightTimeSeconds), resolution), true)
+            : (residual, false);
     }
 
     private static double ObservedOrder(List<TrajectoryResult> runs, double ratio)

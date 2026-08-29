@@ -1,0 +1,228 @@
+{
+  "schemaVersion": "0.5",
+  "name": "sequenced-extraction",
+  "description": "A packet held at rest between two plates and then extracted, which is what a pulsed-extraction trap does and is the one Phase 4 capability the corpus did not exercise. THE EXPECTED NUMBER IS TWO PIECES OF ARITHMETIC ADDED TOGETHER. During the first stage both plates sit at the same potential, so the field between them is exactly zero and an ion launched at rest does not move - it waits, for the declared hold. The second stage puts them at plus and minus half the extraction voltage, and from rest across a uniform field the traverse is sqrt(2 d m / (q E)) with E = V/gap. So the arrival is hold + traverse: 2 us + 0.910572113 us, the second term being the same closed form the three-dimensional parallel-plate example is checked against. Measured 2.9105718, which is 1.0e-7 out - the finite plates and the grounded domain boundary, not the sequencer. Both plates are moved by a STAGE SETTING A PARAMETER rather than by listing electrode potentials, which is the whole design of the sequencer: potentials are already expressions over parameters, so setting one moves everything that depends on it, including derived parameters. They are held at plus and minus half the voltage rather than one at V and one at earth, because the grounded domain boundary is a third electrode and an asymmetric pair makes the problem asymmetric about the mid-plane although the geometry is not. TEETH: with the sequencer ignored and the extraction applied from the start the arrival is 0.911 us against 2.911, a factor of three; and this model could not be run at all until the refinement ladder stopped scaling its absolute velocity floor down to 1e-11 m/s, at which an ion starting from rest cannot satisfy the error norm at any step size.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "parameters": {
+    "gap": {
+      "value": 10.0,
+      "unit": "mm",
+      "description": "Distance between the facing plate surfaces, which is what the closed form uses - not the distance between plate centres."
+    },
+    "plateHalfWidth": {
+      "value": 20.0,
+      "unit": "mm",
+      "description": "Half the plate width. Four times the gap, which is what it takes for the field on the axis to reach V/d closely enough that the expectation is about the sequencer rather than about the plates."
+    },
+    "plateThickness": {
+      "value": 1.0,
+      "unit": "mm",
+      "description": "Plate thickness."
+    },
+    "behind": {
+      "value": 10.0,
+      "unit": "mm",
+      "description": "How far the grounded domain boundary sits behind each plate."
+    },
+    "extractionVolts": {
+      "value": 1000.0,
+      "unit": "V",
+      "description": "The potential difference the second stage applies across the gap. Recorded here as the design value; the stage carries the number itself, for the reason above."
+    },
+    "holdVolts": {
+      "value": 0.0,
+      "unit": "V",
+      "description": "What the first stage applies: nothing, so the field is exactly zero and an ion at rest stays at rest. Recorded here for the record rather than used - a stage sets a parameter to a value and not to an expression, which is refused rather than read as its absent literal. It used to be read as the literal, so an expression resolved silently to zero and a stage meant to apply a kilovolt applied nothing."
+    },
+    "appliedVolts": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": -2000.0,
+      "maximum": 2000.0,
+      "description": "What the plates are actually holding. The stages set this, and the electrode potentials are expressions over it - which is how a stage moves an instrument without listing its electrodes. A free parameter rather than a derived one, because a stage sets free parameters and the derived ones re-evaluate against them."
+    },
+    "holdTime": {
+      "value": 2.0,
+      "unit": "us",
+      "description": "How long the packet waits, recorded here for the record rather than used: a stage duration is deliberately not a parametric expression - it is evaluated against an empty parameter surface, on the stated grounds that a duration is a wall-clock time rather than a design dimension and that a duration naming a parameter its own stage is about to change would be circular. The second half of that is sound and the first is worth revisiting: a hold before extraction IS a design dimension, and this is the one number in this model an optimiser cannot reach."
+    },
+    "flightHalf": {
+      "value": 4.0,
+      "unit": "mm",
+      "description": "Half the traverse. The ion crosses 8 mm of the 10 mm gap so that it starts and ends clear of the plates."
+    },
+    "halfGap": {
+      "expression": "gap / 2",
+      "unit": "mm",
+      "description": "Half the gap."
+    },
+    "outerY": {
+      "expression": "halfGap + plateThickness + behind",
+      "unit": "mm",
+      "description": "Where the grounded domain boundary sits across the gap."
+    },
+    "span": {
+      "expression": "plateHalfWidth + behind",
+      "unit": "mm",
+      "description": "Where the grounded domain boundary sits along the plates."
+    }
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "0",
+        "-flightHalf",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        0,
+        1,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.0,
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": {
+          "expression": "-span",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-outerY",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "span",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "outerY",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "value": 0.5,
+          "unit": "mm"
+        },
+        "tolerance": 1e-10,
+        "electrodes": [
+          {
+            "name": "lower",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-plateHalfWidth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap - plateThickness",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "plateHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "appliedVolts / 2",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "upper",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-plateHalfWidth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "plateHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap + plateThickness",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-appliedVolts / 2",
+              "unit": "V"
+            }
+          }
+        ],
+        "stages": [
+          {
+            "name": "hold",
+            "duration": {
+              "value": 2.0,
+              "unit": "us"
+            },
+            "set": {
+              "appliedVolts": {
+                "value": 0.0,
+                "unit": "V"
+              }
+            }
+          },
+          {
+            "name": "extract",
+            "duration": {
+              "value": 100.0,
+              "unit": "us"
+            },
+            "set": {
+              "appliedVolts": {
+                "value": 1000.0,
+                "unit": "V"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "0",
+        "flightHalf",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        0,
+        -1,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 50.0,
+      "unit": "us"
+    }
+  }
+}

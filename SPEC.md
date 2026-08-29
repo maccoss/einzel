@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**747 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**747 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 31 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -850,8 +850,8 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **30 of the thirty by count**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide captured and ballistic, an extraction trap, a 3-D Paul trap held and ejected, an ion carried by a moving gas, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Every named gap is now filled - an MR-TOF, a thermalisation, a three-dimensional geometry and a graded gas - so the count is met and the coverage question is the live one: what is still uncovered is a multipole above four rods in the diffusive mode, a sequenced extraction, and a 3-D geometry with a drive. **Recommend restating EX-1's target as coverage rather than a number.** The 3-D example was deferred once and the reason was a finding: a parallel-plate gap took **49 multigrid cycles at a factor of 0.652** and 124 seconds until Galerkin coarsening landed. A large solid Dirichlet slab is the worst case for the documented interior-electrode limitation, which makes the simplest geometry anybody would write the most expensive one. See `docs/numerics.md`. |
-| `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. **30 of 30 in 46 s**, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself, and it materialises an example's data files beside its model - which is what lets an imported gas field be covered by the gate at all. |
+| `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | Partial | **31 of the thirty by count**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide captured and ballistic, an extraction trap, a 3-D Paul trap held and ejected, an ion carried by a moving gas, the diffusive mode and a measured transmission. Every expectation is arithmetic, a published value, or an exact invariant. Every named gap is now filled - an MR-TOF, a thermalisation, a three-dimensional geometry and a graded gas - so the count is met and the coverage question is the live one: what is still uncovered is a multipole above four rods in the diffusive mode, a sequenced extraction, and a 3-D geometry with a drive. **Recommend restating EX-1's target as coverage rather than a number.** The 3-D example was deferred once and the reason was a finding: a parallel-plate gap took **49 multigrid cycles at a factor of 0.652** and 124 seconds until Galerkin coarsening landed. A large solid Dirichlet slab is the worst case for the documented interior-electrode limitation, which makes the simplest geometry anybody would write the most expensive one. See `docs/numerics.md`. |
+| `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. **31 of 31 in 48 s**, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself, and it materialises an example's data files beside its model - which is what lets an imported gas field be covered by the gate at all. |
 | `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. Still one surface, because there is no second one. |
 
 ### Extensions (§12)
@@ -1129,8 +1129,7 @@ in a table.
    not the stages (the fourth sighting of one pattern, the third in that function), and a
    stage `set` to an expression being read as its absent literal zero.
 
-   **Root cause found; the one-line fix is not taken, and that is the decision to
-   make.** `FlightTimeStudy` refines by scaling the relative tolerance *and both absolute
+   **Fixed.** `FlightTimeStudy` refines by scaling the relative tolerance *and both absolute
    floors*. At its deepest rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** — ten
    picometres per second, against thermal speeds of hundreds of metres — and for an ion
    starting from rest the normalised velocity error is unsatisfiable at any step size.
@@ -1139,17 +1138,21 @@ in a table.
    controller. `einzel preview`, which does one run, gives **2.9106 µs against a closed
    form of 2 + 0.910572113**.
 
-   Holding the floor makes it pass, leaves the reflectron **bit-identical**, and makes
-   its interval **17× narrower** (1.48e-10 µs against 2.58e-09) — a measured residual
-   instead of a saturated floor. It also breaks
-   `AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`, because **that
-   model's bit-exact agreement between rungs depended on the ladder over-tightening the
-   very floor at issue**, and no other construction reproduces the collapse through the
-   public API. So the trade is a class of model that cannot be integrated at all against
-   the coverage of a reporting path — a judgement call about the numerical core rather
-   than a bug fix. Characterised by
-   `SequencedSourceTests.AnIonAtRestUnderflowsInTheRefinementLadder`; full diagnosis in
-   `docs/lessons.md`.
+   Holding the floor leaves the reflectron **bit-identical** and makes its interval
+   **17× narrower** (1.48e-10 µs against 2.58e-09) — a measured residual instead of a
+   saturated floor. It also broke
+   `AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`, and the reason is
+   the part worth keeping: **that model's bit-exact rung agreement depended on the ladder
+   over-tightening the very floor at issue.** The test had been asserting a coincidence.
+   Since nothing reachable through the study's API reproduces the collapse, the rule was
+   given a name — `FlightTimeStudy.ConvergenceResidual` — and is now tested directly on
+   runs that agree to the bit, which states the rule instead of hoping a model will
+   demonstrate it.
+
+   **`sequenced-extraction` ships**, the corpus's first: hold at rest, then extract.
+   Predicted 2 µs + 0.910572113 µs, measured **2.9105718 — 1.0e-7 out**, which is the
+   finite plates and the grounded boundary rather than the sequencer. Corpus 30 → 31, and
+   Phase 4's sequencer is exercised by the release gate for the first time.
 
    **This is the top of the list**: it is a defect rather than a gap, it blocks a Phase 4
    deliverable from being demonstrated, and the machinery it blocks (traps, pulsed

@@ -1019,7 +1019,7 @@ Two findings from Stage 1 that bear on the spec:
   should mean there is a design question, since the surface it would evaluate against is
   the one the stage is changing.
 
-  **Root cause found; the one-line fix is left for a decision.** `FlightTimeStudy`
+  **Fixed, and the fix is one line.** `FlightTimeStudy`
   refines by scaling the relative tolerance *and both absolute floors*, and at its deepest
   rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** — ten picometres per second,
   against thermal speeds of hundreds of metres. For an ion starting from rest the
@@ -1029,13 +1029,19 @@ Two findings from Stage 1 that bear on the spec:
   controller. `einzel preview`, one run, gives **2.9106 µs against a closed form of
   2 + 0.910572113** — the model was always right.
 
-  Holding the floor makes it pass, leaves the reflectron **bit-identical**, and makes its
-  interval **17× narrower** — a measured residual instead of a saturated floor. It also
-  breaks the test that documents `convergence.at-resolution`, because **that model's
-  bit-exact rung agreement depended on the ladder over-tightening the very floor at
-  issue**. A class of unintegrable model against the coverage of a reporting path: a
-  judgement call about the numerical core, not a bug fix. Characterised by
-  `AnIonAtRestUnderflowsInTheRefinementLadder`; full diagnosis in `docs/lessons.md`.
+  Holding the floor leaves the reflectron **bit-identical** and makes its interval **17×
+  narrower** — a measured residual instead of a saturated floor. It also broke the test
+  documenting `convergence.at-resolution`, and the reason is the part worth keeping:
+  **that model's bit-exact rung agreement depended on the ladder over-tightening the very
+  floor at issue** — the test had been asserting a coincidence. Nothing reachable through
+  the study's API reproduces the collapse, so the rule was given a name,
+  `FlightTimeStudy.ConvergenceResidual`, and is tested directly on runs that agree to the
+  bit. **A rule that can only be exercised by a coincidence is a rule with no test.**
+
+  **`sequenced-extraction` ships** — the corpus's first sequenced model, and Phase 4's
+  sequencer in the release gate for the first time. Predicted 2 µs + 0.910572113 µs,
+  measured **2.9105718, 1.0e-7 out**: the finite plates and the grounded boundary, not
+  the sequencer. Corpus 30 → 31. Full diagnosis in `docs/lessons.md`.
 
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
