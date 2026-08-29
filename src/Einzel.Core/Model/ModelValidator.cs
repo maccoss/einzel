@@ -135,7 +135,17 @@ public static class ModelValidator
         errors.AddRange(fieldErrors);
 
         var detector = ValidateDetector(document.Detector, p, errors);
-        var transport = ValidateTransport(document.Transport, p, errors);
+        // Every mode this run uses, not only the model's own. A phase may name a
+        // different one, and the diffusive requirements - a gas, a mobility, a density
+        // grid - are needed if ANY phase is diffusive. Gating them on the model's mode
+        // alone let a trajectory model with a diffusive phase validate and then fail at
+        // run time with the gas it never declared.
+        //
+        // This is the sixth time a check here has had to learn a new configuration: the
+        // DC, the drive, the 3D arm, the solved stages, the analytic phases, and now the
+        // phase modes. A check that asks what an instrument is doing must ask over every
+        // configuration it has.
+        var transport = ValidateTransport(document.Transport, p, Modes(document, timeline), errors);
 
         if (errors.Count > 0 || mass is null || charge is null
             || source is null || detector is null || transport is null)
@@ -158,6 +168,11 @@ public static class ModelValidator
             DetectorPoint = detector.Value.Point,
             DetectorNormal = detector.Value.Normal,
             TransportMode = transport.Mode,
+
+            // A phase that names no mode keeps the model's, which is the same rule its
+            // parameter overrides follow. So a model with no sequence and one whose
+            // every phase runs in the declared mode are the same run.
+            Phases = Schedule(timeline, transport.Mode),
             RelativeTolerance = transport.RelativeTolerance,
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
@@ -843,6 +858,7 @@ public static class ModelValidator
     /// <param name="DurationSeconds">How long it lasts.</param>
     /// <param name="Surface">Every parameter, as it stands during the phase.</param>
     /// <param name="Path">Where it was declared, for reporting.</param>
+    /// <param name="Mode">The transport mode it names, or null to keep the model's.</param>
     /// <remarks>
     /// <b>The surface is resolved once, for the whole instrument.</b> That is the fix for
     /// the defect this replaced: stages used to be compiled per element, so a stage
@@ -854,7 +870,8 @@ public static class ModelValidator
         string Name,
         double DurationSeconds,
         IReadOnlyDictionary<string, Quantity> Surface,
-        string Path);
+        string Path,
+        string? Mode);
 
     /// <summary>
     /// The instrument's timeline, resolved once, from wherever it is declared.
@@ -961,7 +978,23 @@ public static class ModelValidator
                 continue;
             }
 
-            phases.Add(new PhaseSurface(name, duration.Value.SiValue, surface, stagePath));
+            if (stage.Mode is not null and not ("trajectory" or "diffusion"))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{stagePath}/mode",
+                    Constraint = "a transport mode is one of 'trajectory' or 'diffusion'",
+                    Observed = new ObservedValue(0.0, stage.Mode),
+                    Suggestion = "omit it to keep the model's own transport mode, which is "
+                        + "what a phase does with anything it does not name",
+                });
+
+                continue;
+            }
+
+            phases.Add(new PhaseSurface(
+                name, duration.Value.SiValue, surface, stagePath, stage.Mode));
         }
 
         return phases;
@@ -1076,6 +1109,29 @@ public static class ModelValidator
         path = $"/fields/{only}/solve/stages";
 
         return fields[only].Solve?.Stages;
+    }
+
+    /// <summary>The timeline as the run sees it: durations, modes, and instants.</summary>
+    /// <remarks>
+    /// Cumulative, because what the integrator needs is when each phase <em>ends</em>
+    /// rather than how long it lasts, and computing that once here keeps every consumer
+    /// from accumulating it again and rounding differently.
+    /// </remarks>
+    private static List<CompiledPhase> Schedule(
+        List<PhaseSurface> timeline, string modelMode)
+    {
+        var phases = new List<CompiledPhase>(timeline.Count);
+        var elapsed = 0.0;
+
+        foreach (var phase in timeline)
+        {
+            elapsed += phase.DurationSeconds;
+
+            phases.Add(new CompiledPhase(
+                phase.Name, phase.DurationSeconds, phase.Mode ?? modelMode, elapsed));
+        }
+
+        return phases;
     }
 
     /// <summary>Where an element declares its stages, for an error path (AGT-3).</summary>
@@ -2537,7 +2593,32 @@ public static class ModelValidator
         CompiledSpaceChargeGrid? SpaceChargeGrid,
         CompiledDensityStep DensityStep);
 
-    private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    /// <summary>Every transport mode this run uses, the model's and every phase's.</summary>
+    /// <remarks>
+    /// A phase that names no mode keeps the model's, so the model's is always in the set.
+    /// What this adds is the modes a sequence introduces - which is what makes a
+    /// requirement like "the diffusive mode needs a gas" attach to the run rather than to
+    /// one declaration in it.
+    /// </remarks>
+    private static HashSet<string> Modes(
+        ModelDocument document, IReadOnlyList<PhaseSurface> timeline)
+    {
+        var modes = new HashSet<string>(StringComparer.Ordinal);
+
+        if (document.Transport?.Mode is { } declared)
+        {
+            modes.Add(declared);
+        }
+
+        foreach (var phase in timeline)
+        {
+            modes.Add(phase.Mode ?? document.Transport?.Mode ?? "trajectory");
+        }
+
+        return modes;
+    }
+
+    private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, HashSet<string> modes, List<EinzelError> errors)
     {
         if (transport is null)
         {
@@ -2641,7 +2722,7 @@ public static class ModelValidator
         var mobility = ValidateMobility(transport, gas, p, errors);
         var densityGrid = ValidateDensityGrid(transport.DensityGrid, p, errors);
 
-        if (transport.Mode == "diffusion")
+        if (modes.Contains("diffusion"))
         {
             if (!gas.IsPresent)
             {
@@ -2681,7 +2762,7 @@ public static class ModelValidator
         }
 
         var chargeGrid = SpaceChargeGrid(transport, errors);
-        var densityStep = DensityStep(transport, errors);
+        var densityStep = DensityStep(transport, modes, errors);
 
         return new TransportValues(
             transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample,
@@ -2712,7 +2793,7 @@ public static class ModelValidator
     /// request went nowhere.
     /// </remarks>
     private static CompiledDensityStep DensityStep(
-        TransportDocument transport, List<EinzelError> errors)
+        TransportDocument transport, HashSet<string> modes, List<EinzelError> errors)
     {
         var fallback = new CompiledDensityStep("explicit", 1.0);
 
@@ -2721,15 +2802,15 @@ public static class ModelValidator
             return fallback;
         }
 
-        if (!string.Equals(transport.Mode, "diffusion", StringComparison.Ordinal))
+        if (!modes.Contains("diffusion"))
         {
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
                 Path = "/transport/densityStep",
                 Constraint =
-                    "only the diffusive mode has a density to step, and this model asks for "
-                    + $"'{transport.Mode}'",
+                    "only the diffusive mode has a density to step, and no phase of this "
+                    + $"run is diffusive - the model asks for '{transport.Mode}'",
                 Observed = new ObservedValue(0.0, transport.Mode),
                 Suggestion = "set \"mode\": \"diffusion\" to use this block, or remove it",
             });

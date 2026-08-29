@@ -655,6 +655,30 @@ public sealed record StageDocument
     /// named keeps the value it has outside the sequence.
     /// </summary>
     public IReadOnlyDictionary<string, QuantityValue>? Set { get; init; }
+
+    /// <summary>
+    /// The transport mode this phase runs in, or absent to keep the model's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// SEQ-1: "a phase boundary may change transport mode; the conversion is explicit,
+    /// reported, and named as a source of uncertainty". §9 lists transport mode among
+    /// what a phase carries, alongside its duration and its excitation overrides.
+    /// </para>
+    /// <para>
+    /// That is a real instrument's ordinary behaviour rather than an exotic case: ions
+    /// are collected and thermalised in a gas-filled trap, where the description is a
+    /// density, then extracted into vacuum and flown, where it is trajectories.
+    /// </para>
+    /// <para>
+    /// Absent means the model's own <c>transport.mode</c>, which is the same rule
+    /// <see cref="Set"/> follows - anything a phase does not name keeps the value it has
+    /// outside the sequence. A mode is a property of the run, which is why it lives on
+    /// the phase rather than on an element: two elements naming different modes for one
+    /// instant is not something a superposition can resolve.
+    /// </para>
+    /// </remarks>
+    public string? Mode { get; init; }
 }
 
 /// <summary>

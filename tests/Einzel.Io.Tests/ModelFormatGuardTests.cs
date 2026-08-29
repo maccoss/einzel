@@ -43,6 +43,33 @@ public sealed class ModelFormatGuardTests
         }
         """;
 
+    /// <summary>A transport block a diffusive phase can actually run in.</summary>
+    /// <remarks>
+    /// The mode stays "trajectory" on purpose: what these tests are about is a phase
+    /// naming a different one, and a model whose own mode were already diffusion would
+    /// not distinguish the two.
+    /// </remarks>
+    private const string DiffusiveTail =
+        """
+          "transport": {
+            "mode": "trajectory",
+            "maximumFlightTime": { "value": 1, "unit": "ms" },
+            "mobility": { "zeroField": { "value": 0.09, "unit": "m^2/(V s)" } },
+            "densityGrid": {
+              "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 40, "unit": "mm" },
+              "minY": { "value": -6, "unit": "mm" }, "maxY": { "value": 6, "unit": "mm" },
+              "intervalsX": 32, "intervalsY": 16
+            },
+            "gas": {
+              "model": "hardSphere",
+              "pressure": { "value": 1, "unit": "mbar" },
+              "mass": { "value": 28.0134, "unit": "Da" },
+              "crossSection": { "value": 250, "unit": "Å^2" }
+            }
+          }
+        }
+        """;
+
     private const string LiveField =
         """
           "fields": [{ "type": "uniform", "field": { "value": [100000, 0, 0], "unit": "V/m" } }],
@@ -55,10 +82,14 @@ public sealed class ModelFormatGuardTests
         Validate(fields, planePoint, Head);
 
     private static ModelValidation Validate(string fields, string planePoint, string head) =>
+        Validate(fields, planePoint, head, Tail);
+
+    private static ModelValidation Validate(
+        string fields, string planePoint, string head, string tail) =>
         ModelValidator.Validate(ModelJson.Parse(
             head + fields
             + "  \"detector\": { \"planePoint\": " + planePoint + ", \"normal\": { \"value\": [-1, 0, 0] } },\n"
-            + Tail));
+            + tail));
 
     private const string OnAxis = """{ "expression": ["drift", "0", "0"], "unit": "mm" }""";
 
@@ -955,5 +986,116 @@ public sealed class ModelFormatGuardTests
         // And the phases are named the same, because they are the same phases.
         Assert.Equal("hold", volume.Stages[0].Name);
         Assert.Equal("push", volume.Stages[1].Name);
+    }
+
+    private const string ModeChangingSequence =
+        """
+          "sequence": [
+            { "name": "thermalise", "duration": { "value": 100, "unit": "us" },
+              "mode": "diffusion" },
+            { "name": "extract", "duration": { "value": 50, "unit": "us" },
+              "mode": "trajectory" }
+          ],
+        """;
+
+    /// <summary>A phase may name its own transport mode (SEQ-1).</summary>
+    /// <remarks>
+    /// §9 lists transport mode among what a phase carries, alongside its duration and
+    /// its excitation overrides, and SEQ-1 says a phase boundary may change it. A real
+    /// instrument does this as a matter of course: ions are collected and thermalised in
+    /// a gas-filled trap, where the description is a density, then extracted into vacuum
+    /// and flown, where it is trajectories.
+    /// </remarks>
+    [Fact]
+    public void APhaseMayNameItsOwnTransportMode()
+    {
+        var validation = Validate(
+            ModeChangingSequence + LiveField, OnAxis, Head, DiffusiveTail);
+
+        Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+
+        var phases = validation.Model!.Phases;
+
+        Assert.Equal(2, phases.Count);
+        Assert.Equal("diffusion", phases[0].Mode);
+        Assert.Equal("trajectory", phases[1].Mode);
+        Assert.True(validation.Model!.ChangesTransportMode);
+
+        // Cumulative, because what a run needs is when a phase ends rather than how
+        // long it lasts.
+        Assert.Equal(1.0e-4, phases[0].EndsAtSeconds, 1e-16);
+        Assert.Equal(1.5e-4, phases[1].EndsAtSeconds, 1e-16);
+    }
+
+    /// <summary>A phase naming no mode keeps the model's, and that is not a change.</summary>
+    /// <remarks>
+    /// The same rule a phase's parameter overrides follow: anything it does not name
+    /// keeps the value it has outside the sequence. So a model with no sequence and one
+    /// whose every phase runs in the declared mode are the same run, and neither needs a
+    /// conversion at any boundary.
+    /// </remarks>
+    [Fact]
+    public void APhaseNamingNoModeKeepsTheModels()
+    {
+        var validation = Validate(StagedSolve, OnAxis);
+
+        Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+
+        Assert.All(validation.Model!.Phases, phase => Assert.Equal("trajectory", phase.Mode));
+        Assert.False(validation.Model!.ChangesTransportMode);
+    }
+
+    /// <summary>A mode a phase cannot name is refused, pointing at the phase.</summary>
+    [Fact]
+    public void AnUnknownPhaseModeIsRefused()
+    {
+        var validation = Validate(
+            ModeChangingSequence.Replace(
+                "\"mode\": \"diffusion\"", "\"mode\": \"statisticalDiffusion\"",
+                StringComparison.Ordinal)
+            + LiveField,
+            OnAxis,
+            Head,
+            DiffusiveTail);
+
+        Assert.False(validation.IsValid);
+
+        var refusal = Assert.Single(
+            validation.Errors,
+            e => e.Path is not null && e.Path.EndsWith("/mode", StringComparison.Ordinal));
+
+        Assert.Contains("sequence/0/mode", refusal.Path!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A diffusive phase needs a gas, even when the model's own mode is trajectory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The sixth configuration a check here has had to learn.</b> The diffusive
+    /// requirements — a gas, a mobility, a density grid — were gated on the model's own
+    /// <c>transport.mode</c>, so a trajectory model with a diffusive phase skipped all of
+    /// them, validated cleanly, and would have failed at run time asking for the gas it
+    /// never declared.
+    /// </para>
+    /// <para>
+    /// The same shape as the DC, the drive, the 3D arm, the solved stages and the
+    /// analytic phases before it: a check that asks what an instrument is doing must ask
+    /// over every configuration it has.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADiffusivePhaseNeedsAGasEvenWhenTheModelIsTrajectory()
+    {
+        var validation = Validate(ModeChangingSequence + LiveField, OnAxis, Head, Tail);
+
+        Assert.False(
+            validation.IsValid,
+            "a diffusive phase in a trajectory model needs the gas the diffusive mode "
+            + "describes ions moving through");
+
+        Assert.Contains(
+            validation.Errors,
+            e => e.Path == "/transport/gas");
     }
 }

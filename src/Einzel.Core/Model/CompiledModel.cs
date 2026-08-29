@@ -72,6 +72,35 @@ public sealed record CompiledModel
     /// <summary>Transport mode.</summary>
     public required string TransportMode { get; init; }
 
+    /// <summary>
+    /// The instrument's timeline, with the mode each phase runs in. Empty when the
+    /// model declares no sequence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="TransportMode"/> is the model's own, and a phase that names none keeps
+    /// it - the same rule a phase's parameter overrides follow. So a model with no
+    /// sequence, and one whose every phase runs in the declared mode, are the same run.
+    /// </para>
+    /// <para>
+    /// A phase boundary where the mode <em>changes</em> is SEQ-1's subject: the packet
+    /// has to be converted from one description to the other, and the conversion is
+    /// lossy in one direction and inventive in the other.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<CompiledPhase> Phases { get; init; } = [];
+
+    /// <summary>Whether the timeline changes transport mode at any boundary.</summary>
+    /// <remarks>
+    /// Distinct from having a sequence at all. A trap that holds and then extracts,
+    /// both in the trajectory description, is sequenced and needs no conversion; only a
+    /// boundary where the mode differs does.
+    /// </remarks>
+    public bool ChangesTransportMode =>
+        Phases.Count > 1
+        && Phases.Zip(Phases.Skip(1)).Any(
+            pair => !string.Equals(pair.First.Mode, pair.Second.Mode, StringComparison.Ordinal));
+
     /// <summary>Relative tolerance for the integrator.</summary>
     public required double RelativeTolerance { get; init; }
 
@@ -155,6 +184,28 @@ public enum CompiledFieldKind
     /// </summary>
     Solved3D,
 }
+
+/// <summary>
+/// One phase of the instrument's timeline, as the run sees it.
+/// </summary>
+/// <param name="Name">What the phase is for.</param>
+/// <param name="DurationSeconds">How long it lasts.</param>
+/// <param name="Mode">The transport mode it runs in.</param>
+/// <param name="EndsAtSeconds">When it ends, cumulative from zero.</param>
+/// <remarks>
+/// <para>
+/// The elements each carry their own per-phase states, which is what the field
+/// assembly needs. This is what the <em>run</em> needs: the schedule, and the mode each
+/// phase is described in.
+/// </para>
+/// <para>
+/// A mode belongs here rather than on an element because it is a property of the run.
+/// Two elements naming different modes for one instant is not something a superposition
+/// can resolve, the way it resolves two fields.
+/// </para>
+/// </remarks>
+public sealed record CompiledPhase(
+    string Name, double DurationSeconds, string Mode, double EndsAtSeconds);
 
 /// <summary>A validated field element, in SI.</summary>
 public sealed record CompiledField
