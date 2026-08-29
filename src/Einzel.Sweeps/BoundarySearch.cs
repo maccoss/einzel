@@ -115,6 +115,12 @@ public static class BoundarySearch
     /// The axis does not name a free parameter, or the bracket's ends are on the same
     /// side of the threshold.
     /// </exception>
+    /// <param name="sourceDirectory">
+    /// The directory the model document was read from, which any file it references is
+    /// resolved against. Null when the caller has none, and a model declaring an
+    /// imported gas field is then refused rather than run in a gas it does not
+    /// describe.
+    /// </param>
     public static BoundaryResult Run(
         ModelDocument document,
         ScanAxis axis,
@@ -122,14 +128,15 @@ public static class BoundarySearch
         double threshold,
         BoundarySense sense = BoundarySense.Above,
         double resolution = AccuracyTarget,
-        int maximumEvaluations = 60)
+        int maximumEvaluations = 60,
+        string? sourceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(axis);
         ArgumentNullException.ThrowIfNull(evaluate);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resolution);
 
-        var baseline = Compile(document);
+        var baseline = Compile(document, sourceDirectory);
         var parameter = axis.Bind(baseline.Parameters, "/boundary");
 
         var warnings = new List<ValidityWarning>();
@@ -139,7 +146,8 @@ public static class BoundarySearch
         {
             evaluations++;
 
-            var figure = Figure(document, axis.Parameter, si, parameter.Value.Dimension, evaluate);
+            var figure = Figure(
+                document, axis.Parameter, si, parameter.Value.Dimension, evaluate, sourceDirectory);
 
             // No figure is outside, always. A cut-off is precisely the value at
             // which the ion stops arriving, so treating its absence as an error
@@ -332,7 +340,8 @@ public static class BoundarySearch
         string parameter,
         double si,
         Dimension dimension,
-        Func<CompiledModel, double?> evaluate)
+        Func<CompiledModel, double?> evaluate,
+        string? sourceDirectory)
     {
         var overrides = new Dictionary<string, Quantity>(StringComparer.Ordinal)
         {
@@ -341,7 +350,7 @@ public static class BoundarySearch
 
         try
         {
-            var validation = ModelValidator.Validate(document, overrides);
+            var validation = ModelValidator.Validate(document, overrides, sourceDirectory);
 
             // A value the model refuses is outside the region, not an error. A
             // bracket that runs past a declared bound is a legitimate way to ask
@@ -358,9 +367,9 @@ public static class BoundarySearch
         }
     }
 
-    private static CompiledModel Compile(ModelDocument document)
+    private static CompiledModel Compile(ModelDocument document, string? sourceDirectory)
     {
-        var validation = ModelValidator.Validate(document, null);
+        var validation = ModelValidator.Validate(document, null, sourceDirectory);
 
         if (!validation.IsValid)
         {

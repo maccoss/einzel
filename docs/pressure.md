@@ -787,10 +787,6 @@ that moves" and "The gas can be thin in one place and thick in another" below.*
   single declared temperature, which is an assumption the document already made — but
   it is now the only one left, and a real differentially pumped instrument has a
   temperature gradient as well as a pressure one.
-- **A study over a model with an imported field.** The sweep, scan, optimiser and
-  boundary drivers work from a `ModelDocument` rather than a path, so they cannot
-  resolve a referenced file and are refused. `einzel run`, `test`, `compare`, `estimate`,
-  `solve`, `export`, `render` and `preview` all resolve.
 - **Inelastic channels.** Collisions are elastic. No fragmentation, no
   collision-induced dissociation, no internal energy at all.
 - **A default that chooses the scheme.** The implicit step below is opt-in and takes
@@ -1085,9 +1081,11 @@ directory and its consumer is refused rather than handed a uniform stationary ga
 loader that forgets degrades to the refusal — the direction a mistake here should fail
 in. It is never serialised, so no absolute machine path reaches a manifest.
 
-Still refused, and stated: the sweep drivers in `Einzel.Sweeps` work from a
-`ModelDocument` rather than a path, so a **study** over a model with an imported field is
-not yet runnable.
+All four study drivers take the directory alongside the document now, so a **sweep,
+scan, optimisation or boundary search over a model with an imported field runs**. The
+warning survives that seam too — the ledger reports `gas.pressure-imported` with its
+per-evaluation count, which is what distinguishes "on a corner of the box" from "on
+every draw".
 
 ### Still assumed: one temperature
 

@@ -1244,9 +1244,12 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    than run in a gas the document does not describe, so a loader that forgets degrades
    to the refusal.
 
-   Still refused, and stated: the sweep drivers in `Einzel.Sweeps` work from a
-   `ModelDocument` rather than a path, so a *study* over a model with an imported field
-   is not yet runnable.
+   **And the four study drivers take it too**, so a sweep, scan, optimisation or
+   boundary search over a model with an imported field runs rather than refusing —
+   §13's whole subject is a design being optimised, and a device with a gas jet through
+   it is exactly the kind that wants optimising. The warning survives that seam: the
+   ledger reports `gas.pressure-imported` with its per-evaluation count, which is what
+   distinguishes a corner of the box from every draw.
 
    **All the named remaining examples are done.** The count is 30 of thirty by number,
    which is the wrong way to read it: the list said "four are breadth" and then named

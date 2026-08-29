@@ -409,6 +409,98 @@ public sealed class GasPressureSurfaceTests : IDisposable
         Assert.Contains("gas.pressure-extrapolated", codes);
     }
 
+    /// <summary>A study over a model with an imported field runs, rather than refusing.</summary>
+    /// <remarks>
+    /// <para>
+    /// It could not, and the refusal was correct at the time: resolving a referenced
+    /// file needs the model document's own directory, and the seam between a study and
+    /// the transport is a <c>Func&lt;CompiledModel, double?&gt;</c> with nowhere to put
+    /// a path. So a sweep, scan, optimisation or boundary search over a model declaring
+    /// a gas field was refused rather than run in a gas the document does not describe.
+    /// </para>
+    /// <para>
+    /// A compiled model now carries where it came from, and the four drivers take the
+    /// directory alongside the document. This exercises <c>ToleranceStudy</c>, which is
+    /// the most heavily threaded of them — the perturbed draws and the one-at-a-time
+    /// attribution each re-validate, so a directory dropped anywhere in it shows up
+    /// here as a refusal.
+    /// </para>
+    /// <para>
+    /// It also checks that the warning survives the study seam. That seam is where a
+    /// sweep once discarded every warning its draws earned, and the ledger's
+    /// per-evaluation count is the thing that distinguishes "on a corner of the box"
+    /// from "on every draw".
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AStudyOverAModelWithAnImportedFieldRuns()
+    {
+        Project();
+
+        WriteField("swept.vti", i => 2.0 - (0.375 * i));
+
+        // A free parameter for the channel to perturb, and the field expressed through
+        // it so a draw actually changes the model.
+        var model = Path.Combine(_root, "models", "swept.json");
+        var text = File.ReadAllText(WriteModel(
+            "swept",
+            1.0,
+            ",\n      \"pressureField\": { \"path\": \"swept.vti\", \"array\": \"pressure\", "
+            + "\"unit\": \"mbar\" }"));
+
+        text = text
+            .Replace("\"schemaVersion\": \"0.4\"", "\"schemaVersion\": \"0.5\"", StringComparison.Ordinal)
+            .Replace(
+                "\"ion\":",
+                "\"parameters\": { \"tubeField\": { \"value\": 500.0, \"unit\": \"V/m\", "
+                + "\"minimum\": 300.0, \"maximum\": 700.0, "
+                + "\"description\": \"Axial field down the tube.\" } },\n  \"ion\":",
+                StringComparison.Ordinal)
+            .Replace(
+                "\"field\": { \"value\": [500, 0, 0], \"unit\": \"V/m\" }",
+                "\"field\": { \"expression\": [\"tubeField\", \"0\", \"0\"], \"unit\": \"V/m\" }",
+                StringComparison.Ordinal);
+
+        // Asserted, because a replacement that matched nothing would leave the model
+        // unchanged and the test would report the feature as broken for the wrong
+        // reason. Three tests in this repository have already done exactly that.
+        Assert.Contains("tubeField", text, StringComparison.Ordinal);
+        Assert.Contains("expression", text, StringComparison.Ordinal);
+
+        File.WriteAllText(model, text);
+
+        var study = Path.Combine(_root, "studies", "swept.json");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(study)!);
+
+        File.WriteAllText(study, """
+        {
+          "schemaVersion": "0.1",
+          "name": "swept",
+          "description": "A tolerance sweep over a model whose gas is an imported field.",
+          "model": "../models/swept.json",
+          "figureOfMerit": "transitTime",
+          "draws": 4,
+          "seed": 3,
+          "channels": [
+            { "parameter": "tubeField", "halfWidth": 20.0, "unit": "V/m",
+              "distribution": "uniform" }
+          ]
+        }
+        """);
+
+        var (exitCode, stdout, stderr) = Run("sweep", study, "--json");
+
+        Assert.True(exitCode == 0, stdout + stderr);
+
+        var root = JsonDocument.Parse(stdout).RootElement;
+        var codes = root.GetProperty("warnings").EnumerateArray()
+            .Select(w => w.GetProperty("code").GetString())
+            .ToList();
+
+        Assert.Contains("gas.pressure-imported", codes);
+    }
+
     /// <summary>A field with no declared unit is refused, not guessed at.</summary>
     [Fact]
     public void AFieldWithoutAUnitIsRefused()
