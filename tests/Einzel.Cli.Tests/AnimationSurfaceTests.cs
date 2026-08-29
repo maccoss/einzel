@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Einzel.Cli.Tests;
@@ -184,6 +185,161 @@ public sealed class AnimationSurfaceTests : IDisposable
             Assert.Contains("2 µs of flight per second of playback", text, StringComparison.Ordinal);
             Assert.Contains("500,000x slower than real time", text, StringComparison.Ordinal);
         }
+    }
+
+    /// <summary>A diffusive model is animated as a moving density.</summary>
+    /// <remarks>
+    /// <para>
+    /// RND-8 forbids drawing lines through a diffusive region, so for a long time an
+    /// animation of one was refused outright: a run reported the density it <em>ended</em>
+    /// with, and the frames would all have been the same box. With the density
+    /// recordable at chosen instants the frames have something that moves, and the
+    /// refusal narrows to the case it was actually about.
+    /// </para>
+    /// <para>
+    /// What is asserted is the physics: the packet drifts down the tube, it spreads as it
+    /// goes, and the contour levels stay put while it does.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADiffusiveModelIsAnimatedAsAMovingDensity()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var model = Path.Combine(_root, "models", "drift-tube-diffusion.json");
+
+        Assert.Equal(
+            0, Run("new", model, "--from-example", "drift-tube-diffusion").ExitCode);
+
+        var spec = Path.Combine(_root, "figures", "dt.anim.json");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(spec)!);
+
+        File.WriteAllText(spec, """
+        {
+          "renderSpecVersion": "0.1",
+          "model": "../models/drift-tube-diffusion.json",
+          "widthMm": 140,
+          "equipotentials": 0,
+          "densityContours": 6,
+          "animation": {
+            "framesPerSecond": 8,
+            "phases": [
+              { "until": { "value": 200.0, "unit": "us" },
+                "rate": { "value": 50.0, "unit": "us/s" }, "label": "drifting" }
+            ]
+          }
+        }
+        """);
+
+        var (exitCode, stdout, stderr) = Run("render", "animation", spec, "--json");
+
+        Assert.True(exitCode == 0, stdout + stderr);
+
+        var files = Directory
+            .GetFiles(Path.Combine(_root, "figures", "drift-tube-diffusion.animation"), "frame-*.svg")
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(33, files.Count);
+
+        static (int Contours, double Centre, double Width, string Levels) Density(string file)
+        {
+            var text = File.ReadAllText(file);
+
+            var group = System.Text.RegularExpressions.Regex.Match(
+                text,
+                "<g id=\"density\">(.*?)</g>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            var levels = System.Text.RegularExpressions.Regex.Match(
+                text, @"density contours, ions per cubic metre: ([^\r\n]*)");
+
+            if (!group.Success)
+            {
+                return (0, 0.0, 0.0, levels.Success ? levels.Groups[1].Value : string.Empty);
+            }
+
+            var xs = System.Text.RegularExpressions.Regex
+                .Matches(group.Groups[1].Value, @"[ML]\s*([\d.eE+-]+)")
+                .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
+                .ToList();
+
+            return (
+                System.Text.RegularExpressions.Regex.Count(group.Groups[1].Value, "<path"),
+                (xs.Min() + xs.Max()) / 2.0,
+                xs.Max() - xs.Min(),
+                levels.Success ? levels.Groups[1].Value : string.Empty);
+        }
+
+        var first = Density(files[0]);
+        var middle = Density(files[24]);
+
+        Assert.True(first.Contours > 0, "the first frame drew no density");
+        Assert.True(middle.Contours > 0, "the packet had vanished by three quarters through");
+
+        // It drifts down the tube...
+        Assert.True(
+            middle.Centre - first.Centre > 40.0,
+            $"the packet moved only {middle.Centre - first.Centre:F1} mm on the page");
+
+        // ...and it spreads as it goes, which is the other half of what the mode
+        // computes and the half a trajectory cannot show at all.
+        Assert.True(
+            middle.Width > 1.5 * first.Width,
+            $"the packet went from {first.Width:F1} to {middle.Width:F1} mm without spreading");
+
+        // And the levels are the same on every frame. Anchored per frame they would
+        // track the falling peak, the contours would stay the same size, and a film of a
+        // packet spreading would show a packet doing nothing.
+        Assert.Equal(first.Levels, middle.Levels);
+        Assert.NotEqual(string.Empty, first.Levels);
+
+        foreach (var file in files)
+        {
+            Assert.Equal(first.Levels, Density(file).Levels);
+        }
+    }
+
+    /// <summary>A mapping the run cannot reach is refused, not padded.</summary>
+    /// <remarks>
+    /// Repeating the last density for the frames past the end would show a packet
+    /// sitting still, which is what a finished run looks like and is not what it is.
+    /// </remarks>
+    [Fact]
+    public void ADiffusiveMappingPastTheRunIsRefused()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var model = Path.Combine(_root, "models", "drift-tube-diffusion.json");
+
+        Assert.Equal(
+            0, Run("new", model, "--from-example", "drift-tube-diffusion").ExitCode);
+
+        var spec = Path.Combine(_root, "figures", "toolong.json");
+
+        Directory.CreateDirectory(Path.GetDirectoryName(spec)!);
+
+        // The example caps its flight at 1500 us.
+        File.WriteAllText(spec, """
+        {
+          "renderSpecVersion": "0.1",
+          "model": "../models/drift-tube-diffusion.json",
+          "densityContours": 4,
+          "animation": {
+            "framesPerSecond": 4,
+            "phases": [
+              { "until": { "value": 5000.0, "unit": "us" },
+                "rate": { "value": 2000.0, "unit": "us/s" } }
+            ]
+          }
+        }
+        """);
+
+        var (exitCode, stdout, stderr) = Run("render", "animation", spec, "--json");
+
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("have no density", stdout + stderr, StringComparison.Ordinal);
     }
 
     /// <summary>A spec with no mapping is refused, and says why.</summary>

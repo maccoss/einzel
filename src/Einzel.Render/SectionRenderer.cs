@@ -129,6 +129,20 @@ public static class SectionRenderer
         /// </remarks>
         public (double Low, double High)? PotentialRange { get; init; }
 
+        /// <summary>
+        /// The density peak the contour decades are measured from, or null to take it
+        /// from this frame.
+        /// </summary>
+        /// <remarks>
+        /// <b>Not the flicker problem again - a worse one.</b> Density contours are drawn
+        /// at decades below the peak, and a diffusing packet's peak falls as it spreads.
+        /// Anchored per frame the levels would fall with it, the contours would stay the
+        /// same size, and a film of a packet spreading would show a packet doing nothing.
+        /// Anchored once, later frames show fewer contours because the density really is
+        /// lower, which is what happened.
+        /// </remarks>
+        public double? DensityPeak { get; init; }
+
         /// <summary>A line stamped across the top of the page.</summary>
         /// <remarks>
         /// RND-7's rate display. Written by the renderer rather than offered as a
@@ -304,7 +318,8 @@ public static class SectionRenderer
         if (density is not null && spec.DensityContours > 0)
         {
             densityLevels = DrawDensity(
-                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
+                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage,
+                plan?.DensityPeak);
 
             if (densityLevels.Length == 0)
             {
@@ -611,9 +626,10 @@ public static class SectionRenderer
         double spanU,
         double spanV,
         double tolerance,
-        Func<double, double, PagePoint> toPage)
+        Func<double, double, PagePoint> toPage,
+        double? fixedPeak)
     {
-        var peak = density.Peak();
+        var peak = fixedPeak ?? density.Peak();
 
         // Not merely zero: a run that collected everything leaves a residue many
         // orders below one ion in the whole domain, and contouring that would draw

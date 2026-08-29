@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**733 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**735 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1093,9 +1093,19 @@ in a table.
    recording** — step count, collected ions and every node — which is asserted, since
    snapshots that perturbed the run would be snapshots of a different run.
 
-   This is also what a *diffusive* animation would need. It is still refused: RND-8
-   forbids the trajectories and the frames would be density contours, which is a
-   different drawing rather than the same one with a different source.
+   **And it unlocked the diffusive animation**, which was refused outright and rightly
+   so while a run reported only its final density. The command layer runs the transport
+   once with the frames' own instants as its snapshot list and hands the renderer the
+   results, as the section path already does. On the corpus drift tube over 200 µs the
+   packet drifts 22 → 100 mm, spreads 24 → 59 mm, and narrows again at the end as its
+   leading edge is collected — three things a trajectory cannot show.
+
+   **The contour levels had to be anchored once, and that matters more than the page
+   did.** Density contours sit at decades below the peak, and a diffusing packet's peak
+   falls as it spreads: anchored per frame the levels fall with it, the contours stay the
+   same size, and a film of a packet spreading shows a packet doing nothing. Not a
+   flicker — a lie. Anchored across the animation, later frames show fewer contours,
+   because the density really is lower.
 
 ## Open decisions
 

@@ -322,6 +322,38 @@ on a coarse grid — coarse is enough, because the extremes of a Laplace solutio
 its boundaries, and this is a range rather than a contour. Fixed once, the contours move
 because the field moves.
 
+### A diffusive model is animated as a moving density
+
+RND-8 forbids drawing lines through a diffusive region, so an animation of one was
+refused outright — and rightly, while a run reported only the density it *ended* with:
+the frames would all have been the same box, and a film that shows motion never computed
+is worse than no film because it looks like one.
+
+With the density recordable at chosen instants the frames have something that moves. The
+command layer runs the transport once with the frames' own instants as its snapshot list
+and hands the renderer the results, exactly as the section path already does — running
+the transport is not the renderer's job.
+
+On the corpus drift tube, 33 frames over 200 µs:
+
+| frame | contours | packet centre | packet width |
+| --- | --- | --- | --- |
+| 0 | 12 | 21.98 mm | 23.97 mm |
+| 8 | 10 | 43.82 mm | 42.29 mm |
+| 24 | 10 | 90.29 mm | 59.48 mm |
+| 32 | 10 | 100.32 mm | 39.51 mm |
+
+It drifts, it spreads, and at the end it narrows again because the leading edge has been
+collected. All three are things a trajectory cannot show.
+
+**The contour levels are anchored once, and that matters more here than the page did.**
+Density contours are drawn at decades below the peak, and a diffusing packet's peak falls
+as it spreads. Anchored per frame the levels would fall with it, the contours would stay
+the same size, and **a film of a packet spreading would show a packet doing nothing** —
+not flicker, but a lie. Anchored to the peak over the whole animation, later frames show
+*fewer* contours, because the density really is lower. The levels are identical on every
+frame and the test asserts that directly.
+
 ### The head is marked, and interpolated onto the instant
 
 A polyline that grows says only where the ion has *been*. The head is a small closed
@@ -345,12 +377,11 @@ not in flight time.
 
 ### What it refuses
 
-- **A diffusive model.** RND-8 forbids drawing lines through a diffusive region, and a
-  run reports the density it *ended* with rather than one per instant — so the frames
-  would all be the same box and the film would show motion that was never computed. That
-  is worse than no film, because it looks like one.
 - **A spec with no phases**, a phase that does not advance, a non-positive rate, a
   non-positive frame rate.
+- **A mapping a diffusive run cannot reach.** Repeating the last density for the frames
+  past the end would show a packet sitting still, which is what a finished run looks like
+  and is not what it is.
 - **A spec with `trajectory: false`.** The geometry and the field are identical on every
   frame, so with the ion left out the sequence is one drawing repeated - the same
   argument as the diffusive refusal, one step further in.

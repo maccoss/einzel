@@ -322,7 +322,51 @@ public static class RenderCommand
                 + $"{TimeMapping.PlaybackSeconds(animation):G4} s of playback",
         };
 
-        var frames = AnimationRenderer.Render(validation.Model!, spec, animation, provenance);
+        // A diffusive model has no trajectory and RND-8 forbids inventing one, so what
+        // moves between its frames is the density. Running the transport is the command
+        // layer's job - the renderer is handed the result, exactly as the section path
+        // already does it - so the frames' instants become the run's snapshot list and
+        // one run supplies the whole animation.
+        IReadOnlyList<Transport.Diffusion.DensityField>? densities = null;
+
+        if (string.Equals(
+            validation.Model!.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            var instants = TimeMapping.Frames(animation)
+                .Select(f => f.SimulatedSeconds)
+                .ToList();
+
+            var (built, fieldWarnings) = Fields.FieldAssembly.BuildReported(validation.Model!);
+
+            var run = DiffusionRun.Execute(
+                validation.Model!, built, fieldWarnings, snapshotSeconds: instants);
+
+            if (run.Result.Snapshots.Count < instants.Count)
+            {
+                throw new EinzelException(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = "/animation/phases",
+                    Constraint = $"the mapping runs to "
+                        + $"{instants[^1] * 1e6:G6} us and the run reached "
+                        + $"{run.Result.ElapsedSeconds * 1e6:G6} us, so "
+                        + $"{instants.Count - run.Result.Snapshots.Count} frames have no density",
+                    Suggestion = "shorten the last phase, or raise "
+                        + "'transport.maximumFlightTime'. Repeating the last density for the "
+                        + "frames past the end would show a packet sitting still rather than a "
+                        + "run that finished",
+                });
+            }
+
+            densities = [.. run.Result.Snapshots.Select(x => x.Density)];
+
+            provenance.Add(
+                $"density recorded at {densities.Count} instants over "
+                + $"{run.Result.Steps} steps");
+        }
+
+        var frames = AnimationRenderer.Render(
+            validation.Model!, spec, animation, provenance, densities);
 
         var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
         var name = Path.GetFileNameWithoutExtension(absolute);

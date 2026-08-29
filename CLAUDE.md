@@ -881,11 +881,10 @@ Two findings from Stage 1 that bear on the spec:
   flight. Moved onto an analytic reflectron it fails at once. Third time in one night
   that a test exercised a path not containing the line under test.
 
-  Refused: a diffusive model (RND-8 forbids the lines, and a run has no mid-flight
-  density to draw instead, so the frames would all be one box and the film would show
-  motion never computed), a spec with `trajectory: false` (the geometry and the field
-  are identical on every frame, so the sequence would be one drawing repeated), a spec
-  with no phases, a phase that does not advance, a non-positive rate. Warned about rather than refused: `animation.past-arrival` and
+  Refused: a spec with `trajectory: false` on a trajectory model (the geometry and the
+  field are identical on every frame, so the sequence would be one drawing repeated), a
+  spec with no phases, a phase that does not advance, a non-positive rate, and a
+  mapping a diffusive run cannot reach. Warned about rather than refused: `animation.past-arrival` and
   `animation.stops-short`, because both are legitimate to ask for and neither looks like
   a choice.
 
@@ -912,6 +911,22 @@ Two findings from Stage 1 that bear on the spec:
   taken per frame would be spread over rounding noise at a zero crossing and fill the
   frame with contours of nothing. Same defect as a page chosen per frame, in the other
   axis.
+
+
+  **And a diffusive model is animated as a moving density.** It was refused outright, and
+  rightly while a run reported only the density it *ended* with — the frames would all
+  have been the same box. Now the command layer runs the transport once with the frames'
+  own instants as its snapshot list and hands the renderer the results, as the section
+  path already does. On the corpus drift tube over 200 µs the packet **drifts (22 → 100
+  mm), spreads (24 → 59 mm), and narrows again at the end** as its leading edge is
+  collected — three things a trajectory cannot show.
+
+  **The contour levels are anchored once, and that matters more than the page did.**
+  Density contours sit at decades below the peak, and a diffusing packet's peak falls as
+  it spreads: anchored per frame the levels would fall with it, the contours would stay
+  the same size, and *a film of a packet spreading would show a packet doing nothing*.
+  Not flicker — a lie. Anchored across the animation, later frames show **fewer**
+  contours, because the density really is lower.
 
   **Not built: geometry that moves.** A stage may change what an electrode holds and not
   where it is, which the sequencer already enforces, so the conductors are identical on

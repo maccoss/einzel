@@ -62,25 +62,32 @@ public static class AnimationRenderer
     /// The mapping is not declared, or this model's transport mode produces no
     /// trajectories.
     /// </exception>
+    /// <param name="densities">
+    /// One density per frame, for a diffusive model, or null for a trajectory one.
+    /// </param>
     public static IReadOnlyList<RenderedFrame> Render(
         CompiledModel model,
         RenderSpec spec,
         AnimationSpec animation,
-        IReadOnlyList<string>? provenance = null)
+        IReadOnlyList<string>? provenance = null,
+        IReadOnlyList<Transport.Diffusion.DensityField>? densities = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(animation);
 
-        RefuseDiffusive(model);
+        if (densities is null)
+        {
+            RefuseDiffusive(model);
+        }
 
         // The same argument as the diffusive refusal, one step further in: with the
         // trajectory switched off every frame is the same drawing, and a sequence of
         // identical frames is a film of nothing that looks like a film of something.
-        // The geometry and the field do not move here - a moving field would need a
-        // solve per stage, which is not built - so there is nothing else for an
-        // animation to be about.
-        if (!spec.Trajectory)
+        //
+        // Not asked of a diffusive animation, which has no trajectory by definition -
+        // what moves between its frames is the density.
+        if (densities is null && !spec.Trajectory)
         {
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
@@ -96,8 +103,32 @@ public static class AnimationRenderer
         }
 
         var frames = TimeMapping.Frames(animation);
+
+        if (densities is not null && densities.Count != frames.Count)
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.SchemaInvalid,
+                Path = "/animation",
+                Constraint = $"{densities.Count} densities were supplied for "
+                    + $"{frames.Count} frames",
+                Suggestion = "a diffusive animation records one density per frame, at the "
+                    + "frames' own instants. A run that ended before the mapping did records "
+                    + "fewer, and the frames after it would otherwise repeat the last one - "
+                    + "which would show a packet sitting still rather than a run that finished",
+            });
+        }
+
         var (field, fieldWarnings) = FieldAssembly.BuildReported(model);
-        var samples = Fly(model, field, frames.Count);
+        var samples = densities is null ? Fly(model, field, frames.Count) : [];
+
+        // Anchored once across the animation. The decades are measured from the peak,
+        // and a diffusing packet's peak falls as it spreads - so levels taken per frame
+        // would fall with it and a film of a packet spreading would show a packet doing
+        // nothing.
+        var peak = densities is null
+            ? (double?)null
+            : densities.Max(d => d.Peak());
 
         // The declared mapping and the flight need not agree, and a reader cannot tell
         // which they are looking at. Frames past the arrival show a finished flight and
@@ -165,13 +196,15 @@ public static class AnimationRenderer
             {
                 Field = field,
                 FieldWarnings = fieldWarnings,
-                Trajectory = samples,
+                Trajectory = densities is null ? samples : null,
                 AtSeconds = frame.SimulatedSeconds,
                 PotentialRange = range,
+                DensityPeak = peak,
                 Banner = Banner(frame),
             };
 
-            var figure = SectionRenderer.Render(model, spec, provenance, density: null, plan);
+            var figure = SectionRenderer.Render(
+                model, spec, provenance, densities?[frame.Index], plan);
 
             rendered.Add(new RenderedFrame(
                 frame,
