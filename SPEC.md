@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**676 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 28 examples, every expectation a closed form, a published value, or an exact invariant.
+**676 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 29 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1167,7 +1167,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **Finish the examples corpus (EX-1).** 28 of thirty, and the gate (EX-2) is built
+3. **Finish the examples corpus (EX-1).** 29 of thirty, and the gate (EX-2) is built
    and green. What the first seventeen cost was mostly *deciding what can honestly be
    asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
    thermalisation, and a three-dimensional geometry.
@@ -1202,7 +1202,22 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    relative error, so it admitted any positive answer: **an example in the release gate
    that could not fail.** Both recorded in `docs/lessons.md`.
 
-   Remaining: an MR-TOF.
+   ~~Remaining: an MR-TOF.~~ **`mr-tof-oscillations` now ships** — energy drift
+   **7.05e-11 over fifty crossings of a declared field discontinuity**, a hundredfold
+   inside ACC-4, with teeth: the drift accumulates with reflections, 1.55e-11 at one
+   crossing pair against 7.05e-11 at fifty, so it is not sitting at a floor. It also
+   asserts the flight time to **1.6e-13** against a closed form, deliberately — that
+   number is the drift distance over the drift speed and contains nothing about the
+   mirrors, which is a trap this document already records, so the example *documents*
+   the decoupling rather than pretending to measure focusing. A real analyzer fixes the
+   oscillation count, which the model format cannot declare.
+
+   **All three of the named remaining examples are done.** The count says 29 of thirty
+   because the list said "four are breadth" and then named three; the fourth was never
+   specified, so what thirty means is now the open question rather than which example is
+   missing. **Recommend restating EX-1's target as the coverage it wants rather than a
+   number** — what is genuinely uncovered is a multipole above four rods in the
+   *diffusive* mode, a sequenced extraction, and a 3-D geometry with a drive.
 
    The three added most recently set a pattern worth keeping. **`travelling-wave-capture`
    and `travelling-wave-ballistic` are a pair, and neither is worth much alone**: a
