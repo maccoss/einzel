@@ -930,6 +930,32 @@ Two findings from Stage 1 that bear on the spec:
   nothing: the trajectory had to be flown to be drawn, and it is now flown before the
   page is chosen rather than after.
 
+- **A density can be drawn while it is still moving.** A diffusive run reports the
+  density it *ended* with, so a model whose ions have all arrived left an empty box —
+  correctly, and uselessly, because the picture worth having is the packet in flight.
+  The only way to get one was to shorten `maximumFlightTime`, which gets a packet by
+  throwing away everything after the moment being looked at.
+
+  `DriftDiffusion.Run` takes a list of instants and returns the density at each;
+  `einzel render section --at-us <t>` draws one. On the corpus drift tube: **0 contours
+  at the end, 10 at 50 µs with the packet centred at 49.5 mm, 11 at 150 µs at 102.9 mm**
+  — it drifts and it spreads, both visible.
+
+  **The instant recorded is not quite the one asked for, and the figure says both.** A
+  diffusive step is set by a stability limit and cutting it to land exactly would change
+  the step sequence and so the answer — a high price for an offset of one step. The
+  provenance carries `density at t = 50.1302 us, asked for 50 us`.
+
+  **Recording does not perturb what it records**, asserted rather than assumed: the same
+  run with and without snapshots is bit-identical in step count, collected ions and every
+  node of the final density. An instant past the end is **absent** rather than filled in
+  with the final state, because a density never computed is not the density at that
+  instant and substituting the last one would make a figure of a finished run look like
+  one of a running run.
+
+  The unit is in the flag's name, as `--width-mm` already does it: a bare `--at` would be
+  ambiguous between microseconds and seconds by a factor of a million.
+
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
 The two design documents remain the source of truth for *intent*. Tracked alongside them: `SPEC.md`, `README.md`, `LICENSE` (Apache 2.0).

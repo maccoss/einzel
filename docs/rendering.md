@@ -385,6 +385,43 @@ instrument that catches the ion where it launched. It costs nothing: the traject
 to be flown to be drawn, and it is now flown *before* the page is chosen rather than
 after.
 
+## A density can be drawn while it is still moving
+
+A diffusive run reports the density it **ended** with, which for a model whose ions have
+all arrived is an empty box - correctly, and uselessly, because the picture worth having
+is the packet in flight. The only way to get one was to shorten `maximumFlightTime`,
+which gets a packet by throwing away everything after the moment being looked at.
+
+`einzel render section --at-us <t>` records the density at that instant and lets the run
+finish. On the corpus drift tube:
+
+| | density contours | packet centre on the page |
+| --- | --- | --- |
+| at the end | **0** | - |
+| `--at-us 50` | 10 | 49.5 mm |
+| `--at-us 150` | 11 | 102.9 mm |
+
+It drifts and it spreads, both visible. The unit is in the flag's name, as `--width-mm`
+already does it: a bare `--at` would be ambiguous between microseconds and seconds by a
+factor of a million, and that is the rule that makes a bare number a validation error in
+a model document.
+
+**The instant recorded is not quite the instant asked for, and the figure says both.** A
+diffusive step is set by a stability limit, and cutting it to land exactly would change
+the step sequence and therefore the answer - a high price for an offset of one step. So
+the snapshot is taken at the first step at or after what was asked for, and the
+provenance block carries `density at t = 50.1302 us, asked for 50 us`.
+
+**Recording does not perturb what it records**, which is asserted rather than assumed:
+the same run with and without snapshots is bit-identical in step count, collected ions
+and every node of the final density. The snapshots are clones taken between steps, so
+there is nothing for them to change.
+
+An instant past the end of the run is **absent** rather than filled in with the final
+state. A density that was never computed is not the density at that instant, and
+silently substituting the last one would make a figure of a finished run look like a
+figure of a running one.
+
 ## Not built
 
 - **`render still`** - a raster projection. Nothing in this build rasterises.
@@ -392,9 +429,6 @@ after.
   dimensions*, and there is no way to declare one yet.
 - **Filled density bands, and a colour scale.** Contour lines carry the levels in
   the provenance; a filled and keyed plot would carry them on the page.
-- **A density at a chosen instant.** What is drawn is the density at the end of the
-  run, which is what the solver returns. Seeing the packet mid-flight means
-  shortening `maximumFlightTime`.
 
 `render still` is named by the CLI and refused with a reason rather than falling
 through as an unknown command, because "not built yet" and "you spelled it wrong" are

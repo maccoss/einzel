@@ -315,8 +315,10 @@ public static class SectionRenderer
                         "render.density-empty",
                         "the density had nothing left in it to draw: by the end of the run "
                         + "every ion had reached a boundary. What a figure of the end state "
-                        + "shows in that case is an empty box, correctly. Shorten "
-                        + "'maximumFlightTime' to draw the packet while it is still in flight",
+                        + "shows in that case is an empty box, correctly. Draw an earlier "
+                        + "instant with '--at-us', which records the density there and lets "
+                        + "the run finish - shortening 'maximumFlightTime' would get a packet "
+                        + "too, by throwing away everything after the moment being looked at",
                         WarningSeverity.Provenance),
                 ];
             }

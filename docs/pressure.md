@@ -795,9 +795,11 @@ that moves" and "The gas can be thin in one place and thick in another" below.*
   *accuracy* question, and nothing here measures the accuracy of a step it has not
   taken. Richardson extrapolation over a doubled step would, at three solves a step
   instead of one.
-- **A density snapshot mid-run.** A run reports and exports the density at the end.
-  A model whose ions have all arrived by then leaves an empty box, correctly, and
-  the only way to see the packet in flight is to shorten `maximumFlightTime`.
+- ~~**A density snapshot mid-run.**~~ Built: `DriftDiffusion.Run` takes a list of
+  instants and returns the density at each, and `einzel render section --at-us` draws
+  one. Recording is bit-identical to not recording - the snapshots are clones taken
+  between steps - and each reports the instant it was actually taken at as well as the
+  one asked for, because a diffusive step lands where its stability limit puts it.
 
 ## The event-driven models see a gas that moves
 

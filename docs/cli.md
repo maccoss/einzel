@@ -73,6 +73,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--json` | Machine-readable output, including the full result envelope |
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model |
+| `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
 Not yet built: `self-update`, which needs `Einzel.Update`. Of the render verbs

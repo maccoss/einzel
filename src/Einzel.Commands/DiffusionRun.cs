@@ -56,6 +56,11 @@ public static class DiffusionRun
     /// <param name="stepGain">
     /// How many times the explicit stability limit to step, for the implicit scheme.
     /// </param>
+    /// <param name="snapshotSeconds">
+    /// Instants to record the density at, in seconds and in order, or null for none.
+    /// What lets a figure show the packet in flight rather than the empty box a
+    /// finished run leaves.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">
     /// The model cannot be expressed as a density problem, or it declares a velocity
@@ -67,7 +72,8 @@ public static class DiffusionRun
         IReadOnlyList<ValidityWarning> fieldWarnings,
         BackgroundGas? resolved = null,
         Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
-        double stepGain = 1.0)
+        double stepGain = 1.0,
+        IReadOnlyList<double>? snapshotSeconds = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -158,7 +164,7 @@ public static class DiffusionRun
 
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
-            scheme: chosen, stepGain: gain);
+            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds);
 
         // The seed's overlap with metal joins the same ledger the run fills, so the
         // itemisation adds back up to the launched population.

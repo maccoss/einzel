@@ -151,7 +151,37 @@ public static class RenderCommand
             {
                 var (built, fieldWarnings) = Fields.FieldAssembly.BuildReported(validation.Model!);
 
-                density = DiffusionRun.Execute(validation.Model!, built, fieldWarnings).Result.Density;
+                // At the declared instant when there is one, and at the end otherwise.
+                // A run reports the density it ENDED with, which for a model whose ions
+                // have all arrived is an empty box - correctly, and uselessly, because
+                // the picture worth having is the packet in flight. Until snapshots
+                // existed the only way to get one was to shorten maximumFlightTime,
+                // which throws away everything after the moment being looked at.
+                var outcome = spec.AtSeconds > 0.0
+                    ? DiffusionRun.Execute(
+                        validation.Model!,
+                        built,
+                        fieldWarnings,
+                        snapshotSeconds: [spec.AtSeconds])
+                    : DiffusionRun.Execute(validation.Model!, built, fieldWarnings);
+
+                if (spec.AtSeconds > 0.0 && outcome.Result.Snapshots.Count == 0)
+                {
+                    provenance.Add(
+                        $"the run ended before t = {spec.AtSeconds * 1e6:G6} us, so the density "
+                        + "drawn is the one it finished with");
+                }
+
+                density = outcome.Result.Snapshots.Count > 0
+                    ? outcome.Result.Snapshots[0].Density
+                    : outcome.Result.Density;
+
+                if (outcome.Result.Snapshots.Count > 0)
+                {
+                    provenance.Add(
+                        $"density at t = {outcome.Result.Snapshots[0].AtSeconds * 1e6:G6} us, "
+                        + $"asked for {spec.AtSeconds * 1e6:G6} us");
+                }
             }
             catch (EinzelException refused)
             {

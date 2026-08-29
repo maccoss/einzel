@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**731 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**733 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1078,6 +1078,24 @@ in a table.
    Left: **geometry that moves**. A stage may change what an electrode holds and not
    where it is, so the conductors are identical on every frame by construction; a
    mechanism with a moving part is not expressible in the model format at all.
+
+11. ~~**A density at a chosen instant**~~ — **done.** A diffusive run reported the
+   density it *ended* with, so a model whose ions all arrive drew an empty box, and the
+   only way to see the packet was to shorten `maximumFlightTime` — which gets one by
+   throwing away everything after the moment being looked at. `DriftDiffusion.Run` now
+   takes a list of instants and `einzel render section --at-us` draws one: **0 contours
+   at the end, 10 at 50 µs centred at 49.5 mm, 11 at 150 µs at 102.9 mm** on the corpus
+   drift tube.
+
+   Both times are reported, because they differ: a diffusive step lands where its
+   stability limit puts it, and cutting it to land on a requested instant would change
+   the step sequence and so the answer. And **recording is bit-identical to not
+   recording** — step count, collected ions and every node — which is asserted, since
+   snapshots that perturbed the run would be snapshots of a different run.
+
+   This is also what a *diffusive* animation would need. It is still refused: RND-8
+   forbids the trajectories and the frames would be density contours, which is a
+   different drawing rather than the same one with a different source.
 
 ## Open decisions
 

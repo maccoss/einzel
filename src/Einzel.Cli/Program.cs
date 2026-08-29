@@ -1133,8 +1133,10 @@ public static class Program
             Console.Error.WriteLine(
                 "       [--format svg|pdf] [--equipotentials N] [--width-mm W] [--no-trajectory]");
             Console.Error.WriteLine(
-                "       [--caption <text>] [--project <dir>] [--dry-run] [--json]");
+                "       [--caption <text>] [--at-us <t>] [--project <dir>] [--dry-run] [--json]");
             Console.Error.WriteLine("draws a plane through the instrument as line work");
+            Console.Error.WriteLine(
+                "  --at-us  the instant to draw a driven field, or a diffusive density, at");
 
             return (int)ExitCode.ValidationFailure;
         }
@@ -1164,6 +1166,14 @@ public static class Program
                 : spec.Equipotentials,
             Trajectory = !options.Has("no-trajectory") && spec.Trajectory,
             Caption = options.Value("caption") ?? spec.Caption,
+
+            // The unit is in the flag's name, which is how --width-mm already does it.
+            // A bare --at would be ambiguous between microseconds and seconds by a
+            // factor of a million, and this is the same rule that makes {"energy": 4000}
+            // a validation error in a model document.
+            AtSeconds = options.Value("at-us") is { } at
+                ? double.Parse(at, CultureInfo.InvariantCulture) * 1e-6
+                : spec.AtSeconds,
         };
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
