@@ -303,6 +303,67 @@ public sealed class LiveSessionTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// An edit written against a document that moved is refused over the wire, and
+    /// reading again is what clears it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// GRD-9 through the protocol. The person edits the model in their own editor while
+    /// the agent is connected; the agent's next whole-document edit would otherwise
+    /// overwrite it, since the agent wrote it against what it last read.
+    /// </para>
+    /// <para>
+    /// The refusal has to be recoverable or it is just a wall, so the recovery is
+    /// asserted too: `model_read` takes up the outside change, and the same edit then
+    /// lands. That is the whole optimistic-concurrency loop, and it is the reason
+    /// `model_read` reconciles rather than returning the session's own stale view.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEditAgainstAMovedDocumentIsRefusedAndReadingAgainClearsIt()
+    {
+        var model = WriteModel();
+
+        await using var client = await JoinAsync(model, "surveyor", "3.1");
+
+        // The person, in their editor, outside the session entirely.
+        await File.WriteAllTextAsync(model, Document(9.0));
+
+        var refused = Result(await client.CallToolAsync("model_edit",
+            new Dictionary<string, object?>
+            {
+                ["description"] = "try 6 kV",
+                ["content"] = Document(6.0),
+            }));
+
+        output.WriteLine(refused.ToString());
+
+        Assert.Contains("changed outside this session",
+            refused.GetProperty("error").GetProperty("constraint").GetString()!,
+            StringComparison.Ordinal);
+
+        // Their work is untouched.
+        Assert.Equal(Document(9.0), await File.ReadAllTextAsync(model));
+
+        // Read again, and the same edit lands.
+        var read = Result(await client.CallToolAsync("model_read"));
+
+        Assert.Equal(Document(9.0), read.GetProperty("content").GetString());
+        Assert.Contains(read.GetProperty("journal").EnumerateArray(),
+            l => l.GetString()!.Contains("outside", StringComparison.Ordinal));
+
+        var edit = Result(await client.CallToolAsync("model_edit",
+            new Dictionary<string, object?>
+            {
+                ["description"] = "try 6 kV",
+                ["content"] = Document(6.0),
+            }));
+
+        Assert.Equal("agent:surveyor/3.1", edit.GetProperty("author").GetString());
+        Assert.Equal(Document(6.0), await File.ReadAllTextAsync(model));
+    }
+
+    /// <summary>
     /// The server says what it is for, and what it is not.
     /// </summary>
     /// <remarks>

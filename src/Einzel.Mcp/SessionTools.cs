@@ -118,11 +118,22 @@ public sealed class SessionTools
 
     /// <summary>The model as it now stands, and who has changed it.</summary>
     /// <returns>The document text and the session's state.</returns>
-    public string Read() => CommandJson.Write(new SessionState(
-        _journal.ModelPath,
-        _journal.Content,
-        _journal.CanUndo,
-        [.. _journal.Lines()]));
+    /// <remarks>
+    /// Takes up anything that changed on disk outside the session first, which is what
+    /// makes a stale-edit refusal recoverable: the caller is told to read again, and
+    /// reading again is what clears the drift. A read that returned the session's own
+    /// stale view would send the caller round the same refusal for ever.
+    /// </remarks>
+    public string Read()
+    {
+        _journal.Reconcile();
+
+        return CommandJson.Write(new SessionState(
+            _journal.ModelPath,
+            _journal.Content,
+            _journal.CanUndo,
+            [.. _journal.Lines()]));
+    }
 
     /// <summary>Replaces the document, attributed to the calling agent.</summary>
     /// <param name="author">Who is making the change.</param>

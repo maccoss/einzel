@@ -13,6 +13,17 @@ public enum AuthorKind
 
     /// <summary>An agent, working through MCP or the CLI.</summary>
     Agent,
+
+    /// <summary>
+    /// Something outside the session, which changed the file on disk.
+    /// </summary>
+    /// <remarks>
+    /// Not a kind of actor so much as an honest statement that the session does not
+    /// know who it was. Attributing it to the person would usually be right and is
+    /// sometimes wrong - another tool, another session, a git checkout - and a journal
+    /// that guesses is worse than one that says it does not know.
+    /// </remarks>
+    Outside,
 }
 
 /// <summary>Who did something, and under what kind of authority.</summary>
@@ -27,8 +38,12 @@ public enum AuthorKind
 public sealed record JournalAuthor(string Name, AuthorKind Kind)
 {
     /// <summary>The author string a journal line carries.</summary>
-    public override string ToString() =>
-        Kind == AuthorKind.Agent ? $"agent:{Name}" : $"human:{Name}";
+    public override string ToString() => Kind switch
+    {
+        AuthorKind.Agent => $"agent:{Name}",
+        AuthorKind.Outside => "outside",
+        _ => $"human:{Name}",
+    };
 }
 
 /// <summary>One entry in a session's journal.</summary>
@@ -175,6 +190,24 @@ public sealed class SessionJournal
         ArgumentException.ThrowIfNullOrWhiteSpace(description);
         ArgumentException.ThrowIfNullOrWhiteSpace(content);
 
+        // Whatever happened on disk is on the record before this edit is judged, so
+        // the caller is told which document it is being refused against.
+        var moved = Reconcile();
+
+        if (moved is not null)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = ModelPath,
+                Constraint = "the document changed outside this session since you last "
+                    + $"read it, and is now at entry {moved.Sequence}",
+                Suggestion = "read the model again and edit from what it now says. This "
+                    + "edit was written against a document that no longer exists, so "
+                    + "applying it would discard the change somebody else just made",
+            });
+        }
+
         Check(content);
 
         return Record(author, description, undoes: null, content);
@@ -195,6 +228,10 @@ public sealed class SessionJournal
     public JournalEntry Undo(JournalAuthor author)
     {
         ArgumentNullException.ThrowIfNull(author);
+
+        // An outside change is an entry like any other, so an undo that follows one
+        // reverses *it* rather than silently stepping over it to an older state.
+        Reconcile();
 
         if (Live() is not { } target)
         {
@@ -218,6 +255,79 @@ public sealed class SessionJournal
             $"reverse \"{target.Description}\" by {target.Author}",
             target.Sequence,
             target.Before);
+    }
+
+    /// <summary>
+    /// Takes up whatever changed on disk outside the session, and records it.
+    /// </summary>
+    /// <returns>The entry recorded, or null if the document is as the session left it.</returns>
+    /// <exception cref="EinzelException">
+    /// The file is gone, or what is there no longer validates.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>GRD-9: human work is never silently lost.</b> The person may edit the model in
+    /// their own editor while a session is open, and the journal only ever knew about
+    /// mutations made through it. Without this, an agent's next whole-document edit
+    /// overwrote that change with nothing anywhere to say so.
+    /// </para>
+    /// <para>
+    /// <b>The sharper consequence is what it does to undo.</b> An unrecorded change
+    /// breaks the chain - entry N's <c>After</c> stops being entry N+1's <c>Before</c> -
+    /// so walking back lands on a document that predates the person's edit and discards
+    /// it as a side effect of reversing something else entirely. Recording it keeps the
+    /// chain intact, and makes the change reversible on the same shared stack as any
+    /// other.
+    /// </para>
+    /// <para>
+    /// Attributed to <see cref="AuthorKind.Outside"/> rather than to the person, because
+    /// the session does not know who did it: another tool, another session and a git
+    /// checkout all look identical from here. A journal that guesses is worse than one
+    /// that says it does not know.
+    /// </para>
+    /// </remarks>
+    public JournalEntry? Reconcile()
+    {
+        string onDisk;
+
+        try
+        {
+            onDisk = File.ReadAllText(ModelPath);
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = ModelPath,
+                Constraint = $"the model can no longer be read: {gone.Message}",
+                Suggestion = "the document a session is over must stay where the session "
+                    + "found it. Restore the file, or start a session over its new location",
+            });
+        }
+
+        if (string.Equals(onDisk, Content, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        // Validated like any other edit. A session that adopted a broken document would
+        // hand the next caller a state no edit through the journal could have produced,
+        // which is the invariant the constructor establishes.
+        Check(onDisk);
+
+        var entry = new JournalEntry(
+            _entries.Count + 1,
+            new JournalAuthor("outside", AuthorKind.Outside),
+            "changed on disk outside this session",
+            Undoes: null,
+            Content,
+            onDisk);
+
+        Content = onDisk;
+        _entries.Add(entry);
+
+        return entry;
     }
 
     /// <summary>The journal as a person reads it.</summary>

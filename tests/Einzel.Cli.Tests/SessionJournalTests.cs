@@ -242,4 +242,125 @@ public sealed class SessionJournalTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("/journal", failure.Error.Path);
         Assert.Contains("nothing has been changed", failure.Error.Constraint, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// A change made outside the session is recorded, and an edit written against the
+    /// document as it was is refused rather than overwriting it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>GRD-9: human work is never silently lost.</b> The journal only ever knew about
+    /// mutations made through it, so a person editing the model in their own editor while
+    /// a session was open had their change overwritten by the agent's next whole-document
+    /// edit, with nothing anywhere to say so. This test is the demonstration of that,
+    /// turned round.
+    /// </para>
+    /// <para>
+    /// The refusal is what makes it "not lost" rather than merely "not silent", and it is
+    /// recoverable by design: read again, edit from what it now says.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AChangeMadeOutsideTheSessionIsRecordedAndNotOverwritten()
+    {
+        var path = Model(4.0);
+        var journal = new SessionJournal(path);
+
+        journal.Apply(Person, "5 kV", Document(5.0));
+
+        // The person edits the model in their own editor, outside the session.
+        File.WriteAllText(path, Document(9.0));
+
+        var refusal = Assert.Throws<EinzelException>(
+            () => journal.Apply(Robot, "try 6 kV", Document(6.0)));
+
+        output.WriteLine(refusal.Error.Constraint);
+
+        foreach (var line in journal.Lines())
+        {
+            output.WriteLine(line);
+        }
+
+        // Their work is still there, and the journal says what happened to it.
+        Assert.Equal(Document(9.0), File.ReadAllText(path));
+        Assert.Equal(2, journal.Entries.Count);
+        Assert.Equal(AuthorKind.Outside, journal.Entries[1].Author.Kind);
+        Assert.Equal("outside", journal.Entries[1].Author.ToString());
+
+        // And the refusal is recoverable: read again, then the same edit lands.
+        journal.Reconcile();
+        journal.Apply(Robot, "try 6 kV", Document(6.0));
+
+        Assert.Equal(Document(6.0), File.ReadAllText(path));
+    }
+
+    /// <summary>
+    /// Undo after an outside change reverses that change, rather than stepping over it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the sharper half of GRD-9, and the one that is easy to miss.</b> An
+    /// unrecorded outside change breaks the chain — entry N's <c>After</c> stops being
+    /// entry N+1's <c>Before</c> — so an undo walks back to a document that predates the
+    /// person's edit and discards it as a *side effect of reversing something else*. The
+    /// agent asked to take back its own change and took back theirs too.
+    /// </para>
+    /// <para>
+    /// Recording the outside change keeps the chain intact, so the walk back reverses one
+    /// thing at a time and everything it reverses is on the record.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void UndoAfterAnOutsideChangeReversesThatChangeRatherThanStepingOverIt()
+    {
+        var path = Model(4.0);
+        var journal = new SessionJournal(path);
+
+        journal.Apply(Robot, "5 kV", Document(5.0));
+
+        File.WriteAllText(path, Document(9.0));
+
+        journal.Undo(Person);
+
+        foreach (var line in journal.Lines())
+        {
+            output.WriteLine(line);
+        }
+
+        // One step back from 9 kV is 5 kV - the state the outside edit replaced - not
+        // 4 kV, which is where a journal blind to the outside change would have landed.
+        Assert.Equal(Document(5.0), File.ReadAllText(path));
+
+        // Three entries: the agent's edit, the outside change, and the reversal of it.
+        Assert.Equal(3, journal.Entries.Count);
+        Assert.Equal(2, journal.Entries[2].Undoes);
+
+        // And the agent's own edit is still live, so a second undo reaches it.
+        journal.Undo(Person);
+
+        Assert.Equal(Document(4.0), File.ReadAllText(path));
+    }
+
+    /// <summary>A document that changed into something invalid is refused, not adopted.</summary>
+    /// <remarks>
+    /// The constructor establishes that a session never starts from a state no edit could
+    /// have produced. Adopting whatever appeared on disk would break that quietly, and
+    /// hand the next caller a document the journal claims is current and the engine
+    /// cannot run.
+    /// </remarks>
+    [Fact]
+    public void AnOutsideChangeThatDoesNotValidateIsRefused()
+    {
+        var path = Model(4.0);
+        var journal = new SessionJournal(path);
+
+        File.WriteAllText(path, "{ not json");
+
+        var refusal = Assert.Throws<EinzelException>(journal.Reconcile);
+
+        output.WriteLine($"{refusal.Error.Code}: {refusal.Error.Constraint}");
+
+        Assert.Empty(journal.Entries);
+        Assert.Equal(Document(4.0), journal.Content);
+    }
 }

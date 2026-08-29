@@ -75,6 +75,56 @@ when they do. Persisting it would make the journal a second source of truth besi
 the model file, where PRJ-4's argument says the durable record of a design is the
 document and its git history.
 
+## Human work is never silently lost (GRD-9)
+
+GRD-9 and MCP-1 are the same mechanism stated twice, and building MCP-1 delivered
+only part of it. The journal knew about mutations **made through it**. A person
+editing the model in their own editor while a session was open had their change
+overwritten by the agent's next whole-document edit, with nothing anywhere saying
+so — which is the exact words of the requirement, failed.
+
+**The sharper consequence is what an unrecorded change does to undo.** It breaks
+the chain: entry *N*'s `After` stops being entry *N+1*'s `Before`. So walking back
+lands on a document that predates the person's edit and discards it **as a side
+effect of reversing something else**. The agent asks to take back its own change
+and takes back theirs too, which is worse than the overwrite because nobody
+involved intended anything of the sort.
+
+`Reconcile` reads the file before every mutation and before every read. If it
+differs from what the session last saw, it becomes an entry:
+
+```
+   1  agent:claude              5 kV
+   2  outside                   changed on disk outside this session
+   3  human:mike                undo of 2: reverse "changed on disk outside this session" by outside
+```
+
+Three decisions in that:
+
+**Attributed to `outside`, not to the person.** Another tool, another session, a
+git checkout and the person's editor all look identical from inside the session.
+A journal that guesses is worse than one that says it does not know, so
+`AuthorKind` has a third case whose honest meaning is *this session does not know
+who did this*.
+
+**The edit is refused, not merged.** Recording the change alone would satisfy "not
+silently" while still losing the work. The agent's content was written against a
+document that no longer exists, so applying it would discard what somebody else
+just did. The refusal names the entry the document is now at and says to read
+again.
+
+**And the refusal is recoverable, which is why `model_read` reconciles.** Read,
+edit from what it now says. A read that returned the session's own stale view
+would send the caller round the same refusal for ever. That is ordinary optimistic
+concurrency, and the test asserts the whole loop rather than just the refusal.
+
+An outside change that does **not** validate is refused rather than adopted, since
+the constructor's invariant is that a session never holds a state no edit through
+the journal could have produced.
+
+Checked by mutation: a no-op `Reconcile` fails three of the nine journal tests,
+including the undo one.
+
 ## Attribution comes from the handshake, not from a parameter
 
 This is the design decision worth keeping.
