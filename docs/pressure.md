@@ -736,13 +736,61 @@ distinguish points on a ring. That is information the conversion *creates* rathe
 than carries, and it is why a round trip is not the identity even in distribution
 for a packet that was never axisymmetric.
 
+### A phase names its mode, and a run crosses the boundary
+
+Schema **0.6**: a phase carries `mode`, and absent means the model's — the same rule
+its parameter overrides follow, so a model with no sequence and one whose every
+phase runs in the declared mode are the same run. `CompiledModel.Phases` carries
+the schedule and `ChangesTransportMode` says whether any boundary actually
+converts, which a sequenced run that stays in one description does not.
+
+`SequencedRun` walks the phases. Each is an ordinary run of its own mode over its
+own duration, and the orchestration is the boundaries. On the shipped test
+instrument — launch, thermalise, extract:
+
+```
+settle       trajectory  ends    1.0 us  population 200  centroid x  11.370 mm
+thermalise   diffusion   ends   21.0 us  population 200  centroid x  11.370 mm  converted
+extract      trajectory  ends   26.0 us  population 200  centroid x  11.380 mm  converted
+```
+
+**The middle row is the conversion made visible.** Flying, the packet advances
+1.37 mm in a microsecond at the momentum it was launched with. As a density it
+does not move at all over twenty times longer, because the diffusive drift is μE
+and E is zero here. That is not a defect — it is what the conversion *means*.
+Drift-diffusion holds precisely because the velocity distribution has relaxed, so
+the momentum genuinely is discarded, and this is what discarding it looks like from
+outside. Position, the one thing both descriptions carry, survives to the fourth
+decimal.
+
+**A trajectory leg starting part-way along the timeline is flown against a
+`TimeShiftedField`.** The integrator always starts at t = 0, so a leg beginning at
+21 µs has to be handed an instrument shifted by 21 µs rather than a start time it
+has nowhere to put. Wrapped rather than adding one to `IntegrationSettings`, which
+is the precedent `AxisymmetricField` and `PonderomotiveField` set: the transport
+core carries every validated number here, and refactoring it to add a case beside
+it is how those get quietly lost.
+
 ### Not built
 
-The conversion exists and is tested; **a stage cannot yet name a transport mode**.
-Wiring it needs a schema bump, the validator, and a `run` that executes a sequence
-across modes — including sampling the field inside the diffusive loop, which
-`DriftDiffusion.Run` currently does once with a comment saying a sequenced run
-would need it otherwise.
+**The first phase cannot be diffusive.** Seeding a density from the source lives in
+`DiffusionRun`'s path and is not reachable from the orchestrator, so that case is
+refused with a reason rather than silently mishandled. For the trap-then-extract
+instrument SEQ-1 is about, the first phase *is* the trap, so this is a real
+limitation and not a corner.
+
+**Nothing is wired to the CLI.** `einzel run` still forks on the model's own mode;
+`SequencedRun` is reachable from code and tests only. Per-phase outcomes need to
+reach `--json` and the human printer before this is a capability a model author
+has.
+
+**The field is still sampled once per diffusive leg.** `DriftDiffusion.Run` takes
+its coefficients at the start of the leg, so a phase whose field changes *within*
+it is described by the field at its first instant. Each phase is short and the
+field is constant across one by construction — a phase sets parameters, and they
+hold for its duration — so this is right for a sequence and wrong for a driven
+field inside a diffusive phase, which is the case the pondermotive wrapper exists
+for and which is not combined with a sequence yet.
 
 ## The density is an output you can look at
 
