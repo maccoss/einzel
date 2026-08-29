@@ -993,6 +993,43 @@ Two findings from Stage 1 that bear on the spec:
   feature can go opposite ways, and the unit is chosen from the magnitude because one
   figure may carry a 300 mm drift and a 50 µm channel.
 
+- **Two defects and one unresolved one, from trying to write a pulsed-extraction
+  example.** The corpus has no sequenced example — the one Phase 4 capability it does not
+  exercise — and it still does not, because the run does not complete. But the trip found
+  two real defects that are fixed.
+
+  **`CanDoWork` read the base potentials and not the stages**, so a pulsed-extraction trap
+  — which holds everything at zero until it switches — was refused as an instrument in
+  which nothing could move an ion. That is the **fourth** appearance of one pattern and
+  the *third* in this one function: `einzel solve` reporting the DC of a driven geometry;
+  `CanDoWork` asking only about DC and refusing the Paul trap; its 3-D arm inspecting
+  nothing at all; and now the stages. The advice already written down — "grep for
+  `.Potential` the next time something driven behaves as though it were earthed" — does
+  not catch the fourth, because it is not about the drive. The wider statement: **a check
+  that asks what an instrument is doing must ask over every configuration it has**, and a
+  sequenced one has as many as it has stages. The control is asserted too: a sequence
+  that never energises anything is still refused.
+
+  **A stage set to an expression was read as zero.** `CompileStages` built its overrides
+  with `Quantity.From(value.Value, value.Unit)` and never looked at `value.Expression`,
+  and `Value` defaults to zero — so a stage meant to apply a kilovolt applied nothing.
+  The model validated, the field solved, and the run reported an ion that never moved,
+  with no diagnostic anywhere, because zero volts is exactly what the *first* stage of an
+  extraction legitimately applies. Now refused rather than supported: what an expression
+  should mean there is a design question, since the surface it would evaluate against is
+  the one the stage is changing.
+
+  **Not fixed: an ion at rest cannot be integrated to the switch.** The run underflows at
+  t = 1.9999999999978482 µs after 63 steps with the ion where it launched. Established:
+  it is not the turning-point cap (already off for a time-varying field), not the RF
+  period cap (1.0 s when undriven), and the shortfall is 1.1e-9 *relative* — far more
+  than round-off, so the failure is not merely a compensated accumulator missing the
+  boundary. A guard mirroring the collision path's changed the refinement levels'
+  disagreement without changing the outcome, which says the failure is
+  tolerance-dependent and points at step *rejection*. **That change was reverted** rather
+  than left in the integrator that carries every validated number here. Full diagnosis in
+  `docs/lessons.md`.
+
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
 The two design documents remain the source of truth for *intent*. Tracked alongside them: `SPEC.md`, `README.md`, `LICENSE` (Apache 2.0).

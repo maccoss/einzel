@@ -265,21 +265,38 @@ public static class ModelValidator
         CompiledFieldKind.HalfSpaceUniform => field.PotentialGradientSi != 0.0,
 
         // A solve with every electrode at the same potential has no gradient
-        // anywhere, and grounded boundaries make that potential zero. The drive
-        // has to count as well as the DC: a Paul trap and an RF-only mass filter
-        // both hold zero volts of DC on every electrode and all of their potential
-        // as drive, and asking only about the DC declares the archetypal
-        // start-at-rest device incapable of moving an ion.
+        // anywhere, and grounded boundaries make that potential zero.
+        //
+        // Three things have to count, and each was found by a device that the
+        // previous version declared incapable of moving an ion:
+        //
+        //  - the DC, obviously;
+        //  - the DRIVE, because a Paul trap and an RF-only mass filter hold zero
+        //    volts of DC on every electrode and all of their potential as drive;
+        //  - the STAGES, because a pulsed-extraction trap holds everything at zero
+        //    until it switches, which is what makes it the archetypal start-at-rest
+        //    device in the first place. Reading only the base potentials asks what
+        //    the instrument is doing before it has been told to do anything.
         CompiledFieldKind.Solved2D =>
             field.Solve is { } solve
-            && solve.Electrodes.Any(e => e.Potential != 0.0 || e.IsDriven),
+            && (Energised(solve.Electrodes)
+                || solve.Stages.Any(stage => Energised(stage.Electrodes))),
 
         CompiledFieldKind.Solved3D =>
             field.Solve3D is { } volume
-            && volume.Electrodes.Any(e => e.Potential != 0.0 || e.IsDriven),
+            && (Energised3D(volume.Electrodes)
+                || volume.Stages.Any(stage => Energised3D(stage.Electrodes))),
 
         _ => true,
     };
+
+    /// <summary>Whether any of these electrodes can move an ion.</summary>
+    private static bool Energised(IReadOnlyList<CompiledElectrode> electrodes) =>
+        electrodes.Any(e => e.Potential != 0.0 || e.IsDriven);
+
+    /// <summary>Whether any of these electrodes can move an ion.</summary>
+    private static bool Energised3D(IReadOnlyList<CompiledElectrode3D> electrodes) =>
+        electrodes.Any(e => e.Potential != 0.0 || e.IsDriven);
 
     private static SourceValues? ValidateSource(
         SourceDocument? source,
@@ -667,6 +684,30 @@ public static class ModelValidator
 
             foreach (var (parameter, value) in stage.Set ?? NoOverrides)
             {
+                // Refused rather than read as its absent literal, which is what
+                // happened: only Value was consulted, so an expression here resolved
+                // silently to zero and a stage that was supposed to apply a kilovolt
+                // applied nothing. The model still validated, still solved, and the run
+                // reported an ion that never moved.
+                //
+                // Refused rather than supported, because what a stage set should mean
+                // when it is an expression is a design question - the surface it would
+                // evaluate against is the one the stage is in the middle of changing.
+                if (value.Expression is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{stagePath}/set/{parameter}",
+                        Constraint = "a stage sets a parameter to a value, not to an expression",
+                        Suggestion = "write the number and its unit. An expression here would "
+                            + "have to be evaluated against the parameter surface the stage is "
+                            + "itself changing, and what that should mean is not settled",
+                    });
+
+                    continue;
+                }
+
                 try
                 {
                     set[parameter] = Quantity.From(value.Value, value.Unit);
@@ -1198,6 +1239,30 @@ public static class ModelValidator
 
             foreach (var (parameter, value) in stage.Set ?? NoOverrides)
             {
+                // Refused rather than read as its absent literal, which is what
+                // happened: only Value was consulted, so an expression here resolved
+                // silently to zero and a stage that was supposed to apply a kilovolt
+                // applied nothing. The model still validated, still solved, and the run
+                // reported an ion that never moved.
+                //
+                // Refused rather than supported, because what a stage set should mean
+                // when it is an expression is a design question - the surface it would
+                // evaluate against is the one the stage is in the middle of changing.
+                if (value.Expression is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{stagePath}/set/{parameter}",
+                        Constraint = "a stage sets a parameter to a value, not to an expression",
+                        Suggestion = "write the number and its unit. An expression here would "
+                            + "have to be evaluated against the parameter surface the stage is "
+                            + "itself changing, and what that should mean is not settled",
+                    });
+
+                    continue;
+                }
+
                 try
                 {
                     set[parameter] = Quantity.From(value.Value, value.Unit);

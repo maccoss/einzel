@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**737 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**740 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1122,6 +1122,26 @@ in a table.
    weaker for a drawing of it. Changing `turningDepth` from 50 to 80 mm and re-rendering
    the same spec gives `penetration 50 mm` then `penetration 80 mm` with no edit in
    between; the test asserts exactly that — one spec, two models, two measurements.
+
+13. **A sequenced example, and the defect that blocks it.** The corpus does not
+   exercise the sequencer, which is the one Phase 4 capability it misses. Writing the
+   example found two defects, both fixed — `CanDoWork` reading the base potentials and
+   not the stages (the fourth sighting of one pattern, the third in that function), and a
+   stage `set` to an expression being read as its absent literal zero.
+
+   **The example is not shippable**, because an ion held at rest through the first stage
+   underflows on the approach to the switch: `StepSizeUnderflow` at 1.999999999998 µs
+   after 63 steps, ion unmoved. Not the turning-point cap and not the period cap; the
+   shortfall is 1.1e-9 relative, which is far more than round-off, and a guard mirroring
+   the collision path's changed which refinement levels completed without changing the
+   outcome — so it is tolerance-dependent and probably about step rejection rather than
+   the cut alone. That speculative change was reverted. Full diagnosis in
+   `docs/lessons.md`; the next step is instrumenting the step controller to see whether
+   the steps near the switch are being rejected or accepted.
+
+   **This is the top of the list**: it is a defect rather than a gap, it blocks a Phase 4
+   deliverable from being demonstrated, and the machinery it blocks (traps, pulsed
+   extraction) is what the memo's §6 item 5 is a choice between.
 
 ## Open decisions
 

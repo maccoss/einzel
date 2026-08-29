@@ -603,6 +603,98 @@ not be the one that silently drops a part.** `IsDriven` exists on both electrode
 records precisely so the complete question has a short name. It is worth grepping
 for `.Potential` the next time something driven behaves as though it were earthed.
 
+## An ion that sits still cannot be integrated to the switch
+
+**This one is not fixed.** It is written down because the diagnosis went a long way and
+the next person should not start over.
+
+Writing a corpus example for pulsed extraction - two plates, both at zero for a 2 µs
+hold, then ±500 V - the run comes back `StepSizeUnderflow` at t = 1.9999999999978482 µs
+after 63 accepted steps, with the ion still exactly where it launched. The reported
+flight time is the hold and nothing else.
+
+What is established:
+
+- **It is not the turning-point step cap.** That cap is already disabled when the field
+  is an `ITimeVaryingField`, and a sequenced solve is one.
+- **It is not the RF period cap.** `DrivenSolvedField.ShortestPeriodSeconds` returns 1.0
+  when there are no drives, so the period cap is 50 ms and never binds.
+- **It is the approach to the switch.** `NextSwitchAfter` returns a boundary strictly
+  after the current time, and the step is cut to `switchAt - time.Total`. The ion is at
+  rest with zero field, so nothing else advances the clock, and every step is the cut
+  one. It lands short and the next step is cut again.
+- **The shortfall is 2.15e-15 s on 2e-6 s, a relative 1.1e-9** - far larger than
+  round-off in a compensated accumulator, so the time is not merely failing to land
+  exactly. Sixty-three steps is also not the shape of a geometric halving from 2 µs.
+
+What was tried and did not work: guarding the cut with `toSwitch < MinimumStep` and
+stepping over the boundary instead. It changed the reported uncertainty (the refinement
+levels began to disagree, 1.089 to 2.911 µs) without changing the outcome, which says
+some levels complete and others do not - so the failure is tolerance-dependent, and that
+points at step *rejection* rather than at the cut alone. **That change was reverted**:
+an unjustified edit to the integrator that carries every validated number in this engine
+is not worth leaving in for a hypothesis that did not hold.
+
+The collision path has the guard this one lacks - `if (toEvent < settings.MinimumStep)`
+applies the event rather than cutting the step to nothing - and its comment says exactly
+why: *"an ion drifting in 1 mbar of nitrogen underflowed after eight steps and 32 ns of a
+300 µs flight, and reported StepSizeUnderflow - a numerical failure standing in for
+ordinary physics."* The same sentence describes this. The fix is probably of the same
+shape and the diagnosis needs finishing first, with the step controller instrumented to
+show whether the steps are being rejected or accepted.
+
+**What it blocks:** the corpus has no pulsed-extraction example, which is the one Phase 4
+capability it does not exercise. Two real defects were found on the way to it and both
+are fixed (below), so the trip was not wasted - but the example itself is not shippable
+and was not shipped.
+
+## Reading the DC of an electrode that holds none, a fourth time
+
+`ModelValidator.CanDoWork` decides whether a source may start at rest by asking whether
+anything in the model can accelerate an ion. It asked whether any electrode held a
+non-zero potential or a drive.
+
+**A pulsed-extraction trap holds neither until its second stage.** So the archetypal
+start-at-rest device - the one §12's turn-around time is defined for, and the one CLAUDE.md
+already cites as the reason a source may start at rest at all - was refused on the grounds
+that nothing could move its ion.
+
+This is the fourth appearance of the same pattern, and the third in this one function:
+
+1. `einzel solve` reported the DC pattern for every driven 2-D geometry.
+2. `CanDoWork` asked only about DC, so the Paul trap was refused.
+3. `CanDoWork`'s three-dimensional arm inspected nothing at all and passed by default.
+4. `CanDoWork` reads the base potentials and not the **stages**.
+
+The repository's own advice was already written down - *"grep for `.Potential` the next
+time something driven behaves as though it were earthed"* - and it is not enough, because
+the fourth case is not about the drive at all. The wider statement: **a check that asks
+what an instrument is doing must ask over every configuration the instrument has**, and a
+sequenced one has as many configurations as it has stages.
+
+The control matters as much as the fix. Widening a check until it accepts the case in
+front of you is easy and useless; what says the widening was correct is that a sequence
+which never energises anything is *still* refused.
+
+## A stage set to an expression was read as zero
+
+`CompileStages` built its override dictionary with `Quantity.From(value.Value, value.Unit)`
+and never looked at `value.Expression`. `QuantityValue.Value` defaults to zero, so a stage
+declaring `{"expression": "extractionVolts", "unit": "V"}` applied **nothing**.
+
+The model validated. The field solved. The run reported an ion that never moved. There
+was no diagnostic anywhere, because from the engine's point of view the author had asked
+for zero volts - and zero volts is a perfectly ordinary thing for a stage to apply, since
+that is exactly what the *first* stage of an extraction does.
+
+Now refused, rather than supported, because what an expression should mean here is a
+design question: the parameter surface it would evaluate against is the one the stage is
+in the middle of changing. Refusing is the answer that does not require settling it.
+
+Same family as an unrecognised property being ignored rather than refused, and the same
+consequence: **a document that means something other than what it says, with nothing
+anywhere to say so.**
+
 ## The mutation passed four tests and failed two, and the four were the interesting ones
 
 A gas whose density varies from place to place needed the collision rate read at the
