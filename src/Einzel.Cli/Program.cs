@@ -1095,32 +1095,33 @@ public static class Program
     }
 
     /// <summary>
-    /// Draws a model, headlessly, into a vector file.
+    /// Draws a model, headlessly, into vector files.
     /// </summary>
     /// <remarks>
-    /// Section only, for now. <c>still</c> is a raster projection and <c>animation</c>
-    /// is a frame sequence with the non-linear time mapping RND-7 requires; both are
-    /// named here and refused with a reason rather than left to fail as an unknown
-    /// verb, because "not built yet" and "you spelled it wrong" are different
-    /// problems and an agent should not have to guess which it hit.
+    /// Sections and animations. <c>still</c> is a raster projection and nothing in this
+    /// build rasterises; it is named here and refused with a reason rather than left to
+    /// fail as an unknown verb, because "not built yet" and "you spelled it wrong" are
+    /// different problems and an agent should not have to guess which it hit.
     /// </remarks>
     private static int Render(string[] args, CommandLine options)
     {
         var kind = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : null;
 
-        if (kind is "still" or "animation")
+        if (kind is "still")
         {
             Console.Error.WriteLine(
-                $"'einzel render {kind}' is not built yet. Vector sections are: "
-                + "'einzel render section <model.json>'.");
+                "'einzel render still' is not built yet. Vector output is: "
+                + "'einzel render section <model.json>' or 'einzel render animation <spec.json>'.");
 
             Console.Error.WriteLine(
-                kind == "still"
-                    ? "A still is a raster projection; nothing in this build rasterises."
-                    : "An animation is a frame sequence with an explicit non-linear time mapping, "
-                        + "which needs the sequencer's timeline and a frame writer.");
+                "A still is a raster projection; nothing in this build rasterises.");
 
             return (int)ExitCode.ValidationFailure;
+        }
+
+        if (kind is "animation")
+        {
+            return Animation(options);
         }
 
         var positional = kind is null ? options.Positional : options.Positional.Skip(1).ToList();
@@ -1187,6 +1188,110 @@ public static class Program
         Console.Out.WriteLine(
             $"decimated to {outcome.DecimationToleranceMm:G3} mm; trajectory "
             + $"{outcome.TrajectoryPointsSampled} points to {outcome.TrajectoryPoints}");
+
+        // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>
+    /// Draws a flight as a numbered sequence of vector frames (RND-7).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A render spec, never a bare model, and that is the requirement enforcing
+    /// itself through the interface.</b> RND-7 says an animation "declares an explicit
+    /// non-linear time mapping ... neither part is optional", so there is deliberately
+    /// no <c>--rate</c> flag: the only way to ask for an animation is to have written
+    /// down how it compresses time. A convenience flag would have made the hidden
+    /// compression the easy case.
+    /// </para>
+    /// <para>
+    /// <c>--fps</c> is offered because a frame rate is a property of the playback
+    /// device rather than of the physics, and changing it changes no claim the
+    /// animation makes.
+    /// </para>
+    /// </remarks>
+    private static int Animation(CommandLine options)
+    {
+        var positional = options.Positional.Skip(1).ToList();
+
+        if (positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel render animation <spec.json> [--out <dir>] [--format svg|pdf]");
+            Console.Error.WriteLine(
+                "       [--fps N] [--width-mm W] [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine(
+                "draws a flight as numbered vector frames on the spec's declared time mapping");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine(
+                "An animation needs a render spec, not a bare model: RND-7 requires the time "
+                + "mapping to be declared, so there is no flag that supplies one.");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var given = Path.GetFullPath(positional[0]);
+
+        if (!ReadsAsSpec(given))
+        {
+            Console.Error.WriteLine(
+                $"{given} reads as a model, and an animation needs a render spec that declares "
+                + "its time mapping.");
+
+            Console.Error.WriteLine(
+                "Write one with an \"animation\" block: {\"model\": \"...\", \"animation\": "
+                + "{\"framesPerSecond\": 30, \"phases\": [{\"until\": {\"value\": 10, "
+                + "\"unit\": \"us\"}, \"rate\": {\"value\": 1, \"unit\": \"us/s\"}}]}}");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var (spec, modelPath) = RenderCommand.ReadSpec(given);
+
+        spec = spec with
+        {
+            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
+            {
+                "PDF" => FigureFormat.Pdf,
+                _ => FigureFormat.Svg,
+            },
+            WidthMm = options.Value("width-mm") is { } width
+                ? double.Parse(width, CultureInfo.InvariantCulture)
+                : spec.WidthMm,
+            Caption = options.Value("caption") ?? spec.Caption,
+            Animation = options.Value("fps") is { } fps && spec.Animation is { } declared
+                ? declared with { FramesPerSecond = int.Parse(fps, CultureInfo.InvariantCulture) }
+                : spec.Animation,
+        };
+
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+
+        var outcome = RenderCommand.Animation(
+            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        // The directory and a count, not three hundred lines of "wrote". A frame list
+        // is what --json is for.
+        var directory = Path.GetDirectoryName(outcome.Artifacts[0]);
+
+        Console.Out.WriteLine(
+            outcome.Written
+                ? $"wrote {outcome.Frames} frames to {directory}"
+                : $"would write {outcome.Frames} frames to {directory}");
+
+        Console.Out.WriteLine(
+            $"{outcome.PlaybackSeconds:F2} s of playback, "
+            + $"{outcome.PageMm[0]:F0} by {outcome.PageMm[1]:F0} mm each");
 
         // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
         foreach (var warning in outcome.Warnings)

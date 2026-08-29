@@ -185,13 +185,167 @@ a renderer that could do it would be a renderer that decides how long a run last
 Where the transport refuses outright, the figure is still drawn from the geometry
 and the field, and the warning says which of the two it got.
 
+## An animation declares how it compresses time, and says so on every frame
+
+RND-7 is unusually emphatic, and the whole design follows from it: an animation
+"declares an explicit non-linear time mapping — playback rate per sequence phase — and
+the current rate is displayed on screen throughout playback. **Neither part is
+optional.** This is the animation equivalent of GRD-1: the artifact may compress, but it
+may not hide that it compressed."
+
+The reason is §22's own: six orders of magnitude of timescale cannot be shown honestly
+at one rate, and *a viewer cannot detect the compression*. An ion spends nanoseconds
+turning round in a mirror and hundreds of microseconds drifting. An animation that skips
+the first to keep the second watchable has removed the part the instrument was designed
+around, and nothing on screen would say so.
+
+### The requirement enforces itself through the interface
+
+`einzel render animation` takes **a render spec, never a bare model**, and there is no
+`--rate` flag. A model document has nowhere to declare a time mapping, so the only way
+to ask for an animation is to have written one down. A convenience flag would have made
+the hidden-compression case the easy one.
+
+`--fps` *is* offered, because a frame rate is a property of the playback device rather
+than of the physics and changing it changes no claim the animation makes.
+
+```json
+"animation": {
+  "framesPerSecond": 10,
+  "phases": [
+    { "until": {"value": 4.0,    "unit": "us"}, "rate": {"value": 4.0, "unit": "us/s"}, "label": "inbound" },
+    { "until": {"value": 6.2,    "unit": "us"}, "rate": {"value": 0.5, "unit": "us/s"}, "label": "turn-around" },
+    { "until": {"value": 10.1805,"unit": "us"}, "rate": {"value": 4.0, "unit": "us/s"}, "label": "outbound" }
+  ]
+}
+```
+
+On the shipped reflectron that is **1.000 s, 4.400 s and 0.995 s of playback**: the
+turn-around is a fifth of the flight and **69% of the film**. Sixty-five frames, and the
+frame at playback 1.000 s shows exactly 4.0000 µs.
+
+### Units on the rate, for the reason units are on everything else
+
+The rate is *simulated time per second of playback*, written `us/s`, `ns/s`, `ms/s`.
+Dimensionless — it is a time over a time — and what makes it a *rate* is that the
+denominator is a second of playback rather than a second of flight, which no dimension
+can carry. So the field is called `rate` and the unit spells the playback second out.
+
+The stamp gives **two readings of the one number**, because they answer different
+questions:
+
+> `t = 5.000 µs · turn-around · 500 ns of flight per second of playback — 2,000,000x slower than real time`
+
+The time-per-second is what converts anything on screen back into flight time and
+carries a unit, which is what GRD-1 asks of every quantity here. The slow-down factor is
+the intuition, and alone it says nothing about how long the flight is. The unit is picked
+from the magnitude rather than fixed, because one animation may span nanoseconds of
+turn-around and milliseconds of trapping.
+
+### Frame times are computed, never accumulated
+
+Each frame's instant comes from its own playback time by one lookup and one multiply. A
+phase whose playback duration is not a whole number of frames would otherwise push a
+fractional frame of error into every phase after it, and a six-phase animation would
+drift visibly against its own declared mapping.
+
+Two details that are decisions rather than details. **The final frame is forced onto the
+end**, because for a flight the last instant is precisely the one a reader wants — the
+arrival, the ejection, the packet at the detector — and a frame grid that is not a whole
+number of frames long otherwise stops short of it. And **a frame landing exactly on a
+boundary announces the incoming rate**: it shows the boundary instant and is followed by
+a frame's worth of playback at the new speed, so naming the rate that has just stopped
+applying would be naming the wrong one.
+
+### Fly once, draw many
+
+A section figure solves the field and flies the ion inside the renderer. For three
+hundred frames that is a multigrid solve per frame, which is unaffordable — and worse
+than unaffordable, because two frames that flew separately are two frames that can
+disagree about the flight. `FramePlan` is what a caller drawing many figures of one model
+computes once: the field, its warnings, the whole trajectory, and the banner.
+
+### The camera does not follow the ion
+
+The first version handed each frame **the part of the flight drawn so far**. An analytic
+model takes its extent from the flight, so every frame chose its page from its own
+prefix: the scale changed frame to frame and the ion sat pinned to the edge of a box that
+grew to meet it. It reads as a camera tracking the ion rather than as an instrument being
+flown through, and *nothing about any single frame reveals it*.
+
+So the plan carries the whole flight and `UpToSeconds` truncates it for drawing. The test
+that pins this asserts one page across all frames — and **its first version passed with
+the bug restored**, because it used the einzel lens, a solved geometry whose extent comes
+from its declared domain and never touches the flight. Moved onto an analytic reflectron
+it fails immediately. Third time tonight that a test exercised a path not containing the
+line under test.
+
+### The head is marked, and interpolated onto the instant
+
+A polyline that grows says only where the ion has *been*. The head is a small closed
+polygon — the scene has paths and text and nothing else, which is what lets one scene go
+to SVG and to a hand-written PDF without either backend knowing about shapes.
+
+It sits at the instant rather than at the last recorded sample. An adaptive integrator
+keeps points fastest where the physics is hardest, so a marker snapping to samples would
+stutter in exactly the places an animation exists to show. Interpolated linearly, which
+is what the drawn polyline already is, so the head sits exactly on the line it
+terminates.
+
+### A manifest beside the frames
+
+`frames.json` records the model and its hash, the frame rate, the playback duration, and
+for every frame its file, its playback time, its instant, its rate and its phase. Every
+frame carries its rate on the page, which is what RND-7 requires; the manifest carries
+the whole schedule, so the compression can be audited rather than trusted one frame at a
+time. It is also what a player needs: frames are equally spaced in *playback* time and
+not in flight time.
+
+### What it refuses
+
+- **A diffusive model.** RND-8 forbids drawing lines through a diffusive region, and a
+  run reports the density it *ended* with rather than one per instant — so the frames
+  would all be the same box and the film would show motion that was never computed. That
+  is worse than no film, because it looks like one.
+- **A spec with no phases**, a phase that does not advance, a non-positive rate, a
+  non-positive frame rate.
+- **A spec with `trajectory: false`.** The geometry and the field are identical on every
+  frame, so with the ion left out the sequence is one drawing repeated - the same
+  argument as the diffusive refusal, one step further in.
+
+And two things it warns about rather than refusing, because both are legitimate to ask
+for and neither looks like a choice: `animation.past-arrival`, where the mapping outlives
+the flight and the last frames show an ion that is not stationary but finished; and
+`animation.stops-short`, where it ends in mid-flight, which reads as a loss.
+
+### No video, and that is LIC-1
+
+Nothing here rasterises, and a GPL dependency is forbidden in the default build — ffmpeg
+is exactly what would be reached for. What comes out is a numbered sequence of vector
+frames; assembling them is an out-of-process step with a tool the user supplies, so its
+absence degrades a feature rather than blocking the platform.
+
+## An analytic flight sets its own page
+
+A model with no declared solve domain takes its extent from the instrument's own points,
+and those used to be the source and the detector alone. **In a reflectron they are the
+same point** — the ion is caught where it launched — so the page was a box a tenth of a
+millimetre across while the ion travelled 1.3 m into the mirror and back.
+
+The scaffolded reflectron, which is the first thing anybody renders, drew its turning
+point at **x = 105,080 mm on a 160 mm page**. It had been doing so since sections were
+built, and no test caught it because every render test uses a device template, and every
+device template declares a solve domain.
+
+The flight is now included in the extent, and the pad is taken from the extent actually
+gathered rather than from the separation of source and detector — which is zero in any
+instrument that catches the ion where it launched. It costs nothing: the trajectory had
+to be flown to be drawn, and it is now flown *before* the page is chosen rather than
+after.
+
 ## Not built
 
 - **`render still`** - a raster projection. Nothing in this build rasterises.
-- **`render animation`** - a frame sequence with the explicit non-linear time
-  mapping RND-7 requires, and the current rate displayed throughout playback.
-  Neither part is optional, and it needs the sequencer's timeline and a frame
-  writer.
 - **Dimensioned callouts.** The memo's own figures are line drawings *with
   dimensions*, and there is no way to declare one yet.
 - **Filled density bands, and a colour scale.** Contour lines carry the levels in
@@ -200,6 +354,12 @@ and the field, and the warning says which of the two it got.
   run, which is what the solver returns. Seeing the packet mid-flight means
   shortening `maximumFlightTime`.
 
-Both unbuilt verbs are named by the CLI and refused with a reason rather than
-falling through as unknown commands, because "not built yet" and "you spelled it
-wrong" are different problems and an agent should not have to guess which it hit.
+`render still` is named by the CLI and refused with a reason rather than falling
+through as an unknown command, because "not built yet" and "you spelled it wrong" are
+different problems and an agent should not have to guess which it hit.
+
+Also not built for animations: **a moving field**. A sequenced instrument switches its
+electrodes between stages, and every frame here draws the field as it is at t = 0. The
+geometry is right and the equipotentials are the first stage's. Since the phases already
+exist to name the stages, the fix is to rebuild the field per phase rather than per
+frame - a handful of solves, not three hundred.

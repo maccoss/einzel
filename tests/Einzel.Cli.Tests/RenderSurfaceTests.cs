@@ -159,18 +159,24 @@ public sealed class RenderSurfaceTests : IDisposable
     }
 
     [Fact]
-    public void TheUnbuiltKindsSayWhyRatherThanFailingAsTypos()
+    public void TheUnbuiltKindSaysWhyRatherThanFailingAsATypo()
     {
         // "Not built yet" and "you spelled it wrong" are different problems, and an
-        // agent should not have to guess which it hit.
-        foreach (var kind in new[] { "still", "animation" })
-        {
-            var (exitCode, _, stderr) = Run("render", kind, "whatever.json");
+        // agent should not have to guess which it hit. Only 'still' is left: it is a
+        // raster projection and nothing in this build rasterises.
+        var (exitCode, _, stderr) = Run("render", "still", "whatever.json");
 
-            Assert.NotEqual(0, exitCode);
-            Assert.Contains("not built yet", stderr, StringComparison.Ordinal);
-            Assert.Contains("render section", stderr, StringComparison.Ordinal);
-        }
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("not built yet", stderr, StringComparison.Ordinal);
+        Assert.Contains("render section", stderr, StringComparison.Ordinal);
+
+        // And 'animation' no longer says it. A refusal left behind after the thing was
+        // built is the same defect as one missing before it was - both send a caller
+        // somewhere the platform is not.
+        var (_, _, animation) = Run("render", "animation");
+
+        Assert.DoesNotContain("not built yet", animation, StringComparison.Ordinal);
+        Assert.Contains("declared time mapping", animation, StringComparison.Ordinal);
     }
 
     [Fact]

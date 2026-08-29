@@ -648,6 +648,33 @@ good as the distance from the true value to whichever end the bug moves it to. W
 bug's effect is to collapse a quantity onto one end of its own bracket, the bracket
 cannot see it — and a *symmetry* the bug destroys (here, reversal) can.
 
+## The test used a solved model, and the bug was in the analytic branch
+
+Three times in one night a test passed with its bug restored, each for the same reason
+in different clothes. The third is the cleanest.
+
+An animation frame was choosing its page from the part of the flight drawn so far, so
+the scale changed frame to frame and the ion sat pinned to the edge of a box that grew
+to meet it. The test written to pin the fix asserted the obvious thing - every frame has
+the same page - and it passed with the fix reverted.
+
+The model it used was the einzel lens. A **solved** geometry declares its domain, and
+the extent comes from that domain; the flight cannot change the page at all. So the test
+was a perfectly good test of something, and no test whatever of the thing it was named
+for. Rewritten against an analytic reflectron - no declared domain, extent taken from
+the flight - it fails immediately.
+
+The generalisation is worth more than the instance. **Where a function has branches
+chosen by the shape of its input, a test fixture chooses a branch.** A fixture picked for
+being convenient and realistic will pick the *common* branch, and the bug will be in the
+other one - because the common branch is the one that gets exercised by everything else
+and has already had its bugs shaken out.
+
+That is exactly why the reflectron's own extent had been wrong since sections were built:
+**every render test uses a device template, and every device template declares a solve
+domain.** The analytic branch had no coverage at all, and the first thing a new user
+renders goes through it.
+
 ## A guard written four times, silent about the fifth thing
 
 Resolving a declared gas field needs the model document's own directory, which a study

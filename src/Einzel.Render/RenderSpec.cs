@@ -130,6 +130,15 @@ public sealed record RenderSpec
     /// </remarks>
     public double DecimationFraction { get; init; } = 1e-3;
 
+    /// <summary>The time mapping, when this spec is for an animation.</summary>
+    /// <remarks>
+    /// Null for a section, which is a single instant and has no timeline. Required for
+    /// an animation, and there is deliberately no command-line way to supply one:
+    /// RND-7 makes the mapping non-optional, so the only way to ask for an animation is
+    /// to have declared how it compresses time.
+    /// </remarks>
+    public AnimationDocument? Animation { get; init; }
+
     /// <summary>The output format.</summary>
     public FigureFormat Format { get; init; } = FigureFormat.Svg;
 

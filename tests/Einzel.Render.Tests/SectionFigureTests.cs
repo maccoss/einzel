@@ -30,6 +30,58 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
         return validation.Model!;
     }
 
+    /// <summary>
+    /// An analytic model's whole flight fits on its own page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A model with no declared solve domain takes its extent from the instrument's own
+    /// points, and until now those were the source and the detector. In a reflectron
+    /// they are the <em>same point</em> - the ion is caught where it launched - so the
+    /// page was a box a tenth of a millimetre across while the ion travelled 1.3 m into
+    /// the mirror and back. The scaffolded reflectron, which is the first thing anybody
+    /// renders, drew its turning point 105 metres off a 160 mm page.
+    /// </para>
+    /// <para>
+    /// The flight is now included in the extent, which costs nothing: the trajectory had
+    /// to be flown to be drawn, and it is now flown before the page is chosen rather
+    /// than after.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnAnalyticFlightFitsOnItsOwnPage()
+    {
+        var figure = SectionRenderer.Render(
+            AnalyticModels.Reflectron(), new RenderSpec { Equipotentials = 6 });
+
+        var drawn = figure.Scene.Paths
+            .Where(p => p.Layer == "trajectory")
+            .SelectMany(p => p.Points)
+            .ToList();
+
+        Assert.NotEmpty(drawn);
+
+        var minX = drawn.Min(p => p.X);
+        var maxX = drawn.Max(p => p.X);
+        var minY = drawn.Min(p => p.Y);
+        var maxY = drawn.Max(p => p.Y);
+
+        output.WriteLine(
+            $"page {figure.Scene.WidthMm:F1} by {figure.Scene.HeightMm:F1} mm; trajectory "
+            + $"x {minX:F2}..{maxX:F2}, y {minY:F2}..{maxY:F2}");
+
+        Assert.InRange(minX, 0.0, figure.Scene.WidthMm);
+        Assert.InRange(maxX, 0.0, figure.Scene.WidthMm);
+        Assert.InRange(minY, 0.0, figure.Scene.HeightMm);
+        Assert.InRange(maxY, 0.0, figure.Scene.HeightMm);
+
+        // And it fills the page rather than sitting in a corner of one that was made
+        // large enough to contain it by accident.
+        Assert.True(
+            maxX - minX > 0.5 * figure.Scene.WidthMm,
+            $"the flight spans only {maxX - minX:F1} of {figure.Scene.WidthMm:F1} mm");
+    }
+
     [Fact]
     public void TheEinzelLensDrawsAsLineWork()
     {

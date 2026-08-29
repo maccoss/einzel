@@ -63,6 +63,8 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel test [dir]` | Run the project's tests |
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
+| `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
+| `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
 | `einzel --version` | Engine version |
 
@@ -74,8 +76,14 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
 Not yet built: `self-update`, which needs `Einzel.Update`. Of the render verbs
-`section` exists; `still` and `animation` are named and refused with a reason,
-because "not built yet" and "you spelled it wrong" are different problems.
+`section` and `animation` exist; `still` is a raster projection, nothing here
+rasterises, and it is named and refused with a reason rather than falling through as
+an unknown verb - "not built yet" and "you spelled it wrong" are different problems.
+
+**`render animation` takes a spec and never a bare model, and there is no `--rate`
+flag.** RND-7 makes the time mapping non-optional, so the interface is arranged such
+that there is no command line producing an animation without one. `--fps` is offered,
+because a frame rate is a property of the playback device rather than of the physics.
 
 ### The preview tier
 

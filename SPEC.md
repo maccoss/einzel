@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**701 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
+**730 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 30 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -722,7 +722,7 @@ human's session hands over to an agent and back in the same vocabulary.
 | 3D viewport — geometry, potentials by colour, equipotentials, trajectory bundles | Not built | A raster path. Nothing here rasterises; Helix Toolkit on DirectX 11 is the named choice and is unverified since r06 |
 | Density clouds instead of trajectories for diffusive regions (TRN-2) | **Half built** | The density exists, is exported as `.vti` and is drawn as contours in a section. What is missing is only the interactive surface |
 | Figure composer | **Seam built** | `RenderSpec` is already text in `figures/` that the CLI executes. A composer edits one of these and nothing else — which is UI-1's own test, and the reason it can be built last |
-| Animation timeline, per-phase playback rates, scrubbing, frame export | Not built | RND-7's non-linear time mapping, and a frame writer. Phase 4 |
+| Animation timeline, per-phase playback rates, scrubbing, frame export | **Partial** | Per-phase playback rates and frame export are built: `einzel render animation` on a declared mapping, with the rate stamped on every frame and a `frames.json` schedule beside them. Scrubbing is a shell interaction and needs the window |
 | Model tree with parameter editing, live validation, units on every field | Not built | The validation and the units are done and reachable; this is presentation over `ModelValidator` |
 | Sequence editor | Not built | The sequencer exists and stages are declared in the document; this is presentation over it |
 | Results by accuracy class, uncertainty and warnings never behind a disclosure control | Not built | The envelope is enforced end to end, so the data is there. The requirement is really about layout, and it is the one most easily violated by a designer who has not read §4 |
@@ -962,7 +962,7 @@ in a table.
 | `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | Not built | No raster path at all, so neither shaded 3D nor `render still`. Section 23 leaves open whether hidden-line vector output is worth building. |
 | `RND-5` | Trajectories are decimated with a stated geometric tolerance ( | **Met** | Stated and measured, and the point-to-segment distance is clamped - a reflectron is why. |
 | `RND-6` | Text stays text. Labels, dimensions, and axis annotations are selectable and editable in the output, so a figure can be relabelled for a different venue ... | **Met** | Labels are text runs in both SVG and PDF, asserted in both. |
-| `RND-7` | ), scrubbing, and frame export. Model tree with parameter editing, live validation, units on every field, template instantiation. Sequence editor : the ... | Not built | No animation, so no time mapping to display. Phase 4. |
+| `RND-7` | ), scrubbing, and frame export. Model tree with parameter editing, live validation, units on every field, template instantiation. Sequence editor : the ... | **Met** | Both halves, and neither is optional in the interface either. A mapping is declared as phases in a render spec, each naming the simulated time it runs to and the rate it plays at - and an animation can only be asked for through a spec, with no `--rate` flag, so **there is no command line that produces one without a declared mapping**. The rate is stamped on every frame in two readings (`500 ns of flight per second of playback - 2,000,000x slower than real time`), written by the renderer rather than offered as a styling option. On the shipped reflectron the turn-around is a fifth of the flight and 69% of the film. |
 | `RND-8` | Diffusive regions animate as evolving density fields , never as particles ( | **Met** | Enforced rather than stated: the renderer asks the mode and draws no trajectories when it says no. **And now draws the density instead**, which the prohibition previously left empty. |
 | `RND-9` | ) einzel export vtu Fields, trajectories, or density clouds for ParaView einzel ext test / register Extension authoring loop einzel schema / templates / ... | Not built | No video, so no external encoder to detect. |
 | `RND-10` | Videos carry provenance visibly , as a corner stamp with engine version and model hash, in addition to container metadata. A video is the artifact most ... | Not built | No video. |
@@ -1034,6 +1034,35 @@ in a table.
 | `UPD-12` | einzel verify reports which stored results were produced by a version now known defective. This is the recall mechanism , and it works retrospectively on ... | Not built | Not built. |
 
 ---
+
+10. ~~**`render animation` (RND-7)**~~ — **done, and the requirement enforces itself
+   through the interface.** An animation is asked for through a render spec and there is
+   no `--rate` flag, so there is no command line that produces one without a declared
+   mapping. The rate is stamped on every frame in two readings, written by the renderer
+   rather than offered as a styling option.
+
+   On the shipped reflectron, three phases give 1.000 / 4.400 / 0.995 s of playback: the
+   turn-around is **a fifth of the flight and 69% of the film**, which is precisely what
+   one rate cannot show. Frame times are computed from playback time rather than
+   accumulated, the final frame is forced onto the arrival, and a frame on a boundary
+   announces the incoming rate.
+
+   **A design bug of mine, and the test that missed it.** Handing each frame only the
+   part of the flight drawn so far made every frame choose its page from its own prefix —
+   a camera following the ion, invisible in any single frame. The test written for it
+   **passed with the bug restored**, because it used a *solved* template whose extent
+   comes from its declared domain; moved onto an analytic model it fails at once.
+
+   **And it exposed one that had been shipping.** The scaffolded reflectron drew its
+   turning point at x = 105,080 mm on a 160 mm page, and had since sections were built.
+   An analytic model's extent came from the source and the detector alone, and a
+   reflectron catches the ion where it launched — the same point. No render test covered
+   it because every one of them uses a device template, and every template declares a
+   solve domain.
+
+   Left: **a moving field**. A sequenced instrument switches electrodes between stages
+   and every frame draws the field at t = 0. The phases already name the stages, so the
+   fix is a solve per phase rather than per frame.
 
 ## Open decisions
 
