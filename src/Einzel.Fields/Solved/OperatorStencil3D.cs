@@ -53,9 +53,17 @@ public sealed class OperatorStencil3D
     /// <summary>The grid this operator is over.</summary>
     public Grid3D Grid { get; }
 
-    /// <summary>Arm directions, in the order the coefficients are stored.</summary>
-    public static (int Di, int Dj, int Dk)[] Directions =>
+    private static readonly (int Di, int Dj, int Dk)[] ArmDirections =
         [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)];
+
+    /// <summary>Arm directions, in the order the coefficients are stored.</summary>
+    /// <remarks>
+    /// A span over one stored array rather than a property returning a fresh one. As an
+    /// expression-bodied property with a collection expression this allocated on every
+    /// access, and it is read inside the assembly loop - and it handed callers a mutable
+    /// array they could have written to.
+    /// </remarks>
+    public static ReadOnlySpan<(int Di, int Dj, int Dk)> Directions => ArmDirections;
 
     /// <summary>The coefficient on a node's own value.</summary>
     /// <param name="node">The node index.</param>

@@ -660,6 +660,18 @@ actually caught them were:
   converging at the wrong rate. Only visible because the gains spanned a factor of
   eight; at two gains either reading fits.
 
+- **Conservation is not positivity, and a conservation test passes with positivity
+  broken.** The quadratic B-spline deposit clamps its three-node stencil onto the grid
+  at a boundary; leaving the *offset* unclamped with it makes the middle weight
+  `0.75 - u^2` negative — at the very edge the weights are **1.125, −0.25, 0.125**. They
+  sum to one, so charge is exact and every existing test was satisfied; a positive
+  macroparticle was depositing a negative density, and the gather shares those weights so
+  the self-field was built from it. **The argument that let it through was written down
+  in the commit message**: the weights "sum to exactly one for any offset, which is what
+  lets the index be clamped at a face without losing charge". True, and it settles a
+  different question than the one that mattered. When a property is invoked to license a
+  shortcut, check that it is the property the shortcut needs.
+
 - **A reference method has approximations in it too, and comparing against it at
   default settings compares two of them.** Particle-in-cell was reported as agreeing
   with the direct pairwise sum "to a few per cent". Both numbers were right and the

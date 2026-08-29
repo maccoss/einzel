@@ -338,7 +338,20 @@ public static class CloudInCell
         }
 
         var centre = Math.Clamp((int)Math.Round(x), 1, count - 2);
-        var u = x - centre;
+
+        // Clamped as well as the index, and the two clamps are not the same thing. The
+        // index clamp keeps the three-node stencil on the grid; without this the offset
+        // it implies can then exceed half a cell, and the middle weight 0.75 - u^2 goes
+        // NEGATIVE - at x = 0 the weights are 1.125, -0.25, 0.125. They still sum to
+        // one, so charge is conserved and nothing in a conservation test notices, but a
+        // positive macroparticle depositing a negative density is not a density.
+        //
+        // At the limit the weights are 0.5, 0.5, 0 - the quadratic shape degrading into
+        // the linear one exactly where the third node would have left the grid, which
+        // is the right thing for it to do. What it gives up is stated: within the
+        // outermost half cell the charge is placed as though the particle were on the
+        // half-cell boundary.
+        var u = Math.Clamp(x - centre, -0.5, 0.5);
 
         nodes[0] = centre - 1;
         nodes[1] = centre;
