@@ -426,11 +426,25 @@ public static class SequencedRun
         // nothing saying so.
         var (absorbers, _) = DiffusionRun.Absorb(model, grid, density);
 
+        var mobility = Mobility(model, gas, species);
+
+        // A driven geometry has no static field to step a density through, and the
+        // time-free interface would answer with the RF at this phase's first instant -
+        // a field that exists for no length of time. What a slow ion in a gas feels is
+        // the cycle average, and `Effective` is the same wrapper the wholly diffusive
+        // path uses.
+        //
+        // Stepping through a snapshot is what this did before, which is the FIFTH time
+        // in this project a time-varying quantity reached through a time-free interface
+        // has answered at an arbitrary instant rather than failing.
+        var seen = Instant(field, startedAt);
+        _ = DiffusionRun.Effective(ref seen, species, mobility, gas);
+
         var result = DriftDiffusion.Run(
             density,
-            Instant(field, startedAt),
+            seen,
             gas,
-            Mobility(model, gas, species),
+            mobility,
             species,
             phase.DurationSeconds,
             DiffusionRun.EdgesFor(model, grid),

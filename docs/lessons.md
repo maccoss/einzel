@@ -6,6 +6,46 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## A confinement test on a geometry that cannot confine
+
+Checking that a driven geometry in a diffusive phase gets the *cycle-averaged* field
+rather than a snapshot of the RF needs a geometry where the two differ. The first
+version used two parallel plates driven in phase, released a packet 1.5 mm off axis,
+and asserted the packet ended closer to the axis than it started.
+
+    drive on   1.1939 mm
+    drive off  1.1954 mm
+
+It passed. The threshold was "less than where it began", and 1.1939 is less than
+1.2, so it passed on a **0.1 per cent** difference that has nothing to do with the
+claim.
+
+The physics says why, and says it before the run: **two plates give a nearly uniform
+field between them, and the ponderomotive force goes as the gradient of E squared.**
+No gradient, no well. The test could not have discriminated at any amplitude,
+because the geometry has nothing for the effect to act on.
+
+Four rods, pairs in antiphase - a real quadrupole - gives:
+
+    drive on   0.2341 mm
+    drive off  1.5000 mm
+
+**Two rules.** Before writing a test that an effect is present, check the geometry
+can produce it - the closed form for the effect usually says so in one line. And a
+threshold set just past the starting value is not a measurement: the drive-off
+control is what turns "it moved a bit" into "it moved an order more than nothing
+does", and it should have been there from the start rather than added after the
+first version passed.
+
+### And the control ran the driven case twice
+
+The drive-off run was built by replacing `"value": 300` in the model - after the
+model had been changed to 400 V. The replacement matched nothing, so both runs were
+the driven one and their centroids were identical. **Caught only because the test
+asserted the two differed**, which is the same `Assert.NotEqual` guard this project
+has now needed four times for string surgery in a test. The amplitude is a
+placeholder now, so there is no literal to fall out of step with.
+
 ## A fix written as a list of known modes learns each new mode the hard way
 
 Wiring a third kind of run to the CLI walked straight into two defects this project

@@ -822,15 +822,40 @@ made those lines *absent* for a density was gated on `run.Diffusion is null` and
 sequenced run has that null too. Both are cases of a fix written as a list of known
 modes rather than as the question being asked.
 
+### A driven geometry inside a diffusive phase
+
+A driven structure has no static field to step a density through, and the time-free
+interface answers with the RF at the phase's first instant — a field that exists for
+no length of time. What a slow ion in a gas feels is the cycle average, and the
+sequenced path now uses **the same `Effective` wrapper the wholly diffusive path
+does**, shared rather than written twice.
+
+**This was the fifth occurrence of one defect**, and the first one I introduced
+myself: a time-varying quantity reached through a time-free interface does not fail,
+it answers at an arbitrary instant. Before this it was `einzel solve` reporting the
+DC pattern of a driven geometry, the diffusive mode stepping a density through a
+snapshot, `SuperposedField` becoming a snapshot when a driven member was summed in,
+and the renderer drawing the same instant on every frame.
+
+Measured on a four-rod quadrupole at 2 mbar, packet released 1.5 mm off axis:
+
+| | packet after 60 µs |
+| --- | --- |
+| 400 V drive | **0.2341 mm** |
+| drive off | 1.5000 mm |
+
+**The geometry had to be four rods, and the first version of this test taught that.**
+Two plates give a nearly *uniform* field between them, and the ponderomotive force
+goes as ∇E² — so there was no well, the packet moved 0.1% whether the drive was on
+or off, and the test passed on a threshold of "less than where it began". A
+confinement test on a geometry that cannot confine measures nothing.
+
 ### Not built
 
-**The field is still sampled once per diffusive leg.** `DriftDiffusion.Run` takes
-its coefficients at the start of the leg, so a phase whose field changes *within*
-it is described by the field at its first instant. Each phase is short and the
-field is constant across one by construction — a phase sets parameters, and they
-hold for its duration — so this is right for a sequence and wrong for a driven
-field inside a diffusive phase, which is the case the pondermotive wrapper exists
-for and which is not combined with a sequence yet.
+Nothing outstanding for SEQ-1. The remaining diffusive-mode gap is unrelated to
+sequencing: `IGasFlow` has one implementation beyond an imported field, so a funnel's
+transmission is still computed in a gas that is either standing still or moving all
+in one piece.
 
 ## The density is an output you can look at
 

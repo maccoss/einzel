@@ -115,38 +115,7 @@ public static class DiffusionRun
 
         var warnings = new List<ValidityWarning>(fieldWarnings);
 
-        // A driven structure has no static field to step a density through, and
-        // sampling one at a chosen instant gives the RF at that phase - a field that
-        // exists for no length of time. What a slow ion in a gas experiences is the
-        // cycle average, so the driven field is presented as its effective one.
-        //
-        // This is what the 1e-2 to 10 mbar band needed. Trajectory integration is
-        // outside its validity there and this mode could not see a drive at all, so
-        // an ion funnel or a travelling-wave guide - which is to say the devices
-        // that actually run at those pressures - had no mode that described them.
-        var effective = field as Transport.Diffusion.PonderomotiveField;
-
-        if (field is ITimeVaryingField driven)
-        {
-            var rate = Transport.Diffusion.PonderomotiveField.CollisionRateFromMobility(
-                species.ChargeSi, species.MassSi, mobility.ZeroFieldSi);
-
-            // The momentum-transfer rate goes as the density, since mobility goes as
-            // its reciprocal - so a graded gas grades the damping, and with it the
-            // depth of the pseudopotential well. Passed only where the gas actually
-            // varies, so an ungraded model takes the constant path and is
-            // bit-identical.
-            effective = new Transport.Diffusion.PonderomotiveField(
-                driven,
-                species.ChargeSi,
-                species.MassSi,
-                rate,
-                collisionRateAt: gas.IsGraded
-                    ? point => rate * gas.NumberDensityAt(in point) / gas.NumberDensitySi
-                    : null);
-
-            field = effective;
-        }
+        var effective = Effective(ref field, species, mobility, gas);
 
         // The model's own choice, unless a caller overrode it - which is how a study
         // measuring the two schemes against each other on one document works.
@@ -330,6 +299,69 @@ public static class DiffusionRun
     /// the honest translation - the model said the ions start at a point, and the
     /// cell is as close to a point as the grid can express.
     /// </remarks>
+    /// <summary>
+    /// The field a density is actually stepped through: cycle-averaged where it is driven.
+    /// </summary>
+    /// <param name="field">
+    /// The assembled field, replaced by its effective form when it is driven.
+    /// </param>
+    /// <param name="species">The ion, whose charge and mass set the quiver.</param>
+    /// <param name="mobility">The mobility, which the damping rate comes from.</param>
+    /// <param name="gas">The gas, whose density grades the damping.</param>
+    /// <returns>The ponderomotive field, or null when there is nothing driven.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A driven structure has no static field to step a density through</b>, and
+    /// sampling one at a chosen instant gives the RF at that phase - a field that exists
+    /// for no length of time. What a slow ion in a gas experiences is the cycle average.
+    /// </para>
+    /// <para>
+    /// This is what the 1e-2 to 10 mbar band needed: trajectory integration is outside
+    /// its validity there and the diffusive mode could not see a drive at all, so an ion
+    /// funnel or a travelling-wave guide - the devices that actually run at those
+    /// pressures - had no mode that described them.
+    /// </para>
+    /// <para>
+    /// <b>Shared with the sequenced path rather than written twice.</b> A sequenced run's
+    /// diffusive phase stepped a driven geometry through a snapshot of the RF at the
+    /// phase's first instant, which is the fifth time in this project a time-varying
+    /// quantity reached through a time-free interface has answered at an arbitrary
+    /// instant instead of failing. Two call sites and one wrapper is what stops there
+    /// being a sixth.
+    /// </para>
+    /// </remarks>
+    internal static Transport.Diffusion.PonderomotiveField? Effective(
+        ref Fields.IElectrostaticField field,
+        IonSpecies species,
+        Mobility mobility,
+        BackgroundGas gas)
+    {
+        if (field is not ITimeVaryingField driven)
+        {
+            return field as Transport.Diffusion.PonderomotiveField;
+        }
+
+        var rate = Transport.Diffusion.PonderomotiveField.CollisionRateFromMobility(
+            species.ChargeSi, species.MassSi, mobility.ZeroFieldSi);
+
+        // The momentum-transfer rate goes as the density, since mobility goes as its
+        // reciprocal - so a graded gas grades the damping, and with it the depth of the
+        // pseudopotential well. Passed only where the gas actually varies, so an
+        // ungraded model takes the constant path and is bit-identical.
+        var effective = new Transport.Diffusion.PonderomotiveField(
+            driven,
+            species.ChargeSi,
+            species.MassSi,
+            rate,
+            collisionRateAt: gas.IsGraded
+                ? point => rate * gas.NumberDensityAt(in point) / gas.NumberDensitySi
+                : null);
+
+        field = effective;
+
+        return effective;
+    }
+
     internal static DensityField Seed(CompiledModel model, Grid2D grid, bool cylindrical)
     {
         var density = new DensityField(grid, cylindrical);
