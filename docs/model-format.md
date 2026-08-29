@@ -293,95 +293,83 @@ accurate as `solved2d` with the matching symmetry.
 
 ## Operating an instrument through a sequence
 
-The timeline belongs to the **instrument**, which is §9's own wording: "an
-instrument is a timed state machine: ordered phases with durations, excitation
-overrides, transport mode, and transition conditions".
+The sequencer the architecture calls a timed state machine. A trap fills,
+isolates, then extracts, and what the electrodes hold differs in each:
 
 ```json
 "sequence": [
-  { "name": "trap",    "duration": { "value": 5, "unit": "ms" } },
-  { "name": "extract", "duration": { "value": 20, "unit": "us" },
-    "set": { "pushVolts": { "value": 900, "unit": "V" } } }
+  { "name": "fill",    "duration": { "value": 200, "unit": "us" } },
+  { "name": "isolate", "duration": { "value": 50,  "unit": "us" },
+    "set": { "rfAmplitude": { "value": 300, "unit": "V" } } },
+  { "name": "extract", "duration": { "value": 10,  "unit": "us" },
+    "set": { "rfAmplitude":   { "value": 0, "unit": "V" },
+             "pushPotential": { "value": 1000, "unit": "V" } } }
 ]
 ```
 
-A phase sets **parameters**, not electrode settings — potentials are already
-expressions over parameters, so setting one moves everything written over it,
-including derived parameters. The same override mechanism a sweep uses to
-*perturb* a design is what a sequence uses to *operate* one, so it costs no new
-vocabulary.
+**The timeline belongs to the instrument**, which is §9's own wording: "an
+instrument is a timed state machine: ordered phases with durations, excitation
+overrides, transport mode, and transition conditions". It sits on the model, not
+inside one field element, because a phase holds across the whole thing.
 
-**Every element follows the timeline**, which is the point of it being the
-model's — a solved geometry by re-weighting the channels it has already solved, an
-analytic one by being compiled once per phase and switched. An element whose
-expressions do not depend on any parameter a phase sets stays static, which is a
-distinction rather than an optimisation: wrapping it would hand the integrator
-switch instants to land on for a field that is the same on both sides of them.
+### A phase sets parameters, not electrode settings
 
-It was not always so, twice over. Stages used to be compiled per element, so two
-electrodes in different elements written as the *same expression* over the same
-parameter came out at 900 V and 300 V during a phase. And the first fix reached
-only the solved branch, so an analytic element stayed frozen at baseline while
-the solved ones moved — the same silent wrong answer, in the elements that have no
-stages of their own. See `docs/lessons.md`.
-
-`stages` on a solve remains the older spelling and means the same thing — the
-shipped `sequenced-extraction` example is written in it, and a single-element
-model has no ambiguity to resolve. Two refusals cover the ways a document can
-say two things at once: **two elements each declaring stages** is two timelines
-over one instrument, and **declaring both `sequence` and `stages`** is refused
-rather than merged, the same argument that refuses a geometry declaring both
-`drive` and `drives`.
-
-Two rules are enforced rather than documented. **A phase may change what an
-electrode holds, not where it is** — moving metal changes the mask, so each phase
-would need its own solve and grid, and the field would still be computed and still
-be wrong. And **the last phase holds after the sequence ends**: an instrument left
-alone stays where it was put.
-
-Schema **0.6** carries `sequence`.
-
-## Operating a geometry through stages
-
-The sequencer the architecture calls a timed state machine. A trap fills,
-isolates, then extracts, and the electrode potentials differ in each:
-
-```json
-"solve": {
-  "stages": [
-    { "name": "fill",    "duration": { "value": 200, "unit": "us" } },
-    { "name": "isolate", "duration": { "value": 50,  "unit": "us" },
-      "set": { "rfAmplitude": { "value": 300, "unit": "V" } } },
-    { "name": "extract", "duration": { "value": 10,  "unit": "us" },
-      "set": { "rfAmplitude": { "value": 0, "unit": "V" },
-               "pushPotential": { "value": 1000, "unit": "V" } } }
-  ],
-  ...
-}
-```
-
-**A stage sets parameters, not electrode settings**, and that is the whole design.
-Electrode potentials are already expressions over parameters, so setting one moves
-everything that depends on it at once - including *derived* parameters. Listing
-electrode settings instead would let a stage change an amplitude while leaving the
-quantity it was derived from behind, and the two would disagree silently.
+That is the whole design. Electrode potentials are already expressions over
+parameters, so setting one moves everything that depends on it at once —
+including *derived* parameters. Listing electrode settings instead would let a
+phase change an amplitude while leaving the quantity it was derived from behind,
+and the two would disagree silently.
 
 It also costs no new vocabulary: the same override mechanism a sweep or an
 optimiser uses to *perturb* a design is what a sequence uses to *operate* one.
 
-Anything a stage does not name keeps the value it has outside the sequence, and
-after the last stage ends the last state holds - an instrument left alone stays
+Anything a phase does not name keeps the value it has outside the sequence.
+
+### Every element follows it, and how depends on what it is
+
+A **solved** geometry follows a phase by re-weighting the channels it has already
+solved — the geometry is untouched, so nothing is re-solved. An **analytic**
+element has no channels to re-weight, so it is compiled once per phase and
+switched. An element whose expressions do not depend on any parameter a phase sets
+stays static, which is a distinction rather than an optimisation: wrapping it
+would hand the integrator switch instants to land on for a field that is the same
+on both sides of them.
+
+It was not always so, twice over, and both are in `docs/lessons.md`. Stages used
+to be compiled per element, so two electrodes in different elements written as the
+*same expression* over the same parameter came out at 900 V and 300 V during a
+phase. And the first fix reached only the solved branch, so an analytic element
+stayed frozen at baseline while the solved ones moved.
+
+### The older spelling, and the refusals
+
+`stages` on a solve still works and means the same thing — the shipped
+`sequenced-extraction` example is written in it, and a single-element model has no
+ambiguity to resolve. Two refusals cover the ways a document can say two things at
+once: **two elements each declaring stages** is two timelines over one instrument,
+and **declaring both `sequence` and `stages`** is refused rather than merged, the
+same argument that refuses a geometry declaring both `drive` and `drives`. An
+explicitly empty `"sequence": []` is refused too, since an empty timeline reads
+exactly like no timeline.
+
+### Two rules enforced rather than documented
+
+**A phase may change what an electrode holds, not where it is.** Moving metal
+between phases would change the mask, so each phase would need its own solve and
+its own grid — and the field would still be computed, and it would be wrong in a
+way nothing else catches. Refused, naming the electrode and the phase.
+
+**The last phase holds after the sequence ends.** An instrument left alone stays
 where it was put. A field that switched off at the end of the declared sequence
 would make every ion still in flight suddenly coast, which is a physics change
 disguised as a bookkeeping one.
 
-**A stage may change what an electrode holds, not where it is.** Moving metal
-between stages would change the mask, so each stage would need its own solve and
-its own grid - and the field would still be computed, and it would be wrong in a
-way nothing else catches. It is refused, naming the electrode and the stage.
+A sequence needs no drive: a pulsed extraction is DC that switches, and a model
+with a sequence and no `drive` block is exactly that. `sequenced-uniform` in the
+examples corpus is the smallest one — an ion at rest in nothing until a phase
+switches a uniform field on, arriving at `hold + sqrt(2 d m / (q E))`.
 
-A sequence needs no drive: a pulsed extraction is DC that switches, and a solve
-with stages and no `drive` block is exactly that.
+Schema **0.6** carries `sequence`.
 
 ## Repeating an electrode
 

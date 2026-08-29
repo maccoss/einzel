@@ -872,4 +872,88 @@ public sealed class ModelFormatGuardTests
 
         Assert.False(validation.IsValid);
     }
+
+    private const string PlaneAndVolumeSequenced =
+        """
+          "sequence": [
+            { "name": "hold", "duration": { "value": 100, "unit": "us" } },
+            { "name": "push", "duration": { "value": 10, "unit": "us" },
+              "set": { "volts": { "value": 900, "unit": "V" } } }
+          ],
+          "fields": [{
+            "type": "solved2d",
+            "solve": {
+              "minX": { "value": -5, "unit": "mm" }, "minY": { "value": -5, "unit": "mm" },
+              "maxX": { "value": 5, "unit": "mm" }, "maxY": { "value": 5, "unit": "mm" },
+              "cellSize": { "value": 0.5, "unit": "mm" },
+              "electrodes": [{
+                "name": "plane", "shape": "rectangle",
+                "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 2, "unit": "mm" },
+                "minY": { "value": 1, "unit": "mm" }, "maxY": { "value": 2, "unit": "mm" },
+                "potential": { "expression": "volts", "unit": "V" }
+              }]
+            }
+          }, {
+            "type": "solved3d",
+            "solve3d": {
+              "minX": { "value": -5, "unit": "mm" }, "minY": { "value": -5, "unit": "mm" },
+              "minZ": { "value": -5, "unit": "mm" },
+              "maxX": { "value": 5, "unit": "mm" }, "maxY": { "value": 5, "unit": "mm" },
+              "maxZ": { "value": 5, "unit": "mm" },
+              "cellSize": { "value": 1, "unit": "mm" },
+              "electrodes": [{
+                "name": "volume", "shape": "box",
+                "minX": { "value": -2, "unit": "mm" }, "maxX": { "value": 2, "unit": "mm" },
+                "minY": { "value": 1, "unit": "mm" }, "maxY": { "value": 2, "unit": "mm" },
+                "minZ": { "value": -2, "unit": "mm" }, "maxZ": { "value": 2, "unit": "mm" },
+                "potential": { "expression": "volts", "unit": "V" }
+              }]
+            }
+          }],
+        """;
+
+    /// <summary>
+    /// A volume element follows the instrument's timeline exactly as a plane one does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The 3D arm of the sequencer had no test at all</b> — before the timeline was
+    /// lifted or after — so `CompileStages3D` was exercised only by compiling. It is a
+    /// separate copy of the same shape as the 2D arm rather than shared code, which is
+    /// exactly the arrangement where one arm can be fixed and the other left behind.
+    /// </para>
+    /// <para>
+    /// A sequence is the instrument's, so a model mixing a cross-section and a volume
+    /// must switch both at the same instants and against the same parameter values. That
+    /// is the claim `CompileStages3D`'s own doc comment makes, and this is what checks it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AVolumeElementFollowsTheSameTimelineAsAPlaneOne()
+    {
+        var validation = Validate(PlaneAndVolumeSequenced, OnAxis);
+
+        Assert.True(validation.IsValid, string.Join("; ", validation.Errors.Select(e => e.Constraint)));
+
+        var plane = validation.Model!.Fields[0].Solve!;
+        var volume = validation.Model!.Fields[1].Solve3D!;
+
+        Assert.Equal(2, plane.Stages.Count);
+        Assert.Equal(2, volume.Stages.Count);
+
+        // Both baselines are the same expression over the same parameter, and both
+        // follow the push - the volume element having declared no stages of its own.
+        Assert.Equal(300.0, plane.Electrodes[0].Potential, 1e-9);
+        Assert.Equal(300.0, volume.Electrodes[0].Potential, 1e-9);
+        Assert.Equal(900.0, plane.Stages[1].Electrodes[0].Potential, 1e-9);
+        Assert.Equal(900.0, volume.Stages[1].Electrodes[0].Potential, 1e-9);
+
+        // One timeline means one set of instants.
+        Assert.Equal(plane.Stages[0].DurationSeconds, volume.Stages[0].DurationSeconds, 15);
+        Assert.Equal(plane.Stages[1].DurationSeconds, volume.Stages[1].DurationSeconds, 15);
+
+        // And the phases are named the same, because they are the same phases.
+        Assert.Equal("hold", volume.Stages[0].Name);
+        Assert.Equal("push", volume.Stages[1].Name);
+    }
 }
