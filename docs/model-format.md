@@ -788,3 +788,22 @@ frequency, superposed through `DrivenSuperposedField`, which is how the notch-wi
 measurement in `docs/validation.md` is done. A solved geometry with a supplementary
 uniform excitation would be that superposition, and nothing in the format declares
 one.
+
+### And on a volume geometry
+
+A `solve3d` takes the same two forms. That was one-sided until recently:
+`CompiledSolvedField3D`, `Geometry3D` and the three-dimensional builder all carried a
+list of drives from the start, while the document spelled a single `drive` - so a volume
+geometry could not express what a cross-section already could.
+
+**The validation is shared rather than copied.** Both electrode documents implement one
+`ITappedElectrode` interface and the tap compilation is one function, so the refusals
+above - `drive` with `drives`, `driveAmplitude` with `taps` - arrived in three dimensions
+by *being* the same code. That was chosen against duplication deliberately: a computation
+copied across a seam is how a declared gas came to take part in a run and not in a figure
+of merit.
+
+Measured on a volume geometry: two generators reaching the same electrodes in the same
+proportions collapse to **one** basis solve carrying two weights on two clocks, and two
+distinct spatial patterns give **two**.
+

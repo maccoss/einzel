@@ -61,6 +61,27 @@ public enum ElectrodeShape
 /// <param name="Potential">Potential held there.</param>
 public sealed record ProfilePointDocument(QuantityValue? At, QuantityValue? Potential);
 
+/// <summary>
+/// An electrode that can tap the generators its solve declares.
+/// </summary>
+/// <remarks>
+/// Shared by the two-dimensional and three-dimensional electrode documents so the tap
+/// validation is one implementation rather than two. The alternative was to copy it,
+/// and a computation copied across a seam is exactly how a declared gas came to take
+/// part in a run and not in a figure of merit.
+/// </remarks>
+public interface ITappedElectrode
+{
+    /// <summary>Amplitude on the first declared drive, for the single-generator form.</summary>
+    QuantityValue? DriveAmplitude { get; }
+
+    /// <summary>Phase on the first declared drive, in turns.</summary>
+    QuantityValue? DrivePhase { get; }
+
+    /// <summary>One term per generator this electrode is fed by, or null for the short form.</summary>
+    IReadOnlyList<TapTermDocument>? Taps { get; }
+}
+
 /// <summary>How one electrode is connected to one generator.</summary>
 /// <remarks>
 /// The long form of <c>driveAmplitude</c> and <c>drivePhase</c>, needed when a
@@ -84,7 +105,7 @@ public sealed record TapTermDocument
 }
 
 /// <summary>An electrode, as it appears in a model document.</summary>
-public sealed record ElectrodeDocument
+public sealed record ElectrodeDocument : ITappedElectrode
 {
     /// <summary>A name, used in reporting and as the basis-field label.</summary>
     public string? Name { get; init; }

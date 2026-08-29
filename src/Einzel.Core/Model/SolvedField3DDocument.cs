@@ -43,6 +43,22 @@ public sealed record SolvedField3DDocument
     /// <summary>The RF drive this geometry is operated with, if any.</summary>
     public DriveDocument? Drive { get; init; }
 
+    /// <summary>Every generator this geometry is operated with.</summary>
+    /// <remarks>
+    /// <para>
+    /// The three-dimensional form of what the two-dimensional solve already carried.
+    /// <c>CompiledSolvedField3D</c>, <c>Geometry3D</c> and the builder all held a list
+    /// from the start; only the document spelled a single <c>drive</c>, so a volume
+    /// geometry could not express what a cross-section could.
+    /// </para>
+    /// <para>
+    /// Costs nothing in the solver: basis superposition is indifferent to what the
+    /// weights are functions of, so two generators reaching the same electrodes in the
+    /// same proportions are one solved pattern carrying two weights on two clocks.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<DriveDocument>? Drives { get; init; }
+
     /// <summary>A timed sequence of states it is operated through, if any.</summary>
     public IReadOnlyList<StageDocument>? Stages { get; init; }
 
@@ -51,7 +67,7 @@ public sealed record SolvedField3DDocument
 }
 
 /// <summary>A three-dimensional electrode, as it appears in a model document.</summary>
-public sealed record Electrode3DDocument
+public sealed record Electrode3DDocument : ITappedElectrode
 {
     /// <summary>A name, used in reporting and as the basis-field label.</summary>
     public string? Name { get; init; }
@@ -127,6 +143,18 @@ public sealed record Electrode3DDocument
     /// </para>
     /// </remarks>
     public QuantityValue? DrivePhase { get; init; }
+
+    /// <summary>One term per generator this electrode is fed by.</summary>
+    /// <remarks>
+    /// The long form, for a structure driven by more than one generator - a trap whose
+    /// ring carries the main drive while its endcaps carry a supplementary excitation,
+    /// or a guide superposing a fast confining field on a slow travelling wave. The
+    /// short <c>driveAmplitude</c> and <c>drivePhase</c> above stay for the common
+    /// single-generator case, and declaring both is refused rather than merged: a
+    /// document that says an electrode taps one generator and also three has no default
+    /// to fall back on.
+    /// </remarks>
+    public IReadOnlyList<TapTermDocument>? Taps { get; init; }
 }
 
 /// <summary>A three-dimensional solved field, validated and reduced to SI.</summary>

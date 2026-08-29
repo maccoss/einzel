@@ -750,18 +750,18 @@ public static class ModelValidator
         return true;
     }
 
-    /// <summary>Compiles a three-dimensional solved field element.</summary>
     /// <summary>Compiles one declared 3D electrode into the electrodes it stands for.</summary>
     private static void Expand3D(
         Electrode3DDocument declared,
         string path,
+        IReadOnlyList<CompiledDrive> drives,
         IReadOnlyDictionary<string, Quantity> p,
         List<CompiledElectrode3D> into,
         List<EinzelError> errors)
     {
         if (declared.Repeat is not { } repeat)
         {
-            var single = CompileElectrode3D(declared, path, p, errors);
+            var single = CompileElectrode3D(declared, path, drives, p, errors);
 
             if (single is not null)
             {
@@ -826,6 +826,7 @@ public static class ModelValidator
                     Name = $"{name}-{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                 },
                 $"{path}/repeat/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                drives,
                 scoped,
                 errors);
 
@@ -839,6 +840,7 @@ public static class ModelValidator
     private static CompiledElectrode3D? CompileElectrode3D(
         Electrode3DDocument electrode,
         string path,
+        IReadOnlyList<CompiledDrive> drives,
         IReadOnlyDictionary<string, Quantity> p,
         List<EinzelError> errors)
     {
@@ -847,10 +849,6 @@ public static class ModelValidator
         var name = electrode.Name ?? "electrode";
 
         var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
-
-        var amplitude = electrode.DriveAmplitude is null
-            ? 0.0
-            : TryQuantity(electrode.DriveAmplitude, $"{path}/driveAmplitude", volt, p, errors)?.SiValue ?? 0.0;
 
         if (potential is null)
         {
@@ -862,10 +860,7 @@ public static class ModelValidator
             Name = name,
             Shape = Electrode3DShape.Box,
             Potential = potential.Value.SiValue,
-            Taps = amplitude == 0.0
-                ? []
-                : [new CompiledTap(
-                    0, amplitude, Phase(electrode.DrivePhase, $"{path}/drivePhase", p, errors))],
+            Taps = Taps(electrode, drives, path, p, errors),
         };
 
         switch (electrode.Shape)
@@ -1089,11 +1084,15 @@ public static class ModelValidator
             return null;
         }
 
+        // Before the electrodes, because an electrode's taps name the generators they
+        // are taps on. It read the other way round when a solve could only have one.
+        var drives = Drives(solve.Drive, solve.Drives, path, p, errors);
+
         var electrodes = new List<CompiledElectrode3D>();
 
         for (var i = 0; i < (solve.Electrodes?.Count ?? 0); i++)
         {
-            Expand3D(solve.Electrodes![i], $"{path}/electrodes/{i}", p, electrodes, errors);
+            Expand3D(solve.Electrodes![i], $"{path}/electrodes/{i}", drives, p, electrodes, errors);
         }
 
         if (electrodes.Count == 0 && errors.Count == 0)
@@ -1103,10 +1102,9 @@ public static class ModelValidator
                 "add a box, a sphere or a cylinder"));
         }
 
-        var drive = Drive(solve.Drive, $"{path}/drive", p, errors);
-        var stages = CompileStages3D(solve, $"{path}/stages", electrodes, restage, errors);
+        var stages = CompileStages3D(solve, $"{path}/stages", electrodes, drives, restage, errors);
 
-        if (drive is null && electrodes.Any(e => e.IsDriven))
+        if (drives.Count == 0 && electrodes.Any(e => e.IsDriven))
         {
             var driven = electrodes.First(e => e.IsDriven);
 
@@ -1139,7 +1137,7 @@ public static class ModelValidator
                 MaxZ = maxZ.Value.SiValue,
                 CellSize = cell.Value.SiValue,
                 Tolerance = solve.Tolerance,
-                Drives = drive is null ? [] : [drive],
+                Drives = drives,
                 Stages = stages,
                 Electrodes = electrodes,
             },
@@ -1150,6 +1148,7 @@ public static class ModelValidator
         SolvedField3DDocument solve,
         string path,
         IReadOnlyList<CompiledElectrode3D> baseline,
+        IReadOnlyList<CompiledDrive> drives,
         StageResolver restage,
         List<EinzelError> errors)
     {
@@ -1211,7 +1210,9 @@ public static class ModelValidator
 
             for (var i = 0; i < declaredElectrodes.Count; i++)
             {
-                Expand3D(declaredElectrodes[i], $"{stagePath}/electrodes/{i}", surface, electrodes, errors);
+                Expand3D(
+                    declaredElectrodes[i], $"{stagePath}/electrodes/{i}", drives, surface,
+                    electrodes, errors);
             }
 
             if (!SameGeometry3D(baseline, electrodes, name, stagePath, errors))
@@ -1539,7 +1540,7 @@ public static class ModelValidator
     /// afternoon wondering why the RF is not doing anything.
     /// </remarks>
     private static List<CompiledTap> Taps(
-        ElectrodeDocument electrode,
+        ITappedElectrode electrode,
         IReadOnlyList<CompiledDrive> drives,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
@@ -1652,7 +1653,7 @@ public static class ModelValidator
     /// an afternoon wondering why the RF is not doing anything.
     /// </remarks>
     private static (double Amplitude, double Phase) Tap(
-        ElectrodeDocument electrode,
+        ITappedElectrode electrode,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
         List<EinzelError> errors)

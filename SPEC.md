@@ -1288,8 +1288,20 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    expressible — an imported field gives the neutrals a velocity everywhere and the
    same number of them everywhere; the collision *rate* would need the density at the
    ion's position, which is the same one-argument change already made to the neutral
-   draw. And the **`solved3d` document form still spells one `drive`**, though
-   `CompiledSolvedField3D`, `Geometry3D` and the 3-D builder all carry a list already.
+   draw.
+
+   ~~And the `solved3d` document form still spells one `drive`~~ — **closed.** A
+   `solve3d` now takes `drives` and its electrodes take `taps`, so a volume geometry can
+   express what a cross-section already could. **Shared rather than reimplemented**: both
+   electrode documents implement one `ITappedElectrode` interface and the tap validation
+   is one function, so the refusals for declaring both forms arrived in three dimensions
+   by *being* the same code. That choice was made deliberately on the evidence of the
+   same night's other finding — a computation copied across a seam is how a declared gas
+   came to take part in a run and not in a figure of merit.
+
+   Verified on a volume geometry: two generators reaching the same electrodes in the
+   same proportions collapse to **one** basis solve carrying two weights on two clocks,
+   and two distinct spatial patterns give **two**.
 
 6. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
    transmission-against-resolution curve closes onto the tabulated apex (Phase 3
