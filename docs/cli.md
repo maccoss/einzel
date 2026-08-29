@@ -460,6 +460,37 @@ engine, which is what makes stale guidance *detectable* - guidance written for o
 version sitting in a project driven by another is worse than none, because an
 agent trusts it and cannot see the drift.
 
+## A run that changes transport mode
+
+A model whose phases do not all use one transport description runs through the same
+`einzel run`, and the fork tests that before it tests the model's own mode — a
+model may declare `diffusion` and still have a sequence that leaves it, and the
+sequence is the more specific statement.
+
+```
+packet centre 9.999117 mm
+
+  trap         diffusion   to    20.00 us   200 ions in     - trajectories  x  10.000 mm
+  extract      trajectory  to    25.00 us   200 ions in   200 trajectories  x   9.999 mm  converted
+
+sequence      1 mode conversion(s), 0 ions arrived
+```
+
+Three things in that are deliberate. **There is no flight time**, because the run
+ends when its sequence ends rather than when an ion arrives — absent rather than
+`NaN`, so a missing measurement cannot be mistaken for a failed one. **The dash is
+not a zero**: a diffusive phase has no trajectories at all, which is different from
+having none left. And **`packet centre`, not `final x`**, because there is no single
+ion whose final position it could be.
+
+`--json` carries the same account under `sequence`, with `flightTime` as `null` and
+every conversion warning on it. The manifest records `diffusion -> trajectory`
+rather than one mode, since a manifest that named one would claim to determine a run
+it does not describe.
+
+Exit code 0: a run that finished what it was asked to do is a success, whichever
+descriptions it used on the way.
+
 ## The other surface
 
 `einzel-mcp` is a separate executable, not a verb here, and that is deliberate.

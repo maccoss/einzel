@@ -1642,8 +1642,14 @@ public static class Program
         // a success with a caveat. A diffusive run has no detector to end at - it
         // evolves a density for the declared time and reports where the ions went -
         // so it succeeds by finishing, and what it transmitted is a figure rather
-        // than an outcome.
-        return run.Outcome is "StopConditionMet" or "DensityEvolved"
+        // than an outcome. A sequenced run is the same: it succeeds by completing its
+        // sequence, and where the ions went is in the phase table.
+        //
+        // This list is now three long, and every entry was added after a working run
+        // reported itself as a failure - the diffusive one, then this. A run that
+        // finished what it was asked to do is a success, and the thing to ask is
+        // whether it finished rather than which mode it was in.
+        return run.Outcome is "StopConditionMet" or "DensityEvolved" or "SequenceCompleted"
             ? (int)ExitCode.Success
             : (int)ExitCode.ConvergenceFailure;
     }
@@ -1663,7 +1669,13 @@ public static class Program
         // Absent rather than not-a-number, which is the rule the rest of this
         // surface already follows: a reader cannot tell a missing measurement from
         // a failed one if both print the same way.
-        var trajectory = run.Diffusion is null;
+        // A sequenced run has no single flight time either, and for the same reason a
+        // diffusive one does not: it ends when its sequence ends rather than when an ion
+        // arrives. Printing NaN here is the exact defect already fixed for the diffusive
+        // mode - a reader cannot tell a missing measurement from a failed one when both
+        // print the same way - and the fix was gated on `Diffusion` alone, so a third
+        // kind of run walked straight back into it.
+        var trajectory = run.Diffusion is null && run.Sequence is null;
 
         if (trajectory)
         {
@@ -1694,15 +1706,58 @@ public static class Program
                 $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
         }
 
-        Console.Out.WriteLine(string.Create(
-            invariant,
-            $"steps         {run.AcceptedSteps}, {run.AnalyticDriftDistanceM:F4} m advanced analytically"));
-
-        if (run.FinalPositionMm.Count > 0)
+        if (run.Sequence is null)
         {
             Console.Out.WriteLine(string.Create(
                 invariant,
-                $"final x       {run.FinalPositionMm[0]:F6} mm"));
+                $"steps         {run.AcceptedSteps}, {run.AnalyticDriftDistanceM:F4} m advanced analytically"));
+        }
+
+        if (run.FinalPositionMm.Count > 0)
+        {
+            // A sequenced run has no single ion, so what this is is the packet's centre
+            // - said in the label rather than left for the reader to assume.
+            var what = run.Sequence is null ? "final x      " : "packet centre";
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{what} {run.FinalPositionMm[0]:F6} mm"));
+        }
+
+        if (run.Sequence is { } sequence)
+        {
+            Console.Out.WriteLine();
+
+            foreach (var phase in sequence.Phases)
+            {
+                // The trajectory count and the population are different quantities, and
+                // a conversion re-samples the first while carrying the second - so both
+                // are shown, and a diffusive phase shows a dash rather than a zero,
+                // because it has no trajectories rather than none left.
+                var carried = phase.Trajectories > 0
+                    ? phase.Trajectories.ToString(invariant)
+                    : "-";
+
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"  {phase.Name,-12} {phase.Mode,-11} to {phase.EndsAtUs,8:F2} us  "
+                    + $"{phase.Population,10:G6} ions in {carried,5} trajectories  "
+                    + $"x {phase.CentroidMm[0],8:F3} mm"
+                    + $"{(phase.Converted ? "  converted" : string.Empty)}"));
+            }
+
+            Console.Out.WriteLine();
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"sequence      {sequence.Conversions} mode conversion(s), "
+                + $"{sequence.ArrivedIons:G6} ions arrived"));
+
+            foreach (var loss in sequence.Losses)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant, $"  lost on {loss.Surface}: {loss.Ions:G6} ions"));
+            }
         }
 
         if (run.Ensemble is { } ensemble)

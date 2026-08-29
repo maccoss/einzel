@@ -787,12 +787,42 @@ is the precedent `AxisymmetricField` and `PonderomotiveField` set: the transport
 core carries every validated number here, and refactoring it to add a case beside
 it is how those get quietly lost.
 
-### Not built
+### Through the CLI
 
-**Nothing is wired to the CLI.** `einzel run` still forks on the model's own mode;
-`SequencedRun` is reachable from code and tests only. Per-phase outcomes need to
-reach `--json` and the human printer before this is a capability a model author
-has.
+`einzel run` forks on `ChangesTransportMode` before it forks on the model's own
+mode, because a model may declare `diffusion` and still have a sequence that leaves
+it — the sequence is the more specific statement.
+
+```
+packet centre 9.999117 mm
+
+  trap         diffusion   to    20.00 us   200 ions in     - trajectories  x  10.000 mm
+  extract      trajectory  to    25.00 us   200 ions in   200 trajectories  x   9.999 mm  converted
+
+sequence      1 mode conversion(s), 0 ions arrived
+```
+
+**The dash is not a zero.** A diffusive phase has no trajectories at all, which is a
+different statement from having none left. And `packet centre` rather than
+`final x`, because a sequenced run has no single ion whose final position it could
+be.
+
+`--json` carries a `sequence` block with the same per-phase account, `flightTime`
+as `null` under the finite-double policy, and every conversion warning on it. The
+manifest records **`diffusion -> trajectory`**: one mode would make a manifest claim
+to determine a run it does not describe, and transport mode is a field §14 names
+explicitly.
+
+**Two defects this project had already fixed once, met again.** A successful
+sequenced run exited `ConvergenceFailure`, because the exit logic knew
+`StopConditionMet` and `DensityEvolved` and nothing else — the same list that had
+to learn `DensityEvolved` after a working diffusive run reported itself as a
+failure. And the printer showed `flight time NaN +/- NaN`, because the fix that
+made those lines *absent* for a density was gated on `run.Diffusion is null` and a
+sequenced run has that null too. Both are cases of a fix written as a list of known
+modes rather than as the question being asked.
+
+### Not built
 
 **The field is still sampled once per diffusive leg.** `DriftDiffusion.Run` takes
 its coefficients at the start of the leg, so a phase whose field changes *within*

@@ -6,6 +6,44 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## A fix written as a list of known modes learns each new mode the hard way
+
+Wiring a third kind of run to the CLI walked straight into two defects this project
+had already found and fixed once each.
+
+**The exit code.** A successful sequenced run exited 4, `ConvergenceFailure`. The
+mapping reads:
+
+    run.Outcome is "StopConditionMet" or "DensityEvolved" ? Success : ConvergenceFailure
+
+`DensityEvolved` is in that list because a working *diffusive* run once reported
+itself as a failure - the logic knew only `StopConditionMet`. The fix was to add a
+string, so the next mode added a third.
+
+**The printer.** `flight time NaN +/- NaN`, `energy drift NaN`, `steps 0`. Those
+lines were made *absent* for a diffusive run - a density has no flight time, and a
+reader cannot tell a missing measurement from a failed one when both print the same
+way - and that fix was gated on `run.Diffusion is null`. A sequenced run has that
+null too.
+
+**Both are the same mistake**: the fix was written as a list of the modes known at
+the time rather than as the question actually being asked. "Did this run finish what
+it was asked to do" and "is there a flight time to print" are properties of the
+result; "which mode was it" is a proxy that stops being equivalent the moment a
+third mode exists.
+
+The list is now three long. If a fourth kind of run is added, the thing to change is
+the question rather than the list - and the comment in `Program.cs` now says so,
+because the next person to add a mode will find the list before they find this page.
+
+### And a measurement mistake of my own, in the test for it
+
+The test asserted the conversion warnings appeared in `Stdout`. They appear on
+`Stderr`, because CLI-2 puts results on stdout and diagnostics on stderr. It passed
+my manual check beforehand only because I had run the command with `2>&1` -
+**merging the streams to look at the output destroys the very distinction the
+contract is about.**
+
 ## Four helpers already existed, and writing them again got two of them wrong
 
 `SequencedRun` needed a density grid, a seed, absorbing cells, domain edges and a
