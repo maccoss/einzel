@@ -84,6 +84,56 @@ public readonly record struct Mobility(
         return Math.Max(0.0, ZeroFieldSi * (1.0 + (Alpha * reduced * reduced)));
     }
 
+    /// <summary>The mobility at a field, in a gas denser or thinner than the declared one.</summary>
+    /// <param name="fieldSi">Field magnitude, in volts per metre.</param>
+    /// <param name="numberDensitySi">Gas number density here, in reciprocal cubic metres.</param>
+    /// <param name="referenceNumberDensitySi">
+    /// The density this mobility was declared or derived at.
+    /// </param>
+    /// <returns>The mobility, in square metres per volt-second.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Mobility goes as the reciprocal of density, and nothing here did that
+    /// before.</b> An ion drifts further between collisions in a thinner gas, so
+    /// mu N is the constant - that is what makes <em>reduced</em> mobility the
+    /// quantity tabulated in the literature rather than mobility itself. Reading a
+    /// single declared mobility at every point of a graded gas would put the ion's
+    /// drift at the wrong speed everywhere except where the pressure happens to
+    /// equal the declared one.
+    /// </para>
+    /// <para>
+    /// Two separate density dependences, and they are not the same one. This factor
+    /// is how <em>much</em> gas; the field expansion below is E/N, how hard the ion
+    /// is being pushed <em>between</em> collisions. A graded gas moves both, and a
+    /// version that scaled only the second would leave the drift speed flat across a
+    /// pressure gradient while reporting a changing field dependence - which reads
+    /// as the mobility being handled.
+    /// </para>
+    /// <para>
+    /// Bit-identical to the two-argument form where the two densities are equal:
+    /// the ratio is exactly 1.0 and multiplying by it changes nothing. That is the
+    /// control which says a model with no pressure field is untouched.
+    /// </para>
+    /// </remarks>
+    public double At(double fieldSi, double numberDensitySi, double referenceNumberDensitySi)
+    {
+        if (numberDensitySi <= 0.0 || referenceNumberDensitySi <= 0.0)
+        {
+            return At(fieldSi, numberDensitySi);
+        }
+
+        var scaled = ZeroFieldSi * (referenceNumberDensitySi / numberDensitySi);
+
+        if (Alpha == 0.0)
+        {
+            return scaled;
+        }
+
+        var reduced = fieldSi / (numberDensitySi * Townsend);
+
+        return Math.Max(0.0, scaled * (1.0 + (Alpha * reduced * reduced)));
+    }
+
     /// <summary>
     /// The diffusion coefficient that goes with a mobility, in square metres per second.
     /// </summary>

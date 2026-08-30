@@ -279,15 +279,40 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
     }
 
     [Fact]
-    public void ASandboxedRoundTripMeetsItsBudget()
+    public void ASandboxedRoundTripCostsLittleMoreThanStartingTheInterpreter()
     {
         RequireInterpreter();
 
         // PERF-7 puts a sandboxed round trip under 50 ms, which is what sets the
-        // granularity floor for EXT-4. Reported rather than asserted at 50: process
-        // start dominates it and varies by an order of magnitude between a warm and
-        // a cold machine, so a hard assertion here would be a test of the build
-        // agent. What is asserted is that it is not seconds.
+        // granularity floor for EXT-4.
+        //
+        // WHAT THIS ASSERTS, AND WHY IT IS NOT THE 50.
+        //
+        // The 50 ms is not separable from process start, because on an ordinary machine
+        // it IS process start: measured here, launching the interpreter and doing nothing
+        // costs 45.0, 49.6, 53.9 and 58.2 ms across four runs. The budget straddles that
+        // spread, so asserting it is a coin toss on the interpreter's own start cost -
+        // and on a shared build agent, where a bare launch takes seconds, it is not a
+        // measurement of this platform at all.
+        //
+        // Two earlier versions got this wrong in instructive ways. The first said exactly
+        // the right thing in its comment - "a hard assertion here would be a test of the
+        // build agent" - and then asserted 2,000 ms, which is a guess about the build
+        // agent; it passed and failed on the same commit in two runs minutes apart. The
+        // second gated the budget on the floor being under it, which checks the budget
+        // precisely when the floor leaves no room for anything else - failing by
+        // construction in the only cases it ran.
+        //
+        // So what is asserted is scale-free and is the platform's own property: a round
+        // trip costs little more than starting the interpreter at all. That is EXT-4's
+        // structural claim - the subprocess boundary is the cost, and the marshalling on
+        // top of it is not - and it holds on a fast machine and a slow one alike. Measured
+        // at 1.08x to 1.28x here.
+        //
+        // The absolute number is reported on every run, because PERF-7 is a requirement
+        // and a requirement that nothing measures is one nobody knows the state of. What
+        // the reporting says is which part of it belongs to this platform. See SPEC.md's
+        // amendment on PERF-7.
         var folder = Install(
             "trivial",
             """
@@ -303,20 +328,71 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
                 return {"value": 1.0}
             """);
 
+        // Warmed, so the first call's file-system cache miss is nobody's measurement.
         Run(folder, new JsonObject());
+        Bare();
 
-        var times = new List<double>();
+        var round = Cheapest(() => Run(folder, new JsonObject()).ElapsedMs);
+        var bare = Cheapest(Bare);
+
+        output.WriteLine($"interpreter start alone   {bare,8:F1} ms");
+        output.WriteLine($"sandboxed round trip      {round,8:F1} ms");
+        output.WriteLine($"the platform's share      {round - bare,8:F1} ms  ({round / bare:F2}x)");
+
+        // Cheapest of several, because both are floors: the runtime and the operating
+        // system charge one-off costs to whichever window they fall in, so the minimum
+        // is the statistic that describes the thing rather than the contention around
+        // it. Same reasoning as AllocationDoesNotGrowWithStepCount.
+        Assert.True(
+            round < 3.0 * bare,
+            $"a round trip cost {round:F0} ms against {bare:F0} ms to start the "
+            + $"interpreter at all - {round / bare:F1}x, so the marshalling has become "
+            + "the dominant cost rather than the process boundary");
+
+        output.WriteLine(
+            round < BudgetMs
+                ? $"PERF-7's {BudgetMs} ms budget: met, at {round:F0} ms"
+                : $"PERF-7's {BudgetMs} ms budget: NOT met, at {round:F0} ms - of which "
+                    + $"{bare:F0} ms is starting the interpreter and {round - bare:F0} ms "
+                    + "is this platform. Not asserted, because the budget is not "
+                    + "separable from process start; see SPEC.md's amendment on PERF-7");
+    }
+
+    /// <summary>PERF-7's round-trip budget, in milliseconds.</summary>
+    private const double BudgetMs = 50.0;
+
+    /// <summary>What it costs to start the interpreter and do nothing, in milliseconds.</summary>
+    /// <remarks>
+    /// The same isolation flag the sandbox uses, so the two measurements differ by the
+    /// work rather than by how the process was launched.
+    /// </remarks>
+    private static double Bare()
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        using var process = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo(Interpreter!)
+            {
+                ArgumentList = { "-I", "-c", "pass" },
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            })!;
+
+        process.WaitForExit();
+
+        return started.Elapsed.TotalMilliseconds;
+    }
+
+    /// <summary>The cheapest of five measurements, in milliseconds.</summary>
+    private static double Cheapest(Func<double> measure)
+    {
+        var best = double.MaxValue;
 
         for (var i = 0; i < 5; i++)
         {
-            times.Add(Run(folder, new JsonObject()).ElapsedMs);
+            best = Math.Min(best, measure());
         }
 
-        times.Sort();
-
-        output.WriteLine($"round trip, five calls: {string.Join(", ", times.Select(t => $"{t:F0} ms"))}");
-        output.WriteLine($"median {times[2]:F0} ms against PERF-7's 50 ms budget");
-
-        Assert.True(times[2] < 2000, $"a trivial round trip took {times[2]:F0} ms");
+        return best;
     }
 }

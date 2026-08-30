@@ -76,11 +76,31 @@ public static class RegimeDiagnostics
     {
         ArgumentNullException.ThrowIfNull(gas);
 
-        var rate = gas.CollisionRateSi(species.MassSi, species.ChargeSi, speedSi);
-        var path = gas.MeanFreePathSi(species.MassSi, species.ChargeSi, speedSi);
+        // Where the gas is thickest, when it varies. Every number below is a
+        // statement about whether the description holds, and a description that
+        // fails anywhere in the instrument has failed - so the honest reading is the
+        // shortest mean free path, the smallest Knudsen number and the most
+        // collisions, not the ones at a declared pressure the ion may never see. A
+        // funnel whose entrance is at 10 mbar and whose exit is at 0.1 mbar is in two
+        // different regimes, and reporting the declared value would report a regime
+        // it is in nowhere.
+        //
+        // Substituted only when a field exists, so a uniform gas is this same object
+        // and every existing number is bit-identical. Reconstructing a pressure from
+        // a density and back would not round-trip exactly.
+        var worst = gas.Density is null
+            ? gas
+            : gas with
+            {
+                PressureSi = gas.HighestNumberDensitySi * BackgroundGas.BoltzmannSi * gas.TemperatureK,
+                Density = null,
+            };
+
+        var rate = worst.CollisionRateSi(species.MassSi, species.ChargeSi, speedSi);
+        var path = worst.MeanFreePathSi(species.MassSi, species.ChargeSi, speedSi);
 
         return new RegimeNumbers(
-            PressureMbar: gas.PressureSi / 1e2,
+            PressureMbar: worst.PressureSi / 1e2,
             MeanFreePathM: path,
             ApertureM: apertureM,
             Knudsen: apertureM > 0.0 ? path / apertureM : double.PositiveInfinity,

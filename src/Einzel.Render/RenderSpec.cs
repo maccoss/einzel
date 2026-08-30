@@ -130,6 +130,33 @@ public sealed record RenderSpec
     /// </remarks>
     public double DecimationFraction { get; init; } = 1e-3;
 
+    /// <summary>Dimensions to draw on the figure.</summary>
+    /// <remarks>
+    /// The memo's own figures are line drawings <em>with</em> dimensions, and a section
+    /// without them says what the instrument looks like and not how big any of it is.
+    /// What is declared is the two points a dimension spans; the length is measured when
+    /// the figure is drawn, so it cannot part company with the geometry.
+    /// </remarks>
+    public IReadOnlyList<DimensionDocument>? Dimensions { get; init; }
+
+    /// <summary>The instant to draw a time-varying field at, in seconds.</summary>
+    /// <remarks>
+    /// Ignored by a static field. A driven or sequenced one is a different field at every
+    /// moment, and drawing it without saying which moment is what the time-free interface
+    /// silently does - so the instant is declarable, defaults to the launch, and is
+    /// reported on the figure either way.
+    /// </remarks>
+    public double AtSeconds { get; init; }
+
+    /// <summary>The time mapping, when this spec is for an animation.</summary>
+    /// <remarks>
+    /// Null for a section, which is a single instant and has no timeline. Required for
+    /// an animation, and there is deliberately no command-line way to supply one:
+    /// RND-7 makes the mapping non-optional, so the only way to ask for an animation is
+    /// to have declared how it compresses time.
+    /// </remarks>
+    public AnimationDocument? Animation { get; init; }
+
     /// <summary>The output format.</summary>
     public FigureFormat Format { get; init; } = FigureFormat.Svg;
 

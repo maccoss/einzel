@@ -81,7 +81,10 @@ public static class PreviewCommand
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
 
         var absolute = Path.GetFullPath(modelPath);
-        var validation = ModelValidator.Validate(ModelJson.Parse(File.ReadAllText(absolute)), null);
+        var validation = ModelValidator.Validate(
+            ModelJson.Parse(File.ReadAllText(absolute)),
+            null,
+            Path.GetDirectoryName(absolute));
 
         if (!validation.IsValid)
         {

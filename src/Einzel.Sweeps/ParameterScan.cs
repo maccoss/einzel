@@ -291,14 +291,23 @@ public static class ParameterScan
     /// <exception cref="EinzelException">
     /// The model does not validate, or the axis does not name a free parameter.
     /// </exception>
+    /// <param name="sourceDirectory">
+    /// The directory the model document was read from, which any file it references is
+    /// resolved against. Null when the caller has none, and a model declaring an
+    /// imported gas field is then refused rather than run in a gas it does not
+    /// describe.
+    /// </param>
     public static ScanResult Run(
-        ModelDocument document, ScanAxis axis, Func<CompiledModel, double?> evaluate)
+        ModelDocument document,
+        ScanAxis axis,
+        Func<CompiledModel, double?> evaluate,
+        string? sourceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(axis);
         ArgumentNullException.ThrowIfNull(evaluate);
 
-        var baseline = Compile(document);
+        var baseline = Compile(document, sourceDirectory);
         var parameter = axis.Bind(baseline.Parameters, "/scan");
 
         var warnings = new List<ValidityWarning>();
@@ -350,7 +359,8 @@ public static class ParameterScan
                 [axis.Parameter] = value,
             };
 
-            points.Add(Evaluate(document, overrides, evaluate, index, value.SiValue));
+            points.Add(Evaluate(
+                document, overrides, evaluate, index, value.SiValue, sourceDirectory));
         }
 
         if (points.All(p => p.FigureOfMerit is null))
@@ -371,11 +381,12 @@ public static class ParameterScan
         Dictionary<string, Quantity> overrides,
         Func<CompiledModel, double?> evaluate,
         int index,
-        double valueSi)
+        double valueSi,
+        string? sourceDirectory)
     {
         try
         {
-            var validation = ModelValidator.Validate(document, overrides);
+            var validation = ModelValidator.Validate(document, overrides, sourceDirectory);
 
             if (!validation.IsValid)
             {
@@ -394,9 +405,9 @@ public static class ParameterScan
         }
     }
 
-    private static CompiledModel Compile(ModelDocument document)
+    private static CompiledModel Compile(ModelDocument document, string? sourceDirectory)
     {
-        var validation = ModelValidator.Validate(document, null);
+        var validation = ModelValidator.Validate(document, null, sourceDirectory);
 
         if (!validation.IsValid)
         {

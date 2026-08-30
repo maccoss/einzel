@@ -85,6 +85,107 @@ public sealed class DriftDiffusionTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>The density can be looked at while it is still moving.</summary>
+    /// <remarks>
+    /// <para>
+    /// A run reports the density it <em>ended</em> with. For a model whose ions have all
+    /// arrived that is an empty box - correctly, and uselessly, because the interesting
+    /// picture is the packet in flight. The only way to see one was to shorten
+    /// <c>maximumFlightTime</c> and lose everything after it.
+    /// </para>
+    /// <para>
+    /// Three things are asserted, and the third is the one with teeth. The centroid
+    /// advances at the drift speed <em>between</em> snapshots, which says each is the
+    /// density at its own instant rather than a copy of one; the last snapshot is the
+    /// final density to the last bit, which says nothing is lost between the last
+    /// snapshot and the end; and the whole run is <b>bit-identical</b> to one that took
+    /// no snapshots, which says the recording does not perturb what it records.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheDensityCanBeRecordedWhileItIsStillMoving()
+    {
+        var grid = Grid2D.OverBox(-0.05, -0.02, 0.05, 0.02, 256, 128);
+        var gas = Nitrogen(100.0);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var mobility = Mobility.FromCrossSection(gas, species);
+        var strength = 200.0;
+        var field = UniformField.Create(new Vec3(strength, 0.0, 0.0));
+
+        var seconds = 1e-4;
+        var edges = new DriftDiffusion.DomainEdges(
+            Escape.Reflecting, Escape.Reflecting, Escape.Reflecting, Escape.Reflecting);
+
+        double[] wanted = [0.0, 0.25e-4, 0.5e-4, 0.75e-4, 1e-4];
+
+        var recorded = DriftDiffusion.Run(
+            PointSource(grid, grid.CountX / 4, grid.CountY / 2),
+            field, gas, mobility, species, seconds, edges,
+            snapshotSeconds: wanted);
+
+        Assert.Equal(wanted.Length, recorded.Snapshots.Count);
+
+        var expected = mobility.ZeroFieldSi * strength;
+
+        for (var k = 0; k < recorded.Snapshots.Count; k++)
+        {
+            var snapshot = recorded.Snapshots[k];
+            var (x, _) = snapshot.Density.Centroid();
+
+            output.WriteLine(
+                $"asked {snapshot.RequestedSeconds * 1e6,7:F3} us, taken at "
+                + $"{snapshot.AtSeconds * 1e6,7:F3} us, centroid {x * 1e3,8:F4} mm");
+
+            // Taken at or after what was asked for, and by less than one step.
+            Assert.True(snapshot.AtSeconds >= snapshot.RequestedSeconds);
+            Assert.True(snapshot.AtSeconds - snapshot.RequestedSeconds < recorded.StepSeconds);
+
+            if (k == 0)
+            {
+                continue;
+            }
+
+            var (previous, _) = recorded.Snapshots[k - 1].Density.Centroid();
+            var span = snapshot.AtSeconds - recorded.Snapshots[k - 1].AtSeconds;
+
+            // Each is the density at its own instant: the centroid advances at mu E
+            // between one and the next. A snapshot list of copies of one field would
+            // give zero here.
+            Assert.InRange((x - previous) / span / expected, 0.97, 1.03);
+        }
+
+        // The last one is the end, to the last bit.
+        var final = recorded.Snapshots[^1].Density;
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                Assert.Equal(recorded.Density[i, j], final[i, j]);
+            }
+        }
+
+        // And recording changed nothing. Not "to a tolerance": the snapshots are clones
+        // taken between steps, so the arithmetic of the run is untouched and any
+        // difference at all would mean the recording had entered it.
+        var plain = DriftDiffusion.Run(
+            PointSource(grid, grid.CountX / 4, grid.CountY / 2),
+            field, gas, mobility, species, seconds, edges);
+
+        Assert.Empty(plain.Snapshots);
+        Assert.Equal(plain.Steps, recorded.Steps);
+        Assert.Equal(plain.Collected, recorded.Collected);
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                Assert.Equal(plain.Density[i, j], recorded.Density[i, j]);
+            }
+        }
+    }
+
     [Fact]
     public void APacketDriftsAtTheMobilityTimesTheField()
     {

@@ -65,6 +65,8 @@ public sealed class PonderomotiveField : IElectrostaticField
     private const double DefaultStepM = 1e-6;
 
     private readonly ITimeVaryingField _driven;
+    private readonly double _massSi;
+    private readonly Func<Vec3, double>? _rateAt;
     private readonly double _chargeSi;
     private readonly double _scale;
     private readonly double _step;
@@ -82,6 +84,12 @@ public sealed class PonderomotiveField : IElectrostaticField
     /// How finely the drive cycle is sampled when averaging. Sixteen resolves a
     /// sinusoid to well under a per cent and a rectangular wave to its duty cycle.
     /// </param>
+    /// <param name="collisionRateAt">
+    /// The momentum-transfer rate at a point, or null where the gas is uniform. A
+    /// pressure field grades the damping, because the rate goes as the density; where
+    /// this is null the constant rate above is used everywhere and the arithmetic is
+    /// bit-identical to what it was before a graded gas could be declared.
+    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="driven"/> is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// A non-positive mass or sample count, a negative collision rate, or a drive
@@ -92,7 +100,8 @@ public sealed class PonderomotiveField : IElectrostaticField
         double chargeSi,
         double massSi,
         double collisionRateSi,
-        int samplesPerCycle = 16)
+        int samplesPerCycle = 16,
+        Func<Vec3, double>? collisionRateAt = null)
     {
         ArgumentNullException.ThrowIfNull(driven);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(massSi);
@@ -104,7 +113,9 @@ public sealed class PonderomotiveField : IElectrostaticField
 
         _driven = driven;
         _chargeSi = chargeSi;
+        _massSi = massSi;
         _samples = samplesPerCycle;
+        _rateAt = collisionRateAt;
 
         PeriodSeconds = period;
         AngularFrequencySi = 2.0 * Math.PI / period;
@@ -143,7 +154,69 @@ public sealed class PonderomotiveField : IElectrostaticField
     public double AngularFrequencySi { get; }
 
     /// <summary>Momentum-transfer rate, in inverse seconds.</summary>
+    /// <remarks>
+    /// At the model's declared density. Where a pressure field grades the gas the
+    /// rate varies with it - the momentum-transfer rate goes as the density, since
+    /// mobility goes as its reciprocal - and this is the value at the reference,
+    /// reported so a reader has one number to hold the range against.
+    /// </remarks>
     public double CollisionRateSi { get; }
+
+    /// <summary>Whether the damping varies from place to place.</summary>
+    public bool IsGraded => _rateAt is not null;
+
+    /// <summary>How much collisions weaken the well at a point.</summary>
+    /// <param name="position">Where, in metres.</param>
+    /// <returns>Omega^2 / (Omega^2 + nu(x)^2), between zero and one.</returns>
+    /// <remarks>
+    /// One where the drive is far faster than the collisions and the textbook
+    /// Dehmelt well stands; falling toward zero as the quiver is damped out of
+    /// existence. A graded gas grades this, because the momentum-transfer rate goes
+    /// as the density.
+    /// </remarks>
+    public double SuppressionAt(in Vec3 position)
+    {
+        if (_rateAt is null)
+        {
+            return Suppression;
+        }
+
+        var rate = _rateAt(position);
+        var omega = AngularFrequencySi * AngularFrequencySi;
+
+        return omega / (omega + (rate * rate));
+    }
+
+    /// <summary>
+    /// The coefficient turning a mean-square field into an effective energy, at a point.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A constant where the gas is uniform, and returned as the precomputed one so
+    /// that an ungraded model is bit-identical to what it was.
+    /// </para>
+    /// <para>
+    /// <b>The gradient of this is a real force.</b> Where the damping varies the
+    /// effective well varies with it even at constant field amplitude, and
+    /// differencing the potential picks that up - which is right: an ion in a funnel
+    /// whose gas thins toward the exit sees a well that deepens toward the exit, and
+    /// a version holding the damping at one declared value would report the well as
+    /// flat where it is not. It holds to the same order the cycle average itself
+    /// does, which is that the gas changes little over one quiver amplitude.
+    /// </para>
+    /// </remarks>
+    private double ScaleAt(in Vec3 position)
+    {
+        if (_rateAt is null)
+        {
+            return _scale;
+        }
+
+        var rate = _rateAt(position);
+        var damped = (AngularFrequencySi * AngularFrequencySi) + (rate * rate);
+
+        return _chargeSi * _chargeSi / (2.0 * _massSi * damped);
+    }
 
     /// <summary>
     /// How much collisions weaken the effective well, as
@@ -204,7 +277,7 @@ public sealed class PonderomotiveField : IElectrostaticField
         // always pushes towards weaker field - so the charge divides out in
         // magnitude but not in sign, and dividing by the signed charge here is what
         // makes an anion feel the same well as a cation.
-        return direct + (_scale * meanSquare / _chargeSi);
+        return direct + (ScaleAt(in position) * meanSquare / _chargeSi);
     }
 
     /// <summary>The effective field: minus the gradient of the effective potential.</summary>
@@ -269,12 +342,17 @@ public sealed class PonderomotiveField : IElectrostaticField
         // Amplitude of a linear polarisation carrying this mean square.
         var amplitude = Math.Sqrt(2.0 * meanSquare);
 
-        var damped = Math.Sqrt(
-            (AngularFrequencySi * AngularFrequencySi) + (CollisionRateSi * CollisionRateSi));
+        // The rate here, not the rate at the reference density: the quiver is damped
+        // by the gas the ion is actually in, and rf.quiver-exceeds-mesh is checked
+        // against this. Identical to CollisionRateSi where the gas is uniform, so an
+        // ungraded model is bit-identical.
+        var rate = _rateAt is null ? CollisionRateSi : _rateAt(position);
+
+        var damped = Math.Sqrt((AngularFrequencySi * AngularFrequencySi) + (rate * rate));
 
         // delta = q E0 / (m Omega sqrt(Omega^2 + nu^2)), and q^2/(2 m (...)) is
-        // already in _scale, so q/m is 2 _scale (Omega^2 + nu^2) / q.
-        var chargeToMass = 2.0 * _scale * damped * damped / _chargeSi;
+        // already in the scale, so q/m is 2 scale (Omega^2 + nu^2) / q.
+        var chargeToMass = 2.0 * ScaleAt(in position) * damped * damped / _chargeSi;
 
         return chargeToMass * amplitude / (AngularFrequencySi * damped);
     }

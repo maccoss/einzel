@@ -43,6 +43,62 @@ public static class ExampleModels
             .Where(n => n.StartsWith(Prefix, StringComparison.Ordinal)
                 && n.EndsWith(".json", StringComparison.Ordinal));
 
+    /// <summary>The data files one example needs beside it, by file name.</summary>
+    /// <param name="name">Which example.</param>
+    /// <returns>
+    /// The file names, in a deterministic order (CLI-5). Empty for an example that is
+    /// a document and nothing else, which is most of them.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// An imported gas velocity or pressure field is thousands of numbers, and PRJ-2
+    /// says a model references such a thing rather than embedding it - so an example
+    /// exercising either one needs a file written next to it. Without this the two
+    /// GAS-1 import paths could appear in unit tests and not in the corpus, which is
+    /// to say not in the EX-2 release gate that runs on every change.
+    /// </para>
+    /// <para>
+    /// Named <c>example.something.vti</c> and written under that whole name, so two
+    /// examples cannot collide over a file called <c>pressure.vti</c> and a file
+    /// carried out of the corpus keeps the name its model refers to. The model
+    /// references it by file name alone, resolved against the model document's own
+    /// directory - which is why the name has to survive <c>new --from-example</c>
+    /// renaming the model.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<string> Assets(string name) =>
+    [
+        .. Assembly.GetManifestResourceNames()
+            .Where(n => n.StartsWith(Prefix + name + ".", StringComparison.Ordinal)
+                && n.EndsWith(".vti", StringComparison.Ordinal))
+            .Select(n => n[Prefix.Length..])
+            .Order(StringComparer.Ordinal),
+    ];
+
+    /// <summary>Writes an example's data files into a directory.</summary>
+    /// <param name="name">Which example.</param>
+    /// <param name="directory">Where the model document landed.</param>
+    /// <exception cref="ArgumentException">The name or directory is blank.</exception>
+    /// <remarks>
+    /// Beside the model rather than in a data directory, because the path in the
+    /// document is resolved against the model document's own directory - so a model
+    /// means the same thing wherever the command is run from, and an example stays a
+    /// pair of files a reader can move together.
+    /// </remarks>
+    public static void WriteAssets(string name, string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+
+        foreach (var asset in Assets(name))
+        {
+            using var stream = Assembly.GetManifestResourceStream(Prefix + asset)!;
+            using var file = File.Create(Path.Combine(directory, asset));
+
+            stream.CopyTo(file);
+        }
+    }
+
     /// <summary>The examples that ship, by name, in a deterministic order (CLI-5).</summary>
     public static IReadOnlyList<string> Names =>
     [

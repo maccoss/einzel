@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "0.6",
+  "name": "sequenced-uniform",
+  "description": "An ion held at rest in nothing, then pushed by a uniform field a phase switches on. THE EXPECTED NUMBER IS TWO PIECES OF ARITHMETIC ADDED TOGETHER, and unlike the plate version neither has any geometry error in it: the field is analytic and exactly the declared value, so what is left is the integrator. During the hold the field is exactly zero and an ion launched at rest does not move - it waits, for the declared 2 us. The push phase sets pushField to 20 kV/m, and from rest across a uniform field the traverse is sqrt(2 d m / (q E)) = 3.219358580 us over 20 mm. So the arrival is 5.219358580 us. This is the corpus's only model written with the MODEL-LEVEL SEQUENCE rather than stages on a solve, which is the spelling that says what it means - a timeline belongs to the instrument, not to one electrode assembly. It is also the only one whose timeline moves an ANALYTIC element: a solved geometry follows a phase by re-weighting channels it has already solved, while an analytic one has no channels and is compiled once per phase and switched. TEETH, and the two defects it guards interlock. If an analytic element does not follow the timeline, this model has no phases, so its field is zero at baseline and forever - and it is then REFUSED at validation with 'the accelerating potential may only be zero when a field can accelerate the ion, and this model declares none that can'. Verified by reverting the fix: the example fails, and it fails before the ion is ever launched, which is a better failure than a wrong number. That single refusal covers both the analytic-phase defect and the fifth occurrence of the can-anything-accelerate check reading only one configuration. A third direction, if the sequence were ignored entirely and the push applied from the start: 3.219 us against 5.219. The second element is field-free and carries no expression, so it also pins that an element the timeline does not move is left alone rather than wrapped.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "parameters": {
+    "pushField": {
+      "value": 0.0,
+      "unit": "V/m",
+      "description": "The extraction field. Zero at baseline and for the hold phase, which is what makes this a pulsed extraction rather than a drift: the instrument sits doing nothing until it is told to push."
+    },
+    "gap": {
+      "value": 20.0,
+      "unit": "mm",
+      "description": "How far the ion travels under the push. Appears in the closed form as d."
+    }
+  },
+  "source": {
+    "position": {
+      "value": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.0,
+      "unit": "V"
+    }
+  },
+  "sequence": [
+    {
+      "name": "hold",
+      "duration": {
+        "value": 2.0,
+        "unit": "us"
+      }
+    },
+    {
+      "name": "push",
+      "duration": {
+        "value": 50.0,
+        "unit": "us"
+      },
+      "set": {
+        "pushField": {
+          "value": 20000.0,
+          "unit": "V/m"
+        }
+      }
+    }
+  ],
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "expression": [
+          "pushField",
+          "0",
+          "0"
+        ]
+      }
+    },
+    {
+      "type": "fieldFree"
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "gap",
+        "0",
+        "0"
+      ]
+    },
+    "normal": {
+      "value": [
+        -1.0,
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": {
+      "value": 100.0,
+      "unit": "us"
+    }
+  }
+}

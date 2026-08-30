@@ -11,6 +11,11 @@
        nothing else - a registry edited alongside is a registry that goes stale. -->
   <ItemGroup>
     <EmbeddedResource Include="Examples\**\*.json" />
+    <!-- An example may need a data file beside it - an imported gas field is
+         thousands of numbers and PRJ-2 says reference it rather than embed it in
+         the document. Without this the two GAS-1 import paths could not appear in
+         the corpus at all, and so could not be covered by the EX-2 release gate. -->
+    <EmbeddedResource Include="Examples\**\*.vti" />
   </ItemGroup>
 
   <ItemGroup>

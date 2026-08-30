@@ -6,6 +6,275 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## Narrowing a guard means asking what every caller will then be told
+
+`SessionJournal` refused any edit that did not validate. Section 16's live
+validation required narrowing that to refusing only what does not *parse*, which was
+right - and I checked the window, saw it showed validity through its own refresh, and
+stopped.
+
+The MCP path had no equivalent. `model_edit` went from **refusing** an invalid edit
+loudly to **accepting** it and returning sequence, author, description and journal
+with nothing saying the model no longer validated. An agent tuning a parameter past
+its bound now got the same response shape as a good edit.
+
+Strictly worse than before the change, and produced by a change that was correct in
+its own terms. The guard had been doing two jobs - preventing an invalid state, and
+*telling the caller* about one - and only the first was the thing being removed.
+
+**The rule: when a guard is narrowed, enumerate its callers and ask what each will be
+told afterwards.** A guard that refuses is also, incidentally, a guard that informs;
+remove the refusal and the information goes with it unless something replaces it.
+
+This is the sixth time evidence about a computation's own quality has been dropped at
+a seam here - after `FieldAssembly.Build` discarding its `SolveReport`, the sweep
+evaluator discarding warnings, `CollisionSampler`'s `BoundExceeded` and
+`SampledOutsideFlow`, `SampledOutsideDensity` declared and never read, and
+`DriveAmplitude` becoming a summary. The others were all *omissions*. This one was a
+**removal**, which is why the existing habit - "make the shortest spelling the safe
+one" - did not catch it: the shortest spelling was already safe, and I made it
+shorter.
+
+**A green suite is what let it through.** Nothing failed, because nothing had ever
+asserted what an MCP client is told about an edit's validity - there was no such
+thing to assert until the guard moved. The test that exists now would have failed the
+moment the guard changed.
+
+## A validity check stricter than anything the spec asked for
+
+`SessionJournal` refused any edit that did not validate. The argument was written down
+at the time and reads well: in a shared session an unrunnable model is not one
+party's problem, because the other party's next action is against whatever is on
+disk.
+
+Section 16 contradicted it. **Live validation needs an invalid state to be
+reachable.** A person typing 500 into a parameter bounded at 50 has to see the tree
+standing with the complaint against it - being *prevented from typing* makes the
+editor most useless at the moment it is most needed. And refusing every invalid
+document forbids any edit **sequence** that passes through one: widening a bound and
+then setting a value beyond the old bound works in one order and is refused in the
+other, for no reason a person could infer from anything.
+
+The platform's own rule settles it, and it was already written down four times over:
+**taint, never block.** A preview result, a decimated figure, a defective engine
+version, a coarse boundary search - all keep working and carry a non-suppressible
+mark. The platform never stops you working; it refuses to let a result look cleaner
+than it is.
+
+`Check` now refuses only a document that does not **parse** - there is nothing there
+to be wrong, the next party cannot read it, and no edit through the journal could
+have produced it. Validity is reported through `SessionJournal.Validate()` instead.
+
+**The general shape**: this was a guard invented while building one feature, justified
+by a real argument, that turned out to be stricter than any requirement. It cost
+nothing until a later requirement needed the state it forbade - and then it was found
+by a *test failing for the right reason*, which is the cheap way to find one.
+Guards written from first principles rather than from a requirement are worth
+re-reading when a new requirement arrives, because the argument that justified them
+is usually still true and still outweighed.
+
+## A confinement test on a geometry that cannot confine
+
+Checking that a driven geometry in a diffusive phase gets the *cycle-averaged* field
+rather than a snapshot of the RF needs a geometry where the two differ. The first
+version used two parallel plates driven in phase, released a packet 1.5 mm off axis,
+and asserted the packet ended closer to the axis than it started.
+
+    drive on   1.1939 mm
+    drive off  1.1954 mm
+
+It passed. The threshold was "less than where it began", and 1.1939 is less than
+1.2, so it passed on a **0.1 per cent** difference that has nothing to do with the
+claim.
+
+The physics says why, and says it before the run: **two plates give a nearly uniform
+field between them, and the ponderomotive force goes as the gradient of E squared.**
+No gradient, no well. The test could not have discriminated at any amplitude,
+because the geometry has nothing for the effect to act on.
+
+Four rods, pairs in antiphase - a real quadrupole - gives:
+
+    drive on   0.2341 mm
+    drive off  1.5000 mm
+
+**Two rules.** Before writing a test that an effect is present, check the geometry
+can produce it - the closed form for the effect usually says so in one line. And a
+threshold set just past the starting value is not a measurement: the drive-off
+control is what turns "it moved a bit" into "it moved an order more than nothing
+does", and it should have been there from the start rather than added after the
+first version passed.
+
+### And the control ran the driven case twice
+
+The drive-off run was built by replacing `"value": 300` in the model - after the
+model had been changed to 400 V. The replacement matched nothing, so both runs were
+the driven one and their centroids were identical. **Caught only because the test
+asserted the two differed**, which is the same `Assert.NotEqual` guard this project
+has now needed four times for string surgery in a test. The amplitude is a
+placeholder now, so there is no literal to fall out of step with.
+
+## A fix written as a list of known modes learns each new mode the hard way
+
+Wiring a third kind of run to the CLI walked straight into two defects this project
+had already found and fixed once each.
+
+**The exit code.** A successful sequenced run exited 4, `ConvergenceFailure`. The
+mapping reads:
+
+    run.Outcome is "StopConditionMet" or "DensityEvolved" ? Success : ConvergenceFailure
+
+`DensityEvolved` is in that list because a working *diffusive* run once reported
+itself as a failure - the logic knew only `StopConditionMet`. The fix was to add a
+string, so the next mode added a third.
+
+**The printer.** `flight time NaN +/- NaN`, `energy drift NaN`, `steps 0`. Those
+lines were made *absent* for a diffusive run - a density has no flight time, and a
+reader cannot tell a missing measurement from a failed one when both print the same
+way - and that fix was gated on `run.Diffusion is null`. A sequenced run has that
+null too.
+
+**Both are the same mistake**: the fix was written as a list of the modes known at
+the time rather than as the question actually being asked. "Did this run finish what
+it was asked to do" and "is there a flight time to print" are properties of the
+result; "which mode was it" is a proxy that stops being equivalent the moment a
+third mode exists.
+
+The list is now three long. If a fourth kind of run is added, the thing to change is
+the question rather than the list - and the comment in `Program.cs` now says so,
+because the next person to add a mode will find the list before they find this page.
+
+### And a measurement mistake of my own, in the test for it
+
+The test asserted the conversion warnings appeared in `Stdout`. They appear on
+`Stderr`, because CLI-2 puts results on stdout and diagnostics on stderr. It passed
+my manual check beforehand only because I had run the command with `2>&1` -
+**merging the streams to look at the output destroys the very distinction the
+contract is about.**
+
+## Four helpers already existed, and writing them again got two of them wrong
+
+`SequencedRun` needed a density grid, a seed, absorbing cells, domain edges and a
+mobility. `DiffusionRun` had all five. I wrote four of them again, and two came out
+different:
+
+- the grid, built with `new Grid2D(...)` where `GridFor` uses `Grid2D.OverBox`,
+  which **rounds each axis up to a power of two** - so one model got two different
+  grids depending on which path ran it;
+- the mobility, which ignored `Derived` - so a mobility the document derived from a
+  cross section came back as the *stored* zero-field value rather than the one
+  re-derived against the gas actually resolved for the run.
+
+A third was not wrong so much as absent: the diffusive leg passed **no absorbers**,
+so electrodes did not absorb during a diffusive phase. That is precisely the defect
+that once made every diffusive transmission an upper bound with nothing saying so,
+reintroduced locally a year later by someone writing the call from memory.
+
+None of the three would have failed a test of the new code. Each produces a
+plausible answer that simply differs from what `einzel run` gives for the same
+model - which is the same shape as `run` and `test` disagreeing by 1.3e-10 in energy
+drift, and has the same fix: **collapse to one implementation.**
+
+**What makes this worth writing down is how it was found**, which was not by a
+failing test. It was by asking what the CLI would have to report and noticing the
+answer would have to come from somewhere - and the somewhere already existed. A
+duplicate is invisible from inside the code that contains it.
+
+## A stage moved a global parameter and only its own element followed
+
+The sequencer's documented rationale is that a stage sets a *parameter* rather than
+electrode settings, because "potentials are already expressions over parameters, so
+setting one moves everything that depends on it at once - including the derived
+parameters". That is the argument for the whole design, and across elements it is
+false.
+
+`CompileStages` re-resolves the **whole model parameter surface** with the stage's
+overrides, and then re-expands **only that solve's** electrodes against it. So a
+model with two elements, an electrode in each written as the same expression
+`"potential": "volts"`, and stages on the first:
+
+    A base potential: 300      B base potential: 300
+    A during push:    900      B during push:    300
+
+Two electrodes with identical expressions holding different voltages, on a model
+that **validated cleanly**, with no diagnostic anywhere.
+
+Found while scoping SEQ-1, not by a failing test - the question was where a
+transport mode could live, and the answer turned out to be that the timeline is
+already in the wrong place. **A mode is a property of the run, not of one electrode
+assembly**, so a per-element stage cannot carry one: two elements would name
+different modes for the same instant, and there is no superposition of transport
+modes the way there is of fields.
+
+**Refused first, then fixed.** The refusal - a sequenced model may have one field
+element - was the honest state while the two coherent readings were open. The
+right one is the documented one: the timeline is the instrument's, and every
+element recompiles against each phase.
+
+`Timeline` now resolves the phases **once for the model**, before any element is
+compiled, and hands the same parameter surfaces to all of them. That also fixes a
+second thing the per-element version got wrong: a malformed stage used to be
+reported once per field element, turning one typo into a wall of identical
+complaints.
+
+### And the first fix reached only half the elements
+
+A code review of that change found the same defect still live one layer along.
+`CompileField`'s analytic branches - `fieldFree`, `uniform`, `halfSpaceUniform` -
+compile from the base parameter surface and never looked at the timeline at all,
+because a `CompiledField` for those kinds has nowhere to put a phase. So a model
+whose sequence set a parameter used by a `halfSpaceUniform` cap potential had the
+solved elements follow and the analytic one frozen at baseline, validating
+cleanly. A model whose *only* elements are analytic compiled a full timeline that
+nothing consumed - the sequence was a silent no-op.
+
+**The comment that hid it is the part worth keeping.** `Restage` was a closure
+"because only the solve branch needs it, and threading the declared parameters
+through every field kind to reach it would put the sequencer in the signature of
+things that have nothing to do with it". That argument reads as sound and is
+exactly backwards: the analytic kinds have everything to do with the sequencer,
+because a phase gives them different numbers. A rationale written for one version
+of the code kept the next version from noticing what it had missed.
+
+Fixed with `SequencedField`, a generic switch, rather than a per-phase branch
+inside each analytic field. A special case layered on shared infrastructure is
+the shape a fix takes when it is not deep enough, and there would be one more of
+them every time a field kind is added.
+
+Two refusals remain, and both are about a document saying two things at once. Two
+elements each declaring stages is two timelines over one instrument. And declaring
+both the model's `sequence` and an element's `stages` is refused rather than
+merged - the same argument that refuses a geometry declaring both `drive` and
+`drives`.
+
+**Latent is not the same as harmless.** No shipped model had two field elements,
+so nothing existing was wrong - but a two-element sequenced model is a perfectly
+ordinary thing to write, and the wrong answer it gave was a plausible one.
+
+## A harness that lies in the direction of "the thing under test is broken"
+
+The MCP server, driven by hand - a file of JSON-RPC piped into it - produced
+**nothing at all** on stdout. Not a malformed reply, not an error: silence. That
+reads unambiguously as a server that does not work, and the next half hour went
+into the server.
+
+With a logger attached the SDK said both requests were handled and both responses
+were sent. What happens is that a file on stdin hits EOF immediately, the transport
+tears down, and the outbound writes are dropped on the way out. A real client holds
+stdin open for the life of the session and never sees it. The harness was the
+artefact.
+
+**When a harness and the thing under test disagree, establish which one is the
+artefact before changing either.** The trap here is that the harness was simpler,
+and a simpler thing is easy to assume is the trustworthy one - but simpler meant it
+was missing the one property (a stdin that stays open) the thing under test depends
+on. What settled it in a minute was asking the SDK to narrate, rather than reasoning
+about which side was wrong.
+
+A second, smaller one from the same afternoon: `Environment.ProcessPath` under
+`dotnet test` is the **test host**, which is itself an apphost, so passing it a dll
+to run fails with "Failed to run as a self-contained app". Launch the apphost the
+build already produces.
+
 ## The measurement that measured the wrong thing
 
 The first comparison of bicubic against bilinear interpolation used a **solved**
@@ -351,6 +620,27 @@ quality, the type that returns it may not have a shape that makes discarding the
 evidence the shortest spelling.** `.Field` was one character shorter than handling
 the report, and that was the whole mechanism.
 
+**It has now happened four times, and the fourth is the one worth reading.** After
+`FieldAssembly.Build` dropping its `SolveReport`, the sweep evaluator dropping its
+warnings, and `CollisionSampler.BoundExceeded` / `SampledOutsideFlow` being computed
+and consumed by nobody — a pressure field was added, `SampledOutsideDensity` was added
+beside its sibling on the sampler, and on the first draft it was **dropped in exactly
+the same place as the two above it, in a file whose comment already said this was the
+third time.**
+
+Reading the comment is not the same as being protected by it. The property was
+declared, set, and never read; the code compiled, every test passed, and a run that
+extrapolated its gas density past the imported box said nothing about it. What fixed it
+was not vigilance but a question asked deliberately after the fact — *grep for every
+new public member and check something reads it* — and then a test that drives the
+warning end to end through the CLI, because the wiring is what keeps breaking rather
+than the computation.
+
+So the rule needs a second half. The first is that discarding evidence must not be the
+shortest spelling. The second: **adding a quantity to a type that already reports
+several is not the same as reporting it**, and the existing reporting code is exactly
+where the eye slides past.
+
 A companion, found in the same review: `SolveOutcome.Converged` was
 `Elements.All(e => e.Converged)`, which is `true` for an empty list. `einzel solve`
 read only the two-dimensional element, skipped every three-dimensional one, and
@@ -582,6 +872,267 @@ not be the one that silently drops a part.** `IsDriven` exists on both electrode
 records precisely so the complete question has a short name. It is worth grepping
 for `.Potential` the next time something driven behaves as though it were earthed.
 
+## The refinement ladder tightened a floor into meaninglessness
+
+A pulsed-extraction model - two plates at zero for a 2 us hold, then plus and minus
+500 V - gave `StepSizeUnderflow` at exactly the switch after 63 accepted steps. A fixed
+count, invariant under tolerance, cell size, flight time and the ion's speed, which is
+the signature of a step being *rejected* at every size rather than a controller
+converging.
+
+`FlightTimeStudy` refined by scaling the relative tolerance **and both absolute floors**
+by the same factor. At its deepest rung `AbsoluteVelocityTolerance` reached **1e-11 m/s** -
+ten picometres per second, against thermal speeds of hundreds of metres. For an ion
+starting from rest the normalised velocity error is then unsatisfiable at any step size.
+
+Isolated by tightening each of the three alone: the relative tolerance and the position
+floor both cross the switch; the velocity floor alone reproduces it. And that floor is
+load-bearing - it is what stops `ErrorNorm` being a position-error controller, which
+section 11's own findings turn on.
+
+**A floor states what is negligible, and what is negligible does not change because a
+more accurate answer was asked for.** The ladder now refines the relative tolerance and
+the position floor, and holds the velocity floor.
+
+### What the fix cost, and what that revealed
+
+The reflectron's flight time is **bit-identical** either way. Its interval narrows
+seventeenfold - 1.48e-10 us against 2.58e-09 - because it becomes a measured residual
+instead of a saturated floor.
+
+But it broke `AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact`, and the
+reason is the part worth keeping: **that model's bit-exact agreement between its two
+finest rungs depended on the ladder over-tightening the very floor at issue.** The test
+had been asserting a coincidence - and asserting it carefully, with the premise checked
+rather than assumed, which is the only reason the breakage was legible rather than
+mysterious.
+
+Nothing reachable through the study's own API reproduces the collapse: a refinement ratio
+of 1.001 still diverges at 1.7e-12, and loosened floors make the rungs differ *more*
+rather than less. **A rule that can only be exercised by a coincidence is a rule with no
+test**, so the rule was given a name - `FlightTimeStudy.ConvergenceResidual` - and is now
+tested directly on hand-built runs that agree to the bit. That is a better test than the
+one it replaces: it states the rule instead of hoping a model will demonstrate it.
+
+### Four eliminations, and a control that was not one
+
+Recorded because each cost time. **Not the ion's speed** - at 1e-6, 1e-3 and 1 V it failed
+identically. **Not the turning-point cap**, off for a time-varying field. **Not the switch
+or the stopping surface** - `SwitchCrossingTests` crosses the same shape in 123 steps.
+**Not the facing pair**, which crosses in 112. **Not `FieldAssembly`** - a single
+integration through it passes at every tolerance from 1e-8 to 1e-14.
+
+And the one to remember: a run with both stages energised completed, and that looked like
+a control isolating "a change at the switch". It was not - with the field on from the
+start the ion reached the detector at 0.879 us and **never got to the switch**. *A control
+has to reach the thing being controlled for*, and checking that the successful run
+exercised the mechanism would have taken one glance at its flight time.
+
+## Reading the DC of an electrode that holds none, a fourth time
+
+`ModelValidator.CanDoWork` decides whether a source may start at rest by asking whether
+anything in the model can accelerate an ion. It asked whether any electrode held a
+non-zero potential or a drive.
+
+**A pulsed-extraction trap holds neither until its second stage.** So the archetypal
+start-at-rest device - the one §12's turn-around time is defined for, and the one CLAUDE.md
+already cites as the reason a source may start at rest at all - was refused on the grounds
+that nothing could move its ion.
+
+This is the fourth appearance of the same pattern, and the third in this one function:
+
+1. `einzel solve` reported the DC pattern for every driven 2-D geometry.
+2. `CanDoWork` asked only about DC, so the Paul trap was refused.
+3. `CanDoWork`'s three-dimensional arm inspected nothing at all and passed by default.
+4. `CanDoWork` reads the base potentials and not the **stages**.
+
+The repository's own advice was already written down - *"grep for `.Potential` the next
+time something driven behaves as though it were earthed"* - and it is not enough, because
+the fourth case is not about the drive at all. The wider statement: **a check that asks
+what an instrument is doing must ask over every configuration the instrument has**, and a
+sequenced one has as many configurations as it has stages.
+
+The control matters as much as the fix. Widening a check until it accepts the case in
+front of you is easy and useless; what says the widening was correct is that a sequence
+which never energises anything is *still* refused.
+
+## A stage set to an expression was read as zero
+
+`CompileStages` built its override dictionary with `Quantity.From(value.Value, value.Unit)`
+and never looked at `value.Expression`. `QuantityValue.Value` defaults to zero, so a stage
+declaring `{"expression": "extractionVolts", "unit": "V"}` applied **nothing**.
+
+The model validated. The field solved. The run reported an ion that never moved. There
+was no diagnostic anywhere, because from the engine's point of view the author had asked
+for zero volts - and zero volts is a perfectly ordinary thing for a stage to apply, since
+that is exactly what the *first* stage of an extraction does.
+
+Now refused, rather than supported, because what an expression should mean here is a
+design question: the parameter surface it would evaluate against is the one the stage is
+in the middle of changing. Refusing is the answer that does not require settling it.
+
+Same family as an unrecognised property being ignored rather than refused, and the same
+consequence: **a document that means something other than what it says, with nothing
+anywhere to say so.**
+
+## The mutation passed four tests and failed two, and the four were the interesting ones
+
+A gas whose density varies from place to place needed the collision rate read at the
+ion rather than off the declared pressure. Six tests were written for it, all passing.
+Then the check that matters: **restore the bug and see which fail.**
+
+Making `BackgroundGas.NumberDensityAt` ignore the field and return the declared scalar
+failed only *two* of the six — and neither was the headline test, the one asserting
+that a field at twice the declared pressure gives a bit-identical trajectory to
+declaring twice the pressure.
+
+The reason is worth keeping. That test used the Langevin model, whose rate does not
+contain the relative speed — so in a **uniform** gas every scheduled event is real and
+there is no thinning step at all. The branch is short-circuited on `IsGraded`, which is
+correct and deliberate (a thinning that always accepts would still consume a random
+draw and move every seeded result in the engine). A *flat* imported field is uniform.
+So the test never reached the mutated line. It was a real test of the scheduled rate
+and the null-collision bound, and no test whatever of the local read.
+
+The second weak one was subtler. A ramp from n to 4n across the box was asserted to
+collide *more than* the uniform thin gas — which sounds discriminating and is not. With
+the density read at the wrong place the effective rate collapses back to roughly the
+thin one, the count lands **close to** that end of the bracket, and a bare "more than"
+survives on noise.
+
+Both were fixed by making the test contain the thing it claims to test:
+
+- The equivalence test runs under **both** collision models, and hard spheres read the
+  local density unconditionally.
+- The ramp test **reverses itself**. The same densities over the same box arranged the
+  other way round is a configuration that *any* position-blind reading gives an
+  identical count for. 11,458 against 19,700.
+
+**A test passes a mutation when the path it exercises does not contain the mutated
+line.** That is not a weak test in general — it may be an excellent test of something
+else — but it is not evidence about the mutation, and counting it as corroboration is
+how a suite comes to have a hole exactly where its author thought it was strongest. So
+run the mutation, read *which* tests failed, and treat every test that did not as
+untested rather than as confirmation.
+
+The corollary is about brackets. An assertion of the form "between A and B" is only as
+good as the distance from the true value to whichever end the bug moves it to. When a
+bug's effect is to collapse a quantity onto one end of its own bracket, the bracket
+cannot see it — and a *symmetry* the bug destroys (here, reversal) can.
+
+## A time-varying quantity read through a time-free interface, four times
+
+`ITimeVaryingField` extends `IElectrostaticField`. That is the right relationship - a
+driven field *is* a field - and it has one consequence that has now cost four separate
+defects: **a caller holding the base interface gets an answer, at t = 0, without
+anything failing.**
+
+1. `einzel solve` built its mask from the electrodes' DC potentials. For the shipped
+   RF quadrupole, whose electrodes hold zero DC and all their potential as drive, that
+   was a solve of a grounded box reported as `converged: true`, exit 0.
+2. The diffusive mode accepted a driven geometry and stepped a density through the RF at
+   the top of its cycle - a static field that exists for no length of time - and reported
+   a transit distribution with no warning anywhere.
+3. `SuperposedField` implements only `IElectrostaticField`, so **a driven element summed
+   with anything else silently became a snapshot**. Fixed structurally: `FieldAssembly`
+   picks a driven superposition when any member is driven, so the composition is chosen
+   by what it contains rather than by what the caller asks for.
+4. The renderer drew equipotentials through `PotentialAt(point)`, so every frame of an
+   animation showed the same instant. The picture was plausible - at t = 0 a sinusoid is
+   at its peak, so it was the field at full amplitude - which is why nobody looked.
+
+None of these threw. Each produced a field that is *a* field the instrument has, at
+*an* instant, and nothing on the output said which.
+
+The structural fix is the one made in (3): choose the implementation by what the thing
+contains, not by what the caller asks for. Where that is not available, the fix is to
+make the instant an argument rather than a default - which is what (4) did, and it
+brought a warning with it, because a section of a driven structure is a frame of a film
+whether or not it is drawn as one.
+
+**The thing to grep for is a call to the base interface on a value that might be
+driven.** It will not be a compile error and it will not be a wrong-looking number.
+
+## The test used a solved model, and the bug was in the analytic branch
+
+Three times in one night a test passed with its bug restored, each for the same reason
+in different clothes. The third is the cleanest.
+
+An animation frame was choosing its page from the part of the flight drawn so far, so
+the scale changed frame to frame and the ion sat pinned to the edge of a box that grew
+to meet it. The test written to pin the fix asserted the obvious thing - every frame has
+the same page - and it passed with the fix reverted.
+
+The model it used was the einzel lens. A **solved** geometry declares its domain, and
+the extent comes from that domain; the flight cannot change the page at all. So the test
+was a perfectly good test of something, and no test whatever of the thing it was named
+for. Rewritten against an analytic reflectron - no declared domain, extent taken from
+the flight - it fails immediately.
+
+The generalisation is worth more than the instance. **Where a function has branches
+chosen by the shape of its input, a test fixture chooses a branch.** A fixture picked for
+being convenient and realistic will pick the *common* branch, and the bug will be in the
+other one - because the common branch is the one that gets exercised by everything else
+and has already had its bugs shaken out.
+
+That is exactly why the reflectron's own extent had been wrong since sections were built:
+**every render test uses a device template, and every device template declares a solve
+domain.** The analytic branch had no coverage at all, and the first thing a new user
+renders goes through it.
+
+## A guard written four times, silent about the fifth thing
+
+Resolving a declared gas field needs the model document's own directory, which a study
+or a figure of merit reaching the transport does not have. The rule was right and had
+been reasoned about carefully: refuse, rather than run in a gas the document does not
+describe, because a run that quietly uses a still uniform gas succeeds and answers about
+a different instrument.
+
+It was implemented as a guard at each of **four call sites**, and each named
+`velocityField` — because that was the only importable quantity when they were written.
+Adding a pressure field meant every one of them was now silent about half of what it
+was guarding.
+
+The fix was to move the check to the function that *cannot* read a file:
+`BackgroundGas.FromModel` refuses an unresolved field itself, and
+`WithoutImportedFields` is the deliberate exception, named for what it gives up rather
+than for what it does. This is the same rule as `FieldAssembly.Build` throwing rather
+than discarding its `SolveReport`, and as `Setup` using `BuildReported` where it has a
+sink: **make the shortest spelling the safe one.**
+
+It found a real defect within minutes of being written — and, pleasingly, in the
+*importer*. `GasFlowImport.Resolve` began by calling `FromModel`, so the guard fired on
+the one caller that was about to do the right thing, and `einzel run` on a diffusive
+model with a declared field was refused. A guard that catches its own author on the
+first run is a guard placed where the mistake actually lives.
+
+The general form: **when a rule is enforced once per caller, adding a case to the rule
+means auditing every caller, and the audit is invisible if you forget.** Enforce it
+where the callers converge.
+
+## A ratio of two ceilings is one
+
+A test compared the transit through a drift tube at one pressure against the same tube
+with an imported field at half of it. The mobility scaling says the ratio should be
+0.5; it read 0.908, which is close enough to one to look like the scaling not working
+at all.
+
+The scaling was fine. The field was 50 V/m over 38 mm — under two volts of push — and
+at 1 mbar almost nothing reached the detector inside the declared flight time:
+**0.05 ions of 10,000 collected**, with a "mean transit" of 3869 µs against a ceiling of
+4000. The thinner run collected 1982 and genuinely finished. What was being compared was
+a real transit against a truncated one.
+
+This is the **incomplete arrival** trap that `einzel compare` already documents and
+warns about — a mean transit over the subset that arrived is not a transit time, and
+the two subsets are not the same ions — met again from a direction where nothing was
+watching for it. The accessor now asserts the packet arrived before reading a transit
+off it, which is where the check belongs: at the point the number is taken, not at each
+place it is used.
+
+**A summary statistic computed over a truncated population is not a smaller version of
+the right answer. It is a measurement of the truncation.**
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
@@ -660,7 +1211,34 @@ actually caught them were:
   converging at the wrong rate. Only visible because the gains spanned a factor of
   eight; at two gains either reading fits.
 
-- **Conservation is not positivity, and a conservation test passes with positivity
+- **A figure of merit and the run that reports it must be the same computation, and
+  saying so once does not keep it true.** `einzel run` flew its ions through a declared
+  gas and `einzel test` flew the same model in vacuum, because the figure-of-merit path
+  built the launch, the field and the detector but never a collision sampler. They
+  disagreed by 95 us on the corpus example whose entire subject is a gas carrying an ion,
+  and nothing compared them. **This is the second time**: `run` and `test` computing a
+  flight time two ways was found and fixed once already, by collapsing them to one
+  implementation - and the gas then arrived on only one side of the seam. A shared entry
+  point is not the same as a shared computation, and every argument added to one of them
+  is a chance for the two to drift apart again.
+
+- **An example whose expected value coincides with the broken answer can never catch the
+  break.** `gas-flow-carry` launches its ion at exactly the gas velocity so the transit
+  is `L/u` by arithmetic - and in vacuum an ion launched at that speed covers the same
+  distance in the same time. The vacuum answer was not close to the expectation, it *was*
+  the expectation, and closer to it than the physical answer. **When choosing the
+  conditions that make an example's arithmetic clean, check that they do not also make
+  the failure mode invisible.**
+
+- **A tolerance in the wrong units is an assertion that cannot fail.** Expectations in
+  the test format compare a *relative* error, and one example's tolerance read `500.0` -
+  written as plus or minus 500 us on 5000. As a fraction that admits any positive answer,
+  so the example was in the release gate asserting nothing, and its own description said
+  "discriminating far past its ten per cent tolerance" - the same misreading, written
+  down. An audit of all 29 expectations found one other at 50%. **A number whose units
+  are ambiguous should be read against what it would mean if taken the other way**, and
+  here one reading was a tenth and the other five hundred.
+, and a conservation test passes with positivity
   broken.** The quadratic B-spline deposit clamps its three-node stencil onto the grid
   at a boundary; leaving the *offset* unclamped with it makes the middle weight
   `0.75 - u^2` negative — at the very edge the weights are **1.125, −0.25, 0.125**. They
@@ -712,3 +1290,127 @@ actually caught them were:
   694.4 V for the same trap. Either alone reads as a measurement; the pair says the
   predicate is frayed, which is what sent the observation window from 60 cycles to
   200 and put a confirmation walk into `BoundarySearch`.
+
+- **A test that passes for a reason that will not scale to the general case.** The
+  viewport's colour scale must be anchored across the whole bundle, not per path — a
+  per-path scale gives two ions a kilovolt apart the same colours. The obvious assertion
+  is "the reported range is wider than the widest single path", and it is *correct*: on a
+  packet launched from rest the margin is 0.3 eV in 20000, or 1.5e-5. That is a real
+  discrimination and a fragile one, because it depends on the ions having different
+  energies at all. What discriminates whatever the magnitudes are is that **no single
+  path owns both ends of the scale** — any per-path anchoring reports some one path's own
+  extremes and fails it. When an assertion works by comparing two magnitudes, ask whether
+  there is a structural statement of the same thing; a structural one cannot be made thin
+  by a change of model.
+
+- **A default that is right for a screen and wrong for the subject.** Helix Toolkit
+  defaults to a perspective camera, which is right for a game and wrong for an
+  instrument: an ion-optics drawing is read for where things are along the axis, and
+  that is the one thing perspective distorts. And `ZoomExtents` fired before layout, so a
+  1.3 m flight ran off the edge of the viewport — the control had been given a model but
+  not yet measured, so the fit was to whatever size it had before. Both are the same
+  shape: **a framework default is a decision somebody else made about a different
+  problem**, and the ones that produce a plausible-looking picture are the expensive kind.
+
+- **A build setting that is a backstop reads exactly like one that is load-bearing.**
+  `InvariantGlobalization` is set solution-wide for CLI-5's deterministic output, and WPF
+  cannot run under it at all — the font cache constructs `new CultureInfo("en")` while
+  measuring the first line of text. The question that mattered was not "can we turn it
+  off" but **what is it actually protecting**: locale-independence here comes from
+  passing `CultureInfo.InvariantCulture` explicitly at every formatting and parsing site,
+  and the flag was the belt to those braces. Turning it off for one assembly is therefore
+  safe and checkable; turning it off in a codebase that relied on it would move every
+  number a French-locale user saw. Before removing a global setting, find the thing it
+  duplicates — if there is nothing, it is not a backstop.
+
+- **The failure mode where the data is right and the picture is empty.** The viewport's
+  electrodes were extracted correctly, uploaded correctly and drawn correctly, and were
+  invisible — there was no light in the scene, so every Phong surface rendered at its
+  ambient term alone. The instinct on seeing nothing is to go and check the data, and the
+  data was fine. Where a pipeline ends in a picture, the last stage has inputs that are not
+  the data: **a missing light, a camera pointing elsewhere, a transparent material and an
+  empty buffer all look identical**, and only one of them is about the thing being
+  computed.
+
+- **A resolution chosen from the container, not from the thing in it.** Extracting a
+  conductor's surface over the whole solve domain at 48 cells makes a cell 1.25 mm across,
+  and a 1 mm plate falls between lattice planes: the three-dimensional example produced
+  **no conductors at all**, with nothing said. The generalisation is that a sampling grid
+  sized to the domain silently loses every feature smaller than a cell, and *the smallest
+  feature is usually the interesting one* — an aperture, a slot, a gap. Size the grid to
+  what is being resolved, and where that means asking an object how big it is, add the
+  accessor rather than switching on its type at the call site: `CompiledElectrode3D.Bounds`
+  went next to `Centre` and `CharacteristicSize` for exactly that reason.
+
+- **A defect that only a screenshot can see, found by driving the buttons rather than
+  reading them.** The first named view after startup came out as the top view whichever
+  button was pressed, because the camera's look, position and up were written one property
+  at a time and each raises its own change notification — the control saw a momentarily
+  inconsistent basis and re-derived one of them. No assertion over the view-model would have
+  caught it and no amount of reading the handler suggested it. What caught it was invoking
+  each button through UI Automation and reading the axis indicator out of the resulting
+  image. **Where the output is a picture, the test harness has to look at the picture** —
+  and the first attempt at that was itself misleading, because clicking one button and
+  believing the result is not a measurement until a second button has been clicked to
+  compare against.
+
+- **A sequential colour ramp drawn as thin lines is illegible on every background, and no
+  choice of background fixes it.** Viridis spans dark to light by construction, so it passes
+  through whatever luminance the ground has: measured across grounds from `#101010` to
+  `#D0D0D0`, the worst contrast anywhere on the ramp never rises above **1.25**. Truncating
+  the dark end barely helps — skipping the darkest 60% still only reaches 2.83. What works is
+  **lifting the ramp off the ground and then moving the ground further away from it**, which
+  is the opposite of the instinct the symptom produces ("it's too dark, lighten the
+  background"). The general form: when a scale and its ground overlap in the one dimension
+  that separates them, only one of them can be moved out of the way, and it is the scale.
+  Worth measuring rather than eyeballing — the optimum here (a 0.44 lift against a `#081019`
+  ground) is not a value anyone would have picked, and it is bounded by a *different*
+  property: lifting further makes the ramp non-monotone in lightness, which is the thing the
+  ramp was chosen for.
+
+- **The invariant axis of a cross-section is the one the beam travels along, so that is how
+  far to draw it.** A translational solve says the geometry repeats along the third axis and
+  never says how far; drawing to the transverse span made a quadrupole's rods 32 mm of a
+  200 mm instrument, sitting in the corner of the picture beside a trajectory six times
+  longer. The reach of the ions is the part of an infinite structure anyone is looking at.
+  Generalises past drawing: **where a model declines to bound something, the bound worth
+  choosing is usually the one the rest of the model already implies.**
+
+- **Correcting a framework's choice after the fact is a race; telling it the choice is
+  not.** The viewport control installs a camera of its own when it has none, and the
+  opening view was set afterwards from the window's `Loaded` handler — so which view a
+  model opened in depended on how long its field took to solve. Three increasingly
+  elaborate fixes (a later dispatch priority, an atomically-assigned camera, a deferred
+  fit) each made it work on the model in front of me and fail on the next. The actual fix
+  was one line: set `DefaultCamera`, which is the property the control reaches for, so
+  there is nothing to race. **When a fix has to be re-tuned per case, the thing being fixed
+  is usually ordering, and ordering is not fixed by trying harder at the same point.**
+
+- **A guard that cannot be reached, found by a test that could not construct its input.**
+  The viewport clamped an axisymmetric trace to the axis, because revolving a profile at a
+  negative radius would draw the same surface twice. Writing the test for it turned out to
+  be impossible: `ModelValidator` refuses such a document outright, with the path, the
+  reason and the correction. The clamp had never done anything and never could. **A second,
+  weaker copy of a rule that already holds is worse than none** — it reads as though a case
+  exists, and the next person has to work out which of the two is load-bearing. The test
+  now asserts the rule where it lives, which is also where it holds for every other
+  consumer. The general move: when a guard is easy to write and its test is hard, ask
+  whether the state it guards against is reachable at all.
+
+- **A comment that was right, directly above code that did not follow it.** A performance
+  test read *"a hard assertion here would be a test of the build agent"* and then asserted
+  2,000 ms — a guess about the build agent. It had been green for weeks and then passed and
+  failed **on the same commit in two CI runs minutes apart**. Chasing it found something
+  larger: PERF-7's whole 50 ms budget is the cost of starting CPython (45–63 ms measured
+  here), so the requirement is not separable from a term the platform does not control.
+  Two lessons. **When a comment states a hazard, check that the code below it avoids that
+  hazard** — the comment is evidence somebody saw the problem, not evidence they solved it.
+  And **a flaky test is worth chasing to its root rather than loosening**: the loose version
+  had hidden a real finding about a requirement.
+
+- **A gate that only fires in the cases guaranteed to fail.** Fixing the above, I gated the
+  absolute assertion on "the interpreter starts in under the budget" — which means it runs
+  precisely when process start has consumed the whole budget and left nothing for the work.
+  It failed on its second run. **A conditional assertion needs its condition checked against
+  the failing case, not just the passing one**: the question is not "when is this safe to
+  assert" but "what does the population of runs that reach the assertion look like".

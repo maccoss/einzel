@@ -22,6 +22,42 @@ einzel solve demo/models/q.json              # the field, and how it went
 einzel run demo/models/q.json --vtu          # run, and write a ParaView trajectory
 ```
 
+## What one model contains
+
+`einzel schema` says what a model *may* contain. `einzel outline` says what one
+*does* — its declared parameters, with everything needed to show or change them:
+
+```
+quadrupole  schema 0.3
+  inscribedRadius      5                                mm        1 to 50 mm
+  rodRatio             1.1468                           1         1 to 1.4 1
+  rodRadius            inscribedRadius * rodRatio       mm        (derived)
+  cellSize             inscribedRadius / cellsPerRadius mm        (derived)
+```
+
+```bash
+einzel outline models/q.json --set inscribedRadius=7
+```
+
+**The value is in the parameter's own declared unit.** A person editing a 5 mm
+radius types 7, and demanding 0.007 would ask them to do the conversion the format
+exists to make unnecessary.
+
+**A derived parameter shows its expression and is not settable**, because its value
+is that expression's — setting it would set a consequence, and the two would
+disagree at the next resolve. Turn one of the parameters the expression is over, and
+everything downstream moves with it.
+
+**A model that does not validate still has an outline**, with the errors alongside.
+That is what live validation needs: a person editing a parameter into an invalid
+state must still see the tree rather than have it vanish until they undo what they
+typed.
+
+This verb exists because the shell needs it and may not do it itself — UI-1 puts
+file format knowledge outside the window. It is a CLI verb rather than a shell
+method because AGT-2 says nothing exists only in the shell, and an agent that wants
+a model's knobs without parsing the document needs exactly the same answer.
+
 ## Finding out what exists
 
 An agent starting from a project directory and prose has no forum posts to search
@@ -63,6 +99,8 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel test [dir]` | Run the project's tests |
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
+| `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
+| `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
 | `einzel --version` | Engine version |
 
@@ -71,11 +109,18 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--json` | Machine-readable output, including the full result envelope |
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model |
+| `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
 Not yet built: `self-update`, which needs `Einzel.Update`. Of the render verbs
-`section` exists; `still` and `animation` are named and refused with a reason,
-because "not built yet" and "you spelled it wrong" are different problems.
+`section` and `animation` exist; `still` is a raster projection, nothing here
+rasterises, and it is named and refused with a reason rather than falling through as
+an unknown verb - "not built yet" and "you spelled it wrong" are different problems.
+
+**`render animation` takes a spec and never a bare model, and there is no `--rate`
+flag.** RND-7 makes the time mapping non-optional, so the interface is arranged such
+that there is no command line producing an animation without one. `--fps` is offered,
+because a frame rate is a property of the playback device rather than of the physics.
 
 ### The preview tier
 
@@ -450,6 +495,55 @@ opens the file. Regenerating by overwriting would satisfy PRJ-6 and destroy it.
 engine, which is what makes stale guidance *detectable* - guidance written for one
 version sitting in a project driven by another is worse than none, because an
 agent trusts it and cannot see the drift.
+
+## A run that changes transport mode
+
+A model whose phases do not all use one transport description runs through the same
+`einzel run`, and the fork tests that before it tests the model's own mode — a
+model may declare `diffusion` and still have a sequence that leaves it, and the
+sequence is the more specific statement.
+
+```
+packet centre 9.999117 mm
+
+  trap         diffusion   to    20.00 us   200 ions in     - trajectories  x  10.000 mm
+  extract      trajectory  to    25.00 us   200 ions in   200 trajectories  x   9.999 mm  converted
+
+sequence      1 mode conversion(s), 0 ions arrived
+```
+
+Three things in that are deliberate. **There is no flight time**, because the run
+ends when its sequence ends rather than when an ion arrives — absent rather than
+`NaN`, so a missing measurement cannot be mistaken for a failed one. **The dash is
+not a zero**: a diffusive phase has no trajectories at all, which is different from
+having none left. And **`packet centre`, not `final x`**, because there is no single
+ion whose final position it could be.
+
+`--json` carries the same account under `sequence`, with `flightTime` as `null` and
+every conversion warning on it. The manifest records `diffusion -> trajectory`
+rather than one mode, since a manifest that named one would claim to determine a run
+it does not describe.
+
+Exit code 0: a run that finished what it was asked to do is a success, whichever
+descriptions it used on the way.
+
+## The other surface
+
+`einzel-mcp` is a separate executable, not a verb here, and that is deliberate.
+Spec figure 6 draws two agent loops: this one — a project folder, "no protocol, no
+session, no network" — and a live session where a person has the model open and an
+agent joins them on it. A `serve` verb inside `einzel` would put a server in the
+binary whose distinguishing property is that it is not one.
+
+```
+einzel-mcp models/reflectron.json --human mike
+```
+
+It exposes the session and nothing else: read, edit, undo, journal, validate,
+preview. Everything in this page stays here, because §15 says so in as many words —
+"everything else it could do, the CLI does at least as well and with less
+machinery". Its results are the same JSON `--json` emits, byte for byte. See
+[the live session](live-session.md).
 
 ## Contract
 

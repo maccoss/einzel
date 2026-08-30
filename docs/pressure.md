@@ -645,6 +645,218 @@ The stability step needed no change: the Courant limit was always taken against 
 true drift, so removing the cap makes the flux agree with the step rather than
 sitting conservatively under it.
 
+## Crossing between the two modes (SEQ-1)
+
+§9 says an instrument is a timed state machine of "ordered phases with durations,
+excitation overrides, **transport mode**, and transition conditions", and SEQ-1
+adds that "a phase boundary may change transport mode; the conversion is explicit,
+reported, and named as a source of uncertainty".
+
+That is a real instrument's ordinary behaviour, not an exotic case. Ions are
+collected and thermalised in a gas-filled trap, where the description is a
+density; then extracted into vacuum and flown, where it is trajectories. Until
+now the two modes were peers that could not hand anything to each other.
+
+**The third clause is the substance.** These are not two encodings of one state.
+One direction discards information; the other needs information the source does
+not have, and the only honest thing is to assume it and say so.
+
+### Trajectories to a density: the velocities are gone
+
+A density field is a scalar per cell. There is nowhere for a velocity
+distribution to live — and that is not an implementation limit, it is what the
+diffusive description *is*. Drift-diffusion holds precisely because the velocity
+distribution has relaxed to the local equilibrium, so carrying one would be
+carrying a quantity the model assumes away. Also gone: which ion was where, so
+nothing downstream can correlate an outcome with a starting condition.
+
+Bilinear deposit, and the population is conserved **by construction** — the four
+weights sum to exactly one whatever the position, so no normalising pass is
+needed. Normalising afterwards would pass the same test while hiding a weighting
+error rather than preventing one, which is the argument the cloud-in-cell deposit
+already makes.
+
+An ion outside the grid is **counted, not clamped**. Clamping piles the escaped
+population onto the boundary and makes a leaky instrument look confining.
+
+### A density to trajectories: the velocities are invented
+
+Position can be sampled — the density *is* a distribution over position. Velocity
+cannot: a density says nothing whatever about how fast anything is moving. What is
+assumed is the assumption the diffusive description already made — a Maxwellian at
+the gas temperature, plus the local drift μE.
+
+That is the right assumption and it is still an assumption. It is exactly right
+while the ions are in the gas that thermalised them, and wrong the moment anything
+has happened faster than the momentum-transfer time. `transport.velocity-assumed`
+is a **validity violation** for that reason: a caller reading a flight time
+computed from invented velocities, who does not know they were invented, has been
+misled by the platform.
+
+### What was checked
+
+| | |
+| --- | --- |
+| Deposited population against declared | **exact** (4.0e6 to 1e-12) |
+| Gaussian cloud's centroid, 20,000 ions | 10.0197 mm against 10.0000 |
+| Its spread, x and y | 3.9544 / 3.9949 mm against 4.0000 |
+| Equipartition of drawn velocities, 300 K | **1.0021** |
+| The same at 1200 K | **1.0021** |
+| Drift added, against μE | 18.472423 against **18.472423** m/s |
+| A 4000 m/s beam, after a round trip | 0.2 m/s |
+
+The two temperatures matter: one alone is consistent with a thermal draw *and*
+with a constant that happens to match. The drift is taken as a difference between
+two runs at the same seed, so the thermal part cancels and what is left is checked
+against arithmetic the conversion has no part in.
+
+### The discriminating check is cylindrical
+
+**In an axisymmetric field a cell is a ring whose volume grows with radius**, so a
+uniform density holds far more ions at the wall than on the axis. Drawing cells by
+their density *value* would over-sample the axis — and the resulting packet looks
+entirely reasonable: a cloud, in the right place, of about the right extent.
+
+What separates the two is a closed form. For a uniform density in a cylinder of
+radius R the radial distribution is p(r) ∝ r, so the mean radius is **2R/3**.
+Weighting by density alone gives a uniform p(r) and **R/2**.
+
+| | mean radius |
+| --- | --- |
+| Measured, 40,000 samples | **13.5177 mm** |
+| 2R/3, population-weighted | 13.3333 mm |
+| R/2, density-weighted — wrong | 10.0000 mm |
+
+Run with the weighting removed it gives **10.0245 mm**, and **only that one test
+of the ten fails**. The other nine pass, which is the whole point: a wrong
+cylindrical weighting produces a packet nothing about the picture would question.
+
+The azimuth is drawn uniformly, because an axisymmetric density genuinely does not
+distinguish points on a ring. That is information the conversion *creates* rather
+than carries, and it is why a round trip is not the identity even in distribution
+for a packet that was never axisymmetric.
+
+### A phase names its mode, and a run crosses the boundary
+
+Schema **0.6**: a phase carries `mode`, and absent means the model's — the same rule
+its parameter overrides follow, so a model with no sequence and one whose every
+phase runs in the declared mode are the same run. `CompiledModel.Phases` carries
+the schedule and `ChangesTransportMode` says whether any boundary actually
+converts, which a sequenced run that stays in one description does not.
+
+`SequencedRun` walks the phases. Each is an ordinary run of its own mode over its
+own duration, and the orchestration is the boundaries. On the shipped test
+instrument — launch, thermalise, extract:
+
+```
+settle       trajectory  ends    1.0 us  population 200  centroid x  11.370 mm
+thermalise   diffusion   ends   21.0 us  population 200  centroid x  11.370 mm  converted
+extract      trajectory  ends   26.0 us  population 200  centroid x  11.380 mm  converted
+```
+
+**The middle row is the conversion made visible.** Flying, the packet advances
+1.37 mm in a microsecond at the momentum it was launched with. As a density it
+does not move at all over twenty times longer, because the diffusive drift is μE
+and E is zero here. That is not a defect — it is what the conversion *means*.
+Drift-diffusion holds precisely because the velocity distribution has relaxed, so
+the momentum genuinely is discarded, and this is what discarding it looks like from
+outside. Position, the one thing both descriptions carry, survives to the fourth
+decimal.
+
+**The first phase may be the trap**, which is the ordering the requirement was
+written about — ions are collected and thermalised in a gas, and only then extracted.
+Seeded through `DiffusionRun.Seed`, the same function a wholly diffusive `einzel run`
+uses, rather than a second implementation: `run` and `test` once computed one flight
+time two ways and disagreed by 1.3e-10, and the fix was to collapse them.
+
+**Reusing that path corrected two numbers.** A first version of the orchestrator
+built its grid with `new Grid2D(...)` where `GridFor` uses `Grid2D.OverBox`, which
+rounds intervals up to a power of two — so one model got *two different grids*
+depending on which path ran it. And its mobility helper ignored `Derived`, so a
+mobility the document derived from a cross section came back as the stored value
+rather than the re-derived one. A third gap closed with them: the diffusive leg
+passed no absorbers, so electrodes did not absorb during a diffusive phase —
+the defect that once made every diffusive transmission an upper bound with nothing
+saying so, reintroduced locally.
+
+**A trajectory leg starting part-way along the timeline is flown against a
+`TimeShiftedField`.** The integrator always starts at t = 0, so a leg beginning at
+21 µs has to be handed an instrument shifted by 21 µs rather than a start time it
+has nowhere to put. Wrapped rather than adding one to `IntegrationSettings`, which
+is the precedent `AxisymmetricField` and `PonderomotiveField` set: the transport
+core carries every validated number here, and refactoring it to add a case beside
+it is how those get quietly lost.
+
+### Through the CLI
+
+`einzel run` forks on `ChangesTransportMode` before it forks on the model's own
+mode, because a model may declare `diffusion` and still have a sequence that leaves
+it — the sequence is the more specific statement.
+
+```
+packet centre 9.999117 mm
+
+  trap         diffusion   to    20.00 us   200 ions in     - trajectories  x  10.000 mm
+  extract      trajectory  to    25.00 us   200 ions in   200 trajectories  x   9.999 mm  converted
+
+sequence      1 mode conversion(s), 0 ions arrived
+```
+
+**The dash is not a zero.** A diffusive phase has no trajectories at all, which is a
+different statement from having none left. And `packet centre` rather than
+`final x`, because a sequenced run has no single ion whose final position it could
+be.
+
+`--json` carries a `sequence` block with the same per-phase account, `flightTime`
+as `null` under the finite-double policy, and every conversion warning on it. The
+manifest records **`diffusion -> trajectory`**: one mode would make a manifest claim
+to determine a run it does not describe, and transport mode is a field §14 names
+explicitly.
+
+**Two defects this project had already fixed once, met again.** A successful
+sequenced run exited `ConvergenceFailure`, because the exit logic knew
+`StopConditionMet` and `DensityEvolved` and nothing else — the same list that had
+to learn `DensityEvolved` after a working diffusive run reported itself as a
+failure. And the printer showed `flight time NaN +/- NaN`, because the fix that
+made those lines *absent* for a density was gated on `run.Diffusion is null` and a
+sequenced run has that null too. Both are cases of a fix written as a list of known
+modes rather than as the question being asked.
+
+### A driven geometry inside a diffusive phase
+
+A driven structure has no static field to step a density through, and the time-free
+interface answers with the RF at the phase's first instant — a field that exists for
+no length of time. What a slow ion in a gas feels is the cycle average, and the
+sequenced path now uses **the same `Effective` wrapper the wholly diffusive path
+does**, shared rather than written twice.
+
+**This was the fifth occurrence of one defect**, and the first one I introduced
+myself: a time-varying quantity reached through a time-free interface does not fail,
+it answers at an arbitrary instant. Before this it was `einzel solve` reporting the
+DC pattern of a driven geometry, the diffusive mode stepping a density through a
+snapshot, `SuperposedField` becoming a snapshot when a driven member was summed in,
+and the renderer drawing the same instant on every frame.
+
+Measured on a four-rod quadrupole at 2 mbar, packet released 1.5 mm off axis:
+
+| | packet after 60 µs |
+| --- | --- |
+| 400 V drive | **0.2341 mm** |
+| drive off | 1.5000 mm |
+
+**The geometry had to be four rods, and the first version of this test taught that.**
+Two plates give a nearly *uniform* field between them, and the ponderomotive force
+goes as ∇E² — so there was no well, the packet moved 0.1% whether the drive was on
+or off, and the test passed on a threshold of "less than where it began". A
+confinement test on a geometry that cannot confine measures nothing.
+
+### Not built
+
+Nothing outstanding for SEQ-1. The remaining diffusive-mode gap is unrelated to
+sequencing: `IGasFlow` has one implementation beyond an imported field, so a funnel's
+transmission is still computed in a gas that is either standing still or moving all
+in one piece.
+
 ## The density is an output you can look at
 
 TRN-2 makes a density the output of this mode the way a trajectory is the output of
@@ -778,29 +990,28 @@ version used `Out × density` and came back 1 to 3 ulps out.
 
 ## Not built
 
-- **A gas flow in the event-driven mode.** `CollisionSampler` schedules and draws a
-  neutral velocity without a position, so it cannot evaluate a field that varies
-  with one, and it refuses rather than falling back to the uniform value. A uniform
-  `driftVelocity` it uses as it always did. Threading a position through the
-  collision path is the work.
-- **A pressure field.** GAS-1 asks for one beside the velocity field, and the
-  pressure is still a single number for the whole model. A differentially pumped
-  instrument has several, and the interfaces between them are where much of the
-  interesting physics is.
+*Three entries that used to head this list are gone — a gas flow in the event-driven
+mode, a pressure field, and pressure gradients. See "The event-driven models see a gas
+that moves" and "The gas can be thin in one place and thick in another" below.*
+
+- **A temperature field.** The one thing about a gas that still cannot vary from place
+  to place. An imported pressure is read as a density through `n = p/kT` at the model's
+  single declared temperature, which is an assumption the document already made — but
+  it is now the only one left, and a real differentially pumped instrument has a
+  temperature gradient as well as a pressure one.
 - **Inelastic channels.** Collisions are elastic. No fragmentation, no
   collision-induced dissociation, no internal energy at all.
-- **Pressure gradients.** One pressure for the whole model. A real differentially
-  pumped instrument has several, and the interfaces between them are where much of
-  the interesting physics is.
 - **A default that chooses the scheme.** The implicit step below is opt-in and takes
   a gain the caller picks. Both limits are computable before the run, so their ratio
   could pick the scheme and set the gain — but what the gain should be is an
   *accuracy* question, and nothing here measures the accuracy of a step it has not
   taken. Richardson extrapolation over a doubled step would, at three solves a step
   instead of one.
-- **A density snapshot mid-run.** A run reports and exports the density at the end.
-  A model whose ions have all arrived by then leaves an empty box, correctly, and
-  the only way to see the packet in flight is to shorten `maximumFlightTime`.
+- ~~**A density snapshot mid-run.**~~ Built: `DriftDiffusion.Run` takes a list of
+  instants and returns the density at each, and `einzel render section --at-us` draws
+  one. Recording is bit-identical to not recording - the snapshots are clones taken
+  between steps - and each reports the instant it was actually taken at as well as the
+  one asked for, because a diffusive step lands where its stability limit puts it.
 
 ## The event-driven models see a gas that moves
 
@@ -862,6 +1073,12 @@ result:
   one.
 - **`gas.flow-extrapolated`** (qualified) — a collision was drawn outside the imported
   field, where the flow is the edge value continued rather than anything measured.
+
+- **`gas.pressure-extrapolated`** (qualified) — the same statement about the other
+  imported quantity. Outside the box the edge density continues, and a pressure gradient
+  is steepest at the ends of a pumped region, which is exactly where continuing the last
+  plane is most likely to be wrong. Every collision rate, mean free path and mobility
+  there is scaled by it.
   Right for a stream, wrong for the end of a jet, and the samples cannot say which.
 
 ### The trap that removing a refusal set
@@ -873,10 +1090,227 @@ have reintroduced **exactly** the failure the refusal existed to prevent: a mode
 declaring a jet, flown as though the gas stood still, with nothing to say so. Both
 paths now resolve.
 
-### Still one pressure
+## The gas can be thin in one place and thick in another
 
-The gas **density** is a single number for the whole model, so a differentially pumped
-instrument is not yet expressible — an imported field gives the neutrals a velocity
-everywhere and the same number of them everywhere. The collision *rate* would need the
-density at the ion's position, which is the same one-argument change made here applied
-to `Schedule` rather than to the draw, plus a way to declare the field.
+The last quantity about a gas here that was a single number for a whole model. GAS-1's
+velocity field landed and the ions moved with the jet; the **density** stayed uniform,
+so an imported flow gave the neutrals a velocity everywhere and *the same number of them
+everywhere*. That is not a differentially pumped instrument, which is what every device
+this platform is aimed at above 1e-2 mbar actually is — a funnel behind an inlet
+capillary spans decades of pressure between its entrance and its exit, and every
+collision rate, mean free path, mobility and diffusion coefficient in it varies with
+that.
+
+`"pressureField": { "path": "...", "array": "...", "unit": "mbar" }` on the gas block,
+read as VTK ImageData like the velocity field and for the same reasons: it is the format
+this engine already writes, reading a *format* carries no licence obligation where
+linking a library would (RND-13), and ASCII only, refused by name rather than misread.
+
+### The unit is required, and that is section 9's rule rather than a new one
+
+The velocity field has no unit field because a CFD velocity is metres per second
+essentially always. A pressure is not: vacuum work is quoted in mbar and torr at least
+as often as in pascals, and **a file read as pascals when it holds mbar is a gas a
+hundred times too thin**, which looks entirely plausible and never announces itself.
+
+Section 9 makes `{"energy": 4000}` a validation error on purpose, because "unit
+ambiguity is the commonest source of silent wrongness and an agent building from prose
+is the actor most likely to introduce it". Nothing in that argument weakens when the
+number becomes a hundred thousand numbers. The symbol is resolved through the same
+`UnitRegistry` a scalar's is, and one of the wrong dimension is refused by name.
+
+### Reported whether or not it matters (REG-2)
+
+`gas.pressure-imported` lands on every diffusive run that reads a field, and states the
+range, the factor between its ends, and the consequence a reader actually needs — how
+much faster the ion drifts where the gas is thinnest, since mobility goes as the
+reciprocal of density. A reader who sees the range knows the run was checked; one who
+sees nothing cannot tell that from its not having been checked.
+
+`gas.pressure-extrapolated` is the qualification: at least one collision was drawn
+outside the imported box, where the edge density continues. A pressure gradient is
+steepest at the ends of a pumped region, which is exactly where continuing the last
+plane is most likely to be wrong.
+
+### Mobility goes as the reciprocal of density, and nothing here did that
+
+The part that is physics rather than plumbing. An ion drifts further between collisions
+in a thinner gas, so **mu N is the constant** — which is why the literature tabulates
+*reduced* mobility rather than mobility. `Mobility.At(field, localN, referenceN)` scales
+by `referenceN/localN`, and the declared `pressure` becomes the reference the declared or
+derived mobility belongs to rather than the value used.
+
+There are **two separate density dependences and they are not the same one**: this
+factor is how *much* gas, and the existing E/N expansion is how hard the ion is pushed
+*between* collisions. A version scaling only the second would leave the drift speed flat
+across a pressure gradient while reporting a changing field dependence — which reads as
+the mobility having been handled.
+
+### A graded density turns Langevin into a null-collision method
+
+The hard-sphere model has always used null collisions, because its rate contains the
+relative speed. The Langevin rate does not, so **in a uniform gas every scheduled event
+is a real one and there is no rejection step at all**. A graded gas makes that rate
+position-dependent instead, which is the same mechanism reached a second way: schedule
+at the *highest* density anywhere, then accept with probability `n(x)/n_max`.
+
+Both bounds are majorants over the whole field now, because an event is scheduled before
+it is known where the ion will be when it lands. A bound taken at the declared density
+would be exceeded wherever the field is denser than declared, and **an exceeded bound
+biases the rate low**.
+
+The thinning is short-circuited on `IsGraded`, and that is load-bearing rather than an
+optimisation: with a uniform density it would accept with probability exactly one and
+*still consume a random draw*, moving every subsequent number in the stream. A seeded run
+has to be bit-identical to what it was before a pressure field could be declared.
+
+### What is checked
+
+| | |
+| --- | --- |
+| Mobility at half and twice the reference density | **2.000000 / 0.500000** |
+| The scaled form at the declared density | **bit-identical** to the unscaled one |
+| A constant imported field vs the density its pressure means | 1 ulp |
+| A field at 2x declared pressure vs *declaring* 2x the pressure, event-driven | **bit-identical trajectory**, both collision models |
+| The same, diffusive, through the CLI | transit agrees to 1e-6 |
+| Langevin thinning at three points on a 4x ramp | 0.25 / 0.625 / 1.00, to 0.01 |
+| Halving the gas | transit halves, to 2% |
+| A field in mbar vs the same field in Pa | 1e-9 |
+
+The **bit-identical trajectory** is the sharpest of these. Two entirely separate routes
+to one gas — `pressure: 2 mbar` with no field, against `pressure: 1 mbar` plus a constant
+field holding 2 mbar — must produce the same flight from the same seed. Every scheduled
+rate, every null-collision bound and every rejection has to read the field rather than
+the declared scalar for that to hold; any one that did not would consume a different
+random draw and diverge visibly. A tolerance there would hide exactly the defect being
+looked for.
+
+The diffusive equivalence catches the mistake with no other symptom: **a reference
+density read the wrong way round**. Scaling by `n_local/n_ref` instead of
+`n_ref/n_local` is self-consistent, runs cleanly, and is wrong by the square of the
+ratio.
+
+### The test that had no teeth, and how that showed
+
+The first version of the equivalence test used Langevin only, and **a mutation that made
+the local density read return the declared scalar did not fail it** — because the
+Langevin branch short-circuits its thinning where the density is uniform, so a *flat*
+imported field never reads a position at all. Correct behaviour, and no test of the read.
+Running the same test under both collision models fixed it.
+
+The graded-gas test had the same weakness in a different form. It asserted that a ramp
+collides more than the thin gas alone, which sounds discriminating and is not: with the
+density read at the wrong place the count lands *close to* the thin gas and a bare
+"more than" still passes. What discriminates is **reversing the ramp** — the same
+densities over the same box, arranged the other way round, so any reading blind to
+position gives the two an identical count. 11,458 against 19,700.
+
+Both are the same lesson in different clothes: *a test passes a mutation when the code
+path it exercises does not contain the mutated line.* Run the mutation, look at which
+tests fail, and treat the ones that did not as untested rather than as corroboration.
+
+### The cost gate had to be re-derived, and the first version was 50% out
+
+GRD-8 gates on a number available without doing the work, and for the diffusive mode
+that number is not modelled: the step is set by two stability limits computable from the
+mesh, the mobility and the field, and `estimate` and `run` call the same function. A
+graded gas moves the mobility, so it moves both limits.
+
+The first version took the thinnest gas **anywhere in the imported field**. The run
+takes its limit from per-node arrays over the **tracked grid**. Those are not the same
+region — a CFD field is usually solved on a larger box than the ions are tracked
+through — and on the case at hand the field ran down to 0.5 mbar while the grid only
+reached 0.75. The estimate said **2,252 steps against an actual 1,502**.
+
+| | predicted | actual |
+| --- | --- | --- |
+| uniform, 1 mbar | 1,126 | **1,126** |
+| graded, 2.0 to 0.75 mbar across the grid | 1,502 | **1,502** |
+
+Two things this cost. The drift sweep now reads the density where it reads the field
+and at every node rather than every other one, because the fastest drift is a product
+of two quantities that peak in different places once the mobility varies — a stride is
+harmless on a smooth field and is not harmless on a product. And the E/N fit check and
+the reported regime numbers had to pick opposite ends: **E/N is worst where the gas is
+thinnest**, the **Knudsen number and collision counts are worst where it is thickest**,
+and reading the declared pressure for either would report a regime the instrument is in
+nowhere.
+
+It was found by running `estimate` and `run` and comparing the two numbers, not by
+reading the code. Nothing about the wrong version looks wrong.
+
+### A refusal moved to where it cannot be forgotten
+
+Resolving a declared field needs the model document's own directory, which a study or a
+figure of merit does not have. The existing rule was right — refuse rather than run in a
+gas the document does not describe — but it lived as **a guard at each of four call
+sites, naming `velocityField`**. Adding a second importable quantity would have needed
+all four edited, and three of them were already silent about it.
+
+`BackgroundGas.FromModel` now refuses an unresolved field itself, and
+`WithoutImportedFields` is the deliberate exception whose name says what it gives up.
+Two call sites that *did* have the model path — `einzel compare` and the diffusive cost
+estimate — now resolve rather than refuse, which they should always have done: an
+estimate taken in a gas the model does not declare is an estimate of a different run, and
+GRD-8 exists to be relied on before the work is done.
+
+This is the same rule as `FieldAssembly.Build` throwing rather than discarding its
+`SolveReport`: **make the shortest spelling the safe one.**
+
+### In the corpus, and what that took
+
+The embedded-resource glob for examples was `*.json` only, so neither imported gas field
+could appear in one — and so neither was covered by the EX-2 release gate that runs on
+every change. `ExampleModels.Assets`/`WriteAssets` now write an example's data files
+beside its model, under their whole file name so two examples cannot collide over a
+`pressure.vti`.
+
+`drift-tube-pressure-gradient` is a 38 mm tube whose gas thickens from 1 mbar where the
+packet starts to 2 mbar at the detector. Its expected number is an integral:
+
+    v(x) = mu_ref n_ref E / n(x)
+    T    = integral of dx / v(x) = integral of n(x) dx / (mu_ref n_ref E)
+
+which is the uniform transit scaled by the **mean** density along the path. For a linear
+ramp that is the average of the two ends, so 1.5 — predicted **316.667 us**, measured
+**320.236, 1.13% out**, matching the 0.86% packet spread the uniform drift-tube example
+already reports. Ignoring the gradient gives 211 us, a third away.
+
+What it deliberately cannot see is the **arrangement**: a drift transit depends only on
+the integral of n along the path, so *any* reflection of the profile gives the same
+answer. That is a property of the physics rather than a weakness to design away, and it
+is why the reversed-ramp unit test exists to pin the arrangement separately.
+
+### The model now carries where it came from
+
+`einzel test` could not test a model with an imported field at all. The seam between a
+study and the transport is a `Func<CompiledModel, double?>` — there is nowhere in it to
+put a path — so a figure of merit reached `BackgroundGas.FromModel` and was refused,
+correctly and uselessly.
+
+`CompiledModel.SourceDirectory` is the fix: the directory the document was read from,
+set by every loader, so any consumer can resolve a referenced file the same way
+`einzel run` does. **Null stays the safe value.** A model compiled from a string has no
+directory and its consumer is refused rather than handed a uniform stationary gas, so a
+loader that forgets degrades to the refusal — the direction a mistake here should fail
+in. It is never serialised, so no absolute machine path reaches a manifest.
+
+All four study drivers take the directory alongside the document now, so a **sweep,
+scan, optimisation or boundary search over a model with an imported field runs**. The
+warning survives that seam too — the ledger reports `gas.pressure-imported` with its
+per-evaluation count, which is what distinguishes "on a corner of the box" from "on
+every draw".
+
+### Still assumed: one temperature
+
+What is imported is a pressure field read as a density field through `n = p/kT` at the
+model's single declared temperature. A real differentially pumped instrument has a
+temperature gradient too. That assumption was already made by there being one
+`temperature` in the document — importing a pressure inherits it rather than adding it —
+but it is worth stating, because it is now the *only* thing about the gas that cannot
+vary from place to place.
+
+A **non-positive sample is refused rather than clamped**, because mobility goes as 1/n:
+a zero is an infinite drift and a stability limit of zero, so the run does not answer
+wrongly, it never finishes. The refusal names the alternative — a collisionless region is
+described by trajectory integration, not by diffusion.

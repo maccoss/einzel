@@ -185,13 +185,20 @@ public static class Optimiser
     /// The model does not validate, a variable does not name a free bounded
     /// parameter, or the starting point produces no figure of merit.
     /// </exception>
+    /// <param name="sourceDirectory">
+    /// The directory the model document was read from, which any file it references is
+    /// resolved against. Null when the caller has none, and a model declaring an
+    /// imported gas field is then refused rather than run in a gas it does not
+    /// describe.
+    /// </param>
     public static OptimisationResult Run(
         ModelDocument document,
         IReadOnlyList<DesignVariable> variables,
         Func<CompiledModel, double?> objective,
         ObjectiveSense sense = ObjectiveSense.Minimise,
         OptimisationAlgorithm algorithm = OptimisationAlgorithm.NelderMead,
-        OptimisationSettings? settings = null)
+        OptimisationSettings? settings = null,
+        string? sourceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(variables);
@@ -212,7 +219,7 @@ public static class Optimiser
         ArgumentOutOfRangeException.ThrowIfNegative(resolved.ObjectiveTolerance);
         ArgumentOutOfRangeException.ThrowIfNegative(resolved.Restarts);
 
-        var problem = new SearchProblem(document, variables, objective, sense, resolved);
+        var problem = new SearchProblem(document, variables, objective, sense, resolved, sourceDirectory);
 
         var (bestPoint, spread, iterations, converged) = algorithm switch
         {
@@ -231,6 +238,7 @@ public static class Optimiser
 internal sealed class SearchProblem
 {
     private readonly ModelDocument _document;
+    private readonly string? _sourceDirectory;
     private readonly Func<CompiledModel, double?> _objective;
     private readonly ObjectiveSense _sense;
     private readonly ResolvedParameter[] _parameters;
@@ -246,14 +254,16 @@ internal sealed class SearchProblem
         IReadOnlyList<DesignVariable> variables,
         Func<CompiledModel, double?> objective,
         ObjectiveSense sense,
-        OptimisationSettings settings)
+        OptimisationSettings settings,
+        string? sourceDirectory = null)
     {
         _document = document;
+        _sourceDirectory = sourceDirectory;
         _objective = objective;
         _sense = sense;
         Settings = settings;
 
-        var baseline = ModelValidator.Validate(document, null);
+        var baseline = ModelValidator.Validate(document, null, sourceDirectory);
 
         if (!baseline.IsValid)
         {
@@ -351,7 +361,7 @@ internal sealed class SearchProblem
 
         try
         {
-            var validation = ModelValidator.Validate(_document, overrides);
+            var validation = ModelValidator.Validate(_document, overrides, _sourceDirectory);
             raw = validation.IsValid ? _objective(validation.Model!) : null;
         }
         catch (EinzelException)

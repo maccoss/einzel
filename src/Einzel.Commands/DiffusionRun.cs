@@ -56,6 +56,11 @@ public static class DiffusionRun
     /// <param name="stepGain">
     /// How many times the explicit stability limit to step, for the implicit scheme.
     /// </param>
+    /// <param name="snapshotSeconds">
+    /// Instants to record the density at, in seconds and in order, or null for none.
+    /// What lets a figure show the packet in flight rather than the empty box a
+    /// finished run leaves.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">
     /// The model cannot be expressed as a density problem, or it declares a velocity
@@ -67,35 +72,19 @@ public static class DiffusionRun
         IReadOnlyList<ValidityWarning> fieldWarnings,
         BackgroundGas? resolved = null,
         Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
-        double stepGain = 1.0)
+        double stepGain = 1.0,
+        IReadOnlyList<double>? snapshotSeconds = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
 
         var species = IonSpecies.FromModel(model);
 
-        // A declared velocity field is a file, and resolving a path needs the model
-        // document's own directory - which a caller reached through a study or a
-        // figure of merit does not have. Refused rather than run in a gas that
-        // stands still: this is exactly the shape of the bug where driftVelocity was
-        // honoured by one transport mode and silently dropped by the other, and the
-        // whole point of GAS-1 is that a missing flow is hard to notice.
-        if (resolved is null && model.Gas.HasVelocityField)
-        {
-            throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = "/transport/gas/velocityField",
-                Constraint = "this model declares a neutral velocity field, and it was not "
-                    + "resolved - the caller has no model directory to read it from",
-                Suggestion = "run it with 'einzel run', which knows where the model file is. A "
-                    + "study or a figure of merit reaches the transport without a path, and "
-                    + "running in a stationary gas instead would silently answer about a "
-                    + "different instrument",
-            });
-        }
-
-        var gas = resolved ?? BackgroundGas.FromModel(model.Gas);
+        // No guard here for an unresolved imported field: BackgroundGas.FromModel
+        // refuses one itself, so the check lives at the function that cannot read a
+        // file rather than at each of its callers. A guard per call site is how the
+        // one naming only velocityField came to be silent about a pressure field.
+        var gas = resolved ?? GasFor(model);
 
         var declared = model.Mobility
             ?? throw new EinzelException(new EinzelError
@@ -126,27 +115,7 @@ public static class DiffusionRun
 
         var warnings = new List<ValidityWarning>(fieldWarnings);
 
-        // A driven structure has no static field to step a density through, and
-        // sampling one at a chosen instant gives the RF at that phase - a field that
-        // exists for no length of time. What a slow ion in a gas experiences is the
-        // cycle average, so the driven field is presented as its effective one.
-        //
-        // This is what the 1e-2 to 10 mbar band needed. Trajectory integration is
-        // outside its validity there and this mode could not see a drive at all, so
-        // an ion funnel or a travelling-wave guide - which is to say the devices
-        // that actually run at those pressures - had no mode that described them.
-        var effective = field as Transport.Diffusion.PonderomotiveField;
-
-        if (field is ITimeVaryingField driven)
-        {
-            var rate = Transport.Diffusion.PonderomotiveField.CollisionRateFromMobility(
-                species.ChargeSi, species.MassSi, mobility.ZeroFieldSi);
-
-            effective = new Transport.Diffusion.PonderomotiveField(
-                driven, species.ChargeSi, species.MassSi, rate);
-
-            field = effective;
-        }
+        var effective = Effective(ref field, species, mobility, gas);
 
         // The model's own choice, unless a caller overrode it - which is how a study
         // measuring the two schemes against each other on one document works.
@@ -164,7 +133,7 @@ public static class DiffusionRun
 
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
-            scheme: chosen, stepGain: gain);
+            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds);
 
         // The seed's overlap with metal joins the same ledger the run fills, so the
         // itemisation adds back up to the launched population.
@@ -330,7 +299,70 @@ public static class DiffusionRun
     /// the honest translation - the model said the ions start at a point, and the
     /// cell is as close to a point as the grid can express.
     /// </remarks>
-    private static DensityField Seed(CompiledModel model, Grid2D grid, bool cylindrical)
+    /// <summary>
+    /// The field a density is actually stepped through: cycle-averaged where it is driven.
+    /// </summary>
+    /// <param name="field">
+    /// The assembled field, replaced by its effective form when it is driven.
+    /// </param>
+    /// <param name="species">The ion, whose charge and mass set the quiver.</param>
+    /// <param name="mobility">The mobility, which the damping rate comes from.</param>
+    /// <param name="gas">The gas, whose density grades the damping.</param>
+    /// <returns>The ponderomotive field, or null when there is nothing driven.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A driven structure has no static field to step a density through</b>, and
+    /// sampling one at a chosen instant gives the RF at that phase - a field that exists
+    /// for no length of time. What a slow ion in a gas experiences is the cycle average.
+    /// </para>
+    /// <para>
+    /// This is what the 1e-2 to 10 mbar band needed: trajectory integration is outside
+    /// its validity there and the diffusive mode could not see a drive at all, so an ion
+    /// funnel or a travelling-wave guide - the devices that actually run at those
+    /// pressures - had no mode that described them.
+    /// </para>
+    /// <para>
+    /// <b>Shared with the sequenced path rather than written twice.</b> A sequenced run's
+    /// diffusive phase stepped a driven geometry through a snapshot of the RF at the
+    /// phase's first instant, which is the fifth time in this project a time-varying
+    /// quantity reached through a time-free interface has answered at an arbitrary
+    /// instant instead of failing. Two call sites and one wrapper is what stops there
+    /// being a sixth.
+    /// </para>
+    /// </remarks>
+    internal static Transport.Diffusion.PonderomotiveField? Effective(
+        ref Fields.IElectrostaticField field,
+        IonSpecies species,
+        Mobility mobility,
+        BackgroundGas gas)
+    {
+        if (field is not ITimeVaryingField driven)
+        {
+            return field as Transport.Diffusion.PonderomotiveField;
+        }
+
+        var rate = Transport.Diffusion.PonderomotiveField.CollisionRateFromMobility(
+            species.ChargeSi, species.MassSi, mobility.ZeroFieldSi);
+
+        // The momentum-transfer rate goes as the density, since mobility goes as its
+        // reciprocal - so a graded gas grades the damping, and with it the depth of the
+        // pseudopotential well. Passed only where the gas actually varies, so an
+        // ungraded model takes the constant path and is bit-identical.
+        var effective = new Transport.Diffusion.PonderomotiveField(
+            driven,
+            species.ChargeSi,
+            species.MassSi,
+            rate,
+            collisionRateAt: gas.IsGraded
+                ? point => rate * gas.NumberDensityAt(in point) / gas.NumberDensitySi
+                : null);
+
+        field = effective;
+
+        return effective;
+    }
+
+    internal static DensityField Seed(CompiledModel model, Grid2D grid, bool cylindrical)
     {
         var density = new DensityField(grid, cylindrical);
 
@@ -413,7 +445,7 @@ public static class DiffusionRun
     /// complete.
     /// </para>
     /// </remarks>
-    private static (AbsorbingCells Cells, IReadOnlyDictionary<string, double> SeedLoss) Absorb(
+    internal static (AbsorbingCells Cells, IReadOnlyDictionary<string, double> SeedLoss) Absorb(
         CompiledModel model, Grid2D grid, DensityField density)
     {
         var names = new List<string>();
@@ -487,7 +519,7 @@ public static class DiffusionRun
     /// absorbs. Reflecting where the instrument has a wall would make ions bounce
     /// off vacuum.
     /// </remarks>
-    private static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)
+    internal static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)
     {
         var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
 
@@ -633,9 +665,49 @@ public static class DiffusionRun
                 fraction > 0.0 ? WarningSeverity.Qualified : WarningSeverity.Provenance));
         }
 
+        // REG-2: reported whether or not it crosses a threshold. A reader who sees the
+        // range knows the run was checked; one who sees nothing cannot tell that from
+        // its not having been checked.
+        if (gas.Density is SampledGasDensity graded)
+        {
+            var outside = graded.FractionOutside(
+                new Vec3(grid.OriginX, grid.OriginY, 0.0),
+                new Vec3(
+                    grid.OriginX + (grid.SpacingX * (grid.CountX - 1)),
+                    grid.OriginY + (grid.SpacingY * (grid.CountY - 1)),
+                    0.0));
+
+            var kt = Transport.Collisions.BackgroundGas.BoltzmannSi * gas.TemperatureK;
+            var lowMbar = graded.LowestNumberDensitySi * kt / 100.0;
+            var highMbar = graded.HighestNumberDensitySi * kt / 100.0;
+
+            warnings.Add(new ValidityWarning(
+                "gas.pressure-imported",
+                $"the gas density is read from an imported field spanning {lowMbar:G4} to "
+                + $"{highMbar:G4} mbar, a factor of "
+                + $"{graded.HighestNumberDensitySi / graded.LowestNumberDensitySi:G3}. The "
+                + $"declared pressure of {pressureMbar:G3} mbar is the reference the mobility "
+                + "belongs to, and mobility goes as the reciprocal of density, so the ion drifts "
+                + $"{pressureMbar / highMbar:G3} times as fast where the gas is densest and "
+                + $"{pressureMbar / lowMbar:G3} times where it is thinnest. "
+                + (outside > 0.0
+                    ? $"{outside:P1} of the tracked region lies outside the field, where the edge "
+                        + "value is continued rather than measured - and a pressure gradient is "
+                        + "steepest at the ends of a pumped region, which is where continuing it "
+                        + "is most likely to be wrong"
+                    : "The tracked region lies wholly inside it"),
+                outside > 0.0 ? WarningSeverity.Qualified : WarningSeverity.Provenance));
+        }
+
         // The fastest the field can push an ion anywhere on this grid, which is what
-        // a bulk gas speed has to be read against.
-        var drift = mobility.ZeroFieldSi * strongestFieldSi;
+        // a bulk gas speed has to be read against. Taken at the THINNEST gas, because
+        // mobility goes as the reciprocal of density and the fastest drift is where
+        // there is least to collide with - reading the declared mobility here would
+        // understate it wherever the field is thinner than declared.
+        // At zero field, so this changes only with the density and is bit-identical
+        // to the zero-field mobility it used to read wherever no field is imported.
+        var drift = mobility.At(
+            0.0, gas.LowestNumberDensitySi, gas.NumberDensitySi) * strongestFieldSi;
 
         if (gas.IsFlowing)
         {
@@ -672,6 +744,36 @@ public static class DiffusionRun
         }
 
         return warnings;
+    }
+
+    /// <summary>The runtime gas a compiled model describes, imported fields and all.</summary>
+    /// <param name="model">The compiled model.</param>
+    /// <returns>The gas.</returns>
+    /// <exception cref="EinzelException">
+    /// The model declares an imported field and does not know where it was read from.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// A model carries the directory it was loaded from, so a consumer reached through
+    /// a figure of merit can resolve a declared gas field just as <c>einzel run</c>
+    /// can. Before that, <c>einzel test</c> could not test a model with an imported
+    /// field at all - the seam between a study and the transport is a
+    /// <c>Func&lt;CompiledModel, double?&gt;</c> with nowhere to put a path.
+    /// </para>
+    /// <para>
+    /// Where the directory is absent - a document compiled from a string, which is
+    /// what a sweep driver still hands down - <c>FromModel</c> refuses rather than
+    /// returning a uniform stationary gas. That is the safe direction for a loader
+    /// that forgets.
+    /// </para>
+    /// </remarks>
+    internal static BackgroundGas GasFor(CompiledModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        return model.SourceDirectory is { } directory
+            ? Io.GasFlowImport.Resolve(model.Gas, directory)
+            : BackgroundGas.FromModel(model.Gas);
     }
 
     /// <summary>Warnings a diffusive run carries, per REG-2 and TRN-1.</summary>
@@ -725,9 +827,17 @@ public static class DiffusionRun
 
         warnings.AddRange(FlowWarnings(gas, mobility, worst, pressureMbar, grid));
 
-        if (!mobility.IsWithinFit(worst, gas.NumberDensitySi))
+        // E/N is worst where the gas is thinnest, so the check reads the lowest
+        // density in the field rather than the declared one. It pairs the strongest
+        // field anywhere with the thinnest gas anywhere, which need not occur at the
+        // same place - conservative on purpose, since this is a validity check and the
+        // question it answers is whether the mobility is being extrapolated anywhere.
+        // Identical to the declared density where no field is imported.
+        var thinnest = gas.LowestNumberDensitySi;
+
+        if (!mobility.IsWithinFit(worst, thinnest))
         {
-            var townsend = worst / (gas.NumberDensitySi * Mobility.Townsend);
+            var townsend = worst / (thinnest * Mobility.Townsend);
 
             warnings.Add(new ValidityWarning(
                 "mobility.outside-fit",

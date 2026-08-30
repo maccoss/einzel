@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "sequenced-extraction",
+  "description": "Closed form: the hold, plus sqrt(2 d m / (q E)) from rest across the gap. 2 us + 0.910572113 us. The tolerance is 1e-5 against a measured 1.0e-7, which is the finite plates and the grounded boundary rather than the sequencer - the same geometry error the three-dimensional gap example measures. A packet held at rest between two plates and then extracted, which is what a pulsed-extraction trap does and is the one Phase 4 capability the corpus did not exercise. THE EXPECTED NUMBER IS TWO PIECES OF ARITHMETIC ADDED TOGETHER. During the first stage both plates sit at the same potential, so the field between them is exactly zero and an ion launched at rest does not move - it waits, for the declared hold. The second stage puts them at plus and minus half the extraction voltage, and from rest across a uniform field the traverse is sqrt(2 d m / (q E)) with E = V/gap. So the arrival is hold + traverse: 2 us + 0.910572113 us, the second term being the same closed form the three-dimensional parallel-plate example is checked against. Measured 2.9105718, which is 1.0e-7 out - the finite plates and the grounded domain boundary, not the sequencer. Both plates are moved by a STAGE SETTING A PARAMETER rather than by listing electrode potentials, which is the whole design of the sequencer: potentials are already expressions over parameters, so setting one moves everything that depends on it, including derived parameters. They are held at plus and minus half the voltage rather than one at V and one at earth, because the grounded domain boundary is a third electrode and an asymmetric pair makes the problem asymmetric about the mid-plane although the geometry is not. TEETH: with the sequencer ignored and the extraction applied from the start the arrival is 0.911 us against 2.911, a factor of three; and this model could not be run at all until the refinement ladder stopped scaling its absolute velocity floor down to 1e-11 m/s, at which an ion starting from rest cannot satisfy the error norm at any step size.",
+  "model": "../models/sequenced-extraction.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 2.910572113,
+      "unit": "us",
+      "tolerance": 1e-05
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "0.1",
+  "name": "mr-tof-oscillations",
+  "description": "Two assertions, and the second is the point. Closed form: the flight time is the drift distance over the drift speed, 254.563540386 us, because fixing the drift distance decouples arrival from the mirrors entirely - a trap this engine already records, and asserting it here documents the decoupling rather than pretending to measure focusing. A real analyzer fixes the oscillation COUNT instead, which this model format cannot declare. Exact invariant: a static field does no net work, so total energy returns to what it was launched with - over a path crossing a declared field discontinuity 50 times, which is where an adaptive integrator can lose energy without its own error estimate noticing. The bound is a hundredfold inside ACC-4 and the measurement has teeth: the drift accumulates with reflections, 1.55e-11 at one crossing pair against 7.05e-11 at fifty, so it is not sitting at a floor.",
+  "model": "../models/mr-tof-oscillations.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 254.56354038613415,
+      "unit": "us",
+      "tolerance": 1e-09
+    },
+    {
+      "figureOfMerit": "energyDrift",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-08
+    }
+  ]
+}

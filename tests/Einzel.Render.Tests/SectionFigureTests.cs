@@ -1,5 +1,6 @@
 using System.Globalization;
 using Einzel.Core.Model;
+using Einzel.Core.Units;
 using Einzel.Io;
 using Einzel.Library;
 using Einzel.Render;
@@ -28,6 +29,156 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
             validation.IsValid ? string.Empty : validation.Errors[0].Constraint);
 
         return validation.Model!;
+    }
+
+    /// <summary>A dimension is measured from the geometry, never written down.</summary>
+    /// <remarks>
+    /// <para>
+    /// The memo's own figures are line drawings <em>with</em> dimensions, and a section
+    /// without them says what the instrument looks like and not how big any of it is.
+    /// </para>
+    /// <para>
+    /// <b>What a dimension declares is the two points it spans.</b> The length is the
+    /// distance between them, computed when the figure is drawn - so it cannot part
+    /// company with the model, which is the whole reason to dimension a drawing rather
+    /// than annotate it. A typed number would be a second statement of something the
+    /// model already says.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADimensionIsMeasuredRatherThanDeclared()
+    {
+        var lens = Compile("einzel-lens");
+
+        var spec = new RenderSpec
+        {
+            Equipotentials = 0,
+            Dimensions =
+            [
+                new DimensionDocument
+                {
+                    From = new VectorValue([-30.0, 0.0, 0.0], "mm"),
+                    To = new VectorValue([30.0, 0.0, 0.0], "mm"),
+                    Label = "span",
+                },
+            ],
+        };
+
+        var figure = SectionRenderer.Render(lens, spec);
+
+        var text = figure.Scene.Texts.Single(t => t.Layer == "dimension");
+
+        output.WriteLine(text.Text);
+
+        // 60 mm between the two declared points, measured and formatted here rather than
+        // taken from anything the caller wrote.
+        Assert.Equal("span 60 mm", text.Text);
+
+        // Two extension lines, a dimension line and two arrowheads.
+        Assert.Equal(5, figure.Scene.Paths.Count(p => p.Layer == "dimension"));
+    }
+
+    /// <summary>A dimension over parameters follows the model when they change.</summary>
+    /// <remarks>
+    /// Section 9's rule for a model - "every placement is a parametric expression, never
+    /// a baked number" - is not weaker for a drawing of it. A dimension written over the
+    /// model's own parameters describes the geometry rather than where the geometry used
+    /// to be, and this is the assertion that says so: one figure spec, two models, two
+    /// different measurements and no edit in between.
+    /// </remarks>
+    [Fact]
+    public void AParametricDimensionFollowsTheModel()
+    {
+        var spec = new RenderSpec
+        {
+            Equipotentials = 0,
+            Dimensions =
+            [
+                new DimensionDocument
+                {
+                    From = new VectorValue([0.0, 0.0, 0.0], "mm") { Expression = ["0", "0", "0"] },
+                    To = new VectorValue([0.0, 0.0, 0.0], "mm")
+                    {
+                        Expression = ["boreRadius", "0", "0"],
+                    },
+                    Label = "bore",
+                },
+            ],
+        };
+
+        static string Measured(CompiledModel model, RenderSpec spec) =>
+            SectionRenderer.Render(model, spec).Scene.Texts
+                .Single(t => t.Layer == "dimension").Text;
+
+        var document = ModelJson.Parse(DeviceTemplates.Read("einzel-lens"));
+
+        var nominal = ModelValidator.Validate(document, null).Model!;
+        var widened = ModelValidator.Validate(
+            document,
+            new Dictionary<string, Quantity>(StringComparer.Ordinal)
+            {
+                ["boreRadius"] = Quantity.From(9.0, "mm"),
+            }).Model!;
+
+        var before = Measured(nominal, spec);
+        var after = Measured(widened, spec);
+
+        output.WriteLine($"{before}  ->  {after}");
+
+        Assert.NotEqual(before, after);
+        Assert.Equal("bore 9 mm", after);
+    }
+
+    /// <summary>
+    /// An analytic model's whole flight fits on its own page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A model with no declared solve domain takes its extent from the instrument's own
+    /// points, and until now those were the source and the detector. In a reflectron
+    /// they are the <em>same point</em> - the ion is caught where it launched - so the
+    /// page was a box a tenth of a millimetre across while the ion travelled 1.3 m into
+    /// the mirror and back. The scaffolded reflectron, which is the first thing anybody
+    /// renders, drew its turning point 105 metres off a 160 mm page.
+    /// </para>
+    /// <para>
+    /// The flight is now included in the extent, which costs nothing: the trajectory had
+    /// to be flown to be drawn, and it is now flown before the page is chosen rather
+    /// than after.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnAnalyticFlightFitsOnItsOwnPage()
+    {
+        var figure = SectionRenderer.Render(
+            AnalyticModels.Reflectron(), new RenderSpec { Equipotentials = 6 });
+
+        var drawn = figure.Scene.Paths
+            .Where(p => p.Layer == "trajectory")
+            .SelectMany(p => p.Points)
+            .ToList();
+
+        Assert.NotEmpty(drawn);
+
+        var minX = drawn.Min(p => p.X);
+        var maxX = drawn.Max(p => p.X);
+        var minY = drawn.Min(p => p.Y);
+        var maxY = drawn.Max(p => p.Y);
+
+        output.WriteLine(
+            $"page {figure.Scene.WidthMm:F1} by {figure.Scene.HeightMm:F1} mm; trajectory "
+            + $"x {minX:F2}..{maxX:F2}, y {minY:F2}..{maxY:F2}");
+
+        Assert.InRange(minX, 0.0, figure.Scene.WidthMm);
+        Assert.InRange(maxX, 0.0, figure.Scene.WidthMm);
+        Assert.InRange(minY, 0.0, figure.Scene.HeightMm);
+        Assert.InRange(maxY, 0.0, figure.Scene.HeightMm);
+
+        // And it fills the page rather than sitting in a corner of one that was made
+        // large enough to contain it by accident.
+        Assert.True(
+            maxX - minX > 0.5 * figure.Scene.WidthMm,
+            $"the flight spans only {maxX - minX:F1} of {figure.Scene.WidthMm:F1} mm");
     }
 
     [Fact]

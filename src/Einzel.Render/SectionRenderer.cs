@@ -35,6 +35,30 @@ public static class SectionRenderer
     private const string ConductorEdge = "#4a4f57";
     private const string Equipotential = "#7a8390";
     private const string TrajectoryInk = "#b3452a";
+
+    /// <summary>Ink for dimensions, distinct from both the geometry and the trajectory.</summary>
+    private const string DimensionInk = "#1f6feb";
+
+    /// <summary>Gap between a feature and the start of its extension line, in page mm.</summary>
+    private const double ExtensionGapMm = 1.0;
+
+    /// <summary>How far an extension line runs past the dimension line, in page mm.</summary>
+    private const double ExtensionOvershootMm = 1.5;
+
+    /// <summary>Arrowhead length, in page millimetres.</summary>
+    private const double ArrowLengthMm = 2.0;
+
+    /// <summary>Arrowhead half-width, in page millimetres.</summary>
+    private const double ArrowHalfWidthMm = 0.6;
+
+    /// <summary>How far the text sits off the dimension line, in page millimetres.</summary>
+    private const double TextLiftMm = 1.8;
+
+    /// <summary>Radius of the marker showing where the ion is, in page millimetres.</summary>
+    private const double HeadRadiusMm = 0.9;
+
+    /// <summary>Sides of the polygon standing in for that marker's circle.</summary>
+    private const int HeadSides = 12;
     private const string DensityInk = "#2f6f8f";
     private const string TaintInk = "#a8321e";
 
@@ -53,6 +77,101 @@ public static class SectionRenderer
         int TrajectoryPoints,
         int TrajectoryPointsBeforeDecimation);
 
+    /// <summary>
+    /// What a caller drawing many figures of one model computes once and reuses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An animation is a few hundred figures of the same instrument. Rendered the
+    /// ordinary way each one would solve the field and fly the ion again - a multigrid
+    /// solve per frame, which is unaffordable, and worse than unaffordable: two frames
+    /// that flew separately are two frames that can disagree about the flight. Fly
+    /// once, draw many.
+    /// </para>
+    /// <para>
+    /// Null everywhere is the ordinary single-figure path, which computes all of this
+    /// itself and is unchanged.
+    /// </para>
+    /// </remarks>
+    public sealed record FramePlan
+    {
+        /// <summary>The field, already built.</summary>
+        public IElectrostaticField? Field { get; init; }
+
+        /// <summary>What building it reported, carried onto the figure per GRD-2.</summary>
+        public IReadOnlyList<ValidityWarning> FieldWarnings { get; init; } = [];
+
+        /// <summary>The <em>whole</em> flight, already flown.</summary>
+        /// <remarks>
+        /// <para>
+        /// Whole rather than truncated, and that distinction is the difference between
+        /// an animation and a camera that follows the ion. An analytic model takes its
+        /// extent from the flight, so a frame handed only the part flown so far would
+        /// choose its page from that part - and every frame would then have a different
+        /// scale, with the ion pinned to the edge of a box that grew to meet it. Which
+        /// is what the first version did.
+        /// </para>
+        /// <para>
+        /// <see cref="AtSeconds"/> is what truncates it for drawing, so every frame
+        /// draws a prefix of one flight on one page.
+        /// </para>
+        /// </remarks>
+        public IReadOnlyList<TrajectorySample>? Trajectory { get; init; }
+
+        /// <summary>The instant this frame shows, in seconds.</summary>
+        /// <remarks>
+        /// <para>
+        /// One instant, used for both halves of what a frame depicts: the trajectory is
+        /// drawn up to it and the field is sampled at it. Two fields that had to agree
+        /// would be one too many - a frame is a moment, and the ion and the electrodes
+        /// are in it together.
+        /// </para>
+        /// <para>
+        /// Null draws the whole flight and samples the field at
+        /// <see cref="RenderSpec.AtSeconds"/>. When set, the trajectory's last point is
+        /// marked, because a frame of an animation shows where the ion <em>is</em> and a
+        /// polyline that grows says only where it has been.
+        /// </para>
+        /// </remarks>
+        public double? AtSeconds { get; init; }
+
+        /// <summary>
+        /// The potential range the equipotential levels are spread over, or null to take
+        /// it from this frame alone.
+        /// </summary>
+        /// <remarks>
+        /// Supplied by an animation, because a driven field's range changes through the
+        /// cycle and levels chosen per frame would make the contours flicker - the same
+        /// defect as a page chosen per frame, in the other axis. Fixed once over the
+        /// whole animation, the contours move because the field moves.
+        /// </remarks>
+        public (double Low, double High)? PotentialRange { get; init; }
+
+        /// <summary>
+        /// The density peak the contour decades are measured from, or null to take it
+        /// from this frame.
+        /// </summary>
+        /// <remarks>
+        /// <b>Not the flicker problem again - a worse one.</b> Density contours are drawn
+        /// at decades below the peak, and a diffusing packet's peak falls as it spreads.
+        /// Anchored per frame the levels would fall with it, the contours would stay the
+        /// same size, and a film of a packet spreading would show a packet doing nothing.
+        /// Anchored once, later frames show fewer contours because the density really is
+        /// lower, which is what happened.
+        /// </remarks>
+        public double? DensityPeak { get; init; }
+
+        /// <summary>A line stamped across the top of the page.</summary>
+        /// <remarks>
+        /// RND-7's rate display. Written by the renderer rather than offered as a
+        /// styling option, and placed in the top margin where it cannot collide with the
+        /// provenance row or a taint rule - a frame is the artifact most likely to be
+        /// shown with none of its apparatus attached, and this is the apparatus that
+        /// makes a compressed timeline honest.
+        /// </remarks>
+        public string? Banner { get; init; }
+    }
+
     /// <summary>Renders a section of a model.</summary>
     /// <param name="model">The validated model.</param>
     /// <param name="spec">What to draw.</param>
@@ -70,11 +189,16 @@ public static class SectionRenderer
     /// problem - and a renderer that could do it would be a renderer that decides
     /// how long a run lasts.
     /// </remarks>
+    /// <param name="plan">
+    /// What a caller drawing many figures of one model has already computed, or null to
+    /// compute it here.
+    /// </param>
     public static Figure Render(
         CompiledModel model,
         RenderSpec spec,
         IReadOnlyList<string>? provenance = null,
-        Transport.Diffusion.DensityField? density = null)
+        Transport.Diffusion.DensityField? density = null,
+        FramePlan? plan = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(spec);
@@ -84,10 +208,29 @@ public static class SectionRenderer
         // figure is the artifact most likely to be shown with none of the
         // uncertainty apparatus attached, which is RND-10's argument for video and
         // applies here for the same reason.
-        var (field, warnings) = FieldAssembly.BuildReported(model);
+        var (field, warnings) = plan?.Field is { } prebuilt
+            ? (prebuilt, plan.FieldWarnings)
+            : FieldAssembly.BuildReported(model);
 
         var plane = PlaneFor(model, spec);
-        var (minU, minV, maxU, maxV) = Extent(model, plane);
+
+        // Flown before the extent is chosen, not after, because an analytic model has
+        // no declared domain and the flight is then the only thing that says how big
+        // the instrument is. The scaffolded reflectron launches and is caught within a
+        // few millimetres of the same place while the ion travels 1.3 m into the mirror
+        // and back - so an extent taken from the source and the detector alone put the
+        // turning point 105 metres off a 160 mm page. It is one flight either way: this
+        // is the same scout the trajectory drawing needed.
+        var mode = Transport.TransportModes.All.FirstOrDefault(
+            m => string.Equals(m.Name, model.TransportMode, StringComparison.OrdinalIgnoreCase));
+
+        var drawable = mode?.ProducesTrajectories ?? true;
+
+        var flown = spec.Trajectory && drawable
+            ? plan?.Trajectory ?? FlyForDrawing(model, spec, field)
+            : null;
+
+        var (minU, minV, maxU, maxV) = Extent(model, plane, flown);
 
         var spanU = maxU - minU;
         var spanV = maxV - minV;
@@ -118,10 +261,44 @@ public static class SectionRenderer
 
         var equipotentialStyle = new PathStyle(Equipotential, 0.13, Dash: DashStyle.Solid, Opacity: 0.85);
 
+        // The instant this figure is of. A static field ignores it; a driven or
+        // sequenced one does not, and until now was sampled through the time-free
+        // interface it also implements - which answers at t = 0 without failing. That
+        // is the same defect that had `einzel solve` reporting the DC pattern of a
+        // driven geometry and the diffusive mode stepping a density through a snapshot
+        // of the RF, met a third time in the renderer.
+        var at = plan?.AtSeconds ?? spec.AtSeconds;
+
+        if (field is ITimeVaryingField)
+        {
+            warnings =
+            [
+                .. warnings,
+                new ValidityWarning(
+                    "render.field-at-instant",
+                    $"this field varies with time, so the equipotentials are the field at "
+                    + $"t = {at * 1e6:G6} us and not a field the instrument holds. A figure of a "
+                    + "driven structure is a frame of a film whether or not it is drawn as one",
+                    WarningSeverity.Provenance),
+            ];
+        }
+
         if (spec.Equipotentials > 0)
         {
             DrawEquipotentials(
-                paths, field, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage, equipotentialStyle);
+                paths,
+                field,
+                at,
+                plan?.PotentialRange,
+                plane,
+                spec,
+                minU,
+                minV,
+                spanU,
+                spanV,
+                tolerance,
+                ToPage,
+                equipotentialStyle);
         }
 
         DrawConductors(paths, model, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
@@ -136,16 +313,19 @@ public static class SectionRenderer
         //
         // Asked of the transport mode rather than inferred from the pressure, so the
         // rule holds wherever a mode says it produces no trajectories.
-        var mode = Transport.TransportModes.All.FirstOrDefault(
-            m => string.Equals(m.Name, model.TransportMode, StringComparison.OrdinalIgnoreCase));
-
-        var drawable = mode?.ProducesTrajectories ?? true;
-
         var densityLevels = Array.Empty<double>();
 
         if (spec.Trajectory && drawable)
         {
-            (kept, raw) = DrawTrajectory(paths, model, spec, field, plane, tolerance, ToPage);
+            (kept, raw) = flown is null
+                ? (0, 0)
+                : DrawSupplied(
+                    paths,
+                    plan?.AtSeconds is { } until ? Until(flown, until) : flown,
+                    plane,
+                    tolerance,
+                    ToPage,
+                    plan?.AtSeconds is not null);
         }
 
         // Drawn whenever there is a density and contours were asked for. A density is
@@ -156,7 +336,8 @@ public static class SectionRenderer
         if (density is not null && spec.DensityContours > 0)
         {
             densityLevels = DrawDensity(
-                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
+                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage,
+                plan?.DensityPeak);
 
             if (densityLevels.Length == 0)
             {
@@ -167,8 +348,10 @@ public static class SectionRenderer
                         "render.density-empty",
                         "the density had nothing left in it to draw: by the end of the run "
                         + "every ion had reached a boundary. What a figure of the end state "
-                        + "shows in that case is an empty box, correctly. Shorten "
-                        + "'maximumFlightTime' to draw the packet while it is still in flight",
+                        + "shows in that case is an empty box, correctly. Draw an earlier "
+                        + "instant with '--at-us', which records the density there and lets "
+                        + "the run finish - shortening 'maximumFlightTime' would get a packet "
+                        + "too, by throwing away everything after the moment being looked at",
                         WarningSeverity.Provenance),
                 ];
             }
@@ -196,6 +379,8 @@ public static class SectionRenderer
             ];
         }
 
+        DrawDimensions(paths, texts, DimensionCompiler.Compile(spec, model), plane, ToPage);
+
         DrawFrame(paths, texts, spec, minU, maxU, minV, maxV, scale, drawWidth, drawHeight);
 
         var lines = new List<string>(provenance ?? []);
@@ -214,6 +399,22 @@ public static class SectionRenderer
         }
 
         DrawStamp(paths, texts, spec, pageHeight, warnings, tolerance);
+
+        // In the top margin, above the drawing, so it cannot collide with the
+        // provenance row or a taint rule along the bottom - and so it is the first
+        // thing on the page rather than the last. RND-7 asks for the rate to be
+        // displayed THROUGHOUT playback, which means on the frame rather than in the
+        // documentation beside it.
+        if (plan?.Banner is { } banner)
+        {
+            texts.Add(new SceneText(
+                banner,
+                new PagePoint(spec.MarginMm, spec.MarginMm - 3.0),
+                6.0,
+                TextAnchor.Start,
+                Ink,
+                "timebase"));
+        }
 
         if (spec.Caption is { } caption)
         {
@@ -255,7 +456,7 @@ public static class SectionRenderer
     }
 
     private static (double MinU, double MinV, double MaxU, double MaxV) Extent(
-        CompiledModel model, SectionPlane plane)
+        CompiledModel model, SectionPlane plane, IReadOnlyList<TrajectorySample>? flown)
     {
         var minU = double.PositiveInfinity;
         var minV = double.PositiveInfinity;
@@ -310,13 +511,29 @@ public static class SectionRenderer
         }
 
         // An analytic model has no declared domain, so the instrument's own points
-        // are the extent: where the ion starts and where it is caught.
+        // are the extent: where the ion starts, where it is caught, and - the part
+        // that was missing - everywhere it went in between. A reflectron is launched
+        // and caught in nearly the same place, so source and detector alone describe a
+        // box the flight leaves immediately and by three orders of magnitude.
         if (double.IsInfinity(minU))
         {
             Include(model.SourcePosition);
             Include(model.DetectorPoint);
 
-            var pad = 0.1 * Math.Max(1e-3, (model.DetectorPoint - model.SourcePosition).Length);
+            if (flown is not null)
+            {
+                foreach (var sample in flown)
+                {
+                    Include(sample.Position);
+                }
+            }
+
+            // From the extent actually gathered, not from the separation of source and
+            // detector. Those two coincide in any instrument that catches the ion where
+            // it launched - the scaffolded reflectron does exactly that - and a pad
+            // taken from their separation is then a tenth of a millimetre around a
+            // flight of 1.3 metres.
+            var pad = 0.1 * Math.Max(1e-3, Math.Max(maxU - minU, maxV - minV));
 
             minU -= pad;
             maxU += pad;
@@ -340,6 +557,8 @@ public static class SectionRenderer
     private static void DrawEquipotentials(
         List<ScenePath> paths,
         IElectrostaticField field,
+        double atSeconds,
+        (double Low, double High)? range,
         SectionPlane plane,
         RenderSpec spec,
         double minU,
@@ -357,20 +576,27 @@ public static class SectionRenderer
         var stepV = spanV / (rows - 1);
 
         var values = Contours.Sample(
-            plane, minU, minV, stepU, stepV, columns, rows, point => field.PotentialAt(in point));
+            plane, minU, minV, stepU, stepV, columns, rows, Sampler(field, atSeconds));
 
         var low = double.PositiveInfinity;
         var high = double.NegativeInfinity;
 
-        foreach (var value in values)
+        if (range is { } fixedRange)
         {
-            if (!double.IsFinite(value))
+            (low, high) = fixedRange;
+        }
+        else
+        {
+            foreach (var value in values)
             {
-                continue;
-            }
+                if (!double.IsFinite(value))
+                {
+                    continue;
+                }
 
-            low = Math.Min(low, value);
-            high = Math.Max(high, value);
+                low = Math.Min(low, value);
+                high = Math.Max(high, value);
+            }
         }
 
         if (!double.IsFinite(low) || high - low <= 0.0)
@@ -420,9 +646,10 @@ public static class SectionRenderer
         double spanU,
         double spanV,
         double tolerance,
-        Func<double, double, PagePoint> toPage)
+        Func<double, double, PagePoint> toPage,
+        double? fixedPeak)
     {
-        var peak = density.Peak();
+        var peak = fixedPeak ?? density.Peak();
 
         // Not merely zero: a run that collected everything leaves a residue many
         // orders below one ion in the whole domain, and contouring that would draw
@@ -538,14 +765,338 @@ public static class SectionRenderer
         }
     }
 
-    private static (int Kept, int Raw) DrawTrajectory(
+    /// <summary>Draws the declared dimensions, measuring each as it goes.</summary>
+    /// <remarks>
+    /// <para>
+    /// Extension lines from the two points, a dimension line between them offset
+    /// perpendicular, an arrowhead at each end, and the measured length at the middle.
+    /// The convention is the ordinary drafting one, which is what makes a drawing
+    /// readable by somebody who has never seen this program.
+    /// </para>
+    /// <para>
+    /// <b>Drawn after everything else and before the frame</b>, so a dimension sits over
+    /// the geometry it measures rather than under it - the one thing on the page that is
+    /// an annotation rather than a depiction, and the one that has to stay legible.
+    /// </para>
+    /// </remarks>
+    private static void DrawDimensions(
         List<ScenePath> paths,
+        List<SceneText> texts,
+        IReadOnlyList<CompiledDimension> dimensions,
+        SectionPlane plane,
+        Func<double, double, PagePoint> toPage)
+    {
+        foreach (var dimension in dimensions)
+        {
+            var (fromU, fromV) = plane.Project(dimension.FromSi);
+            var (toU, toV) = plane.Project(dimension.ToSi);
+
+            var a = toPage(fromU, fromV);
+            var b = toPage(toU, toV);
+
+            var dx = b.X - a.X;
+            var dy = b.Y - a.Y;
+            var length = Math.Sqrt((dx * dx) + (dy * dy));
+
+            // A span that projects to a point on this plane has no direction to offset
+            // along and no length to show. Skipped rather than drawn as a dot, which
+            // would look like a dimension of zero rather than like a dimension seen end
+            // on.
+            if (!(length > 1e-9))
+            {
+                continue;
+            }
+
+            // Anticlockwise perpendicular, so a positive offset is consistently one side
+            // of the span whichever way round the ends were given.
+            var nx = -dy / length;
+            var ny = dx / length;
+
+            var offsetX = nx * dimension.OffsetMm;
+            var offsetY = ny * dimension.OffsetMm;
+
+            var lineA = new PagePoint(a.X + offsetX, a.Y + offsetY);
+            var lineB = new PagePoint(b.X + offsetX, b.Y + offsetY);
+
+            var style = new PathStyle(DimensionInk, 0.15);
+
+            // Extension lines, starting clear of the feature and running a little past
+            // the dimension line, which is the drafting convention and is what stops
+            // them reading as part of the geometry.
+            paths.Add(new ScenePath(
+                [
+                    new PagePoint(a.X + (nx * ExtensionGapMm), a.Y + (ny * ExtensionGapMm)),
+                    new PagePoint(
+                        a.X + (nx * (dimension.OffsetMm + ExtensionOvershootMm)),
+                        a.Y + (ny * (dimension.OffsetMm + ExtensionOvershootMm))),
+                ],
+                false, style, "dimension"));
+
+            paths.Add(new ScenePath(
+                [
+                    new PagePoint(b.X + (nx * ExtensionGapMm), b.Y + (ny * ExtensionGapMm)),
+                    new PagePoint(
+                        b.X + (nx * (dimension.OffsetMm + ExtensionOvershootMm)),
+                        b.Y + (ny * (dimension.OffsetMm + ExtensionOvershootMm))),
+                ],
+                false, style, "dimension"));
+
+            paths.Add(new ScenePath([lineA, lineB], false, style, "dimension"));
+
+            Arrow(paths, lineA, dx / length, dy / length);
+            Arrow(paths, lineB, -dx / length, -dy / length);
+
+            // Above the line, on the side away from the feature, so the text never sits
+            // on top of what it measures.
+            texts.Add(new SceneText(
+                dimension.Text(),
+                new PagePoint(
+                    ((lineA.X + lineB.X) / 2.0) + (nx * TextLiftMm),
+                    ((lineA.Y + lineB.Y) / 2.0) + (ny * TextLiftMm)),
+                5.5,
+                TextAnchor.Middle,
+                DimensionInk,
+                "dimension"));
+        }
+    }
+
+    /// <summary>A filled arrowhead at a point, pointing along a unit direction.</summary>
+    private static void Arrow(List<ScenePath> paths, PagePoint at, double ux, double uy)
+    {
+        var backX = at.X + (ux * ArrowLengthMm);
+        var backY = at.Y + (uy * ArrowLengthMm);
+
+        paths.Add(new ScenePath(
+            [
+                at,
+                new PagePoint(backX - (uy * ArrowHalfWidthMm), backY + (ux * ArrowHalfWidthMm)),
+                new PagePoint(backX + (uy * ArrowHalfWidthMm), backY - (ux * ArrowHalfWidthMm)),
+            ],
+            true,
+            new PathStyle(null, 0.0, DimensionInk),
+            "dimension"));
+    }
+
+    /// <summary>Reads a field at an instant, whether or not it has one.</summary>
+    /// <remarks>
+    /// A driven field implements the time-free interface too and answers at t = 0
+    /// through it, silently. Asking for the instant explicitly is the difference between
+    /// a figure of a moment and a figure of an arbitrary moment.
+    /// </remarks>
+    private static Func<Vec3, double> Sampler(IElectrostaticField field, double atSeconds) =>
+        field is ITimeVaryingField driven
+            ? point => driven.PotentialAt(in point, atSeconds)
+            : point => field.PotentialAt(in point);
+
+    /// <summary>The potential range a field covers over a set of instants.</summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="spec">What would be drawn.</param>
+    /// <param name="field">The field, already built.</param>
+    /// <param name="instants">The instants to cover, in seconds.</param>
+    /// <returns>The lowest and highest potential over all of them, or null if none.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// What an animation fixes its contour levels from. A driven field's range changes
+    /// through the cycle, so levels taken per frame would make the contours flicker -
+    /// which reads as the field being noisy rather than as the levels moving. Fixed
+    /// once, they move because the field moves.
+    /// </para>
+    /// <para>
+    /// Sampled on a coarser grid than the drawing, because the extremes of a Laplace
+    /// solution are on its boundaries and a coarse grid finds those perfectly well.
+    /// This is a range, not a contour.
+    /// </para>
+    /// </remarks>
+    public static (double Low, double High)? PotentialRange(
         CompiledModel model,
         RenderSpec spec,
         IElectrostaticField field,
+        IReadOnlyList<double> instants)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(spec);
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentNullException.ThrowIfNull(instants);
+
+        if (instants.Count == 0)
+        {
+            return null;
+        }
+
+        var plane = PlaneFor(model, spec);
+        var (minU, minV, maxU, maxV) = Extent(model, plane, null);
+
+        var spanU = maxU - minU;
+        var spanV = maxV - minV;
+
+        if (!(spanU > 0.0) || !(spanV > 0.0))
+        {
+            return null;
+        }
+
+        const int Columns = 96;
+
+        var rows = Math.Max(8, (int)Math.Round(Columns * spanV / spanU));
+        var stepU = spanU / (Columns - 1);
+        var stepV = spanV / (rows - 1);
+
+        var low = double.PositiveInfinity;
+        var high = double.NegativeInfinity;
+
+        foreach (var instant in instants)
+        {
+            foreach (var value in Contours.Sample(
+                plane, minU, minV, stepU, stepV, Columns, rows, Sampler(field, instant)))
+            {
+                if (!double.IsFinite(value))
+                {
+                    continue;
+                }
+
+                low = Math.Min(low, value);
+                high = Math.Max(high, value);
+            }
+        }
+
+        return double.IsFinite(low) && high > low ? (low, high) : null;
+    }
+
+    /// <summary>The samples up to an instant, with the last one landing exactly on it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Interpolated at the end rather than truncated to the nearest kept sample. A
+    /// marker that jumps from sample to sample stutters at exactly the rate the recorder
+    /// happened to keep points, which in an adaptive integrator is fastest where the
+    /// physics is hardest - so the ion would appear to hesitate in precisely the places
+    /// an animation exists to show.
+    /// </para>
+    /// <para>
+    /// Linear between two samples, which is what the drawing already is: the polyline
+    /// through the recorded points is a straight line between each pair, so a head
+    /// interpolated the same way sits exactly on the line it terminates.
+    /// </para>
+    /// </remarks>
+    private static List<TrajectorySample> Until(
+        IReadOnlyList<TrajectorySample> samples, double seconds)
+    {
+        var kept = new List<TrajectorySample>(Math.Min(samples.Count, 16));
+
+        if (samples.Count == 0)
+        {
+            return kept;
+        }
+
+        var last = 0;
+
+        while (last + 1 < samples.Count && samples[last + 1].TimeSeconds <= seconds)
+        {
+            last++;
+        }
+
+        for (var i = 0; i <= last; i++)
+        {
+            kept.Add(samples[i]);
+        }
+
+        if (last + 1 < samples.Count)
+        {
+            var a = samples[last];
+            var b = samples[last + 1];
+            var span = b.TimeSeconds - a.TimeSeconds;
+            var f = span > 0.0 ? (seconds - a.TimeSeconds) / span : 0.0;
+
+            if (f > 0.0)
+            {
+                kept.Add(new TrajectorySample(
+                    seconds,
+                    a.Position + ((b.Position - a.Position) * f),
+                    a.Velocity + ((b.Velocity - a.Velocity) * f)));
+            }
+        }
+
+        return kept;
+    }
+
+    /// <summary>Draws a trajectory somebody else flew, and marks where the ion is.</summary>
+    /// <remarks>
+    /// The marker is a small closed polygon rather than a circle primitive, because the
+    /// scene has paths and text and nothing else - which is what lets the same scene go
+    /// to SVG and to a hand-written PDF without either backend knowing about shapes.
+    /// </remarks>
+    private static (int Kept, int Raw) DrawSupplied(
+        List<ScenePath> paths,
+        IReadOnlyList<TrajectorySample> samples,
         SectionPlane plane,
         double tolerance,
-        Func<double, double, PagePoint> toPage)
+        Func<double, double, PagePoint> toPage,
+        bool markHead)
+    {
+        if (samples.Count == 0)
+        {
+            return (0, 0);
+        }
+
+        var page = new List<PagePoint>(samples.Count);
+
+        foreach (var sample in samples)
+        {
+            var (u, v) = plane.Project(sample.Position);
+            page.Add(toPage(u, v));
+        }
+
+        var kept = 0;
+
+        if (page.Count >= 2)
+        {
+            var reduced = Decimation.Reduce(page, tolerance);
+
+            paths.Add(new ScenePath(
+                reduced, false, new PathStyle(TrajectoryInk, 0.28), "trajectory"));
+
+            kept = reduced.Count;
+        }
+
+        if (!markHead)
+        {
+            return (kept, page.Count);
+        }
+
+        var head = page[^1];
+        var marker = new List<PagePoint>(HeadSides);
+
+        for (var i = 0; i < HeadSides; i++)
+        {
+            var angle = 2.0 * Math.PI * i / HeadSides;
+
+            marker.Add(new PagePoint(
+                head.X + (HeadRadiusMm * Math.Cos(angle)),
+                head.Y + (HeadRadiusMm * Math.Sin(angle))));
+        }
+
+        paths.Add(new ScenePath(
+            marker, true, new PathStyle(null, 0.0, TrajectoryInk), "ion"));
+
+        return (kept, page.Count);
+    }
+
+    /// <summary>Flies the ion once, finely enough to draw.</summary>
+    /// <remarks>
+    /// <para>
+    /// Twice: once at the model's own cadence to learn how long the flight is, then at
+    /// a cadence chosen from that. The alternative - drawing whatever the model happens
+    /// to sample for its VTU export - gave the einzel lens a three-segment curve
+    /// through a focusing element, which is a drawing of the sampling interval rather
+    /// than of the optics.
+    /// </para>
+    /// <para>
+    /// Sample finely and decimate to a stated bound is the whole shape of RND-5.
+    /// Sampling coarsely and drawing it undecimated loses the guarantee and the curve
+    /// at once.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<TrajectorySample>? FlyForDrawing(
+        CompiledModel model, RenderSpec spec, IElectrostaticField field)
     {
         var species = IonSpecies.FromModel(model);
         var launch = new PhaseState(model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
@@ -562,55 +1113,28 @@ public static class SectionRenderer
             MaximumFlightTime = model.MaximumFlightTimeSi,
         };
 
-        // Twice: once at the model's own cadence to learn how long the flight is,
-        // then at a cadence chosen from that. The alternative - drawing whatever the
-        // model happens to sample for its VTU export - gave the einzel lens a
-        // three-segment curve through a focusing element, which is a drawing of the
-        // sampling interval rather than of the optics.
-        //
-        // Sample finely and decimate to a stated bound is the whole shape of RND-5.
-        // Sampling coarsely and drawing it undecimated loses the guarantee and the
-        // curve at once.
         var scout = new TrajectoryRecorder(model.SampleIntervalSi);
 
         TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, scout);
 
         if (scout.Samples.Count < 2)
         {
-            return (0, scout.Samples.Count);
+            return null;
         }
 
         var flight = scout.Samples[^1].TimeSeconds - scout.Samples[0].TimeSeconds;
         var samples = Math.Max(16, spec.TrajectorySamples);
 
-        var recorder = flight > 0.0
-            ? new TrajectoryRecorder(flight / samples, capacity: 4 * samples)
-            : scout;
-
-        if (!ReferenceEquals(recorder, scout))
+        if (!(flight > 0.0))
         {
-            TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
+            return scout.Samples;
         }
 
-        if (recorder.Samples.Count < 2)
-        {
-            return (0, recorder.Samples.Count);
-        }
+        var recorder = new TrajectoryRecorder(flight / samples, capacity: 4 * samples);
 
-        var page = new List<PagePoint>(recorder.Samples.Count);
+        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
 
-        foreach (var sample in recorder.Samples)
-        {
-            var (u, v) = plane.Project(sample.Position);
-            page.Add(toPage(u, v));
-        }
-
-        var reduced = Decimation.Reduce(page, tolerance);
-
-        paths.Add(new ScenePath(
-            reduced, false, new PathStyle(TrajectoryInk, 0.28), "trajectory"));
-
-        return (reduced.Count, page.Count);
+        return recorder.Samples.Count >= 2 ? recorder.Samples : scout.Samples;
     }
 
     private static void DrawFrame(

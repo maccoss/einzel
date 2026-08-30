@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>einzel-mcp</AssemblyName>
+    <RootNamespace>Einzel.Mcp</RootNamespace>
+    <Description>
+      The live-session server. Spec figure 3 puts the CLI, this server and the
+      shell side by side as peers rather than as a stack, and figure 6 says what
+      distinguishes this one: loop A is a project folder and needs no protocol,
+      while loop B is a human with the shell open and an agent joining them on
+      the same model. So the server's subject is the shared session - one
+      document, two parties, one attributed and linear journal (MCP-1) - and not
+      a second spelling of the CLI.
+
+      An executable so that stdio works with no shell, and a library so that the
+      shell can host the same tools in process over streamable HTTP, which is
+      the primary transport the specification names.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+
+</Project>

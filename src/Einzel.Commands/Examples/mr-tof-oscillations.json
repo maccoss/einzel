@@ -1,0 +1,140 @@
+{
+  "schemaVersion": "0.5",
+  "name": "mr-tof-oscillations",
+  "description": "A multi-reflection time-of-flight analyzer: two facing ion mirrors with a field-free drift between them, and an ion that crosses it about 25 times before it is collected. TWO THINGS ARE ASSERTED AND THE SECOND IS THE POINT. The flight time is the drift distance over the drift speed, 254.5635 us, and nothing about the mirrors enters it - that is not a weakness of this example but the property this engine already records as a trap: fix the drift distance and the arrival time depends only on energy, so a real analyzer fixes the oscillation COUNT instead, which this model format has no way to declare. Asserting it here documents the decoupling rather than pretending to measure focusing. What is measured is the exact invariant: a static field does no net work, so total energy must return to what it was launched with - over a path crossing a declared field discontinuity 50 times. That is the sharpest form this check takes in the corpus, because a discontinuity is where an adaptive integrator can lose energy without its own error estimate noticing: Dormand-Prince stage four carries the coefficient -56/15, so intermediate samples fall outside the step and can land on the wrong side of a jump even when both endpoints are inside. Landing on the boundary as an event took the single-reflection case from 5.5e-10 to 1.7e-16, and this multiplies the opportunity fiftyfold. The drift measurably accumulates with reflections - 1.55e-11 at one crossing pair against 7.05e-11 at fifty - so the example has teeth rather than sitting at a floor.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "parameters": {
+    "acceleration": {
+      "value": 4.0,
+      "unit": "kV",
+      "description": "Beam energy, and the potential each mirror cap is held at, so the ion turns exactly at turningDepth."
+    },
+    "turningDepth": {
+      "value": 50.0,
+      "unit": "mm",
+      "description": "How far into a mirror the retarding potential reaches the cap value."
+    },
+    "halfDrift": {
+      "value": 100.0,
+      "unit": "mm",
+      "description": "Half the field-free distance between the two mirror entrances. The ion is launched from the middle."
+    },
+    "driftAngle": {
+      "value": 0.02,
+      "unit": "1",
+      "description": "Tangent of the angle between the launch direction and the oscillation axis, recorded here for the record rather than used: a direction must be a literal in this format, so the value below is written into the source directly and this parameter documents what it means. Small, so the ion makes many reflections before it has drifted the length of the analyzer - that geometry is what separates turns in a real instrument, since the model format has no way to declare a turn count."
+    },
+    "collectAt": {
+      "value": 200.0,
+      "unit": "mm",
+      "description": "How far along the drift the detector sits. With the launch angle below this is reached after about 25 reflections - 12.5 full oscillations, so 50 crossings of a declared field discontinuity - and the ion ends in the field-free region rather than inside a mirror, which is where a detector actually goes."
+    }
+  },
+  "source": {
+    "position": {
+      "value": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1.0,
+        0.0,
+        0.02
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "acceleration",
+      "unit": "kV"
+    },
+    "energyFraction": 0
+  },
+  "fields": [
+    {
+      "type": "halfSpaceUniform",
+      "planePoint": {
+        "expression": [
+          "halfDrift",
+          "0",
+          "0"
+        ],
+        "unit": "mm"
+      },
+      "inwardNormal": {
+        "value": [
+          1,
+          0,
+          0
+        ]
+      },
+      "capPotential": {
+        "expression": "acceleration",
+        "unit": "kV"
+      },
+      "turningDepth": {
+        "expression": "turningDepth",
+        "unit": "mm"
+      }
+    },
+    {
+      "type": "halfSpaceUniform",
+      "planePoint": {
+        "expression": [
+          "-halfDrift",
+          "0",
+          "0"
+        ],
+        "unit": "mm"
+      },
+      "inwardNormal": {
+        "value": [
+          -1,
+          0,
+          0
+        ]
+      },
+      "capPotential": {
+        "expression": "acceleration",
+        "unit": "kV"
+      },
+      "turningDepth": {
+        "expression": "turningDepth",
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "0",
+        "0",
+        "collectAt"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        0,
+        0,
+        -1
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-11,
+    "maximumFlightTime": {
+      "value": 500.0,
+      "unit": "us"
+    }
+  }
+}

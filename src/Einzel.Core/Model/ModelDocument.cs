@@ -54,6 +54,36 @@ public sealed record ModelDocument
     /// </summary>
     public IReadOnlyList<FieldDocument>? Fields { get; init; }
 
+    /// <summary>
+    /// The instrument as a timed state machine: ordered phases, each with a duration
+    /// and the parameter values that hold during it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Section 9's words are that "an instrument is a timed state machine", and the
+    /// emphasis is on <i>instrument</i>. A phase holds across the whole model, so every
+    /// element follows it - which is what makes setting one parameter move everything
+    /// written over it, including derived parameters and including elements other than
+    /// the one the timeline was written next to.
+    /// </para>
+    /// <para>
+    /// How an element follows depends on what it is. A solved geometry re-weights the
+    /// channels it has already solved; an analytic one is compiled once per phase and
+    /// switched. An element no phase moves stays static rather than being wrapped.
+    /// </para>
+    /// <para>
+    /// A phase sets <b>parameters</b>, not electrode settings. Potentials are already
+    /// expressions over parameters, so this costs no new vocabulary: the same override
+    /// mechanism a sweep uses to perturb a design is what a sequence uses to operate one.
+    /// </para>
+    /// <para>
+    /// A single-element model may still declare <c>stages</c> on its solve, which is the
+    /// older spelling and means the same thing. Declaring both is refused rather than
+    /// merged: an instrument has one timeline.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<StageDocument>? Sequence { get; init; }
+
     /// <summary>The surface that ends the flight.</summary>
     public DetectorDocument? Detector { get; init; }
 
@@ -141,16 +171,17 @@ public static class ModelSchema
 {
     /// <summary>The schema version this build writes.</summary>
     /// <remarks>
-    /// 0.3 adds the source cloud, 0.5 the mutual Coulomb force. Both additive, so
-    /// every earlier document still reads - but a document whose ions push on each
-    /// other genuinely is not a 0.4 document, and saying so is cheaper than an older
-    /// build reading it, ignoring the field it does not know, and reporting a
-    /// different flight with no indication that anything was dropped.
+    /// 0.3 adds the source cloud, 0.5 the mutual Coulomb force, 0.6 the model-level
+    /// sequence. All additive, so every earlier document still reads - but a document
+    /// whose ions push on each other genuinely is not a 0.4 document, and saying so is
+    /// cheaper than an older build reading it, ignoring the field it does not know, and
+    /// reporting a different flight with no indication that anything was dropped.
     /// </remarks>
-    public const string CurrentVersion = "0.5";
+    public const string CurrentVersion = "0.6";
 
     /// <summary>Versions this build can read.</summary>
-    public static IReadOnlyList<string> SupportedVersions { get; } = ["0.1", "0.2", "0.3", "0.4", "0.5"];
+    public static IReadOnlyList<string> SupportedVersions { get; } =
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -278,6 +309,48 @@ public sealed record GasFlowDocument
     /// happened to be written first.
     /// </remarks>
     public string? Array { get; init; }
+}
+
+/// <summary>An imported field of gas pressure.</summary>
+/// <remarks>
+/// Referenced rather than embedded (PRJ-2), like the velocity field: a CFD result is
+/// thousands of numbers and a model document is meant to stay small, text and
+/// diffable.
+/// </remarks>
+public sealed record GasPressureFieldDocument
+{
+    /// <summary>Path to the .vti file, relative to the model document.</summary>
+    public string? Path { get; init; }
+
+    /// <summary>
+    /// Which array in the file holds the pressure, or null for the first one.
+    /// </summary>
+    /// <remarks>
+    /// A CFD export usually carries several - pressure, density, velocity, a
+    /// temperature - so naming it is the difference between reading the pressure and
+    /// reading whatever happened to be written first.
+    /// </remarks>
+    public string? Array { get; init; }
+
+    /// <summary>The unit the file's numbers are in - "Pa", "mbar", "torr".</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Required, and for the reason a scalar's unit is.</b> Section 9 makes
+    /// <c>{"energy": 4000}</c> a validation error on purpose, because unit ambiguity
+    /// is the commonest source of silent wrongness and an agent building from prose
+    /// is the actor most likely to introduce it. Nothing about that argument weakens
+    /// when the number becomes a hundred thousand numbers: vacuum work is quoted in
+    /// mbar and torr at least as often as in pascals, and a file read as pascals when
+    /// it holds mbar is a gas a hundred times too thin, which looks entirely
+    /// plausible.
+    /// </para>
+    /// <para>
+    /// The velocity field has no such field because a CFD velocity is metres per
+    /// second essentially always. That is an asymmetry with a reason rather than an
+    /// oversight.
+    /// </para>
+    /// </remarks>
+    public string? Unit { get; init; }
 }
 
 /// <summary>A field element. The discriminator is <see cref="Type"/>.</summary>
@@ -554,6 +627,27 @@ public sealed record GasDocument
     /// specific statement.
     /// </remarks>
     public GasFlowDocument? VelocityField { get; init; }
+
+    /// <summary>
+    /// An imported <em>pressure</em> field, which is the other half of a
+    /// differentially pumped instrument (GAS-1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A velocity field on its own gives the neutrals a velocity everywhere and the
+    /// same number of them everywhere. A funnel behind an inlet capillary spans
+    /// decades of pressure between its entrance and its exit, and every collision
+    /// rate, mean free path, mobility and diffusion coefficient in it varies with
+    /// that.
+    /// </para>
+    /// <para>
+    /// <see cref="Pressure"/> stays required and becomes the <em>reference</em>: it
+    /// is the density the declared or derived mobility belongs to, and the field
+    /// grades away from it. Both are reported on every run so a reader can see how
+    /// far apart they are.
+    /// </para>
+    /// </remarks>
+    public GasPressureFieldDocument? PressureField { get; init; }
 
     /// <summary>
     /// Seed for the collision random stream, so a collisional run is reproducible

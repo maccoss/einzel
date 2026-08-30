@@ -156,6 +156,19 @@ public static class UnitRegistry
         Add("ppm", 1e-6, none);
         Add("ppb", 1e-9, none);
 
+        // Playback rates: how much simulated time passes per second of playback
+        // (RND-7). Dimensionless because they are a time over a time, which is the
+        // honest reading rather than a convenience - what makes them a *rate* is the
+        // second in the denominator being playback rather than flight, and no
+        // dimension can carry that distinction. The animation spec names the field
+        // "rate" so the document says which second is which.
+        Add("s/s", 1.0, none);
+        Add("ms/s", 1e-3, none);
+        Add("us/s", 1e-6, none);
+        Add("µs/s", 1e-6, none);
+        Add("ns/s", 1e-9, none);
+        Add("ps/s", 1e-12, none);
+
         return map.ToFrozenDictionary(StringComparer.Ordinal);
     }
 

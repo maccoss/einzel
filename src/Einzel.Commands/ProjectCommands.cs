@@ -119,6 +119,16 @@ public static class ProjectCommands
 
             File.WriteAllText(absolute, text);
 
+            // Beside the model, because that is what its own path is resolved
+            // against. An example needing a data file is one whose model does not
+            // run without it, so writing one and not the other produces a project
+            // that validates and refuses at run - the shape of half-done that is
+            // worse than not writing anything.
+            if (kind == "example")
+            {
+                ExampleModels.WriteAssets(name, Path.GetDirectoryName(absolute)!);
+            }
+
             if (testPath is not null)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(testPath)!);

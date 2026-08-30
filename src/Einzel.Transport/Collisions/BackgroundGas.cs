@@ -1,3 +1,4 @@
+using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 
 namespace Einzel.Transport.Collisions;
@@ -66,7 +67,69 @@ public sealed record BackgroundGas
     /// <param name="gas">The compiled gas.</param>
     /// <returns>The gas, or <see cref="Vacuum"/> when none is declared.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="gas"/> is null.</exception>
+    /// <exception cref="EinzelException">
+    /// The model declares an imported velocity or pressure field, which this overload
+    /// cannot read.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Refuses rather than quietly dropping an imported field, and that is the
+    /// whole point of the signature.</b> Resolving a declared field needs the model
+    /// document's own directory, which this function is not given - so the two
+    /// possible behaviours are to refuse, or to hand back a gas that is uniform and
+    /// standing still while the document says otherwise. The second is precisely the
+    /// defect where <c>driftVelocity</c> was honoured by one transport mode and
+    /// dropped by the other, and it does not announce itself: the run succeeds and
+    /// answers about a different instrument.
+    /// </para>
+    /// <para>
+    /// The alternative design was a guard at every caller. There were four, and each
+    /// new importable quantity would have to be added to all of them - which is how
+    /// the guard that named only <c>velocityField</c> came to be silent about a
+    /// pressure field. Putting it here makes the shortest spelling the safe one, and
+    /// leaves <see cref="WithoutImportedFields"/> as the deliberate exception whose
+    /// name says what it gives up.
+    /// </para>
+    /// </remarks>
     public static BackgroundGas FromModel(Core.Model.CompiledGas gas)
+    {
+        ArgumentNullException.ThrowIfNull(gas);
+
+        if (gas.IsPresent && (gas.HasVelocityField || gas.HasPressureField))
+        {
+            var which = gas.HasVelocityField && gas.HasPressureField
+                ? "a neutral velocity field and a pressure field"
+                : gas.HasVelocityField ? "a neutral velocity field" : "a pressure field";
+
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = gas.HasVelocityField
+                    ? "/transport/gas/velocityField"
+                    : "/transport/gas/pressureField",
+                Constraint = $"this model declares {which}, and the caller has no model directory "
+                    + "to read it from",
+                Suggestion = "run it with 'einzel run' or 'einzel compare', which know where the "
+                    + "model file is. A study or a figure of merit reaches the transport without a "
+                    + "path, and running in a uniform stationary gas instead would silently answer "
+                    + "about a different instrument",
+            });
+        }
+
+        return WithoutImportedFields(gas);
+    }
+
+    /// <summary>The declared gas alone, with any imported field left out.</summary>
+    /// <param name="gas">The compiled gas.</param>
+    /// <returns>The uniform, stationary gas the scalar fields describe.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="gas"/> is null.</exception>
+    /// <remarks>
+    /// For the importer, which fills the fields in immediately afterwards, and for a
+    /// caller that has established by other means that there are none. Named for what
+    /// it omits rather than for what it does, because the omission is the thing worth
+    /// noticing at a call site.
+    /// </remarks>
+    public static BackgroundGas WithoutImportedFields(Core.Model.CompiledGas gas)
     {
         ArgumentNullException.ThrowIfNull(gas);
 
@@ -142,6 +205,46 @@ public sealed record BackgroundGas
     /// <summary>The fastest bulk gas speed anywhere, in metres per second.</summary>
     public double FastestBulkSpeedSi =>
         Flow is null ? DriftVelocitySi.Length : Flow.FastestSpeedSi;
+
+    /// <summary>
+    /// How much gas there is, when it is more than one number (GAS-1).
+    /// </summary>
+    /// <remarks>
+    /// Null means the uniform <see cref="NumberDensitySi"/> stands, which is what a
+    /// declared <c>pressure</c> gives. The last quantity about a gas here that was a
+    /// single number for a whole instrument: a differentially pumped stack is not
+    /// one pumped volume, and an imported velocity field on its own gave the
+    /// neutrals a velocity everywhere and the same number of them everywhere.
+    /// </remarks>
+    public IGasDensity? Density { get; init; }
+
+    /// <summary>Neutral number density at a point, in reciprocal cubic metres.</summary>
+    /// <param name="point">Where, in metres.</param>
+    /// <returns>The density.</returns>
+    /// <remarks>
+    /// Prefer this over <see cref="NumberDensitySi"/> wherever a position is in
+    /// hand. A caller that reads the scalar is a caller that will not see a pressure
+    /// field when one exists - which is the shape of defect that let
+    /// <c>driftVelocity</c> be honoured by one transport mode and dropped by the
+    /// other.
+    /// </remarks>
+    public double NumberDensityAt(in Vec3 point) =>
+        Density is null ? NumberDensitySi : Density.NumberDensityAt(in point);
+
+    /// <summary>The most gas anywhere, in reciprocal cubic metres.</summary>
+    /// <remarks>
+    /// What a null-collision bound is taken against, and what a worst-case regime
+    /// check reads. A rate bounding the densest region bounds every region.
+    /// </remarks>
+    public double HighestNumberDensitySi =>
+        Density is null ? NumberDensitySi : Density.HighestNumberDensitySi;
+
+    /// <summary>The least gas anywhere, in reciprocal cubic metres.</summary>
+    public double LowestNumberDensitySi =>
+        Density is null ? NumberDensitySi : Density.LowestNumberDensitySi;
+
+    /// <summary>Whether the density varies from place to place.</summary>
+    public bool IsGraded => Density is not null && !Density.IsUniform;
 
     /// <summary>Whether this gas does anything at all.</summary>
     public bool IsPresent => Model != CollisionModel.None && PressureSi > 0.0;

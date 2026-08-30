@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Einzel.Cli.Tests;
@@ -41,6 +42,17 @@ public sealed class RenderSurfaceTests : IDisposable
             Console.SetOut(previousOut);
             Console.SetError(previousError);
         }
+    }
+
+    private string Example(string name)
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        var path = Path.Combine(_root, "models", $"{name}.json");
+
+        Assert.Equal(0, Run("new", path, "--from-example", name).ExitCode);
+
+        return path;
     }
 
     private string Model(string template)
@@ -158,19 +170,97 @@ public sealed class RenderSurfaceTests : IDisposable
         Assert.Contains("As it will appear in the paper", svg, StringComparison.Ordinal);
     }
 
+    /// <summary>A diffusive packet can be drawn while it is still in flight.</summary>
+    /// <remarks>
+    /// <para>
+    /// A run reports the density it <em>ended</em> with, so a model whose ions all arrive
+    /// drew an empty box - correctly, and uselessly. The only way to see the packet was
+    /// to shorten <c>maximumFlightTime</c>, which gets one by throwing away everything
+    /// after the moment being looked at.
+    /// </para>
+    /// <para>
+    /// The unit is in the flag's name, as <c>--width-mm</c> already does it. A bare
+    /// <c>--at</c> would be ambiguous between microseconds and seconds by a factor of a
+    /// million, which is the same rule that makes a bare number a validation error in a
+    /// model document.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void TheUnbuiltKindsSayWhyRatherThanFailingAsTypos()
+    public void ADiffusivePacketCanBeDrawnInFlight()
+    {
+        var model = Example("drift-tube-diffusion");
+
+        static int Contours(string svg)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(
+                File.ReadAllText(svg),
+                "<g id=\"density\">(.*?)</g>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            return match.Success
+                ? System.Text.RegularExpressions.Regex.Count(match.Groups[1].Value, "<path")
+                : 0;
+        }
+
+        static double Centre(string svg)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(
+                File.ReadAllText(svg),
+                "<g id=\"density\">(.*?)</g>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+
+            var xs = System.Text.RegularExpressions.Regex
+                .Matches(match.Groups[1].Value, @"[ML]\s*([\d.eE+-]+)")
+                .Select(m => double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture))
+                .ToList();
+
+            return (xs.Min() + xs.Max()) / 2.0;
+        }
+
+        var atEnd = Path.Combine(_root, "end.svg");
+        var early = Path.Combine(_root, "early.svg");
+        var late = Path.Combine(_root, "late.svg");
+
+        Assert.Equal(0, Run("render", "section", model, "--out", atEnd).ExitCode);
+        Assert.Equal(0, Run("render", "section", model, "--at-us", "50", "--out", early).ExitCode);
+        Assert.Equal(0, Run("render", "section", model, "--at-us", "150", "--out", late).ExitCode);
+
+        // At the end every ion has arrived and there is nothing left to contour.
+        Assert.Equal(0, Contours(atEnd));
+
+        Assert.True(Contours(early) > 0, "no packet at 50 us");
+        Assert.True(Contours(late) > 0, "no packet at 150 us");
+
+        // And it is the packet at that instant rather than one drawing twice: it drifts
+        // down the tube between them.
+        Assert.True(
+            Centre(late) - Centre(early) > 20.0,
+            $"the packet moved only {Centre(late) - Centre(early):F1} mm between 50 and 150 us");
+
+        // The instant actually recorded is on the page, because it is not the instant
+        // that was asked for - a diffusive step lands where its stability limit puts it.
+        Assert.Contains("asked for 50 us", File.ReadAllText(early), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheUnbuiltKindSaysWhyRatherThanFailingAsATypo()
     {
         // "Not built yet" and "you spelled it wrong" are different problems, and an
-        // agent should not have to guess which it hit.
-        foreach (var kind in new[] { "still", "animation" })
-        {
-            var (exitCode, _, stderr) = Run("render", kind, "whatever.json");
+        // agent should not have to guess which it hit. Only 'still' is left: it is a
+        // raster projection and nothing in this build rasterises.
+        var (exitCode, _, stderr) = Run("render", "still", "whatever.json");
 
-            Assert.NotEqual(0, exitCode);
-            Assert.Contains("not built yet", stderr, StringComparison.Ordinal);
-            Assert.Contains("render section", stderr, StringComparison.Ordinal);
-        }
+        Assert.NotEqual(0, exitCode);
+        Assert.Contains("not built yet", stderr, StringComparison.Ordinal);
+        Assert.Contains("render section", stderr, StringComparison.Ordinal);
+
+        // And 'animation' no longer says it. A refusal left behind after the thing was
+        // built is the same defect as one missing before it was - both send a caller
+        // somewhere the platform is not.
+        var (_, _, animation) = Run("render", "animation");
+
+        Assert.DoesNotContain("not built yet", animation, StringComparison.Ordinal);
+        Assert.Contains("declared time mapping", animation, StringComparison.Ordinal);
     }
 
     [Fact]

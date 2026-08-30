@@ -249,6 +249,41 @@ public sealed record RegimeJson
     public double? CollisionsPerRfCycle { get; init; }
 }
 
+/// <summary>One phase of a sequenced run, as it is reported.</summary>
+/// <param name="Name">What the phase is for.</param>
+/// <param name="Mode">The transport mode it ran in.</param>
+/// <param name="EndsAtUs">When it ended, on the instrument's timeline.</param>
+/// <param name="Population">How many real ions the packet held when it ended.</param>
+/// <param name="Trajectories">
+/// How many trajectories carried them, or zero in a diffusive phase where there are none.
+/// </param>
+/// <param name="CentroidMm">Where the packet was when the phase ended.</param>
+/// <param name="Converted">Whether the packet was converted into this description.</param>
+public sealed record SequencePhaseJson(
+    string Name,
+    string Mode,
+    double EndsAtUs,
+    double Population,
+    int Trajectories,
+    IReadOnlyList<double> CentroidMm,
+    bool Converted);
+
+/// <summary>What a run across a changing transport mode did (SEQ-1).</summary>
+/// <param name="Phases">Each phase, in order.</param>
+/// <param name="Conversions">How many boundaries the packet was converted across.</param>
+/// <param name="ArrivedIons">Real ions that reached the detector, over every phase.</param>
+/// <param name="Losses">Every other way ions left, by named surface, in real ions.</param>
+/// <remarks>
+/// In real ions rather than trajectory counts, because a conversion re-samples: on the
+/// far side of one the trajectory count is a numerical choice while the population is
+/// what carries across.
+/// </remarks>
+public sealed record SequenceJson(
+    IReadOnlyList<SequencePhaseJson> Phases,
+    int Conversions,
+    double ArrivedIons,
+    IReadOnlyList<WeightedLoss> Losses);
+
 /// <summary>What a diffusive run produced, on the wire.</summary>
 /// <remarks>
 /// TRN-2: this mode emits a time-resolved density rather than trajectories, so a
@@ -342,6 +377,11 @@ public sealed record RunOutcome
 
     /// <summary>What a diffusive run produced, or null for a trajectory run.</summary>
     public DiffusionJson? Diffusion { get; init; }
+
+    /// <summary>
+    /// The per-phase result, when the run crossed a transport-mode boundary (SEQ-1).
+    /// </summary>
+    public SequenceJson? Sequence { get; init; }
 
     /// <summary>Accepted integrator steps, finest tolerance.</summary>
     public required int AcceptedSteps { get; init; }
@@ -712,6 +752,118 @@ public static class RunCommand
     };
 
     /// <summary>Runs a model in the diffusive mode and writes its result.</summary>
+    /// <summary>A run whose phases are not all in one transport description (SEQ-1).</summary>
+    /// <remarks>
+    /// <para>
+    /// A third case beside the two modes rather than a variation of either, for the same
+    /// reason the diffusive fork exists: what comes out is not the same result with
+    /// fields left empty. A sequenced run ends when its <em>sequence</em> ends, not when
+    /// an ion arrives, so there is no single flight time to report - what it has instead
+    /// is a per-phase account and, across the whole run, how many ions reached the
+    /// detector.
+    /// </para>
+    /// <para>
+    /// The conversions' warnings ride out on the result, which is GRD-2 doing its work at
+    /// the seam that matters most here: a reader who takes a number from after a boundary
+    /// without knowing the velocities were invented there has been misled by the
+    /// platform.
+    /// </para>
+    /// </remarks>
+    private static RunOutcome Sequenced(
+        CompiledModel model,
+        Fields.IElectrostaticField field,
+        IReadOnlyList<ValidityWarning> fieldWarnings,
+        ValidateOutcome validation,
+        ProjectLayout project,
+        DateTimeOffset timestampUtc)
+    {
+        // The one place that knows where the model file is, so the one place that can
+        // resolve a declared gas field.
+        var resolved = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
+
+        var outcome = SequencedRun.Execute(model, field, resolved);
+
+        var manifest = new RunManifest
+        {
+            ModelHash = validation.ModelHash,
+            SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
+            EngineVersion = EngineBuild.Version,
+            SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
+
+            // Every mode the run used, in the order the phases used them. One mode
+            // recorded here would make a manifest claim to determine a run it does not
+            // describe, which is PRJ-3's whole subject.
+            TransportMode = string.Join(
+                " -> ", outcome.Phases.Select(p => p.Mode).Distinct(StringComparer.Ordinal)),
+            ComputePath = EngineBuild.ComputePath,
+            Machine = Environment.MachineName,
+            CreatedUtc = timestampUtc.ToUniversalTime().ToString("O"),
+        };
+
+        Directory.CreateDirectory(project.Results);
+
+        var stem = Path.GetFileNameWithoutExtension(validation.ModelPath);
+        var manifestPath = Path.Combine(project.Results, $"{stem}.manifest.json");
+
+        File.WriteAllText(manifestPath, manifest.ToJson());
+
+        var last = outcome.Phases[^1];
+
+        return new RunOutcome
+        {
+            Manifest = manifest,
+
+            FlightTime = MeasuredJson.From(
+                Carry(
+                    new Measured(
+                        Quantity.Si(double.NaN, Dimension.TimeDimension),
+                        UncertaintyInterval.Symmetric(
+                            Quantity.Si(double.NaN, Dimension.TimeDimension),
+                            Quantity.Si(0.0, Dimension.TimeDimension),
+                            1.0),
+                        new Evidence.Convergence("sequenced transport", double.NaN, 0.0, double.NaN),
+                        [
+                            new ValidityWarning(
+                                "transport.sequenced-no-flight-time",
+                                "this run ends when its sequence ends, not when an ion "
+                                + "arrives, so there is no single flight time. What each "
+                                + "phase did is reported under 'sequence', and the ions that "
+                                + "reached the detector are counted there",
+                                WarningSeverity.Provenance),
+                        ]),
+                    [.. fieldWarnings, .. outcome.Warnings]),
+                "us"),
+
+            Outcome = "SequenceCompleted",
+
+            // The packet's centre where the sequence left it. Not a single ion's final
+            // position - there is no single ion - which is why this is a centroid and is
+            // labelled as one in the sequence block.
+            FinalPositionMm = last.CentroidMm,
+
+            // A driven or switched field does work deliberately, so energy drift stops
+            // being a diagnostic; a sequenced run is switched by construction.
+            MaximumRelativeEnergyDrift = double.NaN,
+            AcceptedSteps = 0,
+            AnalyticDriftDistanceM = 0.0,
+            Artifacts = [manifestPath],
+
+            Sequence = new SequenceJson(
+                [.. outcome.Phases.Select(phase => new SequencePhaseJson(
+                    phase.Name,
+                    phase.Mode,
+                    phase.EndsAtSeconds * 1e6,
+                    phase.Population,
+                    phase.Trajectories,
+                    phase.CentroidMm,
+                    phase.Converted))],
+                outcome.Conversions,
+                outcome.Arrived,
+                outcome.Losses),
+        };
+    }
+
     private static RunOutcome Diffusive(
         CompiledModel model,
         Fields.IElectrostaticField field,
@@ -1006,7 +1158,8 @@ public static class RunCommand
             };
         }
 
-        var validation = ModelValidator.Validate(document);
+        var validation = ModelValidator.Validate(
+            document, null, Path.GetDirectoryName(full));
 
         return new ValidateOutcome
         {
@@ -1041,13 +1194,24 @@ public static class RunCommand
         }
 
         var document = ModelJson.Parse(File.ReadAllText(validation.ModelPath));
-        var model = ModelValidator.Validate(document).Model!;
+        var model = ModelValidator.Validate(
+            document, null, Path.GetDirectoryName(validation.ModelPath)).Model!;
 
         // Reported, not bare. A solve that missed its tolerance produces a field
         // indistinguishable from one that met it, so the evidence has to travel
         // alongside and land on every number computed through it (GRD-2).
         var (field, built) = FieldAssembly.BuildReported(model);
         var fieldWarnings = built;
+
+        // A run whose phases are not all in one description is a third case, and it
+        // comes first: a model may declare "diffusion" as its own mode and still have a
+        // sequence that leaves it, and the sequence is the more specific statement.
+        if (model.ChangesTransportMode)
+        {
+            return (
+                Sequenced(model, field, fieldWarnings, validation, project, timestampUtc),
+                validation);
+        }
 
         // REG-1's two modes are peers, so this is a fork rather than a special case
         // inside one path. A diffusive run has no flight time and no final position -

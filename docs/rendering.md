@@ -53,6 +53,59 @@ ring, a sphere, a box - and it is the *same* routine that draws equipotentials,
 because an equipotential is a level set too. A shape added to the model format
 needs no change here at all.
 
+## The same argument in three dimensions, for the viewport
+
+`Surfaces` is the level set as a triangle mesh, which the shell's 3-D viewport draws
+(§16). It sits here rather than in the shell for RND-1's reason - rendering is an
+engine capability - and it earns that placement by being testable headlessly on
+Linux, which is where its tests run.
+
+**What differs between symmetries is not the shape but what the solve claims about
+the third dimension**, and treating all three alike would be wrong rather than
+merely slow:
+
+| The solve says | The conductor is | Because |
+| --- | --- | --- |
+| a cross-section | an **uncapped prism** | the geometry repeats along z, so the electrode extends past anything drawn - capping it would draw an end the model does not have. Where it stops is a drawing convention and the caller says so (GRD-12) |
+| an axisymmetric half-plane | a **solid of revolution** | SYM-1: the half-plane is a geometry that repeats all the way round, so a rectangle there is a tube in space |
+| a volume | a **surface extraction** | nothing is claimed, so nothing may be assumed |
+
+**Surface nets rather than marching cubes.** One vertex per cell at the mean of that
+cell's edge crossings, one quad per sign-changing lattice edge: watertight by
+construction, no 256-case table, and a vertex that sits where the surface is rather
+than on a cell edge. It rounds a true crease by about a cell, and §17 is explicit
+that the viewport is screen tuning rather than an artifact - the publication figure
+is the vector section above, drawn at full sharpness.
+
+**Orientation comes from the field, not from the winding.** Every producer emits
+triangles in whatever order falls out; one pass then sets each normal to the
+gradient of the same signed distance that defined the surface and flips any triangle
+that disagrees. That is exact, and it is *necessary* here rather than tidy: the
+segments marching squares emits are deliberately undirected (see below), so a
+revolved or extruded profile has no winding to inherit.
+
+| Check | Result |
+| --- | --- |
+| A sphere's volume at 24 / 48 / 96 cells | **0.99038 / 0.99760 / 0.99940**, improving under refinement |
+| Its area, likewise | 0.99484 / 0.99870 / 0.99968 |
+| Edges shared by exactly two triangles | **all 11,970** |
+| Worst normal against the true outward radius | **1.000000** |
+| A revolved tube against Pappus at 16 / 64 / 256 facets | 0.97450 / 0.99839 / **0.99990**, inscribed so approaching from below |
+| An extruded prism's open ends | exactly 8 boundary edges |
+
+The volume is the sharpest of these because it tests three things at once - that the
+surface is closed, that every triangle is wound outward, and that the vertices sit
+where the surface is. A hole, a flipped patch or a systematic offset all move it.
+
+**Two things it got wrong first.** A **1 mm plate vanished**: sampled over the whole
+solve domain at 48 cells a cell is 1.25 mm and the plate falls between lattice
+planes, so the three-dimensional example produced no conductors at all, silently.
+The extraction runs over the electrode's own bounding box now, asked of the
+electrode rather than switched on its shape. And a **closed profile carries a
+duplicate point** - marching squares repeats the first point at the end - so a prism
+built straightforwardly from one has a seam down its side, invisible on screen and
+not invisible to anything asking whether the surface is closed.
+
 ## Decimation is a guarantee, not a hint
 
 RND-5 requires a stated geometric tolerance and ACC-7 sets the default at **0.1% of
@@ -185,21 +238,329 @@ a renderer that could do it would be a renderer that decides how long a run last
 Where the transport refuses outright, the figure is still drawn from the geometry
 and the field, and the warning says which of the two it got.
 
+## An animation declares how it compresses time, and says so on every frame
+
+RND-7 is unusually emphatic, and the whole design follows from it: an animation
+"declares an explicit non-linear time mapping — playback rate per sequence phase — and
+the current rate is displayed on screen throughout playback. **Neither part is
+optional.** This is the animation equivalent of GRD-1: the artifact may compress, but it
+may not hide that it compressed."
+
+The reason is §22's own: six orders of magnitude of timescale cannot be shown honestly
+at one rate, and *a viewer cannot detect the compression*. An ion spends nanoseconds
+turning round in a mirror and hundreds of microseconds drifting. An animation that skips
+the first to keep the second watchable has removed the part the instrument was designed
+around, and nothing on screen would say so.
+
+### The requirement enforces itself through the interface
+
+`einzel render animation` takes **a render spec, never a bare model**, and there is no
+`--rate` flag. A model document has nowhere to declare a time mapping, so the only way
+to ask for an animation is to have written one down. A convenience flag would have made
+the hidden-compression case the easy one.
+
+`--fps` *is* offered, because a frame rate is a property of the playback device rather
+than of the physics and changing it changes no claim the animation makes.
+
+```json
+"animation": {
+  "framesPerSecond": 10,
+  "phases": [
+    { "until": {"value": 4.0,    "unit": "us"}, "rate": {"value": 4.0, "unit": "us/s"}, "label": "inbound" },
+    { "until": {"value": 6.2,    "unit": "us"}, "rate": {"value": 0.5, "unit": "us/s"}, "label": "turn-around" },
+    { "until": {"value": 10.1805,"unit": "us"}, "rate": {"value": 4.0, "unit": "us/s"}, "label": "outbound" }
+  ]
+}
+```
+
+On the shipped reflectron that is **1.000 s, 4.400 s and 0.995 s of playback**: the
+turn-around is a fifth of the flight and **69% of the film**. Sixty-five frames, and the
+frame at playback 1.000 s shows exactly 4.0000 µs.
+
+### Units on the rate, for the reason units are on everything else
+
+The rate is *simulated time per second of playback*, written `us/s`, `ns/s`, `ms/s`.
+Dimensionless — it is a time over a time — and what makes it a *rate* is that the
+denominator is a second of playback rather than a second of flight, which no dimension
+can carry. So the field is called `rate` and the unit spells the playback second out.
+
+The stamp gives **two readings of the one number**, because they answer different
+questions:
+
+> `t = 5.000 µs · turn-around · 500 ns of flight per second of playback — 2,000,000x slower than real time`
+
+The time-per-second is what converts anything on screen back into flight time and
+carries a unit, which is what GRD-1 asks of every quantity here. The slow-down factor is
+the intuition, and alone it says nothing about how long the flight is. The unit is picked
+from the magnitude rather than fixed, because one animation may span nanoseconds of
+turn-around and milliseconds of trapping.
+
+### Frame times are computed, never accumulated
+
+Each frame's instant comes from its own playback time by one lookup and one multiply. A
+phase whose playback duration is not a whole number of frames would otherwise push a
+fractional frame of error into every phase after it, and a six-phase animation would
+drift visibly against its own declared mapping.
+
+Two details that are decisions rather than details. **The final frame is forced onto the
+end**, because for a flight the last instant is precisely the one a reader wants — the
+arrival, the ejection, the packet at the detector — and a frame grid that is not a whole
+number of frames long otherwise stops short of it. And **a frame landing exactly on a
+boundary announces the incoming rate**: it shows the boundary instant and is followed by
+a frame's worth of playback at the new speed, so naming the rate that has just stopped
+applying would be naming the wrong one.
+
+### Fly once, draw many
+
+A section figure solves the field and flies the ion inside the renderer. For three
+hundred frames that is a multigrid solve per frame, which is unaffordable — and worse
+than unaffordable, because two frames that flew separately are two frames that can
+disagree about the flight. `FramePlan` is what a caller drawing many figures of one model
+computes once: the field, its warnings, the whole trajectory, and the banner.
+
+### The camera does not follow the ion
+
+The first version handed each frame **the part of the flight drawn so far**. An analytic
+model takes its extent from the flight, so every frame chose its page from its own
+prefix: the scale changed frame to frame and the ion sat pinned to the edge of a box that
+grew to meet it. It reads as a camera tracking the ion rather than as an instrument being
+flown through, and *nothing about any single frame reveals it*.
+
+So the plan carries the whole flight and `UpToSeconds` truncates it for drawing. The test
+that pins this asserts one page across all frames — and **its first version passed with
+the bug restored**, because it used the einzel lens, a solved geometry whose extent comes
+from its declared domain and never touches the flight. Moved onto an analytic reflectron
+it fails immediately. Third time tonight that a test exercised a path not containing the
+line under test.
+
+### The field moves, and the cycle closes
+
+An animation of a driven structure drew the same instant on every frame. A driven field
+implements the time-free `IElectrostaticField` as well as `ITimeVaryingField`, and
+**answers the time-free one at t = 0 without failing** — so the renderer got a field, a
+plausible one, and the same one every time.
+
+That is the fourth appearance of one defect: `einzel solve` reporting the DC pattern of
+a driven geometry, the diffusive mode stepping a density through a snapshot of the RF, a
+`SuperposedField` becoming a snapshot when a driven member was summed into it, and now
+this. **A time-varying quantity reached through a time-free interface does not fail; it
+answers at an arbitrary instant.**
+
+The instant is now declarable — `atSeconds` on a render spec, defaulting to the launch —
+and an animation supplies each frame's own. A section of a driven model carries
+`render.field-at-instant` either way, because a figure of a driven structure is a frame
+of a film whether or not it is drawn as one.
+
+The check is exact. A 1 MHz sinusoid has a 1 µs period; over one period, at the quarter
+points:
+
+| t | 0 | T/4 | T/2 | 3T/4 | T |
+| --- | --- | --- | --- | --- | --- |
+| equipotential paths | 20 | **0** | 20 | **0** | 20 |
+
+The drive passes through zero at the quarter points, so there is no field to contour. At
+`T` it is the **same drawing as at 0, to the last bit** — a sinusoid is exactly periodic
+and nothing between the field and the page is not. At `T/2` the two rod pairs have
+swapped sign, so it is neither.
+
+### The contour levels are fixed once, or they flicker
+
+Levels are spread over the field's range, and a driven field's range changes through the
+cycle. Taken per frame they would be spread over whatever range that instant happened to
+have — and **at a zero crossing that is rounding noise**, so the frame would fill with
+contours of nothing. The same defect as a page chosen per frame, in the other axis.
+
+`SectionRenderer.PotentialRange` samples a couple of dozen instants across the animation
+on a coarse grid — coarse is enough, because the extremes of a Laplace solution are on
+its boundaries, and this is a range rather than a contour. Fixed once, the contours move
+because the field moves.
+
+### A diffusive model is animated as a moving density
+
+RND-8 forbids drawing lines through a diffusive region, so an animation of one was
+refused outright — and rightly, while a run reported only the density it *ended* with:
+the frames would all have been the same box, and a film that shows motion never computed
+is worse than no film because it looks like one.
+
+With the density recordable at chosen instants the frames have something that moves. The
+command layer runs the transport once with the frames' own instants as its snapshot list
+and hands the renderer the results, exactly as the section path already does — running
+the transport is not the renderer's job.
+
+On the corpus drift tube, 33 frames over 200 µs:
+
+| frame | contours | packet centre | packet width |
+| --- | --- | --- | --- |
+| 0 | 12 | 21.98 mm | 23.97 mm |
+| 8 | 10 | 43.82 mm | 42.29 mm |
+| 24 | 10 | 90.29 mm | 59.48 mm |
+| 32 | 10 | 100.32 mm | 39.51 mm |
+
+It drifts, it spreads, and at the end it narrows again because the leading edge has been
+collected. All three are things a trajectory cannot show.
+
+**The contour levels are anchored once, and that matters more here than the page did.**
+Density contours are drawn at decades below the peak, and a diffusing packet's peak falls
+as it spreads. Anchored per frame the levels would fall with it, the contours would stay
+the same size, and **a film of a packet spreading would show a packet doing nothing** —
+not flicker, but a lie. Anchored to the peak over the whole animation, later frames show
+*fewer* contours, because the density really is lower. The levels are identical on every
+frame and the test asserts that directly.
+
+### The head is marked, and interpolated onto the instant
+
+A polyline that grows says only where the ion has *been*. The head is a small closed
+polygon — the scene has paths and text and nothing else, which is what lets one scene go
+to SVG and to a hand-written PDF without either backend knowing about shapes.
+
+It sits at the instant rather than at the last recorded sample. An adaptive integrator
+keeps points fastest where the physics is hardest, so a marker snapping to samples would
+stutter in exactly the places an animation exists to show. Interpolated linearly, which
+is what the drawn polyline already is, so the head sits exactly on the line it
+terminates.
+
+### A manifest beside the frames
+
+`frames.json` records the model and its hash, the frame rate, the playback duration, and
+for every frame its file, its playback time, its instant, its rate and its phase. Every
+frame carries its rate on the page, which is what RND-7 requires; the manifest carries
+the whole schedule, so the compression can be audited rather than trusted one frame at a
+time. It is also what a player needs: frames are equally spaced in *playback* time and
+not in flight time.
+
+### What it refuses
+
+- **A spec with no phases**, a phase that does not advance, a non-positive rate, a
+  non-positive frame rate.
+- **A mapping a diffusive run cannot reach.** Repeating the last density for the frames
+  past the end would show a packet sitting still, which is what a finished run looks like
+  and is not what it is.
+- **A spec with `trajectory: false`.** The geometry and the field are identical on every
+  frame, so with the ion left out the sequence is one drawing repeated - the same
+  argument as the diffusive refusal, one step further in.
+
+And two things it warns about rather than refusing, because both are legitimate to ask
+for and neither looks like a choice: `animation.past-arrival`, where the mapping outlives
+the flight and the last frames show an ion that is not stationary but finished; and
+`animation.stops-short`, where it ends in mid-flight, which reads as a loss.
+
+### No video, and that is LIC-1
+
+Nothing here rasterises, and a GPL dependency is forbidden in the default build — ffmpeg
+is exactly what would be reached for. What comes out is a numbered sequence of vector
+frames; assembling them is an out-of-process step with a tool the user supplies, so its
+absence degrades a feature rather than blocking the platform.
+
+## An analytic flight sets its own page
+
+A model with no declared solve domain takes its extent from the instrument's own points,
+and those used to be the source and the detector alone. **In a reflectron they are the
+same point** — the ion is caught where it launched — so the page was a box a tenth of a
+millimetre across while the ion travelled 1.3 m into the mirror and back.
+
+The scaffolded reflectron, which is the first thing anybody renders, drew its turning
+point at **x = 105,080 mm on a 160 mm page**. It had been doing so since sections were
+built, and no test caught it because every render test uses a device template, and every
+device template declares a solve domain.
+
+The flight is now included in the extent, and the pad is taken from the extent actually
+gathered rather than from the separation of source and detector — which is zero in any
+instrument that catches the ion where it launched. It costs nothing: the trajectory had
+to be flown to be drawn, and it is now flown *before* the page is chosen rather than
+after.
+
+## A density can be drawn while it is still moving
+
+A diffusive run reports the density it **ended** with, which for a model whose ions have
+all arrived is an empty box - correctly, and uselessly, because the picture worth having
+is the packet in flight. The only way to get one was to shorten `maximumFlightTime`,
+which gets a packet by throwing away everything after the moment being looked at.
+
+`einzel render section --at-us <t>` records the density at that instant and lets the run
+finish. On the corpus drift tube:
+
+| | density contours | packet centre on the page |
+| --- | --- | --- |
+| at the end | **0** | - |
+| `--at-us 50` | 10 | 49.5 mm |
+| `--at-us 150` | 11 | 102.9 mm |
+
+It drifts and it spreads, both visible. The unit is in the flag's name, as `--width-mm`
+already does it: a bare `--at` would be ambiguous between microseconds and seconds by a
+factor of a million, and that is the rule that makes a bare number a validation error in
+a model document.
+
+**The instant recorded is not quite the instant asked for, and the figure says both.** A
+diffusive step is set by a stability limit, and cutting it to land exactly would change
+the step sequence and therefore the answer - a high price for an offset of one step. So
+the snapshot is taken at the first step at or after what was asked for, and the
+provenance block carries `density at t = 50.1302 us, asked for 50 us`.
+
+**Recording does not perturb what it records**, which is asserted rather than assumed:
+the same run with and without snapshots is bit-identical in step count, collected ions
+and every node of the final density. The snapshots are clones taken between steps, so
+there is nothing for them to change.
+
+An instant past the end of the run is **absent** rather than filled in with the final
+state. A density that was never computed is not the density at that instant, and
+silently substituting the last one would make a figure of a finished run look like a
+figure of a running one.
+
+## A dimension is measured, never written down
+
+The memo's own figures are line drawings *with dimensions*, and a section without them
+says what the instrument looks like and not how big any of it is.
+
+What a dimension declares is **the two points it spans**. The length is the distance
+between them, computed when the figure is drawn:
+
+```json
+"dimensions": [
+  { "from": {"value": [-100, 0, 0], "unit": "mm"},
+    "to":   {"value": [0, 0, 0], "unit": "mm"},
+    "label": "drift", "offsetMm": 10 },
+  { "from": {"expression": ["0", "0", "0"]},
+    "to":   {"expression": ["turningDepth", "0", "0"]},
+    "label": "penetration", "offsetMm": -8 }
+]
+```
+
+`label` names the span - "drift", "bore". **It does not carry the value.** A typed number
+would be a second statement of something the model already says, and the two would part
+company at the first parameter change, which is exactly what a dimensioned drawing exists
+to prevent.
+
+**And the points may be expressions**, over the same parameters the model is written in.
+Section 9's rule for a model - "every placement is a parametric expression, never a baked
+number" - is not weaker for a drawing of it. Changing `turningDepth` from 50 mm to 80 mm
+and re-rendering the *same figure spec* gives `penetration 50 mm` and then
+`penetration 80 mm`, with no edit in between. That is the assertion the test makes: one
+spec, two models, two measurements.
+
+Drawn to the ordinary drafting convention - extension lines starting clear of the feature
+and running a little past the dimension line, a dimension line offset perpendicular,
+arrowheads, and the measurement above the line on the side away from what it measures.
+The convention is what makes a drawing readable by somebody who has never seen this
+program. The offset is signed, so two dimensions over one feature can go to opposite
+sides.
+
+The unit is chosen from the magnitude, because one figure may dimension a 300 mm drift
+and a 50 µm channel and neither is readable in the other's unit. A span that projects to
+a point on the section plane is skipped rather than drawn as a dot, which would read as a
+dimension of zero rather than as one seen end on.
+
 ## Not built
 
 - **`render still`** - a raster projection. Nothing in this build rasterises.
-- **`render animation`** - a frame sequence with the explicit non-linear time
-  mapping RND-7 requires, and the current rate displayed throughout playback.
-  Neither part is optional, and it needs the sequencer's timeline and a frame
-  writer.
-- **Dimensioned callouts.** The memo's own figures are line drawings *with
-  dimensions*, and there is no way to declare one yet.
 - **Filled density bands, and a colour scale.** Contour lines carry the levels in
   the provenance; a filled and keyed plot would carry them on the page.
-- **A density at a chosen instant.** What is drawn is the density at the end of the
-  run, which is what the solver returns. Seeing the packet mid-flight means
-  shortening `maximumFlightTime`.
 
-Both unbuilt verbs are named by the CLI and refused with a reason rather than
-falling through as unknown commands, because "not built yet" and "you spelled it
-wrong" are different problems and an agent should not have to guess which it hit.
+`render still` is named by the CLI and refused with a reason rather than falling
+through as an unknown command, because "not built yet" and "you spelled it wrong" are
+different problems and an agent should not have to guess which it hit.
+
+Also not built for animations: **geometry that moves**. A stage may change what an
+electrode holds and not where it is, which is a rule the sequencer already enforces, so
+the conductors are the same on every frame by construction. That is correct rather than
+a limitation — but a mechanism with a moving part is not expressible at all, in the model
+format or here.

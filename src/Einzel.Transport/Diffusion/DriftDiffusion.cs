@@ -4,6 +4,28 @@ using Einzel.Transport.Collisions;
 
 namespace Einzel.Transport.Diffusion;
 
+/// <summary>The density at one instant of a run.</summary>
+/// <param name="RequestedSeconds">The instant that was asked for.</param>
+/// <param name="AtSeconds">The instant it was actually taken at.</param>
+/// <param name="Density">The density there.</param>
+/// <remarks>
+/// <para>
+/// Both times, because they are not the same and the difference is not the caller's to
+/// guess. A diffusive step is set by a stability limit and cannot be cut to land on a
+/// requested instant without changing the step sequence and therefore the answer - so
+/// the snapshot is taken at the first step at or after what was asked for, and says so.
+/// </para>
+/// <para>
+/// The gap is a step, which on the shipped models is nanoseconds against transits of
+/// hundreds of microseconds. Reporting it anyway costs one field and removes the
+/// question.
+/// </para>
+/// </remarks>
+public sealed record DensitySnapshot(
+    double RequestedSeconds,
+    double AtSeconds,
+    DensityField Density);
+
 /// <summary>What a diffusive run did.</summary>
 /// <param name="Density">The density at the end.</param>
 /// <param name="Steps">Time steps taken.</param>
@@ -23,6 +45,28 @@ public sealed record DiffusionResult(
     IReadOnlyDictionary<string, double> Lost,
     IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals)
 {
+    /// <summary>The density at each requested instant, in order.</summary>
+    /// <remarks>
+    /// <para>
+    /// Empty unless instants were asked for. A run reports the density it <em>ended</em>
+    /// with, which for a model whose ions have all arrived is an empty box - correctly,
+    /// and uselessly, because the interesting picture is the packet in flight. This is
+    /// what lets one be drawn without shortening the run and losing everything after it.
+    /// </para>
+    /// <para>
+    /// Only instants the run actually reached appear. One past the end, or past the step
+    /// budget, is absent rather than filled in with the final state - a density that was
+    /// never computed is not the density at that instant, and silently substituting the
+    /// last one would make a film of a finished run look like a film of a running one.
+    /// </para>
+    /// <para>
+    /// Each is a full copy of the grid, so a hundred snapshots of a 128 by 32 grid is
+    /// about 3 MB and a hundred of a 512 by 512 grid is 200 MB. The caller chooses how
+    /// many; nothing here caps it, because a cap would silently drop frames.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<DensitySnapshot> Snapshots { get; init; } = [];
+
     /// <summary>Which time discretisation was used.</summary>
     public StepScheme Scheme { get; init; } = StepScheme.Explicit;
 
@@ -127,6 +171,10 @@ public static class DriftDiffusion
     /// <param name="stepGain">
     /// How many times the explicit stability limit to step, for the implicit scheme.
     /// </param>
+    /// <param name="snapshotSeconds">
+    /// Instants to record the density at, in seconds and in order, or null for none.
+    /// Each is taken at the first step at or after it, and reports both times.
+    /// </param>
     /// <returns>What happened.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The duration is not positive.</exception>
@@ -141,7 +189,8 @@ public static class DriftDiffusion
         AbsorbingCells? absorbers = null,
         int maximumSteps = 2_000_000,
         StepScheme scheme = StepScheme.Explicit,
-        double stepGain = 1.0)
+        double stepGain = 1.0,
+        IReadOnlyList<double>? snapshotSeconds = null)
     {
         ArgumentNullException.ThrowIfNull(initial);
         ArgumentNullException.ThrowIfNull(field);
@@ -155,6 +204,10 @@ public static class DriftDiffusion
         var next = new DensityField(grid, initial.Cylindrical);
 
         var sign = Math.Sign(species.ChargeSi);
+
+        // The density the declared mobility belongs to. A pressure field grades the
+        // gas away from it, and mobility goes as the reciprocal of density, so this
+        // is the reference the scaling is against rather than the value used.
         var number = gas.NumberDensitySi;
 
         // Sampled once. The field does not change during a diffusive run - a
@@ -202,6 +255,18 @@ public static class DriftDiffusion
         var sweeps = 0L;
         var worstChange = 0.0;
 
+        var snapshots = new List<DensitySnapshot>(snapshotSeconds?.Count ?? 0);
+        var pending = 0;
+
+        // An instant at or before the launch is the initial density, which no step
+        // produces. Taken here so that a caller asking for t = 0 gets the packet as it
+        // was seeded rather than as it was after one step.
+        while (pending < (snapshotSeconds?.Count ?? 0) && snapshotSeconds![pending] <= time)
+        {
+            snapshots.Add(new DensitySnapshot(snapshotSeconds[pending], time, density.Clone()));
+            pending++;
+        }
+
         while (time < untilSeconds && steps < maximumSteps)
         {
             var dt = Math.Min(step, untilSeconds - time);
@@ -228,11 +293,22 @@ public static class DriftDiffusion
             {
                 lost[where] = lost.GetValueOrDefault(where) + ions;
             }
+
+            // At the first step at or after each requested instant. The step is set by a
+            // stability limit and cutting it to land exactly would change the step
+            // sequence and so the answer, which is a high price for an offset of one
+            // step - so the instant actually taken is reported instead.
+            while (pending < (snapshotSeconds?.Count ?? 0) && snapshotSeconds![pending] <= time)
+            {
+                snapshots.Add(new DensitySnapshot(snapshotSeconds[pending], time, density.Clone()));
+                pending++;
+            }
         }
 
         return new DiffusionResult(
             density, steps, time, density.Population(), collected, lost, arrivals)
         {
+            Snapshots = snapshots,
             Scheme = scheme,
             StepSeconds = step,
             StepGain = stepGain,
@@ -400,7 +476,15 @@ public static class DriftDiffusion
                 var electric = field.ElectricFieldAt(in point);
 
                 var strength = Math.Sqrt((electric.X * electric.X) + (electric.Y * electric.Y));
-                var local = mobility.At(strength, number);
+
+                // Sampled per node, like the flow below and for the same reason. The
+                // mobility carries two separate density dependences and this moves
+                // both: it goes as 1/n outright, and its field expansion is in E/n.
+                // Where no pressure field is declared this is the model's own
+                // density at every node, the ratio is exactly one, and the result is
+                // bit-identical to what it was.
+                var here = gas.NumberDensityAt(in point);
+                var local = mobility.At(strength, here, number);
 
                 var k = (j * grid.CountX) + i;
 

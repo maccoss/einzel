@@ -270,14 +270,11 @@ public static class FieldAssembly
                     break;
 
                 case CompiledFieldKind.Uniform:
-                    elements.Add(UniformField.Create(element.Field));
+                    elements.Add(Sequenced(element, Analytic));
                     break;
 
                 case CompiledFieldKind.HalfSpaceUniform:
-                    elements.Add(HalfSpaceUniformField.Create(
-                        element.PlanePoint,
-                        element.InwardNormal,
-                        Quantity.Si(element.PotentialGradientSi, Dimension.ElectricField)));
+                    elements.Add(Sequenced(element, Analytic));
                     break;
 
                 case CompiledFieldKind.Solved3D:
@@ -343,6 +340,47 @@ public static class FieldAssembly
     /// iteration stopped moving - so every number downstream of it is unquantified
     /// rather than imprecise.
     /// </remarks>
+    /// <summary>One analytic element, at the values a single compilation holds.</summary>
+    private static IElectrostaticField Analytic(CompiledField element) => element.Kind switch
+    {
+        CompiledFieldKind.Uniform => UniformField.Create(element.Field),
+
+        CompiledFieldKind.HalfSpaceUniform => HalfSpaceUniformField.Create(
+            element.PlanePoint,
+            element.InwardNormal,
+            Quantity.Si(element.PotentialGradientSi, Dimension.ElectricField)),
+
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(element),
+            element.Kind,
+            "only the analytic kinds are built this way; a solved element carries its "
+            + "phases as re-weightings inside its own builder"),
+    };
+
+    /// <summary>
+    /// An element, switched by the instrument's timeline where the timeline reaches it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A sequence is the instrument's, so an analytic element follows it exactly as a
+    /// solved one does. The validator leaves <c>Phases</c> empty when every phase compiles
+    /// this element to the same numbers, so a static element stays static rather than
+    /// answering a time-varying interface and handing the integrator switch instants to
+    /// land on for nothing.
+    /// </para>
+    /// <para>
+    /// Wrapped generically rather than per kind. A per-phase branch inside each analytic
+    /// field would be a special case layered on shared infrastructure, and there would be
+    /// one more of them every time a field kind is added.
+    /// </para>
+    /// </remarks>
+    private static IElectrostaticField Sequenced(
+        CompiledField element, Func<CompiledField, IElectrostaticField> build) =>
+        element.Phases.Count == 0
+            ? build(element)
+            : new SequencedField(
+                [.. element.Phases.Select(build)], element.PhaseBoundariesSeconds);
+
     private static void Note(
         List<Core.Results.ValidityWarning> warnings, Solved.SolveReport report, int index, string kind)
     {

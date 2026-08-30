@@ -95,7 +95,8 @@ public static class ModeComparison
 
         var absolute = Path.GetFullPath(modelPath);
         var text = File.ReadAllText(absolute);
-        var validation = ModelValidator.Validate(ModelJson.Parse(text), null);
+        var validation = ModelValidator.Validate(
+            ModelJson.Parse(text), null, Path.GetDirectoryName(absolute));
 
         if (!validation.IsValid)
         {
@@ -103,7 +104,13 @@ public static class ModeComparison
         }
 
         var model = validation.Model!;
-        var gas = BackgroundGas.FromModel(model.Gas);
+
+        // Resolved rather than taken from the document alone: REG-3 only means
+        // something if the two modes are asked about the same gas, and a compare that
+        // dropped an imported field would be comparing them in a gas neither model
+        // declares.
+        var gas = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory());
 
         if (!gas.IsPresent)
         {

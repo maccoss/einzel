@@ -117,7 +117,7 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
 - **`Einzel.Extensions` — a Python extension surface, and invariant 3 goes from constraint to mechanism.** §5's argument is that agents must extend the platform, not only drive it, and an extension path requiring C#, a compile and a restart is not usable in a loop. `einzel ext register | test | list` is that loop; `register` scaffolds an extension that **runs immediately**, for the same reason `init` writes a model that runs.
 
-  **One manifest, two runners — and only the sandboxed one is built, which is the right one to build first.** `trust` defaults to `sandboxed` rather than being opted into, because a trust level that has to be asked for gets granted by accident. EXT-4 is structural rather than advisory: a subprocess cannot be invoked per integration step at any useful rate, and the measured round trip is **49 ms median against PERF-7's 50 ms**, which is precisely where the granularity floor sits.
+  **One manifest, two runners — and only the sandboxed one is built, which is the right one to build first.** `trust` defaults to `sandboxed` rather than being opted into, because a trust level that has to be asked for gets granted by accident. EXT-4 is structural rather than advisory: a subprocess cannot be invoked per integration step at any useful rate, and **the round trip is process start almost in its entirety**. Measured: a bare `python -I -c pass` costs 45-63 ms on this machine, and PERF-7's whole 50 ms budget straddles that spread - so the budget is not separable from CPython's own start cost, and asserting it measures the machine. What the platform controls is **1.08x to 1.52x a bare launch, once below it**. That *strengthens* EXT-4 rather than weakening it: the boundary costs ~50 ms and nothing here can reduce it. SPEC.md Amendment 27, found when the old assertion passed and failed on the same commit in two CI runs minutes apart.
 
   **The sandbox states what it does not do, and that is the load-bearing decision.** Enforced: wall-clock timeout with process-tree kill, output ceiling, **zero inherited environment variables** (asserted — a child inheriting the parent's environment inherits its credentials and proxy settings), `python -I` isolation, a scratch working directory. **Not enforced: network, filesystem, memory** — those need job objects and a restricted token on Windows, namespaces and seccomp on Linux. `extension.isolation-incomplete` is a **non-suppressible validity violation** on every sandboxed result, and `ext list` prints the gap on stderr every time. A containment measure claimed and not applied is worse than one absent and known to be: the first makes someone run untrusted code they would otherwise have read.
 
@@ -159,9 +159,9 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
   **What marching squares got wrong first:** cases 1 and 14 both emit `(Left, Bottom)`, so segment orientation is *not* consistent and a head-to-tail join breaks the contour at every complementary crossing. A rectangular conductor came out as four runs instead of one — identical on screen until the path is filled or dashed, and not free: joining undirected took the lens from 10 conductor runs to 6, the quadrupole's equipotentials from 338 paths to 28, and its PDF from **112 KB to 13 KB** for the same drawing.
 
-  **Not built:** `render still` (raster — nothing here rasterises) and `render animation` (needs RND-7's explicit non-linear time mapping, displayed throughout playback). Both are named by the CLI and refused with a reason rather than falling through as unknown verbs, because "not built yet" and "you spelled it wrong" are different problems. Also missing: dimensioned callouts, which the memo's own figures have. Details in `docs/rendering.md`.
+  **Not built:** `render still` (raster — nothing here rasterises) and `render animation` (needs RND-7's explicit non-linear time mapping, displayed throughout playback). Both are named by the CLI and refused with a reason rather than falling through as unknown verbs, because "not built yet" and "you spelled it wrong" are different problems. Dimensioned callouts now exist - see below. Details in `docs/rendering.md`.
 
-- **The CLI is the primary surface and now has most of §15.** `init | new | validate | estimate | preview | solve | run | compare | sweep | optimise | test | verify | export | render | ext | schema | templates | examples | agents-md | doctor`, plus the CLI-1..6 contract: `--json` on every verb, results on stdout and diagnostics on stderr, `--dry-run` on every mutating command, distinct exit codes per failure class, deterministic ordering. Cold start 73–147 ms against PERF-8's 500 ms. **Not built: `self-update`**, which needs `Einzel.Update`. `render section` and `ext list|test|register` now exist; `render still`, `render animation`, and the in-process extension runner do not.
+- **The CLI is the primary surface and now has most of §15.** `init | new | validate | estimate | preview | solve | run | compare | sweep | optimise | test | verify | export | render | ext | schema | templates | examples | agents-md | doctor`, plus the CLI-1..6 contract: `--json` on every verb, results on stdout and diagnostics on stderr, `--dry-run` on every mutating command, distinct exit codes per failure class, deterministic ordering. Cold start 73–147 ms against PERF-8's 500 ms. **Not built: `self-update`**, which needs `Einzel.Update`. `render section`, `render animation` and `ext list|test|register` now exist; `render still` and the in-process extension runner do not.
 
   Four things here are load-bearing rather than plumbing. **`einzel schema` is generated by reflection** over the document records with descriptions from the XML doc comments the build already requires (AGT-7), so the format an agent reads cannot drift from the code; missing XML degrades to structure-without-descriptions and *says so*. **A study is a file** (`schema --study`) naming a figure of merit out of a registry — `flightTime`, `energyDrift`, `resolvingPower`, `transmission` — which is the seam §12's Python objectives will register into. **`verify` separates drift from notes**: an edited model or a changed solver-behaviour version invalidates; a different engine build with identical numerics, or another machine, does not. **`preview` taints the number itself** (GRD-5) and writes nothing, because a tainted result in `results/` would be reported as current by `verify`.
 
@@ -418,7 +418,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Both directions are reported, per REG-2.** A declared flow gets the ratio saying which is carrying the ions (`gas.flow`: 6.5, "the gas is carrying these ions, not the field"). A model with *no* flow above 1e-2 mbar — where spec figure 4 makes a velocity field a requirement rather than a benefit — gets `gas.stationary-above-flow-threshold`, because a stationary gas is a modelling choice and does not look like one in the output. And **`CollisionSampler` refuses a flow field rather than ignoring one**: it schedules and draws without a position, so it cannot evaluate a velocity that varies with one, and the alternative is an ion flying through a declared jet as though the gas were still.
 
-  **Not built:** a neutral velocity *field*. `IGasFlow` is the seam and `UniformGasFlow` is the only implementation, so a funnel's transmission is still computed in a gas that is either standing still or moving all in one piece — and the jet off an inlet capillary is neither.
+  **Not built:** a neutral velocity *field*. `IGasFlow` is the seam and `UniformGasFlow` is the only implementation, so a funnel's transmission is still computed in a gas that is either standing still or moving all in one piece — and the jet off an inlet capillary is neither. **Since built** — `SampledGasFlow` imports one, and the pressure is a field too; see the GAS-1 entries below.
 
 - **A cylindrical density was not conserving ions, and closing the ledger is what found it.** The cylindrical *Poisson* operator is written in conservative form — flux through a ring's outer face minus its inner face, over the ring's own volume — and that reasoning is recorded in `docs/numerics.md`. The *density* solver, on the same grid class with the same `Cylindrical` flag, computed a flux per unit area and applied it to both neighbours as though their volumes were equal. In an axisymmetric solve they are not.
 
@@ -502,7 +502,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Einzel consumes a velocity field and does not compute one** — the same boundary §17 draws around visualisation. A compressible flow through a differentially pumped stack is a CFD problem, and a half-hearted one inside an ion-optics engine would be worse than none because it would look like an answer.
 
-  **Two gaps left, both named.** The **pressure** is still a single number for the whole model, which a differentially pumped instrument is not. And the **event-driven mode refuses a field** rather than using one: `CollisionSampler` schedules and draws a neutral velocity without a position, so threading a position through the collision path is the work.
+  **Both gaps named here are now closed** — the event-driven mode carries the ion's position into the draw, and the pressure is a field too. See below.
 
 - **A clamp that guarded nothing and capped the drift, found by an expectation that was a division.** Scharfetter–Gummel's exponent `P = v h / D` feeds a Bernoulli function that already handles a large argument **exactly** — zero above +40 and `−x` below −40 are the true limits, taken explicitly to avoid an overflow inside `exp`. The flux clamped `P` to ±40 *before* calling it. Read together the clamp looks like it protects the exponential; it does not, the exponential protects itself one function down. What it did was **cap the effective drift at `40 D / h`** whatever the field and the gas actually were.
 
@@ -630,7 +630,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **A statistic that had to be replaced on the way**: "widest entry radius that still arrives" gave 0.65 mm on one radius grid and 0.20 mm on another for the same geometry. A maximum over a ragged set is a maximum over noise; counting arrivals over a fixed grid is the same measurement made stable.
 
-  **Not done:** the `solved3d` document form still spells one `drive`, though `CompiledSolvedField3D`, `Geometry3D` and the 3-D builder all carry a list already. Details in `docs/model-format.md` and `docs/device-templates.md`.
+  **Now done for 3-D too**: a `solve3d` takes `drives` and its electrodes take `taps`, so a volume geometry expresses what a cross-section already could. **Shared rather than reimplemented** — both electrode documents implement one `ITappedElectrode` interface and the tap validation is one function, so the refusals for declaring both forms arrived in three dimensions by *being* the same code. Verified on a volume geometry: two generators reaching the same electrodes in the same proportions collapse to **one** basis solve carrying two weights on two clocks, and two distinct spatial patterns give **two**. Details in `docs/model-format.md` and `docs/device-templates.md`.
 
 - **A gas that moves, in the event-driven mode — GAS-1's last transport gap.** The diffusive mode could see an imported velocity field; the trajectory models **refused** one, and refusing was right at the time: a collision was drawn from a time and a velocity with no place to evaluate the flow at, so the alternative was a run that used the uniform drift and said nothing. The change is one argument — the ion's **position** goes into the draw, so a collision samples the Maxwellian about the bulk velocity *where the ion is*.
 
@@ -650,7 +650,42 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **A measurement mistake worth keeping**: the stepped-flow test first put the step 3 mm from the launch, which the ion crosses in 6 µs — so the "before" average was three samples of an ion still accelerating from rest, and the carry read 361 against a declared 200. That looks like a physics discrepancy and is a launch transient. **An average is over whatever the window contains, including the part that is not yet the thing being measured.**
 
-  **Still one pressure**: the gas *density* is a single number for the whole model, so a differentially pumped instrument is not expressible — an imported field gives the neutrals a velocity everywhere and the same number of them everywhere. Details in `docs/pressure.md`.
+  Details in `docs/pressure.md`.
+
+- **The pressure is a field too, and mobility goes as 1/n — which nothing here did.** The density was the last quantity about a gas held as a single number for a whole model, so an imported flow gave the neutrals a velocity everywhere and *the same number of them everywhere*. That is not a differentially pumped instrument, which is what every device above 1e-2 mbar actually is: a funnel behind an inlet capillary spans decades of pressure between entrance and exit.
+
+  **The unit is required on the file, and that is §9's rule rather than a new one.** A CFD velocity is metres per second essentially always; a pressure is not, and **a file read as pascals when it holds mbar is a gas a hundred times too thin** — entirely plausible, and it never announces itself. `{"energy": 4000}` is a validation error for exactly this reason, and nothing in that argument weakens when the number becomes a hundred thousand numbers.
+
+  **The physics that was missing:** an ion drifts further between collisions in a thinner gas, so **μN is the constant** — which is why the literature tabulates *reduced* mobility. The declared `pressure` becomes the reference the mobility belongs to and the field grades away from it. Two separate density dependences, and they are not the same one: this factor is how *much* gas, the existing E/N expansion is how hard the ion is pushed *between* collisions. Scaling only the second leaves the drift flat across a gradient while reporting a changing field dependence, which reads as the mobility having been handled.
+
+  **A graded density turns Langevin into a null-collision method** — the same mechanism hard spheres already ran for a speed-dependent rate, reached a second way: schedule at the highest density anywhere, accept with probability n(x)/n_max. Both bounds are majorants over the whole field, because an event is scheduled before it is known where the ion will be when it lands. The thinning is short-circuited where the density is uniform, and that is **load-bearing rather than an optimisation**: it would otherwise accept with probability exactly one and *still consume a random draw*, moving every seeded result this engine has published.
+
+  | | |
+  | --- | --- |
+  | A field at 2× declared pressure vs *declaring* 2× the pressure, event-driven | **bit-identical trajectory**, both collision models |
+  | The same, diffusive, through the CLI | 3515.229021382981**5** vs **1** µs |
+  | Mobility at half and twice the reference density | 2.000000 / 0.500000 |
+  | The scaled form at the declared density | **bit-identical** to the unscaled one |
+  | Langevin thinning at three points of a 4× ramp | 0.25 / 0.625 / 1.00 to 0.01 |
+  | 151 existing transport tests | unchanged |
+
+  **Two tests that had no teeth, found by running the mutation rather than by reading them.** The equivalence test used Langevin only, and making the local density read return the declared scalar *did not fail it* — the Langevin branch short-circuits its thinning where the density is uniform, so a flat imported field never reads a position at all. Correct behaviour, and no test of the read. The graded-gas test asserted only that a ramp collides more than the thin gas alone, which still passes with the density read at the wrong place because the count lands *close to* the thin gas. What discriminates is **reversing the ramp**: same densities, same box, opposite arrangement, so anything blind to position gives the two an identical count. 11,458 against 19,700. The rule that generalises: **a test passes a mutation when the path it exercises does not contain the mutated line** — so read which tests failed, and treat the rest as untested rather than as corroboration.
+
+  **And the same seam broke a fourth time, in the file whose comment says it is the third.** `SampledOutsideDensity` was added to `CollisionSampler` beside `SampledOutsideFlow` and, on the first draft, dropped in exactly the place the surrounding comment warns about — declared, set, read by nothing, everything compiling and every test green while a run extrapolating its gas past the imported box said so nowhere. Now `gas.pressure-extrapolated`, with a CLI test driving it end to end because the wiring is what keeps breaking rather than the computation. **Adding a quantity to a type that already reports several is not the same as reporting it** — the existing reporting code is where the eye slides past.
+
+  **The cost gate had to be re-derived, and the first version was 50% out.** GRD-8's claim for this mode is that `estimate` and `run` call the same step function and agree exactly. A graded gas moves the mobility and so both stability limits — and the first version took the thinnest gas *anywhere in the imported field* where the run takes its limit from per-node arrays *over the tracked grid*. A CFD field is usually solved on a larger box than the ions are tracked through: here it ran to 0.5 mbar while the grid reached 0.75, and the estimate said **2,252 steps against an actual 1,502**. Now 1,126/1,126 uniform and 1,502/1,502 graded. Found by comparing the two numbers, not by reading the code — nothing about the wrong version looks wrong. The same asymmetry runs through the diagnostics and had to be right in both directions: **E/N is worst where the gas is thinnest**, the **Knudsen number and collision counts are worst where it is thickest**.
+
+  **The pseudopotential is graded too.** The momentum-transfer rate goes as the density, so a funnel whose gas thins toward its exit has a well that deepens toward its exit — and the gradient of that is a real force, which differencing the effective potential picks up. A version holding the damping at one declared value would report the well as flat where it is not.
+
+  **A refusal moved to where it cannot be forgotten.** Resolving a declared field needs the model document's own directory, which a study or a figure of merit does not have. Refusing was right, but it lived as a guard at each of **four call sites, naming `velocityField`** — and three were already silent about a pressure field. `BackgroundGas.FromModel` now refuses an unresolved field itself, with `WithoutImportedFields` as the deliberate exception whose name says what it gives up. It caught a real one immediately: `GasFlowImport.Resolve` reached `FromModel` itself, so `einzel run` on a diffusive model was refused by the guard meant for callers without a path. Two sites that *did* have the path — `einzel compare` and the diffusive cost estimate — now resolve rather than refuse, which they should always have done. Same rule as `FieldAssembly.Build` throwing rather than discarding its `SolveReport`: **make the shortest spelling the safe one.**
+
+  **Also caught by its own test:** an earlier draft of the CLI test ran at 50 V/m over 38 mm, collected **0.05 ions of 10,000**, and compared two flight-time ceilings — the incomplete-arrival trap this project already documents for `einzel compare`, met again from the other side. The transit accessor now asserts the packet arrived before reading a transit off it.
+
+  **The corpus can carry a data file now, and does.** The embedded-resource glob was `*.json` only, so neither imported gas field could appear in an example — and so neither was covered by the EX-2 gate that runs on every change. `drift-tube-pressure-gradient` is a 38 mm tube whose gas thickens from 1 mbar at the packet to 2 mbar at the detector, and **its expected number is an integral**: the transit is the uniform answer scaled by the *mean* density along the path, which for a linear ramp is the average of the ends. Predicted 316.667 µs, measured **320.236, 1.13% out** — the packet's own spread. Ignoring the gradient gives 211 µs, a third away. What it deliberately cannot see is the *arrangement*, since a drift transit depends only on the integral along the path and any reflection gives the same answer; that is pinned separately by the reversed-ramp unit test. Corpus 29 → 30.
+
+  **It needed one change below the corpus, and that is the more useful half.** `einzel test` could not test a model with an imported field at all — the seam between a study and the transport is a `Func<CompiledModel, double?>` with nowhere to put a path, so a figure of merit met `BackgroundGas.FromModel` and was refused. A compiled model now carries **`SourceDirectory`**, set by every loader, so any consumer can resolve a referenced file. **Null stays the safe value**: a model compiled from a string has no directory and its consumer is refused rather than run in a gas the document does not describe, so a loader that forgets degrades to the refusal rather than to a silent wrong answer. **And the four study drivers take it too**, so a sweep, scan, optimisation or boundary search over such a model runs rather than refusing — §13's whole subject is a design being optimised, and a device with a gas jet through it is exactly the kind that wants it. The warning survives that seam: the ledger reports `gas.pressure-imported` with its per-evaluation count.
+
+  **Still assumed: one temperature.** What is imported is a pressure field read as a density through n = p/kT at the model's single declared temperature — an assumption the document already made, but now the only thing about a gas that cannot vary from place to place. A **non-positive sample is refused rather than clamped**, because mobility goes as 1/n: a zero is an infinite drift and a stability limit of zero, so the run does not answer wrongly, it never finishes. Details in `docs/pressure.md`.
 
 - **Corpus 23 → 26, exercising what the night built.** Three examples, each with an expectation that is arithmetic and nothing else.
 
@@ -787,12 +822,344 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Not done:** nothing chooses the gain. Both limits are computable before the run, but what gain is acceptable is an accuracy question and nothing here measures the accuracy of a step it has not taken. Richardson extrapolation over a doubled step would, at three solves a step instead of one. Details in `docs/pressure.md`.
 
+- **The live session, and MCP-1 met — but the work was not the protocol.** `journal`, `undo` and `attribution` existed only in the `Einzel.Commands` assembly **description string**, the same "named in a csproj and nowhere else" state `ITransportMode` was in before its seam was built. §15 says why that is the whole job: the server's "distinct value is shared live state ... everything else it could do, the CLI does at least as well and with less machinery." A journal only one party can write to is a file, and a file needs no server.
+
+  **Attribution comes from the `initialize` handshake, not from a tool parameter.** An `author` argument would make the attribution something the *mutating party fills in*, which is a signature rather than an attribution — an agent could sign a change as the person it is working with, by mistake or because a model decided that read better. The client declares itself once, before any tool exists to call. **The test is in two halves and the second is what makes the first a property rather than a default**: the name that comes back is `agent:surveyor/3.1`, *and* `model_edit`'s schema has exactly `description` and `content`, so there is no argument through which another could have been offered. A tool that took an author and ignored it would pass the first half alone.
+
+  **Shared and linear are two claims.** Shared means one stack rather than one per party, which is the point rather than a hazard: two private stacks over one document would let each party reverse changes the other had already built on, and the document would reach a state neither of them authored. Linear falls out of the walk back being over ordinary edits only. And **undo appends rather than pops**, because a popping stack loses the fact that somebody undid something, and who — which is exactly what MCP-1 asks to be recorded. Walking back twice appends twice.
+
+  **The whole document before and after, not a patch**, so undo needs no inverse operation per command — a command that knew how to reverse itself would be a second implementation of what it does, and the two would part company at the first command somebody forgot to teach. **In memory**, because PRJ-4's argument says the durable record of a design is the document and its git history, not a sidecar.
+
+  All three claims checked by **mutation** rather than by assertion count: private per-author stacks fail three of six journal tests, a popping undo fails a *different* two, and moving attribution into a tool parameter fails three of five protocol tests.
+
+  **The tool surface is deliberately not a second CLI**, and the server says so in its own instructions — the failure to guard against is an agent looking for `run` and `sweep`, not finding them, and concluding the platform cannot do those things. `model_read | model_edit | model_undo | session_journal | model_validate | model_preview`. Preview is here because AGT-5 built it for exactly this; a full run is not, because it belongs where there is a progress surface and a viewport, and `einzel run` is one process launch away meanwhile.
+
+  **Every result is `CommandJson.Write` of the same outcome record the CLI serialises for `--json`, asserted byte for byte.** That makes AGT-2 literal instead of claimed, and carries GRD-2 for free: a warning reaches an MCP client by being on the record rather than by anyone remembering to copy it across — which is the seam this project has already dropped evidence at three times. A refusal comes back as a tool *result* carrying AGT-3's code, path, constraint and suggestion, not as a transport fault, because a refusal is an answer about the model rather than a failure of the call.
+
+  **`einzel-mcp` is its own executable, not a verb on `einzel`.** Figure 3 puts the three surfaces side by side as peers and figure 6 is emphatic that the project-folder loop has "no protocol, no session, no network"; a `serve` verb inside `einzel` would put a server in the binary whose distinguishing property is that it is not one. Nothing but protocol reaches stdout, which turns CLI-2's convention into a hard requirement.
+
+  **The first non-test dependency the project has taken**, and §20's table asks for the licence to be verified rather than assumed: `ModelContextProtocol.Core` 2.2.0 declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. `.Core` rather than the full package, which leaves behind a hosting integration this does not use.
+
+  **A harness that lied in the worst direction.** Driving the server by hand — a file of JSON-RPC piped in — produced *nothing at all* on stdout, which reads unambiguously as a server that does not work. With a logger attached the SDK showed both requests handled and both responses sent: a file on stdin hits EOF immediately, the transport tears down, and the outbound writes are dropped. A real client holds stdin open and never sees it. **When a harness and the thing under test disagree, establish which one is the artefact before changing either** — the trap being that the simpler thing looks like the trustworthy one, when simpler here meant missing the one property the server depends on.
+
+  **And GRD-9 was not delivered by building MCP-1, which is the same requirement stated twice.** The journal knew only about mutations made *through it*, so a person editing the model in their own editor had their change overwritten by the agent's next whole-document edit with nothing saying so — the requirement's own words, failed, in code that was an hour old. **The sharper consequence is what an unrecorded change does to undo**: it breaks the chain, so walking back lands on a document predating the person's edit and discards it *as a side effect of reversing something else*. `Reconcile` records an outside change as an entry attributed to `outside` — not to the person, because another tool, another session and a git checkout look identical from inside — refuses an edit written against the document as it was, and makes the refusal recoverable by having `model_read` take the change up. A no-op `Reconcile` fails three of nine journal tests.
+
+  **Not built:** streamable HTTP hosted in process by the shell, which §15 makes the primary transport and which needs the shell. The tools sit above the transport, so that is a wrapper rather than a rewrite. Details in `docs/live-session.md`.
+
+- **A packet can cross between the two transport descriptions (SEQ-1's conversion).** §9 says an instrument is a timed state machine of "ordered phases with durations, excitation overrides, **transport mode**, and transition conditions", and SEQ-1 adds that a phase boundary may change it. That is ordinary instrument behaviour rather than an exotic case — ions are collected and thermalised in a gas-filled trap, where the description is a density, then extracted into vacuum and flown, where it is trajectories. The two modes have been peers since REG-1's seam was built and could not hand anything to each other.
+
+  **The third clause of SEQ-1 is the substance: "named as a source of uncertainty".** These are not two encodings of one state. **Trajectories to a density loses the velocities entirely** — a density field is a scalar per cell and there is nowhere for a distribution to live, which is not an implementation limit but what the diffusive description *is*: drift-diffusion holds precisely because the velocities have relaxed to the local equilibrium. **A density to trajectories has to invent them**, drawn Maxwellian at the gas temperature plus the local drift — the assumption the diffusive description already made, exactly right while the ions are in the gas that thermalised them and wrong the moment anything happens faster than the momentum-transfer time. `transport.velocity-assumed` is a **non-suppressible violation** for that reason: a caller who reads a flight time computed from invented velocities and does not know they were invented has been misled by the platform.
+
+  | | |
+  | --- | --- |
+  | Deposited population against declared | **exact** (1e-12) |
+  | Equipartition of drawn velocities, 300 K and 1200 K | **1.0021** each |
+  | Drift added, against μE | 18.472423 against **18.472423** m/s |
+  | A Gaussian cloud's centroid, 20,000 ions | 10.0197 mm against 10.0000 |
+  | A 4000 m/s beam after a round trip | 0.2 m/s |
+
+  Two temperatures because one alone is consistent with a thermal draw *and* with a constant that happens to match; the drift is a difference between two runs at one seed, so the thermal part cancels.
+
+  **The discriminating check is cylindrical, and it is the one a plausible implementation fails.** A cell is a ring whose volume grows with radius, so a uniform density holds far more ions at the wall than on the axis — drawing cells by their density *value* over-samples the axis and produces a packet that looks entirely reasonable. The closed form separates them: p(r) ∝ r gives mean radius **2R/3 = 13.3333 mm, measured 13.5177**, against **R/2 = 10.0** for the wrong weighting. Run the wrong way it gives 10.0245, and **only that one test of the ten fails**.
+
+  Population is conserved **by construction** — the four bilinear weights sum to one whatever the position — rather than by a normalising pass, which would pass the same test while hiding a weighting error rather than preventing one. An ion outside the grid is **counted, not clamped**, because clamping piles the escaped population onto the boundary and makes a leaky instrument look confining. And the azimuth of a cylindrical sample is drawn uniformly, which is information the conversion *creates*: a round trip is not the identity even in distribution for a packet that was never axisymmetric.
+
+  **Not built: a stage cannot yet name a transport mode — and scoping that found the reason, which is a defect.** A stage is declared on a *solve element* while the transport mode is a property of the *run*, so a per-element stage cannot carry one: two elements would name different modes for the same instant, and there is no superposition of transport modes the way there is of fields. Worse, the existing arrangement is already wrong. `CompileStages` re-resolves the **whole model parameter surface** with the stage's overrides and then re-expands **only its own element** — so two electrodes in different elements, written as the *same expression* over the same parameter, came out at **900 V and 300 V** during a stage, on a model that validated cleanly with no diagnostic anywhere. The stage design's own rationale is the claim that fails: setting a parameter "moves everything that depends on it at once". It moves everything in one element.
+
+  **Refused first, then fixed.** The refusal — a sequenced model may have one field element — was the honest state while the two readings were open; the right one is the documented one. **The timeline is the instrument's**, so `Timeline` resolves the phases *once for the model*, before any element is compiled, and hands the same parameter surfaces to all of them. **Every element follows it, and how depends on what it is** — a solved geometry re-weights channels it has already solved; an analytic one is compiled once per phase and switched by `SequencedField`. An element no phase moves stays static, which is a distinction rather than an optimisation: wrapping it would hand the integrator switch instants to land on for a field identical on both sides of them.
+
+  **A code review found the first version of this fix reached only half the elements**, which is the more useful half of the story. The analytic branches compile from the base surface and a `CompiledField` for those kinds had nowhere to put a phase — so a sequence setting a parameter used by a `halfSpaceUniform` cap potential had the solved elements follow and the analytic one frozen, validating cleanly; a model whose *only* elements are analytic compiled a timeline nothing consumed, making the sequence a silent no-op. **The comment that hid it is the part to keep**: `Restage` was a closure "because only the solve branch needs it, and threading the declared parameters through every field kind would put the sequencer in the signature of things that have nothing to do with it" — an argument that reads as sound and is exactly backwards. A rationale written for one version of the code kept the next from noticing what it had missed. Schema **0.6** adds a model-level `sequence`, which is the spelling that says what it means; `stages` on a solve stays the older one for the single-element case. Verified by mutation: restoring the per-element behaviour fails that test and nothing else.
+
+  It also fixed something the per-element version got wrong quietly — a malformed stage was reported **once per field element**, turning one typo into a wall of identical complaints. Two refusals remain, both about a document saying two things at once: two elements each declaring stages is two timelines over one instrument, and declaring both `sequence` and `stages` is refused rather than merged, the same argument that refuses a geometry declaring both `drive` and `drives`. **A phase now names a transport mode, and a run crosses the boundary (SEQ-1).** Schema 0.6 puts `mode` on a phase, absent meaning the model's — the same rule its parameter overrides follow, so a model with no sequence and one whose every phase runs in the declared mode are the same run. `SequencedRun` walks the phases, each an ordinary run of its own mode over its own duration, converting where the mode changes. On the test instrument — launch, thermalise, extract — the packet advances **1.37 mm in a microsecond while flying and does not move at all over twenty times longer as a density**, because the diffusive drift is μE and E is zero there. That is the conversion made visible rather than a defect: drift-diffusion holds precisely because the velocity distribution has relaxed, so the momentum genuinely is discarded. Position, the one thing both descriptions carry, survives to the fourth decimal.
+
+  A trajectory leg starting part-way along the timeline is flown against a new **`TimeShiftedField`**, because the integrator always starts at t = 0 and a leg beginning at 21 µs has to be handed an instrument shifted by 21 µs rather than a start time it has nowhere to put. Wrapped rather than adding one to `IntegrationSettings` — the precedent `AxisymmetricField` and `PonderomotiveField` set, and for the reason this file already gives: that core carries every validated number here, and refactoring it to add a case beside it is how those get quietly lost.
+
+  **A sixth occurrence of the check that keeps learning new configurations.** The diffusive requirements — a gas, a mobility, a density grid — were gated on the model's own `transport.mode`, so a trajectory model with a diffusive phase skipped all of them, validated cleanly, and would have failed at run time asking for the gas it never declared. Fixed by asking the right question rather than adding a case: `Modes` returns every mode the run uses, and the requirements attach to that.
+
+  **The first phase may be the trap** — the ordering the requirement was written about, since ions are collected and thermalised in a gas and only then extracted. Seeded through `DiffusionRun.Seed`, the same function a wholly diffusive `einzel run` uses, rather than a second implementation.
+
+  **Reusing that path corrected two numbers a duplicate had got wrong.** A first version built its grid with `new Grid2D(...)` where `GridFor` uses `Grid2D.OverBox`, which rounds intervals up to a power of two — so one model got **two different grids** depending on which path ran it. And its mobility helper ignored `Derived`, so a mobility the document derived from a cross section came back as the stored value rather than the re-derived one. A third gap closed with them: the diffusive leg passed **no absorbers**, so electrodes did not absorb during a diffusive phase — the defect that once made every diffusive transmission an upper bound with nothing saying so, reintroduced locally. The rule: **four helpers already existed, and writing them again got two of them wrong.**
+
+  **And `einzel run` reaches it.** The fork tests `ChangesTransportMode` before the model's own mode, since a model may declare `diffusion` and still have a sequence that leaves it. The terminal gets a per-phase table — with a **dash** where a diffusive phase has no trajectories, which is a different statement from having none left, and `packet centre` rather than `final x`, because there is no single ion. `--json` carries a `sequence` block, and the manifest records **`diffusion -> trajectory`**, because one mode would make a manifest claim to determine a run it does not describe.
+
+  **Two defects this project had already fixed once were met again, and they are the same mistake.** A successful sequenced run exited `ConvergenceFailure`, because the exit logic reads `Outcome is "StopConditionMet" or "DensityEvolved"` — a list that had to learn `DensityEvolved` after a working diffusive run reported itself as a failure. And the printer showed `flight time NaN +/- NaN`, because the fix that made those lines *absent* for a density was gated on `run.Diffusion is null`. **Both were written as a list of the modes known at the time rather than as the question being asked**: "did this run finish what it was asked to do" and "is there a flight time to print" are properties of the result, while "which mode was it" is a proxy that stops being equivalent the moment a third mode exists. Also mine: the test asserted the warnings on stdout and passed my manual check only because I had run with `2>&1` — merging the streams destroys the distinction CLI-2 is about. All in `docs/lessons.md`.
+
+  **And a driven geometry inside a diffusive phase gets the cycle average.** A driven structure has no static field to step a density through, and the time-free interface answers with the RF at the phase's first instant — a field that exists for no length of time. The sequenced path now uses the same `Effective` wrapper the wholly diffusive path does, shared rather than written twice. **The fifth occurrence of that defect, and the first I introduced**: before it, `einzel solve` reporting the DC of a driven geometry, the diffusive mode stepping through a snapshot, `SuperposedField` becoming one when a driven member was summed in, and the renderer drawing one instant on every frame.
+
+  Measured on a four-rod quadrupole at 2 mbar, packet released 1.5 mm off axis: **0.2341 mm after 60 µs at 400 V, against 1.5000 mm with the drive off.** **The geometry had to be four rods, and the first version of the test taught that** — two plates give a nearly *uniform* field, the ponderomotive force goes as ∇E², so there was no well, the packet moved 0.1% either way, and the test passed on a threshold of "less than where it began". **A confinement test on a geometry that cannot confine measures nothing.** Nothing outstanding for SEQ-1.
+
+  **Corpus 31 → 32, and the new one is the sharpest sequenced check there is.** `sequenced-uniform` holds an ion at rest in nothing and then pushes it with a uniform field a phase switches on: predicted `hold + sqrt(2 d m / (q E))` = 5.219358580 µs, measured **5.2193585800816775, 1.6e-11 relative** — five orders inside tolerance, because an analytic field has no geometry error to absorb where the plate version carries 1.0e-7 of fringe. The corpus's only model in the **model-level `sequence`** spelling and the only one whose timeline moves an **analytic** element. **Its teeth were measured rather than predicted**: with the analytic-phase fix reverted it is refused at validation before the ion is launched, and that one refusal guards both defects at once.
+
+  Also added, and overdue by five schema bumps: a test that **every version `SupportedVersions` claims to read actually reads**. §14 has asked for one since 0.2 and none existed, so "every earlier document still reads" has been an assertion in a list rather than a measurement. It ships with a control — an unknown version is refused — because a reader that accepted anything would pass the first half without reading a single version right. It also caught a slip in itself on the first run: the guard asserting the edit had happened fired on the identity case, where replacing 0.3 with 0.3 changes nothing. Details in `docs/model-format.md`, `docs/pressure.md` and `docs/lessons.md`.
+
+- **The shell opens on a model, with three of §16's eleven views.** `einzel-shell models/reflectron.json` gives a parameter tree with live validation and units on every field, the shared `SessionJournal` with agent and human attribution, and a **3-D viewport drawing the instrument, the field and the ions** on Helix Toolkit / DirectX 11. Every action is recorded as the `einzel` command that would reproduce it (Amendment 25).
+
+  **Every conductor is the zero level set of its own signed distance**, which is `Contours`' argument one dimension up: one routine draws every conductor there is, and a shape added to the model format needs no change here (invariant 2). Drawing from the declared primitives would be shorter today and would need a new case for the fourth shape. **What differs between symmetries is not the shape but what the solve claims about the third dimension** — a cross-section says the geometry repeats along z so the conductor is an **uncapped prism** (capping it would draw an end the model does not have, and the drawn depth is named as a drawing convention per GRD-12); an axisymmetric half-plane says it repeats all the way round, so a rectangle there is a **tube in space**; a volume claims nothing and needs a genuine extraction.
+
+  **Surface nets rather than marching cubes**, checked against closed forms the code had no part in: a sphere's volume **0.99038 / 0.99760 / 0.99940** at 24/48/96 cells (improving under refinement, which is the half that says it is discretisation), every one of 11,970 edges shared by exactly two triangles, the worst normal against the true outward radius **1.000000**, and a revolved tube against Pappus at **0.99990**. **Orientation comes from the field, not the winding**: each normal is the gradient of the same signed distance that defined the surface, and triangles are flipped to agree — which is needed because `Contours` emits deliberately undirected segments, and a sign error there gives a shape lit from inside that looks like a hole.
+
+  **Two colour scales, and the potential one is centred on earth.** Energy is sequential and gets viridis; a potential is signed and gets a diverging ramp **symmetric about zero**, because stretching a ramp across the observed range puts the neutral colour at the arithmetic middle — 250 V for a lens holding 0 and 500 — and an earthed tube would be painted the same blue as a genuinely negative one. Earth is the value a reader looks for first. **An electrode is coloured by the peak its drive reaches**, not the DC it sits at: the sixth appearance of that mistake, guarded by a test this time.
+
+  **RND-8 withholds the paths and not the instrument.** A funnel drawn with no rings and no field is a picture of nothing at all, and the requirement was never about that.
+
+  **The geometry found a defect in the core.** Sampled over the whole solve domain at 48 cells a **1 mm plate is thinner than a cell**, so the three-dimensional example produced no conductors at all, silently. Fixed by extracting over the electrode's own bounding box — which needed `CompiledElectrode3D.Bounds` beside `Centre` and `CharacteristicSize`, because a caller switching on the shape is exactly what invariant 2 forbids and would need a new case in every caller when a fourth shape arrives.
+
+  **The view is adjustable and now says so**: Side / Top / Front / Iso / Fit, the view cube, and layer toggles for electrodes, field, paths and transparency. Rotate, pan and zoom always worked and nothing said so. **Named views matter more than the gestures for an instrument** — ion optics is read as an axial section and two transverse ones, and getting to one by dragging is approximate where a button is exact.
+
+  **Twice a view could not be built until a command existed, and both times the command layer gained the capability rather than the window keeping it.** The model tree needed `einzel outline` — a window that parsed the document to build a tree would grow its own idea of what a model is, and the two would come to disagree. The viewport needed `ViewportCommand` — one that integrated its own trajectories would be a second transport implementation. That is Amendment 25 running in the direction it was not designed for, and it is the strongest evidence yet that AGT-2 is real: **an agent is better off because a window was built.**
+
+  **The colour scale is the viewport's own finding.** §16 asks for bundles coloured by energy, and a scale taken per path gives every ion the same colours whatever its energy — two ions a kilovolt apart look identical and the picture says they were the same. `ViewportOutcome` reports the range over the whole bundle, once. Same failure as the animation's contour levels in the other axis, where anchoring per frame made a film of a spreading packet show a packet doing nothing. **The discriminating test is not "wider than the widest single path"** — that margin is 1.5e-5 on a packet launched from rest — but that **no single path owns both ends of the scale**, which any per-path anchoring fails whatever the magnitudes are. A degenerate range gives a half, not a division: a monoenergetic beam in a field-free drift is the simplest model anyone writes, and dividing by a zero width paints the bundle NaN.
+
+  **Viridis, and the reason is not taste.** A rainbow ramp has non-monotone lightness, so it invents boundaries where the data is smooth and collapses under the commonest colour vision deficiencies. The test asserts monotone Rec. 709 luminance over 65 samples, which is what stops it being "improved" into a rainbow later.
+
+  **RND-8 is on the face of the window**, asked of `ITransportMode.ProducesTrajectories` rather than of the pressure — a viewport deciding from the pressure would re-derive a decision the mode owns. A diffusive model draws nothing and *says what it has instead*, because an empty viewport and one whose ions were all lost look identical and only one is a statement about the physics. The warnings say it first when they say it at all; a second paraphrase above the engine's own words reads as two separate problems.
+
+  **Two open bets settled by measurement.** The whole solution **builds on Linux, XAML markup compilation included** — `EnableWindowsTargeting` is enough — and `Einzel.Wpf.Tests`, the one Windows-only test project, is walked past by a solution-wide `dotnet test` there. **848 tests on Windows, 843 on Linux, both green.**
+
+  **Two things the window cost.** **WPF cannot run in globalization-invariant mode** — its font cache constructs `new CultureInfo("en")` while measuring the first line of text — so the shell reverses the solution-wide setting. What that setting protected is unaffected: locale-independence here comes from passing `CultureInfo.InvariantCulture` explicitly at every formatting and parsing site, and the flag was the belt to those braces. And **Helix Toolkit's DirectX backend is SharpDX, archived since December 2020** — taken knowingly, because §17 confines this path to screen tuning and the publication figure comes from `Einzel.Render`, which is vector, headless and owes it nothing. 3.1.2 rather than the 2.x line contemporaneous with r06, which is .NET Framework-only and restores on net10 only through the NU1701 shim. MIT throughout the transitive closure. Recorded as SPEC.md Amendment 26.
+
+  **Five things that were wrong first, four of them the camera and one the light.** Helix defaults to a **perspective** camera, and an ion-optics drawing is read for where things are along the axis — the one thing perspective distorts. `ZoomExtents` **fired before layout**, so a reflectron's 1.3 m flight ran off the edge: the control had a model but had not been measured. The **opening view was silently discarded**, because it was set in the constructor and framing a scene with nothing in it leaves the camera wherever that left it — every model opened in the side view whatever was asked for; it is now set once, after the first draw that has something in it, **and never again**, because a redraw follows a parameter edit and yanking the camera back would take the view away from the person watching the thing they just changed. And **the first named view after startup came out as the top view whichever button was pressed**, because `SetView` wrote look, position and up into the live camera one property at a time and each raises its own change notification, so the control saw a momentarily inconsistent basis and re-derived one of them; a whole camera assigned at once fixes it. Found by clicking the buttons through UI Automation and reading the axis indicator in the screenshot, which is the only way that class of defect shows up at all.
+
+  **And the scene had no light**, so every Phong surface rendered at its ambient term alone — the electrodes were extracted correctly, drawn correctly, and could not be seen. Worth keeping because it is the failure mode where the data is right and the picture is empty, and the instinct is to go looking at the data.
+
+  Details in `docs/shell.md`.
+
+  **Invariant 1 is checked from the Linux-running test project**, which is the whole point — an invariant only ever checked on a developer's Windows box is one that has already been broken by the time anyone notices. The scan is over the assemblies actually present beside the tests rather than a hardcoded list, with a `MustBePresent` guard so a scan that found nothing cannot pass: that vacuous truth has caught this project four times already.
+
+  **UI-1 needed two different checks, and the difference cost a mutation.** `GetReferencedAssemblies` reports what the **compiler emitted** — what the code *uses* — so declaring a `ProjectReference` to the whole transport engine left no trace in the metadata and the test passed. UI-1 is about what the shell may reach **for**, not what it has reached for so far, so the project file is checked too. Only the declared-reference check catches that mutation, and the emitted one still earns its place: a transitive reference through a third assembly appears in no csproj.
+
+  **A trap in verifying it**: nothing references the shell, so `dotnet test` never rebuilds it and a local mutation check runs against a stale binary. The first mutation "passed" for exactly that reason and was nearly believed. On CI the full build precedes the tests, so it is sound there.
+
+  **`EnableWindowsTargeting` is an unsettled bet.** It lets the shell restore and compile on Linux so CI can keep building the whole solution on both runners; whether WPF *XAML* compilation works there is unverifiable on a Windows machine. If it fails on first push the answer is a solution filter excluding the shell on Linux — invariant 1's real content is unaffected either way, since the boundary test does not need the shell to exist.
+
+- **The model tree and the journal view, and the guard they reversed.** §16's first two views, and the first thing they needed was a command that did not exist. **UI-1 forbids the shell from having file format knowledge**, so the window cannot parse a model to build a tree — a window that did would grow its own idea of what a model is, and the two would come to disagree. `einzel outline` answers instead: value, unit, bounds, description, what each parameter resolves to in SI, and whether it is editable. All of it was already declared, which is the pleasing part — **LIB-1 gave parameters units and bounds so a *study* could perturb them**, and those turn out to be exactly what a person editing one needs to see. A verb rather than a shell method, because AGT-2 forbids anything existing only in the shell and an agent wanting a model's knobs without parsing the document needs the same service.
+
+  **Then §16 contradicted a guard I had committed.** `SessionJournal` refused any edit that did not validate — my own choice, argued as "an unrunnable model is not one party's problem when another party is working from the same file". **Live validation makes that untenable**: a person typing 500 into a parameter bounded at 50 must see the tree standing with the complaint against it, not be prevented from typing. And refusing every invalid document forbids any edit *sequence* that passes through one — widening a bound and then setting a value beyond the old bound works in one order and is refused in the other, for no reason a person could infer.
+
+  The platform's own rule settles it, already written down four times over: **taint, never block**. `Check` now refuses only what does not *parse* — there is nothing there to be wrong, and no edit through the journal could have produced it — and validity is reported through `SessionJournal.Validate()` rather than enforced. **The shape that generalises**: a guard invented while building one feature, justified by a real argument, that is stricter than any requirement. It costs nothing until a later requirement needs the state it forbade. Guards written from first principles rather than from a requirement are worth re-reading when a new requirement arrives — the argument is usually still true and still outweighed.
+
+  Also caught: an outline test of mine passed for the wrong reason. It set `inscribedRadius` to 5.0, the template's existing value, so "the document changed" held only because the JSON round-trip reformats. Now 7.0, with an added assertion that everything **derived** from it moved too — which is the actual reason a parameter surface exists rather than a list of electrode settings.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
 
 1. **The turning-point step cap (§11) does not help and slightly hurts.** In a smooth field the flight time is at machine precision with 6 steps and marginally worse with 105. §11's rationale is that "position-error controllers under-refine" at the velocity minimum — but `ErrorNorm` weights velocity error with its own absolute floor, so it is not a position-error controller and does not under-refine. The cap is implemented and on by default (`TurningPointStepFactor = 0.01`) to honour the spec as written; the evidence says it should default to 0.
 2. **A field discontinuity is a real error source and must be landed on exactly.** Dormand–Prince stage 4 carries the coefficient −56/15, so intermediate stage samples fall outside the step interval and can land on the wrong side of a field jump even when both endpoints are inside. Handling the boundary as an event took the reflectron from 5.5e-10 to 1.7e-16. A residual around 1e-10 remains and behaves as noise rather than as a controlled error — it is an artifact of idealised *discontinuous* analytic fields and should not appear in solved, interpolated fields, but it is what sets the achievable tolerance on finite-difference tests.
+
+- **A declared gas took no part in any figure of merit, and an example in the release gate could not fail.** Two defects found while adding a thermalisation example, both larger than the example.
+
+  **`einzel run` and `einzel test` disagreed on every model with a gas.** The figure-of-merit path built the launch, the field and the detector but never a collision sampler, so it flew in vacuum however much gas the document declared: **4904.4862 µs against 5000** on `gas-flow-carry`. Verified by deleting the gas block and getting an identical answer to the last digit. **This is the second time run and test have drifted** — the first was found and fixed by collapsing them to one implementation, and the gas then arrived on only one side of the seam. A shared entry point is not a shared computation.
+
+  **That example could never have caught it.** It launches its ion at exactly the gas velocity so the transit is `L/u` by arithmetic — and in vacuum an ion launched at that speed covers the same metre in the same 5000 µs. The vacuum answer *was* the expectation, and closer to it than the physical answer.
+
+  **And its tolerance was vacuous.** Expectations compare a *relative* error; that one read `500.0`, written as ±500 µs on 5000, which as a fraction admits any positive answer. Its description said "discriminating far past its ten per cent tolerance" — the same misreading, written down. An audit of all 29 corpus expectations found one other at 50%; both are now 10%.
+
+  New: **`meanKineticEnergy`**, because equipartition is the sharpest check the collision models have — an ion left in a gas must reach (3/2)kT whatever it started with — and it was measured only in a unit test, outside the machinery that keeps every other figure honest. Over the ions still in flight rather than the arrivals, since a thermalised packet has no preferred direction and selecting on arrival selects the fast ones. **`CloudFlight.Remaining`** carries them, so a packet that never arrives still has measurable state. The `thermalisation` corpus example gives **0.039339 eV against 0.038778** on 240 ions, 1.45% high against a 5.3% standard error.
+
+- **`render animation`, and RND-7 enforced by the interface rather than checked.** The
+  requirement is emphatic: an animation "declares an explicit non-linear time mapping —
+  playback rate per sequence phase — and the current rate is displayed on screen
+  throughout playback. **Neither part is optional.** This is the animation equivalent of
+  GRD-1: the artifact may compress, but it may not hide that it compressed."
+
+  **So an animation is asked for through a render spec and there is no `--rate` flag.** A
+  model document has nowhere to declare a mapping, so there is no command line that
+  produces an animation without one. `--fps` *is* offered, because a frame rate is a
+  property of the playback device and changes no claim the animation makes.
+
+  On the shipped reflectron, three phases — 4 µs/s inbound, **0.5 µs/s through the
+  turn-around**, 4 µs/s out — give 1.000 s, 4.400 s and 0.995 s of playback. The
+  turn-around is **a fifth of the flight and 69% of the film**, which is exactly what one
+  rate cannot show. Sixty-five frames; the frame at playback 1.000 s shows 4.0000 µs.
+
+  **The rate has a unit, and two readings.** `us/s`, `ns/s`, `ms/s` — dimensionless,
+  since it is a time over a time, and what makes it a *rate* is that the denominator is a
+  second of playback rather than of flight, which no dimension can carry. The stamp reads
+  `t = 5.000 µs · turn-around · 500 ns of flight per second of playback — 2,000,000x
+  slower than real time`: the first converts anything on screen back into flight time and
+  carries a unit (GRD-1); the second is the intuition and alone says nothing about how
+  long the flight is.
+
+  **Frame times are computed, never accumulated** — one lookup and one multiply from each
+  frame's own playback time, so a phase that is not a whole number of frames long cannot
+  push error into the phases after it. The final frame is forced onto the end, because
+  for a flight the last instant is the one a reader wants. And a frame landing exactly on
+  a boundary announces the **incoming** rate, since it is followed by a frame's worth of
+  playback at the new speed.
+
+  **A design bug I introduced and the test that did not catch it.** The first version
+  handed each frame the part of the flight drawn so far. An analytic model takes its
+  extent from the flight, so every frame chose its page from its own prefix — the scale
+  changed frame to frame and the ion sat pinned to the edge of a box that grew to meet
+  it, which reads as a camera following the ion. Nothing about a single frame reveals it.
+  Fixed by handing over the whole flight with an instant to truncate at. **The test
+  written for it passed with the bug restored**, because it used the einzel lens — a
+  *solved* geometry whose extent comes from its declared domain and never touches the
+  flight. Moved onto an analytic reflectron it fails at once. Third time in one night
+  that a test exercised a path not containing the line under test.
+
+  Refused: a spec with `trajectory: false` on a trajectory model (the geometry and the
+  field are identical on every frame, so the sequence would be one drawing repeated), a
+  spec with no phases, a phase that does not advance, a non-positive rate, and a
+  mapping a diffusive run cannot reach. Warned about rather than refused: `animation.past-arrival` and
+  `animation.stops-short`, because both are legitimate to ask for and neither looks like
+  a choice.
+
+  **No video, and that is LIC-1** — ffmpeg is exactly what would be reached for. What
+  comes out is numbered vector frames plus a `frames.json` schedule; assembling them is
+  an out-of-process step with a tool the user supplies.
+
+  **The field moves too, and finding that it did not was the fourth sighting of one
+  defect.** A driven field implements the time-free `IElectrostaticField` as well as
+  `ITimeVaryingField` and **answers the time-free one at t = 0 without failing**, so the
+  renderer drew the same instant on every frame — after `einzel solve` reporting the DC
+  pattern of a driven geometry, the diffusive mode stepping a density through a snapshot
+  of the RF, and `SuperposedField` becoming a snapshot when a driven member was summed
+  into it. The instant is now declarable (`atSeconds` on a render spec) and every frame
+  supplies its own; a section of a driven model carries `render.field-at-instant` either
+  way, because a figure of a driven structure is a frame of a film whether or not it is
+  drawn as one.
+
+  Checked exactly, over one period of a 1 MHz quadrupole: **20, 0, 20, 0, 20**
+  equipotential paths at 0, T/4, T/2, 3T/4, T. The drive is through zero at the quarter
+  points so there is nothing to contour; at T it is the *same drawing as at 0, to the last
+  bit*; at T/2 the rod pairs have swapped sign. **The contour levels had to be fixed once
+  across the animation** — a driven field's range changes through the cycle, and levels
+  taken per frame would be spread over rounding noise at a zero crossing and fill the
+  frame with contours of nothing. Same defect as a page chosen per frame, in the other
+  axis.
+
+
+  **And a diffusive model is animated as a moving density.** It was refused outright, and
+  rightly while a run reported only the density it *ended* with — the frames would all
+  have been the same box. Now the command layer runs the transport once with the frames'
+  own instants as its snapshot list and hands the renderer the results, as the section
+  path already does. On the corpus drift tube over 200 µs the packet **drifts (22 → 100
+  mm), spreads (24 → 59 mm), and narrows again at the end** as its leading edge is
+  collected — three things a trajectory cannot show.
+
+  **The contour levels are anchored once, and that matters more than the page did.**
+  Density contours sit at decades below the peak, and a diffusing packet's peak falls as
+  it spreads: anchored per frame the levels would fall with it, the contours would stay
+  the same size, and *a film of a packet spreading would show a packet doing nothing*.
+  Not flicker — a lie. Anchored across the animation, later frames show **fewer**
+  contours, because the density really is lower.
+
+  **Not built: geometry that moves.** A stage may change what an electrode holds and not
+  where it is, which the sequencer already enforces, so the conductors are identical on
+  every frame by construction. A mechanism with a moving part is not expressible at all.
+
+- **The scaffolded reflectron drew its turning point 105 metres off a 160 mm page**, and
+  had done since sections were built. A model with no declared solve domain takes its
+  extent from the instrument's own points, and those were the source and the detector
+  alone — which in a reflectron are **the same point**, because the ion is caught where it
+  launched. The pad was then a tenth of a millimetre around a flight of 1.3 m.
+
+  Found by animating it. **No test caught it because every render test uses a device
+  template, and every device template declares a solve domain** — so the analytic branch
+  of the extent had no coverage at all. The flight is now included, and the pad comes
+  from the extent actually gathered rather than from a separation that is zero. It costs
+  nothing: the trajectory had to be flown to be drawn, and it is now flown before the
+  page is chosen rather than after.
+
+- **A density can be drawn while it is still moving.** A diffusive run reports the
+  density it *ended* with, so a model whose ions have all arrived left an empty box —
+  correctly, and uselessly, because the picture worth having is the packet in flight.
+  The only way to get one was to shorten `maximumFlightTime`, which gets a packet by
+  throwing away everything after the moment being looked at.
+
+  `DriftDiffusion.Run` takes a list of instants and returns the density at each;
+  `einzel render section --at-us <t>` draws one. On the corpus drift tube: **0 contours
+  at the end, 10 at 50 µs with the packet centred at 49.5 mm, 11 at 150 µs at 102.9 mm**
+  — it drifts and it spreads, both visible.
+
+  **The instant recorded is not quite the one asked for, and the figure says both.** A
+  diffusive step is set by a stability limit and cutting it to land exactly would change
+  the step sequence and so the answer — a high price for an offset of one step. The
+  provenance carries `density at t = 50.1302 us, asked for 50 us`.
+
+  **Recording does not perturb what it records**, asserted rather than assumed: the same
+  run with and without snapshots is bit-identical in step count, collected ions and every
+  node of the final density. An instant past the end is **absent** rather than filled in
+  with the final state, because a density never computed is not the density at that
+  instant and substituting the last one would make a figure of a finished run look like
+  one of a running run.
+
+  The unit is in the flag's name, as `--width-mm` already does it: a bare `--at` would be
+  ambiguous between microseconds and seconds by a factor of a million.
+
+- **A dimension is measured, never written down.** The memo's own figures are line
+  drawings *with* dimensions, and a section without them says what the instrument looks
+  like and not how big any of it is. What a `dimensions` entry declares is **the two
+  points it spans**; the length is the distance between them, computed when the figure is
+  drawn. `label` names the span — "drift", "bore" — and does not carry the value, because
+  a typed number is a second statement of something the model already says and the two
+  part company at the first parameter change.
+
+  **The points may be expressions over the model's own parameters**, so a dimension
+  describes the geometry rather than where the geometry used to be. Changing
+  `turningDepth` from 50 to 80 mm and re-rendering the *same figure spec* gives
+  `penetration 50 mm` then `penetration 80 mm`, with no edit in between — which is what
+  the test asserts: one spec, two models, two measurements. §9's rule for a model, "every
+  placement is a parametric expression, never a baked number", is not weaker for a
+  drawing of it.
+
+  Ordinary drafting convention: extension lines clear of the feature and past the
+  dimension line, an offset dimension line, arrowheads, and the measurement above it on
+  the side away from what it measures. The offset is signed so two dimensions over one
+  feature can go opposite ways, and the unit is chosen from the magnitude because one
+  figure may carry a 300 mm drift and a 50 µm channel.
+
+- **Two defects and one unresolved one, from trying to write a pulsed-extraction
+  example.** The corpus has no sequenced example — the one Phase 4 capability it does not
+  exercise — and it still does not, because the run does not complete. But the trip found
+  two real defects that are fixed.
+
+  **`CanDoWork` read the base potentials and not the stages**, so a pulsed-extraction trap
+  — which holds everything at zero until it switches — was refused as an instrument in
+  which nothing could move an ion. That is the **fourth** appearance of one pattern and
+  the *third* in this one function: `einzel solve` reporting the DC of a driven geometry;
+  `CanDoWork` asking only about DC and refusing the Paul trap; its 3-D arm inspecting
+  nothing at all; and now the stages. The advice already written down — "grep for
+  `.Potential` the next time something driven behaves as though it were earthed" — does
+  not catch the fourth, because it is not about the drive. The wider statement: **a check
+  that asks what an instrument is doing must ask over every configuration it has**, and a
+  sequenced one has as many as it has stages. The control is asserted too: a sequence
+  that never energises anything is still refused.
+
+  **A stage set to an expression was read as zero.** `CompileStages` built its overrides
+  with `Quantity.From(value.Value, value.Unit)` and never looked at `value.Expression`,
+  and `Value` defaults to zero — so a stage meant to apply a kilovolt applied nothing.
+  The model validated, the field solved, and the run reported an ion that never moved,
+  with no diagnostic anywhere, because zero volts is exactly what the *first* stage of an
+  extraction legitimately applies. Now refused rather than supported: what an expression
+  should mean there is a design question, since the surface it would evaluate against is
+  the one the stage is changing.
+
+  **Fixed, and the fix is one line.** `FlightTimeStudy`
+  refines by scaling the relative tolerance *and both absolute floors*, and at its deepest
+  rung `AbsoluteVelocityTolerance` reaches **1e-11 m/s** — ten picometres per second,
+  against thermal speeds of hundreds of metres. For an ion starting from rest the
+  normalised velocity error is then unsatisfiable at any step size, so the step halves 63
+  times. Isolated by tightening each of the three alone: only the velocity floor
+  reproduces it, and that floor is what stops `ErrorNorm` being a position-error
+  controller. `einzel preview`, one run, gives **2.9106 µs against a closed form of
+  2 + 0.910572113** — the model was always right.
+
+  Holding the floor leaves the reflectron **bit-identical** and makes its interval **17×
+  narrower** — a measured residual instead of a saturated floor. It also broke the test
+  documenting `convergence.at-resolution`, and the reason is the part worth keeping:
+  **that model's bit-exact rung agreement depended on the ladder over-tightening the very
+  floor at issue** — the test had been asserting a coincidence. Nothing reachable through
+  the study's API reproduces the collapse, so the rule was given a name,
+  `FlightTimeStudy.ConvergenceResidual`, and is tested directly on runs that agree to the
+  bit. **A rule that can only be exercised by a coincidence is a rule with no test.**
+
+  **`sequenced-extraction` ships** — the corpus's first sequenced model, and Phase 4's
+  sequencer in the release gate for the first time. Predicted 2 µs + 0.910572113 µs,
+  measured **2.9105718, 1.0e-7 out**: the finite plates and the grounded boundary, not
+  the sequencer. Corpus 30 → 31. Full diagnosis in `docs/lessons.md`.
 
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
@@ -865,11 +1232,11 @@ Einzel.Update      release check, download, staging, version policy
 Einzel.Wpf         shell, viewport, panels
 ```
 
-CLI, MCP server, and WPF shell are **peers, not a stack** — all three drive the same serializable command objects. A shell that shelled out could not drive an interactive viewport at frame rate; a hundred milliseconds of process start per slider drag is not a shell.
+CLI, MCP server, and WPF shell are **peers, not a stack** — all three drive the same serializable command objects. **All three now exist**, and the relationship is asserted rather than described: every MCP tool returns `CommandJson.Write` of the same outcome record the CLI serialises for `--json`, compared byte for byte by a test, and every shell action is journalled as the `einzel` invocation that would reproduce it. A shell that shelled out could not drive an interactive viewport at frame rate; a hundred milliseconds of process start per slider drag is not a shell.
 
 **The shell is a named deliverable, and the Windows GUI capability was part of why C# was chosen** — a rationale r06 never records, which is SPEC.md Amendment 25. **Windows-only is the decision, not an accident of WPF**: Avalonia was considered and not chosen because the shell is not planned for use outside Windows, and that gets revisited if the need appears. It stays cheap to revisit because of invariant 1 (no UI type below the shell — everything above `Einzel.Wpf` builds and runs on Linux, and CI runs there) and Amendment 25's CLI-expressibility, which together make a later cross-platform shell a replacement of a presentation layer rather than a rewrite. **Windows-only applies to the shell and to nothing else** — that is the misreading to guard against, since "the GUI is Windows-only" and "the project is Windows-only" are one word apart and the second would undo the Linux CI that keeps the first one cheap. What is wanted is interactive geometry, the solved field drawn over it, and animation. §22's scope-creep risk is managed by UI-1's prohibition (the shell owns layout, input, the viewport and the update check, and owns no physics, no validation, no format knowledge and no render output), not by deferring the window.
 
-**The thesis is the pair, and neither half is the product**: an agent drives the entire design process through CLI and MCP, and a human sees and manipulates the same design in a window. Amendment 25 strengthens AGT-2 to make that work — **every shell action should be expressible as a CLI invocation and journalled as one**. The shell still drives command objects in-process; what changes is that its journal is a list of commands somebody could run. A capability with no command spelling then cannot be added to the window, and a human's session hands over to an agent in the same vocabulary. The thing to review when the shell is written is the in-process path acquiring an argument the command form has no spelling for.
+**The thesis is the pair, and neither half is the product**: an agent drives the entire design process through CLI and MCP, and a human sees and manipulates the same design in a window. Amendment 25 strengthens AGT-2 to make that work — **every shell action should be expressible as a CLI invocation and journalled as one**. The shell still drives command objects in-process; what changes is that its journal is a list of commands somebody could run. A capability with no command spelling then cannot be added to the window, and a human's session hands over to an agent in the same vocabulary. Now that the shell exists, the thing to review is the in-process path acquiring an argument the command form has no spelling for - which is how the amendment gets broken, and it will look like a convenience at the time.
 
 Four invariants. Violating one is a design bug, not a shortcut:
 

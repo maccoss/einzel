@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "0.5",
+  "name": "thermalisation",
+  "description": "A cloud of hot ions left in a room-temperature gas until it forgets how it was launched. Equipartition then fixes the answer exactly: the mean kinetic energy must be (3/2)kT = 38.778 meV at 300 K, whatever the ions started with. This is the sharpest check the event-driven collision models have, because the closed form is not something the engine knows - it tests the scattering kinematics, the Maxwellian draw and the isotropy of the deflection all at once, and getting the centre-of-mass share wrong settles the ions at the wrong temperature. Launched at 5 eV, some 129 times the target, so a run that merely failed to heat the ions would not pass.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 5.0,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 240,
+      "seed": 20260828,
+      "transverseSpread": {
+        "value": 0.5,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "fieldFree"
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        10000.0,
+        0.0,
+        0.0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-08,
+    "maximumFlightTime": {
+      "value": 2.0,
+      "unit": "ms"
+    },
+    "gas": {
+      "model": "langevin",
+      "pressure": {
+        "value": 0.01,
+        "unit": "mbar"
+      },
+      "temperature": {
+        "value": 300.0,
+        "unit": "K"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "polarizability": {
+        "value": 1.7403e-30,
+        "unit": "m^3"
+      }
+    }
+  }
+}

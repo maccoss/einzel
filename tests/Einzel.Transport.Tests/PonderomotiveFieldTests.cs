@@ -180,6 +180,95 @@ public sealed class PonderomotiveFieldTests
         Assert.Equal(1.0 / 101.0, heavy.Suppression, 1e-12);
     }
 
+    /// <summary>A graded gas grades the well, because the damping goes as the density.</summary>
+    /// <remarks>
+    /// <para>
+    /// The momentum-transfer rate is <c>q/(m mu)</c> and mobility goes as the
+    /// reciprocal of density, so <c>nu</c> goes as the density outright. A funnel
+    /// behind an inlet capillary thins by decades along its length, and its
+    /// pseudopotential well deepens along with it - a version holding the damping at
+    /// one declared value would report the well as flat where it is not, which is
+    /// exactly the class of silent wrongness a pressure field exists to remove.
+    /// </para>
+    /// <para>
+    /// Checked against the closed form at both ends rather than by comparing the two
+    /// to each other, because two numbers moving in the right direction is a much
+    /// weaker statement than two numbers each being the right number.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AGradedGasGradesTheWell()
+    {
+        var species = Peptide;
+        var omega = 2.0 * Math.PI * FrequencyHz;
+
+        var thin = new Vec3(0.5e-3, 0.0, 0.0);
+        var dense = new Vec3(0.5e-3, 2.0e-3, 0.0);
+
+        // The rate doubles across the gap in y, which is what a density doubling does.
+        var graded = new PonderomotiveField(
+            Quadrupole(),
+            species.ChargeSi,
+            species.MassSi,
+            collisionRateSi: omega,
+            collisionRateAt: p => p.Y > 1.0e-3 ? 2.0 * omega : omega);
+
+        Assert.True(graded.IsGraded);
+
+        // Omega^2/(Omega^2 + nu^2): a half at nu = Omega, a fifth at nu = 2 Omega.
+        Assert.Equal(0.5, graded.SuppressionAt(thin), 1e-15);
+        Assert.Equal(0.2, graded.SuppressionAt(dense), 1e-15);
+
+        // And the well follows it. The quadrupole's field amplitude differs between
+        // the two points, so the potentials are compared each against its own
+        // uniform-damping counterpart rather than against each other.
+        var atThin = new PonderomotiveField(
+            Quadrupole(), species.ChargeSi, species.MassSi, collisionRateSi: omega);
+
+        var atDense = new PonderomotiveField(
+            Quadrupole(), species.ChargeSi, species.MassSi, collisionRateSi: 2.0 * omega);
+
+        Assert.Equal(atThin.PotentialAt(thin), graded.PotentialAt(thin), 1e-15);
+        Assert.Equal(atDense.PotentialAt(dense), graded.PotentialAt(dense), 1e-15);
+    }
+
+    /// <summary>With no rate function the graded path is not taken at all.</summary>
+    /// <remarks>
+    /// The control that says every existing number is untouched. Not "close to" the
+    /// uniform answer - the same object, reached by the same branch, so this is an
+    /// equality.
+    /// </remarks>
+    [Fact]
+    public void AUniformGasTakesTheConstantPathExactly()
+    {
+        var species = Peptide;
+        var omega = 2.0 * Math.PI * FrequencyHz;
+
+        var uniform = new PonderomotiveField(
+            Quadrupole(), species.ChargeSi, species.MassSi, collisionRateSi: omega);
+
+        // The same rate everywhere, said the long way. Physically identical, and it
+        // has to give identical numbers or the graded path has a different formula in
+        // it rather than the same formula with a lookup.
+        var spelledOut = new PonderomotiveField(
+            Quadrupole(),
+            species.ChargeSi,
+            species.MassSi,
+            collisionRateSi: omega,
+            collisionRateAt: _ => omega);
+
+        Assert.False(uniform.IsGraded);
+        Assert.True(spelledOut.IsGraded);
+
+        foreach (var x in new[] { 0.2e-3, 0.5e-3, 1.5e-3 })
+        {
+            var at = new Vec3(x, 0.0, 0.0);
+
+            Assert.Equal(uniform.PotentialAt(at), spelledOut.PotentialAt(at));
+            Assert.Equal(uniform.Suppression, spelledOut.SuppressionAt(at));
+        }
+    }
+
     [Fact]
     public void TheDampingRateComesFromTheMobilityRatherThanTheCollisionCount()
     {

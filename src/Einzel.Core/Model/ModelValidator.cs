@@ -45,8 +45,16 @@ public static class ModelValidator
     /// </param>
     /// <returns>The compiled model, or the errors that prevented it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
+    /// <param name="sourceDirectory">
+    /// The directory the document was read from, which the paths it references are
+    /// resolved against. Null for a document compiled from a string, and a consumer
+    /// that needs to read one of those files is then refused rather than given a
+    /// model whose declared gas field is silently absent.
+    /// </param>
     public static ModelValidation Validate(
-        ModelDocument document, IReadOnlyDictionary<string, Quantity>? overrides)
+        ModelDocument document,
+        IReadOnlyDictionary<string, Quantity>? overrides,
+        string? sourceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(document);
 
@@ -75,9 +83,14 @@ public static class ModelValidator
 
         // A stage sets parameters, so resolving one means resolving the whole
         // surface again with those values layered on - derived parameters and all.
-        // Passed as a closure because only the solve branch needs it, and threading
-        // the declared parameters through every field kind to reach it would put
-        // the sequencer in the signature of things that have nothing to do with it.
+        //
+        // Used once, to resolve the timeline before any element is compiled. It was a
+        // closure "because only the solve branch needs it, and threading the declared
+        // parameters through every field kind would put the sequencer in the signature
+        // of things that have nothing to do with it" - and that argument was wrong in a
+        // way that cost a defect. The analytic kinds have everything to do with it: a
+        // phase gives them different numbers, and while the timeline reached only the
+        // solve branch they stayed frozen at baseline while the solved elements moved.
         IReadOnlyDictionary<string, Quantity>? Restage(
             IReadOnlyDictionary<string, Quantity> set, List<EinzelError> into)
         {
@@ -99,19 +112,40 @@ public static class ModelValidator
             return ParameterSurface.Resolve(document.Parameters, merged, into)?.Values();
         }
 
-        var fields = ValidateFields(document.Fields, p, Restage, fieldErrors);
+        // Gathered before any element is compiled, and handed to all of them. A phase
+        // is the instrument's rather than one element's, so a parameter it sets has to
+        // reach every expression written over it - which is exactly what compiling
+        // stages per element failed to do.
+        var timeline = Timeline(document, Restage, fieldErrors);
+
+        var fields = ValidateFields(document.Fields, p, timeline, fieldErrors);
 
         // A field that failed to compile is not evidence that nothing can
         // accelerate the ion, it is evidence that we cannot tell. Saying otherwise
         // adds a second error advising the author to declare a field they did
         // declare, and one mistake should produce one error.
+        //
+        // The timeline reports into the same list, so a malformed sequence suppresses
+        // this too. That is the same reasoning - a document whose phases did not resolve
+        // has not told us what its electrodes hold - rather than an accident of sharing
+        // a list.
         var canAccelerate = fieldErrors.Count > 0 || CanAccelerate(fields);
 
         var source = ValidateSource(document.Source, p, errors, canAccelerate);
         errors.AddRange(fieldErrors);
 
         var detector = ValidateDetector(document.Detector, p, errors);
-        var transport = ValidateTransport(document.Transport, p, errors);
+        // Every mode this run uses, not only the model's own. A phase may name a
+        // different one, and the diffusive requirements - a gas, a mobility, a density
+        // grid - are needed if ANY phase is diffusive. Gating them on the model's mode
+        // alone let a trajectory model with a diffusive phase validate and then fail at
+        // run time with the gas it never declared.
+        //
+        // This is the sixth time a check here has had to learn a new configuration: the
+        // DC, the drive, the 3D arm, the solved stages, the analytic phases, and now the
+        // phase modes. A check that asks what an instrument is doing must ask over every
+        // configuration it has.
+        var transport = ValidateTransport(document.Transport, p, Modes(document, timeline), errors);
 
         if (errors.Count > 0 || mass is null || charge is null
             || source is null || detector is null || transport is null)
@@ -121,6 +155,7 @@ public static class ModelValidator
 
         var model = new CompiledModel
         {
+            SourceDirectory = sourceDirectory,
             Source = document,
             MassSi = mass.Value,
             ChargeSi = charge.Value,
@@ -133,6 +168,11 @@ public static class ModelValidator
             DetectorPoint = detector.Value.Point,
             DetectorNormal = detector.Value.Normal,
             TransportMode = transport.Mode,
+
+            // A phase that names no mode keeps the model's, which is the same rule its
+            // parameter overrides follow. So a model with no sequence and one whose
+            // every phase runs in the declared mode are the same run.
+            Phases = Schedule(timeline, transport.Mode),
             RelativeTolerance = transport.RelativeTolerance,
             MaximumFlightTimeSi = transport.MaximumFlightTime,
             SampleIntervalSi = transport.SampleInterval,
@@ -249,28 +289,58 @@ public static class ModelValidator
     internal static bool CanAccelerate(IReadOnlyList<CompiledField>? fields) =>
         fields is not null && fields.Any(CanDoWork);
 
-    private static bool CanDoWork(CompiledField field) => field.Kind switch
+    private static bool CanDoWork(CompiledField field) =>
+        Energised(field) || field.Phases.Any(Energised);
+
+    /// <summary>Whether one compiled state of an element could put energy into an ion.</summary>
+    /// <remarks>
+    /// Separated from <see cref="CanDoWork"/> so the phases can be asked the same
+    /// question. An analytic element energised only by a phase - zero at baseline, a
+    /// kilovolt per metre once the instrument switches - is the fifth configuration this
+    /// check has had to learn, after the DC, the drive, the 3D arm, and the solved
+    /// stages. The pattern is the same every time: a check that asks what an instrument
+    /// is doing must ask over every configuration it has, and a new way to hold a
+    /// potential is a new configuration.
+    /// </remarks>
+    private static bool Energised(CompiledField field) => field.Kind switch
     {
         CompiledFieldKind.FieldFree => false,
         CompiledFieldKind.Uniform => field.Field.LengthSquared > 0.0,
         CompiledFieldKind.HalfSpaceUniform => field.PotentialGradientSi != 0.0,
 
         // A solve with every electrode at the same potential has no gradient
-        // anywhere, and grounded boundaries make that potential zero. The drive
-        // has to count as well as the DC: a Paul trap and an RF-only mass filter
-        // both hold zero volts of DC on every electrode and all of their potential
-        // as drive, and asking only about the DC declares the archetypal
-        // start-at-rest device incapable of moving an ion.
+        // anywhere, and grounded boundaries make that potential zero.
+        //
+        // Three things have to count, and each was found by a device that the
+        // previous version declared incapable of moving an ion:
+        //
+        //  - the DC, obviously;
+        //  - the DRIVE, because a Paul trap and an RF-only mass filter hold zero
+        //    volts of DC on every electrode and all of their potential as drive;
+        //  - the STAGES, because a pulsed-extraction trap holds everything at zero
+        //    until it switches, which is what makes it the archetypal start-at-rest
+        //    device in the first place. Reading only the base potentials asks what
+        //    the instrument is doing before it has been told to do anything.
         CompiledFieldKind.Solved2D =>
             field.Solve is { } solve
-            && solve.Electrodes.Any(e => e.Potential != 0.0 || e.IsDriven),
+            && (Energised(solve.Electrodes)
+                || solve.Stages.Any(stage => Energised(stage.Electrodes))),
 
         CompiledFieldKind.Solved3D =>
             field.Solve3D is { } volume
-            && volume.Electrodes.Any(e => e.Potential != 0.0 || e.IsDriven),
+            && (Energised3D(volume.Electrodes)
+                || volume.Stages.Any(stage => Energised3D(stage.Electrodes))),
 
         _ => true,
     };
+
+    /// <summary>Whether any of these electrodes can move an ion.</summary>
+    private static bool Energised(IReadOnlyList<CompiledElectrode> electrodes) =>
+        electrodes.Any(e => e.Potential != 0.0 || e.IsDriven);
+
+    /// <summary>Whether any of these electrodes can move an ion.</summary>
+    private static bool Energised3D(IReadOnlyList<CompiledElectrode3D> electrodes) =>
+        electrodes.Any(e => e.Potential != 0.0 || e.IsDriven);
 
     private static SourceValues? ValidateSource(
         SourceDocument? source,
@@ -469,7 +539,7 @@ public static class ModelValidator
     private static List<CompiledField> ValidateFields(
         IReadOnlyList<FieldDocument>? fields,
         IReadOnlyDictionary<string, Quantity> p,
-        StageResolver restage,
+        IReadOnlyList<PhaseSurface> timeline,
         List<EinzelError> errors)
     {
         if (fields is null || fields.Count == 0)
@@ -483,7 +553,7 @@ public static class ModelValidator
 
         for (var i = 0; i < fields.Count; i++)
         {
-            var element = CompileField(fields[i], $"/fields/{i}", p, restage, errors);
+            var element = CompileField(fields[i], $"/fields/{i}", p, timeline, errors);
 
             if (element is not null)
             {
@@ -494,6 +564,91 @@ public static class ModelValidator
         return compiled;
     }
 
+    /// <summary>
+    /// A sequence belongs to the instrument, so only one element may declare one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A stage sets a model parameter, but only its own element is recompiled
+    /// against it.</b> That is the defect this refuses. Two electrodes whose potentials
+    /// are the *same expression* over the same parameter end up holding different
+    /// voltages when one of them is in a staged element and the other is not - measured
+    /// at 900 V against 300 V, on a model that validated cleanly with no diagnostic
+    /// anywhere.
+    /// </para>
+    /// <para>
+    /// The stage design's own rationale is the claim that fails: setting a parameter
+    /// "moves everything that depends on it at once, including the derived parameters".
+    /// It moves everything in one element.
+    /// </para>
+    /// <para>
+    /// Refused rather than patched, because the two coherent readings need work this
+    /// does not do. Either the timeline is the instrument's and every element recompiles
+    /// against each stage - which is what the rationale describes and what SEQ-1's
+    /// transport mode per phase requires, since a mode is a property of the run and not
+    /// of one electrode assembly - or a stage is scoped to its element, which is a
+    /// different feature and not the one documented. Making the incoherent case
+    /// inexpressible is the honest state until that is settled.
+    /// </para>
+    /// <para>
+    /// No shipped model or template has more than one field element, so this refuses
+    /// nothing that exists. It is a latent defect being closed rather than a live one.
+    /// </para>
+    /// </remarks>
+    private static void Sequenced(IReadOnlyList<FieldDocument> fields, List<EinzelError> errors)
+    {
+        var staged = new List<int>();
+
+        for (var i = 0; i < fields.Count; i++)
+        {
+            if (fields[i].Solve?.Stages is { Count: > 0 }
+                || fields[i].Solve3d?.Stages is { Count: > 0 })
+            {
+                staged.Add(i);
+            }
+        }
+
+        if (staged.Count == 0)
+        {
+            return;
+        }
+
+        if (staged.Count > 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = StagePath(fields[staged[1]], staged[1]),
+                Constraint = "more than one element declares a sequence, and an instrument "
+                    + $"has one timeline: elements {string.Join(", ", staged)} each declare "
+                    + "stages",
+                Suggestion = "declare the sequence on one element. Two timelines over the "
+                    + "same parameters would each switch at their own instants, and the "
+                    + "document would say two things about what the instrument is doing",
+            });
+
+            return;
+        }
+
+        if (fields.Count > 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/fields/{staged[0]}/solve/stages",
+                Constraint = $"element {staged[0]} declares a sequence and the model has "
+                    + $"{fields.Count} field elements, of which only the sequenced one is "
+                    + "recomputed at each stage",
+                Suggestion = "a stage sets a model parameter, so an electrode in another "
+                    + "element written over that same parameter would keep its baseline "
+                    + "value while this element followed the stage - two electrodes with "
+                    + "identical expressions holding different voltages, with nothing to "
+                    + "say so. Put the sequenced geometry in one element, or drop the "
+                    + "sequence",
+            });
+        }
+    }
+
     /// <summary>Resolves the parameter surface as it stands during one stage.</summary>
     /// <param name="set">The values the stage holds, with units.</param>
     /// <param name="into">Where to report a value that does not resolve.</param>
@@ -501,11 +656,97 @@ public static class ModelValidator
     internal delegate IReadOnlyDictionary<string, Quantity>? StageResolver(
         IReadOnlyDictionary<string, Quantity> set, List<EinzelError> into);
 
+    /// <summary>One element, and its per-phase states where the timeline reaches it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The analytic kinds have nowhere to put a phase, so they get compiled copies.</b>
+    /// A solved geometry carries its phases inside its own <c>Stages</c>, because there a
+    /// phase re-weights channels that are already solved and the geometry is untouched. An
+    /// analytic element has no channels - a phase simply gives it different numbers - so
+    /// the whole element is compiled once per phase.
+    /// </para>
+    /// <para>
+    /// This is the half the first lift missed. Threading the timeline to the solved branch
+    /// alone left a model whose sequence set a parameter used by a <c>halfSpaceUniform</c>
+    /// cap potential with the solved elements following and the analytic one frozen at
+    /// baseline - the same silent wrong answer, in the elements nobody thought of because
+    /// they have no stages of their own.
+    /// </para>
+    /// <para>
+    /// <b>Identical phases produce no states</b>, which is a distinction rather than an
+    /// optimisation: an element whose expressions do not depend on any parameter the
+    /// timeline sets really is static, and wrapping it would hand the assembly switch
+    /// instants to land on and make a static element answer a time-varying interface for
+    /// nothing.
+    /// </para>
+    /// </remarks>
     private static CompiledField? CompileField(
         FieldDocument field,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
-        StageResolver restage,
+        IReadOnlyList<PhaseSurface> timeline,
+        List<EinzelError> errors)
+    {
+        var baseline = CompileOnce(field, path, p, timeline, errors);
+
+        if (baseline is null || timeline.Count == 0 || !NeedsPhases(field.Type))
+        {
+            return baseline;
+        }
+
+        var phases = new List<CompiledField>(timeline.Count);
+        var boundaries = new List<double>(timeline.Count);
+        var elapsed = 0.0;
+        var moved = false;
+
+        foreach (var phase in timeline)
+        {
+            // Errors are swallowed here on purpose: the baseline compile above already
+            // reported anything wrong with this element against the same document, and
+            // reporting it once per phase as well would turn one mistake into a wall.
+            var ignored = new List<EinzelError>();
+            var state = CompileOnce(field, path, phase.Surface, timeline, ignored);
+
+            if (state is null)
+            {
+                return baseline;
+            }
+
+            elapsed += phase.DurationSeconds;
+            boundaries.Add(elapsed);
+            phases.Add(state);
+
+            moved |= !Same(baseline, state);
+        }
+
+        return moved
+            ? baseline with { Phases = phases, PhaseBoundariesSeconds = boundaries }
+            : baseline;
+    }
+
+    /// <summary>Whether a kind needs whole compiled copies to follow a phase.</summary>
+    /// <remarks>
+    /// The solved kinds do not: their phases live in their own <c>Stages</c>, already
+    /// compiled against the same timeline, and compiling the geometry again per phase
+    /// would solve every field twice over.
+    /// </remarks>
+    private static bool NeedsPhases(string? type) =>
+        type is "uniform" or "halfSpaceUniform";
+
+    /// <summary>Whether two compilations of one analytic element hold the same numbers.</summary>
+    private static bool Same(CompiledField a, CompiledField b) =>
+        a.Kind == b.Kind
+        && a.Field == b.Field
+        && a.PlanePoint == b.PlanePoint
+        && a.InwardNormal == b.InwardNormal
+        && a.PotentialGradientSi.Equals(b.PotentialGradientSi)
+        && a.TurningDepthSi.Equals(b.TurningDepthSi);
+
+    private static CompiledField? CompileOnce(
+        FieldDocument field,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        IReadOnlyList<PhaseSurface> timeline,
         List<EinzelError> errors)
     {
         switch (field.Type)
@@ -559,10 +800,10 @@ public static class ModelValidator
             }
 
             case "solved2d":
-                return CompileSolvedField(field.Solve, $"{path}/solve", p, restage, errors);
+                return CompileSolvedField(field.Solve, $"{path}/solve", p, timeline, errors);
 
             case "solved3d":
-                return CompileSolved3D(field.Solve3d, $"{path}/solve3d", p, restage, errors);
+                return CompileSolved3D(field.Solve3d, $"{path}/solve3d", p, timeline, errors);
 
             default:
                 errors.Add(new EinzelError
@@ -609,19 +850,57 @@ public static class ModelValidator
 
     private static readonly Dictionary<string, QuantityValue> NoOverrides = new(StringComparer.Ordinal);
 
-    private static List<CompiledStage> CompileStages(
-        SolvedFieldDocument solve,
-        string path,
-        IReadOnlyList<CompiledElectrode> baseline,
-        IReadOnlyList<CompiledDrive> drives,
+    /// <summary>
+    /// One phase of the instrument's timeline: what it is called, how long it lasts,
+    /// and the parameter surface that holds during it.
+    /// </summary>
+    /// <param name="Name">What the phase is for.</param>
+    /// <param name="DurationSeconds">How long it lasts.</param>
+    /// <param name="Surface">Every parameter, as it stands during the phase.</param>
+    /// <param name="Path">Where it was declared, for reporting.</param>
+    /// <param name="Mode">The transport mode it names, or null to keep the model's.</param>
+    /// <remarks>
+    /// <b>The surface is resolved once, for the whole instrument.</b> That is the fix for
+    /// the defect this replaced: stages used to be compiled per element, so a stage
+    /// setting a model parameter moved only its own element's electrodes and left every
+    /// other element at its baseline - two electrodes written as the same expression
+    /// holding 900 V and 300 V, on a model that validated cleanly.
+    /// </remarks>
+    internal sealed record PhaseSurface(
+        string Name,
+        double DurationSeconds,
+        IReadOnlyDictionary<string, Quantity> Surface,
+        string Path,
+        string? Mode);
+
+    /// <summary>
+    /// The instrument's timeline, resolved once, from wherever it is declared.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Section 9 says an instrument is a timed state machine, and the emphasis is on
+    /// <i>instrument</i>: a phase holds across the whole model, not across one electrode
+    /// assembly. So this is gathered before any element is compiled and handed to all of
+    /// them, which is what makes a stage's parameter reach every expression written over
+    /// it.
+    /// </para>
+    /// <para>
+    /// Errors are reported here rather than per element. A stage whose set is malformed is
+    /// one mistake in the document, and reporting it once per field element would turn a
+    /// single typo into a wall of identical complaints.
+    /// </para>
+    /// </remarks>
+    internal static List<PhaseSurface> Timeline(
+        ModelDocument document,
         StageResolver restage,
         List<EinzelError> errors)
     {
-        var stages = new List<CompiledStage>();
+        var phases = new List<PhaseSurface>();
+        var declared = Declared(document, errors, out var path);
 
-        if (solve.Stages is not { Count: > 0 } declared || solve.Electrodes is not { } declaredElectrodes)
+        if (declared is null)
         {
-            return stages;
+            return phases;
         }
 
         for (var k = 0; k < declared.Count; k++)
@@ -658,6 +937,30 @@ public static class ModelValidator
 
             foreach (var (parameter, value) in stage.Set ?? NoOverrides)
             {
+                // Refused rather than read as its absent literal, which is what
+                // happened: only Value was consulted, so an expression here resolved
+                // silently to zero and a stage that was supposed to apply a kilovolt
+                // applied nothing. The model still validated, still solved, and the run
+                // reported an ion that never moved.
+                //
+                // Refused rather than supported, because what a stage set should mean
+                // when it is an expression is a design question - the surface it would
+                // evaluate against is the one the stage is in the middle of changing.
+                if (value.Expression is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{stagePath}/set/{parameter}",
+                        Constraint = "a stage sets a parameter to a value, not to an expression",
+                        Suggestion = "write the number and its unit. An expression here would "
+                            + "have to be evaluated against the parameter surface the stage is "
+                            + "itself changing, and what that should mean is not settled",
+                    });
+
+                    continue;
+                }
+
                 try
                 {
                     set[parameter] = Quantity.From(value.Value, value.Unit);
@@ -675,21 +978,205 @@ public static class ModelValidator
                 continue;
             }
 
+            if (stage.Mode is not null and not ("trajectory" or "diffusion"))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{stagePath}/mode",
+                    Constraint = "a transport mode is one of 'trajectory' or 'diffusion'",
+                    Observed = new ObservedValue(0.0, stage.Mode),
+                    Suggestion = "omit it to keep the model's own transport mode, which is "
+                        + "what a phase does with anything it does not name",
+                });
+
+                continue;
+            }
+
+            phases.Add(new PhaseSurface(
+                name, duration.Value.SiValue, surface, stagePath, stage.Mode));
+        }
+
+        return phases;
+    }
+
+    /// <summary>Where the timeline is declared, and a refusal if it is in two places.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>sequence</c> on the model is the spelling that says what it means - the
+    /// timeline belongs to the instrument. <c>stages</c> on a solve is the older one and
+    /// still works, because it is what the shipped sequenced example is written in and
+    /// because a single-element model has no ambiguity to resolve.
+    /// </para>
+    /// <para>
+    /// <b>Declaring both is refused rather than merged</b>, and two elements each
+    /// declaring stages likewise. A document that says the instrument has one timeline
+    /// and also another is not a document with a default to fall back on - the same
+    /// argument that refuses a geometry declaring both <c>drive</c> and <c>drives</c>.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<StageDocument>? Declared(
+        ModelDocument document, List<EinzelError> errors, out string path)
+    {
+        path = "/sequence";
+
+        var staged = new List<int>();
+        var fields = document.Fields ?? [];
+
+        for (var i = 0; i < fields.Count; i++)
+        {
+            if (fields[i].Solve?.Stages is { Count: > 0 }
+                || fields[i].Solve3d?.Stages is { Count: > 0 })
+            {
+                staged.Add(i);
+            }
+        }
+
+        if (document.Sequence is { Count: 0 })
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = "the model declares a sequence with no phases in it",
+                Suggestion = "give the sequence at least one phase with a duration, or "
+                    + "remove it. An empty timeline reads exactly like no timeline, and a "
+                    + "generator that filtered every phase out should not look the same as "
+                    + "a document that never had one",
+            });
+
+            return null;
+        }
+
+        var sequence = document.Sequence is { Count: > 0 } ? document.Sequence : null;
+
+        if (sequence is not null && staged.Count > 0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = "the model declares a sequence and element "
+                    + $"{staged[0]} also declares stages",
+                Suggestion = "an instrument has one timeline. Keep the model's "
+                    + "\"sequence\", or the element's \"stages\", not both",
+            });
+
+            return null;
+        }
+
+        if (sequence is not null)
+        {
+            return sequence;
+        }
+
+        if (staged.Count == 0)
+        {
+            return null;
+        }
+
+        if (staged.Count > 1)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"/fields/{staged[1]}/solve/stages",
+                Constraint = "more than one element declares stages, and an instrument "
+                    + $"has one timeline: elements {string.Join(", ", staged)} each declare "
+                    + "them",
+                Suggestion = "move the timeline to the model's \"sequence\", which is where "
+                    + "it belongs when more than one element is involved. Two timelines over "
+                    + "the same parameters would each switch at their own instants, and the "
+                    + "document would say two things about what the instrument is doing",
+            });
+
+            return null;
+        }
+
+        var only = staged[0];
+
+        // Whichever actually has phases, not whichever is non-null. An element carrying
+        // both a solve and a solve3d - with an explicitly empty "stages": [] on one of
+        // them - would otherwise return the empty list through the ?? and drop the real
+        // timeline silently, since an empty list is not null.
+        if (fields[only].Solve3d?.Stages is { Count: > 0 } volume)
+        {
+            path = $"/fields/{only}/solve3d/stages";
+
+            return volume;
+        }
+
+        path = $"/fields/{only}/solve/stages";
+
+        return fields[only].Solve?.Stages;
+    }
+
+    /// <summary>The timeline as the run sees it: durations, modes, and instants.</summary>
+    /// <remarks>
+    /// Cumulative, because what the integrator needs is when each phase <em>ends</em>
+    /// rather than how long it lasts, and computing that once here keeps every consumer
+    /// from accumulating it again and rounding differently.
+    /// </remarks>
+    private static List<CompiledPhase> Schedule(
+        List<PhaseSurface> timeline, string modelMode)
+    {
+        var phases = new List<CompiledPhase>(timeline.Count);
+        var elapsed = 0.0;
+
+        foreach (var phase in timeline)
+        {
+            elapsed += phase.DurationSeconds;
+
+            phases.Add(new CompiledPhase(
+                phase.Name, phase.DurationSeconds, phase.Mode ?? modelMode, elapsed));
+        }
+
+        return phases;
+    }
+
+    /// <summary>Where an element declares its stages, for an error path (AGT-3).</summary>
+    private static string StagePath(FieldDocument field, int index) =>
+        field.Solve3d?.Stages is { Count: > 0 }
+            ? $"/fields/{index}/solve3d/stages"
+            : $"/fields/{index}/solve/stages";
+
+    /// <summary>This element's electrodes, as they stand during each phase.</summary>
+    /// <remarks>
+    /// Every element gets the same timeline, so a stage's parameter reaches every
+    /// expression written over it rather than only those in the element that happened to
+    /// declare the stage.
+    /// </remarks>
+    private static List<CompiledStage> CompileStages(
+        SolvedFieldDocument solve,
+        IReadOnlyList<PhaseSurface> timeline,
+        IReadOnlyList<CompiledElectrode> baseline,
+        IReadOnlyList<CompiledDrive> drives,
+        List<EinzelError> errors)
+    {
+        var stages = new List<CompiledStage>();
+
+        if (timeline.Count == 0 || solve.Electrodes is not { } declaredElectrodes)
+        {
+            return stages;
+        }
+
+        foreach (var phase in timeline)
+        {
             var electrodes = new List<CompiledElectrode>();
 
             for (var i = 0; i < declaredElectrodes.Count; i++)
             {
                 Expand(
-                    declaredElectrodes[i], $"{stagePath}/electrodes/{i}", drives, surface,
-                    electrodes, errors);
+                    declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives,
+                    phase.Surface, electrodes, errors);
             }
 
-            if (!SameGeometry(baseline, electrodes, name, stagePath, errors))
+            if (!SameGeometry(baseline, electrodes, phase.Name, phase.Path, errors))
             {
                 continue;
             }
 
-            stages.Add(new CompiledStage(name, duration.Value.SiValue, electrodes));
+            stages.Add(new CompiledStage(phase.Name, phase.DurationSeconds, electrodes));
         }
 
         return stages;
@@ -750,18 +1237,18 @@ public static class ModelValidator
         return true;
     }
 
-    /// <summary>Compiles a three-dimensional solved field element.</summary>
     /// <summary>Compiles one declared 3D electrode into the electrodes it stands for.</summary>
     private static void Expand3D(
         Electrode3DDocument declared,
         string path,
+        IReadOnlyList<CompiledDrive> drives,
         IReadOnlyDictionary<string, Quantity> p,
         List<CompiledElectrode3D> into,
         List<EinzelError> errors)
     {
         if (declared.Repeat is not { } repeat)
         {
-            var single = CompileElectrode3D(declared, path, p, errors);
+            var single = CompileElectrode3D(declared, path, drives, p, errors);
 
             if (single is not null)
             {
@@ -826,6 +1313,7 @@ public static class ModelValidator
                     Name = $"{name}-{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                 },
                 $"{path}/repeat/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                drives,
                 scoped,
                 errors);
 
@@ -839,6 +1327,7 @@ public static class ModelValidator
     private static CompiledElectrode3D? CompileElectrode3D(
         Electrode3DDocument electrode,
         string path,
+        IReadOnlyList<CompiledDrive> drives,
         IReadOnlyDictionary<string, Quantity> p,
         List<EinzelError> errors)
     {
@@ -847,10 +1336,6 @@ public static class ModelValidator
         var name = electrode.Name ?? "electrode";
 
         var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
-
-        var amplitude = electrode.DriveAmplitude is null
-            ? 0.0
-            : TryQuantity(electrode.DriveAmplitude, $"{path}/driveAmplitude", volt, p, errors)?.SiValue ?? 0.0;
 
         if (potential is null)
         {
@@ -862,10 +1347,7 @@ public static class ModelValidator
             Name = name,
             Shape = Electrode3DShape.Box,
             Potential = potential.Value.SiValue,
-            Taps = amplitude == 0.0
-                ? []
-                : [new CompiledTap(
-                    0, amplitude, Phase(electrode.DrivePhase, $"{path}/drivePhase", p, errors))],
+            Taps = Taps(electrode, drives, path, p, errors),
         };
 
         switch (electrode.Shape)
@@ -1033,7 +1515,7 @@ public static class ModelValidator
         SolvedField3DDocument? solve,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
-        StageResolver restage,
+        IReadOnlyList<PhaseSurface> timeline,
         List<EinzelError> errors)
     {
         if (solve is null)
@@ -1089,11 +1571,15 @@ public static class ModelValidator
             return null;
         }
 
+        // Before the electrodes, because an electrode's taps name the generators they
+        // are taps on. It read the other way round when a solve could only have one.
+        var drives = Drives(solve.Drive, solve.Drives, path, p, errors);
+
         var electrodes = new List<CompiledElectrode3D>();
 
         for (var i = 0; i < (solve.Electrodes?.Count ?? 0); i++)
         {
-            Expand3D(solve.Electrodes![i], $"{path}/electrodes/{i}", p, electrodes, errors);
+            Expand3D(solve.Electrodes![i], $"{path}/electrodes/{i}", drives, p, electrodes, errors);
         }
 
         if (electrodes.Count == 0 && errors.Count == 0)
@@ -1103,10 +1589,9 @@ public static class ModelValidator
                 "add a box, a sphere or a cylinder"));
         }
 
-        var drive = Drive(solve.Drive, $"{path}/drive", p, errors);
-        var stages = CompileStages3D(solve, $"{path}/stages", electrodes, restage, errors);
+        var stages = CompileStages3D(solve, timeline, electrodes, drives, errors);
 
-        if (drive is null && electrodes.Any(e => e.IsDriven))
+        if (drives.Count == 0 && electrodes.Any(e => e.IsDriven))
         {
             var driven = electrodes.First(e => e.IsDriven);
 
@@ -1139,87 +1624,50 @@ public static class ModelValidator
                 MaxZ = maxZ.Value.SiValue,
                 CellSize = cell.Value.SiValue,
                 Tolerance = solve.Tolerance,
-                Drives = drive is null ? [] : [drive],
+                Drives = drives,
                 Stages = stages,
                 Electrodes = electrodes,
             },
         };
     }
 
+    /// <summary>This volume element's electrodes, as they stand during each phase.</summary>
+    /// <remarks>
+    /// The same timeline the plane elements get. A sequence is the instrument's, so a
+    /// model mixing a cross-section and a volume switches both at the same instants and
+    /// against the same parameter values.
+    /// </remarks>
     private static List<CompiledStage3D> CompileStages3D(
         SolvedField3DDocument solve,
-        string path,
+        IReadOnlyList<PhaseSurface> timeline,
         IReadOnlyList<CompiledElectrode3D> baseline,
-        StageResolver restage,
+        IReadOnlyList<CompiledDrive> drives,
         List<EinzelError> errors)
     {
         var stages = new List<CompiledStage3D>();
 
-        if (solve.Stages is not { Count: > 0 } declared || solve.Electrodes is not { } declaredElectrodes)
+        if (timeline.Count == 0 || solve.Electrodes is not { } declaredElectrodes)
         {
             return stages;
         }
 
-        for (var k = 0; k < declared.Count; k++)
+        foreach (var phase in timeline)
         {
-            var stage = declared[k];
-            var stagePath = $"{path}/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-            var name = stage.Name ?? $"stage {k}";
-
-            var duration = TryQuantity(
-                stage.Duration, $"{stagePath}/duration", Dimension.TimeDimension, NoParameters, errors);
-
-            if (duration is null || duration.Value.SiValue <= 0.0)
-            {
-                if (duration is not null)
-                {
-                    errors.Add(new EinzelError
-                    {
-                        Code = ErrorCodes.ValueOutOfBounds,
-                        Path = $"{stagePath}/duration",
-                        Constraint = "a stage must last a positive time",
-                        Observed = new ObservedValue(duration.Value.SiValue, "s"),
-                        Suggestion = "give the stage a duration, for example {\"value\": 100, \"unit\": \"us\"}",
-                    });
-                }
-
-                continue;
-            }
-
-            var set = new Dictionary<string, Quantity>(StringComparer.Ordinal);
-
-            foreach (var (parameter, value) in stage.Set ?? NoOverrides)
-            {
-                try
-                {
-                    set[parameter] = Quantity.From(value.Value, value.Unit);
-                }
-                catch (EinzelException failure)
-                {
-                    errors.Add(failure.Error with { Path = $"{stagePath}/set/{parameter}" });
-                }
-            }
-
-            var surface = restage(set, errors);
-
-            if (surface is null)
-            {
-                continue;
-            }
-
             var electrodes = new List<CompiledElectrode3D>();
 
             for (var i = 0; i < declaredElectrodes.Count; i++)
             {
-                Expand3D(declaredElectrodes[i], $"{stagePath}/electrodes/{i}", surface, electrodes, errors);
+                Expand3D(
+                    declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives,
+                    phase.Surface, electrodes, errors);
             }
 
-            if (!SameGeometry3D(baseline, electrodes, name, stagePath, errors))
+            if (!SameGeometry3D(baseline, electrodes, phase.Name, phase.Path, errors))
             {
                 continue;
             }
 
-            stages.Add(new CompiledStage3D(name, duration.Value.SiValue, electrodes));
+            stages.Add(new CompiledStage3D(phase.Name, phase.DurationSeconds, electrodes));
         }
 
         return stages;
@@ -1286,7 +1734,7 @@ public static class ModelValidator
         SolvedFieldDocument? solve,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
-        StageResolver restage,
+        IReadOnlyList<PhaseSurface> timeline,
         List<EinzelError> errors)
     {
         if (solve is null)
@@ -1361,7 +1809,7 @@ public static class ModelValidator
             ? (double?)null
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
 
-        var stages = CompileStages(solve, $"{path}/stages", electrodes, drives, restage, errors);
+        var stages = CompileStages(solve, timeline, electrodes, drives, errors);
 
         var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
 
@@ -1539,7 +1987,7 @@ public static class ModelValidator
     /// afternoon wondering why the RF is not doing anything.
     /// </remarks>
     private static List<CompiledTap> Taps(
-        ElectrodeDocument electrode,
+        ITappedElectrode electrode,
         IReadOnlyList<CompiledDrive> drives,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
@@ -1652,7 +2100,7 @@ public static class ModelValidator
     /// an afternoon wondering why the RF is not doing anything.
     /// </remarks>
     private static (double Amplitude, double Phase) Tap(
-        ElectrodeDocument electrode,
+        ITappedElectrode electrode,
         string path,
         IReadOnlyDictionary<string, Quantity> p,
         List<EinzelError> errors)
@@ -2145,7 +2593,32 @@ public static class ModelValidator
         CompiledSpaceChargeGrid? SpaceChargeGrid,
         CompiledDensityStep DensityStep);
 
-    private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
+    /// <summary>Every transport mode this run uses, the model's and every phase's.</summary>
+    /// <remarks>
+    /// A phase that names no mode keeps the model's, so the model's is always in the set.
+    /// What this adds is the modes a sequence introduces - which is what makes a
+    /// requirement like "the diffusive mode needs a gas" attach to the run rather than to
+    /// one declaration in it.
+    /// </remarks>
+    private static HashSet<string> Modes(
+        ModelDocument document, IReadOnlyList<PhaseSurface> timeline)
+    {
+        var modes = new HashSet<string>(StringComparer.Ordinal);
+
+        if (document.Transport?.Mode is { } declared)
+        {
+            modes.Add(declared);
+        }
+
+        foreach (var phase in timeline)
+        {
+            modes.Add(phase.Mode ?? document.Transport?.Mode ?? "trajectory");
+        }
+
+        return modes;
+    }
+
+    private static TransportValues? ValidateTransport(TransportDocument? transport, IReadOnlyDictionary<string, Quantity> p, HashSet<string> modes, List<EinzelError> errors)
     {
         if (transport is null)
         {
@@ -2249,7 +2722,7 @@ public static class ModelValidator
         var mobility = ValidateMobility(transport, gas, p, errors);
         var densityGrid = ValidateDensityGrid(transport.DensityGrid, p, errors);
 
-        if (transport.Mode == "diffusion")
+        if (modes.Contains("diffusion"))
         {
             if (!gas.IsPresent)
             {
@@ -2289,7 +2762,7 @@ public static class ModelValidator
         }
 
         var chargeGrid = SpaceChargeGrid(transport, errors);
-        var densityStep = DensityStep(transport, errors);
+        var densityStep = DensityStep(transport, modes, errors);
 
         return new TransportValues(
             transport.Mode, transport.RelativeTolerance, ceiling.Value.SiValue, sample,
@@ -2320,7 +2793,7 @@ public static class ModelValidator
     /// request went nowhere.
     /// </remarks>
     private static CompiledDensityStep DensityStep(
-        TransportDocument transport, List<EinzelError> errors)
+        TransportDocument transport, HashSet<string> modes, List<EinzelError> errors)
     {
         var fallback = new CompiledDensityStep("explicit", 1.0);
 
@@ -2329,15 +2802,15 @@ public static class ModelValidator
             return fallback;
         }
 
-        if (!string.Equals(transport.Mode, "diffusion", StringComparison.Ordinal))
+        if (!modes.Contains("diffusion"))
         {
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
                 Path = "/transport/densityStep",
                 Constraint =
-                    "only the diffusive mode has a density to step, and this model asks for "
-                    + $"'{transport.Mode}'",
+                    "only the diffusive mode has a density to step, and no phase of this "
+                    + $"run is diffusive - the model asks for '{transport.Mode}'",
                 Observed = new ObservedValue(0.0, transport.Mode),
                 Suggestion = "set \"mode\": \"diffusion\" to use this block, or remove it",
             });
@@ -2721,6 +3194,69 @@ public static class ModelValidator
             return null;
         }
 
+        var pressureScale = 1.0;
+
+        if (gas.PressureField is { } graded)
+        {
+            if (string.IsNullOrWhiteSpace(graded.Path))
+            {
+                errors.Add(Missing(
+                    "/transport/gas/pressureField/path",
+                    "a pressure field names the file it is read from",
+                    "add {\"path\": \"pressure.vti\", \"unit\": \"Pa\"}, relative to this "
+                    + "model. VTK ImageData with ASCII data, which is what 'einzel export' writes "
+                    + "and what ParaView saves with the Ascii box ticked"));
+
+                return null;
+            }
+
+            // Required rather than defaulted to pascals, and this is section 9's own
+            // argument rather than a new one: a file read as pascals when it holds
+            // mbar is a gas a hundred times too thin, which is entirely plausible and
+            // never announces itself. Vacuum work is quoted in mbar and torr at least
+            // as often as in pascals.
+            if (string.IsNullOrWhiteSpace(graded.Unit))
+            {
+                errors.Add(Missing(
+                    "/transport/gas/pressureField/unit",
+                    "a pressure field states what its numbers are in",
+                    "add \"unit\": \"Pa\", or \"mbar\", or \"torr\". A whole array is no less "
+                    + "ambiguous than a single number, and this is the same rule that makes "
+                    + "{\"energy\": 4000} a validation error"));
+
+                return null;
+            }
+
+            if (!UnitRegistry.TryResolve(graded.Unit!, out var unit) || unit is null)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.UnitsUnknown,
+                    Path = "/transport/gas/pressureField/unit",
+                    Constraint = $"'{graded.Unit}' is not a unit this engine knows",
+                    Suggestion = "use 'Pa', 'mbar' or 'torr'",
+                });
+
+                return null;
+            }
+
+            if (unit.Dimension != Dimension.Pressure)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.UnitsIncompatible,
+                    Path = "/transport/gas/pressureField/unit",
+                    Constraint = $"'{graded.Unit}' is not a pressure",
+                    Suggestion = "use 'Pa', 'mbar' or 'torr'. The field holds pressures, which "
+                        + "become number densities through n = p/kT at the declared temperature",
+                });
+
+                return null;
+            }
+
+            pressureScale = unit.SiFactor;
+        }
+
         return new CompiledGas
         {
             Model = gas.Model,
@@ -2732,6 +3268,9 @@ public static class ModelValidator
             DriftVelocitySi = drift,
             VelocityFieldPath = gas.VelocityField?.Path,
             VelocityFieldArray = gas.VelocityField?.Array,
+            PressureFieldPath = gas.PressureField?.Path,
+            PressureFieldArray = gas.PressureField?.Array,
+            PressureFieldScale = pressureScale,
             Seed = gas.Seed,
         };
     }

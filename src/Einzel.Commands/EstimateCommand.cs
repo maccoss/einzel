@@ -132,7 +132,8 @@ public static class EstimateCommand
 
         var absolute = Path.GetFullPath(modelPath);
         var document = Io.ModelJson.Parse(File.ReadAllText(absolute));
-        var validation = ModelValidator.Validate(document, null);
+        var validation = ModelValidator.Validate(
+            document, null, Path.GetDirectoryName(absolute));
 
         if (!validation.IsValid)
         {
@@ -193,7 +194,7 @@ public static class EstimateCommand
         // dominant term rather than a preamble.
         if (model.TransportMode == "diffusion")
         {
-            var (diffusiveSeconds, diffusiveMemory, diffusiveBasis) = Diffusive(model);
+            var (diffusiveSeconds, diffusiveMemory, diffusiveBasis) = Diffusive(model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory());
 
             seconds += diffusiveSeconds;
             memory = Math.Max(memory, diffusiveMemory);
@@ -401,15 +402,56 @@ public static class EstimateCommand
     /// intuition about which regime is expensive.
     /// </para>
     /// </remarks>
-    private static (double Seconds, double MemoryMiB, string Basis) Diffusive(CompiledModel model)
+    private static (double Seconds, double MemoryMiB, string Basis) Diffusive(
+        CompiledModel model, string modelDirectory)
     {
         var grid = DiffusionRun.GridFor(model);
-        var gas = Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+
+        // Resolved, because an imported pressure field changes the mobility and so
+        // the stability limit, which is the whole number this function reports. An
+        // estimate taken in a gas the model does not declare is an estimate of a
+        // different run - and GRD-8 exists to be relied on before the work is done.
+        var gas = Io.GasFlowImport.Resolve(model.Gas, modelDirectory);
         var species = Transport.IonSpecies.FromModel(model);
 
-        var mobility = model.Mobility is { Derived: false } declared
-            ? declared.ZeroFieldSi
-            : Transport.Diffusion.Mobility.FromCrossSection(gas, species).ZeroFieldSi;
+        var declaredMobility = model.Mobility is { Derived: false } given
+            ? new Transport.Diffusion.Mobility(
+                given.ZeroFieldSi, given.Alpha, given.ValidToTownsend)
+            : Transport.Diffusion.Mobility.FromCrossSection(gas, species);
+
+        // At the thinnest gas ON THIS GRID, when the density varies. Mobility goes
+        // as the reciprocal of density, so both stability limits - the Courant one on
+        // the drift and the diffusive one - are set where there is least to collide
+        // with, and the run finds that worst case from its own per-node arrays.
+        //
+        // Over the tracked grid rather than over the whole imported field, and the
+        // difference is not academic: a field solved on a larger box may be thinner
+        // somewhere no ion is tracked through, and taking its minimum over-predicted
+        // a shipped case by 50% - 2,252 steps against 1,502 - because the field ran to
+        // 0.5 mbar while the grid only reached 0.75. GRD-8's claim is that estimate
+        // and run agree exactly, so the two have to be asking about the same region.
+        //
+        // At the declared density this is ZeroFieldSi exactly - the ratio is 1.0 and
+        // a zero field makes the expansion term one - so an ungraded model is
+        // bit-identical to what it was and skips the sweep entirely.
+        var thinnestOnGrid = gas.NumberDensitySi;
+
+        if (gas.IsGraded)
+        {
+            thinnestOnGrid = double.PositiveInfinity;
+
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    thinnestOnGrid = Math.Min(
+                        thinnestOnGrid,
+                        gas.NumberDensityAt(new Core.Geometry.Vec3(grid.X(i), grid.Y(j), 0.0)));
+                }
+            }
+        }
+
+        var mobility = declaredMobility.At(0.0, thinnestOnGrid, gas.NumberDensitySi);
 
         var diffusion = Transport.Diffusion.Mobility.DiffusionSi(
             gas.TemperatureK, species.ChargeSi, mobility);
@@ -428,17 +470,29 @@ public static class EstimateCommand
             var (field, _) = Fields.FieldAssembly.BuildReported(model);
             var sign = Math.Sign(species.ChargeSi);
 
-            for (var j = 0; j < grid.CountY; j += 2)
+            // Every node where the gas is graded, every other one where it is not.
+            // The run samples all of them; a stride is harmless on a field that is
+            // smooth compared with the mesh and is not harmless when the mobility
+            // varies too, because the fastest drift is then a product of two things
+            // that peak in different places.
+            var stride = gas.IsGraded ? 1 : 2;
+
+            for (var j = 0; j < grid.CountY; j += stride)
             {
-                for (var i = 0; i < grid.CountX; i += 2)
+                for (var i = 0; i < grid.CountX; i += stride)
                 {
                     var point = new Core.Geometry.Vec3(grid.X(i), grid.Y(j), 0.0);
                     var electric = field.ElectricFieldAt(in point);
 
+                    var local = gas.IsGraded
+                        ? declaredMobility.At(
+                            0.0, gas.NumberDensityAt(in point), gas.NumberDensitySi)
+                        : mobility;
+
                     fastestDrift = Math.Max(
                         fastestDrift,
                         Transport.Diffusion.DriftDiffusion.CrossingRate(
-                            grid, sign * mobility * electric.X, sign * mobility * electric.Y));
+                            grid, sign * local * electric.X, sign * local * electric.Y));
                 }
             }
         }

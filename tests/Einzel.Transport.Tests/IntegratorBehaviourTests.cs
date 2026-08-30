@@ -192,58 +192,86 @@ public sealed class IntegratorBehaviourTests(ITestOutputHelper output)
         Assert.Equal(3, study.Runs.Count);
     }
 
+    /// <summary>
+    /// An interval that collapses to zero is reported as a floor, not as exact.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// GRD-1 in its sharpest form. When the two finest refinements agree to the bit the
+    /// residual between them - which is what the interval is built from - is zero.
+    /// Printed, that reads as "10.180506 +/- 0 us", which a reader takes for an exact
+    /// number.
+    /// </para>
+    /// <para>
+    /// It is not exact. It is an uncertainty smaller than a comparison of two doubles can
+    /// see, and the two statements are not interchangeable: one is defensible in a paper
+    /// and the other is not. An agent asked to quote a result refused this one and
+    /// measured its own tolerance ladder instead, which was the right instinct and should
+    /// not have been necessary.
+    /// </para>
+    /// <para>
+    /// <b>Tested against the rule rather than through a model that happens to saturate.</b>
+    /// It used to run the reflectron and assert that its rungs agreed exactly - which
+    /// they did, but only because the refinement ladder was scaling an absolute velocity
+    /// floor down to 1e-11 m/s. That floor is held now (it made an ion starting from rest
+    /// unintegrable), the reflectron's rungs differ at 1e-12, and no setting reachable
+    /// through the study's own API reproduces the collapse. A rule that can only be
+    /// exercised by a coincidence is a rule with no test.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void AnIntervalThatCollapsesToZeroIsReportedAsAFloorRatherThanAsExact()
     {
-        // GRD-1 in its sharpest form. On a flight this engine gets right to the last
-        // bit, the two finest refinements agree exactly, and the residual between
-        // them - which is what the interval is built from - is zero. Printed, that
-        // reads as "10.180506 +/- 0 us", which a reader takes for an exact number.
-        //
-        // It is not exact. It is an uncertainty smaller than a comparison of two
-        // doubles can see, and the two statements are not interchangeable: one is
-        // defensible in a paper and the other is not. An agent asked to quote a
-        // result refused this one and measured its own tolerance ladder instead,
-        // which was the right instinct and should not have been necessary.
-        var reflectron = Reflectron();
+        static TrajectoryResult At(double seconds) => new()
+        {
+            FlightTimeSeconds = seconds,
+            TimeCompensation = 0.0,
+            FinalState = new PhaseState(Vec3.Zero, Vec3.Zero),
+            Outcome = TrajectoryOutcome.StopConditionMet,
+            AcceptedSteps = 1,
+            RejectedSteps = 0,
+            FieldEvaluations = 1,
+            MaximumRelativeEnergyDrift = 0.0,
+            AnalyticDriftDistance = 0.0,
+        };
 
-        var study = FlightTimeStudy.Run(
-            reflectron.LaunchState(), reflectron.Species, reflectron.Field,
-            reflectron.Settings(), reflectron.DetectorPlane());
+        const double Flight = 1.0180505717871196e-05;
 
-        var finest = study.Runs[^1];
+        // The two finest agree to the bit; the coarsest does not. The pair says nothing,
+        // so the whole ladder is the fallback.
+        var (residual, atResolution) = FlightTimeStudy.ConvergenceResidual(
+            [At(Flight * (1.0 + 1e-9)), At(Flight), At(Flight)]);
 
-        // The premise, asserted rather than assumed: this is the case where the
-        // pair comparison really does collapse. If the integrator ever stops being
-        // this good the test would otherwise pass while measuring nothing.
-        Assert.Equal(study.Runs[^2].FlightTimeSeconds, finest.FlightTimeSeconds);
+        Assert.True(atResolution);
+        Assert.Equal(Flight * 1e-9, residual, Flight * 1e-12);
 
-        var (_, uncertainty, evidence, warnings) = study.FlightTime;
-        var convergence = Assert.IsType<Evidence.Convergence>(evidence);
+        // And when even the whole ladder collapses, one ulp - never zero, which is the
+        // number GRD-1 exists to keep off the page.
+        var (floor, collapsed) = FlightTimeStudy.ConvergenceResidual(
+            [At(Flight), At(Flight), At(Flight)]);
 
-        Assert.True(convergence.ResidualSi > 0.0, "the residual collapsed to zero");
-        Assert.True(uncertainty.WidthSi > 0.0);
+        Assert.True(collapsed);
+        Assert.True(floor > 0.0, "an interval of exactly zero is not a bound");
+        Assert.Equal(Math.BitIncrement(Flight) - Flight, floor);
 
-        // And it says the interval is a floor rather than a measurement, because a
-        // number this small is only honest with that attached. Provenance, not a
-        // validity violation: nothing is wrong with the answer.
-        var floor = Assert.Single(warnings, w => w.Code == "convergence.at-resolution");
+        // A ladder that genuinely converged reports its measured residual and says
+        // nothing about resolution.
+        var (measured, saturated) = FlightTimeStudy.ConvergenceResidual(
+            [At(Flight * 1.01), At(Flight * 1.001), At(Flight)]);
 
-        Assert.Equal(WarningSeverity.Provenance, floor.Severity);
-
-        // One ulp of the answer is the smallest it may ever claim.
-        var ulp = Math.BitIncrement(finest.FlightTimeSeconds) - finest.FlightTimeSeconds;
-
-        Assert.True(convergence.ResidualSi >= ulp);
+        Assert.False(saturated);
+        Assert.Equal(Flight * 0.001, measured, Flight * 1e-9);
     }
 
     [Fact]
     public void AnIncompleteTrajectoryIsAValidityViolation()
     {
-        // GRD-4: validity is checked, not assumed. A run that hit its ceiling
-        // instead of the detector must not report a flight time that looks clean.
         var reflectron = Reflectron();
-        var truncated = reflectron.Settings() with { MaximumFlightTime = reflectron.ExactFlightTime() * 0.25 };
+
+        var truncated = reflectron.Settings() with
+        {
+            MaximumFlightTime = reflectron.ExactFlightTime() * 0.25,
+        };
 
         var study = FlightTimeStudy.Run(
             reflectron.LaunchState(), reflectron.Species, reflectron.Field,

@@ -502,7 +502,14 @@ public static class StudyCommand
             figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
 
         var result = ToleranceStudy.Run(
-            document, channels, evaluate, study.Draws, study.Seed, study.OneAtATime, figure.Dimension);
+            document,
+            channels,
+            evaluate,
+            study.Draws,
+            study.Seed,
+            study.OneAtATime,
+            figure.Dimension,
+            Path.GetDirectoryName(modelPath));
 
         // One conversion from SI into the figure's unit, applied to everything the
         // sweep reports, so nothing leaves here as a bare number under a label it
@@ -586,7 +593,8 @@ public static class StudyCommand
         var evaluate = Evaluate(
             figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
 
-        var result = ParameterScan.Run(document, axis, evaluate);
+        var result = ParameterScan.Run(
+            document, axis, evaluate, Path.GetDirectoryName(modelPath));
 
         // One conversion out of SI for the figure and one for the scan variable, so
         // nothing leaves here as a bare number under a label it does not match.
@@ -685,7 +693,14 @@ public static class StudyCommand
             figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
 
         var result = BoundarySearch.Run(
-            document, axis, evaluate, threshold, sense, resolution, budget);
+            document,
+            axis,
+            evaluate,
+            threshold,
+            sense,
+            resolution,
+            budget,
+            Path.GetDirectoryName(modelPath));
 
         var outcome = new BoundaryOutcome
         {
@@ -772,7 +787,8 @@ public static class StudyCommand
                 ObjectiveTolerance = study.ObjectiveTolerance,
                 ObjectiveDimension = figure.Dimension,
                 Seed = study.Seed,
-            });
+            },
+            Path.GetDirectoryName(modelPath));
 
         var best = new Dictionary<string, MeasuredJson>(StringComparer.Ordinal);
 

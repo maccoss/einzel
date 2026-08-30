@@ -108,6 +108,7 @@ public static class Program
             "init" => Init(options),
             "new" => New(options),
             "validate" => Validate(options),
+            "outline" => Outline(options),
             "estimate" => Estimate(options),
             "solve" => Solve(options),
             "run" => Run(options),
@@ -1095,32 +1096,33 @@ public static class Program
     }
 
     /// <summary>
-    /// Draws a model, headlessly, into a vector file.
+    /// Draws a model, headlessly, into vector files.
     /// </summary>
     /// <remarks>
-    /// Section only, for now. <c>still</c> is a raster projection and <c>animation</c>
-    /// is a frame sequence with the non-linear time mapping RND-7 requires; both are
-    /// named here and refused with a reason rather than left to fail as an unknown
-    /// verb, because "not built yet" and "you spelled it wrong" are different
-    /// problems and an agent should not have to guess which it hit.
+    /// Sections and animations. <c>still</c> is a raster projection and nothing in this
+    /// build rasterises; it is named here and refused with a reason rather than left to
+    /// fail as an unknown verb, because "not built yet" and "you spelled it wrong" are
+    /// different problems and an agent should not have to guess which it hit.
     /// </remarks>
     private static int Render(string[] args, CommandLine options)
     {
         var kind = args.Length > 1 && !args[1].StartsWith('-') ? args[1] : null;
 
-        if (kind is "still" or "animation")
+        if (kind is "still")
         {
             Console.Error.WriteLine(
-                $"'einzel render {kind}' is not built yet. Vector sections are: "
-                + "'einzel render section <model.json>'.");
+                "'einzel render still' is not built yet. Vector output is: "
+                + "'einzel render section <model.json>' or 'einzel render animation <spec.json>'.");
 
             Console.Error.WriteLine(
-                kind == "still"
-                    ? "A still is a raster projection; nothing in this build rasterises."
-                    : "An animation is a frame sequence with an explicit non-linear time mapping, "
-                        + "which needs the sequencer's timeline and a frame writer.");
+                "A still is a raster projection; nothing in this build rasterises.");
 
             return (int)ExitCode.ValidationFailure;
+        }
+
+        if (kind is "animation")
+        {
+            return Animation(options);
         }
 
         var positional = kind is null ? options.Positional : options.Positional.Skip(1).ToList();
@@ -1132,8 +1134,10 @@ public static class Program
             Console.Error.WriteLine(
                 "       [--format svg|pdf] [--equipotentials N] [--width-mm W] [--no-trajectory]");
             Console.Error.WriteLine(
-                "       [--caption <text>] [--project <dir>] [--dry-run] [--json]");
+                "       [--caption <text>] [--at-us <t>] [--project <dir>] [--dry-run] [--json]");
             Console.Error.WriteLine("draws a plane through the instrument as line work");
+            Console.Error.WriteLine(
+                "  --at-us  the instant to draw a driven field, or a diffusive density, at");
 
             return (int)ExitCode.ValidationFailure;
         }
@@ -1163,6 +1167,14 @@ public static class Program
                 : spec.Equipotentials,
             Trajectory = !options.Has("no-trajectory") && spec.Trajectory,
             Caption = options.Value("caption") ?? spec.Caption,
+
+            // The unit is in the flag's name, which is how --width-mm already does it.
+            // A bare --at would be ambiguous between microseconds and seconds by a
+            // factor of a million, and this is the same rule that makes {"energy": 4000}
+            // a validation error in a model document.
+            AtSeconds = options.Value("at-us") is { } at
+                ? double.Parse(at, CultureInfo.InvariantCulture) * 1e-6
+                : spec.AtSeconds,
         };
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
@@ -1187,6 +1199,110 @@ public static class Program
         Console.Out.WriteLine(
             $"decimated to {outcome.DecimationToleranceMm:G3} mm; trajectory "
             + $"{outcome.TrajectoryPointsSampled} points to {outcome.TrajectoryPoints}");
+
+        // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>
+    /// Draws a flight as a numbered sequence of vector frames (RND-7).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A render spec, never a bare model, and that is the requirement enforcing
+    /// itself through the interface.</b> RND-7 says an animation "declares an explicit
+    /// non-linear time mapping ... neither part is optional", so there is deliberately
+    /// no <c>--rate</c> flag: the only way to ask for an animation is to have written
+    /// down how it compresses time. A convenience flag would have made the hidden
+    /// compression the easy case.
+    /// </para>
+    /// <para>
+    /// <c>--fps</c> is offered because a frame rate is a property of the playback
+    /// device rather than of the physics, and changing it changes no claim the
+    /// animation makes.
+    /// </para>
+    /// </remarks>
+    private static int Animation(CommandLine options)
+    {
+        var positional = options.Positional.Skip(1).ToList();
+
+        if (positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel render animation <spec.json> [--out <dir>] [--format svg|pdf]");
+            Console.Error.WriteLine(
+                "       [--fps N] [--width-mm W] [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine(
+                "draws a flight as numbered vector frames on the spec's declared time mapping");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine(
+                "An animation needs a render spec, not a bare model: RND-7 requires the time "
+                + "mapping to be declared, so there is no flag that supplies one.");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var given = Path.GetFullPath(positional[0]);
+
+        if (!ReadsAsSpec(given))
+        {
+            Console.Error.WriteLine(
+                $"{given} reads as a model, and an animation needs a render spec that declares "
+                + "its time mapping.");
+
+            Console.Error.WriteLine(
+                "Write one with an \"animation\" block: {\"model\": \"...\", \"animation\": "
+                + "{\"framesPerSecond\": 30, \"phases\": [{\"until\": {\"value\": 10, "
+                + "\"unit\": \"us\"}, \"rate\": {\"value\": 1, \"unit\": \"us/s\"}}]}}");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var (spec, modelPath) = RenderCommand.ReadSpec(given);
+
+        spec = spec with
+        {
+            Format = (options.Value("format") ?? spec.Format.ToString()).ToUpperInvariant() switch
+            {
+                "PDF" => FigureFormat.Pdf,
+                _ => FigureFormat.Svg,
+            },
+            WidthMm = options.Value("width-mm") is { } width
+                ? double.Parse(width, CultureInfo.InvariantCulture)
+                : spec.WidthMm,
+            Caption = options.Value("caption") ?? spec.Caption,
+            Animation = options.Value("fps") is { } fps && spec.Animation is { } declared
+                ? declared with { FramesPerSecond = int.Parse(fps, CultureInfo.InvariantCulture) }
+                : spec.Animation,
+        };
+
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+
+        var outcome = RenderCommand.Animation(
+            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        // The directory and a count, not three hundred lines of "wrote". A frame list
+        // is what --json is for.
+        var directory = Path.GetDirectoryName(outcome.Artifacts[0]);
+
+        Console.Out.WriteLine(
+            outcome.Written
+                ? $"wrote {outcome.Frames} frames to {directory}"
+                : $"would write {outcome.Frames} frames to {directory}");
+
+        Console.Out.WriteLine(
+            $"{outcome.PlaybackSeconds:F2} s of playback, "
+            + $"{outcome.PageMm[0]:F0} by {outcome.PageMm[1]:F0} mm each");
 
         // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
         foreach (var warning in outcome.Warnings)
@@ -1433,6 +1549,125 @@ public static class Program
         return (int)ExitCode.Success;
     }
 
+    /// <summary>The model's declared parameter surface, and whether it validates.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A verb rather than a shell method, because AGT-2 says nothing exists only in
+    /// the shell.</b> The window needs this to build a model tree without parsing the
+    /// document itself, which UI-1 forbids it from knowing how to do - and an agent needs
+    /// exactly the same thing for exactly the same reason. `einzel schema` says what a
+    /// model <em>may</em> contain; this says what one <em>does</em>.
+    /// </para>
+    /// <para>
+    /// It answers for a document that does not validate too, with the errors alongside.
+    /// That is what live validation needs: a person editing a parameter into an invalid
+    /// state must still see the tree, rather than have it vanish until they undo what
+    /// they typed.
+    /// </para>
+    /// </remarks>
+    private static int Outline(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel outline <model.json> [--set <parameter>=<value>] [--json]");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var model = options.Positional[0];
+
+        // Setting one is the same verb, because reading the knobs and turning one are the
+        // same conversation. The value is in the parameter's own declared unit: a person
+        // editing a 5 mm radius types 7, and demanding 0.007 would ask them to do the
+        // conversion the format exists to make unnecessary.
+        // `--set` with nothing after it is a mistake, not a request to do nothing. The
+        // malformed `--set name` case below is already refused, so silently listing the
+        // outline here would make one kind of malformed set loud and the other silent.
+        if (options.Has("set") && options.Value("set") is null)
+        {
+            Console.Error.WriteLine(
+                "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (options.Value("set") is { } assignment)
+        {
+            var split = assignment.IndexOf('=', StringComparison.Ordinal);
+
+            if (split <= 0)
+            {
+                Console.Error.WriteLine(
+                    "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
+
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            var name = assignment[..split];
+
+            if (!double.TryParse(
+                assignment[(split + 1)..],
+                System.Globalization.NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var value))
+            {
+                Console.Error.WriteLine(
+                    $"'{assignment[(split + 1)..]}' is not a number. The value is in the "
+                    + "parameter's own declared unit, so write the magnitude alone");
+
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            File.WriteAllText(
+                Path.GetFullPath(model), OutlineCommand.WithParameter(model, name, value));
+        }
+
+        var outline = OutlineCommand.Execute(model);
+
+        if (options.Has("json"))
+        {
+            Console.Out.Write(CommandJson.Write(outline));
+
+            return (int)(outline.Valid ? ExitCode.Success : ExitCode.ValidationFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        Console.Out.WriteLine($"{outline.Name ?? "(unnamed)"}  schema {outline.SchemaVersion}");
+
+        foreach (var parameter in outline.Parameters)
+        {
+            // The value and its unit are two halves of one statement and never appear
+            // apart, which is GRD-1's habit applied to an input rather than a result.
+            var shown = parameter.Expression is { } expression
+                ? expression
+                : string.Create(invariant, $"{parameter.Value:G6}");
+
+            var bounds = OutlineCommand.BoundsText(parameter);
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"  {parameter.Name,-20} {shown,-32} {parameter.Unit,-8}"
+                + $"{(bounds is null ? string.Empty : "  " + bounds)}"
+                + $"{(parameter.Editable ? string.Empty : "  (derived)")}"));
+        }
+
+        if (outline.Valid)
+        {
+            return (int)ExitCode.Success;
+        }
+
+        Console.Out.WriteLine();
+
+        foreach (var error in outline.Errors)
+        {
+            Console.Error.WriteLine($"  [{error.Code}] {error.Path}: {error.Constraint}");
+        }
+
+        return (int)ExitCode.ValidationFailure;
+    }
+
     private static int Validate(CommandLine options)
     {
         if (options.Positional.Count == 0)
@@ -1527,8 +1762,14 @@ public static class Program
         // a success with a caveat. A diffusive run has no detector to end at - it
         // evolves a density for the declared time and reports where the ions went -
         // so it succeeds by finishing, and what it transmitted is a figure rather
-        // than an outcome.
-        return run.Outcome is "StopConditionMet" or "DensityEvolved"
+        // than an outcome. A sequenced run is the same: it succeeds by completing its
+        // sequence, and where the ions went is in the phase table.
+        //
+        // This list is now three long, and every entry was added after a working run
+        // reported itself as a failure - the diffusive one, then this. A run that
+        // finished what it was asked to do is a success, and the thing to ask is
+        // whether it finished rather than which mode it was in.
+        return run.Outcome is "StopConditionMet" or "DensityEvolved" or "SequenceCompleted"
             ? (int)ExitCode.Success
             : (int)ExitCode.ConvergenceFailure;
     }
@@ -1548,7 +1789,13 @@ public static class Program
         // Absent rather than not-a-number, which is the rule the rest of this
         // surface already follows: a reader cannot tell a missing measurement from
         // a failed one if both print the same way.
-        var trajectory = run.Diffusion is null;
+        // A sequenced run has no single flight time either, and for the same reason a
+        // diffusive one does not: it ends when its sequence ends rather than when an ion
+        // arrives. Printing NaN here is the exact defect already fixed for the diffusive
+        // mode - a reader cannot tell a missing measurement from a failed one when both
+        // print the same way - and the fix was gated on `Diffusion` alone, so a third
+        // kind of run walked straight back into it.
+        var trajectory = run.Diffusion is null && run.Sequence is null;
 
         if (trajectory)
         {
@@ -1579,15 +1826,58 @@ public static class Program
                 $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
         }
 
-        Console.Out.WriteLine(string.Create(
-            invariant,
-            $"steps         {run.AcceptedSteps}, {run.AnalyticDriftDistanceM:F4} m advanced analytically"));
-
-        if (run.FinalPositionMm.Count > 0)
+        if (run.Sequence is null)
         {
             Console.Out.WriteLine(string.Create(
                 invariant,
-                $"final x       {run.FinalPositionMm[0]:F6} mm"));
+                $"steps         {run.AcceptedSteps}, {run.AnalyticDriftDistanceM:F4} m advanced analytically"));
+        }
+
+        if (run.FinalPositionMm.Count > 0)
+        {
+            // A sequenced run has no single ion, so what this is is the packet's centre
+            // - said in the label rather than left for the reader to assume.
+            var what = run.Sequence is null ? "final x      " : "packet centre";
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"{what} {run.FinalPositionMm[0]:F6} mm"));
+        }
+
+        if (run.Sequence is { } sequence)
+        {
+            Console.Out.WriteLine();
+
+            foreach (var phase in sequence.Phases)
+            {
+                // The trajectory count and the population are different quantities, and
+                // a conversion re-samples the first while carrying the second - so both
+                // are shown, and a diffusive phase shows a dash rather than a zero,
+                // because it has no trajectories rather than none left.
+                var carried = phase.Trajectories > 0
+                    ? phase.Trajectories.ToString(invariant)
+                    : "-";
+
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"  {phase.Name,-12} {phase.Mode,-11} to {phase.EndsAtUs,8:F2} us  "
+                    + $"{phase.Population,10:G6} ions in {carried,5} trajectories  "
+                    + $"x {phase.CentroidMm[0],8:F3} mm"
+                    + $"{(phase.Converted ? "  converted" : string.Empty)}"));
+            }
+
+            Console.Out.WriteLine();
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"sequence      {sequence.Conversions} mode conversion(s), "
+                + $"{sequence.ArrivedIons:G6} ions arrived"));
+
+            foreach (var loss in sequence.Losses)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant, $"  lost on {loss.Surface}: {loss.Ions:G6} ions"));
+            }
         }
 
         if (run.Ensemble is { } ensemble)

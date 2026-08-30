@@ -20,6 +20,25 @@ namespace Einzel.Core.Model;
 /// </remarks>
 public sealed record CompiledModel
 {
+    /// <summary>The directory the model document was read from, or null.</summary>
+    /// <remarks>
+    /// <para>
+    /// A model may reference files - an imported gas velocity or pressure field - and
+    /// PRJ-2 says it references them rather than embedding them, resolved against the
+    /// model document's own directory so that a model means the same thing wherever
+    /// the command is run from. Carrying that directory on the compiled model is what
+    /// lets any consumer resolve one.
+    /// </para>
+    /// <para>
+    /// <b>Null is the safe value, not the convenient one.</b> A model compiled from a
+    /// string in memory has no directory, and a consumer handed one is refused rather
+    /// than run in a gas the document does not describe. So a loader that forgets to
+    /// set this degrades to the refusal rather than to a silent wrong answer, which is
+    /// the direction a mistake here should fail in.
+    /// </para>
+    /// </remarks>
+    public string? SourceDirectory { get; init; }
+
     /// <summary>The document this was compiled from, for hashing and round-trip.</summary>
     public required ModelDocument Source { get; init; }
 
@@ -52,6 +71,35 @@ public sealed record CompiledModel
 
     /// <summary>Transport mode.</summary>
     public required string TransportMode { get; init; }
+
+    /// <summary>
+    /// The instrument's timeline, with the mode each phase runs in. Empty when the
+    /// model declares no sequence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="TransportMode"/> is the model's own, and a phase that names none keeps
+    /// it - the same rule a phase's parameter overrides follow. So a model with no
+    /// sequence, and one whose every phase runs in the declared mode, are the same run.
+    /// </para>
+    /// <para>
+    /// A phase boundary where the mode <em>changes</em> is SEQ-1's subject: the packet
+    /// has to be converted from one description to the other, and the conversion is
+    /// lossy in one direction and inventive in the other.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<CompiledPhase> Phases { get; init; } = [];
+
+    /// <summary>Whether the timeline changes transport mode at any boundary.</summary>
+    /// <remarks>
+    /// Distinct from having a sequence at all. A trap that holds and then extracts,
+    /// both in the trajectory description, is sequenced and needs no conversion; only a
+    /// boundary where the mode differs does.
+    /// </remarks>
+    public bool ChangesTransportMode =>
+        Phases.Count > 1
+        && Phases.Zip(Phases.Skip(1)).Any(
+            pair => !string.Equals(pair.First.Mode, pair.Second.Mode, StringComparison.Ordinal));
 
     /// <summary>Relative tolerance for the integrator.</summary>
     public required double RelativeTolerance { get; init; }
@@ -137,11 +185,61 @@ public enum CompiledFieldKind
     Solved3D,
 }
 
+/// <summary>
+/// One phase of the instrument's timeline, as the run sees it.
+/// </summary>
+/// <param name="Name">What the phase is for.</param>
+/// <param name="DurationSeconds">How long it lasts.</param>
+/// <param name="Mode">The transport mode it runs in.</param>
+/// <param name="EndsAtSeconds">When it ends, cumulative from zero.</param>
+/// <remarks>
+/// <para>
+/// The elements each carry their own per-phase states, which is what the field
+/// assembly needs. This is what the <em>run</em> needs: the schedule, and the mode each
+/// phase is described in.
+/// </para>
+/// <para>
+/// A mode belongs here rather than on an element because it is a property of the run.
+/// Two elements naming different modes for one instant is not something a superposition
+/// can resolve, the way it resolves two fields.
+/// </para>
+/// </remarks>
+public sealed record CompiledPhase(
+    string Name, double DurationSeconds, string Mode, double EndsAtSeconds);
+
 /// <summary>A validated field element, in SI.</summary>
 public sealed record CompiledField
 {
     /// <summary>Which kind of element this is.</summary>
     public required CompiledFieldKind Kind { get; init; }
+
+    /// <summary>
+    /// This element as it stands during each phase of the instrument's timeline, when
+    /// the timeline changes it. Empty otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For the analytic kinds, which have nowhere else to put a phase.</b> A solved
+    /// geometry carries its phases in <see cref="CompiledSolvedField.Stages"/>, because
+    /// there a phase re-weights channels that are already solved. An analytic element has
+    /// no channels: a phase simply gives it different numbers, so it needs a whole
+    /// compiled copy per phase.
+    /// </para>
+    /// <para>
+    /// <b>Empty when the timeline does not reach this element</b>, which is a real
+    /// distinction rather than an optimisation. An element whose expressions do not
+    /// depend on any parameter a phase sets is genuinely static, and wrapping it in a
+    /// switch would give the assembly extra switch instants to land on and make a
+    /// static element answer a time-varying interface for no reason.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<CompiledField> Phases { get; init; } = [];
+
+    /// <summary>
+    /// The instant each phase ends, cumulative from zero. Empty when there is no
+    /// timeline, and otherwise one entry per phase.
+    /// </summary>
+    public IReadOnlyList<double> PhaseBoundariesSeconds { get; init; } = [];
 
     /// <summary>Uniform only: the field vector, in volts per metre.</summary>
     public Vec3 Field { get; init; }
@@ -215,6 +313,29 @@ public sealed record CompiledGas
 
     /// <summary>Whether a velocity field was declared.</summary>
     public bool HasVelocityField => !string.IsNullOrWhiteSpace(VelocityFieldPath);
+
+    /// <summary>Path to an imported pressure field, as declared, or null.</summary>
+    /// <remarks>
+    /// Carried as written, for the reason the velocity field's path is: resolving it
+    /// needs the model file's own directory and validation does not read files.
+    /// </remarks>
+    public string? PressureFieldPath { get; init; }
+
+    /// <summary>Which array in that file holds the pressure, or null for the first.</summary>
+    public string? PressureFieldArray { get; init; }
+
+    /// <summary>
+    /// What one of the file's numbers is in pascals - 1 for Pa, 100 for mbar.
+    /// </summary>
+    /// <remarks>
+    /// Resolved at validation, where the unit registry is, so that a bad unit is an
+    /// AGT-3 error against the document rather than a surprise at load time. The
+    /// array itself stays in whatever the file wrote.
+    /// </remarks>
+    public double PressureFieldScale { get; init; } = 1.0;
+
+    /// <summary>Whether a pressure field was declared.</summary>
+    public bool HasPressureField => !string.IsNullOrWhiteSpace(PressureFieldPath);
 
     /// <summary>Seed for the collision random stream.</summary>
     public int Seed { get; init; } = 20_240_101;

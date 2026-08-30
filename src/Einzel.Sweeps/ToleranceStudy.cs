@@ -108,6 +108,12 @@ public static class ToleranceStudy
     /// <exception cref="Core.Errors.EinzelException">
     /// The model does not validate, or a channel does not name a free parameter.
     /// </exception>
+    /// <param name="sourceDirectory">
+    /// The directory the model document was read from, which any file it references is
+    /// resolved against. Null when the caller has none, and a model declaring an
+    /// imported gas field is then refused rather than run in a gas it does not
+    /// describe.
+    /// </param>
     public static ToleranceStudyResult Run(
         ModelDocument document,
         IReadOnlyList<PerturbationChannel> channels,
@@ -115,14 +121,15 @@ public static class ToleranceStudy
         int draws = 1000,
         int seed = 1,
         bool oneAtATime = true,
-        Dimension figureDimension = default)
+        Dimension figureDimension = default,
+        string? sourceDirectory = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(channels);
         ArgumentNullException.ThrowIfNull(evaluate);
         ArgumentOutOfRangeException.ThrowIfNegative(draws);
 
-        var baseline = Compile(document, null);
+        var baseline = Compile(document, null, sourceDirectory);
         var surface = baseline.Parameters;
 
         for (var i = 0; i < channels.Count; i++)
@@ -151,11 +158,11 @@ public static class ToleranceStudy
                 overrides[channel.Parameter] = channel.Draw(surface[channel.Parameter], random);
             }
 
-            rows.Add(Evaluate(document, overrides, evaluate, d));
+            rows.Add(Evaluate(document, overrides, evaluate, d, sourceDirectory));
         }
 
         var sensitivity = oneAtATime
-            ? Attribute(document, channels, surface, evaluate, nominal)
+            ? Attribute(document, channels, surface, evaluate, nominal, sourceDirectory)
             : [];
 
         return new ToleranceStudyResult(rows, sensitivity, Distribution(rows, draws, figureDimension), nominal);
@@ -166,7 +173,8 @@ public static class ToleranceStudy
         IReadOnlyList<PerturbationChannel> channels,
         ParameterSurface surface,
         Func<CompiledModel, double?> evaluate,
-        double nominal)
+        double nominal,
+        string? sourceDirectory)
     {
         var results = new List<ChannelSensitivity>(channels.Count);
 
@@ -178,13 +186,15 @@ public static class ToleranceStudy
                 document,
                 new Dictionary<string, Quantity>(StringComparer.Ordinal) { [channel.Parameter] = low },
                 evaluate,
-                -1).FigureOfMerit;
+                -1,
+                sourceDirectory).FigureOfMerit;
 
             var atHigh = Evaluate(
                 document,
                 new Dictionary<string, Quantity>(StringComparer.Ordinal) { [channel.Parameter] = high },
                 evaluate,
-                -1).FigureOfMerit;
+                -1,
+                sourceDirectory).FigureOfMerit;
 
             // A channel whose extreme fails outright is maximally sensitive, not
             // insensitive: it has found a geometry that does not work at all.
@@ -203,11 +213,12 @@ public static class ToleranceStudy
         ModelDocument document,
         Dictionary<string, Quantity> overrides,
         Func<CompiledModel, double?> evaluate,
-        int index)
+        int index,
+        string? sourceDirectory)
     {
         try
         {
-            var validation = ModelValidator.Validate(document, overrides);
+            var validation = ModelValidator.Validate(document, overrides, sourceDirectory);
 
             if (!validation.IsValid)
             {
@@ -229,9 +240,12 @@ public static class ToleranceStudy
         }
     }
 
-    private static CompiledModel Compile(ModelDocument document, IReadOnlyDictionary<string, Quantity>? overrides)
+    private static CompiledModel Compile(
+        ModelDocument document,
+        IReadOnlyDictionary<string, Quantity>? overrides,
+        string? sourceDirectory)
     {
-        var validation = ModelValidator.Validate(document, overrides);
+        var validation = ModelValidator.Validate(document, overrides, sourceDirectory);
 
         if (!validation.IsValid)
         {
