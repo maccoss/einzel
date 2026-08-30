@@ -788,8 +788,8 @@ Every view §16 requires:
 
 | View | State | What it needs beyond a window |
 | --- | --- | --- |
-| 3D viewport — geometry, potentials by colour, equipotentials, trajectory bundles | **Partial** | **Trajectory bundles coloured by energy are built**, on Helix Toolkit 3.1.2 / DirectX 11, one line geometry for the whole bundle rather than one node per ion — which is the whole reason §16 requires a raster path. The colour scale is anchored across the bundle by `ViewportCommand`, not per path, because a per-path scale gives two ions a kilovolt apart the same colours. RND-8 is enforced by asking the transport mode and stated on the face of the window. Geometry and equipotentials are not built: the section renderer extracts both as level sets in 2-D and there is no 3-D version. Helix's status is Amendment 26 |
-| Density clouds instead of trajectories for diffusive regions (TRN-2) | **Half built** | The density exists, is exported as `.vti` and is drawn as contours in a section. What is missing is only the interactive surface — the viewport currently *refuses* to draw such a model and says what it has instead, which is the correct half of the requirement |
+| 3D viewport — geometry, potentials by colour, equipotentials, trajectory bundles | **Built** | Geometry, the field, and the bundle, on Helix Toolkit 3.1.2 / DirectX 11. **Every conductor is the zero level set of its own signed distance** (invariant 2), so one routine draws them all — and what differs between symmetries is what the solve claims about the third dimension: a cross-section extrudes (uncapped, because the electrode really does extend past what is drawn, with the depth named as a drawing convention per GRD-12), an axisymmetric half-plane revolves, a volume is extracted by surface nets. Checked against closed forms: a sphere's volume 0.99038 / 0.99760 / 0.99940 under refinement, every edge shared by exactly two triangles, normals exact to 1.000000, a revolved tube against Pappus to 0.99990. Equipotentials on the section plane rather than as surfaces, because a nest of closed surfaces hides the trajectories. Two colour scales, both anchored once across everything drawn — viridis for energy, and a **diverging ramp symmetric about zero** for potential, because earth is what every other potential is measured against and a ramp stretched over the observed range puts the neutral colour at 250 V for a lens holding 0 and 500. RND-8 withholds the paths and not the instrument. Helix's status is Amendment 26 |
+| Density clouds instead of trajectories for diffusive regions (TRN-2) | **Half built** | The density exists, is exported as `.vti` and is drawn as contours in a section. What is missing is only the interactive surface: the viewport draws such a model's geometry and field and withholds only the paths, saying why, which is the correct half of the requirement |
 | Figure composer | **Seam built** | `RenderSpec` is already text in `figures/` that the CLI executes. A composer edits one of these and nothing else — which is UI-1's own test, and the reason it can be built last |
 | Animation timeline, per-phase playback rates, scrubbing, frame export | **Partial** | Per-phase playback rates and frame export are built: `einzel render animation` on a declared mapping, with the rate stamped on every frame and a `frames.json` schedule beside them. Scrubbing is a shell interaction and needs the window |
 | Model tree with parameter editing, live validation, units on every field | **Built** | `einzel outline` returns the declared surface - value, unit, bounds, description, what it resolves to in SI, and whether it is editable - because UI-1 forbids the shell from parsing the document to build a tree. A verb rather than a shell method (AGT-2), so an agent gets the same service. Every edit goes through the shared journal, so a change in the window is undoable by an agent on the same session. **Delivering it reversed a guard**: `SessionJournal` refused any edit that did not validate, which makes live validation impossible - a person typing 500 into a parameter bounded at 50 must see the tree with the complaint on it, and refusing every invalid document forbids any edit *sequence* that passes through one. Narrowed to refusing what does not *parse*, which is taint-never-block applied to input. `docs/lessons.md` |
@@ -820,6 +820,15 @@ agent a model's knobs without parsing the document, and `ViewportCommand` enforc
 asking `ITransportMode.ProducesTrajectories` rather than the pressure. That is AGT-2
 running in the direction it was not designed for — the window pulling capability *into* the
 command layer rather than accumulating it privately.
+
+**And a third thing the window found, in the core rather than in itself.** Extracting a
+conductor's surface needed the electrode's own bounding box, and there was no way to ask for
+one without switching on the shape — which is exactly what invariant 2 forbids, and which
+would need a new case in every caller when a fourth shape arrives. `CompiledElectrode3D.Bounds`
+now sits beside `Centre` and `CharacteristicSize`, in the one file that already owns those
+cases. The defect that forced it is the instructive part: sampled over the whole solve domain
+at 48 cells, **a 1 mm plate is thinner than a cell and produced no surface at all**, with
+nothing said.
 
 **UI-1's prohibition is the half worth protecting.** The shell owns layout, input,
 the interactive viewport and the update check, and owns no physics, no validation
@@ -1769,11 +1778,26 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     backend is SharpDX, **archived since December 2020** — taken knowingly, because §17
     confines this path to screen tuning and nothing that leaves Einzel passes through it.
 
-    **Next, in order of what unblocks the most:** geometry and equipotentials in the
-    viewport, which need a 3-D level-set extraction the section renderer already has in
-    2-D; the density cloud, which needs only a surface since the density is already
-    computed and contoured; then the sequence editor and the regime inspector, both pure
-    presentation over data that exists.
+    **The viewport now draws the instrument and the field**, not only the ions. Every
+    conductor is the zero level set of its own signed distance, so one routine draws them
+    all and a shape added to the format needs no change (invariant 2); what differs between
+    symmetries is what the solve claims about the third dimension, which is why a
+    cross-section extrudes, an axisymmetric half-plane revolves, and a volume is extracted.
+    The mesh maths is in `Einzel.Render` and its tests run on Linux, checked against a
+    sphere's area and volume, Pappus, and watertightness rather than against how it looks.
+
+    **The geometry found a defect in the core and a gap in the corpus.** A 1 mm plate is
+    thinner than a cell of a 48-cell grid over the whole solve domain, so the
+    three-dimensional example produced **no conductors at all**, silently - fixed by asking
+    the electrode for its bounds, which needed `CompiledElectrode3D.Bounds` beside `Centre`
+    and `CharacteristicSize` because switching on the shape is what invariant 2 forbids. And
+    **no diffusive example declares a geometry**, so the claim that RND-8 withholds the
+    paths and not the instrument is exercised through the field rather than through
+    conductors - a pointed gap, since the device that mode exists for is a funnel.
+
+    **Next, in order of what unblocks the most:** the density cloud, which needs only a
+    surface since the density is already computed and contoured; then the sequence editor
+    and the regime inspector, both pure presentation over data that exists.
 
 ## Open decisions
 

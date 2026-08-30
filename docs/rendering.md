@@ -53,6 +53,59 @@ ring, a sphere, a box - and it is the *same* routine that draws equipotentials,
 because an equipotential is a level set too. A shape added to the model format
 needs no change here at all.
 
+## The same argument in three dimensions, for the viewport
+
+`Surfaces` is the level set as a triangle mesh, which the shell's 3-D viewport draws
+(§16). It sits here rather than in the shell for RND-1's reason - rendering is an
+engine capability - and it earns that placement by being testable headlessly on
+Linux, which is where its tests run.
+
+**What differs between symmetries is not the shape but what the solve claims about
+the third dimension**, and treating all three alike would be wrong rather than
+merely slow:
+
+| The solve says | The conductor is | Because |
+| --- | --- | --- |
+| a cross-section | an **uncapped prism** | the geometry repeats along z, so the electrode extends past anything drawn - capping it would draw an end the model does not have. Where it stops is a drawing convention and the caller says so (GRD-12) |
+| an axisymmetric half-plane | a **solid of revolution** | SYM-1: the half-plane is a geometry that repeats all the way round, so a rectangle there is a tube in space |
+| a volume | a **surface extraction** | nothing is claimed, so nothing may be assumed |
+
+**Surface nets rather than marching cubes.** One vertex per cell at the mean of that
+cell's edge crossings, one quad per sign-changing lattice edge: watertight by
+construction, no 256-case table, and a vertex that sits where the surface is rather
+than on a cell edge. It rounds a true crease by about a cell, and §17 is explicit
+that the viewport is screen tuning rather than an artifact - the publication figure
+is the vector section above, drawn at full sharpness.
+
+**Orientation comes from the field, not from the winding.** Every producer emits
+triangles in whatever order falls out; one pass then sets each normal to the
+gradient of the same signed distance that defined the surface and flips any triangle
+that disagrees. That is exact, and it is *necessary* here rather than tidy: the
+segments marching squares emits are deliberately undirected (see below), so a
+revolved or extruded profile has no winding to inherit.
+
+| Check | Result |
+| --- | --- |
+| A sphere's volume at 24 / 48 / 96 cells | **0.99038 / 0.99760 / 0.99940**, improving under refinement |
+| Its area, likewise | 0.99484 / 0.99870 / 0.99968 |
+| Edges shared by exactly two triangles | **all 11,970** |
+| Worst normal against the true outward radius | **1.000000** |
+| A revolved tube against Pappus at 16 / 64 / 256 facets | 0.97450 / 0.99839 / **0.99990**, inscribed so approaching from below |
+| An extruded prism's open ends | exactly 8 boundary edges |
+
+The volume is the sharpest of these because it tests three things at once - that the
+surface is closed, that every triangle is wound outward, and that the vertices sit
+where the surface is. A hole, a flipped patch or a systematic offset all move it.
+
+**Two things it got wrong first.** A **1 mm plate vanished**: sampled over the whole
+solve domain at 48 cells a cell is 1.25 mm and the plate falls between lattice
+planes, so the three-dimensional example produced no conductors at all, silently.
+The extraction runs over the electrode's own bounding box now, asked of the
+electrode rather than switched on its shape. And a **closed profile carries a
+duplicate point** - marching squares repeats the first point at the end - so a prism
+built straightforwardly from one has a seam down its side, invisible on screen and
+not invisible to anything asking whether the surface is closed.
+
 ## Decimation is a guarantee, not a hint
 
 RND-5 requires a stated geometric tolerance and ACC-7 sets the default at **0.1% of

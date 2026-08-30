@@ -1322,3 +1322,77 @@ actually caught them were:
   safe and checkable; turning it off in a codebase that relied on it would move every
   number a French-locale user saw. Before removing a global setting, find the thing it
   duplicates — if there is nothing, it is not a backstop.
+
+- **The failure mode where the data is right and the picture is empty.** The viewport's
+  electrodes were extracted correctly, uploaded correctly and drawn correctly, and were
+  invisible — there was no light in the scene, so every Phong surface rendered at its
+  ambient term alone. The instinct on seeing nothing is to go and check the data, and the
+  data was fine. Where a pipeline ends in a picture, the last stage has inputs that are not
+  the data: **a missing light, a camera pointing elsewhere, a transparent material and an
+  empty buffer all look identical**, and only one of them is about the thing being
+  computed.
+
+- **A resolution chosen from the container, not from the thing in it.** Extracting a
+  conductor's surface over the whole solve domain at 48 cells makes a cell 1.25 mm across,
+  and a 1 mm plate falls between lattice planes: the three-dimensional example produced
+  **no conductors at all**, with nothing said. The generalisation is that a sampling grid
+  sized to the domain silently loses every feature smaller than a cell, and *the smallest
+  feature is usually the interesting one* — an aperture, a slot, a gap. Size the grid to
+  what is being resolved, and where that means asking an object how big it is, add the
+  accessor rather than switching on its type at the call site: `CompiledElectrode3D.Bounds`
+  went next to `Centre` and `CharacteristicSize` for exactly that reason.
+
+- **A defect that only a screenshot can see, found by driving the buttons rather than
+  reading them.** The first named view after startup came out as the top view whichever
+  button was pressed, because the camera's look, position and up were written one property
+  at a time and each raises its own change notification — the control saw a momentarily
+  inconsistent basis and re-derived one of them. No assertion over the view-model would have
+  caught it and no amount of reading the handler suggested it. What caught it was invoking
+  each button through UI Automation and reading the axis indicator out of the resulting
+  image. **Where the output is a picture, the test harness has to look at the picture** —
+  and the first attempt at that was itself misleading, because clicking one button and
+  believing the result is not a measurement until a second button has been clicked to
+  compare against.
+
+- **A sequential colour ramp drawn as thin lines is illegible on every background, and no
+  choice of background fixes it.** Viridis spans dark to light by construction, so it passes
+  through whatever luminance the ground has: measured across grounds from `#101010` to
+  `#D0D0D0`, the worst contrast anywhere on the ramp never rises above **1.25**. Truncating
+  the dark end barely helps — skipping the darkest 60% still only reaches 2.83. What works is
+  **lifting the ramp off the ground and then moving the ground further away from it**, which
+  is the opposite of the instinct the symptom produces ("it's too dark, lighten the
+  background"). The general form: when a scale and its ground overlap in the one dimension
+  that separates them, only one of them can be moved out of the way, and it is the scale.
+  Worth measuring rather than eyeballing — the optimum here (a 0.44 lift against a `#081019`
+  ground) is not a value anyone would have picked, and it is bounded by a *different*
+  property: lifting further makes the ramp non-monotone in lightness, which is the thing the
+  ramp was chosen for.
+
+- **The invariant axis of a cross-section is the one the beam travels along, so that is how
+  far to draw it.** A translational solve says the geometry repeats along the third axis and
+  never says how far; drawing to the transverse span made a quadrupole's rods 32 mm of a
+  200 mm instrument, sitting in the corner of the picture beside a trajectory six times
+  longer. The reach of the ions is the part of an infinite structure anyone is looking at.
+  Generalises past drawing: **where a model declines to bound something, the bound worth
+  choosing is usually the one the rest of the model already implies.**
+
+- **Correcting a framework's choice after the fact is a race; telling it the choice is
+  not.** The viewport control installs a camera of its own when it has none, and the
+  opening view was set afterwards from the window's `Loaded` handler — so which view a
+  model opened in depended on how long its field took to solve. Three increasingly
+  elaborate fixes (a later dispatch priority, an atomically-assigned camera, a deferred
+  fit) each made it work on the model in front of me and fail on the next. The actual fix
+  was one line: set `DefaultCamera`, which is the property the control reaches for, so
+  there is nothing to race. **When a fix has to be re-tuned per case, the thing being fixed
+  is usually ordering, and ordering is not fixed by trying harder at the same point.**
+
+- **A guard that cannot be reached, found by a test that could not construct its input.**
+  The viewport clamped an axisymmetric trace to the axis, because revolving a profile at a
+  negative radius would draw the same surface twice. Writing the test for it turned out to
+  be impossible: `ModelValidator` refuses such a document outright, with the path, the
+  reason and the correction. The clamp had never done anything and never could. **A second,
+  weaker copy of a rule that already holds is worse than none** — it reads as though a case
+  exists, and the next person has to work out which of the two is load-bearing. The test
+  now asserts the rule where it lives, which is also where it holds for every other
+  consumer. The general move: when a guard is easy to write and its test is hard, ask
+  whether the state it guards against is reachable at all.

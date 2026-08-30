@@ -23,7 +23,8 @@ Engine outward. Each references only what is above it in this list.
 
 Not yet built: `Einzel.Compute`, `Einzel.Update`. `Einzel.Wpf` holds three of §16's
 eleven views — the model tree, the journal and the 3-D viewport — and the tests that
-keep invariant 1 and UI-1 true while the rest are written. See [The shell](shell.md).
+keep invariant 1 and UI-1 true while the rest are written - the model tree, the journal and
+the 3-D viewport. See [The shell](shell.md).
 
 The CLI, the MCP server, and the shell are **peers, not a stack**. All three drive
 the same command objects. That is what makes "nothing exists only in the window"

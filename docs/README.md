@@ -20,7 +20,7 @@ states the intent and these pages state the reality; both are noted.
 | [Device templates](device-templates.md) | Writing a new device as data, and the three shipped examples |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
-| [Rendering](rendering.md) | Vector sections in SVG and PDF, decimation bounds, and how a figure carries its own caveats |
+| [Rendering](rendering.md) | Vector sections in SVG and PDF, conductor surfaces for the viewport, decimation bounds, and how a figure carries its own caveats |
 | [Pressure](pressure.md) | Collision models, regime validity, and what gas does to a funnel |
 | [Extensions](extensions.md) | The Python extension surface, what the sandbox contains, and what it does not |
 | [Agent acceptance](agent-acceptance.md) | The prose-task suite, what it measures, and what gates a release |

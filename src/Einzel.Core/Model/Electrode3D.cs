@@ -149,6 +149,51 @@ public sealed record CompiledElectrode3D
         _ => throw Unhandled(),
     };
 
+    /// <summary>The smallest box containing this electrode, in metres.</summary>
+    /// <remarks>
+    /// <para>
+    /// Beside <see cref="Centre"/> and <see cref="CharacteristicSize"/>, and here for the
+    /// same reason: a caller that needs to know where an electrode <em>is</em> must ask the
+    /// electrode rather than switch on its shape, or architecture invariant 2 is broken one
+    /// caller at a time and a fourth shape needs a change in every one of them.
+    /// </para>
+    /// <para>
+    /// What wanted it was the viewport, which extracts a conductor's surface as the zero
+    /// level set of this type's own signed distance. Sampling that over the whole solve
+    /// domain misses anything thinner than a cell - a 1 mm plate in a 60 mm box at 48 cells
+    /// falls between lattice planes and comes out as no surface at all, which is what it
+    /// did.
+    /// </para>
+    /// </remarks>
+    public (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
+        Bounds => Shape switch
+    {
+        Electrode3DShape.Sphere => (
+            CentreX - Radius, CentreY - Radius, CentreZ - Radius,
+            CentreX + Radius, CentreY + Radius, CentreZ + Radius),
+
+        Electrode3DShape.Box => (
+            Math.Min(MinX, MaxX), Math.Min(MinY, MaxY), Math.Min(MinZ, MaxZ),
+            Math.Max(MinX, MaxX), Math.Max(MinY, MaxY), Math.Max(MinZ, MaxZ)),
+
+        Electrode3DShape.Cylinder => Axis switch
+        {
+            CylinderAxis.X => (
+                Math.Min(Lower, Upper), CentreY - Radius, CentreZ - Radius,
+                Math.Max(Lower, Upper), CentreY + Radius, CentreZ + Radius),
+
+            CylinderAxis.Y => (
+                CentreX - Radius, Math.Min(Lower, Upper), CentreZ - Radius,
+                CentreX + Radius, Math.Max(Lower, Upper), CentreZ + Radius),
+
+            _ => (
+                CentreX - Radius, CentreY - Radius, Math.Min(Lower, Upper),
+                CentreX + Radius, CentreY + Radius, Math.Max(Lower, Upper)),
+        },
+
+        _ => throw Unhandled(),
+    };
+
     /// <summary>
     /// The failure for a shape no member of this type knows about.
     /// </summary>

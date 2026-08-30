@@ -147,6 +147,59 @@ public sealed class ViewportViewModelTests(ITestOutputHelper output) : IDisposab
             a => a.Command.StartsWith("einzel render section ", StringComparison.Ordinal));
     }
 
+    /// <summary>Every colour on both ramps is legible against the viewport's ground.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The property that was missing, and it is not a style preference.</b> Viridis
+    /// spans dark to light by construction, so on a dark ground its low end is a line you
+    /// cannot see — and the ions it hides are the slow ones at a turning point, which are
+    /// the interesting ones. Measured across grounds from #101010 to #D0D0D0 the worst
+    /// contrast anywhere on the unlifted ramp never rises above 1.25, so <em>no</em>
+    /// background is the fix; lifting the ramp off the ground is.
+    /// </para>
+    /// <para>
+    /// Asserted as a WCAG contrast ratio because that is a published measure of exactly
+    /// this — whether two colours are distinguishable — rather than a threshold invented
+    /// to fit. 3.0 is the large-text floor, which is the right comparison for a line.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void BothRampsAreLegibleAgainstTheViewportGround()
+    {
+        // The viewport's own background, from MainWindow.xaml.
+        var ground = (R: 0x08 / 255.0, G: 0x10 / 255.0, B: 0x19 / 255.0);
+
+        static double Channel(double v) =>
+            v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);
+
+        static double Relative((double R, double G, double B) c) =>
+            (0.2126 * Channel(c.R)) + (0.7152 * Channel(c.G)) + (0.0722 * Channel(c.B));
+
+        double Contrast((double R, double G, double B) c)
+        {
+            var (high, low) = (Relative(c), Relative(ground));
+
+            (high, low) = high >= low ? (high, low) : (low, high);
+
+            return (high + 0.05) / (low + 0.05);
+        }
+
+        var worstEnergy = double.MaxValue;
+        var worstPotential = double.MaxValue;
+
+        for (var i = 0; i <= 100; i++)
+        {
+            worstEnergy = Math.Min(worstEnergy, Contrast(ColourRamp.At(i / 100.0)));
+            worstPotential = Math.Min(worstPotential, Contrast(ColourRamp.Diverging(i / 100.0)));
+        }
+
+        output.WriteLine($"worst contrast on the energy ramp    {worstEnergy:F2}");
+        output.WriteLine($"worst contrast on the potential ramp {worstPotential:F2}");
+
+        Assert.True(worstEnergy > 3.0, $"the energy ramp reaches {worstEnergy:F2}");
+        Assert.True(worstPotential > 3.0, $"the potential ramp reaches {worstPotential:F2}");
+    }
+
     /// <summary>The ramp is ordered and stays inside the unit cube.</summary>
     /// <remarks>
     /// <para>
