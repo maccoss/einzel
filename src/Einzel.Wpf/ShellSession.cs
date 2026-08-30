@@ -135,6 +135,30 @@ public sealed class ShellSession
         return (Record($"einzel preview {Quoted(Journal.ModelPath)}", entry: null), outcome);
     }
 
+    /// <summary>Reads what the interactive viewport should draw.</summary>
+    /// <returns>The paths, or none with a reason (RND-8).</returns>
+    /// <remarks>
+    /// <para>
+    /// Recorded as <c>einzel render section</c> rather than invented as a verb of its own.
+    /// Amendment 25 requires every shell action to be expressible as a CLI invocation, and
+    /// the honest spelling of "look at the geometry and the paths" is the render command -
+    /// a viewport is the interactive tier of the same question, per §17's split between
+    /// screen tuning and an artifact.
+    /// </para>
+    /// <para>
+    /// The window flies nothing itself: UI-1 puts physics outside the shell, so this is a
+    /// call to the same command object anything else would use.
+    /// </para>
+    /// </remarks>
+    public ViewportOutcome Viewport()
+    {
+        Journal.Reconcile();
+
+        Record($"einzel render section {Quoted(Journal.ModelPath)}", entry: null);
+
+        return ViewportCommand.Execute(Journal.ModelPath);
+    }
+
     private ShellAction Record(string command, JournalEntry? entry)
     {
         var action = new ShellAction(command, entry);

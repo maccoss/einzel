@@ -21,22 +21,29 @@ Engine outward. Each references only what is above it in this list.
 
 | `Einzel.Mcp` | The live-session server, over one shared attributed journal |
 
-Not yet built: `Einzel.Compute`, `Einzel.Update`. `Einzel.Wpf` exists as a project
-and a session type, with none of §16's eleven views: what it holds is the seam the
-views will sit on, and the tests that keep invariant 1 and UI-1 true while they are
-written.
+Not yet built: `Einzel.Compute`, `Einzel.Update`. `Einzel.Wpf` holds three of §16's
+eleven views — the model tree, the journal and the 3-D viewport — and the tests that
+keep invariant 1 and UI-1 true while the rest are written. See [The shell](shell.md).
 
-The CLI, the MCP server, and the future shell are **peers, not a stack**. All
-three drive the same command objects. That is what makes "nothing exists only in
-the window" enforceable rather than aspirational: a capability added to one surface
-is added to the command layer, and the others get it for free.
+The CLI, the MCP server, and the shell are **peers, not a stack**. All three drive
+the same command objects. That is what makes "nothing exists only in the window"
+enforceable rather than aspirational: a capability added to one surface is added to
+the command layer, and the others get it for free.
 
-**Two of the three now exist, and the peer relationship is asserted rather than
+**All three now exist, and the peer relationship is asserted rather than
 described.** Every MCP tool returns `CommandJson.Write` of the same outcome record
 the CLI serialises for `--json`, and a test compares the two **byte for byte**.
 One serialiser, one command object, so the surfaces cannot drift — and a warning
 added to a result reaches an MCP client by being on the record rather than by
 anyone remembering to copy it across.
+
+**The shell is the third, and it is the one that tests the direction the invariant is
+really about.** Every action it takes is journalled as the `einzel` invocation that
+would reproduce it (Amendment 25), so a capability with no command spelling cannot be
+added to the window. Twice a view has been blocked until a command existed — the model
+tree on `einzel outline`, the viewport on `ViewportCommand` — and both times the command
+layer gained the capability. An agent is better off because a window was built, which is
+what "peers, not a stack" is supposed to produce.
 
 `einzel-mcp` is a separate executable rather than a verb on `einzel`, which is the
 peer relationship taken seriously in the other direction: spec figure 6 says the
@@ -54,6 +61,14 @@ Nothing may reference `Einzel.Wpf`, and every assembly above it must build and r
 on Linux. CI builds and tests on `ubuntu-latest` *and* `windows-latest` from the
 first commit, because an invariant only ever checked on a developer's Windows box
 is one that has already been broken by the time anyone notices.
+
+**The shell itself builds on Linux too, which was an open bet and is now measured**:
+`EnableWindowsTargeting` is enough, XAML markup compilation included. It does not run
+there and is not meant to — what the Linux job checks is that nothing below the shell
+has acquired a dependency on it. `Einzel.Wpf.Tests` is the one Windows-only test
+project, and on another host it builds as an ordinary `net10.0` assembly with no
+sources, so a solution-wide `dotnet test` walks past it: 848 tests on Windows, 843 on
+Linux.
 
 Its hardest test has now arrived and it passes. `Einzel.Render` draws real device
 templates as SVG and PDF on the Linux runner, where there is no display, no window

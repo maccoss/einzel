@@ -15,6 +15,25 @@
     -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
 
+    <!--
+      WPF cannot run in globalization-invariant mode: its font cache constructs
+      `new CultureInfo("en")` while measuring the first line of text, which throws,
+      and the window dies before it is shown. Directory.Build.props turns the mode on
+      for everything, so it has to come back off here.
+
+      What that mode was protecting is unaffected. Its stated purpose is that number
+      and date formatting must not vary with the host locale, because that would leak
+      into CLI output (CLI-5) and into golden-file comparisons - and the way this
+      codebase achieves that is by passing CultureInfo.InvariantCulture explicitly at
+      every formatting and parsing site, which the shell does throughout. The build
+      flag was the belt to that braces, and the braces are what hold.
+
+      The one that matters most is the parse: a person typing a value into the model
+      tree is parsed invariantly whatever their locale, because the file they are
+      editing is invariant. `1,5` is refused rather than quietly read as fifteen.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+
     <Description>
       The shell. Spec section 16: WPF on Windows, eleven required views. UI-1 is
       the constraint that shapes it - the shell owns layout, input, the interactive
@@ -27,6 +46,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HelixToolkit.Wpf.SharpDX" />
   </ItemGroup>
 
 </Project>

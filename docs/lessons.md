@@ -1290,3 +1290,35 @@ actually caught them were:
   694.4 V for the same trap. Either alone reads as a measurement; the pair says the
   predicate is frayed, which is what sent the observation window from 60 cycles to
   200 and put a confirmation walk into `BoundarySearch`.
+
+- **A test that passes for a reason that will not scale to the general case.** The
+  viewport's colour scale must be anchored across the whole bundle, not per path — a
+  per-path scale gives two ions a kilovolt apart the same colours. The obvious assertion
+  is "the reported range is wider than the widest single path", and it is *correct*: on a
+  packet launched from rest the margin is 0.3 eV in 20000, or 1.5e-5. That is a real
+  discrimination and a fragile one, because it depends on the ions having different
+  energies at all. What discriminates whatever the magnitudes are is that **no single
+  path owns both ends of the scale** — any per-path anchoring reports some one path's own
+  extremes and fails it. When an assertion works by comparing two magnitudes, ask whether
+  there is a structural statement of the same thing; a structural one cannot be made thin
+  by a change of model.
+
+- **A default that is right for a screen and wrong for the subject.** Helix Toolkit
+  defaults to a perspective camera, which is right for a game and wrong for an
+  instrument: an ion-optics drawing is read for where things are along the axis, and
+  that is the one thing perspective distorts. And `ZoomExtents` fired before layout, so a
+  1.3 m flight ran off the edge of the viewport — the control had been given a model but
+  not yet measured, so the fit was to whatever size it had before. Both are the same
+  shape: **a framework default is a decision somebody else made about a different
+  problem**, and the ones that produce a plausible-looking picture are the expensive kind.
+
+- **A build setting that is a backstop reads exactly like one that is load-bearing.**
+  `InvariantGlobalization` is set solution-wide for CLI-5's deterministic output, and WPF
+  cannot run under it at all — the font cache constructs `new CultureInfo("en")` while
+  measuring the first line of text. The question that mattered was not "can we turn it
+  off" but **what is it actually protecting**: locale-independence here comes from
+  passing `CultureInfo.InvariantCulture` explicitly at every formatting and parsing site,
+  and the flag was the belt to those braces. Turning it off for one assembly is therefore
+  safe and checkable; turning it off in a codebase that relied on it would move every
+  number a French-locale user saw. Before removing a global setting, find the thing it
+  duplicates — if there is nothing, it is not a backstop.

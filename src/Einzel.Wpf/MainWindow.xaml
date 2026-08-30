@@ -1,7 +1,8 @@
 <Window x:Class="Einzel.Wpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Einzel" Height="760" Width="1180"
+        xmlns:hx="clr-namespace:HelixToolkit.Wpf.SharpDX;assembly=HelixToolkit.Wpf.SharpDX"
+        Title="Einzel" Height="820" Width="1440"
         UseLayoutRounding="True">
   <Window.Resources>
     <Style TargetType="TextBlock">
@@ -22,7 +23,9 @@
 
     <Grid>
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="2*" />
+        <ColumnDefinition Width="1.6*" />
+        <ColumnDefinition Width="5" />
+        <ColumnDefinition Width="2.2*" />
         <ColumnDefinition Width="5" />
         <ColumnDefinition Width="1*" />
       </Grid.ColumnDefinitions>
@@ -54,7 +57,56 @@
 
       <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
 
+      <!--
+        The 3D viewport (section 16). DirectX 11 through Helix, because plain WPF
+        Media3D cannot draw 10^4 trajectories interactively - and because section 17
+        is emphatic that this path is screen tuning rather than an artifact. The
+        publication figure comes from Einzel.Render, which is vector, headless, and
+        owes nothing to this dependency.
+      -->
       <DockPanel Grid.Column="2">
+        <TextBlock DockPanel.Dock="Top" Text="Viewport" Margin="8,8,8,4" FontWeight="Bold" />
+
+        <!--
+          RND-8 on the face of the viewport. A diffusive model has no trajectories, and
+          an empty viewport looks exactly like one whose ions were all lost - so the
+          reason is stated where the picture would be rather than left to be inferred.
+        -->
+        <Border DockPanel.Dock="Bottom" x:Name="ViewportNote" Margin="8,0,8,8" Padding="6,4"
+                Background="#FFF4E5" Visibility="Collapsed">
+          <TextBlock x:Name="ViewportNoteText" TextWrapping="Wrap" FontSize="11" />
+        </Border>
+
+        <!-- The scale the colours mean, which a bundle coloured by energy needs to be read. -->
+        <Grid DockPanel.Dock="Bottom" Margin="8,4,8,4" x:Name="ScaleBar" Visibility="Collapsed">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" x:Name="ScaleLow" FontSize="11" VerticalAlignment="Center"
+                     Margin="0,0,6,0" />
+          <Border Grid.Column="1" Height="12" BorderThickness="1" BorderBrush="#C9CFD4">
+            <Rectangle x:Name="ScaleSwatch" />
+          </Border>
+          <TextBlock Grid.Column="2" x:Name="ScaleHigh" FontSize="11" VerticalAlignment="Center"
+                     Margin="6,0,0,0" />
+        </Grid>
+
+        <Border Margin="8,0,8,0" BorderThickness="1" BorderBrush="#C9CFD4">
+          <hx:Viewport3DX x:Name="Viewport"
+                          BackgroundColor="#141A20"
+                          ShowCoordinateSystem="True"
+                          ShowViewCube="False"
+                          IsZoomEnabled="True"
+                          IsPanEnabled="True"
+                          IsRotationEnabled="True" />
+        </Border>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" />
+
+      <DockPanel Grid.Column="4">
         <!--
           The journal, which is MCP-1's payoff: a person can see what an agent did to
           their model, by name, and undo it. The commands beneath are Amendment 25 -

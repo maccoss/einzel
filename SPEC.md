@@ -690,6 +690,43 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 26 · Helix Toolkit is still the right choice, and its DirectX backend is archived
+
+**r06 §16 names "Helix Toolkit on its DirectX 11 path" and gives the right reason** —
+plain WPF Media3D cannot render 10⁴ trajectories interactively. §20 asks for third-party
+status to be re-checked before being committed to rather than assumed, and doing that
+found two things r06 could not have known:
+
+- **The 2.x line contemporaneous with r06 is .NET Framework-only.** 2.27.3 restores on
+  net10 only through the NU1701 compatibility shim. **3.1.2** has real `net8.0-windows`
+  targets and restores clean with no fallback, so the version matters and the name alone
+  is not enough.
+- **Every Helix DirectX package depends on SharpDX, archived since December 2020.** The
+  named path rests on an unmaintained project, and r06 records it as a plain choice.
+
+**It is taken anyway, and the reason is §17's own boundary.** That section is emphatic
+that the interactive viewport is *screen tuning, not an artifact*: the publication figure
+comes from `Einzel.Render`, which is vector, headless and owes nothing to this dependency.
+So the archived library is confined to a window, and its failure mode is that the window
+stops working — not that a figure cannot be produced. Nothing that leaves Einzel passes
+through it. LIC-1 is verified rather than assumed: MIT from the embedded licence file, and
+the transitive closure is MIT throughout.
+
+**Recommend §16 record the version and the SharpDX position**, so that a later reader
+finds a decision taken with open eyes rather than a name that has quietly stopped meaning
+what it did. The exit, if it is ever needed, is bounded by the same boundary: replacing a
+viewport backend touches the shell and nothing else.
+
+**A second, smaller finding in the same place: WPF cannot run in globalization-invariant
+mode.** `Directory.Build.props` sets `InvariantGlobalization` for the whole solution, for
+CLI-5's deterministic output; WPF's font cache constructs `new CultureInfo("en")` while
+measuring the first line of text and the window dies before it is shown. The shell
+reverses the setting, and what it was protecting is unaffected — this codebase achieves
+locale-independence by passing `CultureInfo.InvariantCulture` explicitly at every
+formatting and parsing site, and the build flag was the belt to those braces. The parse is
+the one that matters: a value typed into the model tree is read invariantly whatever the
+host locale, because the file being edited is invariant.
+
 ---
 
 ## The shell, and the rest of §16
@@ -714,10 +751,24 @@ requirement rather than two because of AGT-2, and Amendment 25 strengthens it: e
 shell action should be *expressible* as a CLI invocation and journalled as one, so a
 human's session hands over to an agent and back in the same vocabulary.
 
-**The project exists and no view does.** `Einzel.Wpf` builds, is in the solution, and
-holds `ShellSession` - one model, the shared journal, and every action recorded as the
-`einzel` command that would reproduce it (Amendment 25). What it does not yet hold is a
-window worth opening: the XAML is a placeholder.
+**Three of the eleven views exist**, and the window opens on a model: `einzel-shell
+models/reflectron.json` gives a parameter tree, a trajectory bundle coloured by energy,
+and the journal beside them. `ShellSession` holds one model, the shared journal, and every
+action recorded as the `einzel` command that would reproduce it (Amendment 25).
+
+**Twice now a view could not be built until a command existed**, which is Amendment 25
+working rather than an obstacle it created. The model tree needed `OutlineCommand`, because
+a window that parsed the document to build a tree would grow its own idea of what a model
+is. The viewport needed `ViewportCommand`, because one that integrated its own trajectories
+would be a second transport implementation. Both are the same argument arriving twice, and
+both left an agent better off: an agent wanting a model's knobs, or its paths, gets the
+same answer without parsing anything.
+
+**And the shell compiles on Linux**, which was an open bet and is now measured rather than
+assumed: `EnableWindowsTargeting` is enough, XAML markup compilation included. It does not
+run there and is not meant to. Only `Einzel.Wpf.Tests` is Windows-only, and on another host
+it builds as an ordinary `net10.0` assembly with no sources, so a solution-wide
+`dotnet test` walks past it.
 
 **Both invariants are enforced by tests from the first commit**, which is the point of
 building the scaffolding before any view. `NothingBelowTheShellReferencesIt` scans every
@@ -737,8 +788,8 @@ Every view §16 requires:
 
 | View | State | What it needs beyond a window |
 | --- | --- | --- |
-| 3D viewport — geometry, potentials by colour, equipotentials, trajectory bundles | Not built | A raster path. Nothing here rasterises; Helix Toolkit on DirectX 11 is the named choice and is unverified since r06 |
-| Density clouds instead of trajectories for diffusive regions (TRN-2) | **Half built** | The density exists, is exported as `.vti` and is drawn as contours in a section. What is missing is only the interactive surface |
+| 3D viewport — geometry, potentials by colour, equipotentials, trajectory bundles | **Partial** | **Trajectory bundles coloured by energy are built**, on Helix Toolkit 3.1.2 / DirectX 11, one line geometry for the whole bundle rather than one node per ion — which is the whole reason §16 requires a raster path. The colour scale is anchored across the bundle by `ViewportCommand`, not per path, because a per-path scale gives two ions a kilovolt apart the same colours. RND-8 is enforced by asking the transport mode and stated on the face of the window. Geometry and equipotentials are not built: the section renderer extracts both as level sets in 2-D and there is no 3-D version. Helix's status is Amendment 26 |
+| Density clouds instead of trajectories for diffusive regions (TRN-2) | **Half built** | The density exists, is exported as `.vti` and is drawn as contours in a section. What is missing is only the interactive surface — the viewport currently *refuses* to draw such a model and says what it has instead, which is the correct half of the requirement |
 | Figure composer | **Seam built** | `RenderSpec` is already text in `figures/` that the CLI executes. A composer edits one of these and nothing else — which is UI-1's own test, and the reason it can be built last |
 | Animation timeline, per-phase playback rates, scrubbing, frame export | **Partial** | Per-phase playback rates and frame export are built: `einzel render animation` on a declared mapping, with the rate stamped on every frame and a `frames.json` schedule beside them. Scrubbing is a shell interaction and needs the window |
 | Model tree with parameter editing, live validation, units on every field | **Built** | `einzel outline` returns the declared surface - value, unit, bounds, description, what it resolves to in SI, and whether it is editable - because UI-1 forbids the shell from parsing the document to build a tree. A verb rather than a shell method (AGT-2), so an agent gets the same service. Every edit goes through the shared journal, so a change in the window is undoable by an agent on the same session. **Delivering it reversed a guard**: `SessionJournal` refused any edit that did not validate, which makes live validation impossible - a person typing 500 into a parameter bounded at 50 must see the tree with the complaint on it, and refusing every invalid document forbids any edit *sequence* that passes through one. Narrowed to refusing what does not *parse*, which is taint-never-block applied to input. `docs/lessons.md` |
@@ -747,23 +798,28 @@ Every view §16 requires:
 | Regime inspector | Not built | REG-2's numbers are computed on every run already |
 | Project view with model-drift and engine-drift state | Not built | `einzel verify` computes both |
 | Extension manager | Not built | The manifest carries trust level, versions and compatible range; LIC-2 wants licences surfaced and nothing does |
-| Journal with agent and human attribution | **Built** | `SessionJournal` in `Einzel.Commands`, rendered by the window beside the model tree, with the same entries an MCP client writes. A person sees what an agent did to their model, by name, and can undo it - which is MCP-1 and GRD-9 arriving where they were always aimed |
+| Journal with agent and human attribution | **Built** | `SessionJournal` in `Einzel.Commands`, rendered by the window beside the model tree, with the same entries an MCP client writes. A person sees what an agent did to their model, by name, and can undo it - which is MCP-1 and GRD-9 arriving where they were always aimed. Beneath it the same actions as `einzel` command lines (Amendment 25) |
 | Update notice with UPD-3's deferral options | Not built | Needs the whole of §18 |
 
 **The pattern in that table is the interesting part.** Almost every row is
 "presentation over something that already works" — which is what AGT-2 is supposed
-to produce, and is weak evidence that it has. Only two rows now need genuinely new
-capability: the 3D viewport needs a raster path, and the animation timeline needs
-scrubbing. The journal row was the third and is no longer - MCP-1 is met, and
-`SessionTools.Journal` is exposed so the window can render it.
+to produce, and is weak evidence that it has. The rows that needed genuinely new
+capability were the 3D viewport's raster path, which is now built, and the animation
+timeline's scrubbing, which is not.
 
-**But the invariant is untested, and that is the honest position.** AGT-2 says
-every capability reachable from the window is reachable from the CLI through the
-same command object. Today there is no window, so the claim cannot be violated and
-cannot be confirmed either. An invariant only ever checked against one surface is
-one that has already been broken by the time anyone notices — the same argument
-this project makes for running CI on Linux from the first commit. The MCP server
-is the cheaper second surface and would test it first.
+**AGT-2 is now tested against three surfaces rather than claimed.** Every MCP tool returns
+`CommandJson.Write` of the same outcome record the CLI serialises for `--json`, compared
+byte for byte; and every shell action is recorded as the `einzel` invocation that would
+reproduce it, asserted by test for the viewport and the tree alike. An invariant checked
+against one surface is one that has already been broken by the time anyone notices — that
+is no longer the position here.
+
+**What the window found that the other two surfaces could not.** Both new commands were
+written because a view needed them, and both improved the CLI: `einzel outline` gives an
+agent a model's knobs without parsing the document, and `ViewportCommand` enforces RND-8 by
+asking `ITransportMode.ProducesTrajectories` rather than the pressure. That is AGT-2
+running in the direction it was not designed for — the window pulling capability *into* the
+command layer rather than accumulating it privately.
 
 **UI-1's prohibition is the half worth protecting.** The shell owns layout, input,
 the interactive viewport and the update check, and owns no physics, no validation
@@ -1661,13 +1717,63 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     tools are built above the transport, so adding HTTP is a wrapper. A full `run` is
     also held back deliberately: it belongs where there is a progress surface and a
     viewport to put the answer in, and `einzel run` is one process launch away
-    meanwhile. `Einzel.Wpf` is now the only assembly on the "what does not exist" list
-    that MCP-1's shell row depends on.
+    meanwhile. The shell now exists and has a viewport, so that holds back nothing but
+    itself.
 
     **The first non-test dependency the project has taken**, and §20's table asks for
     the licence to be verified rather than assumed: `ModelContextProtocol.Core` 2.2.0
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
+
+11. **The shell (§16).** Three views of eleven, and the window opens on a model:
+    `einzel-shell models/reflectron.json` gives a parameter tree with live validation
+    and units on every field, the shared journal with agent and human attribution, and
+    a 3-D viewport drawing trajectory bundles coloured by energy. What remains is eight
+    views, and the honest summary of them is *presentation over something that already
+    works* — which is what AGT-2 is supposed to produce.
+
+    **Twice a view could not be built until a command existed, and both times the
+    command layer gained the capability.** The model tree needed `einzel outline`,
+    because a window that parsed the document to build a tree would grow its own idea of
+    what a model is; the viewport needed `ViewportCommand`, because one that integrated
+    its own trajectories would be a second transport implementation. That is Amendment
+    25 running in the direction it was not designed for — the window pulling capability
+    *into* the command layer rather than accumulating it privately — and it is the
+    strongest evidence so far that AGT-2 is real rather than aspirational.
+
+    **The viewport's own finding is about the colour scale.** §16 asks for bundles
+    coloured by energy, and a scale taken per path gives every ion the same colours
+    whatever its energy — two ions a kilovolt apart look identical and the picture says
+    they were the same. The range is therefore reported by the command over the whole
+    bundle. It is the same failure the animation's contour levels had in the other axis,
+    where anchoring per frame made a film of a spreading packet show a packet doing
+    nothing. The discriminating test is not that the range is wider than the widest
+    single path — that margin is 1.5e-5 on a packet launched from rest — but that **no
+    single path owns both ends of the scale**, which any per-path anchoring fails
+    whatever the magnitudes are.
+
+    **RND-8 is on the face of the window**, asked of `ITransportMode.ProducesTrajectories`
+    rather than of the pressure: a diffusive model draws no paths and says what it has
+    instead, because an empty viewport and one whose ions were all lost look identical
+    and only one of them is a statement about the physics.
+
+    **Two open bets are now settled by measurement rather than argument.** The whole
+    solution **builds on Linux, XAML markup compilation included** — `EnableWindowsTargeting`
+    is enough — and `Einzel.Wpf.Tests`, the one Windows-only test project, is walked past
+    by a solution-wide `dotnet test` there. 848 tests on Windows, 843 on Linux, both green.
+
+    **And two things the third surface cost.** WPF cannot run in globalization-invariant
+    mode, which the whole solution sets for CLI-5; the shell reverses it, and what that
+    setting protected is unaffected because every formatting and parsing site passes
+    `CultureInfo.InvariantCulture` explicitly (Amendment 26). And Helix Toolkit's DirectX
+    backend is SharpDX, **archived since December 2020** — taken knowingly, because §17
+    confines this path to screen tuning and nothing that leaves Einzel passes through it.
+
+    **Next, in order of what unblocks the most:** geometry and equipotentials in the
+    viewport, which need a 3-D level-set extraction the section renderer already has in
+    2-D; the density cloud, which needs only a surface since the density is already
+    computed and contoured; then the sequence editor and the regime inspector, both pure
+    presentation over data that exists.
 
 ## Open decisions
 
