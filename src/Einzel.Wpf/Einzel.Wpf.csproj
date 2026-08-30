@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Einzel.Wpf</RootNamespace>
+    <AssemblyName>einzel-shell</AssemblyName>
+
+    <!--
+      Lets the project restore and compile on Linux, where the Windows targeting
+      packs are not installed by default. It does not make it runnable there and is
+      not meant to: what CI checks on Linux is that nothing below the shell has
+      acquired a dependency on it, and the shell compiling is a bonus.
+    -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <Description>
+      The shell. Spec section 16: WPF on Windows, eleven required views. UI-1 is
+      the constraint that shapes it - the shell owns layout, input, the interactive
+      viewport and the update check, and owns no physics, no validation rules, no
+      file format knowledge and no render output. Amendment 25 adds that every
+      action here must be expressible as a CLI invocation and journalled as one, so
+      a capability with no command spelling cannot be added to the window.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
+  </ItemGroup>
+
+</Project>

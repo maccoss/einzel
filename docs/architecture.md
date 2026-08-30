@@ -21,7 +21,10 @@ Engine outward. Each references only what is above it in this list.
 
 | `Einzel.Mcp` | The live-session server, over one shared attributed journal |
 
-Not yet built: `Einzel.Compute`, `Einzel.Update`, `Einzel.Wpf`.
+Not yet built: `Einzel.Compute`, `Einzel.Update`. `Einzel.Wpf` exists as a project
+and a session type, with none of §16's eleven views: what it holds is the seam the
+views will sit on, and the tests that keep invariant 1 and UI-1 true while they are
+written.
 
 The CLI, the MCP server, and the future shell are **peers, not a stack**. All
 three drive the same command objects. That is what makes "nothing exists only in

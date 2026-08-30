@@ -892,6 +892,16 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Also added, and overdue by five schema bumps: a test that **every version `SupportedVersions` claims to read actually reads**. §14 has asked for one since 0.2 and none existed, so "every earlier document still reads" has been an assertion in a list rather than a measurement. It ships with a control — an unknown version is refused — because a reader that accepted anything would pass the first half without reading a single version right. It also caught a slip in itself on the first run: the guard asserting the edit had happened fired on the identity case, where replacing 0.3 with 0.3 changes nothing. Details in `docs/model-format.md`, `docs/pressure.md` and `docs/lessons.md`.
 
+- **`Einzel.Wpf` exists, and no view does — which is the right order.** The project builds, is in the solution, and holds `ShellSession`: one model, the shared `SessionJournal`, and every action recorded as the `einzel` command that would reproduce it. The XAML is a placeholder. What was built first is the scaffolding that keeps the invariants true while eleven views get written, because both are the kind that are cheap to hold and expensive to recover.
+
+  **Invariant 1 is checked from the Linux-running test project**, which is the whole point — an invariant only ever checked on a developer's Windows box is one that has already been broken by the time anyone notices. The scan is over the assemblies actually present beside the tests rather than a hardcoded list, with a `MustBePresent` guard so a scan that found nothing cannot pass: that vacuous truth has caught this project four times already.
+
+  **UI-1 needed two different checks, and the difference cost a mutation.** `GetReferencedAssemblies` reports what the **compiler emitted** — what the code *uses* — so declaring a `ProjectReference` to the whole transport engine left no trace in the metadata and the test passed. UI-1 is about what the shell may reach **for**, not what it has reached for so far, so the project file is checked too. Only the declared-reference check catches that mutation, and the emitted one still earns its place: a transitive reference through a third assembly appears in no csproj.
+
+  **A trap in verifying it**: nothing references the shell, so `dotnet test` never rebuilds it and a local mutation check runs against a stale binary. The first mutation "passed" for exactly that reason and was nearly believed. On CI the full build precedes the tests, so it is sound there.
+
+  **`EnableWindowsTargeting` is an unsettled bet.** It lets the shell restore and compile on Linux so CI can keep building the whole solution on both runners; whether WPF *XAML* compilation works there is unverifiable on a Windows machine. If it fails on first push the answer is a solution filter excluding the shell on Linux — invariant 1's real content is unaffected either way, since the boundary test does not need the shell to exist.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

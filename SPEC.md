@@ -714,7 +714,26 @@ requirement rather than two because of AGT-2, and Amendment 25 strengthens it: e
 shell action should be *expressible* as a CLI invocation and journalled as one, so a
 human's session hands over to an agent and back in the same vocabulary.
 
-**None of it is built.** `Einzel.Wpf` does not exist. Every view §16 requires:
+**The project exists and no view does.** `Einzel.Wpf` builds, is in the solution, and
+holds `ShellSession` - one model, the shared journal, and every action recorded as the
+`einzel` command that would reproduce it (Amendment 25). What it does not yet hold is a
+window worth opening: the XAML is a placeholder.
+
+**Both invariants are enforced by tests from the first commit**, which is the point of
+building the scaffolding before any view. `NothingBelowTheShellReferencesIt` scans every
+platform assembly beside the Linux-running test project - an invariant only ever checked
+on a developer's Windows box is one already broken - and `TheShellReachesThePlatform
+ThroughTheCommandLayer` checks that the shell declares a reference to `Einzel.Commands`
+and to nothing else in the engine.
+
+**That second test had to check two different things, and the difference cost a
+mutation.** `GetReferencedAssemblies` reports what the *compiler emitted* - what the code
+uses - so adding a `ProjectReference` to the whole transport engine left no trace in the
+metadata and the test passed. UI-1 is about what the shell may reach *for*, not what it
+has reached for so far, so the project file is now checked too. Only the declared-
+reference check catches that mutation.
+
+Every view §16 requires:
 
 | View | State | What it needs beyond a window |
 | --- | --- | --- |
