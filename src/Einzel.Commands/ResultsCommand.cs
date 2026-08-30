@@ -5,6 +5,32 @@ using Einzel.Project;
 
 namespace Einzel.Commands;
 
+/// <summary>A GRD-1 envelope, in the shape a consumer of this command sees.</summary>
+/// <param name="Value">The magnitude, expressed in <paramref name="Unit"/>.</param>
+/// <param name="Unit">The unit it is expressed in.</param>
+/// <param name="Lower">The bottom of the interval, in the same unit.</param>
+/// <param name="Upper">The top of it.</param>
+/// <param name="ConfidenceLevel">What fraction the interval is meant to contain.</param>
+/// <param name="Evidence">What stands behind the value, by kind.</param>
+/// <param name="Warnings">What is active on it (GRD-2).</param>
+/// <remarks>
+/// <b>A command-layer shape rather than the wire one, and the invariant test is why.</b>
+/// The first version handed callers <c>Einzel.Io.MeasuredJson</c> directly, which is what
+/// the CLI serialises - convenient, and it made the shell acquire a reference to
+/// <c>Einzel.Io</c> merely by reading a property off it. UI-1 gives the shell no file
+/// format knowledge, so a command's return type is part of that boundary: exposing a lower
+/// assembly's type on a public surface pulls every consumer's reference along with it,
+/// silently and without anybody writing a using directive.
+/// </remarks>
+public sealed record FigureEnvelope(
+    double Value,
+    string Unit,
+    double Lower,
+    double Upper,
+    double ConfidenceLevel,
+    string Evidence,
+    IReadOnlyList<ValidityWarning> Warnings);
+
 /// <summary>One figure a run produced, or the reason it did not.</summary>
 /// <param name="Name">Its name in the figure-of-merit registry.</param>
 /// <param name="Class">Which of §12's families it belongs to.</param>
@@ -25,7 +51,7 @@ public sealed record ReportedFigure(
     string Name,
     string Class,
     string Description,
-    MeasuredJson? Measured,
+    FigureEnvelope? Measured,
     string? Absent);
 
 /// <summary>The figures of one §12 class.</summary>
@@ -186,8 +212,18 @@ public static class ResultsCommand
         new(figure.Name,
             Named(figure.Class),
             figure.Description,
-            figures.GetValueOrDefault(figure.Name),
+            figures.TryGetValue(figure.Name, out var measured) ? Envelope(measured) : null,
             figures.ContainsKey(figure.Name) ? null : "this run did not produce it");
+
+    /// <summary>The wire envelope, in the shape this command's callers see.</summary>
+    private static FigureEnvelope Envelope(MeasuredJson measured) =>
+        new(measured.Value,
+            measured.Unit,
+            measured.Uncertainty.Lower,
+            measured.Uncertainty.Upper,
+            measured.Uncertainty.ConfidenceLevel,
+            measured.Evidence.Kind,
+            [.. measured.Warnings.Select(Warning)]);
 
     /// <summary>What a full run produced, by figure name.</summary>
     private static (IReadOnlyDictionary<string, MeasuredJson>, IReadOnlyList<ValidityWarning>)

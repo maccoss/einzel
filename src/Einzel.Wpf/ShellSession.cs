@@ -159,6 +159,50 @@ public sealed class ShellSession
         return ViewportCommand.Execute(Journal.ModelPath);
     }
 
+    /// <summary>Runs the model and reports its figures by §12's accuracy class.</summary>
+    /// <param name="preview">
+    /// Whether to use the preview tier, which is cheaper, writes nothing, and is
+    /// permanently marked (AGT-5, GRD-5).
+    /// </param>
+    /// <returns>The figures, grouped.</returns>
+    /// <remarks>
+    /// Recorded as the invocation that produced it, which for a full run writes a manifest
+    /// and a result. That is correct rather than a side effect to apologise for: Amendment
+    /// 25 requires every shell action to be expressible as a command line, and a view that
+    /// computed the same numbers without leaving the record behind would be a capability
+    /// the command line does not have.
+    /// </remarks>
+    public ResultsOutcome Results(bool preview = false)
+    {
+        Journal.Reconcile();
+
+        Record(
+            preview
+                ? $"einzel preview {Quoted(Journal.ModelPath)}"
+                : $"einzel run {Quoted(Journal.ModelPath)}",
+            entry: null);
+
+        return ResultsCommand.Execute(Journal.ModelPath, preview);
+    }
+
+    /// <summary>Reads REG-2's dimensionless numbers along the model's own path.</summary>
+    /// <returns>The profile, and where the selected description does not hold.</returns>
+    /// <remarks>
+    /// Recorded as <c>einzel run</c>, because that is the invocation whose output carries
+    /// the same numbers - a run reports them at the worst point in the gas, and this
+    /// reports them where the ion actually goes. The window computes none of it: UI-1 puts
+    /// physics outside the shell, and a viewport or an inspector deciding for itself where
+    /// a regime boundary lies would be a second copy of spec figure 4.
+    /// </remarks>
+    public RegimeProfile Regime()
+    {
+        Journal.Reconcile();
+
+        Record($"einzel run {Quoted(Journal.ModelPath)}", entry: null);
+
+        return RegimeCommand.Execute(Journal.ModelPath);
+    }
+
     private ShellAction Record(string command, JournalEntry? entry)
     {
         var action = new ShellAction(command, entry);

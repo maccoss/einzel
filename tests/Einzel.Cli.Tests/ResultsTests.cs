@@ -122,17 +122,18 @@ public sealed class ResultsTests(ITestOutputHelper output) : IDisposable
             outcome.Classes.SelectMany(c => c.Figures),
             f => f.Name == "flightTime");
 
-        var measured = Assert.IsType<Io.MeasuredJson>(flight.Measured);
+        var measured = Assert.IsType<FigureEnvelope>(flight.Measured);
 
         output.WriteLine(
             $"{flight.Name} = {measured.Value:F6} {measured.Unit} "
-            + $"[{measured.Uncertainty.Lower:G8}, {measured.Uncertainty.Upper:G8}] at {measured.Uncertainty.ConfidenceLevel:P0}");
+            + $"[{measured.Lower:G8}, {measured.Upper:G8}] at {measured.ConfidenceLevel:P0} "
+            + $"on {measured.Evidence}");
 
         Assert.Equal("T", flight.Class);
         Assert.Equal("us", measured.Unit);
         Assert.True(measured.Value > 0.0);
-        Assert.NotNull(measured.Uncertainty);
-        Assert.NotNull(measured.Evidence);
+        Assert.True(measured.Upper >= measured.Lower);
+        Assert.False(string.IsNullOrWhiteSpace(measured.Evidence));
         Assert.Null(flight.Absent);
     }
 
@@ -210,6 +211,8 @@ public sealed class ResultsTests(ITestOutputHelper output) : IDisposable
 
         // The taint is on the figure itself, not only on the outcome - a figure copied out
         // of this view carries it.
-        Assert.Contains(previewFlight.Measured.Warnings, w => w.Code.Contains("preview"));
+        Assert.Contains(
+            previewFlight.Measured.Warnings,
+            w => w.Code.Contains("preview", StringComparison.Ordinal));
     }
 }

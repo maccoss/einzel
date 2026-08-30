@@ -1,7 +1,7 @@
 # The shell
 
-WPF on Windows, and §16's eleven views. Three exist: the model tree, the journal, and
-the 3D viewport.
+WPF on Windows, and §16's eleven views. Five exist: the model tree, the journal, the 3D
+viewport, results by accuracy class, and the regime inspector.
 
 **UI-1 is the whole design.** The shell owns layout, input, the interactive viewport and
 the update check. It owns no physics, no validation rules, no file format knowledge and
@@ -17,8 +17,12 @@ a command existed:
 | --- | --- | --- |
 | Model tree | `OutlineCommand` | A window that parsed the model to build a tree would grow its own idea of what a model is, and the two would come to disagree |
 | 3D viewport | `ViewportCommand` | A viewport that integrated its own trajectories would be a second transport implementation |
+| Results by class | `ResultsCommand`, and `AccuracyClass` on the registry | Which of §12's families a figure belongs to is the engine's taxonomy; a window sorting them itself would be a second copy of §12 |
+| Regime inspector | `RegimeDiagnostics.MeasureAt` and `RegimeCommand` | Where a regime boundary lies is spec figure 4's, and the numbers had only ever been computed at the worst point in the gas |
 
-Both are the same argument, arriving twice. The one to watch is the in-process path
+The same argument, arriving four times — and each time the command layer gained the
+capability rather than the window keeping it, so an agent is better off for a window having
+been built. The one to watch is the in-process path
 acquiring an argument the command form has no spelling for; that is the moment the
 amendment is being broken, and it will look like a convenience at the time.
 
@@ -343,6 +347,64 @@ indicator in the screenshot, which is the only way this class of defect shows up
 electrodes were extracted correctly, drawn correctly, and could not be seen. Worth stating
 because it is the failure mode where the data is right and the picture is empty, and the
 instinct is to go looking at the data.
+
+## Results by accuracy class
+
+§12 sorts figures into three families and the sort is not decoration: a Class T figure
+describes one packet's arrival, a Class S figure a population, a Class B figure where a
+boundary in operating space lies. **That taxonomy was recorded nowhere in the code** —
+`FigureOfMeritInfo` carried a name, a unit, a description and which way is better. It is on
+the registry now, because a window deciding for itself which figures are Class S would be
+growing its own copy of §12.
+
+Two figures are deliberately in no class. `flightTime` is the raw arrival quantity the
+Class T figures are computed *from*, and `energyDrift` says in its own description that it
+is a diagnostic rather than a design target. §12 lists neither, and assigning them a class
+to make the grouping tidy would weaken what it says about the twelve that do belong.
+
+**The layout is the requirement.** §16 says uncertainty and warnings sit alongside the
+value and never behind a disclosure control — the rule in that section most easily broken
+by somebody who has not read §4, because a value is small and an envelope is bulky and
+hiding the bulk is the natural thing to do. Every part is a line.
+
+**And building it found a real hole: 1 of 14 figures carries a GRD-1 envelope.** GRD-1 says
+the API offers no way to obtain a scalar alone, and `FiguresOfMerit.Evaluator` is a
+deliberate, argued exception for ranking — but the consequence nobody had written down is
+that most figures exist *only* in the excepted form. There is no way to ask this build for a
+turn-around time with an uncertainty on it. The view reports them absent with the reason
+rather than printing bare numbers in the one view whose whole purpose is showing the
+envelope; `results.no-envelope` names all thirteen.
+
+## The regime inspector
+
+§16 asks for "governing dimensionless numbers **along a selected path**, violations
+highlighted", and the *along* is the substance. Every run already computes these numbers —
+at the **worst** point anywhere in the gas, which is the right answer for a warning and
+useless for deciding what to change. `RegimeDiagnostics.MeasureAt` reports one point
+instead, so "outside validity" becomes "outside validity between 12 and 31 millimetres".
+
+The two share a private core and are asserted **bit-identical** wherever the gas is
+uniform, because a uniform gas makes them the same question. Where it is not, they must
+differ — on a hundredfold density ramp:
+
+| | thin end | thick end | worst-case |
+| --- | --- | --- | --- |
+| Knudsen number | **4.17** | **0.042** | 0.042 |
+| Reduced field | 40000 Td | 400 Td | — |
+
+One end free-molecular, the other a continuum, in the same instrument. A single verdict
+describes neither.
+
+**Thresholds are not restated in the view.** Each sample goes to the same
+`RegimeDiagnostics.ForTrajectoryMode` a run uses, so a boundary that moves moves once — a
+second copy of "above 1e-2 mbar trajectory integration is the wrong description" would be a
+second thing to keep in step with spec figure 4.
+
+**Three defects in the first version, two of them repeats.** The path was flown in a
+*vacuum* — no collision sampler — and the gas numbers reported along it, which is the same
+silent substitution `RunCommand`'s own comment warns against. A *diffusive* model was flown
+too, until RND-8 was asked of the mode rather than the pressure. And the excursion test used
+a model that declares no gas, so it returned early and asserted nothing.
 
 ## What is not built
 

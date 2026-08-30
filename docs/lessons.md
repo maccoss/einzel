@@ -1414,3 +1414,25 @@ actually caught them were:
   It failed on its second run. **A conditional assertion needs its condition checked against
   the failing case, not just the passing one**: the question is not "when is this safe to
   assert" but "what does the population of runs that reach the assertion look like".
+
+- **A command's return type is part of the architectural boundary, and a caller acquires a
+  dependency by reading a property.** `ResultsCommand` handed back
+  `Einzel.Io.MeasuredJson` — the type the CLI already serialises, so it looked like reuse
+  rather than a decision. The shell then referenced `Einzel.Io` without a single `using`
+  directive being written for it, because reading `measured.Uncertainty.Lower` is enough.
+  UI-1's invariant test caught it, which is the point of having the invariant checked by a
+  machine: nobody reviewing the view model would have seen a boundary being crossed, since
+  the code that crosses it looks like ordinary property access. **Where an assembly
+  boundary matters, the types on the public surface are the boundary** — not the using
+  directives, and not the project references somebody remembered to omit.
+
+- **A control experiment before a fix, when the symptom appeared alongside a change.** The
+  shell window started rendering blank white immediately after I added three new panels, so
+  the panels were the obvious suspect. Reverting the XAML and rebuilding produced the same
+  blank window from code that had rendered correctly an hour earlier — the graphics state
+  had degraded over about fifteen launches and hard kills in one session. Without the
+  control I would have spent the time "fixing" working code. The visual tree was
+  independently readable through UI Automation throughout, which is what let the work
+  continue: **when the display is unreliable, assert on the content rather than the
+  picture** — and for "are the right numbers in the right cells" that is the better check
+  anyway.
