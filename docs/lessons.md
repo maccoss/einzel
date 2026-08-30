@@ -1133,6 +1133,60 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## The end of a run is where the answer is, and where the picture is not
+
+A diffusive run reports the density it *ended* with. The section renderer learned that
+this is the wrong thing to draw and gained an instant to draw at; the note written at the
+time says it plainly - "a model whose ions have all arrived left an empty box - correctly,
+and uselessly, because the picture worth having is the packet in flight."
+
+Adding the density cloud to the viewport, I anchored it to the end of the run. Its own
+test failed immediately, and the numbers say why: the shipped drift tube launches 10,000
+ions, **collects 9,999.76, and leaves 1.8e-302 behind**. Drawing that is drawing nothing,
+for exactly the models that work.
+
+The general form is worth more than the fix. **A result and a picture of a result want
+different instants.** The end of a run is the only moment that answers "what happened" -
+transmission, transit time, where the ions went - and it is the one moment guaranteed to
+be empty of the thing a picture is of. Any surface that draws a time-evolving quantity
+needs an instant chosen for the drawing, and needs to say which instant it chose.
+
+The viewport now takes snapshots across the flight and draws the middle of those still
+holding a packet, reporting it as `render.density-at-instant`. That the caller can name
+its own instant is the same seam animation scrubbing will need.
+
+## Every normal was exactly zero, and that located a transposition
+
+The density shells passed every structural check written for them: three coordinates per
+vertex, one normal per vertex, triangle indices in range, levels a decade apart. What
+failed was that **760 of 760 normals had length zero**.
+
+`Surfaces.Orient` takes the normal from the gradient of a scalar and leaves it at zero
+where the gradient vanishes. A zero everywhere means the scalar was flat everywhere the
+surface is - and the vertex it named was at y = 36.4 mm on a grid spanning +/-6 mm.
+
+The cause was that I filled the sample array as `values[row, column]` where
+`Contours.Sample` builds `values[column, row]`. Transposed, the contour is traced
+somewhere the density is not: still a well-formed mesh, still watertight, still correctly
+indexed, and sitting in a region where the density is uniformly zero.
+
+Two things generalise.
+
+- **A geometric invariant catches what a structural check cannot.** Counts, ranges and
+  parities all held. What could not hold was a normal being a unit vector, because that
+  depends on the surface sitting where the field actually varies.
+- **A zero-length normal is a locator, not just a defect.** It says "the field is flat
+  here", and printing *where* turned a wrong answer into a coordinate that was obviously
+  outside the domain. The first version of the test only reported the worst magnitude,
+  which was `1.000` and said nothing at all.
+
+A near-miss on the same fix is worth recording: I first assumed the cause was the
+differencing step, since `OrientStepMetres` is 1e-6 and is chosen for a signed distance -
+which changes by the step itself - while a density changes by whatever it changes by.
+That reasoning is correct and the step is now the density's own half-cell, but it was not
+the bug. **A plausible explanation that fixes nothing is the expensive kind**, and only
+re-measuring separated them.
+
 ## Enumerating a requirement's population, rather than believing it
 
 `GRD-2` says validity warnings travel with the result through every layer, and then

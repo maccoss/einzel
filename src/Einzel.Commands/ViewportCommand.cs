@@ -43,6 +43,27 @@ public sealed record ConductorSurface(
     IReadOnlyList<double> Normals,
     IReadOnlyList<int> Triangles);
 
+/// <summary>One shell of the density, at a stated level.</summary>
+/// <param name="DensityPerCubicMetre">The level this surface sits at, in ions per m3.</param>
+/// <param name="DecadesBelowPeak">
+/// How far below the packet's peak it is, which is the number a reader actually uses.
+/// </param>
+/// <param name="VerticesMm">Consecutive x, y, z triples, in millimetres.</param>
+/// <param name="Normals">One unit normal per vertex, outward.</param>
+/// <param name="Triangles">Vertex indices, three per triangle.</param>
+/// <remarks>
+/// <b>The level is on the record, not implied by the order</b> (GRD-12). A shell drawn
+/// without the density it stands for is a shape rather than a measurement, and a reader
+/// looking at three nested surfaces has no way to tell a packet spanning one decade from
+/// one spanning six.
+/// </remarks>
+public sealed record DensityShell(
+    double DensityPerCubicMetre,
+    int DecadesBelowPeak,
+    IReadOnlyList<double> VerticesMm,
+    IReadOnlyList<double> Normals,
+    IReadOnlyList<int> Triangles);
+
 /// <summary>One equipotential, as polylines on the section plane.</summary>
 /// <param name="PotentialVolts">The level, in volts.</param>
 /// <param name="PathsMm">Each path as consecutive x, y, z triples in millimetres.</param>
@@ -66,6 +87,15 @@ public sealed record Equipotential(
 /// The lowest potential anywhere on the section plane, or absent when there is no field.
 /// </param>
 /// <param name="HighestPotentialVolts">The highest, likewise.</param>
+/// <param name="Density">
+/// The density, as nested shells, for a mode that computes one rather than trajectories.
+/// </param>
+/// <param name="PeakDensityPerCubicMetre">
+/// The peak the shells are measured from, or absent where there is no density.
+/// </param>
+/// <param name="DensityAtUs">
+/// The instant the shells are the density at, or absent where there is no density.
+/// </param>
 /// <param name="Warnings">What the viewport must show alongside (GRD-2).</param>
 /// <remarks>
 /// <para>
@@ -90,6 +120,9 @@ public sealed record ViewportOutcome(
     IReadOnlyList<Equipotential> Equipotentials,
     double? LowestPotentialVolts,
     double? HighestPotentialVolts,
+    IReadOnlyList<DensityShell> Density,
+    double? PeakDensityPerCubicMetre,
+    double? DensityAtUs,
     IReadOnlyList<ValidityWarning> Warnings);
 
 /// <summary>
@@ -121,10 +154,16 @@ public static class ViewportCommand
     /// <summary>Reads what a viewport should draw.</summary>
     /// <param name="modelPath">The model.</param>
     /// <param name="samplesPerPath">How finely to sample each path.</param>
+    /// <param name="densityAtSeconds">
+    /// The instant to draw a diffusive model's density at, or null to choose one. The
+    /// end of a run is the wrong default: a packet whose ions arrived leaves nothing
+    /// there, so a viewport anchored to it shows an empty box for every model that works.
+    /// </param>
     /// <returns>The paths, or none with a reason.</returns>
     /// <exception cref="ArgumentException"><paramref name="modelPath"/> is blank.</exception>
     /// <exception cref="Core.Errors.EinzelException">The model does not validate.</exception>
-    public static ViewportOutcome Execute(string modelPath, int samplesPerPath = 256)
+    public static ViewportOutcome Execute(
+        string modelPath, int samplesPerPath = 256, double? densityAtSeconds = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentOutOfRangeException.ThrowIfLessThan(samplesPerPath, 2);
@@ -160,7 +199,8 @@ public static class ViewportCommand
                 "render.no-trajectories",
                 $"the '{model.TransportMode}' transport mode computes a density rather "
                 + "than trajectories, so there are no paths to draw. What this model has "
-                + "instead is a density field, which is drawn as contours",
+                + "instead is a density field, drawn here as nested shells at decades "
+                + "below its peak",
                 WarningSeverity.Provenance));
 
             // The geometry is still drawn. RND-8 forbids trajectories through a
@@ -168,9 +208,12 @@ public static class ViewportCommand
             // funnel with no rings shown is a picture of nothing at all.
             var (conductors, low, high) = Geometry(model, field, warnings);
 
+            var (shells, peak, at) = Cloud(model, field, warnings, densityAtSeconds);
+
             return new ViewportOutcome(
                 absolute, [], false, null, null,
-                conductors, Levels(model, field, low, high), low, high, warnings);
+                conductors, Levels(model, field, low, high), low, high,
+                shells, peak, at, warnings);
         }
 
         var species = IonSpecies.FromModel(model);
@@ -227,7 +270,230 @@ public static class ViewportCommand
 
         return new ViewportOutcome(
             absolute, paths, true, lowest, highest,
-            surfaces, Levels(model, field, floor, ceiling, paths), floor, ceiling, warnings);
+            surfaces, Levels(model, field, floor, ceiling, paths), floor, ceiling,
+            [], null, null, warnings);
+    }
+
+    /// <summary>The density, as nested shells at decades below its peak.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The half of TRN-2 the window was missing.</b> RND-8 says never to draw
+    /// trajectories through a diffusive region, which the viewport already honoured - and
+    /// on its own that is entirely negative. The mode's principal result could be
+    /// summarised into a transmission and a transit time and looked at in no other form,
+    /// so the honest picture of a funnel at a millibar was an empty box. The 2-D section
+    /// has drawn density contours since the mode was wired up; the viewport drew nothing,
+    /// while its own warning said the density "is drawn as contours".
+    /// </para>
+    /// <para>
+    /// <b>Decades, and the same rule the section uses</b>, because a density spans orders
+    /// of magnitude - a packet's tail is a millionth of its core, not a small fraction of
+    /// it - so evenly spaced shells draw the top decade several times over and the extent
+    /// not at all.
+    /// </para>
+    /// <para>
+    /// <b>Extruded or revolved by what the solve claims about the third dimension</b>,
+    /// which is the rule the conductors already follow: a cross-section says the geometry
+    /// repeats along z, an axisymmetric half-plane says it repeats all the way round. A
+    /// density computed on a half-plane grid really is a solid of revolution, and drawing
+    /// it flat would understate where the ions are by a whole dimension. The flag is taken
+    /// from the density the solver produced rather than re-derived from the model, so the
+    /// drawing cannot disagree with the thing it draws.
+    /// </para>
+    /// <para>
+    /// <b>Drawn at an instant, and the default is not the end of the run.</b> A diffusive
+    /// run reports the density it <em>ended</em> with, which for any model whose packet
+    /// actually arrives is empty: the shipped drift tube collects 9,999.76 of 10,000 ions
+    /// and leaves 1.8e-302 behind. Drawing that is drawing nothing, for exactly the models
+    /// that work. The 2-D section learned this and gained an instant to draw at; this is
+    /// the same lesson met a second time, caught by its own test rather than shipped.
+    /// </para>
+    /// <para>
+    /// So the run is asked for snapshots across its flight and the drawing is taken from
+    /// the <b>middle of those that hold a drawable density</b> - mid-flight while there is
+    /// still a packet to see. The instant is reported rather than implied, because a
+    /// density drawn without saying when is a shape rather than a measurement, and the
+    /// caller may name its own to scrub through the flight.
+    /// </para>
+    /// <para>
+    /// <b>Recording does not perturb what it records</b> - asserted where the snapshots
+    /// were built, not assumed here - so asking for them costs the memory of the clones
+    /// and nothing in the answer.
+    /// </para>
+    /// <para>
+    /// <b>This runs the transport</b>, which a camera move must not. It is on the same
+    /// explicit redraw the rest of the viewport is, and the cost is the run's - a number
+    /// GRD-8 makes available before the work starts for exactly this mode.
+    /// </para>
+    /// </remarks>
+    private static (IReadOnlyList<DensityShell> Shells, double? Peak, double? AtUs) Cloud(
+        CompiledModel model,
+        IElectrostaticField field,
+        List<ValidityWarning> warnings,
+        double? atSeconds)
+    {
+        // Spread across the declared flight rather than the elapsed one, which is not
+        // known until the run is over. A run that stops early simply leaves the later
+        // instants unfilled, and those are skipped below.
+        var ceiling = model.MaximumFlightTimeSi;
+
+        var wanted = atSeconds is { } named
+            ? (IReadOnlyList<double>)[Math.Clamp(named, 0.0, ceiling)]
+            : [.. Enumerable.Range(1, DensityInstants).Select(
+                i => ceiling * i / (DensityInstants + 1.0))];
+
+        DiffusiveOutcome run;
+
+        try
+        {
+            run = DiffusionRun.Execute(model, field, [], snapshotSeconds: wanted);
+        }
+        catch (Core.Errors.EinzelException failure)
+        {
+            // A refusal is a thing to say, not a thing to draw nothing about. The
+            // viewport is where somebody looks when they cannot tell why a model shows
+            // them an empty box, so the reason has to arrive with the emptiness.
+            warnings.Add(new ValidityWarning(
+                "render.no-density",
+                "this model computes a density but the transport refused, so there is "
+                + $"nothing to draw: {failure.Error.Constraint}",
+                WarningSeverity.Provenance));
+
+            return ([], null, null);
+        }
+
+        warnings.AddRange(run.Warnings);
+
+        var grid = run.Grid;
+
+        var spanU = grid.MaxX - grid.OriginX;
+        var spanV = grid.MaxY - grid.OriginY;
+        var area = Math.Max(spanU * spanV, 1e-12);
+
+        // Not merely positive: a run that collected everything leaves a residue orders
+        // below one ion in the whole domain, and contouring that draws the shape of the
+        // round-off. The same floor the section uses, for the same reason.
+        static double Floor(Transport.Diffusion.DensityField field, double area) =>
+            1e-6 * Math.Max(1.0, field.Population()) / area;
+
+        // The middle of the instants that hold something, so the packet is as far along
+        // as it can be while still being a packet. The final density is the fallback
+        // rather than the default, which is the way round this was wrong first.
+        var usable = run.Result.Snapshots
+            .Where(snapshot => snapshot.Density.Peak() > Floor(snapshot.Density, area))
+            .ToList();
+
+        var chosen = usable.Count > 0 ? usable[usable.Count / 2] : null;
+
+        var density = chosen?.Density ?? run.Result.Density;
+        var atSecondsDrawn = chosen?.AtSeconds ?? run.Result.ElapsedSeconds;
+        var peak = density.Peak();
+        var floor = Floor(density, area);
+
+        if (!(peak > floor))
+        {
+            warnings.Add(new ValidityWarning(
+                "render.no-density",
+                "no instant of this run holds a density worth drawing, so there are no "
+                + "shells. A packet that has been collected or has left the grid is a "
+                + "result rather than a failure - what it means is that the ions arrived",
+                WarningSeverity.Provenance));
+
+            return ([], peak, atSecondsDrawn * 1e6);
+        }
+
+        // GRD-12: the instant is part of the measurement. Three shells of a packet say
+        // nothing at all without it, since a density that has spread for a microsecond
+        // and one that has spread for a millisecond are the same three shells at
+        // different sizes.
+        warnings.Add(new ValidityWarning(
+            "render.density-at-instant",
+            $"the density is drawn at t = {atSecondsDrawn * 1e6:G6} us of a "
+            + $"{run.Result.ElapsedSeconds * 1e6:G6} us run"
+            + (atSeconds is null
+                ? ", chosen as the middle of the instants that still hold a packet. The "
+                  + "end of a run is empty whenever the ions arrived"
+                : ", as asked for"),
+            WarningSeverity.Provenance));
+
+        var columns = Math.Max(8, DensityColumns);
+        var rows = Math.Max(8, (int)Math.Round(columns * spanV / spanU));
+
+        var stepU = spanU / (columns - 1);
+        var stepV = spanV / (rows - 1);
+
+        // [column, row] - u first, then v - which is the convention Contours.Sample
+        // builds and Contours.Trace reads. Transposed, the contour comes out somewhere
+        // the density is not, and every normal is exactly zero because the field being
+        // differenced is flat there. That is what the unit-normal test caught.
+        var values = new double[columns, rows];
+
+        for (var row = 0; row < rows; row++)
+        {
+            for (var column = 0; column < columns; column++)
+            {
+                values[column, row] = density.SampleAt(
+                    grid.OriginX + (column * stepU), grid.OriginY + (row * stepV));
+            }
+        }
+
+        var cylindrical = density.Cylindrical;
+        var shells = new List<DensityShell>();
+
+        for (var k = 1; k <= DensityShellCount; k++)
+        {
+            var level = peak * Math.Pow(10.0, -k);
+
+            if (level <= floor)
+            {
+                break;
+            }
+
+            var traced = Contours.Trace(
+                values, grid.OriginX, grid.OriginY, stepU, stepV, level);
+
+            if (traced.Count == 0)
+            {
+                continue;
+            }
+
+            var mesh = Join(traced.Select(contour => cylindrical
+                ? Surfaces.Revolve([.. contour.Points], RevolutionFacets)
+                : Surfaces.Extrude([.. contour.Points], grid.OriginY, grid.MaxY)));
+
+            if (mesh.Triangles.Count == 0)
+            {
+                continue;
+            }
+
+            // Outward means away from the denser side, so a shell is lit from the side a
+            // viewer is on. Negative inside, which is the convention a conductor's own
+            // signed distance already uses, so Orient needs no second rule.
+            //
+            // The step is the density's own cell, not the metre-scale one a conductor
+            // uses. Orient differences the function it is given, and a signed distance
+            // changes by the step itself while a density changes by whatever it happens
+            // to change by - so a 1 um step across a packet spanning millimetres lands on
+            // the rounding floor, the gradient comes back exactly zero, and Orient leaves
+            // the normal at zero. That renders as a black facet, which reads as structure
+            // in the density. Same shape as reading an analytic field's infinite
+            // ResolutionLength as a differencing step.
+            var oriented = Surfaces.Orient(
+                mesh,
+                cylindrical
+                    ? (x, y, z) => level - density.SampleAt(x, Math.Sqrt((y * y) + (z * z)))
+                    : (x, y, _) => level - density.SampleAt(x, y),
+                0.5 * Math.Min(grid.SpacingX, grid.SpacingY));
+
+            shells.Add(new DensityShell(
+                level,
+                k,
+                [.. oriented.Vertices.Select(v => v * 1e3)],
+                oriented.Normals,
+                oriented.Triangles));
+        }
+
+        return (shells, peak, atSecondsDrawn * 1e6);
     }
 
     /// <summary>The box the drawing covers, in metres.</summary>
@@ -793,6 +1059,30 @@ public static class ViewportCommand
 
     /// <summary>Facets around a solid of revolution.</summary>
     private const int RevolutionFacets = 48;
+
+    /// <summary>Columns the density is resampled onto before contouring.</summary>
+    /// <remarks>
+    /// The density solver's own grid is usually coarser than this and is what the values
+    /// come from; resampling is about the smoothness of the extracted shell, not about
+    /// inventing resolution the run does not have.
+    /// </remarks>
+    private const int DensityColumns = 160;
+
+    /// <summary>How many decades below the peak to draw.</summary>
+    /// <remarks>
+    /// Three shells reach a thousandth of the peak, which is the useful extent of a
+    /// packet; a fourth is mostly the numerical tail and, drawn as a solid, hides the
+    /// three inside it.
+    /// </remarks>
+    private const int DensityShellCount = 3;
+
+    /// <summary>How many instants of a diffusive run to look at.</summary>
+    /// <remarks>
+    /// Enough that the middle of the usable ones is somewhere near mid-flight whatever
+    /// fraction of the run the packet survives, and few enough that the clones they cost
+    /// are not worth counting.
+    /// </remarks>
+    private const int DensityInstants = 7;
 
     /// <summary>Equipotential levels drawn between the lowest and highest potential.</summary>
     private const int EquipotentialCount = 12;

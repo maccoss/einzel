@@ -179,6 +179,7 @@ public partial class MainWindow : Window
         DrawConductors(viewport);
         DrawField(viewport);
         DrawPaths(viewport);
+        DrawDensity(viewport);
 
         Scales(viewport);
         Notes(viewport);
@@ -224,6 +225,96 @@ public partial class MainWindow : Window
     /// the one thing the picture cannot show. The control to turn it off is there because
     /// transparency costs depth cues in return.
     /// </remarks>
+    /// <summary>The density, as nested translucent shells.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What RND-8 withholds the trajectories in favour of.</b> The requirement is that
+    /// a diffusive region is never drawn as lines, which on its own leaves an empty box
+    /// for the entire pressure range the mode exists to cover - and an empty box and a
+    /// model that lost everything look the same.
+    /// </para>
+    /// <para>
+    /// <b>Always see-through, whatever the transparency toggle says</b>, and that is not
+    /// an oversight. Three nested shells drawn opaque are one shell: the outermost hides
+    /// the two inside it, so the picture would show the packet's tail and nothing of its
+    /// core - the exact inversion of where the ions are. The toggle governs conductors,
+    /// which are genuinely solid.
+    /// </para>
+    /// <para>
+    /// <b>Viridis by decade, not by level.</b> A density is sequential, so it gets the
+    /// sequential ramp - and the position on it comes from how many decades down the shell
+    /// is rather than from the density itself, because the levels span orders of magnitude
+    /// and a linear position would put all three at one end.
+    /// </para>
+    /// </remarks>
+    private void DrawDensity(ViewportViewModel viewport)
+    {
+        if (viewport.Density.Count == 0)
+        {
+            return;
+        }
+
+        var count = viewport.Density.Count;
+
+        foreach (var shell in viewport.Density)
+        {
+            if (shell.Triangles.Count == 0)
+            {
+                continue;
+            }
+
+            var positions = new Vector3Collection(shell.VerticesMm.Count / 3);
+            var normals = new Vector3Collection(shell.VerticesMm.Count / 3);
+
+            for (var v = 0; v + 2 < shell.VerticesMm.Count; v += 3)
+            {
+                positions.Add(new Vector3(
+                    (float)shell.VerticesMm[v],
+                    (float)shell.VerticesMm[v + 1],
+                    (float)shell.VerticesMm[v + 2]));
+
+                normals.Add(new Vector3(
+                    (float)shell.Normals[v],
+                    (float)shell.Normals[v + 1],
+                    (float)shell.Normals[v + 2]));
+            }
+
+            // Brightest at the core and dimmer outward, so the eye reads concentration -
+            // the same argument the section's line weights make, in colour.
+            var (r, g, b) = ColourRamp.At(
+                count > 1 ? 1.0 - ((shell.DecadesBelowPeak - 1.0) / (count - 1.0)) : 1.0);
+
+            // Fainter outward too. An outer shell drawn as solidly as the core hides it
+            // and says the packet is where its tail is.
+            var opacity = (float)(0.46 - (0.10 * (shell.DecadesBelowPeak - 1)));
+
+            Viewport.Items.Add(new MeshGeometryModel3D
+            {
+                Geometry = new MeshGeometry3D
+                {
+                    Positions = positions,
+                    Normals = normals,
+                    Indices = new IntCollection(shell.Triangles),
+                    TextureCoordinates = null,
+                },
+
+                Material = new PhongMaterial
+                {
+                    DiffuseColor = new Color4(
+                        (float)r, (float)g, (float)b, Math.Max(opacity, 0.12f)),
+                    SpecularColor = new Color4(0.10f, 0.10f, 0.10f, 1f),
+                    SpecularShininess = 8f,
+                },
+
+                IsTransparent = true,
+
+                // Both faces: a shell is looked into from outside, and the far wall of one
+                // is part of what says how deep the packet is.
+                CullMode = SharpDX.Direct3D11.CullMode.None,
+            });
+        }
+    }
+
     private void DrawConductors(ViewportViewModel viewport)
     {
         if (ShowElectrodes.IsChecked != true)

@@ -93,7 +93,7 @@ server was the caller that stopped being told.
 
 §16: geometry, electrode potentials by colour, equipotential surfaces or slices,
 trajectory bundles coloured by energy, m/z or fate, and density clouds rather than
-trajectories for diffusive regions. **All of that is built except the density cloud.**
+trajectories for diffusive regions. **All of that is built.**
 
 The window draws the instrument, the field on its section plane, and the ions, each on a
 colour scale anchored once across everything shown. Layers can be turned off individually,
@@ -349,6 +349,57 @@ electrodes were extracted correctly, drawn correctly, and could not be seen. Wor
 because it is the failure mode where the data is right and the picture is empty, and the
 instinct is to go looking at the data.
 
+## The density cloud
+
+RND-8 forbids trajectories through a diffusive region. On its own that is entirely
+negative: the viewport drew the instrument and the field and nothing else, so the mode's
+principal result could be summarised into a transmission and a transit time and looked at
+in no other form. **An empty box and a model that lost everything look the same.**
+
+The density is drawn as **nested shells at decades below its peak** — the same rule the
+section's contours follow, because a density spans orders of magnitude and evenly spaced
+levels draw the top decade several times over and the extent not at all. Each shell is a
+marching-squares contour of the density on the section plane, then **extruded or revolved
+by what the solve claims about the third dimension**, which is the rule the conductors
+already follow: a cross-section repeats along z, an axisymmetric half-plane is a solid of
+revolution. The flag comes from the density the solver produced rather than being
+re-derived from the model, so the drawing cannot disagree with the thing it draws.
+
+Shells are always translucent whatever the transparency toggle says, and that is not an
+oversight: three nested shells drawn opaque are one shell, showing the packet's tail and
+nothing of its core — the exact inversion of where the ions are.
+
+**The instant matters more than any of that, and the end of the run is the wrong one.**
+A diffusive run reports the density it *ended* with. The shipped drift tube launches
+10,000 ions, collects 9,999.76 and leaves 1.8e-302 behind, so a viewport anchored to the
+end draws nothing for exactly the models that work. The run is asked for snapshots across
+its flight and the drawing is taken from the middle of those still holding a packet;
+`render.density-at-instant` says which, because three nested shells are the same three
+shells whenever they were taken (GRD-12). A caller may name its own instant, which is the
+seam animation scrubbing needs.
+
+Measured on the corpus drift tube:
+
+| | |
+| --- | --- |
+| Shells | 4.555e7 / 4.555e6 / 4.555e5 ions per m³ |
+| Vertices, nesting outward | 208 / 260 / 292 |
+| Tracked region in x | 42.0 mm |
+| Densest shell | **9.7 mm, centred at 35.2 mm** |
+| Normals off unit length, worst of 760 | 2.2e-16 |
+
+The densest shell spanning under a quarter of the tracked region, three-quarters of the
+way down it, is the assertion that separates a packet from a uniform gas — and it is the
+one a structurally valid but wrongly placed contour fails.
+
+**Two defects the tests caught before this shipped**, both in `docs/lessons.md`: anchoring
+to the end of the run, which the section renderer had already learned once; and filling
+the sample array as `[row, column]` where `Contours.Sample` builds `[column, row]`, which
+traced every contour somewhere the density is not. The transposed version passed every
+structural check — counts, parities, index ranges — and was caught by **every one of 760
+normals having length exactly zero**, because a contour traced where the field is flat has
+no gradient to take a normal from.
+
 ## Results by accuracy class
 
 §12 sorts figures into three families and the sort is not decoration: a Class T figure
@@ -446,10 +497,6 @@ missing is the input surface, not the path underneath it.
 
 ## What is not built
 
-- **Density clouds** for diffusive regions. The density exists, is exported as `.vti`, and
-  is drawn as contours by `einzel render section`. What is missing is only the interactive
-  surface — the viewport draws such a model's geometry and field and withholds only the
-  paths, which is the correct half of RND-8.
 - **A diffusive example with a geometry in it.** No corpus example declares one, so
   "electrodes appear on the RND-8 path" is exercised through the field rather than through
   conductors. That is a gap in the corpus rather than in the code, and a pointed one: the
