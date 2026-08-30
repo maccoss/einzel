@@ -143,13 +143,25 @@ for it here would be the platform asserting something only the author knows.
 
 | | |
 | --- | --- |
-| Sandboxed round trip, median of five | **49 ms** against PERF-7's 50 ms |
+| Bare interpreter launch, cheapest of five | **45-63 ms** across seven runs |
+| Sandboxed round trip, cheapest of five | **49-61 ms** |
+| The platform's own share | **1.08x to 1.52x** a bare launch, once *below* it |
 | Environment variables the child sees | 0 |
 | Runaway extension killed at a 1200 ms declared timeout | 1276 ms |
 
-The round trip is process start almost entirely, which is why PERF-7 sets the
-granularity floor for EXT-4: anything needing to happen more often than that cannot
-be an extension.
+**The round trip is process start almost entirely, and that is measured rather than
+asserted.** PERF-7's whole 50 ms budget straddles the cost of launching the interpreter
+and doing nothing, so the budget is not separable from CPython's own start cost - a test
+asserting it is asserting that Python started quickly this time, and the old one passed
+and failed on the same commit in two CI runs minutes apart. What is asserted now is the
+platform's own share, which is scale-free and holds on a build agent taking seconds per
+launch just as it does here.
+
+That *strengthens* EXT-4 rather than weakening it: the boundary costs ~50 ms and nothing
+here can reduce it, so anything needing to happen more often than that cannot be an
+extension - a structural argument rather than a measured coincidence. It also gives the
+open question about the in-process runner its first real evidence, since removing the
+process is the only thing that would meet PERF-7 as written. SPEC.md Amendment 27.
 
 **A kill has to be waited on.** `Process.Kill` only *asks*: it returns before the
 operating system has finished, so a timeout that does not then wait has not bounded

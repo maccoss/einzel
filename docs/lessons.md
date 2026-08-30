@@ -1396,3 +1396,21 @@ actually caught them were:
   now asserts the rule where it lives, which is also where it holds for every other
   consumer. The general move: when a guard is easy to write and its test is hard, ask
   whether the state it guards against is reachable at all.
+
+- **A comment that was right, directly above code that did not follow it.** A performance
+  test read *"a hard assertion here would be a test of the build agent"* and then asserted
+  2,000 ms — a guess about the build agent. It had been green for weeks and then passed and
+  failed **on the same commit in two CI runs minutes apart**. Chasing it found something
+  larger: PERF-7's whole 50 ms budget is the cost of starting CPython (45–63 ms measured
+  here), so the requirement is not separable from a term the platform does not control.
+  Two lessons. **When a comment states a hazard, check that the code below it avoids that
+  hazard** — the comment is evidence somebody saw the problem, not evidence they solved it.
+  And **a flaky test is worth chasing to its root rather than loosening**: the loose version
+  had hidden a real finding about a requirement.
+
+- **A gate that only fires in the cases guaranteed to fail.** Fixing the above, I gated the
+  absolute assertion on "the interpreter starts in under the budget" — which means it runs
+  precisely when process start has consumed the whole budget and left nothing for the work.
+  It failed on its second run. **A conditional assertion needs its condition checked against
+  the failing case, not just the passing one**: the question is not "when is this safe to
+  assert" but "what does the population of runs that reach the assertion look like".

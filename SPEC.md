@@ -690,6 +690,43 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 27 - PERF-7's 50 ms is the cost of starting CPython, not a budget the platform can spend
+
+**r06 §PERF-7 puts a sandboxed extension round trip under 50 ms**, and makes that number
+the granularity floor for EXT-4. The requirement is sound in intent and is not measurable
+as written, because on an ordinary machine **the 50 ms is process start**.
+
+Measured: launching the interpreter with `-I -c pass` and doing nothing costs
+45.0, 49.6, 53.9, 58.2, 40, 51 and 63 ms across seven runs. The budget straddles that spread. So a test asserting
+the round trip against 50 ms is asserting that CPython started quickly this time - and it
+behaves accordingly: the old assertion **passed and failed on the same commit in two CI
+runs minutes apart**, and on a shared build agent a bare launch takes *seconds*.
+
+**What the platform actually controls is small and now measured.** A round trip costs
+**1.08x to 1.52x** a bare interpreter launch across seven runs, and on one of them came in
+*below* it - the marshalling, the schema check and the JSON on both sides are under the
+noise floor of process start.
+
+**Recommend PERF-7 be restated as a bound on the platform's own share** - the round trip
+must not cost materially more than starting the interpreter - with the absolute figure
+reported rather than asserted. That is scale-free, holds on a developer's machine and a
+build agent alike, and measures the thing this project can change.
+
+**Two things follow, and the first is the more important.** EXT-4 is *strengthened*: a
+subprocess cannot be invoked per integration step because the boundary costs ~50 ms and
+nothing here can reduce it, which is a structural argument rather than a measured
+coincidence. And the open decision "whether the in-process runner is worth shipping"
+gains its first real evidence: **the in-process runner is the only thing that could meet
+PERF-7 as written**, since it removes the term that dominates. That is not an argument to
+build it - nothing has yet needed a faster round trip - but the decision should no longer
+be recorded as "the evidence says sandboxed-only is sufficient" without saying what
+sandboxed-only costs.
+
+**And a note on how this was found**, because it is the kind of thing a green suite hides:
+the test had been passing for weeks with the comment *"a hard assertion here would be a
+test of the build agent"* written directly above an assertion on the build agent. The
+comment was right and the code did not follow it.
+
 ### 26 · Helix Toolkit is still the right choice, and its DirectX backend is archived
 
 **r06 §16 names "Helix Toolkit on its DirectX 11 path" and gives the right reason** —
@@ -945,7 +982,7 @@ in a table.
 | `EXT-1` | An extension declares type, schemas, trust level, resource needs, and a compatible engine version range . The runtime is an implementation detail of the ... | **Met** | The manifest declares type, schemas, trust level, resource needs and a compatible engine range. `trust` defaults to sandboxed rather than being opted into. |
 | `EXT-2` | In-process (CSnakes) for first-party and explicitly trusted extensions. Lowest latency, no isolation. | Not built | The in-process CSnakes runner is not built. Section 23 leaves open whether it is worth shipping at all; sandboxed-only has so far been sufficient. |
 | `EXT-3` | Sandboxed subprocess for anything agent-authored or third-party, and the default. Job objects and a restricted token on Windows, namespaces and seccomp on ... | Partial | The subprocess boundary is real: wall-clock timeout with process-tree kill, output ceiling, zero inherited environment, `python -I`, scratch working directory. **Network, filesystem and memory confinement are not enforced** - `extension.isolation-incomplete` is a non-suppressible violation on every sandboxed result. |
-| `EXT-4` | Never invoked per integration step. One call per run. | **Met** | Structural rather than advisory: a subprocess cannot be invoked per step at any useful rate. Measured round trip 49 ms against PERF-7 50 ms. |
+| `EXT-4` | Never invoked per integration step. One call per run. | **Met** | Structural rather than advisory: a subprocess cannot be invoked per step at any useful rate. **Strengthened rather than weakened by Amendment 27** - the round trip is process start almost in its entirety (the platform's own share is 1.08x to 1.52x a bare launch, once *below* it), which is exactly why per-step invocation is impossible rather than merely discouraged. |
 | `EXT-5` | Large arrays cross by shared memory with an Arrow or raw-buffer layout, never by JSON. | Not built | Large arrays still cross as JSON. No shared memory, no Arrow layout. |
 | `EXT-6` | A vendored interpreter ships with the application. | Not built | An interpreter is **discovered**, not vendored. `einzel doctor` says so rather than passing it off. |
 | `EXT-7` | Outputs are attributed per | Partial | A deliberate JSON Schema subset - type, required, properties, items, enum, numeric bounds - because a full implementation would put remote `$ref` resolution inside a sandbox whose point is having no network. Unrecognised keywords are ignored rather than refused. |
@@ -1011,7 +1048,7 @@ in a table.
 | `PERF-4` | 10 4 -ion ensemble, Class S < 5 min CPU, embarrassingly parallel | Unverified | Ensembles of 20,000 ions are run in tests, but wall time against the 5-minute budget is not asserted. |
 | `PERF-5` | Quadrupole stability scan, 500 × 10 3 < 2 h GPU-bound; why ILGPU is early | Not built | Needs the GPU path. `einzel scan` makes the scan expressible; nothing makes it fast. |
 | `PERF-6` | Tolerance sweep, 10 3 geometries × 10 3 ions < 8 h Only reachable via §10 sensitivity fields | Partial | The superposition side is measured - 500 linearised draws at 25 ms against 142 ms for one solve. The full 10^3 x 10^3 campaign has not been run. |
-| `PERF-7` | Extension round trip, sandboxed < 50 ms Sets the granularity floor for | **Met** | 49 ms median round trip against the 50 ms budget. |
+| `PERF-7` | Extension round trip, sandboxed < 50 ms Sets the granularity floor for | **Unverified** | **Not separable from process start, which is not this platform's to control.** Launching the interpreter and doing nothing costs 45.0, 49.6, 53.9, 58.2, 40, 51 and 63 ms across seven runs on one machine; the budget straddles that spread, so asserting it measures CPython's start cost rather than anything here. On a shared build agent a bare launch takes **seconds**, and the old assertion passed and failed on the same commit in two runs minutes apart. What is measured and asserted instead is the platform's own share: a round trip costs **1.08x to 1.52x** a bare launch, and on one run came in *below* it - the marshalling is under the noise floor of process start. The absolute number is reported on every run. See Amendment 27. |
 | `PERF-8` | CLI cold start to first output < 500 ms No network call permitted in that path | **Met** | 73-147 ms cold start against 500 ms. |
 | `PERF-9` | Vector figure, 10 3 decimated trajectories < 5 s Agents iterate on figures; it must not be a batch job | Unverified | Figures are drawn in tests but not timed against the 5 s budget. |
 | `PERF-10` | Vector figure file size, same < 5 MB Must open in a text editor and an illustration program | Partial | The quadrupole PDF is 13 KB. No test asserts the 5 MB ceiling for 10^3 trajectories, because nothing draws 10^3 trajectories yet. |
@@ -1256,7 +1293,7 @@ in a table.
 | What triggers revisiting code signing | Open |
 | What the defect-floor policy file contains | Open, and untestable until there are releases |
 | What the agent acceptance suite measures and what gates a release | **Closed.** See Amendment 11 |
-| Whether the in-process extension runner is worth shipping at all | Open, and the evidence so far says sandboxed-only is sufficient: nothing has hit the 49 ms granularity floor |
+| Whether the in-process extension runner is worth shipping at all | Open. Nothing has yet needed a faster round trip, so sandboxed-only remains sufficient - but Amendment 27 measures what it costs: the round trip is process start almost entirely, ~50 ms of it, and **the in-process runner is the only thing that could meet PERF-7 as written** |
 | Whether the funnel benchmark uses a published geometry or one of ours | **Open, and now blocking.** It gates a Phase 3 acceptance criterion, and the study should not be built before it is settled |
 | Governance if this becomes a collaboration | Open |
 
