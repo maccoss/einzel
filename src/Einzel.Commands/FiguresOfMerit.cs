@@ -8,6 +8,48 @@ using Einzel.Transport.Integration;
 
 namespace Einzel.Commands;
 
+/// <summary>Which of §12's families a figure of merit belongs to.</summary>
+/// <remarks>
+/// <para>
+/// §12 sorts figures into three, and the sort is not decoration: it says what a figure
+/// is <em>of</em>. A Class T figure describes one packet's arrival, a Class S figure
+/// describes a population, a Class B figure describes where a boundary in operating
+/// space lies. They are computed differently, cost differently, and are read against
+/// different questions - which is why §16 asks for results grouped this way rather than
+/// listed.
+/// </para>
+/// <para>
+/// <b>Two of this registry's figures are in none of them, and that is recorded rather
+/// than forced.</b> §12's list is of figures of merit; the raw arrival time and a
+/// numerical energy-drift diagnostic are not that, and putting them in a class they do
+/// not belong to would make the grouping mean less everywhere else. See SPEC.md's
+/// amendment on §12.
+/// </para>
+/// </remarks>
+public enum AccuracyClass
+{
+    /// <summary>Not one of §12's figures: a raw quantity, or a diagnostic.</summary>
+    None,
+
+    /// <summary>
+    /// Class T. One packet's arrival: resolving power, peak shape, focusing order,
+    /// turn-around time, emittance.
+    /// </summary>
+    Trajectory,
+
+    /// <summary>
+    /// Class S. A population: transmission itemised by loss surface, radial
+    /// compression, transit-time distribution, thermalization.
+    /// </summary>
+    Statistical,
+
+    /// <summary>
+    /// Class B. Where a boundary in operating space lies: stability diagrams, cut-offs,
+    /// secular spectra, isolation efficiency.
+    /// </summary>
+    Boundary,
+}
+
 /// <summary>One figure of merit a study may ask for by name.</summary>
 /// <param name="Name">The name a study file uses.</param>
 /// <param name="Unit">The unit it is reported in.</param>
@@ -17,7 +59,13 @@ namespace Einzel.Commands;
 /// objective does not throw; it returns the worst design in the box and looks like
 /// a result.
 /// </param>
-public sealed record FigureOfMeritInfo(string Name, string Unit, string Description, bool LargerIsBetter)
+/// <param name="Class">
+/// Which of §12's families it belongs to, or <see cref="AccuracyClass.None"/> where it
+/// is not one of §12's figures at all.
+/// </param>
+public sealed record FigureOfMeritInfo(
+    string Name, string Unit, string Description, bool LargerIsBetter,
+    AccuracyClass Class = AccuracyClass.None)
 {
     /// <summary>
     /// The physical dimension, derived from the unit rather than stated beside it.
@@ -81,22 +129,32 @@ public static class FiguresOfMerit
     /// </remarks>
     public const int DefaultIons = 21;
 
+    /// <summary>
+    /// Every figure this build computes, with §12's class on each.
+    /// </summary>
+    /// <remarks>
+    /// <b>Two are deliberately in no class.</b> <c>flightTime</c> is the raw arrival
+    /// quantity the Class T figures are computed <em>from</em>, and <c>energyDrift</c>
+    /// says in its own description that it is a diagnostic rather than a design target.
+    /// §12 lists neither, and assigning them a class to make the grouping tidy would
+    /// weaken what the grouping says about the twelve that do belong to one.
+    /// </remarks>
     private static readonly FigureOfMeritInfo[] Catalogue =
     [
-        new("flightTime", "us", "Arrival time at the detector, from a convergence study over three integrator tolerances.", false),
-        new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false),
-        new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true),
-        new("transmission", "1", "Fraction of launched ions that reach the detector.", true),
-        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false),
-        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
-        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false),
-        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
-        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true),
-        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
-        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false),
-        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false),
-        new("secularFrequencyY", "kHz", "The same along y.", false),
-        new("secularFrequencyZ", "kHz", "The same along z.", false),
+        new("flightTime", "us", "Arrival time at the detector, from a convergence study over three integrator tolerances.", false, AccuracyClass.Trajectory),
+        new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false, AccuracyClass.None),
+        new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true, AccuracyClass.Trajectory),
+        new("transmission", "1", "Fraction of launched ions that reach the detector.", true, AccuracyClass.Statistical),
+        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false, AccuracyClass.Trajectory),
+        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false, AccuracyClass.Trajectory),
+        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false, AccuracyClass.Trajectory),
+        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false, AccuracyClass.Trajectory),
+        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical),
+        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical),
+        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
+        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false, AccuracyClass.Boundary),
+        new("secularFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
+        new("secularFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>

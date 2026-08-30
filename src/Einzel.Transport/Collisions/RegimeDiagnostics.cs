@@ -1,3 +1,4 @@
+using Einzel.Core.Geometry;
 using Einzel.Core.Results;
 
 namespace Einzel.Transport.Collisions;
@@ -84,23 +85,101 @@ public static class RegimeDiagnostics
         // funnel whose entrance is at 10 mbar and whose exit is at 0.1 mbar is in two
         // different regimes, and reporting the declared value would report a regime
         // it is in nowhere.
-        //
-        // Substituted only when a field exists, so a uniform gas is this same object
-        // and every existing number is bit-identical. Reconstructing a pressure from
-        // a density and back would not round-trip exactly.
-        var worst = gas.Density is null
+        return At(gas, gas.HighestNumberDensitySi, species, speedSi, flightSeconds, apertureM, driveHz);
+    }
+
+    /// <summary>The same numbers, at one point on the path rather than at the worst.</summary>
+    /// <param name="gas">The gas.</param>
+    /// <param name="species">The ion.</param>
+    /// <param name="speedSi">Its speed there, in metres per second.</param>
+    /// <param name="flightSeconds">The flight duration, in seconds.</param>
+    /// <param name="apertureM">The length the Knudsen number is taken against, in metres.</param>
+    /// <param name="driveHz">The drive frequency, or zero when undriven.</param>
+    /// <param name="point">Where on the path, in metres.</param>
+    /// <returns>The numbers there.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="gas"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>What <see cref="Measure"/> deliberately collapses, this deliberately does not.</b>
+    /// Reporting the worst point anywhere is the right answer for a warning - a description
+    /// that fails somewhere has failed - and it is the wrong answer for a person asking
+    /// where to change the instrument. §16's regime inspector wants the numbers <em>along a
+    /// path</em>, so that "outside validity" becomes "outside validity between 12 and 31
+    /// millimetres, at the funnel entrance", which is a thing to fix rather than a verdict.
+    /// </para>
+    /// <para>
+    /// A uniform gas gives the same numbers at every point, and the same ones
+    /// <see cref="Measure"/> gives - asserted rather than assumed, because the two would
+    /// otherwise be free to drift apart.
+    /// </para>
+    /// </remarks>
+    public static RegimeNumbers MeasureAt(
+        BackgroundGas gas,
+        IonSpecies species,
+        double speedSi,
+        double flightSeconds,
+        double apertureM,
+        double driveHz,
+        in Vec3 point)
+    {
+        ArgumentNullException.ThrowIfNull(gas);
+
+        return At(
+            gas, gas.NumberDensityAt(in point), species, speedSi, flightSeconds, apertureM, driveHz);
+    }
+
+    /// <summary>The reduced field, in townsend, at a point.</summary>
+    /// <param name="gas">The gas.</param>
+    /// <param name="fieldSi">Field magnitude there, in volts per metre.</param>
+    /// <param name="point">Where, in metres.</param>
+    /// <returns>E/N in townsend, or infinity where there is no gas.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="gas"/> is null.</exception>
+    /// <remarks>
+    /// <b>The number that decides whether a low-field mobility applies at all</b>, and the
+    /// one this project has already been caught by: 40 V/m at 1e-2 mbar is 166 townsend,
+    /// deep into field heating, where the low-field value overstates the drift by 1.4
+    /// times. It is local by nature - it is a field over a density and both vary - so a
+    /// single figure for a run says less than it appears to.
+    /// </remarks>
+    public static double ReducedFieldTd(BackgroundGas gas, double fieldSi, in Vec3 point)
+    {
+        ArgumentNullException.ThrowIfNull(gas);
+
+        var density = gas.NumberDensityAt(in point);
+
+        return density > 0.0
+            ? fieldSi / density / Diffusion.Mobility.Townsend
+            : double.PositiveInfinity;
+    }
+
+    /// <summary>The numbers, at a stated number density.</summary>
+    /// <remarks>
+    /// The density is substituted only when a field exists, so a uniform gas is the same
+    /// object and every existing number is bit-identical. Reconstructing a pressure from a
+    /// density and back would not round-trip exactly.
+    /// </remarks>
+    private static RegimeNumbers At(
+        BackgroundGas gas,
+        double numberDensitySi,
+        IonSpecies species,
+        double speedSi,
+        double flightSeconds,
+        double apertureM,
+        double driveHz)
+    {
+        var here = gas.Density is null
             ? gas
             : gas with
             {
-                PressureSi = gas.HighestNumberDensitySi * BackgroundGas.BoltzmannSi * gas.TemperatureK,
+                PressureSi = numberDensitySi * BackgroundGas.BoltzmannSi * gas.TemperatureK,
                 Density = null,
             };
 
-        var rate = worst.CollisionRateSi(species.MassSi, species.ChargeSi, speedSi);
-        var path = worst.MeanFreePathSi(species.MassSi, species.ChargeSi, speedSi);
+        var rate = here.CollisionRateSi(species.MassSi, species.ChargeSi, speedSi);
+        var path = here.MeanFreePathSi(species.MassSi, species.ChargeSi, speedSi);
 
         return new RegimeNumbers(
-            PressureMbar: worst.PressureSi / 1e2,
+            PressureMbar: here.PressureSi / 1e2,
             MeanFreePathM: path,
             ApertureM: apertureM,
             Knudsen: apertureM > 0.0 ? path / apertureM : double.PositiveInfinity,
