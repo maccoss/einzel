@@ -495,6 +495,40 @@ changes.
 is editing the document and goes through the same journal every other change does; what is
 missing is the input surface, not the path underneath it.
 
+## The project view
+
+Section 16 asks for model-drift and engine-drift state. `einzel verify` computes both and
+already separates them - an edited model or a changed solver-behaviour version invalidates
+a stored result, while a different engine build with identical numerics does not - so the
+view is presentation over it, plus one field verify structurally cannot supply.
+
+**A model nobody has run.** Verify walks the manifests, so a model with no result is
+reported by neither its success nor its failure; it is simply absent. That is the state
+most models in a working project are in and the first thing a person opening a folder
+wants to see, so `einzel project` reports four states rather than two: **invalid** (a thing
+to fix), **stale** (a thing to re-run), **not run** (where every model starts), and
+**current**. Keeping "not run" visually distinct from "stale" matters - a fresh project has
+run nothing, and painting those the same says a new project is broken.
+
+Validation is run rather than read from a stored result, because a model can be edited into
+an invalid state after its last successful run and a view reporting it current on the
+strength of a stale manifest would say the opposite of the truth.
+
+**Building it found a defect in `verify`.** A manifest recorded the model's content hash
+and not its path, so verify identified the model by searching for a file that still hashed
+to the recorded value. Two models may legitimately hold the same content - `einzel init`
+scaffolds a reflectron, and the corpus has one - and then editing the model that was
+actually run made its drift **disappear**: the result re-attached to the untouched twin and
+reported itself current. `RunManifest.ModelPath` is now recorded and preferred, with the
+hash search kept as the fallback for older manifests and for a model that has moved. That
+fallback reports what it observes - the recorded path is gone, the same content is at X -
+rather than claiming a rename, since content alone cannot tell a rename from a twin that
+was there all along. SPEC.md Amendment 30.
+
+The root is found from the open model **by the command layer**, not by the window. UI-1
+puts project layout outside the shell along with the rest of the file format, and a window
+that knew where `models/` sits would grow its own idea of what a project is.
+
 ## What is not built
 
 - **A diffusive example with a geometry in it.** No corpus example declares one, so

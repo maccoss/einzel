@@ -690,6 +690,42 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 30 - A manifest said what a result was made of and not what it was about
+
+`PRJ-3` requires a run manifest to fully determine its run, and lists what that takes:
+model hash, seeds, engine version, solver-behaviour version, transport mode, compute path,
+extension identities, machine. **It does not ask for the model's path, and by that list it
+does not need to** - the hash is what makes a result regenerable, and it survives a rename
+where a path does not.
+
+**Determining a run and identifying which model a result is about are different
+questions.** With only the hash recorded, `einzel verify` had to answer the second by
+searching for a file whose content still hashed to the recorded value. Two models may
+legitimately hold the same content, and then:
+
+- The result attaches to whichever file is found first, which is arbitrary.
+- **Editing the model that was actually run makes its drift disappear.** The result
+  silently re-attaches to the untouched twin, reports itself current, and the edited model
+  reads as never run.
+
+That second one is a stale result reporting as fresh, which is the failure direction the
+whole verify mechanism exists to prevent. It is not exotic to reach: a project scaffolded
+by `einzel init` and then given a corpus example of the same device is enough, which is
+exactly how it was found.
+
+**Recommend PRJ-3 distinguish the two.** A manifest carries what determines the run *and*
+what identifies its subject; the hash cannot serve as both, because content is not
+identity. `RunManifest.ModelPath` is now recorded, verify prefers it, and the hash search
+remains the fallback for older manifests and for a model that has moved - where what is
+reported is what can be observed (*the recorded path is gone, the same content is at X*)
+rather than a rename, since content alone cannot tell a rename from a twin that was there
+all along. Writing "renamed" there was the same mistake once more, in the fix; my own test
+caught it.
+
+The general form is worth more than the fix: **when one field is made to answer two
+questions, the answers diverge exactly where the two questions differ** - here, wherever
+two files hold the same bytes.
+
 ### 29 - Enumerating a requirement's own population is a different act from believing it
 
 **GRD-2 names seven layers** - engine, command layer, CLI output, MCP response, exported
@@ -918,7 +954,7 @@ Every view §16 requires:
 | Sequence editor | **Partial** | `SequenceCommand` reports the declared timeline: phases in order, the transport mode of each, and what every electrode holds - marked against the phase before, because a sequenced instrument repeats most of its state and a table repeating every setting buries the rows that change. Bars proportional to duration, since a 2 us hold beside a 100 us flight is the shape of a pulsed extraction. Two things a reader would otherwise assume wrongly are stated: the last phase **holds** after the sequence ends, and a phase changing the mode is SEQ-1's conversion boundary. **It shows rather than edits** - a sequence is a block in the document, so editing one goes through the same journal every other change does, and what is missing is the input surface rather than the path underneath it |
 | Results by accuracy class, uncertainty and warnings never behind a disclosure control | **Built** | §12's taxonomy was recorded nowhere in the code and is now on the figure registry - six Class T, four Class S, three Class B, and two deliberately in none, since `flightTime` is the raw arrival quantity the Class T figures are computed *from* and `energyDrift` says in its own description that it is a diagnostic. Every part of the envelope is a line rather than a tooltip, which is the requirement. **Building it found the GRD-1 hole below**, and closing that took the figures carrying an envelope from 1 of 14 to 5 |
 | Regime inspector | **Built** | REG-2's numbers *along the path*, which is what §16's word "along" asks for and what a run does not give - a run reports the worst point anywhere in the gas, right for a warning and useless for deciding what to change. Violations are located as stretches in millimetres rather than counted. On a hundredfold density ramp the two ends differ by Kn **4.17 against 0.042** - free-molecular at one end, a continuum at the other, in the same instrument |
-| Project view with model-drift and engine-drift state | Not built | `einzel verify` computes both |
+| Project view with model-drift and engine-drift state | **Built** | `einzel project` - the models, studies, figures, tests and extensions, with each model in one of four states. The drift itself is `einzel verify`'s, which already separates what invalidates a result from what merely annotates it; **what verify cannot answer is what has never been run**, since it walks the manifests and a model with no result is reported by neither its success nor its failure. That is the state most models in a working project are in. Building it found a defect in verify - see Amendment 30. |
 | Extension manager | Not built | The manifest carries trust level, versions and compatible range; LIC-2 wants licences surfaced and nothing does |
 | Journal with agent and human attribution | **Built** | `SessionJournal` in `Einzel.Commands`, rendered by the window beside the model tree, with the same entries an MCP client writes. A person sees what an agent did to their model, by name, and can undo it - which is MCP-1 and GRD-9 arriving where they were always aimed. Beneath it the same actions as `einzel` command lines (Amendment 25) |
 | Update notice with UPD-3's deferral options | Not built | Needs the whole of §18 |
@@ -936,12 +972,22 @@ reproduce it, asserted by test for the viewport and the tree alike. An invariant
 against one surface is one that has already been broken by the time anyone notices — that
 is no longer the position here.
 
-**What the window found that the other two surfaces could not.** Both new commands were
-written because a view needed them, and both improved the CLI: `einzel outline` gives an
-agent a model's knobs without parsing the document, and `ViewportCommand` enforces RND-8 by
-asking `ITransportMode.ProducesTrajectories` rather than the pressure. That is AGT-2
-running in the direction it was not designed for — the window pulling capability *into* the
-command layer rather than accumulating it privately.
+**What the window found that the other two surfaces could not.** Every new command was
+written because a view needed it, and each improved the CLI: `einzel outline` gives an
+agent a model's knobs without parsing the document, `ViewportCommand` enforces RND-8 by
+asking `ITransportMode.ProducesTrajectories` rather than the pressure, and `einzel project`
+reports the state of a whole folder including the models nobody has run — which `verify`
+walks the manifests and so cannot see. That is AGT-2 running in the direction it was not
+designed for — the window pulling capability *into* the command layer rather than
+accumulating it privately.
+
+**Three defects were found the same way**, each by a view asking a question no test had:
+the density cloud found the viewport anchoring to the end of a run, which is empty for
+every model that works; the project view found `verify` identifying a model by content, so
+that editing the model that was run made its drift *disappear* onto an identical twin; and
+the GRD-2 enumeration found a rendered figure that was not flying the declared gas at all.
+None was a failure of the code under test — each was a question nobody had thought to ask
+until something had to display the answer.
 
 **And a third thing the window found, in the core rather than in itself.** Extracting a
 conductor's surface needed the electrode's own bounding box, and there was no way to ask for
@@ -1144,7 +1190,7 @@ in a table.
 | --- | --- | --- | --- |
 | `PRJ-1` | Models, studies, extensions, render specs, and results are text. | **Met** | Models, studies, extensions, render specs and results are all text. |
 | `PRJ-2` | Large artifacts are referenced by content hash, never embedded. | **Met** | Large artifacts live in `.einzel/` and are referenced, never embedded. |
-| `PRJ-3` | A run manifest fully determines its run. Model hash, seeds, engine version, transport mode, solver settings, extension identities. Results are therefore ... | **Met** | Model hash, seeds, engine version, solver-behaviour version, transport mode, compute path, extension identities, interpreter and machine. |
+| `PRJ-3` | A run manifest fully determines its run. Model hash, seeds, engine version, transport mode, solver settings, extension identities. Results are therefore ... | **Met** | Model hash, seeds, engine version, solver-behaviour version, transport mode, compute path, extension identities, interpreter and machine. **And which model, as distinct from which content**: `modelPath` is recorded alongside the hash. PRJ-3's list does not ask for it and by that list does not need to - the hash determines the run - but identity is a second question, and answering it with the hash meant editing a model could make its drift *disappear* onto an identical twin. Recorded with forward slashes because a manifest travels; absent on older manifests, where the hash search remains the fallback. See Amendment 30. |
 | `PRJ-4` | A plain folder is the default and fully supported. Every feature, guardrail, and agent workflow works in a directory with no repository. Requiring one ... | **Met** | A plain folder is the default. `--vcs git` writes an ignore file and changes no behaviour anywhere else. |
 | `PRJ-5` | Version control, where wanted, is scaffolded. einzel init --vcs git writes an ignore file excluding .einzel/ , an AGENTS.md , and a starter layout. | **Met** | `einzel init --vcs git`. |
 | `PRJ-6` | Nothing depends on a hosting provider. Agent instructions in the project An agent needs two distinct things: how to use Einzel (platform knowledge, ... | **Met** | Nothing depends on a hosting provider; the whole loop is files and commands. |

@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private ResultsViewModel? _results;
     private RegimeViewModel? _regime;
     private SequenceViewModel? _sequence;
+    private ProjectViewModel? _project;
     private bool _framed;
     private bool _loaded;
 
@@ -65,24 +66,33 @@ public partial class MainWindow : Window
     /// <param name="results">Its figures by accuracy class.</param>
     /// <param name="regime">Its dimensionless numbers along the path.</param>
     /// <param name="sequence">Its declared timeline.</param>
+    /// <param name="project">The project it belongs to.</param>
     public void Open(
         ModelTreeViewModel tree,
         ViewportViewModel viewport,
         ResultsViewModel results,
         RegimeViewModel regime,
-        SequenceViewModel sequence)
+        SequenceViewModel sequence,
+        ProjectViewModel project)
     {
         ArgumentNullException.ThrowIfNull(tree);
         ArgumentNullException.ThrowIfNull(viewport);
         ArgumentNullException.ThrowIfNull(results);
         ArgumentNullException.ThrowIfNull(regime);
         ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(project);
 
         _tree = tree;
         _viewport = viewport;
         _results = results;
         _regime = regime;
         _sequence = sequence;
+        _project = project;
+
+        ProjectModels.ItemsSource = project.Models;
+        ProjectContents.ItemsSource = project.Contents;
+        ProjectWarnings.ItemsSource = project.Warnings;
+        ProjectStatus.Text = project.Status;
 
         PhaseList.ItemsSource = sequence.Phases;
         SequenceWarnings.ItemsSource = sequence.Warnings;
@@ -722,6 +732,19 @@ public partial class MainWindow : Window
         }
 
         RegimeStatus.Text = _regime.Status;
+    }
+
+    /// <summary>Re-reads the project.</summary>
+    private void OnProject(object sender, RoutedEventArgs e)
+    {
+        if (_project is null)
+        {
+            return;
+        }
+
+        _project.Refresh();
+
+        ProjectStatus.Text = _project.Status;
     }
 
     /// <summary>Reads the declared timeline.</summary>

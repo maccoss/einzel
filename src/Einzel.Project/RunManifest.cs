@@ -36,6 +36,50 @@ public sealed record RunManifest
     /// <summary>Content hash of the model document, as <c>sha256:</c> and 64 hex characters.</summary>
     public required string ModelHash { get; init; }
 
+    /// <summary>The model this result is about, relative to the project root.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which model, as distinct from which content.</b> The hash determines the run -
+    /// that is PRJ-3, and it is what makes a result regenerable - but it does not say which
+    /// file in the project the result is <em>about</em>, and two models may legitimately
+    /// hold the same content.
+    /// </para>
+    /// <para>
+    /// Without this, <c>verify</c> had to find the model by searching for one whose content
+    /// still hashed to the recorded value, and the failure that produced is in the unsafe
+    /// direction: editing the model that was actually run made its drift <b>disappear</b>,
+    /// because the result silently re-attached to some other file that still matched and
+    /// reported itself current. A project scaffolded by <c>init</c> and then given a corpus
+    /// example of the same device is enough to reach it.
+    /// </para>
+    /// <para>
+    /// Absent on manifests written before this field existed, and the hash search remains
+    /// the fallback for those and for a model that has since been renamed - a hash survives
+    /// a rename and a path does not, which is why the search was right to exist.
+    /// </para>
+    /// </remarks>
+    public string? ModelPath { get; init; }
+
+    /// <summary>A relative path as a manifest should carry it.</summary>
+    /// <param name="path">The path, in whatever the platform uses.</param>
+    /// <returns>The same path with forward slashes.</returns>
+    /// <remarks>
+    /// <b>A manifest travels.</b> <c>results/</c> is small text and gets committed, and CI
+    /// here runs on both Linux and Windows - so a backslash path written on one does not
+    /// resolve on the other. Verify would then miss, fall back to the hash, find the model
+    /// anyway and report a <em>rename</em> on every result that had crossed a platform: a
+    /// false alarm on output the tool produced itself, which is the kind that teaches
+    /// people to stop reading the tool.
+    /// </remarks>
+    public static string Portable(string path) =>
+        path?.Replace('\\', '/') ?? string.Empty;
+
+    /// <summary>A recorded path as this platform spells it.</summary>
+    /// <param name="path">The path as the manifest carries it.</param>
+    /// <returns>The same path with this platform's separator.</returns>
+    public static string Local(string path) =>
+        path?.Replace('/', System.IO.Path.DirectorySeparatorChar) ?? string.Empty;
+
     /// <summary>The model's declared schema version.</summary>
     public required string SchemaVersion { get; init; }
 

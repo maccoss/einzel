@@ -1133,6 +1133,73 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## A verb that works, is documented, and cannot be found
+
+`einzel outline` had no line in `einzel --help`. It worked. It was documented in
+`docs/cli.md`. It is the verb the shell's model tree is built on and the one an agent would
+use to read a model's parameters without parsing the document. And running `einzel --help`
+did not mention it existed. So did `render animation`.
+
+For a surface whose entire argument is that an agent drives it, **a capability that cannot
+be discovered from the tool is close to one that does not exist.** This is the same
+reasoning that makes the platform layer of `AGENTS.md` generated rather than hand-written:
+an instruction set that has drifted is worse than none, because it is trusted.
+
+Nothing checked it, so `HelpCoversEveryVerbTests` now does - **against the dispatcher's own
+switch rather than a list kept in the test**, because a hardcoded list drifts for exactly
+the reason the help did. Both directions are asserted: a verb that dispatches and is not
+listed, and a line listing a verb that no longer dispatches. The second fails differently -
+it sends a reader to a command that answers "unknown".
+
+Writing it took two corrections, both mine and both instructive about what the check is
+*for*. The first regex missed `"optimise" or "optimize" =>`, so an alias chain read as a
+help line with no verb behind it; aliases are now recognised and deliberately not required
+to appear, since listing both spellings would suggest they differ. The second matched the
+*nested* `agents` sub-switch and demanded top-level lines for `tasks`, `setup` and `score`,
+which are correctly listed as `agents tasks` and so on - one line per thing a person types.
+**Both failures were the test misreading the structure, and neither was a defect** - which
+is worth saying, because a new check that fires immediately is as likely to be wrong as the
+code is.
+
+## One field answering two questions diverges where the questions differ
+
+A run manifest recorded the model's **content hash** and not its path. By PRJ-3's own list
+that is complete: the hash is what makes a result regenerable, and it survives a rename
+where a path does not.
+
+So `einzel verify` had to identify the model by searching for a file that still hashed to
+the recorded value. That conflates *what this result was made of* with *what it is about*,
+and the two come apart wherever two files hold the same bytes:
+
+- The result attaches to whichever file is found first, which is arbitrary.
+- **Editing the model that was actually run makes its drift disappear** - the result
+  silently re-attaches to the untouched twin, reports itself current, and the edited model
+  reads as never run.
+
+The second is a stale result reporting as fresh, which is the one direction verify exists
+to prevent. Reaching it takes no contrivance: `einzel init` scaffolds a reflectron, and
+adding the corpus's own reflectron gives a project with two identical models. That is how
+it was found - not by suspecting it, but by building a view that listed both files side by
+side, where the state jumping from one row to the other was visible at a glance.
+
+The fix records the path as well, prefers it, and keeps the hash search as the fallback
+for older manifests and for the case it was written for. The general rule: **when one field
+is made to answer two questions, it answers the second one wrongly exactly where the two
+questions differ.** Ask what a value identifies as well as what it determines.
+
+**And the same mistake once more, in my own fix.** I wrote the fallback's message as *"the
+model has been renamed"*. It cannot know that. The recorded path being gone while identical
+bytes sit elsewhere is equally consistent with a rename and with a twin that was there all
+along - which is the very coincidence the whole defect turned on. My own test caught it:
+deleting one of two identical models produced a "rename" rather than the orphan the test
+expected, and the right response was to correct the message rather than the test. It now
+says what is observed - the recorded path is gone, the same content is at X, so the result
+still stands - and adds that this is a rename *if nothing else held that content*.
+
+**Do not report a history you did not observe.** A message describing a state is checkable;
+one describing an event is a guess about how the state arose, and it reads with exactly the
+same authority.
+
 ## The end of a run is where the answer is, and where the picture is not
 
 A diffusive run reports the density it *ended* with. The section renderer learned that

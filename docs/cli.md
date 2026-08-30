@@ -178,6 +178,60 @@ a flight time expected in millimetres is not a wrong answer, it is a wrong
 question, and reporting it as a failed assertion would send someone looking at the
 physics.
 
+### Every verb is in the help, and that is checked
+
+`einzel outline` worked, was documented here, and had no line in `einzel --help`. So did
+`render animation`. For a surface whose argument is that an agent drives it, a capability
+that cannot be discovered from the tool is close to one that does not exist.
+
+`HelpCoversEveryVerbTests` reads the dispatch switch out of `Program.cs` and asserts both
+directions: every verb that dispatches is listed, and every line lists a verb that
+dispatches. Against the switch rather than a list kept in the test, because such a list
+drifts for exactly the reason the help did. Aliases (`optimize` beside `optimise`) keep
+working and are deliberately not advertised; sub-verbs are listed under their parent
+(`agents tasks`), which is one line per thing a person types.
+
+### `einzel project`, and what `verify` cannot see
+
+`verify` reports on stored results, and it walks the manifests to find them. So a model
+that has **never been run** is absent from its output entirely - not reported as fine, not
+reported as broken, simply not there. That is the state most models in a working project
+are in.
+
+`einzel project` reports the whole folder: models, studies, figures, tests and extensions,
+with each model in one of four states.
+
+```
+STALE   models/refl.json
+        the model has been edited since this result was computed, so it answers a
+        question about a geometry that no longer exists
+not run models/reflectron.json
+ok      models/funnel.json  [diffusion]
+
+3 models, 1 never run, 1 with a result that no longer stands
+```
+
+The four are kept apart because each calls for something different: **invalid** is a thing
+to fix, **stale** is a thing to re-run, **not run** is where every model starts, and
+**ok** needs nothing. An invalid or stale model exits 1; a model nobody has run does not,
+because a fresh project has nothing wrong with it.
+
+Validation is run rather than read from a stored result, since a model can be edited into
+an invalid state after its last successful run.
+
+**A defect this found, and it was in `verify`.** A manifest recorded the model's content
+hash and not its path, so verify identified the model by searching for a file that still
+hashed to the recorded value. Two models may legitimately hold the same content - `einzel
+init` scaffolds a reflectron and the corpus has one - and then editing the model that was
+actually run made its drift **disappear**: the result silently re-attached to the untouched
+twin, reported itself current, and the edited model read as never run. A stale result
+reporting as fresh is the one direction verify exists to prevent. The manifest now records
+`modelPath`, verify prefers it, and the hash search remains the fallback for older
+manifests and for a model that has moved - reported as *the recorded path is gone and the
+same content is at X*, rather than as a rename, because content alone cannot tell a rename
+from a twin that was there all along. That is the same distinction the defect turned on,
+and asserting the stronger reading in the message would repeat it in words.
+
 ### What `verify` checks, and what it does not
 
 A manifest fully determines its run (PRJ-3), so a stored result carries enough to

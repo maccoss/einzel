@@ -109,6 +109,7 @@ public static class Program
             "new" => New(options),
             "validate" => Validate(options),
             "outline" => Outline(options),
+            "project" => Project(options),
             "estimate" => Estimate(options),
             "solve" => Solve(options),
             "run" => Run(options),
@@ -1024,6 +1025,142 @@ public static class Program
         Console.Out.WriteLine($"{outcome.Passed} of {outcome.Tests.Count} tests passed");
 
         return (int)(outcome.AllPassed ? ExitCode.Success : ExitCode.ValidationFailure);
+    }
+
+    /// <summary>What a project holds, and the state of each part of it.</summary>
+    /// <remarks>
+    /// <para>
+    /// A peer of <c>verify</c> rather than a replacement for it. Verify answers "do the
+    /// stored results still stand" and walks the manifests to do it, which makes it
+    /// structurally blind to a model nobody has run - the state most models in a working
+    /// project are in.
+    /// </para>
+    /// <para>
+    /// Exit code follows the same rule verify uses: a drifted result is a project that has
+    /// moved on rather than an engine failure, and a model that does not validate is a
+    /// thing to fix. A model that has simply never been run is neither, so it does not
+    /// change the exit code.
+    /// </para>
+    /// </remarks>
+    private static int Project(CommandLine options)
+    {
+        var root = options.Value("project")
+            ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+
+        var outcome = ProjectCommand.Execute(root);
+
+        var wrong = outcome.Models.Count(m => !m.Valid) + outcome.Drifted;
+        var code = wrong == 0 ? ExitCode.Success : ExitCode.ValidationFailure;
+
+        if (options.Has("json"))
+        {
+            // Warnings go out in the wire form every other verb uses: the severity as a
+            // name and GRD-3's suppressibility spelled out. Serialising the engine's own
+            // record here would emit the severity as a bare integer and drop
+            // `suppressible` entirely - a reader could not tell a note from a violation,
+            // which is the one thing GRD-3 is about.
+            //
+            // The outcome keeps the engine record rather than the wire one because the
+            // shell reads it too, and a property typed from Einzel.Io would pull the file
+            // format into the window (UI-1). Same reason ResultsCommand has FigureEnvelope.
+            return Emit(
+                new
+                {
+                    outcome.Root,
+                    outcome.Models,
+                    outcome.Studies,
+                    outcome.Figures,
+                    outcome.Tests,
+                    outcome.ExtensionNames,
+                    outcome.Orphans,
+                    outcome.NeverRun,
+                    outcome.Drifted,
+                    Warnings = outcome.Warnings.Select(w => new Io.WarningJson
+                    {
+                        Code = w.Code,
+                        Message = w.Message,
+                        Severity = w.Severity.ToString(),
+                        Suppressible = w.IsSuppressible,
+                    }).ToList(),
+                },
+                code);
+        }
+
+        Console.Out.WriteLine(outcome.Root);
+        Console.Out.WriteLine();
+
+        if (outcome.Models.Count == 0)
+        {
+            Console.Out.WriteLine("no models");
+        }
+
+        foreach (var model in outcome.Models)
+        {
+            // Three states, kept apart because they call for different things: invalid is
+            // a thing to fix, stale is a thing to re-run, and never-run is neither - it is
+            // simply where a model starts.
+            var mark =
+                !model.Valid ? "INVALID"
+                : !model.Ran ? "not run"
+                : model.Current ? "ok     "
+                : "STALE  ";
+
+            var stream = model.Valid && (model.Current || !model.Ran)
+                ? Console.Out
+                : Console.Error;
+
+            stream.WriteLine(
+                $"{mark} {model.Path}"
+                + (model.TransportMode is { } mode and not "trajectory" ? $"  [{mode}]" : string.Empty));
+
+            if (model.Problem is { } why)
+            {
+                Console.Error.WriteLine($"        {why}");
+            }
+
+            foreach (var drift in model.Drift)
+            {
+                Console.Error.WriteLine($"        {drift}");
+            }
+
+            foreach (var note in model.Notes)
+            {
+                Console.Out.WriteLine($"        note: {note}");
+            }
+        }
+
+        foreach (var orphan in outcome.Orphans)
+        {
+            Console.Error.WriteLine($"ORPHAN  {orphan.Manifest} - {orphan.Model}");
+        }
+
+        Console.Out.WriteLine();
+
+        foreach (var (label, items) in new[]
+        {
+            ("studies", outcome.Studies),
+            ("figures", outcome.Figures),
+            ("tests", outcome.Tests),
+            ("extensions", outcome.ExtensionNames),
+        })
+        {
+            if (items.Count > 0)
+            {
+                Console.Out.WriteLine($"{items.Count} {label}: {string.Join(", ", items)}");
+            }
+        }
+
+        Console.Out.WriteLine();
+        Console.Out.WriteLine(
+            $"{outcome.Models.Count} models, {outcome.NeverRun} never run, "
+            + $"{outcome.Drifted} with a result that no longer stands");
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)code;
     }
 
     private static int Verify(CommandLine options)
@@ -2071,12 +2208,15 @@ public static class Program
           new <model.json>              create a model from a template or an example
                 --from-template <name> | --from-example <name>
           validate <model.json>         check units, bounds, and regime validity
+          outline <model.json>          the declared parameters, with units and bounds
+                --set <name>=<value>    change one, in its own declared unit
           estimate <model.json>         what a run will cost, without running it
           solve <model.json>            solve the fields only, and report how they went
           run <model.json> [--vtu]      run a model; --vtu also writes a ParaView trajectory
           preview <model.json>          a fast, deliberately inexact look
           test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
+          project [dir]                 what the project holds, and the state of each model
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           scan <study.json>             one parameter across a range, one row per point
           boundary <study.json>         bisect onto a stability boundary (Class B, ACC-6)
@@ -2084,6 +2224,7 @@ public static class Program
           export <model.json>           write the solved field as VTK ImageData
           compare <model.json>          run both transport modes and report the disagreement
           render section <model.json>   draw a plane through the instrument as SVG or PDF
+          render animation <spec.json>  frames on a declared playback mapping (RND-7)
           ext list | test | register    the extension authoring loop
           agents-md [dir]               regenerate the platform layer of AGENTS.md
 
