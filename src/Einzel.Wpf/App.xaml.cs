@@ -56,7 +56,12 @@ public partial class App : System.Windows.Application
             var session = new ShellSession(
                 modelPath, new JournalAuthor(Environment.UserName, AuthorKind.Human));
 
-            window.Open(new ModelTreeViewModel(session), new ViewportViewModel(session));
+            window.Open(
+                new ModelTreeViewModel(session),
+                new ViewportViewModel(session),
+                new ResultsViewModel(session),
+                new RegimeViewModel(session),
+                new SequenceViewModel(session));
         }
         catch (EinzelException refusal)
         {

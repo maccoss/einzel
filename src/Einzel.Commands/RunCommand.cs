@@ -1061,7 +1061,16 @@ public static class RunCommand
     /// smaller feature, which is the largest defensible length and so the most
     /// conservative Knudsen number.
     /// </remarks>
-    private static double SmallestAperture(CompiledModel model)
+    /// <summary>
+    /// The tightest constriction the ion has to pass through, in metres.
+    /// </summary>
+    /// <remarks>
+    /// Internal rather than private because the regime inspector needs the same length:
+    /// a Knudsen number is meaningless without one, and two implementations of "the
+    /// tightest constriction" would let a run and an inspection of that run disagree
+    /// about whether the gas is a continuum.
+    /// </remarks>
+    internal static double SmallestAperture(CompiledModel model)
     {
         var smallest = double.PositiveInfinity;
 

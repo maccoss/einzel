@@ -8,6 +8,48 @@ using Einzel.Transport.Integration;
 
 namespace Einzel.Commands;
 
+/// <summary>Which of §12's families a figure of merit belongs to.</summary>
+/// <remarks>
+/// <para>
+/// §12 sorts figures into three, and the sort is not decoration: it says what a figure
+/// is <em>of</em>. A Class T figure describes one packet's arrival, a Class S figure
+/// describes a population, a Class B figure describes where a boundary in operating
+/// space lies. They are computed differently, cost differently, and are read against
+/// different questions - which is why §16 asks for results grouped this way rather than
+/// listed.
+/// </para>
+/// <para>
+/// <b>Two of this registry's figures are in none of them, and that is recorded rather
+/// than forced.</b> §12's list is of figures of merit; the raw arrival time and a
+/// numerical energy-drift diagnostic are not that, and putting them in a class they do
+/// not belong to would make the grouping mean less everywhere else. See SPEC.md's
+/// amendment on §12.
+/// </para>
+/// </remarks>
+public enum AccuracyClass
+{
+    /// <summary>Not one of §12's figures: a raw quantity, or a diagnostic.</summary>
+    None,
+
+    /// <summary>
+    /// Class T. One packet's arrival: resolving power, peak shape, focusing order,
+    /// turn-around time, emittance.
+    /// </summary>
+    Trajectory,
+
+    /// <summary>
+    /// Class S. A population: transmission itemised by loss surface, radial
+    /// compression, transit-time distribution, thermalization.
+    /// </summary>
+    Statistical,
+
+    /// <summary>
+    /// Class B. Where a boundary in operating space lies: stability diagrams, cut-offs,
+    /// secular spectra, isolation efficiency.
+    /// </summary>
+    Boundary,
+}
+
 /// <summary>One figure of merit a study may ask for by name.</summary>
 /// <param name="Name">The name a study file uses.</param>
 /// <param name="Unit">The unit it is reported in.</param>
@@ -17,7 +59,13 @@ namespace Einzel.Commands;
 /// objective does not throw; it returns the worst design in the box and looks like
 /// a result.
 /// </param>
-public sealed record FigureOfMeritInfo(string Name, string Unit, string Description, bool LargerIsBetter)
+/// <param name="Class">
+/// Which of §12's families it belongs to, or <see cref="AccuracyClass.None"/> where it
+/// is not one of §12's figures at all.
+/// </param>
+public sealed record FigureOfMeritInfo(
+    string Name, string Unit, string Description, bool LargerIsBetter,
+    AccuracyClass Class = AccuracyClass.None)
 {
     /// <summary>
     /// The physical dimension, derived from the unit rather than stated beside it.
@@ -81,22 +129,32 @@ public static class FiguresOfMerit
     /// </remarks>
     public const int DefaultIons = 21;
 
+    /// <summary>
+    /// Every figure this build computes, with §12's class on each.
+    /// </summary>
+    /// <remarks>
+    /// <b>Two are deliberately in no class.</b> <c>flightTime</c> is the raw arrival
+    /// quantity the Class T figures are computed <em>from</em>, and <c>energyDrift</c>
+    /// says in its own description that it is a diagnostic rather than a design target.
+    /// §12 lists neither, and assigning them a class to make the grouping tidy would
+    /// weaken what the grouping says about the twelve that do belong to one.
+    /// </remarks>
     private static readonly FigureOfMeritInfo[] Catalogue =
     [
-        new("flightTime", "us", "Arrival time at the detector, from a convergence study over three integrator tolerances.", false),
-        new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false),
-        new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true),
-        new("transmission", "1", "Fraction of launched ions that reach the detector.", true),
-        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false),
-        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false),
-        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false),
-        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false),
-        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true),
-        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false),
-        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false),
-        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false),
-        new("secularFrequencyY", "kHz", "The same along y.", false),
-        new("secularFrequencyZ", "kHz", "The same along z.", false),
+        new("flightTime", "us", "Arrival time at the detector, from a convergence study over three integrator tolerances.", false, AccuracyClass.Trajectory),
+        new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false, AccuracyClass.None),
+        new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true, AccuracyClass.Trajectory),
+        new("transmission", "1", "Fraction of launched ions that reach the detector.", true, AccuracyClass.Statistical),
+        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false, AccuracyClass.Trajectory),
+        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false, AccuracyClass.Trajectory),
+        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false, AccuracyClass.Trajectory),
+        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false, AccuracyClass.Trajectory),
+        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical),
+        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical),
+        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
+        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false, AccuracyClass.Boundary),
+        new("secularFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
+        new("secularFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
@@ -124,6 +182,200 @@ public static class FiguresOfMerit
             Constraint = $"'{name}' is not a figure of merit this build computes",
             Suggestion = $"available: {string.Join(", ", All.Select(f => f.Name))}",
         });
+    }
+
+    /// <summary>Computes one figure with its GRD-1 envelope, where this build can.</summary>
+    /// <param name="name">Which figure of merit.</param>
+    /// <param name="model">The validated model.</param>
+    /// <param name="energySpread">Fractional energy spread for the ensemble figures.</param>
+    /// <param name="ions">How many ions the ensemble figures launch.</param>
+    /// <param name="report">Where the warnings the evaluation earns are sent, or null.</param>
+    /// <returns>The figure with its interval, or null where this build has no envelope for it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <exception cref="EinzelException">No figure of merit by that name.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>The counterpart to <see cref="Evaluator"/>, and the reason it needed one.</b> The
+    /// evaluator hands a driver a bare double because ranking needs an ordering and an
+    /// envelope has none - a deliberate exception to GRD-1, argued where it is taken. The
+    /// consequence nobody had written down is that most figures existed <em>only</em> in the
+    /// excepted form: there was no way to ask this build for a turn-around time with an
+    /// uncertainty on it.
+    /// </para>
+    /// <para>
+    /// <b>The interval is the sampling uncertainty, by resampling the cloud.</b> Most of
+    /// these figures are statistics of an ion cloud and only the fractions had a closed
+    /// form; <see cref="Bootstrap"/> covers a width, a mean and a ratio alike, and assumes
+    /// nothing about the distribution - which matters because an arrival-time peak is
+    /// measurably skew. What it does <em>not</em> measure is the discretisation, the
+    /// integrator or the model, so the evidence names the sample size rather than claiming a
+    /// confidence in the answer.
+    /// </para>
+    /// <para>
+    /// <b>Null where there is no envelope, never a bare number dressed as one.</b> A figure
+    /// this build can only rank by comes back absent, and the caller says so - which is the
+    /// whole point, since printing an unqualified value would be the failure GRD-1 exists to
+    /// prevent.
+    /// </para>
+    /// </remarks>
+    public static Core.Results.Measured? Measure(
+        string name,
+        CompiledModel model,
+        double energySpread = DefaultEnergySpread,
+        int ions = DefaultIons,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        _ = Describe(name);
+
+        return name switch
+        {
+            // The arrival-time peak's own statistics, resampled over the arrivals that
+            // produced it. One flight serves all three.
+            "arrivalSpread" => OverArrivals(
+                model, energySpread, ions, report,
+                peak => peak.GaussianEquivalentFwhmSeconds * 1e9, "ns"),
+
+            "resolvingPower" => OverArrivals(
+                model, energySpread, ions, report,
+                peak => peak.Arrived >= 3 ? Resolving(peak) : null, "1"),
+
+            "turnAroundTime" => TurnAroundMeasured(model, report),
+
+            // A fraction, so a binomial standard error rather than a resampling - the
+            // closed form is exact and the bootstrap would only approximate it.
+            "transmission" => Fraction(
+                model, energySpread, ions, report,
+                peak => (peak.Arrived, peak.Launched), "1"),
+
+            _ => null,
+        };
+    }
+
+    /// <summary>A peak's model-free resolving power, as a bare number for resampling.</summary>
+    /// <remarks>
+    /// The envelope on <c>ArrivalTimePeak.ResolvingPower</c> is the binomial one for the
+    /// arrival count; what is wanted per replicate is the value alone, so the deconstruction
+    /// GRD-1 permits is used rather than a second implementation of the ratio.
+    /// </remarks>
+    private static double? Resolving(ArrivalTimePeak peak)
+    {
+        var (value, _, _, _) = peak.ResolvingPower();
+
+        return double.IsFinite(value.SiValue) ? value.SiValue : null;
+    }
+
+    /// <summary>Resamples a statistic of the arrival-time peak.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only where the model declares an ion cloud, and that is not a limitation but the
+    /// distinction.</b> Without one, the ensemble helper sweeps the energy acceptance
+    /// <em>deterministically</em> - evenly spaced from one end to the other, so the seed
+    /// does not enter and two runs agree exactly. That is a designed scan, not a sample
+    /// drawn from a population, and resampling it would report the scan's own spacing as
+    /// though it were a sampling error.
+    /// </para>
+    /// <para>
+    /// The two have been confused here before: <c>DefaultEnergySpread</c>'s remarks exist
+    /// because somebody compared a deterministic sweep with a cloud's random draw and read
+    /// the difference as noise in the objective. Putting an interval on the sweep would
+    /// make that mistake structural.
+    /// </para>
+    /// </remarks>
+    private static Core.Results.Measured? OverArrivals(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report,
+        Func<ArrivalTimePeak, double?> statistic,
+        string unit)
+    {
+        if (!model.Cloud.IsCloud
+            || Ensemble(model, spread, ions, report) is not { } peak
+            || peak.Arrived < 2)
+        {
+            return null;
+        }
+
+        var launched = peak.Launched;
+
+        return Bootstrap.Measure(
+            [.. peak.Arrivals],
+            draw => draw.Count >= 2
+                ? statistic(ArrivalTimePeak.FromArrivals(draw, launched))
+                : null,
+            unit);
+    }
+
+    /// <summary>A fraction of the launched ions, with its binomial error.</summary>
+    private static Core.Results.Measured? Fraction(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report,
+        Func<ArrivalTimePeak, (int Of, int Out)> counts,
+        string unit)
+    {
+        if (!model.Cloud.IsCloud || Ensemble(model, spread, ions, report) is not { } peak)
+        {
+            return null;
+        }
+
+        var (of, outOf) = counts(peak);
+
+        if (outOf <= 0)
+        {
+            return null;
+        }
+
+        _ = unit;
+
+        // The peak's own transmission envelope, which already floors the interval so a
+        // perfect ensemble does not claim certainty from a finite sample.
+        return peak.Transmission();
+    }
+
+    /// <summary>Turn-around time, resampled over the thermal-only cloud that measures it.</summary>
+    /// <remarks>
+    /// Zero with no interval where the source has no temperature: that is a measurement of
+    /// something absent rather than a failure to measure, and resampling nothing would
+    /// report a spread on a quantity that is exactly nought by construction.
+    /// </remarks>
+    private static Core.Results.Measured? TurnAroundMeasured(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report)
+    {
+        if (model.Cloud.TemperatureK <= 0.0)
+        {
+            var zero = Core.Units.Quantity.From(0.0, "ns");
+
+            return new Core.Results.Measured(
+                zero,
+                Core.Results.UncertaintyInterval.Symmetric(zero, zero, 0.68),
+                new Core.Results.Evidence.Analytic(
+                    "no source temperature, so no thermal turn-around"));
+        }
+
+        if (!model.Cloud.IsCloud)
+        {
+            return null;
+        }
+
+        var thermalOnly = ThermalOnly(model);
+
+        if (FromCloud(thermalOnly, report) is not { } peak || peak.Arrived < 2)
+        {
+            return null;
+        }
+
+        var launched = peak.Launched;
+
+        return Bootstrap.Measure(
+            [.. peak.Arrivals],
+            draw => draw.Count >= 2
+                ? ArrivalTimePeak.FromArrivals(draw, launched).GaussianEquivalentFwhmSeconds * 1e9
+                : null,
+            "ns");
     }
 
     /// <summary>Builds the evaluator a sweep or an optimiser drives.</summary>
@@ -973,38 +1225,48 @@ public static class FiguresOfMerit
             return 0.0;
         }
 
-        var thermalOnly = model with
-        {
-            Cloud = new IonCloudSettings
-            {
-                Ions = model.Cloud.Ions,
-                Seed = model.Cloud.Seed,
-                TemperatureK = model.Cloud.TemperatureK,
-            },
-
-            // Turn-around is the spread the source temperature alone imposes, and
-            // the whole method is to switch everything else off and measure what is
-            // left. The packet's own charge is one of the things being switched off:
-            // leaving it on would measure temperature plus space charge and report
-            // it as temperature.
-            //
-            // It also cannot run. The thermal-only cloud has no spatial spread by
-            // construction, so its self-field is unbounded rather than large - which
-            // is exactly the case the validator refuses, reached here by a model
-            // built in code rather than read from a file. It came back as a
-            // turn-around of 0.000 ns, which reads like a measurement.
-            SpaceChargeMode = "none",
-        };
-
         try
         {
-            return FromCloud(thermalOnly, report)?.GaussianEquivalentFwhmSeconds;
+            return FromCloud(ThermalOnly(model), report)?.GaussianEquivalentFwhmSeconds;
         }
         catch (ArgumentException)
         {
             return null;
         }
     }
+
+    /// <summary>The same model with every spread but the source temperature switched off.</summary>
+    /// <remarks>
+    /// <para>
+    /// Turn-around is the spread the source temperature alone imposes, and the whole method
+    /// is to switch everything else off and measure what is left.
+    /// </para>
+    /// <para>
+    /// <b>The packet's own charge is one of the things being switched off</b>, and it has to
+    /// be. Leaving it on would measure temperature plus space charge and report it as
+    /// temperature - and it also cannot run: the thermal-only cloud has no spatial spread by
+    /// construction, so its self-field is unbounded rather than large, which is exactly the
+    /// case the validator refuses. Reached here by a model built in code rather than read
+    /// from a file, it came back as a turn-around of 0.000 ns, which reads like a
+    /// measurement.
+    /// </para>
+    /// <para>
+    /// One implementation, because the bare figure and the enveloped one must measure the
+    /// same thing - two constructions of "everything else off" would drift, and the drift
+    /// would look like a disagreement about the physics.
+    /// </para>
+    /// </remarks>
+    private static CompiledModel ThermalOnly(CompiledModel model) => model with
+    {
+        Cloud = new IonCloudSettings
+        {
+            Ions = model.Cloud.Ions,
+            Seed = model.Cloud.Seed,
+            TemperatureK = model.Cloud.TemperatureK,
+        },
+
+        SpaceChargeMode = "none",
+    };
 
     private static (PhaseState Launch, IonSpecies Species, IElectrostaticField Field,
         IntegrationSettings Settings, TrajectoryStopFunction Detector,

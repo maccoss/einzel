@@ -1414,3 +1414,67 @@ actually caught them were:
   It failed on its second run. **A conditional assertion needs its condition checked against
   the failing case, not just the passing one**: the question is not "when is this safe to
   assert" but "what does the population of runs that reach the assertion look like".
+
+- **A command's return type is part of the architectural boundary, and a caller acquires a
+  dependency by reading a property.** `ResultsCommand` handed back
+  `Einzel.Io.MeasuredJson` — the type the CLI already serialises, so it looked like reuse
+  rather than a decision. The shell then referenced `Einzel.Io` without a single `using`
+  directive being written for it, because reading `measured.Uncertainty.Lower` is enough.
+  UI-1's invariant test caught it, which is the point of having the invariant checked by a
+  machine: nobody reviewing the view model would have seen a boundary being crossed, since
+  the code that crosses it looks like ordinary property access. **Where an assembly
+  boundary matters, the types on the public surface are the boundary** — not the using
+  directives, and not the project references somebody remembered to omit.
+
+- **A control experiment before a fix, when the symptom appeared alongside a change.** The
+  shell window started rendering blank white immediately after I added three new panels, so
+  the panels were the obvious suspect. Reverting the XAML and rebuilding produced the same
+  blank window from code that had rendered correctly an hour earlier — the graphics state
+  had degraded over about fifteen launches and hard kills in one session. Without the
+  control I would have spent the time "fixing" working code. The visual tree was
+  independently readable through UI Automation throughout, which is what let the work
+  continue: **when the display is unreliable, assert on the content rather than the
+  picture** — and for "are the right numbers in the right cells" that is the better check
+  anyway.
+
+- **A designed scan is not a sample, and putting a sampling interval on one is a category
+  error.** Closing the GRD-1 envelope gap meant resampling the ion cloud to get an
+  uncertainty for statistics that have no closed-form error. It worked, and it also
+  produced intervals for models that declare *no* cloud — where the acceptance is swept
+  deterministically, evenly spaced and seed-free, the same every run. Resampling that
+  reports the scan's own spacing as though it were a sampling error. The codebase had
+  already been bitten by the same confusion from the other direction: `DefaultEnergySpread`
+  carries a paragraph written because somebody compared a deterministic sweep with a
+  cloud's random draw and read the difference as noise in an objective. **Before attaching
+  an uncertainty, ask what would have to vary for the number to vary** — if the answer is
+  "nothing, it is the same every run", there is no uncertainty of that kind to report.
+
+- **The bootstrap is inconsistent for extreme-order statistics, and I demonstrated it by
+  accident.** Wanting a statistic with no closed-form error, I picked the range — and its
+  estimated error went 0.181, 0.313, 0.225 across a sixteenfold increase in sample size,
+  not falling and not converging. That is a known property: a resampled draw can only
+  contain values already present, so the resampled maximum comes from a handful of the
+  largest observations however many replicates are taken. It matters here rather than
+  academically, because *the widest entry radius that still arrives* is an extreme-order
+  statistic and this project has already had to replace one such measurement with a count
+  over a fixed grid after it gave 0.65 mm on one radius grid and 0.20 mm on another for the
+  same geometry. The test now asserts the **failure**, because a test that tolerated either
+  outcome would document nothing and one demanding success would demand something untrue.
+
+- **"Absent" and "zero" are different answers, and so are their reasons.** A model with no
+  source temperature has a turn-around time of exactly nought — an analytic statement about
+  the model, needing no ensemble and carrying no sampling interval. My test asserted it
+  should be absent, on the reasoning that ensemble figures need a cloud. Both halves were
+  right and the conclusion was wrong: it is not that the figure could not be computed, it is
+  that it *is* nought. **When a figure is missing, the question is not "was there enough
+  data" but "is there a value" — and sometimes the value is zero and the evidence is a
+  derivation rather than a measurement.**
+
+- **A heuristic about size, standing in for a statement about behaviour.** Checking that a
+  sequence's phase-to-phase diff discriminated, I asserted a phase must change fewer than
+  all its electrodes — reasoning that marking everything would mean the diff had stopped
+  discriminating. The corpus's extraction moves **both** its plates, to +500 V and −500 V,
+  because push-pull extraction is what it is. The assertion was a claim about instrument
+  size wearing the costume of a claim about the diff. Replaced by recomputing the expected
+  diff in the test and comparing it exactly, which cannot be satisfied by a wrong
+  implementation and does not care how many electrodes there are.

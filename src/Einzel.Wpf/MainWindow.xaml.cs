@@ -29,6 +29,9 @@ public partial class MainWindow : Window
 {
     private ModelTreeViewModel? _tree;
     private ViewportViewModel? _viewport;
+    private ResultsViewModel? _results;
+    private RegimeViewModel? _regime;
+    private SequenceViewModel? _sequence;
     private bool _framed;
     private bool _loaded;
 
@@ -59,13 +62,40 @@ public partial class MainWindow : Window
     /// <param name="tree">The tree over the session.</param>
     /// <param name="viewport">The viewport over the same session.</param>
     /// <exception cref="ArgumentNullException">Either is null.</exception>
-    public void Open(ModelTreeViewModel tree, ViewportViewModel viewport)
+    /// <param name="results">Its figures by accuracy class.</param>
+    /// <param name="regime">Its dimensionless numbers along the path.</param>
+    /// <param name="sequence">Its declared timeline.</param>
+    public void Open(
+        ModelTreeViewModel tree,
+        ViewportViewModel viewport,
+        ResultsViewModel results,
+        RegimeViewModel regime,
+        SequenceViewModel sequence)
     {
         ArgumentNullException.ThrowIfNull(tree);
         ArgumentNullException.ThrowIfNull(viewport);
+        ArgumentNullException.ThrowIfNull(results);
+        ArgumentNullException.ThrowIfNull(regime);
+        ArgumentNullException.ThrowIfNull(sequence);
 
         _tree = tree;
         _viewport = viewport;
+        _results = results;
+        _regime = regime;
+        _sequence = sequence;
+
+        PhaseList.ItemsSource = sequence.Phases;
+        SequenceWarnings.ItemsSource = sequence.Warnings;
+        SequenceStatus.Text = sequence.Status;
+
+        ResultsList.ItemsSource = results.Rows;
+        ResultsWarnings.ItemsSource = results.Warnings;
+        ResultsStatus.Text = results.Status;
+
+        RegimeGrid.ItemsSource = regime.Samples;
+        ExcursionList.ItemsSource = regime.Excursions;
+        RegimeWarnings.ItemsSource = regime.Warnings;
+        RegimeStatus.Text = regime.Status;
 
         Show(tree);
 
@@ -547,6 +577,73 @@ public partial class MainWindow : Window
         StatusBar.Background = tree.Valid
             ? Brushes.Transparent
             : new SolidColorBrush(Color.FromRgb(0xF6, 0xE0, 0xE0));
+    }
+
+    /// <summary>Runs or previews the model and reads its figures by class.</summary>
+    /// <remarks>
+    /// A run is not instant - it is the same work <c>einzel run</c> does - so the button
+    /// is a button rather than something that happens on opening the tab. Section 16's
+    /// results view is a thing a person asks for, not a thing that happens to them while
+    /// they are editing a parameter.
+    /// </remarks>
+    private void OnResults(object sender, RoutedEventArgs e)
+    {
+        if (_results is null || sender is not System.Windows.Controls.Button { Tag: string tier })
+        {
+            return;
+        }
+
+        Cursor = System.Windows.Input.Cursors.Wait;
+
+        try
+        {
+            _results.Refresh(preview: tier == "preview");
+        }
+        finally
+        {
+            Cursor = null;
+        }
+
+        ResultsStatus.Text = _results.Status;
+
+        // GRD-5's taint, where it cannot be missed rather than in a column somebody may
+        // have scrolled past.
+        ResultsTaint.Visibility = _results.Tainted ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Walks the path and reads the regime at each step.</summary>
+    private void OnRegime(object sender, RoutedEventArgs e)
+    {
+        if (_regime is null)
+        {
+            return;
+        }
+
+        Cursor = System.Windows.Input.Cursors.Wait;
+
+        try
+        {
+            _regime.Refresh();
+        }
+        finally
+        {
+            Cursor = null;
+        }
+
+        RegimeStatus.Text = _regime.Status;
+    }
+
+    /// <summary>Reads the declared timeline.</summary>
+    private void OnSequence(object sender, RoutedEventArgs e)
+    {
+        if (_sequence is null)
+        {
+            return;
+        }
+
+        _sequence.Refresh();
+
+        SequenceStatus.Text = _sequence.Status;
     }
 
     /// <summary>Turns a layer on or off and redraws.</summary>
