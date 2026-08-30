@@ -203,30 +203,85 @@ public sealed class SessionJournalTests(ITestOutputHelper output) : IDisposable
         }
     }
 
-    /// <summary>An edit that does not validate is refused, not staged.</summary>
+    /// <summary>An edit that does not parse is refused, not staged.</summary>
     /// <remarks>
-    /// In a shared session an invalid document is not one party's problem: the other
+    /// <para>
+    /// In a shared session an unreadable document is not one party's problem: the other
     /// party's next action is against whatever is on disk. The file must be unchanged
     /// after a refusal, which is asserted rather than assumed — a refusal that had
     /// already written would be the worst of both.
+    /// </para>
+    /// <para>
+    /// <b>Parse, not validate</b>, and that was the other way round until §16's live
+    /// validation contradicted it. A document that merely fails validation is allowed
+    /// through and reported: a person typing 500 into a bounded parameter has to see the
+    /// tree standing with the complaint against it, and refusing every invalid document
+    /// also forbids any edit sequence that passes through one. Taint, never block.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void AnInvalidEditIsRefusedAndTheFileIsUntouched()
+    public void AnEditThatDoesNotParseIsRefusedAndTheFileIsUntouched()
+    {
+        var journal = new SessionJournal(Model(4.0));
+
+        var failure = Assert.Throws<EinzelException>(
+            () => journal.Apply(Robot, "break it", "{ not json at all"));
+
+        output.WriteLine($"{failure.Error.Path}: {failure.Error.Constraint}");
+
+        Assert.Contains(
+            "does not parse", failure.Error.Suggestion!, StringComparison.Ordinal);
+
+        Assert.Empty(journal.Entries);
+        Assert.Equal(Document(4.0), File.ReadAllText(journal.ModelPath));
+    }
+
+    /// <summary>
+    /// An edit that does not validate goes through, and the journal says it is invalid.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Live validation needs an invalid state to be reachable.</b> §16 asks for a
+    /// model tree with parameter editing and live validation; if the journal refuses
+    /// anything that does not validate, a person can never type a wrong value and be told
+    /// why — they are simply prevented, with the editor most useless at the moment it is
+    /// most needed.
+    /// </para>
+    /// <para>
+    /// Reported rather than enforced, because both parties are looking at the same
+    /// document and both should be able to see that it is currently invalid. That is more
+    /// useful than one of them having been unable to write it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnEditThatDoesNotValidateGoesThroughAndIsReported()
     {
         var journal = new SessionJournal(Model(4.0));
 
         var broken = Document(4.0).Replace(
             "\"unit\": \"kV\"", "\"unit\": \"mm\"", StringComparison.Ordinal);
 
-        var failure = Assert.Throws<EinzelException>(
-            () => journal.Apply(Robot, "break it", broken));
+        journal.Apply(Robot, "a kilovolt in millimetres", broken);
 
-        output.WriteLine($"{failure.Error.Path}: {failure.Error.Constraint}");
+        var validation = journal.Validate();
 
-        Assert.Contains("shared session", failure.Error.Suggestion!, StringComparison.Ordinal);
+        output.WriteLine($"valid: {validation.IsValid}");
 
-        Assert.Empty(journal.Entries);
-        Assert.Equal(Document(4.0), File.ReadAllText(journal.ModelPath));
+        foreach (var error in validation.Errors)
+        {
+            output.WriteLine($"  {error.Path}: {error.Constraint}");
+        }
+
+        // It applied, it is on the record, and it is visibly wrong.
+        Assert.Single(journal.Entries);
+        Assert.Equal(broken, File.ReadAllText(journal.ModelPath));
+        Assert.False(validation.IsValid);
+
+        // And it is undoable, which is the property that makes allowing it safe: the
+        // person who typed it, or the agent watching them, can take it straight back.
+        journal.Undo(Person);
+
+        Assert.True(journal.Validate().IsValid);
     }
 
     /// <summary>Undoing an empty session says so rather than throwing something opaque.</summary>

@@ -128,11 +128,18 @@ public sealed class SessionJournal
     /// <param name="modelPath">The model being edited.</param>
     /// <exception cref="ArgumentException">The path is blank.</exception>
     /// <exception cref="FileNotFoundException">There is no file there.</exception>
-    /// <exception cref="EinzelException">The document there does not validate.</exception>
+    /// <exception cref="EinzelException">The document there does not parse.</exception>
     /// <remarks>
-    /// The document is validated on opening, so a session never starts from a state no
-    /// edit could have produced. An invalid file is a thing to fix with an editor, not a
-    /// thing to hand two parties and a shared undo stack.
+    /// <para>
+    /// The document is <em>parsed</em> on opening, not validated. A file nobody can read
+    /// is not a state to hand two parties and a shared undo stack; one that merely fails
+    /// validation is, and has to be - a session that could not open an invalid model
+    /// could not be used to fix one.
+    /// </para>
+    /// <para>
+    /// Ask <see cref="Validate"/> for what is wrong with it. Reported rather than
+    /// enforced, for the reasons on <c>Check</c>.
+    /// </para>
     /// </remarks>
     public SessionJournal(string modelPath)
     {
@@ -311,9 +318,11 @@ public sealed class SessionJournal
             return null;
         }
 
-        // Validated like any other edit. A session that adopted a broken document would
-        // hand the next caller a state no edit through the journal could have produced,
-        // which is the invariant the constructor establishes.
+        // Parsed like any other edit, and no more than that. A document nobody can read
+        // is refused because the tree cannot be built from it and the next party cannot
+        // act on it; one that merely fails validation is adopted and reported, because a
+        // person editing outside the session has exactly as much right to a half-finished
+        // state as one editing inside it.
         Check(onDisk);
 
         var entry = new JournalEntry(
@@ -370,13 +379,43 @@ public sealed class SessionJournal
         return entry;
     }
 
+    /// <summary>
+    /// Refuses what cannot be worked with, and allows what is merely wrong.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Parse, not validate — and this was the other way round until §16 said
+    /// otherwise.</b> The first version refused any edit that did not validate, arguing
+    /// that an unrunnable model is not one party's problem when another is working from
+    /// the same file. That argument is real and it is outweighed.
+    /// </para>
+    /// <para>
+    /// <b>Live validation needs an invalid state to exist.</b> §16 asks for a model tree
+    /// with parameter editing and live validation; a person who types 500 into a bounded
+    /// parameter has to see the tree standing with the complaint against it, not be
+    /// prevented from typing. Refusing every invalid document also forbids any edit
+    /// <em>sequence</em> that passes through one — widening a bound and then setting a
+    /// value beyond the old bound is allowed in one order and refused in the other, for
+    /// no reason a person could infer.
+    /// </para>
+    /// <para>
+    /// And it is what the platform already does everywhere else: <b>taint, never
+    /// block</b>. A preview result, a decimated figure, a defective engine version all
+    /// keep working and carry a mark. The platform never stops you working; it refuses to
+    /// let a result look cleaner than it is. A validity check that stopped an edit was
+    /// stricter than anything MCP-1 or GRD-9 asks for.
+    /// </para>
+    /// <para>
+    /// A document that does not <em>parse</em> is still refused, because there is nothing
+    /// there to be wrong: the next party cannot read it, the tree cannot be built from
+    /// it, and no edit through the journal could have produced it.
+    /// </para>
+    /// </remarks>
     private static void Check(string content)
     {
-        ModelDocument document;
-
         try
         {
-            document = Io.ModelJson.Parse(content);
+            _ = Io.ModelJson.Parse(content);
         }
         catch (EinzelException malformed)
         {
@@ -385,21 +424,22 @@ public sealed class SessionJournal
                 Suggestion = malformed.Error.Suggestion
                     + ". A shared session refuses an edit that does not parse rather than "
                     + "staging it, because the next thing the other party does is against "
-                    + "whatever is on disk",
-            });
-        }
-
-        var validation = ModelValidator.Validate(document, null);
-
-        if (!validation.IsValid)
-        {
-            throw new EinzelException(validation.Errors[0] with
-            {
-                Suggestion = validation.Errors[0].Suggestion
-                    + ". A shared session refuses an edit that does not validate rather than "
-                    + "staging it: an unrunnable model is not one party's problem when another "
-                    + "party is working from the same file",
+                    + "whatever is on disk - and a document nobody can read is not a state "
+                    + "to hand them. One that merely does not validate is allowed through, "
+                    + "and reported",
             });
         }
     }
+
+    /// <summary>Whether the document as it stands validates, and what is wrong with it.</summary>
+    /// <returns>The validation, for a caller to show.</returns>
+    /// <remarks>
+    /// Reported rather than enforced. Both parties are looking at the same document, so
+    /// both should be able to see that it is currently invalid - which is more useful
+    /// than one of them having been unable to write it.
+    /// </remarks>
+    public ModelValidation Validate() =>
+        ModelValidator.Validate(
+            Io.ModelJson.Parse(Content), null, System.IO.Path.GetDirectoryName(ModelPath));
+
 }

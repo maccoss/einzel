@@ -108,6 +108,7 @@ public static class Program
             "init" => Init(options),
             "new" => New(options),
             "validate" => Validate(options),
+            "outline" => Outline(options),
             "estimate" => Estimate(options),
             "solve" => Solve(options),
             "run" => Run(options),
@@ -1546,6 +1547,125 @@ public static class Program
         Console.Out.WriteLine();
         Console.Out.WriteLine("Next: einzel run models/reflectron.json --vtu");
         return (int)ExitCode.Success;
+    }
+
+    /// <summary>The model's declared parameter surface, and whether it validates.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A verb rather than a shell method, because AGT-2 says nothing exists only in
+    /// the shell.</b> The window needs this to build a model tree without parsing the
+    /// document itself, which UI-1 forbids it from knowing how to do - and an agent needs
+    /// exactly the same thing for exactly the same reason. `einzel schema` says what a
+    /// model <em>may</em> contain; this says what one <em>does</em>.
+    /// </para>
+    /// <para>
+    /// It answers for a document that does not validate too, with the errors alongside.
+    /// That is what live validation needs: a person editing a parameter into an invalid
+    /// state must still see the tree, rather than have it vanish until they undo what
+    /// they typed.
+    /// </para>
+    /// </remarks>
+    private static int Outline(CommandLine options)
+    {
+        if (options.Positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel outline <model.json> [--set <parameter>=<value>] [--json]");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var model = options.Positional[0];
+
+        // Setting one is the same verb, because reading the knobs and turning one are the
+        // same conversation. The value is in the parameter's own declared unit: a person
+        // editing a 5 mm radius types 7, and demanding 0.007 would ask them to do the
+        // conversion the format exists to make unnecessary.
+        // `--set` with nothing after it is a mistake, not a request to do nothing. The
+        // malformed `--set name` case below is already refused, so silently listing the
+        // outline here would make one kind of malformed set loud and the other silent.
+        if (options.Has("set") && options.Value("set") is null)
+        {
+            Console.Error.WriteLine(
+                "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (options.Value("set") is { } assignment)
+        {
+            var split = assignment.IndexOf('=', StringComparison.Ordinal);
+
+            if (split <= 0)
+            {
+                Console.Error.WriteLine(
+                    "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
+
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            var name = assignment[..split];
+
+            if (!double.TryParse(
+                assignment[(split + 1)..],
+                System.Globalization.NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var value))
+            {
+                Console.Error.WriteLine(
+                    $"'{assignment[(split + 1)..]}' is not a number. The value is in the "
+                    + "parameter's own declared unit, so write the magnitude alone");
+
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            File.WriteAllText(
+                Path.GetFullPath(model), OutlineCommand.WithParameter(model, name, value));
+        }
+
+        var outline = OutlineCommand.Execute(model);
+
+        if (options.Has("json"))
+        {
+            Console.Out.Write(CommandJson.Write(outline));
+
+            return (int)(outline.Valid ? ExitCode.Success : ExitCode.ValidationFailure);
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        Console.Out.WriteLine($"{outline.Name ?? "(unnamed)"}  schema {outline.SchemaVersion}");
+
+        foreach (var parameter in outline.Parameters)
+        {
+            // The value and its unit are two halves of one statement and never appear
+            // apart, which is GRD-1's habit applied to an input rather than a result.
+            var shown = parameter.Expression is { } expression
+                ? expression
+                : string.Create(invariant, $"{parameter.Value:G6}");
+
+            var bounds = OutlineCommand.BoundsText(parameter);
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"  {parameter.Name,-20} {shown,-32} {parameter.Unit,-8}"
+                + $"{(bounds is null ? string.Empty : "  " + bounds)}"
+                + $"{(parameter.Editable ? string.Empty : "  (derived)")}"));
+        }
+
+        if (outline.Valid)
+        {
+            return (int)ExitCode.Success;
+        }
+
+        Console.Out.WriteLine();
+
+        foreach (var error in outline.Errors)
+        {
+            Console.Error.WriteLine($"  [{error.Code}] {error.Path}: {error.Constraint}");
+        }
+
+        return (int)ExitCode.ValidationFailure;
     }
 
     private static int Validate(CommandLine options)

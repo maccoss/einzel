@@ -128,11 +128,15 @@ public sealed class SessionTools
     {
         _journal.Reconcile();
 
+        var validation = _journal.Validate();
+
         return CommandJson.Write(new SessionState(
             _journal.ModelPath,
             _journal.Content,
             _journal.CanUndo,
-            [.. _journal.Lines()]));
+            [.. _journal.Lines()],
+            validation.IsValid,
+            validation.Errors));
     }
 
     /// <summary>Replaces the document, attributed to the calling agent.</summary>
@@ -158,11 +162,7 @@ public sealed class SessionTools
     {
         var entry = _journal.Apply(author, description, content);
 
-        return CommandJson.Write(new EditOutcome(
-            entry.Sequence,
-            entry.Author.ToString(),
-            entry.Description,
-            [.. _journal.Lines()]));
+        return CommandJson.Write(Outcome(entry));
     }
 
     /// <summary>Reverses the most recent edit that still stands.</summary>
@@ -176,11 +176,26 @@ public sealed class SessionTools
     {
         var entry = _journal.Undo(author);
 
-        return CommandJson.Write(new EditOutcome(
+        return CommandJson.Write(Outcome(entry));
+    }
+
+    /// <summary>One entry, with what the document is after it.</summary>
+    /// <remarks>
+    /// Written once so an edit and an undo cannot come to report validity differently -
+    /// an undo can take a model from valid to invalid exactly as an edit can, since it
+    /// restores whatever was there before.
+    /// </remarks>
+    private EditOutcome Outcome(JournalEntry entry)
+    {
+        var validation = _journal.Validate();
+
+        return new EditOutcome(
             entry.Sequence,
             entry.Author.ToString(),
             entry.Description,
-            [.. _journal.Lines()]));
+            [.. _journal.Lines()],
+            validation.IsValid,
+            validation.Errors);
     }
 
     /// <summary>The attributed account of the session so far.</summary>
@@ -208,16 +223,45 @@ public sealed class SessionTools
 /// <param name="Content">Its text as it now stands.</param>
 /// <param name="CanUndo">Whether there is an edit left to reverse.</param>
 /// <param name="Journal">The account so far, one line per entry.</param>
+/// <param name="Valid">Whether the document validates as it stands.</param>
+/// <param name="Errors">What is wrong with it, when it does not.</param>
 public sealed record SessionState(
-    string ModelPath, string Content, bool CanUndo, IReadOnlyList<string> Journal);
+    string ModelPath,
+    string Content,
+    bool CanUndo,
+    IReadOnlyList<string> Journal,
+    bool Valid,
+    IReadOnlyList<EinzelError> Errors);
 
 /// <summary>What a mutation did.</summary>
 /// <param name="Sequence">Its place in the session.</param>
 /// <param name="Author">Who did it.</param>
 /// <param name="Description">What they did.</param>
 /// <param name="Journal">The account after it, one line per entry.</param>
+/// <param name="Valid">Whether the document validates after it.</param>
+/// <param name="Errors">What is wrong with it, when it does not.</param>
+/// <remarks>
+/// <para>
+/// <b>Validity is on the outcome because the journal stopped enforcing it.</b> An edit
+/// that does not validate is allowed through now - §16's live validation needs an
+/// invalid state to be reachable, and taint-never-block is the platform's rule - so the
+/// thing that must not happen is a caller being handed an unqualified success for an
+/// edit that broke the model.
+/// </para>
+/// <para>
+/// The window shows this because it re-reads the outline after every edit. This is the
+/// same service for an agent, which had none: narrowing the guard without asking what
+/// the other caller would then be told is how evidence gets dropped at a seam, and this
+/// project has now done that six times.
+/// </para>
+/// </remarks>
 public sealed record EditOutcome(
-    int Sequence, string Author, string Description, IReadOnlyList<string> Journal);
+    int Sequence,
+    string Author,
+    string Description,
+    IReadOnlyList<string> Journal,
+    bool Valid,
+    IReadOnlyList<EinzelError> Errors);
 
 /// <summary>One entry, as a reader of the journal gets it.</summary>
 /// <param name="Sequence">Its place in the session.</param>

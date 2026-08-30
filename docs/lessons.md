@@ -6,6 +6,73 @@ because none of them announced itself — every one produced a plausible number.
 
 Ordered roughly by how much they would cost someone who hit them again.
 
+## Narrowing a guard means asking what every caller will then be told
+
+`SessionJournal` refused any edit that did not validate. Section 16's live
+validation required narrowing that to refusing only what does not *parse*, which was
+right - and I checked the window, saw it showed validity through its own refresh, and
+stopped.
+
+The MCP path had no equivalent. `model_edit` went from **refusing** an invalid edit
+loudly to **accepting** it and returning sequence, author, description and journal
+with nothing saying the model no longer validated. An agent tuning a parameter past
+its bound now got the same response shape as a good edit.
+
+Strictly worse than before the change, and produced by a change that was correct in
+its own terms. The guard had been doing two jobs - preventing an invalid state, and
+*telling the caller* about one - and only the first was the thing being removed.
+
+**The rule: when a guard is narrowed, enumerate its callers and ask what each will be
+told afterwards.** A guard that refuses is also, incidentally, a guard that informs;
+remove the refusal and the information goes with it unless something replaces it.
+
+This is the sixth time evidence about a computation's own quality has been dropped at
+a seam here - after `FieldAssembly.Build` discarding its `SolveReport`, the sweep
+evaluator discarding warnings, `CollisionSampler`'s `BoundExceeded` and
+`SampledOutsideFlow`, `SampledOutsideDensity` declared and never read, and
+`DriveAmplitude` becoming a summary. The others were all *omissions*. This one was a
+**removal**, which is why the existing habit - "make the shortest spelling the safe
+one" - did not catch it: the shortest spelling was already safe, and I made it
+shorter.
+
+**A green suite is what let it through.** Nothing failed, because nothing had ever
+asserted what an MCP client is told about an edit's validity - there was no such
+thing to assert until the guard moved. The test that exists now would have failed the
+moment the guard changed.
+
+## A validity check stricter than anything the spec asked for
+
+`SessionJournal` refused any edit that did not validate. The argument was written down
+at the time and reads well: in a shared session an unrunnable model is not one
+party's problem, because the other party's next action is against whatever is on
+disk.
+
+Section 16 contradicted it. **Live validation needs an invalid state to be
+reachable.** A person typing 500 into a parameter bounded at 50 has to see the tree
+standing with the complaint against it - being *prevented from typing* makes the
+editor most useless at the moment it is most needed. And refusing every invalid
+document forbids any edit **sequence** that passes through one: widening a bound and
+then setting a value beyond the old bound works in one order and is refused in the
+other, for no reason a person could infer from anything.
+
+The platform's own rule settles it, and it was already written down four times over:
+**taint, never block.** A preview result, a decimated figure, a defective engine
+version, a coarse boundary search - all keep working and carry a non-suppressible
+mark. The platform never stops you working; it refuses to let a result look cleaner
+than it is.
+
+`Check` now refuses only a document that does not **parse** - there is nothing there
+to be wrong, the next party cannot read it, and no edit through the journal could
+have produced it. Validity is reported through `SessionJournal.Validate()` instead.
+
+**The general shape**: this was a guard invented while building one feature, justified
+by a real argument, that turned out to be stricter than any requirement. It cost
+nothing until a later requirement needed the state it forbade - and then it was found
+by a *test failing for the right reason*, which is the cheap way to find one.
+Guards written from first principles rather than from a requirement are worth
+re-reading when a new requirement arrives, because the argument that justified them
+is usually still true and still outweighed.
+
 ## A confinement test on a geometry that cannot confine
 
 Checking that a driven geometry in a diffusive phase gets the *cycle-averaged* field

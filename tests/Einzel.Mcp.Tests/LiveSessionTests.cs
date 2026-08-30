@@ -229,6 +229,14 @@ public sealed class LiveSessionTests(ITestOutputHelper output) : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
+    /// What is refused is a document that does not <em>parse</em>. One that merely fails
+    /// validation goes through and is reported, because §16's live validation needs an
+    /// invalid state to be reachable and refusing every one also forbids any edit
+    /// sequence that passes through one. Taint, never block.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// <para>
     /// A refusal is an answer about the model rather than a failure of the call — the
     /// caller asked whether an edit was acceptable and found out it was not — so it is a
     /// tool result. What matters is that the structure survives: the code, the path and
@@ -248,21 +256,18 @@ public sealed class LiveSessionTests(ITestOutputHelper output) : IDisposable
 
         await using var client = await JoinAsync(model, "surveyor", "3.1");
 
-        var broken = Document(4.0).Replace(
-            "\"unit\": \"kV\"", "\"unit\": \"mm\"", StringComparison.Ordinal);
-
         var refusal = Result(await client.CallToolAsync("model_edit",
             new Dictionary<string, object?>
             {
                 ["description"] = "break it",
-                ["content"] = broken,
+                ["content"] = "{ not json at all",
             })).GetProperty("error");
 
         output.WriteLine(refusal.ToString());
 
         Assert.False(string.IsNullOrWhiteSpace(refusal.GetProperty("code").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(refusal.GetProperty("path").GetString()));
-        Assert.Contains("shared session",
+        Assert.Contains("does not parse",
             refusal.GetProperty("suggestion").GetString()!, StringComparison.Ordinal);
 
         Assert.Equal(Document(4.0), File.ReadAllText(model));
@@ -396,5 +401,63 @@ public sealed class LiveSessionTests(ITestOutputHelper output) : IDisposable
             ["model_edit", "model_preview", "model_read", "model_undo", "model_validate",
              "session_journal"],
             tools);
+    }
+
+    /// <summary>
+    /// An edit that breaks the model succeeds, and says so.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The regression this guards.</b> The journal used to refuse any edit that did
+    /// not validate; §16's live validation required narrowing that to refusing only what
+    /// does not parse. That was right for the window, which re-reads the outline after
+    /// every edit and shows the result — and it left the agent with nothing: a success
+    /// response, no warnings, no validity, for an edit that broke the model.
+    /// </para>
+    /// <para>
+    /// GRD-2's exact subject, and the sixth time evidence about a computation's own
+    /// quality has been dropped at a seam here. Narrowing a guard means asking what every
+    /// caller will then be told, not just the one being worked on.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEditThatBreaksTheModelSucceedsAndSaysSo()
+    {
+        var model = WriteModel();
+
+        await using var client = await JoinAsync(model, "surveyor", "3.1");
+
+        // Parses, does not validate: a potential in millimetres.
+        var broken = Document(4.0).Replace(
+            "\"unit\": \"kV\"", "\"unit\": \"mm\"", StringComparison.Ordinal);
+
+        var edit = Result(await client.CallToolAsync("model_edit",
+            new Dictionary<string, object?>
+            {
+                ["description"] = "a kilovolt in millimetres",
+                ["content"] = broken,
+            }));
+
+        output.WriteLine(edit.ToString());
+
+        // It applied - taint, never block.
+        Assert.Equal(1, edit.GetProperty("sequence").GetInt32());
+        Assert.Equal(broken, await File.ReadAllTextAsync(model));
+
+        // And the agent is told, rather than handed an unqualified success.
+        Assert.False(edit.GetProperty("valid").GetBoolean());
+        Assert.NotEmpty(edit.GetProperty("errors").EnumerateArray().ToArray());
+
+        // Reading says the same, so an agent that did not look at the edit's response
+        // still finds out before it acts on the model.
+        var read = Result(await client.CallToolAsync("model_read"));
+
+        Assert.False(read.GetProperty("valid").GetBoolean());
+
+        // And undoing it restores a model that validates, which is what makes allowing
+        // the edit safe in the first place.
+        var undo = Result(await client.CallToolAsync("model_undo"));
+
+        Assert.True(undo.GetProperty("valid").GetBoolean());
     }
 }

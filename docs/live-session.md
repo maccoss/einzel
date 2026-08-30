@@ -118,9 +118,11 @@ edit from what it now says. A read that returned the session's own stale view
 would send the caller round the same refusal for ever. That is ordinary optimistic
 concurrency, and the test asserts the whole loop rather than just the refusal.
 
-An outside change that does **not** validate is refused rather than adopted, since
-the constructor's invariant is that a session never holds a state no edit through
-the journal could have produced.
+An outside change that does not **parse** is refused rather than adopted, since
+there is nothing there to be wrong. One that merely fails validation is adopted and
+reported: §16's live validation needs an invalid state to be reachable, and refusing
+every one also forbids any edit sequence that passes through one. Taint, never
+block — see `docs/lessons.md`.
 
 Checked by mutation: a no-op `Reconcile` fails three of the nine journal tests,
 including the undo one.

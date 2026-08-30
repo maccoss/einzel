@@ -22,6 +22,42 @@ einzel solve demo/models/q.json              # the field, and how it went
 einzel run demo/models/q.json --vtu          # run, and write a ParaView trajectory
 ```
 
+## What one model contains
+
+`einzel schema` says what a model *may* contain. `einzel outline` says what one
+*does* — its declared parameters, with everything needed to show or change them:
+
+```
+quadrupole  schema 0.3
+  inscribedRadius      5                                mm        1 to 50 mm
+  rodRatio             1.1468                           1         1 to 1.4 1
+  rodRadius            inscribedRadius * rodRatio       mm        (derived)
+  cellSize             inscribedRadius / cellsPerRadius mm        (derived)
+```
+
+```bash
+einzel outline models/q.json --set inscribedRadius=7
+```
+
+**The value is in the parameter's own declared unit.** A person editing a 5 mm
+radius types 7, and demanding 0.007 would ask them to do the conversion the format
+exists to make unnecessary.
+
+**A derived parameter shows its expression and is not settable**, because its value
+is that expression's — setting it would set a consequence, and the two would
+disagree at the next resolve. Turn one of the parameters the expression is over, and
+everything downstream moves with it.
+
+**A model that does not validate still has an outline**, with the errors alongside.
+That is what live validation needs: a person editing a parameter into an invalid
+state must still see the tree rather than have it vanish until they undo what they
+typed.
+
+This verb exists because the shell needs it and may not do it itself — UI-1 puts
+file format knowledge outside the window. It is a CLI verb rather than a shell
+method because AGT-2 says nothing exists only in the shell, and an agent that wants
+a model's knobs without parsing the document needs exactly the same answer.
+
 ## Finding out what exists
 
 An agent starting from a project directory and prose has no forum posts to search
