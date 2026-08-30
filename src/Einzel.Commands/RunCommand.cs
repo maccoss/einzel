@@ -1100,7 +1100,7 @@ public static class RunCommand
     }
 
     /// <summary>The drive frequency, or zero when the model is not driven.</summary>
-    private static double DriveFrequency(CompiledModel model)
+    internal static double DriveFrequency(CompiledModel model)
     {
         var highest = 0.0;
 
@@ -1327,6 +1327,12 @@ public static class RunCommand
         var stem = Path.GetFileNameWithoutExtension(validation.ModelPath);
         var artifacts = new List<string>();
 
+        // Assembled here rather than at the result, because the exported file must carry
+        // the same set (GRD-2) and two expressions for "the warnings on this run" is how
+        // they come to differ. This is the seventh place in this engine where evidence
+        // about a computation was dropped at a seam, and the sixth was the same writer.
+        var flightTime = Carry(study.FlightTime, fieldWarnings);
+
         Directory.CreateDirectory(project.Results);
         var manifestPath = Path.Combine(project.Results, $"{stem}.manifest.json");
         File.WriteAllText(manifestPath, manifest.ToJson());
@@ -1346,16 +1352,27 @@ public static class RunCommand
                 Directory.CreateDirectory(project.Scratch);
                 var vtuPath = Path.Combine(project.Scratch, $"{stem}.trajectory.vtu");
 
-                File.WriteAllText(vtuPath, VtuWriter.WriteTrajectory(
-                    recorder.Samples,
-                    [
-                        $"engine: {EngineBuild.Version}",
-                        $"model: {validation.ModelHash}",
-                        $"samples: {recorder.Samples.Count} at {model.SampleIntervalSi:G6} s nominal interval",
-                        recorder.Truncated
-                            ? "TRUNCATED: sample capacity reached; the tail of this trajectory is missing"
-                            : "complete",
-                    ]));
+                // GRD-2: the warnings travel with the file. A .vtu is the artifact that
+                // travels furthest - opened in ParaView, months later, by someone who never
+                // saw the result envelope it came from - so it is the layer where a dropped
+                // warning does the most damage. The density path beside this one has always
+                // carried them; the trajectory path did not, through the same writer and the
+                // same optional parameter.
+                var provenance = new List<string>
+                {
+                    $"engine: {EngineBuild.Version}",
+                    $"model: {validation.ModelHash}",
+                    $"samples: {recorder.Samples.Count} at {model.SampleIntervalSi:G6} s nominal interval",
+                    recorder.Truncated
+                        ? "TRUNCATED: sample capacity reached; the tail of this trajectory is missing"
+                        : "complete",
+                };
+
+                provenance.AddRange(
+                    flightTime.Warnings.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+                File.WriteAllText(
+                    vtuPath, VtuWriter.WriteTrajectory(recorder.Samples, provenance));
 
                 artifacts.Add(Path.GetRelativePath(project.Root, vtuPath));
             }
@@ -1364,7 +1381,7 @@ public static class RunCommand
         var run = new RunOutcome
         {
             Manifest = manifest,
-            FlightTime = MeasuredJson.From(Carry(study.FlightTime, fieldWarnings), "us"),
+            FlightTime = MeasuredJson.From(flightTime, "us"),
             Outcome = finest.Outcome.ToString(),
             FinalPositionMm =
             [

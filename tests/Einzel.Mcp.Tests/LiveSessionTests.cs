@@ -308,6 +308,53 @@ public sealed class LiveSessionTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A validity warning reaches an MCP client — GRD-2's fourth layer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="AToolResultIsTheSameJsonTheCliEmits"/> establishes that a tool result is
+    /// the CLI's own JSON byte for byte, which is the <em>mechanism</em>; this establishes
+    /// that a warning actually travels through it, which is the <em>requirement</em>. The
+    /// two are not the same claim: byte-identity of a result that never carried a warning
+    /// would satisfy the first and say nothing about the second.
+    /// </para>
+    /// <para>
+    /// A preview is the case that always earns one. GRD-5 taints a preview-tier number by
+    /// construction, so this cannot pass by the model happening to be clean — and the
+    /// taint is the whole reason <c>model_preview</c> is on the tool surface while a full
+    /// run is not.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AValidityWarningReachesAnMcpClient()
+    {
+        var model = WriteModel();
+
+        await using var client = await JoinAsync(model, "surveyor", "3.1");
+
+        var call = await client.CallToolAsync("model_preview");
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(call.Content)).Text;
+
+        output.WriteLine(text);
+
+        using var document = System.Text.Json.JsonDocument.Parse(text);
+
+        var codes = document.RootElement
+            .GetProperty("flightTime")
+            .GetProperty("warnings")
+            .EnumerateArray()
+            .Select(w => w.GetProperty("code").GetString()!)
+            .ToList();
+
+        Assert.NotEmpty(codes);
+
+        // The preview taint specifically, rather than "some warning": a result that
+        // carried only, say, a convergence note would pass an emptiness check while the
+        // one warning the tool exists to deliver had been dropped.
+        Assert.Contains("result.preview-tier", codes, StringComparer.Ordinal);
+    }
+
+    /// <summary>
     /// An edit written against a document that moved is refused over the wire, and
     /// reading again is what clears it.
     /// </summary>

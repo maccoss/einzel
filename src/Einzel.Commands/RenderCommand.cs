@@ -193,7 +193,13 @@ public static class RenderCommand
             }
         }
 
-        var figure = SectionRenderer.Render(validation.Model!, spec, provenance, density);
+        var renderGas = Io.GasFlowImport.Resolve(
+            validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? ".");
+
+        var figure = SectionRenderer.Render(
+            validation.Model!, spec, provenance, density, plan: null,
+            gas: renderGas,
+            transportWarnings: TransportWarnings(validation.Model!, renderGas));
 
         var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
 
@@ -248,6 +254,43 @@ public static class RenderCommand
     }
 
     /// <summary>Draws a flight as a sequence of vector frames (RND-7).</summary>
+    /// <summary>REG-2's verdict on the flight a figure is about to draw.</summary>
+    /// <remarks>
+    /// <para>
+    /// A figure of a model that declares a gas is a figure of a description that may not
+    /// apply, and until the renderer flew the gas at all there was nothing here to say so.
+    /// GRD-2 puts the rendered figure among the layers a validity warning must reach, and
+    /// RND-11 gives the reason: the page is the artifact most likely to be looked at with
+    /// none of the uncertainty apparatus attached.
+    /// </para>
+    /// <para>
+    /// Computed here rather than in the renderer because it needs the instrument's
+    /// smallest aperture and its drive frequency - model-format knowledge Einzel.Render
+    /// deliberately does not have. Both accessors are the ones <c>einzel run</c> uses, so
+    /// the figure and the run cannot disagree about the same flight.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<Core.Results.ValidityWarning> TransportWarnings(
+        CompiledModel model, Transport.Collisions.BackgroundGas gas)
+    {
+        if (!gas.IsPresent)
+        {
+            return [];
+        }
+
+        var species = Transport.IonSpecies.FromModel(model);
+
+        var numbers = Transport.Collisions.RegimeDiagnostics.Measure(
+            gas,
+            species,
+            Math.Max(model.SourceDirection.Length * model.LaunchSpeedSi(), 1.0),
+            model.MaximumFlightTimeSi,
+            RunCommand.SmallestAperture(model),
+            RunCommand.DriveFrequency(model));
+
+        return Transport.Collisions.RegimeDiagnostics.ForTrajectoryMode(gas, numbers);
+    }
+
     /// <param name="modelPath">The model to animate.</param>
     /// <param name="project">Where figures go.</param>
     /// <param name="spec">What to draw, carrying the declared time mapping.</param>
@@ -365,8 +408,17 @@ public static class RenderCommand
                 + $"{run.Result.Steps} steps");
         }
 
+        var animationGas = Io.GasFlowImport.Resolve(
+            validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? ".");
+
+        foreach (var warning in TransportWarnings(validation.Model!, animationGas))
+        {
+            provenance.Add($"{warning.Severity}: {warning.Code}: {warning.Message}");
+        }
+
         var frames = AnimationRenderer.Render(
-            validation.Model!, spec, animation, provenance, densities);
+            validation.Model!, spec, animation, provenance, densities,
+            gas: animationGas);
 
         var extension = spec.Format == FigureFormat.Pdf ? ".pdf" : ".svg";
         var name = Path.GetFileNameWithoutExtension(absolute);

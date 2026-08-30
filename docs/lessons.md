@@ -1133,6 +1133,47 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## Enumerating a requirement's population, rather than believing it
+
+`GRD-2` says validity warnings travel with the result through every layer, and then
+**names them**: engine, command layer, CLI output, MCP response, exported file, rendered
+figure, video. Seven. The register had said **Met** for a long time, and the evidence
+column said "exported VTU/VTI files and figures".
+
+Asking the seven questions one at a time found that two of them were no.
+
+**The exported `.vtu` carried nothing.** `VtuWriter.WriteTrajectory` and
+`WriteDensityField` both take an optional `provenance` list. The density call site
+appended the run's warnings to it; the trajectory call site did not. Same writer, same
+parameter, one line apart in intent and two thousand in the file.
+
+**The rendered figure was not flying the gas**, which is the more interesting half because
+it is not what was being looked for. The question was whether a *warning* reached the
+figure. The answer was that the figure had never been computing the same thing a run
+computes: both renderers called `TrajectoryIntegrator.Integrate` without supplying the
+optional `collisions` argument, so a model at a millibar was drawn in vacuum. On the
+`thermalisation` example that is a drawn flight of **2778 mm against the 155 mm the run
+reports** — and the two figures, gas declared and gas removed, were byte-identical.
+
+Three things generalise.
+
+- **A closed population makes a requirement checkable.** "Do warnings propagate?" is
+  answered "mostly, yes" — correctly — and that answer conceals precisely the layers
+  where they do not. "Does a warning reach the exported file?" has no such refuge.
+- **Set equality, not containment, for a carried set.** The file test asserts the `.vtu`
+  carries *exactly* the warnings the result does. Asserting the anchor appears would pass
+  on a file that carried one and dropped four.
+- **An optional parameter whose default is a different physics is a trap, not a default.**
+  This is the third time the gas has reached one path and not another — after the
+  figure-of-merit path that made `einzel test` disagree with `einzel run`, and the regime
+  inspector's own first draft. An omitted `collisions` argument does not fail; it produces
+  a well-formed drawing of a different instrument. Where an argument selects *what physics
+  runs*, absence should mean refusal, as `BackgroundGas.FromModel` now does for an
+  unresolved imported field.
+
+**The audit was worth more than either fix.** Both defects were in code that had been
+reviewed, tested, and written up as working.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
@@ -1153,6 +1194,10 @@ actually caught them were:
   Liouville's theorem is the same kind of check on the integrator, and being
   independent of energy it catches things energy conservation cannot. Both found
   bugs that presented as small, plausible drifts.
+- **Enumerating a requirement's own named population.** Where a requirement lists
+  what it applies to, the list is the test plan. Two GRD-2 layers were failing while
+  the register said Met, and neither would have been found by asking whether warnings
+  propagate in general.
 - **Removing a refusal without removing its reason.** `CollisionSampler` refused a
   gas flow because it had no position to evaluate one at. Threading the position in
   made the refusal obsolete — but the trajectory run path built its gas with
