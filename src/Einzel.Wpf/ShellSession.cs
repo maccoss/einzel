@@ -203,6 +203,22 @@ public sealed class ShellSession
         return RegimeCommand.Execute(Journal.ModelPath);
     }
 
+    /// <summary>Reads the model's declared timeline.</summary>
+    /// <returns>The phases, with what each holds.</returns>
+    /// <remarks>
+    /// Recorded as <c>einzel validate</c>, because validating is what compiles and checks
+    /// the timeline - the phases shown here are the compiled ones, and a malformed stage is
+    /// a validation error rather than something this view discovers.
+    /// </remarks>
+    public SequenceOutcome Sequence()
+    {
+        Journal.Reconcile();
+
+        Record($"einzel validate {Quoted(Journal.ModelPath)}", entry: null);
+
+        return SequenceCommand.Execute(Journal.ModelPath);
+    }
+
     private ShellAction Record(string command, JournalEntry? entry)
     {
         var action = new ShellAction(command, entry);

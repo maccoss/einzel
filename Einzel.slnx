@@ -16,6 +16,7 @@
     <Project Path="src/Einzel.Wpf/Einzel.Wpf.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Einzel.Analysis.Tests/Einzel.Analysis.Tests.csproj" />
     <Project Path="tests/Einzel.Cli.Tests/Einzel.Cli.Tests.csproj" />
     <Project Path="tests/Einzel.Core.Tests/Einzel.Core.Tests.csproj" />
     <Project Path="tests/Einzel.Extensions.Tests/Einzel.Extensions.Tests.csproj" />

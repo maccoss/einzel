@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private ViewportViewModel? _viewport;
     private ResultsViewModel? _results;
     private RegimeViewModel? _regime;
+    private SequenceViewModel? _sequence;
     private bool _framed;
     private bool _loaded;
 
@@ -63,21 +64,29 @@ public partial class MainWindow : Window
     /// <exception cref="ArgumentNullException">Either is null.</exception>
     /// <param name="results">Its figures by accuracy class.</param>
     /// <param name="regime">Its dimensionless numbers along the path.</param>
+    /// <param name="sequence">Its declared timeline.</param>
     public void Open(
         ModelTreeViewModel tree,
         ViewportViewModel viewport,
         ResultsViewModel results,
-        RegimeViewModel regime)
+        RegimeViewModel regime,
+        SequenceViewModel sequence)
     {
         ArgumentNullException.ThrowIfNull(tree);
         ArgumentNullException.ThrowIfNull(viewport);
         ArgumentNullException.ThrowIfNull(results);
         ArgumentNullException.ThrowIfNull(regime);
+        ArgumentNullException.ThrowIfNull(sequence);
 
         _tree = tree;
         _viewport = viewport;
         _results = results;
         _regime = regime;
+        _sequence = sequence;
+
+        PhaseList.ItemsSource = sequence.Phases;
+        SequenceWarnings.ItemsSource = sequence.Warnings;
+        SequenceStatus.Text = sequence.Status;
 
         ResultsList.ItemsSource = results.Rows;
         ResultsWarnings.ItemsSource = results.Warnings;
@@ -622,6 +631,19 @@ public partial class MainWindow : Window
         }
 
         RegimeStatus.Text = _regime.Status;
+    }
+
+    /// <summary>Reads the declared timeline.</summary>
+    private void OnSequence(object sender, RoutedEventArgs e)
+    {
+        if (_sequence is null)
+        {
+            return;
+        }
+
+        _sequence.Refresh();
+
+        SequenceStatus.Text = _sequence.Status;
     }
 
     /// <summary>Turns a layer on or off and redraws.</summary>

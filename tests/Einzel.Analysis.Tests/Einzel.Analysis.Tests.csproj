@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Einzel.Analysis was the only source assembly without a test project of its own - its
+    tests lived in Einzel.Library.Tests and Einzel.Transport.Tests, wherever the device or
+    the transport that exercised them happened to be. That is fine for a figure of merit
+    measured through an instrument and wrong for machinery with no instrument in it, which
+    is what the bootstrap is.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Einzel.Analysis\Einzel.Analysis.csproj" />
+  </ItemGroup>
+
+</Project>

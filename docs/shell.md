@@ -1,7 +1,7 @@
 # The shell
 
-WPF on Windows, and §16's eleven views. Five exist: the model tree, the journal, the 3D
-viewport, results by accuracy class, and the regime inspector.
+WPF on Windows, and §16's eleven views. Six exist: the model tree, the journal, the 3D
+viewport, results by accuracy class, the regime inspector, and the sequence editor.
 
 **UI-1 is the whole design.** The shell owns layout, input, the interactive viewport and
 the update check. It owns no physics, no validation rules, no file format knowledge and
@@ -19,8 +19,9 @@ a command existed:
 | 3D viewport | `ViewportCommand` | A viewport that integrated its own trajectories would be a second transport implementation |
 | Results by class | `ResultsCommand`, and `AccuracyClass` on the registry | Which of §12's families a figure belongs to is the engine's taxonomy; a window sorting them itself would be a second copy of §12 |
 | Regime inspector | `RegimeDiagnostics.MeasureAt` and `RegimeCommand` | Where a regime boundary lies is spec figure 4's, and the numbers had only ever been computed at the worst point in the gas |
+| Sequence editor | `SequenceCommand` | Which phases exist and what each holds is compiled from the document; a window reading `stages` itself would be parsing the format |
 
-The same argument, arriving four times — and each time the command layer gained the
+The same argument, arriving five times — and each time the command layer gained the
 capability rather than the window keeping it, so an agent is better off for a window having
 been built. The one to watch is the in-process path
 acquiring an argument the command form has no spelling for; that is the moment the
@@ -405,6 +406,43 @@ second thing to keep in step with spec figure 4.
 silent substitution `RunCommand`'s own comment warns against. A *diffusive* model was flown
 too, until RND-8 was asked of the mode rather than the pressure. And the excursion test used
 a model that declares no gas, so it returned early and asserted nothing.
+
+## The sequence editor
+
+§16 asks for "the state machine as a timeline, with excitations and transport mode per
+phase". The timeline is the model's own — lifted from the elements to the instrument, so
+every element follows one schedule — and each phase carries the mode it is described in,
+because two elements naming different modes for one instant is not something a
+superposition can resolve the way it resolves two fields.
+
+**What changes between phases is the information.** A sequenced instrument repeats most of
+its state from one phase to the next, so a table repeating every setting for every phase
+buries the rows that matter. Each electrode is marked against the phase before it:
+
+```
+2 phases over 102 us
+  hold      0 to 2 us (2)        holds
+  extract   2 to 102 us (100)    lower -> 500 V, upper -> -500 V
+```
+
+The bars are proportional to duration, because a hold of a microsecond beside a flight of a
+hundred is the shape of a pulsed extraction and equal rows hide it.
+
+**Two things a reader would otherwise assume wrongly are said.** The last phase *holds*
+after the sequence ends rather than switching off — an ion still in flight continues in that
+field rather than in none, which would be a physics change disguised as a bookkeeping one.
+And a phase that changes the transport mode is marked, because that is SEQ-1's boundary:
+the packet is converted there, losing its velocities in one direction and having them
+invented in the other.
+
+**Both the DC and the drive**, because reading one is a mistake this project has now made
+six times — a quadrupole's rods hold zero volts of DC and all of their potential as drive,
+so an editor showing the DC alone would present a mass filter as an earthed box that never
+changes.
+
+**It shows rather than edits.** A sequence is a block in the model document, so editing one
+is editing the document and goes through the same journal every other change does; what is
+missing is the input surface, not the path underneath it.
 
 ## What is not built
 

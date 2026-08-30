@@ -184,6 +184,200 @@ public static class FiguresOfMerit
         });
     }
 
+    /// <summary>Computes one figure with its GRD-1 envelope, where this build can.</summary>
+    /// <param name="name">Which figure of merit.</param>
+    /// <param name="model">The validated model.</param>
+    /// <param name="energySpread">Fractional energy spread for the ensemble figures.</param>
+    /// <param name="ions">How many ions the ensemble figures launch.</param>
+    /// <param name="report">Where the warnings the evaluation earns are sent, or null.</param>
+    /// <returns>The figure with its interval, or null where this build has no envelope for it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="model"/> is null.</exception>
+    /// <exception cref="EinzelException">No figure of merit by that name.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>The counterpart to <see cref="Evaluator"/>, and the reason it needed one.</b> The
+    /// evaluator hands a driver a bare double because ranking needs an ordering and an
+    /// envelope has none - a deliberate exception to GRD-1, argued where it is taken. The
+    /// consequence nobody had written down is that most figures existed <em>only</em> in the
+    /// excepted form: there was no way to ask this build for a turn-around time with an
+    /// uncertainty on it.
+    /// </para>
+    /// <para>
+    /// <b>The interval is the sampling uncertainty, by resampling the cloud.</b> Most of
+    /// these figures are statistics of an ion cloud and only the fractions had a closed
+    /// form; <see cref="Bootstrap"/> covers a width, a mean and a ratio alike, and assumes
+    /// nothing about the distribution - which matters because an arrival-time peak is
+    /// measurably skew. What it does <em>not</em> measure is the discretisation, the
+    /// integrator or the model, so the evidence names the sample size rather than claiming a
+    /// confidence in the answer.
+    /// </para>
+    /// <para>
+    /// <b>Null where there is no envelope, never a bare number dressed as one.</b> A figure
+    /// this build can only rank by comes back absent, and the caller says so - which is the
+    /// whole point, since printing an unqualified value would be the failure GRD-1 exists to
+    /// prevent.
+    /// </para>
+    /// </remarks>
+    public static Core.Results.Measured? Measure(
+        string name,
+        CompiledModel model,
+        double energySpread = DefaultEnergySpread,
+        int ions = DefaultIons,
+        Action<Core.Results.ValidityWarning>? report = null)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        _ = Describe(name);
+
+        return name switch
+        {
+            // The arrival-time peak's own statistics, resampled over the arrivals that
+            // produced it. One flight serves all three.
+            "arrivalSpread" => OverArrivals(
+                model, energySpread, ions, report,
+                peak => peak.GaussianEquivalentFwhmSeconds * 1e9, "ns"),
+
+            "resolvingPower" => OverArrivals(
+                model, energySpread, ions, report,
+                peak => peak.Arrived >= 3 ? Resolving(peak) : null, "1"),
+
+            "turnAroundTime" => TurnAroundMeasured(model, report),
+
+            // A fraction, so a binomial standard error rather than a resampling - the
+            // closed form is exact and the bootstrap would only approximate it.
+            "transmission" => Fraction(
+                model, energySpread, ions, report,
+                peak => (peak.Arrived, peak.Launched), "1"),
+
+            _ => null,
+        };
+    }
+
+    /// <summary>A peak's model-free resolving power, as a bare number for resampling.</summary>
+    /// <remarks>
+    /// The envelope on <c>ArrivalTimePeak.ResolvingPower</c> is the binomial one for the
+    /// arrival count; what is wanted per replicate is the value alone, so the deconstruction
+    /// GRD-1 permits is used rather than a second implementation of the ratio.
+    /// </remarks>
+    private static double? Resolving(ArrivalTimePeak peak)
+    {
+        var (value, _, _, _) = peak.ResolvingPower();
+
+        return double.IsFinite(value.SiValue) ? value.SiValue : null;
+    }
+
+    /// <summary>Resamples a statistic of the arrival-time peak.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only where the model declares an ion cloud, and that is not a limitation but the
+    /// distinction.</b> Without one, the ensemble helper sweeps the energy acceptance
+    /// <em>deterministically</em> - evenly spaced from one end to the other, so the seed
+    /// does not enter and two runs agree exactly. That is a designed scan, not a sample
+    /// drawn from a population, and resampling it would report the scan's own spacing as
+    /// though it were a sampling error.
+    /// </para>
+    /// <para>
+    /// The two have been confused here before: <c>DefaultEnergySpread</c>'s remarks exist
+    /// because somebody compared a deterministic sweep with a cloud's random draw and read
+    /// the difference as noise in the objective. Putting an interval on the sweep would
+    /// make that mistake structural.
+    /// </para>
+    /// </remarks>
+    private static Core.Results.Measured? OverArrivals(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report,
+        Func<ArrivalTimePeak, double?> statistic,
+        string unit)
+    {
+        if (!model.Cloud.IsCloud
+            || Ensemble(model, spread, ions, report) is not { } peak
+            || peak.Arrived < 2)
+        {
+            return null;
+        }
+
+        var launched = peak.Launched;
+
+        return Bootstrap.Measure(
+            [.. peak.Arrivals],
+            draw => draw.Count >= 2
+                ? statistic(ArrivalTimePeak.FromArrivals(draw, launched))
+                : null,
+            unit);
+    }
+
+    /// <summary>A fraction of the launched ions, with its binomial error.</summary>
+    private static Core.Results.Measured? Fraction(
+        CompiledModel model,
+        double spread,
+        int ions,
+        Action<Core.Results.ValidityWarning>? report,
+        Func<ArrivalTimePeak, (int Of, int Out)> counts,
+        string unit)
+    {
+        if (!model.Cloud.IsCloud || Ensemble(model, spread, ions, report) is not { } peak)
+        {
+            return null;
+        }
+
+        var (of, outOf) = counts(peak);
+
+        if (outOf <= 0)
+        {
+            return null;
+        }
+
+        _ = unit;
+
+        // The peak's own transmission envelope, which already floors the interval so a
+        // perfect ensemble does not claim certainty from a finite sample.
+        return peak.Transmission();
+    }
+
+    /// <summary>Turn-around time, resampled over the thermal-only cloud that measures it.</summary>
+    /// <remarks>
+    /// Zero with no interval where the source has no temperature: that is a measurement of
+    /// something absent rather than a failure to measure, and resampling nothing would
+    /// report a spread on a quantity that is exactly nought by construction.
+    /// </remarks>
+    private static Core.Results.Measured? TurnAroundMeasured(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report)
+    {
+        if (model.Cloud.TemperatureK <= 0.0)
+        {
+            var zero = Core.Units.Quantity.From(0.0, "ns");
+
+            return new Core.Results.Measured(
+                zero,
+                Core.Results.UncertaintyInterval.Symmetric(zero, zero, 0.68),
+                new Core.Results.Evidence.Analytic(
+                    "no source temperature, so no thermal turn-around"));
+        }
+
+        if (!model.Cloud.IsCloud)
+        {
+            return null;
+        }
+
+        var thermalOnly = ThermalOnly(model);
+
+        if (FromCloud(thermalOnly, report) is not { } peak || peak.Arrived < 2)
+        {
+            return null;
+        }
+
+        var launched = peak.Launched;
+
+        return Bootstrap.Measure(
+            [.. peak.Arrivals],
+            draw => draw.Count >= 2
+                ? ArrivalTimePeak.FromArrivals(draw, launched).GaussianEquivalentFwhmSeconds * 1e9
+                : null,
+            "ns");
+    }
+
     /// <summary>Builds the evaluator a sweep or an optimiser drives.</summary>
     /// <param name="name">Which figure of merit.</param>
     /// <param name="energySpread">Fractional energy spread for the ensemble figures.</param>
@@ -1031,38 +1225,48 @@ public static class FiguresOfMerit
             return 0.0;
         }
 
-        var thermalOnly = model with
-        {
-            Cloud = new IonCloudSettings
-            {
-                Ions = model.Cloud.Ions,
-                Seed = model.Cloud.Seed,
-                TemperatureK = model.Cloud.TemperatureK,
-            },
-
-            // Turn-around is the spread the source temperature alone imposes, and
-            // the whole method is to switch everything else off and measure what is
-            // left. The packet's own charge is one of the things being switched off:
-            // leaving it on would measure temperature plus space charge and report
-            // it as temperature.
-            //
-            // It also cannot run. The thermal-only cloud has no spatial spread by
-            // construction, so its self-field is unbounded rather than large - which
-            // is exactly the case the validator refuses, reached here by a model
-            // built in code rather than read from a file. It came back as a
-            // turn-around of 0.000 ns, which reads like a measurement.
-            SpaceChargeMode = "none",
-        };
-
         try
         {
-            return FromCloud(thermalOnly, report)?.GaussianEquivalentFwhmSeconds;
+            return FromCloud(ThermalOnly(model), report)?.GaussianEquivalentFwhmSeconds;
         }
         catch (ArgumentException)
         {
             return null;
         }
     }
+
+    /// <summary>The same model with every spread but the source temperature switched off.</summary>
+    /// <remarks>
+    /// <para>
+    /// Turn-around is the spread the source temperature alone imposes, and the whole method
+    /// is to switch everything else off and measure what is left.
+    /// </para>
+    /// <para>
+    /// <b>The packet's own charge is one of the things being switched off</b>, and it has to
+    /// be. Leaving it on would measure temperature plus space charge and report it as
+    /// temperature - and it also cannot run: the thermal-only cloud has no spatial spread by
+    /// construction, so its self-field is unbounded rather than large, which is exactly the
+    /// case the validator refuses. Reached here by a model built in code rather than read
+    /// from a file, it came back as a turn-around of 0.000 ns, which reads like a
+    /// measurement.
+    /// </para>
+    /// <para>
+    /// One implementation, because the bare figure and the enveloped one must measure the
+    /// same thing - two constructions of "everything else off" would drift, and the drift
+    /// would look like a disagreement about the physics.
+    /// </para>
+    /// </remarks>
+    private static CompiledModel ThermalOnly(CompiledModel model) => model with
+    {
+        Cloud = new IonCloudSettings
+        {
+            Ions = model.Cloud.Ions,
+            Seed = model.Cloud.Seed,
+            TemperatureK = model.Cloud.TemperatureK,
+        },
+
+        SpaceChargeMode = "none",
+    };
 
     private static (PhaseState Launch, IonSpecies Species, IElectrostaticField Field,
         IntegrationSettings Settings, TrajectoryStopFunction Detector,

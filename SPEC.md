@@ -690,6 +690,46 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 28 - GRD-1's own exception was load-bearing, and nobody had counted what it cost
+
+**r06's GRD-1 is absolute**: every quantitative result carries value, units, uncertainty,
+ensemble size or convergence measure, and active warnings, and *the API offers no way to
+obtain the scalar alone*. The absolutism is argued - a convenience accessor returning the
+value would get added by someone and then used everywhere.
+
+**The exception is also argued, and correct.** A sweep or an optimiser needs an ordering,
+and an envelope has none, so `FiguresOfMerit.Evaluator` hands a driver a bare double. That
+is written down where it is taken.
+
+**What nobody had written down is the consequence.** Most figures were *only* reachable
+through the exception: of the fourteen this build computes, **one** - the flight time, from
+a convergence study - carried an envelope anywhere. There was no way to ask for a
+turn-around time with an uncertainty on it, through the CLI, through MCP or at all. The
+exception had quietly become the rule for everything except the one figure that predated
+it.
+
+**Why it went unnoticed is the instructive part.** Every individual number this project
+publishes *does* carry an envelope, because they are computed by tests and studies that
+build one by hand - the docs are full of "1.0127 +/- 0.0373" and "0.49% on 4000 ions". The
+gap was in the *API*, and it took building the view whose whole purpose is displaying
+envelopes to make it visible. A requirement can be honoured everywhere it is exercised and
+still be unmet where nothing has asked.
+
+**Recommend GRD-1 say that a figure of merit must be obtainable in enveloped form**, with
+the ranking accessor an explicitly derived view of it rather than the only path. That is
+the shape that makes the exception safe: the envelope exists and ranking discards it,
+rather than the bare number existing and an envelope being added where somebody remembered.
+
+**Closing it needed a mechanism rather than thirteen formulas.** Most of these figures are
+statistics of an ion cloud and only the fractions have a closed-form error; a full width at
+half maximum has none, and an arrival-time peak is measurably skew, so a Gaussian formula
+would understate its own error. Resampling covers a width, a mean and a ratio alike and
+assumes nothing about the distribution. **Two limitations came with it and are recorded in
+`docs/lessons.md`**: the bootstrap is inconsistent for extreme-order statistics, which
+matters because "the widest entry radius that still arrives" is one; and it must not be
+applied to the deterministic energy sweep, which is a designed scan rather than a draw and
+has no sampling uncertainty to report.
+
 ### 27 - PERF-7's 50 ms is the cost of starting CPython, not a budget the platform can spend
 
 **r06 §PERF-7 puts a sandboxed extension round trip under 50 ms**, and makes that number
@@ -788,18 +828,25 @@ requirement rather than two because of AGT-2, and Amendment 25 strengthens it: e
 shell action should be *expressible* as a CLI invocation and journalled as one, so a
 human's session hands over to an agent and back in the same vocabulary.
 
-**Three of the eleven views exist**, and the window opens on a model: `einzel-shell
-models/reflectron.json` gives a parameter tree, a trajectory bundle coloured by energy,
-and the journal beside them. `ShellSession` holds one model, the shared journal, and every
+**Six of the eleven views exist**, and the window opens on a model: `einzel-shell
+models/reflectron.json` gives a parameter tree, a trajectory bundle coloured by energy over
+the drawn instrument and field, the journal, results grouped by §12's accuracy class, the
+regime along the path, and the declared timeline. `ShellSession` holds one model, the shared journal, and every
 action recorded as the `einzel` command that would reproduce it (Amendment 25).
 
-**Twice now a view could not be built until a command existed**, which is Amendment 25
-working rather than an obstacle it created. The model tree needed `OutlineCommand`, because
-a window that parsed the document to build a tree would grow its own idea of what a model
-is. The viewport needed `ViewportCommand`, because one that integrated its own trajectories
-would be a second transport implementation. Both are the same argument arriving twice, and
-both left an agent better off: an agent wanting a model's knobs, or its paths, gets the
-same answer without parsing anything.
+**Five times now a view could not be built until a command existed**, which is Amendment
+25 working rather than an obstacle it created — and every time the command layer gained the
+capability rather than the window keeping it. The model tree needed `OutlineCommand`; the
+viewport needed `ViewportCommand`; the results view needed `AccuracyClass` on the figure
+registry, because §12's taxonomy was recorded nowhere; the regime inspector needed
+`RegimeDiagnostics.MeasureAt`, because the numbers had only ever been computed at the worst
+point in the gas; and the sequence editor needed `SequenceCommand`. An agent is better off
+for each, which is the strongest evidence yet that AGT-2 is real rather than aspirational.
+
+**And one of them found a hole in a load-bearing requirement.** Building the view whose
+whole purpose is showing GRD-1 envelopes revealed that only one of fourteen figures had
+one — see Amendment 28. A requirement can be honoured everywhere it is exercised and still
+be unmet where nothing has asked.
 
 **And the shell compiles on Linux**, which was an open bet and is now measured rather than
 assumed: `EnableWindowsTargeting` is enough, XAML markup compilation included. It does not
@@ -830,9 +877,9 @@ Every view §16 requires:
 | Figure composer | **Seam built** | `RenderSpec` is already text in `figures/` that the CLI executes. A composer edits one of these and nothing else — which is UI-1's own test, and the reason it can be built last |
 | Animation timeline, per-phase playback rates, scrubbing, frame export | **Partial** | Per-phase playback rates and frame export are built: `einzel render animation` on a declared mapping, with the rate stamped on every frame and a `frames.json` schedule beside them. Scrubbing is a shell interaction and needs the window |
 | Model tree with parameter editing, live validation, units on every field | **Built** | `einzel outline` returns the declared surface - value, unit, bounds, description, what it resolves to in SI, and whether it is editable - because UI-1 forbids the shell from parsing the document to build a tree. A verb rather than a shell method (AGT-2), so an agent gets the same service. Every edit goes through the shared journal, so a change in the window is undoable by an agent on the same session. **Delivering it reversed a guard**: `SessionJournal` refused any edit that did not validate, which makes live validation impossible - a person typing 500 into a parameter bounded at 50 must see the tree with the complaint on it, and refusing every invalid document forbids any edit *sequence* that passes through one. Narrowed to refusing what does not *parse*, which is taint-never-block applied to input. `docs/lessons.md` |
-| Sequence editor | Not built | The sequencer exists and stages are declared in the document; this is presentation over it |
-| Results by accuracy class, uncertainty and warnings never behind a disclosure control | Not built | The envelope is enforced end to end, so the data is there. The requirement is really about layout, and it is the one most easily violated by a designer who has not read §4 |
-| Regime inspector | Not built | REG-2's numbers are computed on every run already |
+| Sequence editor | **Partial** | `SequenceCommand` reports the declared timeline: phases in order, the transport mode of each, and what every electrode holds - marked against the phase before, because a sequenced instrument repeats most of its state and a table repeating every setting buries the rows that change. Bars proportional to duration, since a 2 us hold beside a 100 us flight is the shape of a pulsed extraction. Two things a reader would otherwise assume wrongly are stated: the last phase **holds** after the sequence ends, and a phase changing the mode is SEQ-1's conversion boundary. **It shows rather than edits** - a sequence is a block in the document, so editing one goes through the same journal every other change does, and what is missing is the input surface rather than the path underneath it |
+| Results by accuracy class, uncertainty and warnings never behind a disclosure control | **Built** | §12's taxonomy was recorded nowhere in the code and is now on the figure registry - six Class T, four Class S, three Class B, and two deliberately in none, since `flightTime` is the raw arrival quantity the Class T figures are computed *from* and `energyDrift` says in its own description that it is a diagnostic. Every part of the envelope is a line rather than a tooltip, which is the requirement. **Building it found the GRD-1 hole below**, and closing that took the figures carrying an envelope from 1 of 14 to 5 |
+| Regime inspector | **Built** | REG-2's numbers *along the path*, which is what §16's word "along" asks for and what a run does not give - a run reports the worst point anywhere in the gas, right for a warning and useless for deciding what to change. Violations are located as stretches in millimetres rather than counted. On a hundredfold density ramp the two ends differ by Kn **4.17 against 0.042** - free-molecular at one end, a continuum at the other, in the same instrument |
 | Project view with model-drift and engine-drift state | Not built | `einzel verify` computes both |
 | Extension manager | Not built | The manifest carries trust level, versions and compatible range; LIC-2 wants licences surfaced and nothing does |
 | Journal with agent and human attribution | **Built** | `SessionJournal` in `Einzel.Commands`, rendered by the window beside the model tree, with the same entries an MCP client writes. A person sees what an agent did to their model, by name, and can undo it - which is MCP-1 and GRD-9 arriving where they were always aimed. Beneath it the same actions as `einzel` command lines (Amendment 25) |
@@ -1006,7 +1053,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `GRD-1` | No bare numbers Every quantitative result carries value, units, uncertainty or confidence interval, the ensemble size or convergence measure behind it, ... | **Met** | No member of `Measured` returns a bare magnitude; enforced by reflection so the rule governs members nobody has written yet. It survives to the wire - `MeasuredJson` is built only by deconstructing. |
+| `GRD-1` | No bare numbers Every quantitative result carries value, units, uncertainty or confidence interval, ensemble size or convergence measure, and active warnings. The API offers no ... | **Partial** | Structurally enforced where it is enforced: `Measured` has no public way to read a bare value, and a test that tried had to go through `Deconstruct`. **But most figures of merit had no enveloped path at all** - `FiguresOfMerit.Evaluator` returns a bare double because ranking needs an ordering, a deliberate exception argued where it is taken, and the consequence nobody had written down is that twelve of the fourteen figures existed *only* in the excepted form. `FiguresOfMerit.Measure` is the counterpart: **1 of 14 figures carried an envelope, now 5**, by resampling the ion cloud. Validated against two closed forms the code has no part in - the mean's sigma/sqrt(N) at 0.987/1.022/0.996 and the median's sqrt(pi/2)sigma/sqrt(N) at 0.975/1.041/0.940. The remaining nine are named on every result by `results.no-envelope` rather than printed bare. See Amendment 28. |
 | `GRD-2` | Warnings propagate Validity warnings travel with the result through every layer — engine, command layer, CLI output, MCP response, exported file, rendered ... | **Met** | Warnings propagate through engine, command layer, CLI, exported VTU/VTI files and figures. Two places where they were being dropped have been found and fixed; see Amendments. |
 | `GRD-3` | Warnings above threshold are not suppressible Validity violations cannot be silenced by any caller, including in batch mode. | **Met** | Validity violations carry a non-suppressible severity and no caller can silence them. |
 | `GRD-4` | Validity is checked, not assumed Regime applicability, mesh convergence, ensemble convergence, adiabaticity, and the §10 linearization residual are ... | **Met** | Regime applicability, mesh convergence, ensemble convergence and the linearisation residual are all computed rather than assumed. |
@@ -1832,9 +1879,16 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     paths and not the instrument is exercised through the field rather than through
     conductors - a pointed gap, since the device that mode exists for is a funnel.
 
+    **Three more views since**, each of which needed the command layer to gain something
+    first: results by §12's accuracy class (which found Amendment 28's GRD-1 hole), the
+    regime inspector (REG-2's numbers *along* the path rather than at the worst point
+    anywhere, so "outside validity" becomes "between 12 and 31 millimetres"), and the
+    sequence editor (the declared timeline, marked with what each phase moves).
+
     **Next, in order of what unblocks the most:** the density cloud, which needs only a
-    surface since the density is already computed and contoured; then the sequence editor
-    and the regime inspector, both pure presentation over data that exists.
+    surface since the density is already computed and contoured; the figure composer, whose
+    seam is already text the CLI executes; then the animation timeline's scrubbing. The
+    update notice needs `Einzel.Update`, which does not exist.
 
 ## Open decisions
 

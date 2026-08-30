@@ -62,6 +62,46 @@
       </Grid>
     </DataTemplate>
 
+    <!--
+      A phase, drawn as a bar proportional to its duration. Equal rows would hide the shape
+      of a pulsed extraction, which is a hold of a microsecond beside a flight of a hundred
+      - and the shape is the thing a timeline is for.
+    -->
+    <DataTemplate x:Key="Phase">
+      <StackPanel Margin="4,4,4,6">
+        <TextBlock FontSize="11" FontWeight="Bold" TextWrapping="Wrap">
+          <Run Text="{Binding Name, Mode=OneWay}" />
+          <Run Text="  " /><Run Text="{Binding Span, Mode=OneWay}" Foreground="#606A72" />
+        </TextBlock>
+
+        <Rectangle Height="7" HorizontalAlignment="Left" Margin="0,2,0,3"
+                   Width="{Binding Width}" Fill="#7FA8D9" RadiusX="2" RadiusY="2" />
+
+        <TextBlock FontSize="10" TextWrapping="Wrap" Foreground="#404850"
+                   Text="{Binding Changes}" />
+
+        <!--
+          SEQ-1's boundary, marked. A packet crossing between descriptions loses its
+          velocities in one direction and has them invented in the other, which is the one
+          thing about a sequence a reader must not miss.
+        -->
+        <TextBlock FontSize="10" FontWeight="Bold" Foreground="#8A3A3A" TextWrapping="Wrap">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Setter Property="Visibility" Value="Collapsed" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ModeChanged}" Value="True">
+                  <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+          <Run Text="transport mode changes to " /><Run Text="{Binding Mode, Mode=OneWay}" />
+          <Run Text=" - the packet is converted here (SEQ-1)" />
+        </TextBlock>
+      </StackPanel>
+    </DataTemplate>
+
     <DataTemplate x:Key="Excursion">
       <StackPanel Margin="4,3,4,5">
         <TextBlock FontSize="11" FontWeight="Bold" TextWrapping="Wrap">
@@ -360,6 +400,31 @@
                 <DataGridTextColumn Header="E/N Td" Binding="{Binding ReducedField}" Width="Auto" />
               </DataGrid.Columns>
             </DataGrid>
+          </DockPanel>
+        </TabItem>
+
+        <!--
+          The sequence editor. It shows the declared timeline and does not yet edit it: a
+          sequence is a block in the model document, so editing one is editing the document
+          and goes through the same journal every other change does. What is missing is the
+          input surface rather than the path underneath it.
+        -->
+        <TabItem Header="Sequence">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,6,4,4">
+              <Button Content="Read" Click="OnSequence" MinWidth="54"
+                      ToolTip="Read the declared timeline from the model" />
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Top" x:Name="SequenceStatus" Margin="4,0,4,6"
+                       TextWrapping="Wrap" FontSize="11" Foreground="#606A72" />
+
+            <ListBox x:Name="SequenceWarnings" DockPanel.Dock="Bottom" MaxHeight="130"
+                     Margin="4,4,4,0" />
+
+            <ListBox x:Name="PhaseList" Margin="4,0,4,4"
+                     HorizontalContentAlignment="Stretch"
+                     ItemTemplate="{StaticResource Phase}" />
           </DockPanel>
         </TabItem>
       </TabControl>

@@ -185,6 +185,114 @@ public sealed class ResultsTests(ITestOutputHelper output) : IDisposable
         }
     }
 
+    /// <summary>A declared ion cloud earns its ensemble figures an interval (GRD-1).</summary>
+    /// <remarks>
+    /// <para>
+    /// The gap this closes. A width at half maximum has no standard-error formula, so it
+    /// was reported bare or not at all; resampling the cloud gives one for any statistic of
+    /// it, and assumes nothing about the distribution — which matters because an
+    /// arrival-time peak is measurably skew.
+    /// </para>
+    /// <para>
+    /// The interval is the <em>sampling</em> uncertainty and nothing else, so the evidence
+    /// names the ensemble size rather than claiming a confidence in the answer.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADeclaredCloudEarnsItsEnsembleFiguresAnInterval()
+    {
+        var outcome = ResultsCommand.Execute(Example("turn-around-time"));
+
+        var figures = outcome.Classes.SelectMany(c => c.Figures).ToList();
+        var enveloped = figures.Where(f => f.Measured is not null).ToList();
+
+        output.WriteLine(
+            $"{enveloped.Count} of {figures.Count} figures carry an envelope:");
+
+        foreach (var figure in enveloped)
+        {
+            output.WriteLine(
+                $"  {figure.Name,-18} {figure.Measured!.Value:G6} {figure.Measured.Unit,-3} "
+                + $"[{figure.Measured.Lower:G6}, {figure.Measured.Upper:G6}] "
+                + $"on {figure.Measured.Evidence}");
+        }
+
+        // The three that come off the cloud, beyond the flight time a run already had.
+        foreach (var name in (string[])["arrivalSpread", "turnAroundTime"])
+        {
+            var figure = Assert.Single(figures, f => f.Name == name);
+
+            Assert.NotNull(figure.Measured);
+            Assert.True(
+                figure.Measured!.Upper > figure.Measured.Lower,
+                $"{name} reported a zero-width interval, which is a claim of certainty");
+        }
+
+        Assert.DoesNotContain(outcome.Warnings, w => w.Code == "results.no-cloud");
+    }
+
+    /// <summary>
+    /// A model with no cloud gets no ensemble intervals, and is told why (GRD-1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The distinction this exists to keep.</b> Without a declared cloud the acceptance
+    /// is swept <em>deterministically</em> — evenly spaced from one end to the other, so the
+    /// seed does not enter and two runs agree exactly. That is a designed scan, not a draw
+    /// from a population, and resampling it would report the scan's own spacing as though it
+    /// were a sampling error.
+    /// </para>
+    /// <para>
+    /// The two have been confused here before: <c>DefaultEnergySpread</c>'s remarks exist
+    /// because somebody compared a deterministic sweep with a cloud's random draw and read
+    /// the difference as noise in the objective. Putting an interval on the sweep would make
+    /// that mistake structural, so the figure is absent and the reason is stated.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AModelWithNoCloudGetsNoEnsembleIntervalsAndIsToldWhy()
+    {
+        var outcome = ResultsCommand.Execute(Example("single-stage-reflectron"));
+
+        var said = Assert.Single(outcome.Warnings, w => w.Code == "results.no-cloud");
+
+        output.WriteLine(said.Message);
+
+        Assert.Contains("deterministic", said.Message, StringComparison.Ordinal);
+
+        // The flight time still has one: it comes from a convergence study over three
+        // integrator tolerances, which is a different kind of evidence and needs no cloud.
+        var flight = Assert.Single(
+            outcome.Classes.SelectMany(c => c.Figures), f => f.Name == "flightTime");
+
+        Assert.NotNull(flight.Measured);
+
+        foreach (var name in (string[])["arrivalSpread", "resolvingPower"])
+        {
+            var figure = Assert.Single(
+                outcome.Classes.SelectMany(c => c.Figures), f => f.Name == name);
+
+            Assert.Null(figure.Measured);
+        }
+
+        // And turn-around IS reported, which caught this test being wrong. A source with no
+        // temperature has exactly no thermal turn-around - that is an analytic statement
+        // about the model rather than a measurement over ions, so it needs no cloud and
+        // carries no sampling interval. Absent would have been the wrong answer: it is not
+        // that the figure could not be computed, it is that it is nought.
+        var turnAround = Assert.Single(
+            outcome.Classes.SelectMany(c => c.Figures), f => f.Name == "turnAroundTime");
+
+        Assert.NotNull(turnAround.Measured);
+        Assert.Equal(0.0, turnAround.Measured!.Value, 12);
+
+        output.WriteLine(
+            $"turnAroundTime {turnAround.Measured.Value:F3} {turnAround.Measured.Unit} "
+            + $"on {turnAround.Measured.Evidence}");
+
+        Assert.Contains("nalytic", turnAround.Measured.Evidence, StringComparison.Ordinal);
+    }
+
     /// <summary>The preview tier is marked as one (GRD-5).</summary>
     /// <remarks>
     /// AGT-5's cheap loop is what a window wants while somebody drags a slider, and GRD-5

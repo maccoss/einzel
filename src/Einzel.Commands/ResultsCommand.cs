@@ -1,4 +1,5 @@
 using Einzel.Core.Errors;
+using Einzel.Core.Model;
 using Einzel.Core.Results;
 using Einzel.Io;
 using Einzel.Project;
@@ -123,6 +124,11 @@ public static class ResultsCommand
             ? FromPreview(absolute)
             : FromRun(absolute, timestampUtc ?? DateTimeOffset.UtcNow);
 
+        var cloud = ModelValidator.Validate(
+            Io.ModelJson.Parse(File.ReadAllText(absolute)),
+            null,
+            Path.GetDirectoryName(absolute)).Model?.Cloud.IsCloud ?? false;
+
         var classes = new List<FigureClass>();
 
         foreach (var (name, what) in Families)
@@ -139,7 +145,7 @@ public static class ResultsCommand
         }
 
         return new ResultsOutcome(
-            absolute, classes, preview, [.. warnings, .. Unenveloped(classes)]);
+            absolute, classes, preview, [.. warnings, .. Unenveloped(classes, cloud)]);
     }
 
     /// <summary>
@@ -162,7 +168,8 @@ public static class ResultsCommand
     /// which is the failure GRD-1 is written against.
     /// </para>
     /// </remarks>
-    private static IReadOnlyList<ValidityWarning> Unenveloped(IReadOnlyList<FigureClass> classes)
+    private static IReadOnlyList<ValidityWarning> Unenveloped(
+        IReadOnlyList<FigureClass> classes, bool hasCloud)
     {
         var missing = classes
             .SelectMany(c => c.Figures)
@@ -180,7 +187,19 @@ public static class ResultsCommand
                 + string.Join(", ", missing)
                 + ". They are obtainable through 'einzel sweep' and 'einzel optimise', "
                 + "without an uncertainty",
-                WarningSeverity.Provenance)];
+                WarningSeverity.Provenance),
+                .. hasCloud
+                    ? Array.Empty<ValidityWarning>()
+                    : [new ValidityWarning(
+                        "results.no-cloud",
+                        "this model declares no ion cloud, so the ensemble figures have no "
+                        + "sample to measure a spread over. Without one the acceptance is "
+                        + "swept deterministically - evenly spaced, seed-free, the same "
+                        + "every run - which is a designed scan rather than a draw from a "
+                        + "population, and putting a sampling interval on it would report "
+                        + "the scan's own spacing as though it were an uncertainty. Declare "
+                        + "a source cloud for an ensemble interval",
+                        WarningSeverity.Provenance)]];
     }
 
     /// <summary>§12's families, in the order §12 lists them.</summary>
@@ -245,16 +264,29 @@ public static class ResultsCommand
 
         var figures = new Dictionary<string, MeasuredJson>(StringComparer.Ordinal);
 
-        // A diffusive run has no flight time and says so rather than filling one in, which
-        // is why this is conditional rather than always present.
+        // Every figure this build can put an envelope on, computed rather than reported as
+        // absent. The registry's own `Measure` decides which those are; a figure it has no
+        // envelope for comes back null and is named below rather than printed bare, which
+        // is the failure GRD-1 exists to prevent.
+        var model = ModelValidator.Validate(
+            Io.ModelJson.Parse(File.ReadAllText(modelPath)),
+            null,
+            Path.GetDirectoryName(modelPath)).Model!;
+
+        foreach (var figure in FiguresOfMerit.All)
+        {
+            if (FiguresOfMerit.Measure(figure.Name, model) is { } measured)
+            {
+                figures[figure.Name] = MeasuredJson.From(measured, figure.Unit);
+            }
+        }
+
+        // The run's own flight time, which comes from a convergence study over three
+        // integrator tolerances rather than from a resampled cloud - a different kind of
+        // evidence, and the one the registry cannot produce.
         if (run.Diffusion is null)
         {
             figures["flightTime"] = run.FlightTime;
-        }
-
-        if (run.Ensemble is { } ensemble)
-        {
-            figures["transmission"] = ensemble.Transmission;
         }
 
         return (figures, run.FlightTime.Warnings.Select(Warning).ToList());
