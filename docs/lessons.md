@@ -1395,6 +1395,38 @@ began". **The absence of an effect and an operating point that cannot show it pr
 same output.** Before concluding a mechanism is absent, check that the operating point
 admits it.
 
+## A discontinuous potential is not a discontinuous trajectory
+
+Bounding an analytic field to a box makes its potential jump at the boundary, because a box
+is not an equipotential of anything interesting. I wrote that up as "an ion crossing gains
+or loses that much energy per crossing", graded it against ACC-1's budget, and made
+`FieldAssembly.Build` refuse above it.
+
+**It is wrong, and one measurement settled it.** An ion is moved by the **field**, and the
+field is exactly the declared one on each side. So a uniform field bounded to a box is an
+accelerating gap followed by a field-free drift — an ordinary instrument:
+
+| | |
+| --- | --- |
+| `sqrt(2 m L / (q E)) + (D - L) / v` | **13.658582 us** |
+| measured, bounded | **13.658582 us** |
+| same model with no region | 10.180506 us |
+
+What the step actually costs is narrower and had to be worked out separately: the
+**energy-drift diagnostic** is computed from the potential and so jumps at the boundary, and
+the piecewise field is **not conservative across it** — an ion that crosses more than once,
+in by one face and out by another, can gain energy no electrode supplied. A single straight
+crossing has no such path.
+
+**The mistake was reasoning about the potential when the integrator uses the field.** The
+two are the same object only where the field is the gradient of the potential, and a region
+is precisely a place where the code makes them disagree. The general form: *before deriving
+a consequence from a quantity, check that the code path in question actually reads it.*
+
+It also mattered how severe I made it. A `ValidityViolation` on a model that is provably
+correct is a false alarm on a channel GRD-3 makes unsuppressible, and it would have taught
+readers to ignore the one warning class that must never be ignored.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

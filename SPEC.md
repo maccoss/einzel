@@ -758,13 +758,17 @@ V/m** of that analyser unbounded and **exactly its own 1,000** bounded; on the a
 unbounded case is worse than swamping, since the model cannot be asked a question there at
 all. Inside the region nothing changes, to the bit.
 
-**What it does not solve is the potential step.** A box is not an equipotential, so an ion
-crossing gains or loses whatever the inner field held there — and for the fields one most
-wants to bound that is large, because a uniform potential never decays (100 V at 50 mm) and
-a quadro-logarithmic one grows (7,000 V at 30 mm). The step is reported on every bounded
-element, graded against ACC-1's budget as a fraction of the beam potential, and
-`FieldAssembly.Build` refuses above it. So a region is best read as a statement that ions
-do not cross that boundary; if one does, the run says by how much it was wrong.
+**The potential steps at the boundary, and that costs less than it looks like it should.**
+A box is not an equipotential, so the potential does not match across it — and the first
+account of this concluded that an ion crossing therefore gains or loses that energy. **It
+does not.** An ion is moved by the *field*, which is exactly the declared one on each side,
+so a bounded uniform field is an accelerating gap followed by a field-free drift: measured
+at **13.658582 µs against a closed form of 13.658582**, with the unbounded control at
+10.180506. What the step actually costs is that the energy-drift diagnostic jumps at the
+boundary, and that the piecewise field is not conservative across it — an ion crossing more
+than once, in by one face and out by another, can gain energy no electrode supplied. The
+step is reported on every bounded element at severity `Qualified`, in volts and as a
+fraction of the beam potential.
 
 **The failure points straight at the next refinement.** A real device's field is bounded by
 a conductor, and a conductor is an equipotential of the very field it produces. Bounding an

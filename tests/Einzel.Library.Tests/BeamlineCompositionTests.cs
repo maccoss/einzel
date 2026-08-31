@@ -2,6 +2,8 @@ using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Fields;
 using Einzel.Io;
+using Einzel.Transport;
+using Einzel.Transport.Integration;
 
 using Xunit.Abstractions;
 
@@ -214,32 +216,38 @@ public sealed class BeamlineCompositionTests(ITestOutputHelper output)
             w => Assert.Contains("this ion is accelerated through", w.Message, StringComparison.Ordinal));
     }
 
-    /// <summary>A step that would break ACC-1 is refused, not carried.</summary>
+    /// <summary>A region does not make a bare field unobtainable.</summary>
     /// <remarks>
     /// <para>
-    /// <b>`Build`'s contract narrowed when regions arrived, and this pins where it now
-    /// draws the line.</b> It used to refuse a field with any warning at all. An
-    /// unconverged solve means the numbers the field hands out may not be the ones the
-    /// document describes, and a bare field has no envelope to carry that on — so refusing
-    /// is the only honest option. A region's potential step is not that: the field is
-    /// exactly what the document declares. Throwing on every one would make `Build`
-    /// unusable for the composed beamlines a region exists to enable.
+    /// <b>`Build`'s contract narrowed when regions arrived, and the line it draws is about
+    /// who knows the thing rather than about how bad it is.</b> It used to refuse a field
+    /// carrying any warning at all. An unconverged solve is evidence only the engine has —
+    /// nothing in the document says the residual missed, the field looks identical either
+    /// way, and a bare field has no envelope to carry it on — so refusing is the only
+    /// honest option, and this project has lost numbers at exactly that seam.
     /// </para>
     /// <para>
-    /// So the step is graded against the ion's own energy and refused above ACC-1's 1 ppm
-    /// budget, which is where a flight time across the boundary stops meaning what this
-    /// engine claims for it.
+    /// A region's potential step is not that. It is a consequence of geometry the author
+    /// wrote down and can see, and the trajectory across it is exactly right. Refusing every
+    /// one would make `Build` unusable for the composed beamlines a region exists to enable,
+    /// in exchange for repeating something the document already says.
     /// </para>
     /// </remarks>
     [Fact]
-    public void AStepAboveTheAccuracyBudgetStillRefusesABareField()
+    public void ARegionDoesNotMakeABareFieldUnobtainable()
     {
-        var error = Assert.Throws<Core.Errors.EinzelException>(
-            () => FieldAssembly.Build(Compile(Document(bounded: true))));
+        var field = FieldAssembly.Build(Compile(Document(bounded: true)));
 
-        output.WriteLine(error.Error.Constraint);
+        Assert.NotNull(field);
 
-        Assert.Contains("ppm budget", error.Error.Constraint, StringComparison.Ordinal);
+        var (_, warnings) = FieldAssembly.BuildReported(Compile(Document(bounded: true)));
+
+        // Qualified rather than a validity violation: the result is usable and the reason
+        // it is usable is measured next door, where the flight across a boundary matches a
+        // closed form to six figures.
+        Assert.All(
+            warnings.Where(w => w.Code == "field.region-potential-step"),
+            w => Assert.Equal(Core.Results.WarningSeverity.Qualified, w.Severity));
     }
 
     /// <summary>A solved element may not declare a region: it already has one.</summary>
@@ -303,6 +311,132 @@ public sealed class BeamlineCompositionTests(ITestOutputHelper output)
         output.WriteLine($"{error.Path}: {error.Constraint}");
 
         Assert.Contains("already bounded", error.Constraint, StringComparison.Ordinal);
+    }
+
+    /// <summary>An ion crossing a region boundary follows the right trajectory.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The claim being tested is that the motion is right even though the potential
+    /// steps</b>, and it matters because the first write-up of this feature said the
+    /// opposite. The integrator moves an ion by the FIELD; the potential is a derived
+    /// quantity used for energy bookkeeping. A uniform field bounded to a box is therefore
+    /// exactly an accelerating gap followed by a field-free drift, which is an ordinary
+    /// instrument and has a closed form.
+    /// </para>
+    /// <para>
+    /// The expectation is arithmetic this engine had no part in:
+    /// <c>t = sqrt(2 m L1 / (q E)) + (L2 - L1) / sqrt(2 q E L1 / m)</c>.
+    /// </para>
+    /// <para>
+    /// <b>The control is the same model with no region</b>, where the field extends to the
+    /// detector and the ion accelerates the whole way — a different, shorter flight. Without
+    /// it, a region that silently did nothing would pass.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnIonCrossingTheBoundaryFliesAnAcceleratingGapThenADrift()
+    {
+        const double FieldVoltsPerMetre = 10000.0;
+        const double GapMetres = 0.020;
+        const double DetectorMetres = 0.100;
+
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+
+        var mass = species.MassSi;
+        var charge = Math.Abs(species.ChargeSi);
+
+        var accelerate = Math.Sqrt(2.0 * mass * GapMetres / (charge * FieldVoltsPerMetre));
+        var speed = Math.Sqrt(2.0 * charge * FieldVoltsPerMetre * GapMetres / mass);
+        var expected = accelerate + ((DetectorMetres - GapMetres) / speed);
+
+        var bounded = Fly(GapDocument(bounded: true));
+        var unbounded = Fly(GapDocument(bounded: false));
+
+        output.WriteLine($"closed form   {expected * 1e6:F6} us");
+        output.WriteLine(
+            $"bounded       {bounded.FlightTimeSeconds * 1e6:F6} us  "
+            + $"({(bounded.FlightTimeSeconds - expected) / expected:P4})");
+
+        output.WriteLine(
+            $"no region     {unbounded.FlightTimeSeconds * 1e6:F6} us  "
+            + "(accelerates the whole way, as it should)");
+
+        Assert.Equal(TrajectoryOutcome.StopConditionMet, bounded.Outcome);
+
+        // The trajectory is exactly the closed form, so the potential step costs the MOTION
+        // nothing. It is the energy bookkeeping that jumps, not the ion.
+        Assert.Equal(expected, bounded.FlightTimeSeconds, expected * 1e-6);
+
+        // And the region is doing the work: without it the same model is a different
+        // instrument, by a wide margin.
+        Assert.True(
+            unbounded.FlightTimeSeconds < 0.8 * expected,
+            $"the unbounded model flew in {unbounded.FlightTimeSeconds * 1e6:F3} us against "
+            + $"{expected * 1e6:F3}, which is too close to say the region did anything");
+    }
+
+    /// <summary>A uniform field bounded to a gap, with the detector beyond it.</summary>
+    private static string GapDocument(bool bounded) =>
+        $$"""
+        {
+          "schemaVersion": "0.7",
+          "name": "bounded-gap",
+          "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+          "source": {
+            "position": { "value": [0, 0, 0], "unit": "mm" },
+            "direction": { "value": [1, 0, 0] },
+            "accelerationPotential": { "value": 0, "unit": "V" }
+          },
+          "fields": [
+            {
+              "type": "uniform",
+              "field": { "value": [10000, 0, 0], "unit": "V/m" }{{(bounded
+                ? """
+                ,
+                  "region": {
+                    "minX": { "value": -1, "unit": "mm" },
+                    "maxX": { "value": 20, "unit": "mm" },
+                    "minY": { "value": -10, "unit": "mm" },
+                    "maxY": { "value": 10, "unit": "mm" },
+                    "minZ": { "value": -10, "unit": "mm" },
+                    "maxZ": { "value": 10, "unit": "mm" }
+                  }
+                """
+                : string.Empty)}}
+            }
+          ],
+          "detector": {
+            "planePoint": { "value": [100, 0, 0], "unit": "mm" },
+            "normal": { "value": [-1, 0, 0] }
+          },
+          "transport": {
+            "maximumFlightTime": { "value": 100, "unit": "us" },
+            "relativeTolerance": 1e-12
+          }
+        }
+        """;
+
+    private static TrajectoryResult Fly(string json)
+    {
+        var model = Compile(json);
+        var (field, _) = FieldAssembly.BuildReported(model);
+
+        var launch = new PhaseState(
+            model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
+
+        var point = model.DetectorPoint;
+        var normal = model.DetectorNormal;
+
+        return TrajectoryIntegrator.Integrate(
+            launch,
+            IonSpecies.FromModel(model),
+            field,
+            new Transport.Integration.IntegrationSettings
+            {
+                RelativeTolerance = model.RelativeTolerance,
+                MaximumFlightTime = model.MaximumFlightTimeSi,
+            },
+            (in PhaseState state) => Vec3.Dot(state.Position - point, normal));
     }
 
     /// <summary>A region with no extent is refused rather than silencing the element.</summary>

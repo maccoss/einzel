@@ -806,45 +806,67 @@ reads a partly-filled box. A **solved** element may not declare one, refused rat
 ignored, because a solve is already bounded by its own domain and a document that says a
 thing twice can say it two ways. A region with no extent is refused too.
 
-### The boundary is a step, and the step is reported in the ion's own currency
+### The boundary is a step, and the step costs less than it looks like it should
 
 **A box is not an equipotential of anything interesting**, so the potential does not match
-across a region boundary and an ion crossing gains or loses whatever the inner field held
-there. That is not hidden. Every bounded element reports the largest potential anywhere on
-its boundary — REG-2's rule, whether or not it crosses a threshold — as a fraction of the
-potential the ion is accelerated through, because a step means nothing on its own: 100 V
-across a 10 V beam is a different instrument, and across a 4 kV beam it is 2.5%.
+across a region boundary. The first version of this write-up concluded from that that an ion
+crossing gains or loses the potential it left. **It does not**, and measuring it is what
+settled it.
 
-The field discontinuity itself needs no apology: the boundary is presented as a signed
-distance whose zero the integrator brackets and lands on exactly, the same first-class event
-a declared discontinuity already is (§11). It is the *potential* step that costs energy.
+An ion is moved by the **field**, and the field is exactly the declared one on each side. So
+a uniform field bounded to a box is an accelerating gap followed by a field-free drift —
+which is an ordinary instrument with a closed form:
 
-**`FieldAssembly.Build`'s contract narrowed when regions arrived**, and the line it now
-draws is worth knowing. It used to refuse a field with any warning at all — an unconverged
-solve means the numbers may not be the ones the document describes, and a bare field has no
-envelope to carry that on, so refusing is the only honest option. A region's step is not
-that: the field is exactly what the document declares. Throwing on every one would make
-`Build` unusable for the composed beamlines a region exists to enable. So the step is graded
-against ACC-1's 1 ppm budget, and **`Build` refuses only above it**.
+| | |
+| --- | --- |
+| `sqrt(2 m L / (q E)) + (D - L) / v` | **13.658582 us** |
+| measured, bounded | **13.658582 us** |
+| the same model with no region | 10.180506 us, accelerating the whole way |
+
+The control matters as much as the agreement: without the region the field reaches the
+detector and the flight is a third shorter, so a region that silently did nothing would not
+pass.
+
+**What the step does cost**, stated rather than overstated:
+
+- the **energy-drift diagnostic** jumps at the boundary, because that is computed from the
+  potential;
+- and the piecewise field is **not conservative across the boundary**, so an ion that
+  crosses more than once — in by one face and out by another — can gain or lose energy no
+  electrode supplied. A single straight crossing has no such path.
+
+Every bounded element reports the largest potential on its boundary in volts and as a
+fraction of what the ion is accelerated through, whether or not it crosses a threshold
+(REG-2), at severity `Qualified`: the result is usable, and here is the thing about it worth
+knowing.
+
+The field discontinuity itself needs no apology. The boundary is presented as a signed
+distance whose zero the integrator brackets and lands on exactly — the same first-class
+event a declared discontinuity already is (§11).
+
+**`FieldAssembly.Build`'s contract narrowed when regions arrived**, and the line it draws is
+about *who knows the thing* rather than about how bad it is. It used to refuse a field
+carrying any warning. An unconverged solve is evidence only the engine has: nothing in the
+document says the residual missed, the field looks identical either way, and a bare field
+has no envelope to carry it on — so refusing is the only honest option, and this project has
+lost numbers at exactly that seam. A region's step is a consequence of geometry the author
+wrote down and can see. Refusing every one would make `Build` unusable for the composed
+beamlines a region exists to enable, in exchange for repeating what the document already
+says.
 
 ### The limitation, and the better design it points at
 
-**For the fields one most wants to bound, the step is large.** A uniform potential never
-decays, so bounding a 1 kV/m section 50 mm from its own zero puts a 100 V step at the
-boundary. A quadro-logarithmic potential *grows*, so bounding one at 30 mm puts 7,000 V
-there. The advice to "place the boundary where the field has decayed" has no place to point
-at for either.
+The step is still large for the fields one most wants to bound — a uniform potential never
+decays (100 V at 50 mm from its own zero) and a quadro-logarithmic one *grows* (7,000 V at
+30 mm) — so "place the boundary where the field has decayed" has nowhere to point for
+either. That is tolerable for a beam passing through, and it is not what a real device does.
 
-So a region as it stands is best read as **a statement that ions do not cross that
-boundary** — which is true of an analyser that keeps what it is given — and if one does, the
-run says by how much it was wrong.
-
-The failure points straight at the fix. A real device's field is bounded by a **conductor**,
-and a conductor is an equipotential — of the very field it produces. Bounding an analytic
-element by one of its own level sets rather than by a box would make the potential
-continuous by construction, offset so it is zero outside, with the field discontinuous in
-exactly the way `halfSpaceUniform` already is and the geometry exactly a real electrode.
-That is the next refinement, and it is not what was built here.
+A real device's field is bounded by a **conductor**, and a conductor is an equipotential —
+of the very field it produces. Bounding an analytic element by one of its own level sets
+rather than by a box would make the potential continuous *by construction*, offset so it is
+zero outside, with the field discontinuous exactly as `halfSpaceUniform` already is and the
+geometry exactly a real electrode. That is the next refinement, and it is not what was built
+here.
 
 ## Versioning
 

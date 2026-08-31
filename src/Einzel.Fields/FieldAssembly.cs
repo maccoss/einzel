@@ -224,18 +224,19 @@ public static class FieldAssembly
     {
         var (field, warnings) = BuildReported(model);
 
-        // Narrowed from "any warning at all" to "any warning saying the field is WRONG".
+        // Narrowed from "any warning at all" to "any warning saying the field is WRONG",
+        // and the distinction is about WHO KNOWS THE THING, not about how bad it is.
         //
-        // The distinction arrived with regions. An unconverged solve means the numbers this
-        // field will hand out may not be the ones the document describes, and a bare field
-        // has no envelope to carry that on - so refusing is the only honest option. A
-        // region's potential step is not that: the field is exactly what the document
-        // declares, and the step is a consequence of the geometry the author asked for.
-        // Throwing on it would make `Build` unusable for every composed beamline, which is
-        // the feature the region exists to enable.
+        // An unconverged solve is evidence only the engine has: nothing in the document
+        // says the residual missed its tolerance, the field looks identical either way, and
+        // a bare field has no envelope to carry it on. Dropping that silently is the seam
+        // this project has already lost numbers at, so refusing is the only honest option.
         //
-        // The step still becomes a ValidityViolation when it is large enough to matter -
-        // above ACC-1's budget against the beam energy - and then this refuses again.
+        // A region's potential step is not that. It is a consequence of geometry the author
+        // wrote down and can see, the field is exactly what the document declares, and the
+        // trajectory across it is exactly right. Refusing every one would make `Build`
+        // unusable for the composed beamlines a region exists to enable, in exchange for
+        // repeating something the document already says.
         var defects = warnings
             .Where(w => w.Severity == Core.Results.WarningSeverity.ValidityViolation)
             .ToList();
@@ -460,38 +461,46 @@ public static class FieldAssembly
             }
         }
 
-        // Graded against the ion's own energy, because a step only means anything
-        // relative to what the ion is carrying: 100 V across a 10 V beam is a different
-        // instrument, and across a 4 kV beam it is 2.5 per cent.
+        // Reported as a fraction of what the ion carries as well as in volts, because a
+        // step means nothing on its own: 100 V beside a 10 V beam and beside a 4 kV beam
+        // are different statements.
         var beam = Math.Abs(beamPotentialSi);
-        var fraction = beam > 0.0 ? worst / beam : double.PositiveInfinity;
 
-        // ACC-1's budget. Below it the step cannot reach a flight time at the accuracy this
-        // engine claims, so the model is usable and the number is worth knowing; above it
-        // the model is describing an energy the document did not intend.
-        var within = fraction <= 1e-6;
+        var relative = beam > 0.0
+            ? $" - {worst / beam:P3} of the {beam:G4} V this ion is accelerated through"
+            : string.Empty;
 
+        // QUALIFIED, NOT A VIOLATION, and the first version of this had it wrong.
+        //
+        // An ion is moved by the FIELD, and the field is exactly the declared one on each
+        // side of the boundary - so a bounded uniform field is an accelerating gap followed
+        // by a field-free drift, which is an ordinary instrument. Measured: the flight time
+        // across one matches sqrt(2 m L / (q E)) + (D - L) / v to six figures. The step
+        // costs the trajectory nothing.
+        //
+        // What it does cost is stated below rather than overstated: the potential is what
+        // jumps, so the energy-drift diagnostic is meaningless across the boundary, and the
+        // piecewise field is not conservative across it - an ion that crosses MORE THAN
+        // ONCE, entering by one face and leaving by another, can gain or lose energy that
+        // no electrode supplied.
         return new Core.Results.ValidityWarning(
             "field.region-potential-step",
             $"field element {index} is bounded by a region, and its potential reaches "
-                + $"{worst:G4} V on that boundary - {fraction:P3} of the {beam:G4} V this "
-                + "ion is accelerated through. A box is not an equipotential, so an ion "
-                + "crossing gains or loses that much energy per crossing"
-                + (within
-                    ? ", which is inside ACC-1's 1 ppm budget."
-                    : ", which is outside ACC-1's 1 ppm budget: any flight time across this "
-                      + "boundary is wrong by about that fraction.")
-                + $" Sampled on a {Samples}x{Samples} grid over each of the six faces, so a "
-                + "narrower spike than that spacing would be missed"
+                + $"{worst:G4} V on that boundary{relative}. The TRAJECTORY is unaffected: an "
+                + "ion is moved by the field, which is exactly the declared one on each side, "
+                + "so a straight crossing is an ordinary accelerating gap. What the step "
+                + "costs is that the energy-drift diagnostic jumps at the boundary, and that "
+                + "the piecewise field is not conservative across it - an ion that crosses "
+                + "more than once, in by one face and out by another, can gain or lose energy "
+                + "no electrode supplied. Sampled on a "
+                + $"{Samples}x{Samples} grid over each of the six faces, so a narrower spike "
+                + "than that spacing would be missed"
                 + (skipped > 0
                     ? $", and {skipped} of those points were refused by the field itself "
                       + "(a singular axis, say) and took no part"
                     : string.Empty)
-                + ". Move the boundary out to where the field has decayed to make it "
-                + "smaller.",
-            within
-                ? Core.Results.WarningSeverity.Qualified
-                : Core.Results.WarningSeverity.ValidityViolation);
+                + ".",
+            Core.Results.WarningSeverity.Qualified);
     }
 
     /// <summary>The unbounded analytic field itself, before any region is applied.</summary>
