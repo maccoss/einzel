@@ -1060,6 +1060,14 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **What remains untested is whether capture can be TUNED** — matching injection radius, energy and timing to the ramp is a study rather than a feature, and so is how many phases approximate a smooth ramp closely enough.
 
+- **Extensions declare a licence, which is LIC-2's engine half.** An extension is third-party code run against this engine and LIC-1 is absolute about what may enter the default build, so somebody deciding whether to install one needs to know what it is offered under *before* they install it. The manifest carried trust level, versions and a compatible range, and nothing about the licence.
+
+  `licence` on the manifest, scaffolded by `ext register` (the same argument as `init` writing a model that runs — a field that has to be added later is one that gets left out), and surfaced by `einzel ext list` in both forms. **The load-bearing half is the undeclared case**: it prints `NOT DECLARED` rather than being omitted, because the one extension worth asking about must not be the one whose line is shortest, and it is `null` in `--json` rather than a placeholder so a caller cannot mistake "did not say" for a licence it recognises. Absent, not zero — and it matters more here than usual, because the reader cannot recompute the answer for themselves.
+
+  **An SPDX identifier by convention rather than by validation.** A checker that recognised some spellings and not others would report an unrecognised licence as no licence, which is exactly the failure the field exists to prevent.
+
+  What is left of LIC-2 is the extension manager *pane* — presentation over something that now works.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
