@@ -1663,10 +1663,27 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **A region on an analytic field element, so an exact analyser can join a
-   beamline.** Amendment 32, and it is now the thing blocking the most: the two
-   injection paths this platform is pointed at are both *pairs of instruments*, and
-   only one of the pair can be exact.
+3. ~~**A region on an analytic field element, so an exact analyser can join a
+   beamline.**~~ — **built, and one measurement corrected my account of what it
+   costs.** Amendment 32. An analytic element may declare a box outside which it
+   contributes nothing: an ordinary 1 kV/m section 75 mm from an orbital analyser
+   feels **−1,499,000 V/m** of it unbounded and **exactly its own 1,000** bounded,
+   and on the axis the unbounded case is worse than swamping, since the model cannot
+   be asked a question there at all.
+
+   **The potential steps at the boundary and I first called that an energy the ion
+   gains.** It is not: an ion is moved by the *field*, which is exactly the declared
+   one on each side, so a bounded uniform field is an accelerating gap followed by a
+   drift — **13.658582 µs against a closed form of 13.658582**, with the unbounded
+   control at 10.180506. What it really costs is the energy-drift diagnostic and
+   non-conservation for an ion crossing *more than once*. `bounded-accelerating-gap`
+   puts it in the release gate, and the gate's teeth were checked by mutation.
+
+   **What remains is the better boundary.** A real device's field is bounded by a
+   conductor, and a conductor is an equipotential of the very field it produces —
+   so bounding an analytic element by one of its own level sets, offset to zero
+   outside, would make the potential continuous *by construction*. That is what
+   should replace the box, and it is not what was built.
 
    An analytic field has no extent, because a formula does not. That is harmless for
    an idealisation of a whole instrument — a uniform field, a retarding half-space —
