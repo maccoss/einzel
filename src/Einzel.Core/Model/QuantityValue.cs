@@ -284,6 +284,34 @@ public sealed record VectorValue(IReadOnlyList<double> Value, string Unit)
 /// </remarks>
 public sealed record DirectionValue(IReadOnlyList<double> Value)
 {
+    /// <summary>
+    /// Three arithmetic expressions over the model's parameters, evaluated in place
+    /// of <see cref="Value"/>. Spec section 9: "Every placement is a parametric
+    /// expression, never a baked number."
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A direction is a placement, and this was the one kind that could not be
+    /// written as an expression. <see cref="VectorValue"/> has had it since the
+    /// parameter surface existed and cites the same sentence.
+    /// </para>
+    /// <para>
+    /// <b>The device that needed it is a trap with a curved axis.</b> Launching an
+    /// ion along such an axis means a direction that depends on where round the arc
+    /// it starts - so with a literal only, changing the arc angle moves the geometry
+    /// and leaves the launch pointing where it used to, silently. The same shape as
+    /// <c>drivePhase</c> being a plain double until a travelling wave needed a phase
+    /// that could ramp with the repeat index.
+    /// </para>
+    /// <para>
+    /// Dimensionless, because a direction is: what is declared is the ratio between
+    /// the components, and the vector is normalised. That is why there is no unit
+    /// here and why an expression may mix parameters of any dimension as long as the
+    /// result is a pure number.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string>? Expression { get; init; }
+
     /// <summary>Element-wise equality. See <see cref="VectorValue.Equals(VectorValue)"/>.</summary>
     /// <param name="other">The value to compare against.</param>
     /// <returns><see langword="true"/> when the components match.</returns>
@@ -293,7 +321,63 @@ public sealed record DirectionValue(IReadOnlyList<double> Value)
     /// <inheritdoc/>
     public override int GetHashCode() => Components.HashOf(Value, unit: null);
 
-    /// <summary>Converts to a unit vector, reporting failures against a document path.</summary>
+    /// <summary>Converts to a unit vector, evaluating expressions if present.</summary>
+    /// <param name="path">JSON Pointer to this value, for the error object.</param>
+    /// <param name="parameters">The model's resolved parameter surface.</param>
+    /// <returns>The normalised direction.</returns>
+    /// <exception cref="EinzelException">
+    /// The vector does not have three components, has zero length, or an expression
+    /// does not evaluate to a dimensionless number.
+    /// </exception>
+    public Vec3 ToUnitVector(string path, IReadOnlyDictionary<string, Quantity> parameters)
+    {
+        if (Expression is null)
+        {
+            return ToUnitVector(path);
+        }
+
+        if (Expression is not { Count: 3 })
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/expression",
+                Constraint = "a direction must have exactly three components",
+                Observed = new ObservedValue(Expression?.Count ?? 0, "components"),
+                Suggestion = "supply three expressions, one per axis",
+            });
+        }
+
+        var components = new double[3];
+
+        for (var k = 0; k < 3; k++)
+        {
+            var evaluated = ExpressionEvaluator.Evaluate(
+                Expression[k], parameters, $"{path}/expression/{k}");
+
+            // Dimensionless, because a direction is a ratio between its components. A
+            // length here would be a vector wearing a direction's clothes, and the
+            // normalisation would hide the mistake rather than catch it.
+            if (!evaluated.Dimension.IsDimensionless)
+            {
+                throw new EinzelException(new EinzelError
+                {
+                    Code = ErrorCodes.UnitsIncompatible,
+                    Path = $"{path}/expression/{k}",
+                    Constraint = "a direction component must be dimensionless, but this one "
+                        + $"has dimension {evaluated.Dimension}",
+                    Suggestion = "form a ratio, for example cosPi(arcHalfTurns / 4), or use a "
+                        + "vector with a unit if you meant a position",
+                });
+            }
+
+            components[k] = evaluated.SiValue;
+        }
+
+        return new DirectionValue(components).ToUnitVector(path);
+    }
+
+    /// <summary>Converts a literal direction to a unit vector.</summary>
     /// <param name="path">JSON Pointer to this value, for the error object.</param>
     /// <returns>The normalised direction.</returns>
     /// <exception cref="EinzelException">

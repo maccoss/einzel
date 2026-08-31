@@ -822,8 +822,11 @@ public static class Program
 
         foreach (var element in outcome.Elements)
         {
-            var size = element.Nodes.Count == 2
-                ? string.Create(invariant, $"{element.Nodes[0]}x{element.Nodes[1]}")
+            // Any rank, not just two. A volume element used to fall through to
+            // "analytic" here - which is not a shape, it is a claim that there is
+            // nothing to solve, printed beside the largest solve in the model.
+            var size = element.Nodes.Count > 0
+                ? string.Join("x", element.Nodes)
                 : "analytic";
 
             Console.Out.WriteLine(string.Create(

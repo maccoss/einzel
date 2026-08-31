@@ -690,6 +690,32 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 32 - An exact analytic field cannot be one element of a beamline
+
+Section 9 lists the field kinds a document may declare, and section 6's whole architecture
+rests on superposition being exact for electrostatics - which it is. What neither says is
+that an **analytic** element has no extent: it fills all space, because a formula does.
+
+That is harmless while analytic fields are idealisations of a whole instrument - a uniform
+field, a retarding half-space. It stops being harmless the moment one is an exact statement
+of a real device that sits *next to* another device. The quadro-logarithmic field of an
+orbital trap grows as `z^2`, so declaring it in the same document as the C-trap that
+injects it puts an enormous field across the C-trap. The two instruments cannot be composed
+even though the sequencer can express the handover and superposition is exact.
+
+**Two solved elements compose correctly**, because each is bounded by its own domain and
+decays outside it. So the gap is specific: an exact analytic field cannot be one element of
+a multi-element beamline, and the exactness is precisely why anyone would want it there.
+
+**Recommend section 9 give an analytic element an optional region** - a box outside which
+it contributes nothing. That introduces a field discontinuity at the boundary, which is not
+a difficulty: the integrator already lands exactly on declared discontinuities, and section
+11 makes that a first-class event. What it needs is a decision about whether the region is
+declared or inferred, and what happens where two regions overlap.
+
+Until then, an instrument built from an exact analytic analyser and a solved injector is
+two models with a measured handover between them, not one document.
+
 ### 31 - A thermal cloud's divergence is not the divergence an ion-optics beam has
 
 The model format carries `energyFractionSpread` with an argument written where it is

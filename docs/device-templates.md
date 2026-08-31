@@ -22,6 +22,8 @@ physics or the abstraction is wrong, and almost always the second.
 | `multipole-guide` | Any even order — quadrupole, hexapole, octupole, and beyond — from one file |
 | `paul-trap` | A driven ring between two earthed endcaps: the three-dimensional quadrupole trap, solved axisymmetrically |
 | `kingdon-trap` | A wire on the axis of a cylinder: the electrostatic orbital trap, and the ancestor of the Orbitrap |
+| `orbital-trap` | A quadro-logarithmic field: ions circle a spindle while oscillating along it, and the axial frequency is the measurement |
+| `c-trap` | Four rods bent around an arc: the curved RF trap that injects an orbital analyser |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -930,3 +932,81 @@ pattern as `multipole-guide`, which found the grammar had no trigonometry.
 axially indifferent; a real Kingdon trap adds end electrodes, and this one launches with no
 axial velocity so the ion stays in its plane. That is a real limitation of the template
 rather than of the platform — end electrodes are two more rectangles.
+
+
+## `c-trap` — a curved axis, which is invariant under nothing
+
+Four rods bent around a quarter circle, holding ions until a sequence pushes them out
+sideways through a slot. It injects an orbital analyser, and the curvature is the point: a
+packet ejected radially from a curved trap converges as it flies, so it arrives spatially
+focused rather than as a line.
+
+**It is the first device here that is neither a cross-section nor a surface of
+revolution.** A translational solve assumes the geometry repeats along an axis; an
+axisymmetric one assumes it repeats all the way round. A curved axis does neither, so this
+needs a genuine volume solve — the first template to.
+
+**The rods are chains of overlapping spheres**, because a `cylinder` in this format is
+axis-aligned and a bent rod is not. That needed **no new primitive**: `repeat` binds an
+index and `cosPi`/`sinPi` place a bead anywhere. Overlapping copies at one potential are
+deliberate rather than tolerated — the overlap check refuses only conductors that
+*disagree* about what they hold.
+
+| | |
+| --- | --- |
+| 49 electrode declarations | **1 basis channel** |
+| Cycles, convergence factor | 19, 0.3316 |
+| Solve time, 65 x 65 x 33 | 9.1 s |
+| Worst bead spacing | 1.005 rod radii |
+| Out-of-plane excursion, in-plane launch | **0.000 nm** |
+
+Four bent rods reduce to one solve for the same reason four straight ones do: the in-plane
+pair and the out-of-plane pair are exact negatives. Bending changes nothing about that, and
+it matters more here than in a cross-section — a second channel in a volume solve is
+another pass over the whole grid.
+
+**The drive is what carries the ion round**, checked against the same model with the
+amplitude at zero:
+
+| | outcome | closest approach, late in flight |
+| --- | --- | --- |
+| drive on | arrives at the arc's end | **2.5 um** |
+| drive off | strikes a rod at 25.9 us | never nearer than **782 um** |
+
+Bounded against unbounded, which is what confinement means. Three earlier versions of that
+assertion compared the wrong pair of quantities and are written up in `docs/lessons.md`.
+
+### The slot, and what the beads eat of it
+
+Ejection needs a hole in the inner electrode, so it is declared as two segments with an
+angular gap. **The gap is not the opening.** The bounding bead at each end is a sphere of
+the rod radius sitting on the inner arc, and it reaches into the gap by
+`rodRadius / innerArcRadius` — 14.5 degrees on each side for the shipped numbers, so a
+27-degree gap is *closed* and a 45-degree gap opens only 16 degrees.
+
+Found by ejecting into it: before the slot existed the ion struck metal after travelling
+exactly the inscribed radius, and with a 27-degree gap it struck the bounding bead. With
+the gap widened past what the beads eat, the ion leaves.
+
+**And it has to be a cooled ion.** Launched at 439 m/s the packet drifts 12 degrees along
+the arc while it is being pushed out, and clips the far edge of the opening. A real C-trap
+cools its ions in gas before ejecting them, and modelling that is what makes the ejection
+work: at 62 m/s it goes straight through and reaches a plane 14 mm inside the arc in
+4.29 us.
+
+### What cannot be done yet: the two instruments in one document
+
+The C-trap injects an orbital analyser, and **the two cannot be composed into one model.**
+Not because the sequencer cannot express the handover — it can — but because
+**analytic fields fill all space**. The quadro-logarithmic potential grows as `z^2`, so an
+orbital trap declared anywhere in the same document puts an enormous field across the
+C-trap.
+
+Two *solved* elements compose correctly, because each is bounded by its own domain and
+decays outside it. It is specifically an exact analytic field that cannot be one element of
+a beamline.
+
+The fix is a spatial region on an analytic element, outside which it contributes nothing —
+which introduces a field discontinuity at the region boundary, and the integrator already
+lands exactly on declared discontinuities. That is a real design question rather than an
+oversight, and it is the next thing this needs.

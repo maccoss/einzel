@@ -1133,6 +1133,39 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## Three thresholds picked before measuring, all comparing the wrong pair
+
+The C-trap's central claim is that the RF is what carries an ion round the bend, checked
+against the same model with the drive off. Getting the *assertion* right took three
+attempts, and all three failed the same way: I chose what to compare before looking at
+what the numbers were.
+
+**First: worst excursion against worst excursion**, asserting an order of magnitude. The
+measurement was 586 um guided against 3004 um unguided - a ratio of five, which reads as
+"not very different". But those are not the same kind of quantity. The guided ion's 586 um
+is the amplitude of an oscillation it returns from; the unguided one's 3004 um is simply
+how far it had got when it hit a rod. Comparing them is comparing an amplitude with a
+displacement.
+
+**Second: final distance against worst**, on the reasoning that a confined ion comes back.
+It does - but an oscillating quantity sampled at one arbitrary instant is anywhere in its
+range, and the guided ion happened to be caught at 61% of its amplitude when it crossed the
+detector. A single sample never characterises an oscillation.
+
+**Third: the unguided ion's closest late approach against its own worst.** It strikes at
+25.9 us, so the second half of its path *begins* when it is already 782 um out. Its own
+worst is not a scale it ever returns from - it is where it stopped.
+
+What finally works is the closest approach over the later part of the flight, of one ion
+**against the other**: the guided ion comes back to **2.5 um** and the unguided one never
+gets nearer than **782 um**, a factor of 313. That is bounded-versus-unbounded, which is
+what confinement actually means, and it needs no arbitrary length.
+
+**The rule: look at the numbers before choosing the comparison.** A threshold picked in
+advance encodes an assumption about what kind of quantity you are measuring, and here that
+assumption was wrong three times over in the same direction - treating something that
+oscillates as though one number described it.
+
 ## The property an instrument is built on cannot validate the field it rests in
 
 The quadro-logarithmic field's radial component went in negated. `-dU/dr` is

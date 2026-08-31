@@ -356,7 +356,7 @@ public static class ModelValidator
         }
 
         var position = TryVector(source.Position, "/source/position", Dimension.LengthDimension, p, errors);
-        var direction = TryDirection(source.Direction, "/source/direction", errors);
+        var direction = TryDirection(source.Direction, "/source/direction", errors, p);
         var potential = TryQuantity(
             source.AccelerationPotential, "/source/accelerationPotential", Dimension.ElectricPotential, p, errors);
 
@@ -2725,7 +2725,7 @@ public static class ModelValidator
         }
 
         var point = TryVector(detector.PlanePoint, "/detector/planePoint", Dimension.LengthDimension, p, errors);
-        var normal = TryDirection(detector.Normal, "/detector/normal", errors);
+        var normal = TryDirection(detector.Normal, "/detector/normal", errors, p);
 
         return point is null || normal is null ? null : (point.Value, normal.Value);
     }
@@ -3604,7 +3604,11 @@ public static class ModelValidator
         }
     }
 
-    private static Vec3? TryDirection(DirectionValue? value, string path, List<EinzelError> errors)
+    private static Vec3? TryDirection(
+        DirectionValue? value,
+        string path,
+        List<EinzelError> errors,
+        IReadOnlyDictionary<string, Quantity>? parameters = null)
     {
         if (value is null)
         {
@@ -3614,7 +3618,9 @@ public static class ModelValidator
 
         try
         {
-            return value.ToUnitVector(path);
+            return parameters is null
+                ? value.ToUnitVector(path)
+                : value.ToUnitVector(path, parameters);
         }
         catch (EinzelException failure)
         {
