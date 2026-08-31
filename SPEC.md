@@ -690,6 +690,44 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 29 - Enumerating a requirement's own population is a different act from believing it
+
+**GRD-2 names seven layers** - engine, command layer, CLI output, MCP response, exported
+file, rendered figure, video. That is a finite, closed list, which makes the requirement
+checkable in a way most are not: there is no judgement about coverage to be made, only
+seven questions to ask.
+
+**Asking them found two defects on the first pass**, and the register had been claiming
+**Met** for both.
+
+**The exported `.vtu` carried no warnings.** `VtuWriter.WriteTrajectory` and
+`WriteDensityField` both take an optional `provenance` list; the density path had always
+appended the run's warnings to it and the trajectory path had never done so. Same writer,
+same parameter, one call site using it. This is the **seventh** time evidence about a
+computation has been dropped at a seam here, and the sixth was the same file. A `.vtu` is
+the artifact that travels furthest - opened in ParaView, months later, by someone who
+never saw the envelope it came from.
+
+**The rendered figure was worse, and it was not a dropped warning.** Asking whether a
+warning reached the figure surfaced that the figure was not computing the same thing a
+run computes: `SectionRenderer` and `AnimationRenderer` both integrated through
+`TrajectoryIntegrator.Integrate`'s optional `collisions` parameter without supplying one,
+so **a figure of a model declaring a gas drew the vacuum flight**. On the `thermalisation`
+example the run has the ion reach **154.79 mm** and the drawn one reaches **2778.28 mm** -
+eighteen times further, silently, on the artifact RND-11 exists to keep honest. The two
+figures were byte-identical with and without the gas.
+
+**The general shape, now seen three times with this one quantity**: an optional parameter
+whose default is *a different physics* rather than an absence. Forgetting it produces a
+plausible answer instead of a failure. The gas had already been found reaching the
+figure-of-merit path and not the run path, and the regime inspector's own first draft.
+
+**What the enumeration is worth is not the two fixes.** Both were in code that had been
+reviewed, tested and documented as working. What found them was asking a question whose
+answer had to be yes or no *per named layer*, rather than asking whether warnings
+propagate - which is a question the whole system answers "mostly, yes" to, correctly, and
+which conceals exactly the cases that matter.
+
 ### 28 - GRD-1's own exception was load-bearing, and nobody had counted what it cost
 
 **r06's GRD-1 is absolute**: every quantitative result carries value, units, uncertainty,
@@ -1054,7 +1092,7 @@ in a table.
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
 | `GRD-1` | No bare numbers Every quantitative result carries value, units, uncertainty or confidence interval, ensemble size or convergence measure, and active warnings. The API offers no ... | **Partial** | Structurally enforced where it is enforced: `Measured` has no public way to read a bare value, and a test that tried had to go through `Deconstruct`. **But most figures of merit had no enveloped path at all** - `FiguresOfMerit.Evaluator` returns a bare double because ranking needs an ordering, a deliberate exception argued where it is taken, and the consequence nobody had written down is that twelve of the fourteen figures existed *only* in the excepted form. `FiguresOfMerit.Measure` is the counterpart: **1 of 14 figures carried an envelope, now 5**, by resampling the ion cloud. Validated against two closed forms the code has no part in - the mean's sigma/sqrt(N) at 0.987/1.022/0.996 and the median's sqrt(pi/2)sigma/sqrt(N) at 0.975/1.041/0.940. The remaining nine are named on every result by `results.no-envelope` rather than printed bare. See Amendment 28. |
-| `GRD-2` | Warnings propagate Validity warnings travel with the result through every layer — engine, command layer, CLI output, MCP response, exported file, rendered ... | **Met** | Warnings propagate through engine, command layer, CLI, exported VTU/VTI files and figures. Two places where they were being dropped have been found and fixed; see Amendments. |
+| `GRD-2` | Warnings propagate Validity warnings travel with the result through every layer — engine, command layer, CLI output, MCP response, exported file, rendered ... | **Met** | **Now enumerated rather than asserted.** The requirement names its own population — seven layers — so `WarningPropagationTests` is one test per layer, with the MCP one next door in `Einzel.Mcp.Tests`. The exported file is checked by **set equality with the result**, not containment, because a file carrying one warning and dropping the rest passes any weaker check. **This row previously read "exported VTU/VTI files and figures" and was wrong on both**: the trajectory `.vtu` carried no warnings at all, and the figure carried neither the warnings nor the gas. See Amendment 29. |
 | `GRD-3` | Warnings above threshold are not suppressible Validity violations cannot be silenced by any caller, including in batch mode. | **Met** | Validity violations carry a non-suppressible severity and no caller can silence them. |
 | `GRD-4` | Validity is checked, not assumed Regime applicability, mesh convergence, ensemble convergence, adiabaticity, and the §10 linearization residual are ... | **Met** | Regime applicability, mesh convergence, ensemble convergence and the linearisation residual are all computed rather than assumed. |
 | `GRD-5` | Preview results are labelled and cannot be promoted Tagged permanently; cannot be quoted, exported, fed to an optimizer, or rendered without visible ... | **Met** | The taint rides on the number, and a preview writes nothing - a tainted result in `results/` would be reported as current by `verify`. |

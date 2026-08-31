@@ -193,12 +193,27 @@ public static class SectionRenderer
     /// What a caller drawing many figures of one model has already computed, or null to
     /// compute it here.
     /// </param>
+    /// <param name="gas">
+    /// The gas the drawn ion flies through, already resolved. Omitted, it is built from
+    /// the model - which <b>refuses</b> a declared but unresolved imported field rather
+    /// than falling back to a vacuum, because a figure drawn in the wrong gas is a
+    /// drawing of a different instrument and nothing on it would say so.
+    /// </param>
+    /// <param name="transportWarnings">
+    /// REG-2's verdict on the flight being drawn, computed by the caller. It is the
+    /// caller's because the numbers need the instrument's smallest aperture and its drive
+    /// frequency, which are model-format knowledge this assembly deliberately does not
+    /// have - and writing a second copy of those two here is how they would come to
+    /// disagree with the ones a run reports.
+    /// </param>
     public static Figure Render(
         CompiledModel model,
         RenderSpec spec,
         IReadOnlyList<string>? provenance = null,
         Transport.Diffusion.DensityField? density = null,
-        FramePlan? plan = null)
+        FramePlan? plan = null,
+        Transport.Collisions.BackgroundGas? gas = null,
+        IReadOnlyList<ValidityWarning>? transportWarnings = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(spec);
@@ -227,8 +242,18 @@ public static class SectionRenderer
         var drawable = mode?.ProducesTrajectories ?? true;
 
         var flown = spec.Trajectory && drawable
-            ? plan?.Trajectory ?? FlyForDrawing(model, spec, field)
+            ? plan?.Trajectory ?? FlyForDrawing(model, spec, field, gas)
             : null;
+
+        // GRD-2: whatever the caller established about the validity of this flight
+        // taints the drawing of it, with the same hatched rule a short-converged field
+        // earns. A figure of an ion flying at a millibar is a figure of a description
+        // that may not apply, and the page is the one place that is never read beside
+        // the result envelope.
+        if (transportWarnings is { Count: > 0 })
+        {
+            warnings = [.. warnings, .. transportWarnings];
+        }
 
         var (minU, minV, maxU, maxV) = Extent(model, plane, flown);
 
@@ -1096,9 +1121,30 @@ public static class SectionRenderer
     /// </para>
     /// </remarks>
     private static IReadOnlyList<TrajectorySample>? FlyForDrawing(
-        CompiledModel model, RenderSpec spec, IElectrostaticField field)
+        CompiledModel model,
+        RenderSpec spec,
+        IElectrostaticField field,
+        Transport.Collisions.BackgroundGas? gas)
     {
         var species = IonSpecies.FromModel(model);
+
+        // The drawn trajectory has to be the one the run computes, and before this it
+        // was not: both integrations went through the `collisions` parameter's default,
+        // so a figure of a model declaring a gas drew the vacuum flight. On the
+        // thermalisation example that is 2778 mm against the 155 mm the ion reaches -
+        // eighteen times too far, silently, in the artifact most likely to be shown
+        // detached from the result that would have contradicted it.
+        //
+        // A fresh sampler per integration, from the model's declared seed, so the two
+        // passes below fly the same collisional history and the fine one is a refinement
+        // of the scout rather than a different flight.
+        var collisions = gas ?? Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+
+        Transport.Collisions.CollisionSampler? Sampler() =>
+            collisions.IsPresent
+                ? new Transport.Collisions.CollisionSampler(
+                    collisions, species.MassSi, species.ChargeSi, model.Gas.Seed)
+                : null;
         var launch = new PhaseState(model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
 
         var detectorPoint = model.DetectorPoint;
@@ -1115,7 +1161,8 @@ public static class SectionRenderer
 
         var scout = new TrajectoryRecorder(model.SampleIntervalSi);
 
-        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, scout);
+        TrajectoryIntegrator.Integrate(
+            launch, species, field, settings, detector, scout, Sampler());
 
         if (scout.Samples.Count < 2)
         {
@@ -1132,7 +1179,8 @@ public static class SectionRenderer
 
         var recorder = new TrajectoryRecorder(flight / samples, capacity: 4 * samples);
 
-        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
+        TrajectoryIntegrator.Integrate(
+            launch, species, field, settings, detector, recorder, Sampler());
 
         return recorder.Samples.Count >= 2 ? recorder.Samples : scout.Samples;
     }

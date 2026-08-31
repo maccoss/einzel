@@ -65,12 +65,18 @@ public static class AnimationRenderer
     /// <param name="densities">
     /// One density per frame, for a diffusive model, or null for a trajectory one.
     /// </param>
+    /// <param name="gas">
+    /// The gas the animated ion flies through, already resolved. Omitted, it is built
+    /// from the model - which <b>refuses</b> a declared but unresolved imported field
+    /// rather than falling back to a vacuum.
+    /// </param>
     public static IReadOnlyList<RenderedFrame> Render(
         CompiledModel model,
         RenderSpec spec,
         AnimationSpec animation,
         IReadOnlyList<string>? provenance = null,
-        IReadOnlyList<Transport.Diffusion.DensityField>? densities = null)
+        IReadOnlyList<Transport.Diffusion.DensityField>? densities = null,
+        Transport.Collisions.BackgroundGas? gas = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(spec);
@@ -120,7 +126,7 @@ public static class AnimationRenderer
         }
 
         var (field, fieldWarnings) = FieldAssembly.BuildReported(model);
-        var samples = densities is null ? Fly(model, field, frames.Count) : [];
+        var samples = densities is null ? Fly(model, field, frames.Count, gas) : [];
 
         // Anchored once across the animation. The decades are measured from the peak,
         // and a diffusing packet's peak falls as it spreads - so levels taken per frame
@@ -235,9 +241,25 @@ public static class AnimationRenderer
     }
 
     private static IReadOnlyList<TrajectorySample> Fly(
-        CompiledModel model, IElectrostaticField field, int frames)
+        CompiledModel model,
+        IElectrostaticField field,
+        int frames,
+        Transport.Collisions.BackgroundGas? gas)
     {
         var species = IonSpecies.FromModel(model);
+
+        // The animated ion flies the gas the model declares, which before this it did
+        // not: both integrations took the `collisions` parameter's default and drew the
+        // vacuum flight. A film of a thermalisation in which nothing thermalises is the
+        // worst form of this defect, because the whole subject of the film is the thing
+        // that has been left out.
+        var collisions = gas ?? Transport.Collisions.BackgroundGas.FromModel(model.Gas);
+
+        Transport.Collisions.CollisionSampler? Sampler() =>
+            collisions.IsPresent
+                ? new Transport.Collisions.CollisionSampler(
+                    collisions, species.MassSi, species.ChargeSi, model.Gas.Seed)
+                : null;
         var launch = new PhaseState(model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
 
         var detectorPoint = model.DetectorPoint;
@@ -258,7 +280,8 @@ public static class AnimationRenderer
         // lens a three-segment curve through a focusing element.
         var scout = new TrajectoryRecorder(model.SampleIntervalSi);
 
-        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, scout);
+        TrajectoryIntegrator.Integrate(
+            launch, species, field, settings, detector, scout, Sampler());
 
         if (scout.Samples.Count < 2)
         {
@@ -275,7 +298,8 @@ public static class AnimationRenderer
         var wanted = Math.Max(64, frames * SamplesPerFrame);
         var recorder = new TrajectoryRecorder(flight / wanted, capacity: 2 * wanted);
 
-        TrajectoryIntegrator.Integrate(launch, species, field, settings, detector, recorder);
+        TrajectoryIntegrator.Integrate(
+            launch, species, field, settings, detector, recorder, Sampler());
 
         return recorder.Samples.Count >= 2 ? recorder.Samples : scout.Samples;
     }
