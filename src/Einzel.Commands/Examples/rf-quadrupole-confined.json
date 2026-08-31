@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "0.7",
+  "name": "rf-quadrupole-confined",
+  "description": "An ideal RF quadrupole at 1 mbar, described as a density rather than as trajectories. The pair of these two examples is the point: they are the same model with one number changed - the drive amplitude - and each half matches a DIFFERENT closed form. Neither is worth much alone, because a width that happens to match one formula proves nothing about whether the drive is doing anything. The field is analytic rather than solved, which is what makes the expectations arithmetic: a solved rod geometry departs from the ideal quadrupole by a few per cent, and writing the ideal formula against it would assert a modelling difference as though it were exact. With the drive on, the packet settles at the thermal width of the ponderomotive well. The well is COLLISIONAL: from m(v' + nu v) = q E0 cos(Omega t) the depth is q E0^2 / (4 m (Omega^2 + nu^2)) rather than Dehmelt's q E0^2 / (4 m Omega^2), with nu = q / (m mu) the momentum-transfer rate taken from the declared mobility. At 1 mbar and 1 MHz that is nu/Omega = 0.34 and a suppression of 0.896, so the collisionless formula would be ten per cent wrong - which is what makes this a check on the collisional treatment and not merely on a pseudopotential. E0(r) = 2 V r / r0^2, not V r / r0^2: the potential is V(x^2 - y^2)/r0^2 and its gradient carries the factor of two. Getting it wrong makes the answer exactly four times too small, and this codebase has been caught by it once already. The well is then harmonic, and equipartition in one transverse coordinate gives sqrt(kT / (m omega_sec^2)) = 0.13746 mm.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        1.0,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.001,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "population": 10000,
+      "transverseSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      },
+      "longitudinalSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "idealQuadrupoleRf",
+      "directPotential": {
+        "value": 0.0,
+        "unit": "V"
+      },
+      "driveAmplitude": {
+        "value": 200.0,
+        "unit": "V"
+      },
+      "driveFrequency": {
+        "value": 1.0,
+        "unit": "MHz"
+      },
+      "inscribedRadius": {
+        "value": 4.0,
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        200.0,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "diffusion",
+    "maximumFlightTime": {
+      "value": 150.0,
+      "unit": "us"
+    },
+    "mobility": {
+      "zeroField": {
+        "value": 0.09,
+        "unit": "m^2/(V s)"
+      }
+    },
+    "densityGrid": {
+      "minX": {
+        "value": 0,
+        "unit": "mm"
+      },
+      "maxX": {
+        "value": 4,
+        "unit": "mm"
+      },
+      "minY": {
+        "value": -8,
+        "unit": "mm"
+      },
+      "maxY": {
+        "value": 8,
+        "unit": "mm"
+      },
+      "intervalsX": 32,
+      "intervalsY": 256
+    },
+    "densityStep": {
+      "scheme": "implicit",
+      "gain": 16
+    },
+    "gas": {
+      "model": "langevin",
+      "pressure": {
+        "value": 1,
+        "unit": "mbar"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "polarizability": {
+        "value": 1.74,
+        "unit": "\u00c5^3"
+      }
+    }
+  }
+}

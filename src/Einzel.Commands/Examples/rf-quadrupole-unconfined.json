@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "0.7",
+  "name": "rf-quadrupole-unconfined",
+  "description": "An ideal RF quadrupole at 1 mbar, described as a density rather than as trajectories. The pair of these two examples is the point: they are the same model with one number changed - the drive amplitude - and each half matches a DIFFERENT closed form. Neither is worth much alone, because a width that happens to match one formula proves nothing about whether the drive is doing anything. The field is analytic rather than solved, which is what makes the expectations arithmetic: a solved rod geometry departs from the ideal quadrupole by a few per cent, and writing the ideal formula against it would assert a modelling difference as though it were exact. With the drive at zero the field vanishes identically and the packet spreads by diffusion alone, to sqrt(seed^2 + 2 D t) with D = mu kT / q from the Einstein relation. It reaches 1.303 mm against the confined case's 0.137 - nine times wider, on a model that differs in one number. The drive frequency is still declared and still positive, because a zero frequency is a static field wearing a drive's clothes and is refused; what is zero here is the amplitude, which is the honest way to say the generator is off.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        1.0,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.001,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "population": 10000,
+      "transverseSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      },
+      "longitudinalSpread": {
+        "value": 1.0,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "idealQuadrupoleRf",
+      "directPotential": {
+        "value": 0.0,
+        "unit": "V"
+      },
+      "driveAmplitude": {
+        "value": 0.0,
+        "unit": "V"
+      },
+      "driveFrequency": {
+        "value": 1.0,
+        "unit": "MHz"
+      },
+      "inscribedRadius": {
+        "value": 4.0,
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        200.0,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "diffusion",
+    "maximumFlightTime": {
+      "value": 150.0,
+      "unit": "us"
+    },
+    "mobility": {
+      "zeroField": {
+        "value": 0.09,
+        "unit": "m^2/(V s)"
+      }
+    },
+    "densityGrid": {
+      "minX": {
+        "value": 0,
+        "unit": "mm"
+      },
+      "maxX": {
+        "value": 4,
+        "unit": "mm"
+      },
+      "minY": {
+        "value": -8,
+        "unit": "mm"
+      },
+      "maxY": {
+        "value": 8,
+        "unit": "mm"
+      },
+      "intervalsX": 32,
+      "intervalsY": 256
+    },
+    "densityStep": {
+      "scheme": "implicit",
+      "gain": 16
+    },
+    "gas": {
+      "model": "langevin",
+      "pressure": {
+        "value": 1,
+        "unit": "mbar"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "polarizability": {
+        "value": 1.74,
+        "unit": "\u00c5^3"
+      }
+    }
+  }
+}

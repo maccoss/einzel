@@ -504,6 +504,32 @@ the other — the primitive an ideal single-stage ion mirror is built from. It i
 named for what it is rather than what it builds, because no device class may
 appear below the template library.
 
+```json
+{ "type": "idealQuadrupoleRf",
+  "directPotential":  { "value": 0,   "unit": "V" },
+  "driveAmplitude":   { "value": 200, "unit": "V" },
+  "driveFrequency":   { "value": 1,   "unit": "MHz" },
+  "inscribedRadius":  { "value": 4,   "unit": "mm" } }
+```
+
+`idealQuadrupoleRf` is **the only analytic driven field**, and it exists for the
+reason the analytic tier exists at all: something exact to check a solved geometry
+against. Every other driven field here is solved, so an expectation written from
+the ideal formula against solved rods would be asserting a few per cent of
+modelling difference as though it were arithmetic — which is what blocked the
+driven diffusive corpus examples until this existed.
+
+The x pair takes `directPotential` and `driveAmplitude`; the y pair takes their
+negatives, which is what makes the field a quadrupole rather than a quadrupole plus
+an offset. **A zero frequency is refused** — that is a static field wearing a
+drive's clothes, and it would run quietly and give a quadrupole with no RF. A zero
+*amplitude* is allowed and is the honest way to say the generator is off.
+
+Note the field amplitude convention when writing closed forms against it:
+`E0(r) = 2 V r / r0^2`, because the potential is `V(x^2 - y^2)/r0^2` and its
+gradient carries the factor of two. Dropping it makes a pseudopotential exactly
+four times too small.
+
 ### Solved fields
 
 ```json
@@ -728,6 +754,124 @@ land exactly on a declared field discontinuity**, because a shared step cannot l
 on a surface each macroparticle reaches at its own instant. It caps the step short
 of the first arrival instead. That is why this is the reference method for space
 charge rather than a replacement for the path that carries ACC-1.
+
+## Bounding an analytic element, so two instruments can share a document
+
+An analytic field has no extent, **because a formula does not**. That is harmless while
+such a field is an idealisation of a whole instrument — a uniform field, a retarding
+half-space — and stops being harmless the moment one is an exact statement of a real device
+sitting *next to* another. A quadro-logarithmic potential grows as `z^2`, so an orbital
+analyser declared beside the trap that injects it puts an enormous field across that trap.
+
+Superposition is exact and the sequencer can express a handover, so nothing else about
+composing two devices was ever in doubt. **And the obvious escape does not exist:**
+declaring the analyser as solved geometry, so its own domain bounds it, fails because its
+electrodes are equipotentials of the field they produce — the profile satisfies
+`-r^2/2 + Rm^2 ln(r/Rm) = A - z^2`, transcendental in `r` and invertible only through
+Lambert W — and the 2-D shape vocabulary is rectangle, disc and edge profile, none of which
+is a curve a document can name.
+
+So an analytic element may declare a **region**: a box outside which it contributes nothing.
+
+```json
+{
+  "type": "quadroLogarithmic",
+  "curvature": { "value": 20, "unit": "V/mm^2" },
+  "characteristicRadius": { "value": 20, "unit": "mm" },
+  "region": {
+    "minX": { "value": -30, "unit": "mm" }, "maxX": { "value": 30, "unit": "mm" },
+    "minY": { "value": -30, "unit": "mm" }, "maxY": { "value": 30, "unit": "mm" },
+    "minZ": { "value": -30, "unit": "mm" }, "maxZ": { "value": 30, "unit": "mm" }
+  }
+}
+```
+
+Measured on a two-element document — an orbital analyser at the origin and an ordinary
+1 kV/m accelerating section 75 mm downstream:
+
+| in the second device | field along x |
+| --- | --- |
+| analyser unbounded | **−1,499,000 V/m** |
+| analyser bounded | **1,000.0 V/m**, exactly its own |
+
+**And on the axis it is worse than swamping.** Without a region the second device has a
+line through it at which the model cannot be asked a question at all, because that line is
+the analyser's singular axis and a quadro-logarithmic field refuses a point there rather
+than returning a large one.
+
+Inside the region nothing changes — asserted to the bit against the same field built alone,
+which is the control that makes the rest mean anything. All six bounds are required: a
+half-open region is a legitimate thing to want, but "the axes I left out" is not how anyone
+reads a partly-filled box. A **solved** element may not declare one, refused rather than
+ignored, because a solve is already bounded by its own domain and a document that says a
+thing twice can say it two ways. A region with no extent is refused too.
+
+### The boundary is a step, and the step costs less than it looks like it should
+
+**A box is not an equipotential of anything interesting**, so the potential does not match
+across a region boundary. The first version of this write-up concluded from that that an ion
+crossing gains or loses the potential it left. **It does not**, and measuring it is what
+settled it.
+
+An ion is moved by the **field**, and the field is exactly the declared one on each side. So
+a uniform field bounded to a box is an accelerating gap followed by a field-free drift —
+which is an ordinary instrument with a closed form:
+
+| | |
+| --- | --- |
+| `sqrt(2 m L / (q E)) + (D - L) / v` | **13.658582 us** |
+| measured, bounded | **13.658582 us** |
+| the same model with no region | 10.180506 us, accelerating the whole way |
+
+The control matters as much as the agreement: without the region the field reaches the
+detector and the flight is a third shorter, so a region that silently did nothing would not
+pass.
+
+**What the step does cost**, stated rather than overstated:
+
+- the **energy-drift diagnostic** jumps at the boundary, because that is computed from the
+  potential;
+- and the piecewise field is **not conservative across the boundary**, so an ion that
+  crosses more than once — in by one face and out by another — can gain or lose energy no
+  electrode supplied. A single straight crossing has no such path.
+
+Every bounded element reports the largest potential on its boundary in volts and as a
+fraction of what the ion is accelerated through, whether or not it crosses a threshold
+(REG-2), at severity `Qualified`: the result is usable, and here is the thing about it worth
+knowing.
+
+The field discontinuity itself needs no apology. The boundary is presented as a signed
+distance whose zero the integrator brackets and lands on exactly — the same first-class
+event a declared discontinuity already is (§11).
+
+**`FieldAssembly.Build`'s contract narrowed when regions arrived**, and the line it draws is
+about *who knows the thing* rather than about how bad it is. It used to refuse a field
+carrying any warning. An unconverged solve is evidence only the engine has: nothing in the
+document says the residual missed, the field looks identical either way, and a bare field
+has no envelope to carry it on — so refusing is the only honest option, and this project has
+lost numbers at exactly that seam. A region's step is a consequence of geometry the author
+wrote down and can see. Refusing every one would make `Build` unusable for the composed
+beamlines a region exists to enable, in exchange for repeating what the document already
+says.
+
+`bounded-accelerating-gap` is the corpus example (EX-1), so the feature is in the release
+gate rather than only in a unit test. Its expectation is the arithmetic above, and it has
+teeth: mutating the expected value fails the gate, which is how the coverage was confirmed
+rather than assumed.
+
+### The limitation, and the better design it points at
+
+The step is still large for the fields one most wants to bound — a uniform potential never
+decays (100 V at 50 mm from its own zero) and a quadro-logarithmic one *grows* (7,000 V at
+30 mm) — so "place the boundary where the field has decayed" has nowhere to point for
+either. That is tolerable for a beam passing through, and it is not what a real device does.
+
+A real device's field is bounded by a **conductor**, and a conductor is an equipotential —
+of the very field it produces. Bounding an analytic element by one of its own level sets
+rather than by a box would make the potential continuous *by construction*, offset so it is
+zero outside, with the field discontinuous exactly as `halfSpaceUniform` already is and the
+geometry exactly a real electrode. That is the next refinement, and it is not what was built
+here.
 
 ## Versioning
 

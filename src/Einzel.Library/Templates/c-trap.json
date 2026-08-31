@@ -1,0 +1,429 @@
+{
+  "schemaVersion": "0.7",
+  "name": "c-trap",
+  "description": "A curved RF-only linear trap: four rods bent around an arc, holding ions in a gas until they are pulsed out sideways. It is the injector of an orbital analyser, and the curvature is the point - ions ejected radially from a curved trap converge as they fly, so the packet arrives at the analyser spatially focused rather than as a line. A straight trap ejects a line and would need a lens to do the same job. This is the first device here whose geometry is neither a translational cross-section nor a surface of revolution: a curved axis is invariant under nothing, so it needs a genuine volume solve. The rods are chains of overlapping spheres along their centrelines, because a cylinder in this format is axis-aligned and a curved rod is not - which needed no new primitive, since `repeat` binds an index and cosPi/sinPi can place a bead anywhere. Overlapping copies at one potential are deliberate rather than tolerated; the overlap check refuses only conductors that disagree about what they hold. Adjacent rods are at opposite RF phase, as in any quadrupole: the in-plane pair (inner and outer) against the out-of-plane pair (top and bottom). They are exact negatives, so four rods reduce to one basis solve however many beads each is built from.",
+  "parameters": {
+    "bendRadius": {
+      "value": 20.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 500.0,
+      "description": "Radius of the arc the trap axis follows. Smaller bends focus an ejected packet harder and are harder to build; this is the number the whole device exists to have."
+    },
+    "arcHalfTurns": {
+      "value": 0.5,
+      "unit": "1",
+      "minimum": 0.02,
+      "maximum": 1.0,
+      "description": "How far round the arc goes, in half turns - 0.5 is a quarter circle, which is the usual shape. Half turns rather than radians for the reason the multipole guide uses them: cosPi(0.5) is exactly zero where Math.Cos(pi/2) is 6.1e-17, and a rod placed a hair off axis puts a spurious dipole made of rounding into a device whose whole job is not to have one."
+    },
+    "inscribedRadius": {
+      "value": 3.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 50.0,
+      "description": "Axis to nearest rod surface, conventionally r0. The Mathieu q goes as its square at fixed voltage, so it is the length the working point is most sensitive to."
+    },
+    "rodRatio": {
+      "value": 1.1468,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 1.4,
+      "description": "Rod radius as a multiple of the inscribed radius. Denison's value, which cancels the leading non-ideal multipole for STRAIGHT round rods - what it does for bent ones is a question this template exists to make askable."
+    },
+    "beadCount": {
+      "value": 13.0,
+      "unit": "1",
+      "minimum": 3.0,
+      "maximum": 400.0,
+      "description": "Beads per rod. They must overlap or the rod is a string of pearls with gaps the field reaches through: the spacing is the arc length over beadCount - 1, and it wants to be comfortably under the rod radius. Raising it costs solve time and buys smoothness, and the field between beads is the thing to check when it looks wrong."
+    },
+    "rfAmplitude": {
+      "value": 500.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 20000.0,
+      "description": "Zero to peak on the in-plane pair; the out-of-plane pair takes its exact negative, which is what makes the four rods one basis solve."
+    },
+    "driveFrequency": {
+      "value": 3.0,
+      "unit": "MHz",
+      "minimum": 0.01,
+      "maximum": 100.0,
+      "description": "One generator for the whole structure. A C-trap runs fast and shallow because it holds ions rather than filtering them."
+    },
+    "cellsPerRadius": {
+      "value": 4.0,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 40.0,
+      "description": "Grid cells across the inscribed radius. This is the cost knob: the domain is a box around the whole arc, so halving the cell is eight times the nodes."
+    },
+    "ejectVolts": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 20000.0,
+      "description": "A steady push on the OUTER rod, with the inner one held at earth, so a positive ion is driven INWARD through the slot and toward the analyser sitting inside the arc. Zero by default, so the template is a trap unless a document says otherwise - the same way the rectilinear trap carries both of its configurations. A sequence raising this from nought is what an ejection is. Against earth rather than symmetrically about it, and the difference is the whole flight: with the inner rod at minus V the ion falls V through the slot and then climbs the same V back out, because the space inside the arc is bounded by the grounded domain and sits near earth - so it arrives at the analyser with nothing left and turns round. Pushing against earth leaves that space field-free, which is where the ejected packet does its converging."
+    },
+    "slotHalfTurns": {
+      "value": 0.15,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 0.9,
+      "description": "Angular width of the OPENING in the inner electrode, in half turns, measured between the two metal surfaces rather than between the two end beads' centres - see beadHalfTurns, which is the difference and is not small. This is the hole ions leave through, and without one an ejection pushes the packet straight into metal. Wider passes more of the packet and weakens the trapping field near it, which is the trade a real design makes."
+    },
+    "innerBeads": {
+      "value": 5.0,
+      "unit": "1",
+      "minimum": 2.0,
+      "maximum": 200.0,
+      "description": "Beads in each of the two inner-electrode segments. Fewer than the other rods because each segment spans less arc."
+    },
+    "launchHalfTurns": {
+      "value": 0.125,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Where round the arc an ion starts, in half turns from the entrance. The default is a quarter of the way along the default arc, which is where the slot is - so the shipped model launches an ion at the ejection point. It is a free parameter rather than an expression over arcHalfTurns because it is a genuinely independent choice: a trap holds ions all along its length, and where one starts is a question about the ion rather than about the trap. Sweeping it is how the packet an ejection produces is measured, since ions at different points round the arc are pushed out along different radii."
+    },
+    "launchVolts": {
+      "value": 0.5,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 1000.0,
+      "description": "Kinetic energy an ion starts with, as the potential that would give it - so it is the temperature of the packet expressed the way a source declares one. It matters most for an EJECTION: a real C-trap cools its ions in gas before pulsing them out, and an ion still moving along the arc when the push arrives leaves at an angle to the radius. At the default 0.5 V an m/z 500 ion travels at 439 m/s and drifts about twelve degrees round the arc while it is being ejected, which is enough to clip the far edge of the slot. Cooling is not a refinement here; it is what makes the ejection work."
+    },
+    "ejectPhase": {
+      "value": 0.0,
+      "unit": "1",
+      "minimum": -1.0,
+      "maximum": 1.0,
+      "description": "Phase of the drive, in half turns, applied equally to every rod - so it is a rigid shift of the generator against the clock, which for an ion released at t = 0 is the RF phase it is EJECTED at. It exists because a single ejection with the drive running is one sample of something periodic, and quoting one sample as the answer is how a demonstration gets mistaken for a measurement. Sweeping it is what says whether an ejected packet depends on when in the cycle it left."
+    },
+    "rodRadius": {
+      "expression": "inscribedRadius * rodRatio",
+      "unit": "mm"
+    },
+    "rodCentre": {
+      "expression": "inscribedRadius + rodRadius",
+      "unit": "mm"
+    },
+    "innerArcRadius": {
+      "expression": "bendRadius - rodCentre",
+      "unit": "mm",
+      "description": "Radius of the arc the INNER rod's centreline follows. The slot is a hole in that rod, so this is the radius its angles are measured at."
+    },
+    "beadHalfTurns": {
+      "expression": "asinPi(rodRadius / innerArcRadius)",
+      "unit": "1",
+      "description": "How far round the arc one bead's SURFACE reaches past its own centre - asin(a/R), the tangent from the origin, in half turns. This is the whole reason asinPi exists in the grammar. The gap between the two inner segments' end BEADS is not the opening between their two SURFACES, and the difference is not small: here it is 14.7 degrees a side. A first version of this template took slotHalfTurns as the bead gap, so a declared 27 degree slot opened MINUS 2 degrees and the ejected ion struck metal after travelling exactly the inscribed radius. A parameter that means something other than what it says is worse than one that is missing."
+    },
+    "slotCentre": {
+      "expression": "arcHalfTurns / 2",
+      "unit": "1",
+      "description": "Where the slot sits, in half turns - the middle of the arc. It has to be far enough from either end to fit: the metal stops slotHalfTurns/2 + beadHalfTurns short of the centre on each side, which at a quarter of the way along the default arc would be a negative span."
+    },
+    "slotStart": {
+      "expression": "slotCentre - slotHalfTurns / 2 - beadHalfTurns",
+      "unit": "1"
+    },
+    "slotEnd": {
+      "expression": "slotCentre + slotHalfTurns / 2 + beadHalfTurns",
+      "unit": "1"
+    },
+    "cellSize": {
+      "expression": "inscribedRadius / cellsPerRadius",
+      "unit": "mm"
+    },
+    "reach": {
+      "expression": "bendRadius + rodCentre + rodRadius",
+      "unit": "mm"
+    },
+    "margin": {
+      "expression": "rodCentre + rodRadius",
+      "unit": "mm"
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "bendRadius * cosPi(launchHalfTurns)",
+        "bendRadius * sinPi(launchHalfTurns)",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "expression": [
+        "-sinPi(launchHalfTurns)",
+        "cosPi(launchHalfTurns)",
+        "0"
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "launchVolts",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved3d",
+      "solve3d": {
+        "drive": {
+          "frequency": {
+            "expression": "driveFrequency",
+            "unit": "MHz"
+          },
+          "waveform": "sinusoid"
+        },
+        "minX": {
+          "expression": "-margin",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "reach",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-margin",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "reach",
+          "unit": "mm"
+        },
+        "minZ": {
+          "expression": "-margin",
+          "unit": "mm"
+        },
+        "maxZ": {
+          "expression": "margin",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "rodInnerBefore",
+            "shape": "sphere",
+            "repeat": {
+              "count": {
+                "expression": "innerBeads"
+              },
+              "index": "bead"
+            },
+            "centreX": {
+              "expression": "(bendRadius - rodCentre) * cosPi((0) + (slotStart) * bead / ((innerBeads) - 1))",
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "(bendRadius - rodCentre) * sinPi((0) + (slotStart) * bead / ((innerBeads) - 1))",
+              "unit": "mm"
+            },
+            "centreZ": {
+              "expression": "0",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
+            }
+          },
+          {
+            "name": "rodInnerAfter",
+            "shape": "sphere",
+            "repeat": {
+              "count": {
+                "expression": "innerBeads"
+              },
+              "index": "bead"
+            },
+            "centreX": {
+              "expression": "(bendRadius - rodCentre) * cosPi((slotEnd) + (arcHalfTurns - slotEnd) * bead / ((innerBeads) - 1))",
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "(bendRadius - rodCentre) * sinPi((slotEnd) + (arcHalfTurns - slotEnd) * bead / ((innerBeads) - 1))",
+              "unit": "mm"
+            },
+            "centreZ": {
+              "expression": "0",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
+            }
+          },
+          {
+            "name": "rodOuter",
+            "shape": "sphere",
+            "repeat": {
+              "count": {
+                "expression": "beadCount"
+              },
+              "index": "bead"
+            },
+            "centreX": {
+              "expression": "(bendRadius + rodCentre) * cosPi((0) + (arcHalfTurns) * bead / ((beadCount) - 1))",
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "(bendRadius + rodCentre) * sinPi((0) + (arcHalfTurns) * bead / ((beadCount) - 1))",
+              "unit": "mm"
+            },
+            "centreZ": {
+              "expression": "0",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "ejectVolts",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "rfAmplitude",
+              "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
+            }
+          },
+          {
+            "name": "rodTop",
+            "shape": "sphere",
+            "repeat": {
+              "count": {
+                "expression": "beadCount"
+              },
+              "index": "bead"
+            },
+            "centreX": {
+              "expression": "(bendRadius) * cosPi((0) + (arcHalfTurns) * bead / ((beadCount) - 1))",
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "(bendRadius) * sinPi((0) + (arcHalfTurns) * bead / ((beadCount) - 1))",
+              "unit": "mm"
+            },
+            "centreZ": {
+              "expression": "rodCentre",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "-rfAmplitude",
+              "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
+            }
+          },
+          {
+            "name": "rodBottom",
+            "shape": "sphere",
+            "repeat": {
+              "count": {
+                "expression": "beadCount"
+              },
+              "index": "bead"
+            },
+            "centreX": {
+              "expression": "(bendRadius) * cosPi((0) + (arcHalfTurns) * bead / ((beadCount) - 1))",
+              "unit": "mm"
+            },
+            "centreY": {
+              "expression": "(bendRadius) * sinPi((0) + (arcHalfTurns) * bead / ((beadCount) - 1))",
+              "unit": "mm"
+            },
+            "centreZ": {
+              "expression": "-rodCentre",
+              "unit": "mm"
+            },
+            "radius": {
+              "expression": "rodRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "-rfAmplitude",
+              "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "bendRadius * cosPi(arcHalfTurns)",
+        "bendRadius * sinPi(arcHalfTurns)",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "expression": [
+        "sinPi(arcHalfTurns)",
+        "-cosPi(arcHalfTurns)",
+        "0"
+      ]
+    }
+  },
+  "transport": {
+    "maximumFlightTime": {
+      "value": 120,
+      "unit": "us"
+    },
+    "relativeTolerance": 1e-09
+  }
+}

@@ -356,7 +356,7 @@ public static class ModelValidator
         }
 
         var position = TryVector(source.Position, "/source/position", Dimension.LengthDimension, p, errors);
-        var direction = TryDirection(source.Direction, "/source/direction", errors);
+        var direction = TryDirection(source.Direction, "/source/direction", errors, p);
         var potential = TryQuantity(
             source.AccelerationPotential, "/source/accelerationPotential", Dimension.ElectricPotential, p, errors);
 
@@ -465,8 +465,33 @@ public static class ModelValidator
         var longitudinal = Optional(
             cloud.LongitudinalSpread, "/source/cloud/longitudinalSpread", Dimension.LengthDimension, p, errors);
 
-        if (temperature is null || transverse is null || longitudinal is null)
+        // Dimensionless, because that is what an angle is in SI - `deg` and `mrad` are
+        // conversions to radians, not a separate dimension. So the unit is required and
+        // is the whole of the meaning: 20 and 20 deg differ by a factor of 57.
+        var divergence = Optional(
+            cloud.Divergence, "/source/cloud/divergence", Dimension.Dimensionless, p, errors);
+
+        if (temperature is null || transverse is null || longitudinal is null || divergence is null)
         {
+            return null;
+        }
+
+        // A half-angle, so a right angle is already a hemisphere and anything at or past
+        // it is not a beam. Refused rather than clamped: a document asking for 120 degrees
+        // of divergence has confused a half-angle for a full one, and silently halving it
+        // would answer a question nobody asked.
+        if (divergence.Value >= Math.PI / 2.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/source/cloud/divergence",
+                Constraint = "divergence is the half-angle of the cone the beam fills, so it "
+                    + "must be under 90 degrees",
+                Observed = new ObservedValue(divergence.Value * 180.0 / Math.PI, "deg"),
+                Suggestion = "halve it if you meant the full opening angle",
+            });
+
             return null;
         }
 
@@ -475,6 +500,7 @@ public static class ModelValidator
             (temperature.Value, "/source/cloud/temperature"),
             (transverse.Value, "/source/cloud/transverseSpread"),
             (longitudinal.Value, "/source/cloud/longitudinalSpread"),
+            (divergence.Value, "/source/cloud/divergence"),
         })
         {
             if (value < 0.0)
@@ -516,6 +542,7 @@ public static class ModelValidator
             TransverseSpreadM = transverse.Value,
             LongitudinalSpreadM = longitudinal.Value,
             EnergyFractionSpread = cloud.EnergyFractionSpread,
+            DivergenceRadians = divergence.Value,
         };
     }
 
@@ -687,9 +714,29 @@ public static class ModelValidator
         IReadOnlyList<PhaseSurface> timeline,
         List<EinzelError> errors)
     {
+        // Before the element itself, so that "a solved element may not declare a region"
+        // is reported even when the solve is also wrong. Hiding one mistake behind another
+        // makes a document take two rounds to fix and gives no reason for the second.
+        //
+        // Compiled once off the base surface and deliberately not re-derived per phase: a
+        // region is geometry, and the sequencer already refuses to let a stage move
+        // geometry. Moving one would change which element is silent where, which is a
+        // different instrument rather than a different setting of one.
+        var region = CompileRegion(field, path, p, errors);
+
         var baseline = CompileOnce(field, path, p, timeline, errors);
 
-        if (baseline is null || timeline.Count == 0 || !NeedsPhases(field.Type))
+        if (baseline is null)
+        {
+            return null;
+        }
+
+        if (region is not null)
+        {
+            baseline = baseline with { Region = region };
+        }
+
+        if (timeline.Count == 0 || !NeedsPhases(field.Type))
         {
             return baseline;
         }
@@ -724,6 +771,93 @@ public static class ModelValidator
             : baseline;
     }
 
+    /// <summary>The box outside which an element is silent, if it declares one.</summary>
+    /// <remarks>
+    /// <para>
+    /// Refused on a solved element rather than ignored. A solve is already bounded by its
+    /// own domain, so a region would be a second statement about the same extent, and a
+    /// document that says a thing twice can say it two ways.
+    /// </para>
+    /// <para>
+    /// All six bounds are required rather than defaulted to infinity on the missing axes.
+    /// A half-open region is a legitimate thing to want, but "the axes I left out" is not
+    /// how anyone reads a partly-filled box, and the failure would be silent.
+    /// </para>
+    /// </remarks>
+    private static FieldRegion? CompileRegion(
+        FieldDocument field,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (field.Region is not { } region)
+        {
+            return null;
+        }
+
+        if (field.Type is "solved2d" or "solved3d")
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/region",
+                Constraint = $"a {field.Type} element is already bounded by its own solve "
+                    + "domain, so it may not also declare a region",
+                Suggestion = "remove the region, or move the solve domain if the extent is "
+                    + "what you meant to change",
+            });
+
+            return null;
+        }
+
+        var bounds = new[]
+        {
+            (region.MinX, "minX"), (region.MaxX, "maxX"),
+            (region.MinY, "minY"), (region.MaxY, "maxY"),
+            (region.MinZ, "minZ"), (region.MaxZ, "maxZ"),
+        };
+
+        var si = new double[6];
+
+        for (var k = 0; k < 6; k++)
+        {
+            var value = TryQuantity(
+                bounds[k].Item1, $"{path}/region/{bounds[k].Item2}",
+                Dimension.LengthDimension, p, errors);
+
+            if (value is null)
+            {
+                return null;
+            }
+
+            si[k] = value.Value.In("m");
+        }
+
+        for (var axis = 0; axis < 3; axis++)
+        {
+            if (si[(2 * axis) + 1] > si[2 * axis])
+            {
+                continue;
+            }
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/region/{bounds[(2 * axis) + 1].Item2}",
+                Constraint = $"a region's upper bound must exceed its lower one, but "
+                    + $"{bounds[(2 * axis) + 1].Item2} is {si[(2 * axis) + 1]:G6} m against "
+                    + $"{bounds[2 * axis].Item2} at {si[2 * axis]:G6} m",
+                Observed = new ObservedValue(si[(2 * axis) + 1], "m"),
+                Suggestion = "a region with no extent silences the element everywhere, "
+                    + "which is what removing the element does more clearly",
+            });
+
+            return null;
+        }
+
+        return new FieldRegion(si[0], si[1], si[2], si[3], si[4], si[5]);
+    }
+
     /// <summary>Whether a kind needs whole compiled copies to follow a phase.</summary>
     /// <remarks>
     /// The solved kinds do not: their phases live in their own <c>Stages</c>, already
@@ -731,7 +865,8 @@ public static class ModelValidator
     /// would solve every field twice over.
     /// </remarks>
     private static bool NeedsPhases(string? type) =>
-        type is "uniform" or "halfSpaceUniform";
+        type is "uniform" or "halfSpaceUniform" or "idealQuadrupoleRf"
+            or "quadroLogarithmic";
 
     /// <summary>Whether two compilations of one analytic element hold the same numbers.</summary>
     private static bool Same(CompiledField a, CompiledField b) =>
@@ -740,7 +875,14 @@ public static class ModelValidator
         && a.PlanePoint == b.PlanePoint
         && a.InwardNormal == b.InwardNormal
         && a.PotentialGradientSi.Equals(b.PotentialGradientSi)
-        && a.TurningDepthSi.Equals(b.TurningDepthSi);
+        && a.TurningDepthSi.Equals(b.TurningDepthSi)
+        && a.DirectPotentialSi.Equals(b.DirectPotentialSi)
+        && a.DriveAmplitudeSi.Equals(b.DriveAmplitudeSi)
+        && a.DriveFrequencySi.Equals(b.DriveFrequencySi)
+        && a.InscribedRadiusSi.Equals(b.InscribedRadiusSi)
+        && a.CurvatureSi.Equals(b.CurvatureSi)
+        && a.CharacteristicRadiusSi.Equals(b.CharacteristicRadiusSi)
+        && a.Centre == b.Centre;
 
     private static CompiledField? CompileOnce(
         FieldDocument field,
@@ -761,6 +903,119 @@ public static class ModelValidator
                 {
                     Kind = CompiledFieldKind.Uniform,
                     Field = vector.Value,
+                };
+            }
+
+            case "quadroLogarithmic":
+            {
+                var curvature = TryQuantity(
+                    field.Curvature, $"{path}/curvature",
+                    Dimension.ElectricFieldGradient, p, errors);
+
+                var characteristic = TryQuantity(
+                    field.CharacteristicRadius, $"{path}/characteristicRadius",
+                    Dimension.LengthDimension, p, errors);
+
+                var centre = field.Centre is null
+                    ? Vec3.Zero
+                    : TryVector(field.Centre, $"{path}/centre", Dimension.LengthDimension, p, errors)
+                        ?? Vec3.Zero;
+
+                if (curvature is null || characteristic is null)
+                {
+                    return null;
+                }
+
+                // Both refused rather than defaulted. A zero curvature is no axial well
+                // at all - the frequency this field exists to define would be zero - and
+                // a zero characteristic radius puts the logarithm's singularity nowhere.
+                foreach (var (value, where, what) in new[]
+                {
+                    (curvature.Value.In("V/m^2"), $"{path}/curvature", "a curvature"),
+                    (characteristic.Value.In("m"), $"{path}/characteristicRadius",
+                        "a characteristic radius"),
+                })
+                {
+                    if (!(value > 0.0))
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.ValueOutOfBounds,
+                            Path = where,
+                            Constraint = $"{what} must be positive",
+                            Observed = new ObservedValue(value, "SI"),
+                            Suggestion = "an orbital well needs both; use a static field "
+                                + "element if nothing is meant to oscillate",
+                        });
+
+                        return null;
+                    }
+                }
+
+                return new CompiledField
+                {
+                    Kind = CompiledFieldKind.QuadroLogarithmic,
+                    CurvatureSi = curvature.Value.In("V/m^2"),
+                    CharacteristicRadiusSi = characteristic.Value.In("m"),
+                    Centre = centre,
+                };
+            }
+
+            case "idealQuadrupoleRf":
+            {
+                var direct = TryQuantity(
+                    field.DirectPotential, $"{path}/directPotential",
+                    Dimension.ElectricPotential, p, errors);
+
+                var amplitude = TryQuantity(
+                    field.DriveAmplitude, $"{path}/driveAmplitude",
+                    Dimension.ElectricPotential, p, errors);
+
+                var frequency = TryQuantity(
+                    field.DriveFrequency, $"{path}/driveFrequency",
+                    Dimension.Frequency, p, errors);
+
+                var inscribed = TryQuantity(
+                    field.InscribedRadius, $"{path}/inscribedRadius",
+                    Dimension.LengthDimension, p, errors);
+
+                if (direct is null || amplitude is null || frequency is null || inscribed is null)
+                {
+                    return null;
+                }
+
+                // Both refused rather than defaulted. A zero radius is a division and a
+                // zero frequency is a static field wearing a drive's clothes - and the
+                // second is the one that would run, quietly, giving a quadrupole with no
+                // RF and no complaint.
+                foreach (var (value, where, what) in new[]
+                {
+                    (inscribed.Value.In("m"), $"{path}/inscribedRadius", "an inscribed radius"),
+                    (frequency.Value.In("Hz"), $"{path}/driveFrequency", "a drive frequency"),
+                })
+                {
+                    if (!(value > 0.0))
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.ValueOutOfBounds,
+                            Path = where,
+                            Constraint = $"{what} must be positive",
+                            Observed = new ObservedValue(value, "SI"),
+                            Suggestion = "use a static field element if nothing is driven",
+                        });
+
+                        return null;
+                    }
+                }
+
+                return new CompiledField
+                {
+                    Kind = CompiledFieldKind.IdealQuadrupoleRf,
+                    DirectPotentialSi = direct.Value.In("V"),
+                    DriveAmplitudeSi = amplitude.Value.In("V"),
+                    DriveFrequencySi = frequency.Value.In("Hz"),
+                    InscribedRadiusSi = inscribed.Value.In("m"),
                 };
             }
 
@@ -811,7 +1066,8 @@ public static class ModelValidator
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/type",
                     Constraint =
-                        "a field element must declare one of: fieldFree, uniform, halfSpaceUniform, solved2d",
+                        "a field element must declare one of: fieldFree, uniform, halfSpaceUniform, "
+                        + "idealQuadrupoleRf, quadroLogarithmic, solved2d, solved3d",
                     Observed = new ObservedValue(0.0, field.Type ?? "null"),
                     Suggestion = "use \"halfSpaceUniform\" for an ideal single-stage ion mirror",
                 });
@@ -2576,7 +2832,7 @@ public static class ModelValidator
         }
 
         var point = TryVector(detector.PlanePoint, "/detector/planePoint", Dimension.LengthDimension, p, errors);
-        var normal = TryDirection(detector.Normal, "/detector/normal", errors);
+        var normal = TryDirection(detector.Normal, "/detector/normal", errors, p);
 
         return point is null || normal is null ? null : (point.Value, normal.Value);
     }
@@ -3455,7 +3711,11 @@ public static class ModelValidator
         }
     }
 
-    private static Vec3? TryDirection(DirectionValue? value, string path, List<EinzelError> errors)
+    private static Vec3? TryDirection(
+        DirectionValue? value,
+        string path,
+        List<EinzelError> errors,
+        IReadOnlyDictionary<string, Quantity>? parameters = null)
     {
         if (value is null)
         {
@@ -3465,7 +3725,9 @@ public static class ModelValidator
 
         try
         {
-            return value.ToUnitVector(path);
+            return parameters is null
+                ? value.ToUnitVector(path)
+                : value.ToUnitVector(path, parameters);
         }
         catch (EinzelException failure)
         {

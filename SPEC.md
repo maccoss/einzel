@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**747 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 31 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,018 tests across twelve assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 37 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -399,6 +399,26 @@ What it bought: `multipole-guide` is **one template** with `poleCount` as a
 parameter, and 4 / 6 / 8 / 12 rods each reduce to **one basis solve** (8 cycles,
 factor 0.024–0.029). Twelve rods cost what four do.
 
+**And the same argument arrived a third time, for the inverse.** The C-trap's
+electrodes are chains of beads on an arc, and its ejection slot is the gap between
+two of them — but the gap between two bead *centres* is not the opening between two
+*surfaces*. A sphere of radius `a` centred at radius `R` reaches `asin(a/R)` past
+its own centre, which for the shipped numbers is **14.7 degrees on each side**, so
+a declared 27-degree slot opened **minus two** and the ejected ion struck the
+bounding bead.
+
+So the grammar gained `asinPi`, and the pattern is worth naming: placing something
+by angle when what is known is a **length ratio** needs an inverse trigonometric
+function, and it needs to return **half turns** so that the result composes with
+`cosPi` and `sinPi` without a `pi` appearing in a document. There is no `pi` in the
+grammar and there should not be — half turns exist precisely so that a quarter turn
+is exact.
+
+This is now the fourth device to find a gap one level down (`log` for the Kingdon
+trap, trigonometry for the multipole guide, a parametric `drivePhase` for the
+travelling wave, `asinPi` here). LIB-1 says to believe that signal, and each time it
+has been a **function**, never an abstraction.
+
 **Recommend §9 note that the grammar's function set is part of what "every
 placement is a parametric expression" means.** A placement that cannot be written
 is a device that cannot be a template, and the list of functions is therefore a
@@ -689,6 +709,107 @@ against a 60 V wave. The template ships with the confinement at zero, because sh
 a default that makes a device worse would be worse than shipping none. What the tests
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
+
+### 32 - An exact analytic field cannot be one element of a beamline
+
+Section 9 lists the field kinds a document may declare, and section 6's whole architecture
+rests on superposition being exact for electrostatics - which it is. What neither says is
+that an **analytic** element has no extent: it fills all space, because a formula does.
+
+That is harmless while analytic fields are idealisations of a whole instrument - a uniform
+field, a retarding half-space. It stops being harmless the moment one is an exact statement
+of a real device that sits *next to* another device. The quadro-logarithmic field of an
+orbital trap grows as `z^2`, so declaring it in the same document as the C-trap that
+injects it puts an enormous field across the C-trap. The two instruments cannot be composed
+even though the sequencer can express the handover and superposition is exact.
+
+**Two solved elements compose correctly**, because each is bounded by its own domain and
+decays outside it. So the gap is specific: an exact analytic field cannot be one element of
+a multi-element beamline, and the exactness is precisely why anyone would want it there.
+
+**And the obvious escape does not work, which is what makes this an amendment rather than a
+task.** The natural answer is "declare the analyser as solved geometry instead, and let its
+domain bound it". An orbital trap's electrodes are surfaces of revolution, and an
+axisymmetric solve is exactly the tool - but the electrodes **are equipotentials of the very
+field they produce**, so their profile satisfies
+
+    -r^2 / 2 + Rm^2 ln(r / Rm) = A - z^2
+
+which is transcendental in r: an `r^2` and a `ln r` in the same equation, invertible only
+through Lambert W. The expression grammar has `sqrt` and `log` and no way to invert that,
+and the 2-D shape vocabulary is rectangle, disc and edge profile - none of which is a curve
+a document can name. So the analyser cannot be declared as geometry either.
+
+The two facts together are the finding: **an exact orbital analyser can be modelled alone
+and cannot be modelled beside anything.** Its field is unbounded and its geometry is
+inexpressible, and those are the only two ways the format has of placing a device in a
+document.
+
+**Recommend section 9 give an analytic element an optional region** - a box outside which
+it contributes nothing. That introduces a field discontinuity at the boundary, which is not
+a difficulty: the integrator already lands exactly on declared discontinuities, and section
+11 makes that a first-class event. What it needs is a decision about whether the region is
+declared or inferred, and what happens where two regions overlap.
+
+**Built, with a stated limitation.** An analytic element may declare a `region` — a box
+outside which it contributes nothing — and two instruments now share a document. Measured:
+an ordinary 1 kV/m accelerating section 75 mm from an orbital analyser feels **−1,499,000
+V/m** of that analyser unbounded and **exactly its own 1,000** bounded; on the axis the
+unbounded case is worse than swamping, since the model cannot be asked a question there at
+all. Inside the region nothing changes, to the bit.
+
+**The potential steps at the boundary, and that costs less than it looks like it should.**
+A box is not an equipotential, so the potential does not match across it — and the first
+account of this concluded that an ion crossing therefore gains or loses that energy. **It
+does not.** An ion is moved by the *field*, which is exactly the declared one on each side,
+so a bounded uniform field is an accelerating gap followed by a field-free drift: measured
+at **13.658582 µs against a closed form of 13.658582**, with the unbounded control at
+10.180506. What the step actually costs is that the energy-drift diagnostic jumps at the
+boundary, and that the piecewise field is not conservative across it — an ion crossing more
+than once, in by one face and out by another, can gain energy no electrode supplied. The
+step is reported on every bounded element at severity `Qualified`, in volts and as a
+fraction of the beam potential.
+
+**The failure points straight at the next refinement.** A real device's field is bounded by
+a conductor, and a conductor is an equipotential of the very field it produces. Bounding an
+analytic element by one of its own level sets rather than by a box would make the potential
+continuous by construction — offset so it is zero outside, with the field discontinuous
+exactly as `halfSpaceUniform` already is, and the geometry exactly a real electrode. That
+is what should replace the box, and it was not built here.
+
+### 31 - A thermal cloud's divergence is not the divergence an ion-optics beam has
+
+The model format carries `energyFractionSpread` with an argument written where it is
+taken: it "varies the energy without varying the direction, which a temperature cannot
+express". The mirror of that - varying the **direction** without varying the energy - was
+deliberately left out, on the grounds that "a thermal cloud already has one, and offering
+both lets a document say two things about the same physics".
+
+**That reasoning is right for a source and wrong for a beam.** An ion born warm and then
+accelerated does get its divergence from its temperature, in a fixed ratio. A beam defined
+downstream by an **aperture** does not, and an einzel lens exists precisely to re-image
+such a beam. Every ion-optics description in the wild specifies one that way: *"50 eV with
+a 20 degree angular spread"* is a sentence the format could not represent.
+
+**And a temperature cannot stand in for it**, which is what makes this a gap rather than a
+verbosity. Matched to give the same divergence at 50 eV, a temperature spreads the energy
+by **43%** - turning a 50 +/- 0 eV beam into a 50 +/- 15 eV one, which is a different
+study's independent variable. Divergence and energy spread are separable in the instrument
+and were not separable in the format.
+
+**Recommend the format carry both, with the interaction stated rather than prevented.**
+Schema 0.7 adds `divergence`: a cone half-angle, drawn **uniformly in solid angle**, not a
+Gaussian - an aperture truncates rather than weights, and the rays pile near the rim where
+the aberration lives. Measured against the closed form, mean cos(theta) comes out
+0.969832 against 0.969846 for uniform solid angle and 0.979816 for uniform polar angle: 700
+times closer to the right one. A tilt costs no energy exactly (4.5e-13 m/s on 4000), since
+rotating a vector does not lengthen it.
+
+**The third design decision this week that was right for its case and wrong for a new
+one**, after `SessionJournal` refusing invalid edits and `CompiledDrive` allowing one drive
+per solve. The pattern is worth naming: a constraint argued from the cases in front of you
+is sound and is not a law. When a new requirement meets one, re-read the argument rather
+than the rule - it is usually still true, and usually no longer sufficient.
 
 ### 30 - A manifest said what a result was made of and not what it was about
 
@@ -1137,7 +1258,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `GRD-1` | No bare numbers Every quantitative result carries value, units, uncertainty or confidence interval, ensemble size or convergence measure, and active warnings. The API offers no ... | **Partial** | Structurally enforced where it is enforced: `Measured` has no public way to read a bare value, and a test that tried had to go through `Deconstruct`. **But most figures of merit had no enveloped path at all** - `FiguresOfMerit.Evaluator` returns a bare double because ranking needs an ordering, a deliberate exception argued where it is taken, and the consequence nobody had written down is that twelve of the fourteen figures existed *only* in the excepted form. `FiguresOfMerit.Measure` is the counterpart: **1 of 14 figures carried an envelope, now 5**, by resampling the ion cloud. Validated against two closed forms the code has no part in - the mean's sigma/sqrt(N) at 0.987/1.022/0.996 and the median's sqrt(pi/2)sigma/sqrt(N) at 0.975/1.041/0.940. The remaining nine are named on every result by `results.no-envelope` rather than printed bare. See Amendment 28. |
+| `GRD-1` | No bare numbers Every quantitative result carries value, units, uncertainty or confidence interval, ensemble size or convergence measure, and active warnings. The API offers no ... | **Partial** | Structurally enforced where it is enforced: `Measured` has no public way to read a bare value, and a test that tried had to go through `Deconstruct`. **But most figures of merit had no enveloped path at all** - `FiguresOfMerit.Evaluator` returns a bare double because ranking needs an ordering, a deliberate exception argued where it is taken, and the consequence nobody had written down is that twelve of the fourteen figures existed *only* in the excepted form. `FiguresOfMerit.Measure` is the counterpart: **1 of 15 figures carried an envelope, now 5**, by resampling the ion cloud. Validated against two closed forms the code has no part in - the mean's sigma/sqrt(N) at 0.987/1.022/0.996 and the median's sqrt(pi/2)sigma/sqrt(N) at 0.975/1.041/0.940. The remaining ten are named on every result by `results.no-envelope` rather than printed bare. See Amendment 28. |
 | `GRD-2` | Warnings propagate Validity warnings travel with the result through every layer — engine, command layer, CLI output, MCP response, exported file, rendered ... | **Met** | **Now enumerated rather than asserted.** The requirement names its own population — seven layers — so `WarningPropagationTests` is one test per layer, with the MCP one next door in `Einzel.Mcp.Tests`. The exported file is checked by **set equality with the result**, not containment, because a file carrying one warning and dropping the rest passes any weaker check. **This row previously read "exported VTU/VTI files and figures" and was wrong on both**: the trajectory `.vtu` carried no warnings at all, and the figure carried neither the warnings nor the gas. See Amendment 29. |
 | `GRD-3` | Warnings above threshold are not suppressible Validity violations cannot be silenced by any caller, including in batch mode. | **Met** | Validity violations carry a non-suppressible severity and no caller can silence them. |
 | `GRD-4` | Validity is checked, not assumed Regime applicability, mesh convergence, ensemble convergence, adiabaticity, and the §10 linearization residual are ... | **Met** | Regime applicability, mesh convergence, ensemble convergence and the linearisation residual are all computed rather than assumed. |
@@ -1542,10 +1663,64 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **Finish the examples corpus (EX-1).** 32 of thirty, and the gate (EX-2) is built
-   and green. What the first seventeen cost was mostly *deciding what can honestly be
-   asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
-   thermalisation, and a three-dimensional geometry.
+3. ~~**A region on an analytic field element, so an exact analyser can join a
+   beamline.**~~ — **built, and one measurement corrected my account of what it
+   costs.** Amendment 32. An analytic element may declare a box outside which it
+   contributes nothing: an ordinary 1 kV/m section 75 mm from an orbital analyser
+   feels **−1,499,000 V/m** of it unbounded and **exactly its own 1,000** bounded,
+   and on the axis the unbounded case is worse than swamping, since the model cannot
+   be asked a question there at all.
+
+   **The potential steps at the boundary and I first called that an energy the ion
+   gains.** It is not: an ion is moved by the *field*, which is exactly the declared
+   one on each side, so a bounded uniform field is an accelerating gap followed by a
+   drift — **13.658582 µs against a closed form of 13.658582**, with the unbounded
+   control at 10.180506. What it really costs is the energy-drift diagnostic and
+   non-conservation for an ion crossing *more than once*. `bounded-accelerating-gap`
+   puts it in the release gate, and the gate's teeth were checked by mutation.
+
+   **What remains is the better boundary.** A real device's field is bounded by a
+   conductor, and a conductor is an equipotential of the very field it produces —
+   so bounding an analytic element by one of its own level sets, offset to zero
+   outside, would make the potential continuous *by construction*. That is what
+   should replace the box, and it is not what was built.
+
+   An analytic field has no extent, because a formula does not. That is harmless for
+   an idealisation of a whole instrument — a uniform field, a retarding half-space —
+   and stops being harmless the moment one is an exact statement of a real device
+   sitting *next to* another. The quadro-logarithmic potential grows as `z^2`, so an
+   orbital trap declared beside the C-trap that injects it puts an enormous field
+   across the C-trap.
+
+   **The cheap escape does not exist**, which is what makes this a task rather than a
+   note. Declaring the analyser as solved geometry so its own domain bounds it fails:
+   its electrodes are equipotentials of the field they produce, so their profile
+   satisfies `-r^2/2 + Rm^2 ln(r/Rm) = A - z^2` — transcendental in `r`, invertible
+   only through Lambert W — and the 2-D shape vocabulary is rectangle, disc and edge
+   profile, none of which is a curve a document can name.
+
+   What it needs is a box outside which an analytic element contributes nothing. The
+   field discontinuity that introduces is not a difficulty: §11 already makes a
+   declared discontinuity a first-class event and the integrator lands exactly on one.
+   What needs deciding is whether the region is declared or inferred, and what happens
+   where two overlap.
+
+   **Until then both pairings are two models with a measured handover**, which is done
+   and is worth having on its own — see the two entries in `docs/device-templates.md`.
+   The handover is a *number*, not a hope: for the C-trap, a 60.02 ns arrival spread
+   against a 3.1983 µs axial period, coherence 0.9990. For the ion processor, a
+   4.220 ns turn-around against a 55.9366 µs analyser period, crossing the mirror's own
+   aberration limit at 48 oscillations.
+
+4. ~~**Finish the examples corpus (EX-1).**~~ — **met.** 37 against the thirty §5 asks
+   for, and the gate (EX-2) is built and green at about 51 s. What the first seventeen
+   cost was mostly *deciding what can honestly be asserted*, and that work is done. The
+   three named as remaining are all shipped: `mr-tof-oscillations`, `thermalisation` and
+   `parallel-plate-gap-3d`.
+
+   Breadth beyond thirty is now an ordinary way to add a check rather than an outstanding
+   deliverable — `bounded-accelerating-gap` was added the same night the region was built,
+   which is the loop working as intended.
 
    ~~The last is deliberately deferred~~ — **`parallel-plate-gap-3d` now ships**, which
    is the deferral closed by item 4: two square plates in a cubic box, reducing to
@@ -1658,7 +1833,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    defects that no test written from inside the project would have caught**, because
    both were about a model that validates and answers a different question.
 
-4. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
+5. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
    restores the property multigrid is supposed to have.** `A_coarse = R A_fine P`: the
    coarse levels are built from the fine operator rather than from the geometry, so they
    cannot lose it. The finest level is untouched — it keeps its cut cells and its
@@ -1710,7 +1885,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `docs/numerics.md` were being compared across geometries as though a cycle were a
    unit of work.
 
-5. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
+6. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
    **density** was a single number for the whole model, so a differentially pumped
    instrument was not expressible: an imported field gave the neutrals a velocity
    everywhere and the same number of them everywhere. `pressureField` closes it — see
@@ -1730,7 +1905,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    same proportions collapse to **one** basis solve carrying two weights on two clocks,
    and two distinct spatial patterns give **two**.
 
-6. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
+7. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
    transmission-against-resolution curve closes onto the tabulated apex (Phase 3
    acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
    characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
@@ -1738,7 +1913,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `RfWaveform.Harmonic` comb that independently recovers the published digital
    cut-off at q = 0.712.
 
-7. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
+8. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
    declares `drives` and each electrode `taps` them by name. The travelling-wave
    guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
    confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
@@ -1747,7 +1922,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    zero — the usable amplitude window is narrow at both ends and finding a working
    point is a design study; see Amendment 24.
 
-8. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
+9. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps; and the event-driven models no longer refuse it — the ion's
    position is carried into the neutral draw, so a collision samples the gas where
@@ -1756,7 +1931,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
    seed.
 
-9. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
+10. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
    last quantity about a gas here that was a single number for a whole model, so an
    imported flow gave the neutrals a velocity everywhere and *the same number of them
    everywhere*. `pressureField` on the gas block, VTK ImageData like the velocity
@@ -1847,7 +2022,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    already made by there being one `temperature` in the document, but it is now the
    only thing about the gas that cannot vary from place to place.
 
-10. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
+11. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
     `journal`, `undo` and `attribution` existed only in the `Einzel.Commands`
     assembly *description string* - the same "named in a csproj and nowhere else"
     state `ITransportMode` was in before its seam was built. So "build MCP" was
@@ -1902,7 +2077,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
-11. **The shell (§16).** Three views of eleven, and the window opens on a model:
+12. **The shell (§16).** Three views of eleven, and the window opens on a model:
     `einzel-shell models/reflectron.json` gives a parameter tree with live validation
     and units on every field, the shared journal with agent and human attribution, and
     a 3-D viewport drawing trajectory bundles coloured by energy. What remains is eight

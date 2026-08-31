@@ -16,7 +16,12 @@ public sealed record ElementEstimate
     public required IReadOnlyList<int> Nodes { get; init; }
 
     /// <summary>Total nodes.</summary>
-    public required int NodeCount { get; init; }
+    /// <remarks>
+    /// A long rather than an int, because a volume grid can hold more nodes than an int
+    /// counts and truncating that would report a huge solve as a small one - which is
+    /// the failure this whole estimate exists to prevent.
+    /// </remarks>
+    public required long NodeCount { get; init; }
 
     /// <summary>Working memory for the solve, in mebibytes.</summary>
     public required double MemoryMiB { get; init; }
@@ -146,11 +151,58 @@ public static class EstimateCommand
         var memory = 0.0;
         var basis = $"{SecondsPerMegaNode:G3} s per million nodes for a converged V-cycle, measured on "
             + "the shipped templates. Trajectory integration is not included: its cost depends on the "
-            + "path, which depends on the field this has not solved yet.";
+            + "path, which depends on the field this has not solved yet."
+            + (model.Fields.Any(f => f.Solve3D is not null)
+                ? " A volume element is costed at the same rate, which is a FLOOR rather than an "
+                  + "estimate: its cycle carries a 27-point stencil where a plane carries five, and "
+                  + "its coarse levels are built by Galerkin rather than rediscretised. Expect "
+                  + "several times this."
+                : string.Empty);
 
         for (var index = 0; index < model.Fields.Count; index++)
         {
             var element = model.Fields[index];
+
+            // A volume solve is the most expensive thing a model can ask for and was
+            // costed at zero, because this loop tested `Solve` and never `Solve3D` - so
+            // `estimate` reported "0.00 s" for the one element whose cost the gate exists
+            // to gate on. GRD-8 wants a number available without doing the work, and a
+            // number that is always nought is worse than none: it reads as an answer.
+            if (element.Solve3D is { } volume)
+            {
+                var space = Fields.Solved.GeometryBuilder3D.BuildGrid(
+                    new Fields.Solved.Geometry3D(
+                        volume.MinX, volume.MinY, volume.MinZ,
+                        volume.MaxX, volume.MaxY, volume.MaxZ,
+                        volume.CellSize,
+                        volume.Electrodes,
+                        volume.Tolerance));
+
+                var volumeNodes = space.NodeCount;
+
+                // The same rate as a plane solve, which is a floor rather than an
+                // estimate: a volume cycle carries a 27-point stencil where a plane
+                // carries five, and its coarse levels are built by Galerkin rather than
+                // rediscretised. Said in the basis line rather than fudged by a factor
+                // nobody measured.
+                var volumeSeconds = SecondsPerMegaNode * volumeNodes / 1e6;
+                var volumeMemory = BytesPerNode * volumeNodes / (1024.0 * 1024.0);
+
+                elements.Add(new ElementEstimate
+                {
+                    Index = index,
+                    Type = element.Kind.ToString(),
+                    Nodes = [space.CountX, space.CountY, space.CountZ],
+                    NodeCount = volumeNodes,
+                    MemoryMiB = volumeMemory,
+                    Seconds = volumeSeconds,
+                });
+
+                seconds += volumeSeconds;
+                memory = Math.Max(memory, volumeMemory);
+
+                continue;
+            }
 
             if (element.Solve is null)
             {

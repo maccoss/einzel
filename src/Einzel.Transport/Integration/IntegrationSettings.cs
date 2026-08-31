@@ -127,3 +127,65 @@ public enum TrajectoryOutcome
     /// </remarks>
     StruckElectrode,
 }
+
+/// <summary>Whether an integration reached a conclusion, or gave up short of one.</summary>
+public static class TrajectoryOutcomes
+{
+    /// <summary>Whether the integration computed what it was asked to.</summary>
+    /// <param name="outcome">The outcome to classify.</param>
+    /// <returns>True when the run finished; false when the integrator gave up.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The distinction is whether the ENGINE finished, not whether the instrument
+    /// performed.</b> An ion that strikes an electrode, or that is still being held when
+    /// the declared hold ends, is a <i>result</i> — the integration did exactly what the
+    /// document asked and the figures say what became of the ion. An integration that
+    /// underflowed its step floor, or ran out of its step budget, did not: its numbers stop
+    /// part way and nothing downstream can tell how far off they are.
+    /// </para>
+    /// <para>
+    /// This exists because the two were conflated, and the conflation was measurable:
+    /// <b>six of the thirty-seven shipped examples exited with a failure code while
+    /// behaving exactly as designed</b> — three traps and thermalisations that end at their
+    /// declared hold, and three deliberate losses that are the control halves of pairs.
+    /// A rule that calls a sixth of the reference corpus broken is measuring the wrong
+    /// thing.
+    /// </para>
+    /// <para>
+    /// <see cref="TrajectoryOutcome.StruckElectrode"/>'s own remarks have said "a real
+    /// outcome rather than a failure" since electrodes learned to absorb. The enum
+    /// documented the principle and the exit code contradicted it.
+    /// </para>
+    /// <para>
+    /// A switch with every case named and a throw for the rest, rather than a list of the
+    /// successful ones: a list is a proxy for the question and has had to be widened twice
+    /// already, once for diffusive runs and once for sequenced ones. A new outcome now
+    /// fails to compile rather than being silently classified as a failure.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The outcome is not a known one.</exception>
+    public static bool Completed(this TrajectoryOutcome outcome) => outcome switch
+    {
+        // The ion reached the surface it was flown at.
+        TrajectoryOutcome.StopConditionMet => true,
+
+        // The declared flight time elapsed. For a beamline that means the ion never
+        // arrived, which the transmission and the itemised losses say; for a trap or a
+        // thermalisation it is the intended end of the run.
+        TrajectoryOutcome.MaximumFlightTimeReached => true,
+
+        // What an aperture is for, and what makes a transmission figure mean anything.
+        TrajectoryOutcome.StruckElectrode => true,
+
+        // The integrator gave up. Both of these leave a trajectory that stops part way
+        // for a numerical reason, with no way to say how wrong it is.
+        TrajectoryOutcome.MaximumStepsExceeded => false,
+        TrajectoryOutcome.StepSizeUnderflow => false,
+
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(outcome),
+            outcome,
+            "a new trajectory outcome has to say whether it is a completed run or a "
+            + "failure to compute one; it cannot default to either"),
+    };
+}

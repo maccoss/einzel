@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "bounded-accelerating-gap",
+  "description": "Closed form: t = sqrt(2 L m / (q E)) + (D - L) / sqrt(2 q E L / m). A uniform 10 kV/m field BOUNDED to the first 20 mm, then 80 mm of field-free drift to the detector - an ordinary accelerating gap, built by giving an analytic element a region. The region is what makes an exact analytic field usable as one device in a beamline rather than the only device in a document: a formula has no extent, so without one it reaches everywhere and swamps whatever else the model declares. It is also the check that a region's potential step costs the TRAJECTORY nothing. The potential jumps at the boundary, because a box is not an equipotential - but an ion is moved by the field, and the field is exactly the declared one on each side. What the step costs is that the energy-drift diagnostic jumps there, and that the piecewise field is not conservative for an ion crossing more than once. The expectation is arithmetic this engine had no part in, and it is discriminating: with the region removed the same model accelerates the whole way and arrives in 10.1805 us instead of 13.6586, a third early.",
+  "model": "../models/bounded-accelerating-gap.json",
+  "expect": [
+    {
+      "figureOfMerit": "flightTime",
+      "value": 13.658581698105692,
+      "unit": "us",
+      "tolerance": 1e-06
+    }
+  ]
+}

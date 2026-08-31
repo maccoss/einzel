@@ -142,7 +142,12 @@ public static class TrajectoryIntegrator
                 RejectedSteps = 0,
                 FieldEvaluations = 0,
                 AnalyticDriftDistance = 0.0,
-                MaximumRelativeEnergyDrift = 0.0,
+
+                // NaN, for the same reason as below and more strongly: this ion never
+                // flew, so its drift is not merely unmeasured, it is meaningless. Zero
+                // would be the best possible value of a diagnostic that had no chance to
+                // say anything.
+                MaximumRelativeEnergyDrift = double.NaN,
             };
         }
 
@@ -154,7 +159,20 @@ public static class TrajectoryIntegrator
 
         var initialEnergy = TotalEnergy(in state, species, field, ref fieldEvaluations);
         var energyScale = Math.Abs(initialEnergy);
-        var maximumEnergyDrift = 0.0;
+
+        // NOT ZERO WHEN THERE IS NOTHING TO MEASURE AGAINST. An ion launched at rest at
+        // zero potential has a total energy of exactly zero, so there is no scale to form
+        // a relative drift against and the tracking below returns without doing anything -
+        // which used to leave this at its initial 0.0 and print "energy drift 0.00E+000
+        // relative (ACC-4 budget 1e-6)". That reads as four orders inside budget and means
+        // NOT MEASURED, which is the more dangerous of the two by far.
+        //
+        // Every at-rest launch here was affected: the accelerating gap, the sequenced
+        // extraction, the Paul trap, the rectilinear trap. Absent rather than zero is the
+        // rule this project already applies to an undefined Twiss orientation and to a peak
+        // width with fewer than two arrivals, and NaN is what the driven branch below
+        // already uses for the same reason.
+        var maximumEnergyDrift = energyScale > 0.0 ? 0.0 : double.NaN;
 
         // The speed the ion would have at zero potential. In a mirror this is the
         // drift-region speed, which is the natural yardstick for the turning-point

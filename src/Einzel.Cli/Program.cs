@@ -822,8 +822,11 @@ public static class Program
 
         foreach (var element in outcome.Elements)
         {
-            var size = element.Nodes.Count == 2
-                ? string.Create(invariant, $"{element.Nodes[0]}x{element.Nodes[1]}")
+            // Any rank, not just two. A volume element used to fall through to
+            // "analytic" here - which is not a shape, it is a claim that there is
+            // nothing to solve, printed beside the largest solve in the model.
+            var size = element.Nodes.Count > 0
+                ? string.Join("x", element.Nodes)
                 : "analytic";
 
             Console.Out.WriteLine(string.Create(
@@ -932,9 +935,9 @@ public static class Program
 
         if (options.Has("json"))
         {
-            return Emit(outcome, outcome.Outcome == "StopConditionMet"
-                ? ExitCode.Success
-                : ExitCode.ConvergenceFailure);
+            return Emit(
+                outcome,
+                outcome.Completed ? ExitCode.Success : ExitCode.ConvergenceFailure);
         }
 
         var invariant = CultureInfo.InvariantCulture;
@@ -955,9 +958,7 @@ public static class Program
             Console.Error.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
         }
 
-        return (int)(outcome.Outcome == "StopConditionMet"
-            ? ExitCode.Success
-            : ExitCode.ConvergenceFailure);
+        return (int)(outcome.Completed ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 
     private static int Test(CommandLine options)
@@ -1906,9 +1907,12 @@ public static class Program
         // reported itself as a failure - the diffusive one, then this. A run that
         // finished what it was asked to do is a success, and the thing to ask is
         // whether it finished rather than which mode it was in.
-        return run.Outcome is "StopConditionMet" or "DensityEvolved" or "SequenceCompleted"
-            ? (int)ExitCode.Success
-            : (int)ExitCode.ConvergenceFailure;
+        // The question, rather than a list of the outcome names that answered it when
+        // this line was written. That list had to be widened once for diffusive runs and
+        // once for sequenced ones, and still called six of the thirty-seven shipped
+        // examples failures - three traps and thermalisations ending at their declared
+        // hold, and three deliberate losses that are the control halves of pairs.
+        return run.Completed ? (int)ExitCode.Success : (int)ExitCode.ConvergenceFailure;
     }
 
     private static void WriteRun(RunOutcome run)
@@ -1958,9 +1962,17 @@ public static class Program
             Console.Out.WriteLine(
                 $"              {flight.Evidence.Kind} in {flight.Evidence.Measure}, {convergence}");
 
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
+            // Said in words rather than printed as NaN. There are two ways to have no
+            // energy invariant to measure - a driven field does work deliberately, and an
+            // ion launched at rest at zero potential has no scale to be relative to - and
+            // both used to reach this line as a number that meant nothing.
+            Console.Out.WriteLine(
+                double.IsNaN(run.MaximumRelativeEnergyDrift)
+                    ? "energy drift  not measured: no conserved scale, because the field "
+                      + "does work or the ion started at rest at zero potential"
+                    : string.Create(
+                        invariant,
+                        $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
         }
 
         if (run.Sequence is null)
@@ -2054,13 +2066,33 @@ public static class Program
                     + "measure");
             }
 
-            if (ensemble.ResolvingPower is { } resolving)
+            // Only when there is something to say. A beamline holds nothing at the end
+            // of its run, and a line of zeros on every ordinary model would be noise -
+            // but a TRAP arrives nowhere by design, and without this it reports a
+            // transmission of zero and nothing else, which is what a trap that lost
+            // every ion reports too.
+            if (ensemble.Confined.Value is > 0.0)
             {
                 Console.Out.WriteLine(string.Create(
                     invariant,
-                    $"resolving     {resolving.Value:G6} +/- "
-                    + $"{(resolving.Uncertainty.Upper - resolving.Uncertainty.Lower) / 2.0:G3}"
-                    + $" (from the central half)"));
+                    $"confined      {ensemble.Confined.Value:P1} still inside at the end "
+                    + $"of the run, having struck nothing"));
+            }
+
+            if (ensemble.ResolvingPower is { } resolving)
+            {
+                // Said in words when the peak has no width to resolve. The value is NaN
+                // there rather than a number, because the honest answer is unbounded and
+                // the previous one - zero - was the worst conceivable value standing in
+                // for the best.
+                Console.Out.WriteLine(
+                    double.IsNaN(resolving.Value)
+                        ? "resolving     unbounded: the arrivals carry no spread to resolve"
+                        : string.Create(
+                            invariant,
+                            $"resolving     {resolving.Value:G6} +/- "
+                            + $"{(resolving.Uncertainty.Upper - resolving.Uncertainty.Lower) / 2.0:G3}"
+                            + $" (from the central half)"));
             }
 
             // ACC-5: never a bare percentage. A named surface says which one to

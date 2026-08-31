@@ -177,11 +177,11 @@ public static class ModelSchema
     /// cheaper than an older build reading it, ignoring the field it does not know, and
     /// reporting a different flight with no indication that anything was dropped.
     /// </remarks>
-    public const string CurrentVersion = "0.6";
+    public const string CurrentVersion = "0.7";
 
     /// <summary>Versions this build can read.</summary>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -286,6 +286,39 @@ public sealed record CloudDocument
     /// the direction, which a temperature cannot express.
     /// </remarks>
     public double EnergyFractionSpread { get; init; }
+
+    /// <summary>
+    /// Half-angle of the cone the beam fills, as an angle. Directions are drawn
+    /// uniformly in solid angle within it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The mirror of <see cref="EnergyFractionSpread"/>: that varies the energy
+    /// without varying the direction, and this varies the direction without varying
+    /// the energy. A temperature can express neither, because it does both at once
+    /// in a fixed ratio.
+    /// </para>
+    /// <para>
+    /// <b>A cone rather than a Gaussian</b>, which is the one decision here worth
+    /// arguing. Every other spread on a cloud is Gaussian, because every other one
+    /// describes a source. This one describes what an <em>aperture</em> or an
+    /// upstream optic left behind, and an aperture truncates rather than weights -
+    /// there is a hard largest angle and nothing beyond it. Drawing it Gaussian
+    /// would put a tail outside the acceptance the number is naming.
+    /// </para>
+    /// <para>
+    /// <b>Uniform in solid angle, not in angle.</b> A beam filling a round aperture
+    /// is uniform over its area, which maps to uniform solid angle - so the density
+    /// per unit polar angle goes as sin(theta) and most rays sit near the edge of
+    /// the cone. Uniform in theta would concentrate them on the axis and understate
+    /// the aberration the cone exists to probe.
+    /// </para>
+    /// <para>
+    /// Declaring this and a temperature together is allowed and they add: a warm
+    /// source behind a defining aperture is an ordinary thing to have.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? Divergence { get; init; }
 }
 
 /// <summary>An imported neutral velocity field, as it appears in a model.</summary>
@@ -400,6 +433,102 @@ public sealed record FieldDocument
     /// an ion mirror is actually designed.
     /// </summary>
     public QuantityValue? TurningDepth { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: the steady potential on the x pair. The y pair takes its
+    /// negative, which is what makes the field a quadrupole rather than a quadrupole plus
+    /// an offset.
+    /// </summary>
+    public QuantityValue? DirectPotential { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: zero-to-peak drive amplitude on the x pair.
+    /// </summary>
+    public QuantityValue? DriveAmplitude { get; init; }
+
+    /// <summary>Ideal quadrupole only: the drive frequency.</summary>
+    public QuantityValue? DriveFrequency { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: the inscribed radius, axis to nearest electrode surface.
+    /// </summary>
+    /// <remarks>
+    /// It sets the field gradient and so the Mathieu parameters, which go as its square -
+    /// so this is the one length the working point is most sensitive to.
+    /// </remarks>
+    public QuantityValue? InscribedRadius { get; init; }
+
+    /// <summary>
+    /// Quadro-logarithmic only: the axial potential curvature, of dimension volts per
+    /// metre squared.
+    /// </summary>
+    /// <remarks>
+    /// It sets the axial oscillation frequency and nothing else, which is the whole
+    /// point of the field: <c>omega = sqrt(q k / m)</c> carries no radius, no angular
+    /// momentum and no amplitude.
+    /// </remarks>
+    public QuantityValue? Curvature { get; init; }
+
+    /// <summary>
+    /// Quadro-logarithmic only: the radius at which the radial field vanishes. Bound
+    /// orbits live inside it.
+    /// </summary>
+    public QuantityValue? CharacteristicRadius { get; init; }
+
+    /// <summary>
+    /// Quadro-logarithmic only: where the axial well is centred. Absent means the
+    /// origin.
+    /// </summary>
+    public VectorValue? Centre { get; init; }
+
+    /// <summary>
+    /// A box outside which this element contributes nothing. Analytic elements only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An analytic field has no extent, because a formula does not — it is defined
+    /// everywhere. That is harmless while such a field is an idealisation of a whole
+    /// instrument, and stops being harmless the moment one is an exact statement of a
+    /// real device sitting <b>next to</b> another. A quadro-logarithmic potential grows
+    /// as z squared, so an orbital trap declared beside the trap that injects it puts an
+    /// enormous field across that trap.
+    /// </para>
+    /// <para>
+    /// A solved element needs no region and may not declare one: it is already bounded by
+    /// its own solve domain, and two statements about the same extent is one too many.
+    /// </para>
+    /// </remarks>
+    public RegionDocument? Region { get; init; }
+}
+
+/// <summary>An axis-aligned box, given as its two opposite corners.</summary>
+/// <remarks>
+/// <b>The boundary is a field discontinuity and the potential does not generally match
+/// across it</b>, because a box is not an equipotential of anything interesting. The
+/// assembly measures the largest potential on the boundary and reports it: that is the
+/// energy an ion gains or loses per crossing, and placing the box where the field has
+/// decayed is what makes it small. The region says where the idealisation is meant to
+/// apply; it is not a conductor.
+/// </remarks>
+public sealed record RegionDocument
+{
+    /// <summary>Lower bound along x.</summary>
+    public QuantityValue? MinX { get; init; }
+
+    /// <summary>Upper bound along x.</summary>
+    public QuantityValue? MaxX { get; init; }
+
+    /// <summary>Lower bound along y.</summary>
+    public QuantityValue? MinY { get; init; }
+
+    /// <summary>Upper bound along y.</summary>
+    public QuantityValue? MaxY { get; init; }
+
+    /// <summary>Lower bound along z.</summary>
+    public QuantityValue? MinZ { get; init; }
+
+    /// <summary>Upper bound along z.</summary>
+    public QuantityValue? MaxZ { get; init; }
 }
 
 /// <summary>The surface that ends the flight.</summary>
