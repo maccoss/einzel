@@ -854,6 +854,11 @@ wrote down and can see. Refusing every one would make `Build` unusable for the c
 beamlines a region exists to enable, in exchange for repeating what the document already
 says.
 
+`bounded-accelerating-gap` is the corpus example (EX-1), so the feature is in the release
+gate rather than only in a unit test. Its expectation is the arithmetic above, and it has
+teeth: mutating the expected value fails the gate, which is how the coverage was confirmed
+rather than assumed.
+
 ### The limitation, and the better design it points at
 
 The step is still large for the fields one most wants to bound — a uniform potential never
