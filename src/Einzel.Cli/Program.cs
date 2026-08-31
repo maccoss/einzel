@@ -1961,9 +1961,17 @@ public static class Program
             Console.Out.WriteLine(
                 $"              {flight.Evidence.Kind} in {flight.Evidence.Measure}, {convergence}");
 
-            Console.Out.WriteLine(string.Create(
-                invariant,
-                $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
+            // Said in words rather than printed as NaN. There are two ways to have no
+            // energy invariant to measure - a driven field does work deliberately, and an
+            // ion launched at rest at zero potential has no scale to be relative to - and
+            // both used to reach this line as a number that meant nothing.
+            Console.Out.WriteLine(
+                double.IsNaN(run.MaximumRelativeEnergyDrift)
+                    ? "energy drift  not measured: no conserved scale, because the field "
+                      + "does work or the ion started at rest at zero potential"
+                    : string.Create(
+                        invariant,
+                        $"energy drift  {run.MaximumRelativeEnergyDrift:E2} relative (ACC-4 budget 1e-6)"));
         }
 
         if (run.Sequence is null)

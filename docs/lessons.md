@@ -1427,6 +1427,34 @@ It also mattered how severe I made it. A `ValidityViolation` on a model that is 
 correct is a false alarm on a channel GRD-3 makes unsuppressible, and it would have taught
 readers to ignore the one warning class that must never be ignored.
 
+## A quantity that was never measured, printed as an excellent value
+
+Every run in this project that launches an ion **at rest** reported
+
+    energy drift  0.00E+000 relative (ACC-4 budget 1e-6)
+
+which reads as four orders inside budget. It means **not measured**.
+
+The drift is relative, so it needs a scale, and the scale is the ion's total energy at
+launch. An ion released from rest at a point where the potential is zero has a total energy
+of exactly zero, so the tracker returns without doing anything — and `maximumEnergyDrift`
+was left at the `0.0` it was initialised to. The accelerating gap, the sequenced extraction,
+the Paul trap and the rectilinear trap were all affected, and all of them are examples
+somebody would read.
+
+**The rule this project already has is "absent, not zero", and it had been applied three
+times before without generalising**: a Twiss orientation is undefined for a perfectly
+parallel cloud and is now absent rather than zero; a peak width needs two arrivals and is
+absent rather than zero when there is one; a driven field does work deliberately, so its
+energy drift is already NaN rather than a number that looks like a diagnostic. This is the
+same case and it was initialised to zero one line above the branch that returns.
+
+**What makes it worse than an ordinary missing value is that zero is the best possible
+answer for this quantity.** A reader who sees a blank asks; a reader who sees the ideal
+result stops looking. When a diagnostic's "not computed" value coincides with its "perfect"
+value, the two must be distinguished at the point where the computation is skipped, not
+left to the reader.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
