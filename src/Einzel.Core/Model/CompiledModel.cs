@@ -174,6 +174,18 @@ public enum CompiledFieldKind
     HalfSpaceUniform,
 
     /// <summary>
+    /// The ideal quadrupole field, driven: exactly quadrupolar by construction.
+    /// </summary>
+    /// <remarks>
+    /// The only <em>analytic</em> driven field the format offers, and it exists for the
+    /// reason the analytic tier exists at all - a closed form to check a solved geometry
+    /// against. Every other driven field here is solved, so an expectation written from
+    /// the ideal formula would have been asserting a modelling difference of a few per
+    /// cent as though it were arithmetic.
+    /// </remarks>
+    IdealQuadrupoleRf,
+
+    /// <summary>
     /// A field solved from a Dirichlet geometry given in the document. The element
     /// that lets a device be a template rather than a class (LIB-1).
     /// </summary>
@@ -212,6 +224,18 @@ public sealed record CompiledField
 {
     /// <summary>Which kind of element this is.</summary>
     public required CompiledFieldKind Kind { get; init; }
+
+    /// <summary>Steady potential on the x pair, in volts. The y pair takes its negative.</summary>
+    public double DirectPotentialSi { get; init; }
+
+    /// <summary>Zero-to-peak drive amplitude on the x pair, in volts.</summary>
+    public double DriveAmplitudeSi { get; init; }
+
+    /// <summary>Drive frequency, in hertz.</summary>
+    public double DriveFrequencySi { get; init; }
+
+    /// <summary>Axis to nearest electrode surface, in metres.</summary>
+    public double InscribedRadiusSi { get; init; }
 
     /// <summary>
     /// This element as it stands during each phase of the instrument's timeline, when

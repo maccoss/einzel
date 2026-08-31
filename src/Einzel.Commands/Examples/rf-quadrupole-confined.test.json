@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "rf-quadrupole-confined",
+  "description": "Closed form: sqrt(kT / (m omega_sec^2)) with omega_sec from the COLLISIONAL pseudopotential, written entirely from the document's own declared quantities - charge, mass, amplitude, inscribed radius, drive frequency, mobility and temperature. Nothing is read back from the engine. Measured at 1.2e-6 of it. The one per cent tolerance is room for a change of grid or step scheme, not a modelling allowance: what it cannot absorb is the collisionless well, which is ten per cent away, or the missing factor of two in the field amplitude, which is a factor of four.",
+  "model": "../models/rf-quadrupole-confined.json",
+  "expect": [
+    {
+      "figureOfMerit": "radialSpread",
+      "value": 0.13746,
+      "unit": "mm",
+      "tolerance": 0.01
+    }
+  ]
+}

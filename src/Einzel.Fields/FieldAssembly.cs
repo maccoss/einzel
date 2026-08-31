@@ -277,6 +277,10 @@ public static class FieldAssembly
                     elements.Add(Sequenced(element, Analytic));
                     break;
 
+                case CompiledFieldKind.IdealQuadrupoleRf:
+                    elements.Add(Sequenced(element, Analytic));
+                    break;
+
                 case CompiledFieldKind.Solved3D:
                 {
                     var solve = element.Solve3D!;
@@ -349,6 +353,12 @@ public static class FieldAssembly
             element.PlanePoint,
             element.InwardNormal,
             Quantity.Si(element.PotentialGradientSi, Dimension.ElectricField)),
+
+        CompiledFieldKind.IdealQuadrupoleRf => Einzel.Fields.Analytic.IdealQuadrupoleRf.Create(
+            Quantity.Si(element.DirectPotentialSi, Dimension.ElectricPotential),
+            Quantity.Si(element.DriveAmplitudeSi, Dimension.ElectricPotential),
+            Quantity.Si(element.DriveFrequencySi, Dimension.Frequency),
+            Quantity.Si(element.InscribedRadiusSi, Dimension.LengthDimension)),
 
         _ => throw new ArgumentOutOfRangeException(
             nameof(element),

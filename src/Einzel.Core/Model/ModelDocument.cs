@@ -433,6 +433,30 @@ public sealed record FieldDocument
     /// an ion mirror is actually designed.
     /// </summary>
     public QuantityValue? TurningDepth { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: the steady potential on the x pair. The y pair takes its
+    /// negative, which is what makes the field a quadrupole rather than a quadrupole plus
+    /// an offset.
+    /// </summary>
+    public QuantityValue? DirectPotential { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: zero-to-peak drive amplitude on the x pair.
+    /// </summary>
+    public QuantityValue? DriveAmplitude { get; init; }
+
+    /// <summary>Ideal quadrupole only: the drive frequency.</summary>
+    public QuantityValue? DriveFrequency { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: the inscribed radius, axis to nearest electrode surface.
+    /// </summary>
+    /// <remarks>
+    /// It sets the field gradient and so the Mathieu parameters, which go as its square -
+    /// so this is the one length the working point is most sensitive to.
+    /// </remarks>
+    public QuantityValue? InscribedRadius { get; init; }
 }
 
 /// <summary>The surface that ends the flight.</summary>

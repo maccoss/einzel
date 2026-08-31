@@ -1364,11 +1364,44 @@ every arrival-time check there is.
 `drift-tube-spread` ships as the corpus example, retaining its entire population over the
 window so the width is of the whole packet rather than of whatever survived.
 
-**What is still not in the corpus is the driven half.** Confined in a harmonic effective
-well the equilibrium width is `sqrt(kT / (m omega^2))`, which is a closed form - but the
-well of a *solved* rod geometry is not the ideal one, and writing the expectation from the
-ideal would be asserting a 7% modelling difference as though it were arithmetic. The honest
-route is an analytic RF field in the model format, which does not exist: the format offers
-`fieldFree`, `uniform`, `halfSpaceUniform`, `solved2d` and `solved3d`, and the only driven
-fields are solved. That is the next thing this needs, and it is a format gap rather than a
-physics one.
+**And the driven half ships too**, once the format gap it was blocked on was closed. The
+equilibrium width in a harmonic effective well is `sqrt(kT / (m omega_sec^2))` - a closed
+form - but the well of a *solved* rod geometry is not the ideal one, so writing the ideal
+formula against it would assert a few per cent of modelling difference as though it were
+arithmetic. What was missing was an **analytic** driven field: the format offered
+`fieldFree`, `uniform`, `halfSpaceUniform`, `solved2d` and `solved3d`, and every driven
+field was solved. `idealQuadrupoleRf` closes that - the class had existed in
+`Einzel.Fields` since the Mathieu work and had simply never been reachable from a document.
+
+**The well is collisional, and that is what makes the check sharp.** From
+`m(v' + nu v) = q E0 cos(Omega t)` the depth is `q E0^2 / (4 m (Omega^2 + nu^2))` rather
+than Dehmelt's `q E0^2 / (4 m Omega^2)`, with `nu = q / (m mu)` from the declared mobility.
+At 1 mbar and 1 MHz that is `nu/Omega = 0.34` and a suppression of **0.896**, so the
+collisionless formula is ten per cent away - and the measurement lands on the collisional
+one to **1.2e-6**:
+
+| drive | measured | closed form | |
+| --- | --- | --- | --- |
+| 200 V | 0.13745984 mm | `sqrt(kT / m omega_sec^2)` = 0.13746 | **1.2e-6** |
+| 400 V | 0.06872992 mm | 0.06873 | 1.2e-6 |
+| 800 V | 0.0333038 mm | 0.034365 | 3.1e-2 |
+
+The 800 V case is off because its 0.034 mm width is **narrower than the 0.0625 mm cell** -
+under-resolved, and degrading in the place that says so.
+
+`E0(r) = 2 V r / r0^2`, not `V r / r0^2`: the potential is `V(x^2 - y^2)/r0^2` and its
+gradient carries the factor of two. Getting it wrong makes every number here exactly four
+times too small, which this codebase has been caught by once already.
+
+**Shipped as a pair on one grid**, `rf-quadrupole-confined` and
+`rf-quadrupole-unconfined`, differing in one number: the drive amplitude, 200 V against 0.
+The width goes 0.137 mm to 1.303 mm, nine-fold, and each half matches a *different* closed
+form. Neither is worth much alone - a width that happens to match one formula says nothing
+about whether the drive is doing anything.
+
+**The grid had to hold both**, which is the one awkward thing about the pair: an eleven-fold
+range of width needs a mesh fine enough for the confined packet and wide enough for the
+unconfined one's tails. A first attempt sized for the confined case alone clipped the
+unconfined packet and reported it 9% narrow. And a first fix over-corrected - 512 intervals
+where 256 was already enough - which cost four minutes against seventeen seconds for the
+same two answers to the same precision.

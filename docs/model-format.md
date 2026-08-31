@@ -504,6 +504,32 @@ the other — the primitive an ideal single-stage ion mirror is built from. It i
 named for what it is rather than what it builds, because no device class may
 appear below the template library.
 
+```json
+{ "type": "idealQuadrupoleRf",
+  "directPotential":  { "value": 0,   "unit": "V" },
+  "driveAmplitude":   { "value": 200, "unit": "V" },
+  "driveFrequency":   { "value": 1,   "unit": "MHz" },
+  "inscribedRadius":  { "value": 4,   "unit": "mm" } }
+```
+
+`idealQuadrupoleRf` is **the only analytic driven field**, and it exists for the
+reason the analytic tier exists at all: something exact to check a solved geometry
+against. Every other driven field here is solved, so an expectation written from
+the ideal formula against solved rods would be asserting a few per cent of
+modelling difference as though it were arithmetic — which is what blocked the
+driven diffusive corpus examples until this existed.
+
+The x pair takes `directPotential` and `driveAmplitude`; the y pair takes their
+negatives, which is what makes the field a quadrupole rather than a quadrupole plus
+an offset. **A zero frequency is refused** — that is a static field wearing a
+drive's clothes, and it would run quietly and give a quadrupole with no RF. A zero
+*amplitude* is allowed and is the honest way to say the generator is off.
+
+Note the field amplitude convention when writing closed forms against it:
+`E0(r) = 2 V r / r0^2`, because the potential is `V(x^2 - y^2)/r0^2` and its
+gradient carries the factor of two. Dropping it makes a pseudopotential exactly
+four times too small.
+
 ### Solved fields
 
 ```json

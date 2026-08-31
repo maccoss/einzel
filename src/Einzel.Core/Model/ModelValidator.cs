@@ -758,7 +758,7 @@ public static class ModelValidator
     /// would solve every field twice over.
     /// </remarks>
     private static bool NeedsPhases(string? type) =>
-        type is "uniform" or "halfSpaceUniform";
+        type is "uniform" or "halfSpaceUniform" or "idealQuadrupoleRf";
 
     /// <summary>Whether two compilations of one analytic element hold the same numbers.</summary>
     private static bool Same(CompiledField a, CompiledField b) =>
@@ -767,7 +767,11 @@ public static class ModelValidator
         && a.PlanePoint == b.PlanePoint
         && a.InwardNormal == b.InwardNormal
         && a.PotentialGradientSi.Equals(b.PotentialGradientSi)
-        && a.TurningDepthSi.Equals(b.TurningDepthSi);
+        && a.TurningDepthSi.Equals(b.TurningDepthSi)
+        && a.DirectPotentialSi.Equals(b.DirectPotentialSi)
+        && a.DriveAmplitudeSi.Equals(b.DriveAmplitudeSi)
+        && a.DriveFrequencySi.Equals(b.DriveFrequencySi)
+        && a.InscribedRadiusSi.Equals(b.InscribedRadiusSi);
 
     private static CompiledField? CompileOnce(
         FieldDocument field,
@@ -788,6 +792,64 @@ public static class ModelValidator
                 {
                     Kind = CompiledFieldKind.Uniform,
                     Field = vector.Value,
+                };
+            }
+
+            case "idealQuadrupoleRf":
+            {
+                var direct = TryQuantity(
+                    field.DirectPotential, $"{path}/directPotential",
+                    Dimension.ElectricPotential, p, errors);
+
+                var amplitude = TryQuantity(
+                    field.DriveAmplitude, $"{path}/driveAmplitude",
+                    Dimension.ElectricPotential, p, errors);
+
+                var frequency = TryQuantity(
+                    field.DriveFrequency, $"{path}/driveFrequency",
+                    Dimension.Frequency, p, errors);
+
+                var inscribed = TryQuantity(
+                    field.InscribedRadius, $"{path}/inscribedRadius",
+                    Dimension.LengthDimension, p, errors);
+
+                if (direct is null || amplitude is null || frequency is null || inscribed is null)
+                {
+                    return null;
+                }
+
+                // Both refused rather than defaulted. A zero radius is a division and a
+                // zero frequency is a static field wearing a drive's clothes - and the
+                // second is the one that would run, quietly, giving a quadrupole with no
+                // RF and no complaint.
+                foreach (var (value, where, what) in new[]
+                {
+                    (inscribed.Value.In("m"), $"{path}/inscribedRadius", "an inscribed radius"),
+                    (frequency.Value.In("Hz"), $"{path}/driveFrequency", "a drive frequency"),
+                })
+                {
+                    if (!(value > 0.0))
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.ValueOutOfBounds,
+                            Path = where,
+                            Constraint = $"{what} must be positive",
+                            Observed = new ObservedValue(value, "SI"),
+                            Suggestion = "use a static field element if nothing is driven",
+                        });
+
+                        return null;
+                    }
+                }
+
+                return new CompiledField
+                {
+                    Kind = CompiledFieldKind.IdealQuadrupoleRf,
+                    DirectPotentialSi = direct.Value.In("V"),
+                    DriveAmplitudeSi = amplitude.Value.In("V"),
+                    DriveFrequencySi = frequency.Value.In("Hz"),
+                    InscribedRadiusSi = inscribed.Value.In("m"),
                 };
             }
 
@@ -838,7 +900,8 @@ public static class ModelValidator
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/type",
                     Constraint =
-                        "a field element must declare one of: fieldFree, uniform, halfSpaceUniform, solved2d",
+                        "a field element must declare one of: fieldFree, uniform, halfSpaceUniform, "
+                        + "idealQuadrupoleRf, solved2d, solved3d",
                     Observed = new ObservedValue(0.0, field.Type ?? "null"),
                     Suggestion = "use \"halfSpaceUniform\" for an ideal single-stage ion mirror",
                 });

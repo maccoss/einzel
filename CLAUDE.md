@@ -957,6 +957,14 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   Also caught: an outline test of mine passed for the wrong reason. It set `inscribedRadius` to 5.0, the template's existing value, so "the document changed" held only because the JSON round-trip reformats. Now 7.0, with an added assertion that everything **derived** from it moved too — which is the actual reason a parameter surface exists rather than a list of electrode settings.
 
+- **`idealQuadrupoleRf` — the only analytic driven field, and the format gap that blocked a corpus example.** Every driven field the format offered was *solved*, so a closed form written from the ideal quadrupole had nothing exact to be checked against: a solved rod geometry departs from the ideal by a few per cent, and asserting the ideal formula against it would state a modelling difference as arithmetic. The class had existed in `Einzel.Fields` since the Mathieu work and had simply never been reachable from a document. A zero *frequency* is refused (a static field wearing a drive's clothes, which would run quietly and give a quadrupole with no RF); a zero *amplitude* is allowed and is how a document says the generator is off.
+
+  It unblocked the driven diffusive pair. `rf-quadrupole-confined` and `rf-quadrupole-unconfined` differ in one number and each matches a **different** closed form: 200 V gives 0.13745984 mm against `sqrt(kT/(m omega_sec^2))` = **0.13746 (1.2e-6)**, and 0 V gives 1.301045 mm against `sqrt(seed^2 + 2Dt)` = 1.303075 (1.6e-3). Neither is worth much alone — a width matching one formula says nothing about whether the drive does anything.
+
+  **The well is collisional, which is what makes it sharp.** From m(v̇ + νv) = qE₀cos(Ωt) the depth is q E₀²/(4m(Ω²+ν²)) rather than Dehmelt's q E₀²/(4mΩ²), with ν = q/(mμ) from the declared mobility. At 1 mbar and 1 MHz that is ν/Ω = 0.34 and a suppression of 0.896, so **the collisionless formula is ten per cent away** — the check is on the collisional treatment, not merely on a pseudopotential existing. And `E0(r) = 2 V r / r0²`, not `V r / r0²`: the potential is V(x²−y²)/r0² and its gradient carries the factor of two, whose omission makes the answer exactly four times too small.
+
+  Two mistakes worth keeping. The grid must hold an **eleven-fold range of width** — sized for the confined packet alone it clipped the unconfined one and reported it 9% narrow. And the fix over-corrected: 512 intervals where 256 was already enough, **four minutes against seventeen seconds** for the same answers to the same precision. Refining past what is needed is the reflex and here it bought nothing.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
