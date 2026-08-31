@@ -283,11 +283,30 @@ public sealed class ArrivalTimePeak
             UncertaintyInterval.Symmetric(undefined, Quantity.Number(0.0), confidenceLevel: 0.68),
             new Evidence.Ensemble(Arrived, Converged: false),
             [
+                // QUALIFIED, NOT A VALIDITY VIOLATION. A violation means the result was
+                // computed outside the validity of the model used, and that is not what
+                // happened: the arrivals really do carry no spread, which for a field-free
+                // aperture is the correct answer rather than a symptom. `slit-transmission`
+                // grounds both jaws so the field is exactly zero and the transmission is
+                // pure geometry - its peak is degenerate BY CONSTRUCTION, and it raised
+                // this on every run.
+                //
+                // The case where a degenerate peak does mean something went wrong - an
+                // ensemble that is secretly one ion - has its own warning, `ensemble
+                // .degenerate`, which says so directly.
+                //
+                // Severity is not decoration. A false alarm on the class GRD-3 makes
+                // unsuppressible teaches readers to ignore the one class that must never
+                // be ignored, which is the same argument that reclassified a bounded
+                // field's potential step.
                 new ValidityWarning(
                     "PEAK_UNRESOLVED",
-                    "every arrival fell within floating-point resolution of the others, so the width is zero "
-                    + "and the resolving power is unbounded; the ensemble carries no spread to resolve",
-                    WarningSeverity.ValidityViolation),
+                    "every arrival fell within floating-point resolution of the others, so the "
+                    + "width is zero and the resolving power is unbounded rather than large; "
+                    + "it is reported as absent. The ensemble carries no spread to resolve, "
+                    + "which is the right answer where nothing in the instrument spreads "
+                    + "arrival times and a symptom where something was meant to",
+                    WarningSeverity.Qualified),
             ]);
     }
 

@@ -935,9 +935,9 @@ public static class Program
 
         if (options.Has("json"))
         {
-            return Emit(outcome, outcome.Outcome == "StopConditionMet"
-                ? ExitCode.Success
-                : ExitCode.ConvergenceFailure);
+            return Emit(
+                outcome,
+                outcome.Completed ? ExitCode.Success : ExitCode.ConvergenceFailure);
         }
 
         var invariant = CultureInfo.InvariantCulture;
@@ -958,9 +958,7 @@ public static class Program
             Console.Error.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
         }
 
-        return (int)(outcome.Outcome == "StopConditionMet"
-            ? ExitCode.Success
-            : ExitCode.ConvergenceFailure);
+        return (int)(outcome.Completed ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 
     private static int Test(CommandLine options)
@@ -1909,9 +1907,12 @@ public static class Program
         // reported itself as a failure - the diffusive one, then this. A run that
         // finished what it was asked to do is a success, and the thing to ask is
         // whether it finished rather than which mode it was in.
-        return run.Outcome is "StopConditionMet" or "DensityEvolved" or "SequenceCompleted"
-            ? (int)ExitCode.Success
-            : (int)ExitCode.ConvergenceFailure;
+        // The question, rather than a list of the outcome names that answered it when
+        // this line was written. That list had to be widened once for diffusive runs and
+        // once for sequenced ones, and still called six of the thirty-seven shipped
+        // examples failures - three traps and thermalisations ending at their declared
+        // hold, and three deliberate losses that are the control halves of pairs.
+        return run.Completed ? (int)ExitCode.Success : (int)ExitCode.ConvergenceFailure;
     }
 
     private static void WriteRun(RunOutcome run)

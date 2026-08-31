@@ -1483,6 +1483,50 @@ result stops looking. When a diagnostic's "not computed" value coincides with it
 value, the two must be distinguished at the point where the computation is skipped, not
 left to the reader.
 
+## The proxy was the outcome; the question was who failed
+
+Written up as an open question the night before, and now settled — the answer was not the
+one the note predicted, which is why it is worth reading with the original.
+
+The note said the fix could not be a third widening of the success list, because "ended at
+the time limit with everything still inside" describes both a trap holding its ions and a
+beamline whose ion ran out of flight time, and nothing in the document tells them apart. It
+concluded the distinction was **intent**, and therefore a schema question.
+
+**Enumerating the corpus made that conclusion unnecessary.** Six of the thirty-seven shipped
+examples exited with a failure code while behaving exactly as designed, and they split into
+two kinds rather than one:
+
+| | |
+| --- | --- |
+| ends at a declared hold | `paul-trap-held`, `thermalisation`, `orbital-trap-frequency` |
+| deliberate loss, the control half of a pair | `paul-trap-ejected`, `quadrupole-rf-unstable`, `ion-funnel-no-rf` |
+
+The second kind ends `StruckElectrode`, which no amount of trap-versus-beamline intent
+would have fixed. So the shared property is not what the model is for. It is that **the
+engine finished in every one of these cases** — the transmission, the itemised losses and
+`confined` say what became of the ion, and each of those six examples asserts exactly that
+in its own test file.
+
+What is left as a failure is an integrator that gave up: a step-size underflow, an exhausted
+step budget. Those leave a trajectory that stops part way for a numerical reason, with no
+bound on how wrong it is.
+
+**The generalisation, corrected.** The earlier note's rule — *when a proxy keeps needing to
+be widened, ask the question, but check the question is answerable from what you have* — was
+right about the first half and wrong about the second. The question was answerable; I had
+picked the wrong question. "Was this model meant to hold ions" is unanswerable and
+unnecessary; "did the engine compute what it was asked" is neither.
+
+**The way to tell those apart was to enumerate the population.** Three examples suggested
+intent; six ruled it out. Reasoning about one case chose a schema change that would not have
+fixed half the instances.
+
+`TrajectoryOutcome.Completed()` is now a switch with every case named and a throw for the
+rest, rather than a list of the successful ones — so a sixth outcome fails to compile until
+somebody decides which kind it is, instead of being silently classified as a failure the way
+diffusive and sequenced runs both were.
+
 ## A list of known outcomes, three times, where the question was never asked
 
 `einzel run` exits 4 — ConvergenceFailure — on `paul-trap-held`, an example that behaves

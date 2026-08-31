@@ -21,6 +21,16 @@ public sealed record PreviewOutcome
     /// <summary>Why the integration stopped.</summary>
     public required string Outcome { get; init; }
 
+    /// <summary>Whether the engine computed what it was asked to.</summary>
+    /// <remarks>
+    /// The same distinction <c>RunOutcome.Completed</c> carries, and for the same reason:
+    /// an ion striking an electrode or being held to the end of its flight time is a
+    /// result, while an integrator that gave up is not. Preview had the narrower of the two
+    /// lists - success meant <c>StopConditionMet</c> alone - so previewing a trap reported
+    /// a failure.
+    /// </remarks>
+    public required bool Completed { get; init; }
+
     /// <summary>The integrator tolerance actually used.</summary>
     public required double RelativeTolerance { get; init; }
 
@@ -146,6 +156,7 @@ public static class PreviewCommand
             ModelPath = absolute,
             FlightTime = MeasuredJson.From(flightTime, "us"),
             Outcome = result.Outcome.ToString(),
+            Completed = result.Outcome.Completed(),
             RelativeTolerance = tolerance,
             RequestedTolerance = model.RelativeTolerance,
             AcceptedSteps = result.AcceptedSteps,

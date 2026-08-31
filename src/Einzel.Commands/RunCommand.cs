@@ -382,6 +382,24 @@ public sealed record RunOutcome
     /// <summary>Why the integration stopped.</summary>
     public required string Outcome { get; init; }
 
+    /// <summary>Whether the engine computed what it was asked to.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not whether the instrument performed.</b> An ion that struck an electrode, or
+    /// that was still held when the declared flight time elapsed, is a result; the
+    /// transmission, the itemised losses and <c>confined</c> say what became of it. Only an
+    /// integrator that gave up - a step-size underflow, an exhausted step budget - leaves
+    /// numbers that stop part way with no bound on how wrong they are.
+    /// </para>
+    /// <para>
+    /// Carried here rather than derived from <see cref="Outcome"/> at the surface, because
+    /// deriving it there is what produced a list of the outcome names known when the line
+    /// was written. That list had to be widened twice, and still called six of the
+    /// thirty-seven shipped examples failures.
+    /// </para>
+    /// </remarks>
+    public required bool Completed { get; init; }
+
     /// <summary>Where the ion ended, in millimetres.</summary>
     public required IReadOnlyList<double> FinalPositionMm { get; init; }
 
@@ -880,6 +898,7 @@ public static class RunCommand
                 "us"),
 
             Outcome = "SequenceCompleted",
+            Completed = true,
 
             // The packet's centre where the sequence left it. Not a single ion's final
             // position - there is no single ion - which is why this is a centroid and is
@@ -1007,6 +1026,7 @@ public static class RunCommand
                 "us"),
 
             Outcome = "DensityEvolved",
+            Completed = true,
             FinalPositionMm = [],
             MaximumRelativeEnergyDrift = double.NaN,
             AcceptedSteps = result.Steps,
@@ -1441,6 +1461,7 @@ public static class RunCommand
             Manifest = manifest,
             FlightTime = MeasuredJson.From(flightTime, "us"),
             Outcome = finest.Outcome.ToString(),
+            Completed = finest.Outcome.Completed(),
             FinalPositionMm =
             [
                 finest.FinalState.Position.X * 1e3,
