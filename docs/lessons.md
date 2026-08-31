@@ -1133,6 +1133,36 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## The property an instrument is built on cannot validate the field it rests in
+
+The quadro-logarithmic field's radial component went in negated. `-dU/dr` is
+`k(r/2 - Rm^2/2r)`; what I wrote was `k(Rm^2/2r - r/2)`, so it pushed ions outward where
+the doc comment two lines above said "pulls inward inside it".
+
+**Every frequency test passed with it.** The axial motion obeys `m z'' = -q k z` with no
+`r` anywhere in it, so it is exactly decoupled from the radial coordinate - which is the
+whole design of an orbital analyser, and the reason its frequency measures mass. A radial
+field of entirely the wrong sign does not touch it. Five cases spanning radius, tangential
+speed and axial amplitude all agreed with `sqrt(q k / m)` to parts in a hundred million,
+while the ions they were computed from were being flung outward instead of held.
+
+What caught it was the two checks that couple the components back together: `E = -grad U`
+by numerical differencing, and energy conservation along a trajectory.
+
+**The general form is worth more than the bug.** A designed invariance is a designed
+blindness. When an instrument is built so that one quantity does not depend on the others,
+measuring that quantity cannot tell you the others are right - and it is exactly the
+quantity a test writer reaches for first, because it is the one with the clean closed form.
+Pair it with something that spans the parts: a gradient check, an energy check, a
+conservation law that involves every component.
+
+A related trap in the same file, and it is why the first run reported twelve failures
+rather than two: `Assert.Equal(expected, measured, 3)` on a frequency of order 1e6 asks for
+three *decimal places*, which is 3e-10 relative. The physics was right to 5e-8 and the
+assertion was wrong by two orders of magnitude. **A decimal-place assertion is an absolute
+one**, and on a large number it silently becomes far stricter than anything the code could
+deliver - and on a small number, far looser.
+
 ## A verb that works, is documented, and cannot be found
 
 `einzel outline` had no line in `einzel --help`. It worked. It was documented in

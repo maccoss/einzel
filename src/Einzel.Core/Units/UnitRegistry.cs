@@ -143,6 +143,13 @@ public static class UnitRegistry
         Add("V/m", 1.0, Dimension.ElectricField);
         Add("V/mm", 1e3, Dimension.ElectricField);
 
+        // Potential curvature: what a harmonic well is characterised by, and the one
+        // number an orbital analyser's frequency comes from. V/mm^2 is a millionfold,
+        // not a thousandfold, which is the kind of slip a unit registry exists to make
+        // impossible to write.
+        Add("V/m^2", 1.0, Dimension.ElectricFieldGradient);
+        Add("V/mm^2", 1e6, Dimension.ElectricFieldGradient);
+
         Add("m^2/(V s)", 1.0, Dimension.Mobility);
         Add("cm^2/(V s)", 1e-4, Dimension.Mobility);
 

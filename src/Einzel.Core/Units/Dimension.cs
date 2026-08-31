@@ -151,6 +151,18 @@ public readonly struct Dimension : IEquatable<Dimension>
     /// <summary>Electric field strength, volt per metre.</summary>
     public static Dimension ElectricField { get; } = new(length: 1, mass: 1, time: -3, current: -1);
 
+    /// <summary>Electric field per unit length: volts per metre squared.</summary>
+    /// <remarks>
+    /// The curvature of a potential rather than its slope. It appears wherever a field is
+    /// linear in position - which is to say wherever the motion is harmonic - and the
+    /// oscillation frequency is sqrt(q k / m) from it directly. Distinct from
+    /// <see cref="ElectricField"/> by one power of length, which is exactly the distinction
+    /// a dimension system exists to keep: a curvature quoted as a field is wrong by a
+    /// length, and at millimetre scales that is a factor of a thousand.
+    /// </remarks>
+    public static Dimension ElectricFieldGradient { get; } =
+        new(mass: 1, time: -3, current: -1);
+
     /// <summary>Number density, reciprocal cubic metre.</summary>
     public static Dimension NumberDensity { get; } = new(length: -3);
 
