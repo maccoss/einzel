@@ -219,6 +219,32 @@ public sealed class ShellSession
         return SequenceCommand.Execute(Journal.ModelPath);
     }
 
+    /// <summary>Reads the project the open model belongs to.</summary>
+    /// <returns>Its models, studies and figures, with the state of each.</returns>
+    /// <remarks>
+    /// <para>
+    /// Recorded as <c>einzel project</c> (Amendment 25). The open model is one row of it,
+    /// which is the point of the view: a person editing one model wants to know what else
+    /// is here and whether any of it has been left behind by the edit.
+    /// </para>
+    /// <para>
+    /// The root is found by walking up from the model, so a model kept outside any project
+    /// falls back to its own directory rather than to whatever the shell happened to be
+    /// launched from - the same rule <c>InferProjectRoot</c> was corrected to follow after
+    /// a study wrote its results into an unrelated tree.
+    /// </para>
+    /// </remarks>
+    public ProjectOutcome Project()
+    {
+        Journal.Reconcile();
+
+        var outcome = ProjectCommand.ForModel(Journal.ModelPath);
+
+        Record($"einzel project {Quoted(outcome.Root)}", entry: null);
+
+        return outcome;
+    }
+
     private ShellAction Record(string command, JournalEntry? entry)
     {
         var action = new ShellAction(command, entry);

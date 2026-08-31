@@ -59,6 +59,18 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
     /// <summary>Level sets of the potential on the section plane.</summary>
     public ObservableCollection<Equipotential> Equipotentials { get; } = [];
 
+    /// <summary>The density, as nested shells, for a mode that computes one.</summary>
+    /// <remarks>
+    /// What a diffusive model has instead of paths (TRN-2). RND-8 withholds the
+    /// trajectories; this is the thing it withholds them in favour of, and without it the
+    /// requirement leaves a viewport with nothing in it for the whole pressure range the
+    /// mode exists to cover.
+    /// </remarks>
+    public ObservableCollection<DensityShell> Density { get; } = [];
+
+    /// <summary>Whether there is a density cloud to show.</summary>
+    public bool HasDensity { get; private set; }
+
     /// <summary>What must be shown alongside the picture (GRD-2).</summary>
     public ObservableCollection<string> Warnings { get; } = [];
 
@@ -176,9 +188,11 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
             Trajectories.Clear();
             Conductors.Clear();
             Equipotentials.Clear();
+            Density.Clear();
             Warnings.Clear();
             HasBundle = false;
             HasField = false;
+            HasDensity = false;
 
             // AGT-3's error is already a recovery instruction, so it is shown rather than
             // reworded.
@@ -208,6 +222,15 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         {
             Equipotentials.Add(level);
         }
+
+        Density.Clear();
+
+        foreach (var shell in outcome.Density)
+        {
+            Density.Add(shell);
+        }
+
+        HasDensity = outcome.Density.Count > 0;
 
         Warnings.Clear();
 
@@ -246,6 +269,29 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         {
             return "no trajectories: this model computes a density field, which is drawn "
                 + "as contours rather than as paths";
+        }
+
+        // A diffusive model is not a failed trajectory model, so it gets its own line
+        // rather than "no ion produced a path" - which is true of it and says the wrong
+        // thing, because there was never going to be an ion.
+        if (!outcome.ProducesTrajectories)
+        {
+            var geometry3 = outcome.Conductors.Count > 0
+                ? $"{outcome.Conductors.Count} electrodes, "
+                : string.Empty;
+
+            if (outcome.Density.Count == 0)
+            {
+                return $"{geometry3}a density, with nothing left to draw at any instant";
+            }
+
+            // The peak and the instant, because three nested shells are the same three
+            // shells whatever the density is and whenever it was (GRD-12).
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{geometry3}{outcome.Density.Count} density shells, peak "
+                + $"{outcome.PeakDensityPerCubicMetre:G4} /m3 at "
+                + $"t = {outcome.DensityAtUs:G4} us - no paths, this mode computes none");
         }
 
         if (outcome.Trajectories.Count == 0)

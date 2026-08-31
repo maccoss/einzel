@@ -11,6 +11,15 @@ public sealed record VerifiedResult
     /// <summary>The model the manifest names, relative to the project root, or null when it is gone.</summary>
     public string? Model { get; init; }
 
+    /// <summary>The model path the manifest recorded, whether or not it is still there.</summary>
+    /// <remarks>
+    /// Distinct from <see cref="Model"/>, which is where the model was <em>found</em>. They
+    /// differ in the two cases worth naming: a rename, where the content turned up
+    /// elsewhere, and a result whose model is gone - and a caller listing that second case
+    /// can say which file rather than "(gone)".
+    /// </remarks>
+    public string? RecordedModel { get; init; }
+
     /// <summary>Whether the model still hashes to what the manifest recorded.</summary>
     public required bool ModelMatches { get; init; }
 
@@ -147,21 +156,51 @@ public static class VerifyCommand
             };
         }
 
-        // The manifest records the hash rather than the path, because a hash
-        // survives a rename and a path does not - so the hash is what finds the
-        // model, and the name is only a shortcut to try first.
+        // Which model this result is about comes from the manifest, and whether that
+        // model has moved comes from the hash. Those are two questions and conflating
+        // them is what went wrong.
         //
-        // It used to be the other way round, deriving the path from the manifest's
-        // own filename. That works for reflectron.manifest.json and fails for
-        // anything named otherwise: a sweep writes tolerance.sweep.manifest.json,
-        // verify went looking for models/tolerance.sweep.json, and reported a result
-        // it had just written as STALE with exit 1. A false alarm on output the tool
-        // produced a second ago is the kind that teaches people to stop reading the
-        // tool.
+        // Before the path was recorded there was only the hash, so identity had to be
+        // "whichever file still hashes to this" - and the consequence runs in the unsafe
+        // direction. Two models may legitimately hold the same content: edit the one that
+        // was actually run and its result silently re-attaches to the other, which still
+        // matches, and reports itself **current**. The drift does not move, it disappears.
+        // A project scaffolded by `init` and then given a corpus example of the same
+        // device reaches it without trying.
+        //
+        // The hash search is kept as the fallback, because it is right for the two cases
+        // it was written for: a manifest older than this field, and a model that has been
+        // renamed since - a hash survives a rename and a path does not.
+        //
+        // An earlier version derived the path from the manifest's own filename, which
+        // works for reflectron.manifest.json and fails for anything else: a sweep writes
+        // tolerance.sweep.manifest.json, verify went looking for models/tolerance.sweep.json,
+        // and reported a result it had just written as STALE with exit 1. That stem is
+        // still the first thing the hash search tries.
         var stem = Path.GetFileNameWithoutExtension(relative);
         stem = stem.EndsWith(".manifest", StringComparison.Ordinal) ? stem[..^".manifest".Length] : stem;
 
-        var modelPath = FindByHash(layout, manifest.ModelHash, stem);
+        var recorded = manifest.ModelPath is { Length: > 0 } named
+            ? Path.Combine(layout.Root, RunManifest.Local(named))
+            : null;
+
+        var renamed = false;
+        string? modelPath;
+
+        if (recorded is not null && File.Exists(recorded))
+        {
+            modelPath = recorded;
+        }
+        else
+        {
+            modelPath = FindByHash(layout, manifest.ModelHash, stem);
+
+            // A recorded path that is gone while some other file still matches is a
+            // rename, and saying so is the difference between "your model moved" and a
+            // result quietly changing what it is about.
+            renamed = recorded is not null && modelPath is not null;
+        }
+
         var modelExists = modelPath is not null;
 
         var modelMatches = modelExists
@@ -180,10 +219,29 @@ public static class VerifyCommand
         if (!modelExists)
         {
             drift.Add(
-                "the model this result came from is gone: no file in models/ has the hash "
-                + $"{manifest.ModelHash}");
+                manifest.ModelPath is { Length: > 0 } gone
+                    ? $"the model this result came from is gone: '{gone}' is not there and "
+                      + $"no other file in models/ has the hash {manifest.ModelHash}"
+                    : "the model this result came from is gone: no file in models/ has the "
+                      + $"hash {manifest.ModelHash}");
         }
-        else if (!modelMatches)
+        else if (renamed)
+        {
+            // A note rather than drift: the content is unchanged, so the result still
+            // answers the question. What has changed is where the question lives.
+            //
+            // Worded as what is actually known, which is less than it looks. Content alone
+            // cannot tell a rename from a twin that was there all along - both leave the
+            // recorded path gone and identical bytes elsewhere - so saying "renamed" would
+            // be asserting a history nothing here observed.
+            notes.Add(
+                $"the model recorded for this result, '{manifest.ModelPath}', is no longer "
+                + $"there; a file with the same content is at "
+                + $"'{Path.GetRelativePath(layout.Root, modelPath!)}', so the result still "
+                + "stands. That is a rename if nothing else held that content");
+        }
+
+        if (modelExists && !modelMatches)
         {
             drift.Add("the model has been edited since this result was computed, so it answers a question "
                 + "about a geometry that no longer exists");
@@ -217,6 +275,9 @@ public static class VerifyCommand
         {
             Manifest = relative,
             Model = modelPath is null ? null : Path.GetRelativePath(layout.Root, modelPath),
+            RecordedModel = manifest.ModelPath is { Length: > 0 } was
+                ? RunManifest.Local(was)
+                : null,
             ModelMatches = modelMatches,
             EngineMatches = engineMatches,
             SolverMatches = solverMatches,

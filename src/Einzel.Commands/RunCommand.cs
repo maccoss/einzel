@@ -787,6 +787,13 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+
+            // Which model, as distinct from which content. Without it verify has to find
+            // the model by searching for one that still hashes to the recorded value, and
+            // editing the model that was actually run then makes its drift disappear -
+            // the result re-attaches to whatever else still matches.
+            ModelPath = RunManifest.Portable(
+                Path.GetRelativePath(project.Root, validation.ModelPath)),
             SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
             EngineVersion = EngineBuild.Version,
             SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
@@ -904,6 +911,13 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+
+            // Which model, as distinct from which content. Without it verify has to find
+            // the model by searching for one that still hashes to the recorded value, and
+            // editing the model that was actually run then makes its drift disappear -
+            // the result re-attaches to whatever else still matches.
+            ModelPath = RunManifest.Portable(
+                Path.GetRelativePath(project.Root, validation.ModelPath)),
             SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
             EngineVersion = EngineBuild.Version,
             SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
@@ -1315,6 +1329,13 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+
+            // Which model, as distinct from which content. Without it verify has to find
+            // the model by searching for one that still hashes to the recorded value, and
+            // editing the model that was actually run then makes its drift disappear -
+            // the result re-attaches to whatever else still matches.
+            ModelPath = RunManifest.Portable(
+                Path.GetRelativePath(project.Root, validation.ModelPath)),
             SchemaVersion = document.SchemaVersion,
             EngineVersion = EngineBuild.Version,
             SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,

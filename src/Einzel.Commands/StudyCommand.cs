@@ -368,6 +368,7 @@ public static class StudyCommand
         ProjectLayout project,
         string studyPath,
         string kind,
+        string modelPath,
         string modelText,
         string schemaVersion,
         string transportMode,
@@ -378,6 +379,13 @@ public static class StudyCommand
         var manifest = new RunManifest
         {
             ModelHash = ContentHash.OfText(modelText),
+
+            // A study's result is about the model the study names. Recorded, so verify
+            // identifies it by name and uses the hash only to decide whether it moved -
+            // rather than the other way round, which loses a drift signal when two models
+            // hold the same content.
+            ModelPath = RunManifest.Portable(
+                Path.GetRelativePath(project.Root, modelPath)),
             SchemaVersion = schemaVersion,
             EngineVersion = EngineBuild.Version,
             SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
@@ -539,7 +547,8 @@ public static class StudyCommand
             [
                 Write(project, absolute, "sweep", outcome),
                 WriteManifest(
-                    project, absolute, "sweep", File.ReadAllText(modelPath), document.SchemaVersion,
+                    project, absolute, "sweep", modelPath, File.ReadAllText(modelPath),
+                    document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
                     DateTimeOffset.UtcNow),
             ],
@@ -636,7 +645,8 @@ public static class StudyCommand
             [
                 Write(project, absolute, "scan", outcome),
                 WriteManifest(
-                    project, absolute, "scan", File.ReadAllText(modelPath), document.SchemaVersion,
+                    project, absolute, "scan", modelPath, File.ReadAllText(modelPath),
+                    document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
                     DateTimeOffset.UtcNow),
             ],
@@ -727,7 +737,8 @@ public static class StudyCommand
             [
                 Write(project, absolute, "boundary", outcome),
                 WriteManifest(
-                    project, absolute, "boundary", File.ReadAllText(modelPath), document.SchemaVersion,
+                    project, absolute, "boundary", modelPath, File.ReadAllText(modelPath),
+                    document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
                     DateTimeOffset.UtcNow),
             ],
@@ -823,7 +834,8 @@ public static class StudyCommand
             [
                 Write(project, absolute, "optimise", outcome),
                 WriteManifest(
-                    project, absolute, "optimise", File.ReadAllText(modelPath), document.SchemaVersion,
+                    project, absolute, "optimise", modelPath, File.ReadAllText(modelPath),
+                    document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
                     DateTimeOffset.UtcNow),
             ],

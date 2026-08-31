@@ -1133,6 +1133,127 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## A verb that works, is documented, and cannot be found
+
+`einzel outline` had no line in `einzel --help`. It worked. It was documented in
+`docs/cli.md`. It is the verb the shell's model tree is built on and the one an agent would
+use to read a model's parameters without parsing the document. And running `einzel --help`
+did not mention it existed. So did `render animation`.
+
+For a surface whose entire argument is that an agent drives it, **a capability that cannot
+be discovered from the tool is close to one that does not exist.** This is the same
+reasoning that makes the platform layer of `AGENTS.md` generated rather than hand-written:
+an instruction set that has drifted is worse than none, because it is trusted.
+
+Nothing checked it, so `HelpCoversEveryVerbTests` now does - **against the dispatcher's own
+switch rather than a list kept in the test**, because a hardcoded list drifts for exactly
+the reason the help did. Both directions are asserted: a verb that dispatches and is not
+listed, and a line listing a verb that no longer dispatches. The second fails differently -
+it sends a reader to a command that answers "unknown".
+
+Writing it took two corrections, both mine and both instructive about what the check is
+*for*. The first regex missed `"optimise" or "optimize" =>`, so an alias chain read as a
+help line with no verb behind it; aliases are now recognised and deliberately not required
+to appear, since listing both spellings would suggest they differ. The second matched the
+*nested* `agents` sub-switch and demanded top-level lines for `tasks`, `setup` and `score`,
+which are correctly listed as `agents tasks` and so on - one line per thing a person types.
+**Both failures were the test misreading the structure, and neither was a defect** - which
+is worth saying, because a new check that fires immediately is as likely to be wrong as the
+code is.
+
+## One field answering two questions diverges where the questions differ
+
+A run manifest recorded the model's **content hash** and not its path. By PRJ-3's own list
+that is complete: the hash is what makes a result regenerable, and it survives a rename
+where a path does not.
+
+So `einzel verify` had to identify the model by searching for a file that still hashed to
+the recorded value. That conflates *what this result was made of* with *what it is about*,
+and the two come apart wherever two files hold the same bytes:
+
+- The result attaches to whichever file is found first, which is arbitrary.
+- **Editing the model that was actually run makes its drift disappear** - the result
+  silently re-attaches to the untouched twin, reports itself current, and the edited model
+  reads as never run.
+
+The second is a stale result reporting as fresh, which is the one direction verify exists
+to prevent. Reaching it takes no contrivance: `einzel init` scaffolds a reflectron, and
+adding the corpus's own reflectron gives a project with two identical models. That is how
+it was found - not by suspecting it, but by building a view that listed both files side by
+side, where the state jumping from one row to the other was visible at a glance.
+
+The fix records the path as well, prefers it, and keeps the hash search as the fallback
+for older manifests and for the case it was written for. The general rule: **when one field
+is made to answer two questions, it answers the second one wrongly exactly where the two
+questions differ.** Ask what a value identifies as well as what it determines.
+
+**And the same mistake once more, in my own fix.** I wrote the fallback's message as *"the
+model has been renamed"*. It cannot know that. The recorded path being gone while identical
+bytes sit elsewhere is equally consistent with a rename and with a twin that was there all
+along - which is the very coincidence the whole defect turned on. My own test caught it:
+deleting one of two identical models produced a "rename" rather than the orphan the test
+expected, and the right response was to correct the message rather than the test. It now
+says what is observed - the recorded path is gone, the same content is at X, so the result
+still stands - and adds that this is a rename *if nothing else held that content*.
+
+**Do not report a history you did not observe.** A message describing a state is checkable;
+one describing an event is a guess about how the state arose, and it reads with exactly the
+same authority.
+
+## The end of a run is where the answer is, and where the picture is not
+
+A diffusive run reports the density it *ended* with. The section renderer learned that
+this is the wrong thing to draw and gained an instant to draw at; the note written at the
+time says it plainly - "a model whose ions have all arrived left an empty box - correctly,
+and uselessly, because the picture worth having is the packet in flight."
+
+Adding the density cloud to the viewport, I anchored it to the end of the run. Its own
+test failed immediately, and the numbers say why: the shipped drift tube launches 10,000
+ions, **collects 9,999.76, and leaves 1.8e-302 behind**. Drawing that is drawing nothing,
+for exactly the models that work.
+
+The general form is worth more than the fix. **A result and a picture of a result want
+different instants.** The end of a run is the only moment that answers "what happened" -
+transmission, transit time, where the ions went - and it is the one moment guaranteed to
+be empty of the thing a picture is of. Any surface that draws a time-evolving quantity
+needs an instant chosen for the drawing, and needs to say which instant it chose.
+
+The viewport now takes snapshots across the flight and draws the middle of those still
+holding a packet, reporting it as `render.density-at-instant`. That the caller can name
+its own instant is the same seam animation scrubbing will need.
+
+## Every normal was exactly zero, and that located a transposition
+
+The density shells passed every structural check written for them: three coordinates per
+vertex, one normal per vertex, triangle indices in range, levels a decade apart. What
+failed was that **760 of 760 normals had length zero**.
+
+`Surfaces.Orient` takes the normal from the gradient of a scalar and leaves it at zero
+where the gradient vanishes. A zero everywhere means the scalar was flat everywhere the
+surface is - and the vertex it named was at y = 36.4 mm on a grid spanning +/-6 mm.
+
+The cause was that I filled the sample array as `values[row, column]` where
+`Contours.Sample` builds `values[column, row]`. Transposed, the contour is traced
+somewhere the density is not: still a well-formed mesh, still watertight, still correctly
+indexed, and sitting in a region where the density is uniformly zero.
+
+Two things generalise.
+
+- **A geometric invariant catches what a structural check cannot.** Counts, ranges and
+  parities all held. What could not hold was a normal being a unit vector, because that
+  depends on the surface sitting where the field actually varies.
+- **A zero-length normal is a locator, not just a defect.** It says "the field is flat
+  here", and printing *where* turned a wrong answer into a coordinate that was obviously
+  outside the domain. The first version of the test only reported the worst magnitude,
+  which was `1.000` and said nothing at all.
+
+A near-miss on the same fix is worth recording: I first assumed the cause was the
+differencing step, since `OrientStepMetres` is 1e-6 and is chosen for a signed distance -
+which changes by the step itself - while a density changes by whatever it changes by.
+That reasoning is correct and the step is now the density's own half-cell, but it was not
+the bug. **A plausible explanation that fixes nothing is the expensive kind**, and only
+re-measuring separated them.
+
 ## Enumerating a requirement's population, rather than believing it
 
 `GRD-2` says validity warnings travel with the result through every layer, and then

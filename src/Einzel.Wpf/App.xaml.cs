@@ -61,7 +61,8 @@ public partial class App : System.Windows.Application
                 new ViewportViewModel(session),
                 new ResultsViewModel(session),
                 new RegimeViewModel(session),
-                new SequenceViewModel(session));
+                new SequenceViewModel(session),
+                new ProjectViewModel(session));
         }
         catch (EinzelException refusal)
         {
