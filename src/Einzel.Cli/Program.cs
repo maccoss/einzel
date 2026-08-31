@@ -2065,6 +2065,19 @@ public static class Program
                     + "measure");
             }
 
+            // Only when there is something to say. A beamline holds nothing at the end
+            // of its run, and a line of zeros on every ordinary model would be noise -
+            // but a TRAP arrives nowhere by design, and without this it reports a
+            // transmission of zero and nothing else, which is what a trap that lost
+            // every ion reports too.
+            if (ensemble.Confined.Value is > 0.0)
+            {
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"confined      {ensemble.Confined.Value:P1} still inside at the end "
+                    + $"of the run, having struck nothing"));
+            }
+
             if (ensemble.ResolvingPower is { } resolving)
             {
                 // Said in words when the peak has no width to resolve. The value is NaN

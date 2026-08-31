@@ -1042,6 +1042,10 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   What makes this worse than an ordinary missing value: **zero is the best possible answer for this quantity**, so "not computed" and "perfect" printed identically. A reader who sees a blank asks; one who sees the ideal result stops looking. Where a diagnostic's not-computed value coincides with its ideal value, the two must be separated at the point the computation is skipped.
 
+- **`einzel run` now reports what is still inside, so a working trap stops reading as a total failure.** A trapped ion never arrives anywhere, so `paul-trap-held` — behaving exactly as designed — printed `0 of 1 ions arrived, transmission 0.0 %` and nothing else, which is what a trap that lost every ion prints too. `confined` is the complement, **counted from the flight the run already did** rather than by calling the figure of merit of the same name, which re-flies the whole ensemble: two implementations of one quantity is what made `run` and `test` disagree twice here. Held reports 100.0%, ejected 0.0%, and an ordinary beamline gets **no line at all**, since a line of zeros on every model is noise.
+
+  **And a trap that works exits with a failure code (4)** — found by writing that test, left unfixed, and recorded. `MaximumFlightTimeReached` is not in the exit logic's success set. **Third occurrence of one pattern**: fixed once for diffusive runs and once for sequenced ones, both times by widening a list of the outcomes known when it was written rather than asking *did this run finish what it was asked to do*. The fix is not a third widening — ending at the flight-time limit is success for a trap and failure for a beamline, and `confined` is now the quantity that could tell them apart.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
