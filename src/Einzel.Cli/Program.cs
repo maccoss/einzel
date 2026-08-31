@@ -2067,11 +2067,18 @@ public static class Program
 
             if (ensemble.ResolvingPower is { } resolving)
             {
-                Console.Out.WriteLine(string.Create(
-                    invariant,
-                    $"resolving     {resolving.Value:G6} +/- "
-                    + $"{(resolving.Uncertainty.Upper - resolving.Uncertainty.Lower) / 2.0:G3}"
-                    + $" (from the central half)"));
+                // Said in words when the peak has no width to resolve. The value is NaN
+                // there rather than a number, because the honest answer is unbounded and
+                // the previous one - zero - was the worst conceivable value standing in
+                // for the best.
+                Console.Out.WriteLine(
+                    double.IsNaN(resolving.Value)
+                        ? "resolving     unbounded: the arrivals carry no spread to resolve"
+                        : string.Create(
+                            invariant,
+                            $"resolving     {resolving.Value:G6} +/- "
+                            + $"{(resolving.Uncertainty.Upper - resolving.Uncertainty.Lower) / 2.0:G3}"
+                            + $" (from the central half)"));
             }
 
             // ACC-5: never a bare percentage. A named surface says which one to

@@ -142,7 +142,12 @@ public static class TrajectoryIntegrator
                 RejectedSteps = 0,
                 FieldEvaluations = 0,
                 AnalyticDriftDistance = 0.0,
-                MaximumRelativeEnergyDrift = 0.0,
+
+                // NaN, for the same reason as below and more strongly: this ion never
+                // flew, so its drift is not merely unmeasured, it is meaningless. Zero
+                // would be the best possible value of a diagnostic that had no chance to
+                // say anything.
+                MaximumRelativeEnergyDrift = double.NaN,
             };
         }
 

@@ -256,13 +256,31 @@ public sealed class ArrivalTimePeak
             new Evidence.Ensemble(Launched, Converged: Launched >= 100));
     }
 
+    /// <summary>The resolving power of a peak with no width: undefined, not zero.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It used to report zero, which is the exact opposite of the truth and contradicted
+    /// the warning printed beside it.</b> Resolving power is t / 2dt, so a width of zero
+    /// makes it unbounded — the best conceivable value — and a reader saw <c>resolving 0</c>,
+    /// the worst. The infinity was even computed, assigned to a local, and then not used.
+    /// </para>
+    /// <para>
+    /// NaN rather than infinity, because absent is what this surface means by "there is no
+    /// answer here": <c>FiniteDoubleConverter</c> writes a non-finite double as null, so
+    /// both would serialise the same, and NaN does not invite arithmetic that would
+    /// propagate silently. It is the rule already applied to an undefined Twiss orientation,
+    /// to a peak width with fewer than two arrivals, and to an energy drift with no scale.
+    /// </para>
+    /// </remarks>
     private Measured Unresolved(double mean)
     {
-        var quantity = Quantity.Number(double.PositiveInfinity);
+        var undefined = Quantity.Number(double.NaN);
 
         return new Measured(
-            Quantity.Number(0.0),
-            UncertaintyInterval.Symmetric(Quantity.Number(0.0), Quantity.Number(0.0), confidenceLevel: 0.68),
+            undefined,
+            // A zero half-width around an undefined value: the interval API refuses a
+            // non-finite width, and it is the VALUE that carries the signal here.
+            UncertaintyInterval.Symmetric(undefined, Quantity.Number(0.0), confidenceLevel: 0.68),
             new Evidence.Ensemble(Arrived, Converged: false),
             [
                 new ValidityWarning(

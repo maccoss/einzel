@@ -1427,6 +1427,34 @@ It also mattered how severe I made it. A `ValidityViolation` on a model that is 
 correct is a false alarm on a channel GRD-3 makes unsuppressible, and it would have taught
 readers to ignore the one warning class that must never be ignored.
 
+## The same defect, twice more, found by running every example and reading the output
+
+Fixing the energy-drift one above took ten minutes. Looking for its siblings took twenty
+and found two, and neither had a failing test because neither could have had one.
+
+**A trajectory that never started reported zero drift.** The early return for "the source is
+inside a conductor" sets `MaximumRelativeEnergyDrift = 0.0` — for an ion that did not fly at
+all, so the diagnostic is not merely unmeasured, it is meaningless. Twelve lines above the
+one that was wrong for the at-rest case.
+
+**A peak with no width reported a resolving power of zero, and the warning beside it said
+unbounded.** Resolving power is `t / 2dt`, so a zero width makes it infinite — the best
+conceivable value — and the run printed `resolving 0`, the worst. The infinity was even
+computed:
+
+    var quantity = Quantity.Number(double.PositiveInfinity);
+    return new Measured(
+        Quantity.Number(0.0),        // <- and this is what was returned
+        ...
+
+assigned to a local and never used. The compiler does not warn about that when the value
+comes from a method call, so `TreatWarningsAsErrors` could not catch it either. It reached a
+shipped example, `slit-transmission`, which prints it on every run.
+
+**What found both was running all 37 examples and reading the diagnostics**, not inspection.
+The sweep is three lines of shell and it is now worth repeating after any change to what a
+run reports.
+
 ## A quantity that was never measured, printed as an excellent value
 
 Every run in this project that launches an ion **at rest** reported
