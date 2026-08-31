@@ -1314,3 +1314,94 @@ A **non-positive sample is refused rather than clamped**, because mobility goes 
 a zero is an infinite drift and a stability limit of zero, so the run does not answer
 wrongly, it never finishes. The refusal names the alternative — a collisionless region is
 described by trajectory integration, not by diffusion.
+
+
+## `radialSpread`, and why a driven diffusive run could not be asserted without it
+
+A density had two figures of merit: `transitTime` and `transmission`. Neither can see what
+an RF guide does, and an RF guide is the device the whole pressure effort exists for.
+
+**The transit is contaminated.** A ring stack has an axial ponderomotive corrugation - the
+effective well is deepest at each ring edge, where the field is largest - so an ion drifting
+along the axis climbs in and out of a barrier at every ring. Measured on a 12.5 mm guide at
+600 V/m: **426.0 us with the drive off, against 810.7 us with it on**, where the closed form
+`L / (mu E)` is 425.9. The drive nearly doubles the transit. So "the RF confines radially
+and does nothing axially" is simply false, and a transit-based claim would be measuring the
+corrugation rather than the confinement.
+
+**And the transmission has no closed form.** At a working point where the drive decides the
+outcome - bore 1 mm, 600 V/m - it is 0.79 with the drive on and 0.08 with it off, a real
+tenfold. But neither number is arithmetic, and the corpus requires an expectation that is
+arithmetic, published, or an exact invariant.
+
+**Worse, at a comfortable working point the drive does not matter at all.** At 5 kV/m
+through a 2 mm bore the diffusion length over the 52 us transit is `sqrt(2 D t)` = 0.34 mm,
+so nothing reaches the wall either way: transmission 0.9977 with the drive on and 0.9740
+with it off. **A corpus example built there would pass with the ponderomotive path doing
+nothing at all** - the exact shape of test this project keeps finding and refusing.
+
+So the gap was a figure, not a model. `radialSpread` is the population-weighted standard
+deviation of the density across the direction of travel, about the packet's own centroid -
+radial in an axisymmetric solve, transverse in a cross-section. `DensityField.Spread()`
+already computed it; what did not exist was a way for a project test or a study to ask.
+That is the same gap `transitTime` and `meanKineticEnergy` were added to close.
+
+**Both regimes have a closed form, which is what makes it worth having.** Unconfined, the
+width follows `sqrt(seed^2 + 2 D t)` with `D = mu kT / q` from the Einstein relation:
+
+| | measured | closed form | |
+| --- | --- | --- | --- |
+| 50 us | 0.69474313 mm | 0.6947 | 6.2e-5 |
+| 200 us | 1.0865935 mm | 1.0866 | 5.9e-6 |
+| 800 us | 1.9934884 mm | 1.9932 | 1.5e-4 |
+
+**And the width does not care about the drift**, which is the stronger half: 1.0865935 mm
+with no field, 1.0865873 at 2 kV/m, and the same at 5 kV/m - identical to the seventh digit
+while the packet is carried a hundred millimetres downstream. Diffusion is isotropic and a
+uniform drift does not broaden a packet; a scheme that let it would fail here while passing
+every arrival-time check there is.
+
+`drift-tube-spread` ships as the corpus example, retaining its entire population over the
+window so the width is of the whole packet rather than of whatever survived.
+
+**And the driven half ships too**, once the format gap it was blocked on was closed. The
+equilibrium width in a harmonic effective well is `sqrt(kT / (m omega_sec^2))` - a closed
+form - but the well of a *solved* rod geometry is not the ideal one, so writing the ideal
+formula against it would assert a few per cent of modelling difference as though it were
+arithmetic. What was missing was an **analytic** driven field: the format offered
+`fieldFree`, `uniform`, `halfSpaceUniform`, `solved2d` and `solved3d`, and every driven
+field was solved. `idealQuadrupoleRf` closes that - the class had existed in
+`Einzel.Fields` since the Mathieu work and had simply never been reachable from a document.
+
+**The well is collisional, and that is what makes the check sharp.** From
+`m(v' + nu v) = q E0 cos(Omega t)` the depth is `q E0^2 / (4 m (Omega^2 + nu^2))` rather
+than Dehmelt's `q E0^2 / (4 m Omega^2)`, with `nu = q / (m mu)` from the declared mobility.
+At 1 mbar and 1 MHz that is `nu/Omega = 0.34` and a suppression of **0.896**, so the
+collisionless formula is ten per cent away - and the measurement lands on the collisional
+one to **1.2e-6**:
+
+| drive | measured | closed form | |
+| --- | --- | --- | --- |
+| 200 V | 0.13745984 mm | `sqrt(kT / m omega_sec^2)` = 0.13746 | **1.2e-6** |
+| 400 V | 0.06872992 mm | 0.06873 | 1.2e-6 |
+| 800 V | 0.0333038 mm | 0.034365 | 3.1e-2 |
+
+The 800 V case is off because its 0.034 mm width is **narrower than the 0.0625 mm cell** -
+under-resolved, and degrading in the place that says so.
+
+`E0(r) = 2 V r / r0^2`, not `V r / r0^2`: the potential is `V(x^2 - y^2)/r0^2` and its
+gradient carries the factor of two. Getting it wrong makes every number here exactly four
+times too small, which this codebase has been caught by once already.
+
+**Shipped as a pair on one grid**, `rf-quadrupole-confined` and
+`rf-quadrupole-unconfined`, differing in one number: the drive amplitude, 200 V against 0.
+The width goes 0.137 mm to 1.303 mm, nine-fold, and each half matches a *different* closed
+form. Neither is worth much alone - a width that happens to match one formula says nothing
+about whether the drive is doing anything.
+
+**The grid had to hold both**, which is the one awkward thing about the pair: an eleven-fold
+range of width needs a mesh fine enough for the confined packet and wide enough for the
+unconfined one's tails. A first attempt sized for the confined case alone clipped the
+unconfined packet and reported it 9% narrow. And a first fix over-corrected - 512 intervals
+where 256 was already enough - which cost four minutes against seventeen seconds for the
+same two answers to the same precision.

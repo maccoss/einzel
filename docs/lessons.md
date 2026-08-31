@@ -1133,6 +1133,69 @@ place it is used.
 **A summary statistic computed over a truncated population is not a smaller version of
 the right answer. It is a measurement of the truncation.**
 
+## Three thresholds picked before measuring, all comparing the wrong pair
+
+The C-trap's central claim is that the RF is what carries an ion round the bend, checked
+against the same model with the drive off. Getting the *assertion* right took three
+attempts, and all three failed the same way: I chose what to compare before looking at
+what the numbers were.
+
+**First: worst excursion against worst excursion**, asserting an order of magnitude. The
+measurement was 586 um guided against 3004 um unguided - a ratio of five, which reads as
+"not very different". But those are not the same kind of quantity. The guided ion's 586 um
+is the amplitude of an oscillation it returns from; the unguided one's 3004 um is simply
+how far it had got when it hit a rod. Comparing them is comparing an amplitude with a
+displacement.
+
+**Second: final distance against worst**, on the reasoning that a confined ion comes back.
+It does - but an oscillating quantity sampled at one arbitrary instant is anywhere in its
+range, and the guided ion happened to be caught at 61% of its amplitude when it crossed the
+detector. A single sample never characterises an oscillation.
+
+**Third: the unguided ion's closest late approach against its own worst.** It strikes at
+25.9 us, so the second half of its path *begins* when it is already 782 um out. Its own
+worst is not a scale it ever returns from - it is where it stopped.
+
+What finally works is the closest approach over the later part of the flight, of one ion
+**against the other**: the guided ion comes back to **2.5 um** and the unguided one never
+gets nearer than **782 um**, a factor of 313. That is bounded-versus-unbounded, which is
+what confinement actually means, and it needs no arbitrary length.
+
+**The rule: look at the numbers before choosing the comparison.** A threshold picked in
+advance encodes an assumption about what kind of quantity you are measuring, and here that
+assumption was wrong three times over in the same direction - treating something that
+oscillates as though one number described it.
+
+## The property an instrument is built on cannot validate the field it rests in
+
+The quadro-logarithmic field's radial component went in negated. `-dU/dr` is
+`k(r/2 - Rm^2/2r)`; what I wrote was `k(Rm^2/2r - r/2)`, so it pushed ions outward where
+the doc comment two lines above said "pulls inward inside it".
+
+**Every frequency test passed with it.** The axial motion obeys `m z'' = -q k z` with no
+`r` anywhere in it, so it is exactly decoupled from the radial coordinate - which is the
+whole design of an orbital analyser, and the reason its frequency measures mass. A radial
+field of entirely the wrong sign does not touch it. Five cases spanning radius, tangential
+speed and axial amplitude all agreed with `sqrt(q k / m)` to parts in a hundred million,
+while the ions they were computed from were being flung outward instead of held.
+
+What caught it was the two checks that couple the components back together: `E = -grad U`
+by numerical differencing, and energy conservation along a trajectory.
+
+**The general form is worth more than the bug.** A designed invariance is a designed
+blindness. When an instrument is built so that one quantity does not depend on the others,
+measuring that quantity cannot tell you the others are right - and it is exactly the
+quantity a test writer reaches for first, because it is the one with the clean closed form.
+Pair it with something that spans the parts: a gradient check, an energy check, a
+conservation law that involves every component.
+
+A related trap in the same file, and it is why the first run reported twelve failures
+rather than two: `Assert.Equal(expected, measured, 3)` on a frequency of order 1e6 asks for
+three *decimal places*, which is 3e-10 relative. The physics was right to 5e-8 and the
+assertion was wrong by two orders of magnitude. **A decimal-place assertion is an absolute
+one**, and on a large number it silently becomes far stricter than anything the code could
+deliver - and on a small number, far looser.
+
 ## A verb that works, is documented, and cannot be found
 
 `einzel outline` had no line in `einzel --help`. It worked. It was documented in
@@ -1294,6 +1357,281 @@ Three things generalise.
 
 **The audit was worth more than either fix.** Both defects were in code that had been
 reviewed, tested, and written up as working.
+
+## A ratio's size is its distance from one, not its value
+
+Comparing two effects that are both expressed as ratios, I wrote
+
+    Assert.True(phaseSpread < driveShift / 4.0, ...)
+
+meaning "the phase matters much less than the drive does". It cannot pass. A ratio that
+says *no variation at all* is **1**, not 0, so a phase spread of 1.10 is not four times
+smaller than a drive shift of 3.14 — it is an effect of **0.10** against one of **2.14**,
+which is twenty-one times smaller. The comparison has to be on the excess over one.
+
+The measurement was right and the assertion was wrong, which is the dangerous way round:
+the number printed beside it, `1.10x`, is exactly what "the phase hardly matters" looks
+like, so the failure read as a physics result rather than as arithmetic.
+
+**Where else this bites:** any quantity whose null value is 1 rather than 0 — a ratio, a
+speed-up, a scale factor, a convergence factor, an enhancement. `a < b / 4` is a claim
+about magnitudes, and it only means what it looks like when zero is the null.
+
+## A device driven outside the regime an effect lives in reports the effect's absence
+
+The scan that established the C-trap's focusing first ran with the RF at 500 V and the
+ejection at 60 V. The packet did not converge, and the obvious reading was that the
+curvature does not focus.
+
+It was not. The ions were rattling in a well eight times deeper than the push and leaving
+at whatever phase they happened to escape at — **11 to 23 degrees off radial**, four of
+five striking the slot edges. A real C-trap switches its RF off to eject, and with the
+drive off the same geometry focuses **20.8x**.
+
+This has appeared here before, in a confinement test run on two flat plates: the
+ponderomotive force goes as the gradient of E squared, a nearly uniform field has no well,
+the packet moved 0.1% either way, and the test passed on a threshold of "less than where it
+began". **The absence of an effect and an operating point that cannot show it produce the
+same output.** Before concluding a mechanism is absent, check that the operating point
+admits it.
+
+## A discontinuous potential is not a discontinuous trajectory
+
+Bounding an analytic field to a box makes its potential jump at the boundary, because a box
+is not an equipotential of anything interesting. I wrote that up as "an ion crossing gains
+or loses that much energy per crossing", graded it against ACC-1's budget, and made
+`FieldAssembly.Build` refuse above it.
+
+**It is wrong, and one measurement settled it.** An ion is moved by the **field**, and the
+field is exactly the declared one on each side. So a uniform field bounded to a box is an
+accelerating gap followed by a field-free drift — an ordinary instrument:
+
+| | |
+| --- | --- |
+| `sqrt(2 m L / (q E)) + (D - L) / v` | **13.658582 us** |
+| measured, bounded | **13.658582 us** |
+| same model with no region | 10.180506 us |
+
+What the step actually costs is narrower and had to be worked out separately: the
+**energy-drift diagnostic** is computed from the potential and so jumps at the boundary, and
+the piecewise field is **not conservative across it** — an ion that crosses more than once,
+in by one face and out by another, can gain energy no electrode supplied. A single straight
+crossing has no such path.
+
+**The mistake was reasoning about the potential when the integrator uses the field.** The
+two are the same object only where the field is the gradient of the potential, and a region
+is precisely a place where the code makes them disagree. The general form: *before deriving
+a consequence from a quantity, check that the code path in question actually reads it.*
+
+It also mattered how severe I made it. A `ValidityViolation` on a model that is provably
+correct is a false alarm on a channel GRD-3 makes unsuppressible, and it would have taught
+readers to ignore the one warning class that must never be ignored.
+
+## The same defect, twice more, found by running every example and reading the output
+
+Fixing the energy-drift one above took ten minutes. Looking for its siblings took twenty
+and found two, and neither had a failing test because neither could have had one.
+
+**A trajectory that never started reported zero drift.** The early return for "the source is
+inside a conductor" sets `MaximumRelativeEnergyDrift = 0.0` — for an ion that did not fly at
+all, so the diagnostic is not merely unmeasured, it is meaningless. Twelve lines above the
+one that was wrong for the at-rest case.
+
+**A peak with no width reported a resolving power of zero, and the warning beside it said
+unbounded.** Resolving power is `t / 2dt`, so a zero width makes it infinite — the best
+conceivable value — and the run printed `resolving 0`, the worst. The infinity was even
+computed:
+
+    var quantity = Quantity.Number(double.PositiveInfinity);
+    return new Measured(
+        Quantity.Number(0.0),        // <- and this is what was returned
+        ...
+
+assigned to a local and never used. The compiler does not warn about that when the value
+comes from a method call, so `TreatWarningsAsErrors` could not catch it either. It reached a
+shipped example, `slit-transmission`, which prints it on every run.
+
+**What found both was running all 37 examples and reading the diagnostics**, not inspection.
+The sweep is three lines of shell and it is now worth repeating after any change to what a
+run reports.
+
+## A quantity that was never measured, printed as an excellent value
+
+Every run in this project that launches an ion **at rest** reported
+
+    energy drift  0.00E+000 relative (ACC-4 budget 1e-6)
+
+which reads as four orders inside budget. It means **not measured**.
+
+The drift is relative, so it needs a scale, and the scale is the ion's total energy at
+launch. An ion released from rest at a point where the potential is zero has a total energy
+of exactly zero, so the tracker returns without doing anything — and `maximumEnergyDrift`
+was left at the `0.0` it was initialised to. The accelerating gap, the sequenced extraction,
+the Paul trap and the rectilinear trap were all affected, and all of them are examples
+somebody would read.
+
+**The rule this project already has is "absent, not zero", and it had been applied three
+times before without generalising**: a Twiss orientation is undefined for a perfectly
+parallel cloud and is now absent rather than zero; a peak width needs two arrivals and is
+absent rather than zero when there is one; a driven field does work deliberately, so its
+energy drift is already NaN rather than a number that looks like a diagnostic. This is the
+same case and it was initialised to zero one line above the branch that returns.
+
+**What makes it worse than an ordinary missing value is that zero is the best possible
+answer for this quantity.** A reader who sees a blank asks; a reader who sees the ideal
+result stops looking. When a diagnostic's "not computed" value coincides with its "perfect"
+value, the two must be distinguished at the point where the computation is skipped, not
+left to the reader.
+
+## Exit codes and validity violations are orthogonal, and enumerating said so
+
+Having fixed the exit code to ask whether the engine finished, the obvious next step looked
+like making it also fail when a run carries a non-suppressible **validity violation** — that
+being, on the face of it, exactly "the engine did not compute what the document describes".
+An unconverged field is the motivating case: `FieldAssembly.Build` refuses to hand over a
+bare field for it, while `einzel run` exits 0.
+
+**Enumerating first turned that from a task into a settled no.** Eleven of the thirty-seven
+shipped examples carry a validity violation:
+
+| | |
+| --- | --- |
+| `mobility.outside` | 5 — a low-field mobility outside its fitted range |
+| `spacecharge.ignored` | 4 — the packet's own charge implies an error over budget |
+| `spacecharge.point` | 2 — a cloud with no extent, so no estimate is possible |
+| `rf.quiver`, `diffusion.implicit` | 1 each |
+
+Every one of them behaves exactly as designed, and each asserts a closed form in its own
+test file *knowing* the caveat applies. So the change would have failed 30% of the reference
+corpus — worse than the rule it was meant to complete, which failed 16%.
+
+**The reason is the doctrine, which the idea contradicted without my noticing.** Taint, never
+block: the platform never stops you working, it refuses to let a result look cleaner than it
+is. A validity violation is the mechanism for "this number carries a caveat you cannot
+suppress". An exit code is the mechanism for "the command failed". They are deliberately
+orthogonal, and coupling them would turn every unsuppressible caveat into a broken build.
+
+What that leaves genuinely open is much narrower than the note it replaces: an *unconverged
+field* specifically, where `Build` already refuses and `run` does not. That is one warning
+code, not a class.
+
+**The pattern, twice in one sitting.** Both halves of this were decided by counting the
+population rather than by reasoning about the motivating case, and both times the count
+changed the answer — once from "add a schema field" to "ask a different question", once from
+"do it" to "don't". A rule about results is testable against the corpus of results before it
+is written.
+
+## The proxy was the outcome; the question was who failed
+
+Written up as an open question the night before, and now settled — the answer was not the
+one the note predicted, which is why it is worth reading with the original.
+
+The note said the fix could not be a third widening of the success list, because "ended at
+the time limit with everything still inside" describes both a trap holding its ions and a
+beamline whose ion ran out of flight time, and nothing in the document tells them apart. It
+concluded the distinction was **intent**, and therefore a schema question.
+
+**Enumerating the corpus made that conclusion unnecessary.** Six of the thirty-seven shipped
+examples exited with a failure code while behaving exactly as designed, and they split into
+two kinds rather than one:
+
+| | |
+| --- | --- |
+| ends at a declared hold | `paul-trap-held`, `thermalisation`, `orbital-trap-frequency` |
+| deliberate loss, the control half of a pair | `paul-trap-ejected`, `quadrupole-rf-unstable`, `ion-funnel-no-rf` |
+
+The second kind ends `StruckElectrode`, which no amount of trap-versus-beamline intent
+would have fixed. So the shared property is not what the model is for. It is that **the
+engine finished in every one of these cases** — the transmission, the itemised losses and
+`confined` say what became of the ion, and each of those six examples asserts exactly that
+in its own test file.
+
+What is left as a failure is an integrator that gave up: a step-size underflow, an exhausted
+step budget. Those leave a trajectory that stops part way for a numerical reason, with no
+bound on how wrong it is.
+
+**The generalisation, corrected.** The earlier note's rule — *when a proxy keeps needing to
+be widened, ask the question, but check the question is answerable from what you have* — was
+right about the first half and wrong about the second. The question was answerable; I had
+picked the wrong question. "Was this model meant to hold ions" is unanswerable and
+unnecessary; "did the engine compute what it was asked" is neither.
+
+**The way to tell those apart was to enumerate the population.** Three examples suggested
+intent; six ruled it out. Reasoning about one case chose a schema change that would not have
+fixed half the instances.
+
+`TrajectoryOutcome.Completed()` is now a switch with every case named and a throw for the
+rest, rather than a list of the successful ones — so a sixth outcome fails to compile until
+somebody decides which kind it is, instead of being silently classified as a failure the way
+diffusive and sequenced runs both were.
+
+## A list of known outcomes, three times, where the question was never asked
+
+`einzel run` exits 4 — ConvergenceFailure — on `paul-trap-held`, an example that behaves
+exactly as designed. The exit logic reads
+
+    run.Outcome is "StopConditionMet" or "DensityEvolved"
+
+and `MaximumFlightTimeReached` is not in it. **This is the third sighting.** The list had
+to learn `DensityEvolved` after a working diffusive run reported itself as a failure, and
+the sequenced path needed the same fix again. Each time it was widened; each time the next
+mode broke it.
+
+The reason is that the list is a **proxy** for the question, and the question is *did this
+run finish what it was asked to do*. "Which outcome was it" is equivalent to that only for
+the modes that existed when the line was written.
+
+**But the fix here is not a third widening, and working out why is the useful part.** The
+tempting rule is "ended at the time limit with everything still inside and nothing struck →
+success", which describes a trap holding its ions. It also describes **a beamline whose ion
+ran out of flight time half way down the column** — same outcome, same loss channel, same
+counts. The two are indistinguishable from the result alone.
+
+So the distinction is not in the physics, it is in **what the model is for**, and nothing in
+the document says. That makes it a schema question rather than a bug: a trap would have to
+declare that reaching the time limit is its intended end. Recorded rather than guessed at.
+
+The generalisation: **when a proxy for a question keeps needing to be widened, the fix is
+usually to ask the question — but check first that the question is answerable from what you
+have.** Here it is not, and noticing that is what stops a fourth widening that would make a
+lost beam look like a held one.
+
+## A guard that checks a string is present cannot see a no-op
+
+Writing a test that needed a trap model with a bigger ion cloud, I edited the document by
+string replacement and guarded it the way this project already learned to:
+
+    Assert.Contains("\"cloud\"", document);
+
+The trap **already declared a cloud**, of one ion. So the replacement inserted a second
+`"cloud"` key, `System.Text.Json` took the last of the two — the original — the run flew one
+ion, and the guard passed on a string that had been there all along.
+
+The existing rule came from three shipped tests that edited a scaffolded model by string
+replacement against a layout the corpus had reformatted: the edit matched nothing, and each
+test reported the feature it was checking as broken. The fix then was to assert the
+replacement happened. **What that fix has to assert is that the document CHANGED**, not that
+it now contains something — because the second is true whenever the thing was already there,
+which is exactly the case where a replacement quietly does nothing.
+
+    Assert.NotEqual(original, document);
+
+## A test that cannot fail in the regime it is written for
+
+The same test then compared `einzel run`'s confinement against the `confined` figure of
+merit over a trap holding **all** of its ions. Both said 100%, and both would have said 100%
+with the defect restored — a trap that holds everything reports the same number by any
+route, and so does one that holds nothing.
+
+The regime where the two can differ is **partial** confinement. With the cloud made hot
+enough that the trap keeps 5% of it, the run says 5.0% and the unfixed figure says 100%.
+The test now asserts that the reported fraction is strictly between, so it cannot pass on a
+trap where the comparison is vacuous.
+
+**Agreement between two computations is evidence only in a regime where they could
+disagree.** This project has the same finding from the other direction — an advection test
+whose cell Péclet sat below the threshold of the bug, and a confinement test on two flat
+plates that could not make a ponderomotive well.
 
 ## The pattern
 

@@ -74,6 +74,25 @@ public sealed record EnsembleOutcome
     public required MeasuredJson Transmission { get; init; }
 
     /// <summary>
+    /// Fraction still inside at the end of the run - neither struck nor arrived.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What a trap is measured by</b>, since a trapped ion by definition never arrives
+    /// anywhere. Without it a working trap and one that lost every ion both report a
+    /// transmission of zero, and the terminal shows the alarming number without the
+    /// descriptive one - which is how `paul-trap-held`, an example that behaves exactly as
+    /// designed, reads as a total failure.
+    /// </para>
+    /// <para>
+    /// Counted from the flight the run already did rather than by calling the `confined`
+    /// figure of merit, which re-flies the whole ensemble. Two implementations of one
+    /// quantity is the defect that made `run` and `test` disagree twice here.
+    /// </para>
+    /// </remarks>
+    public required MeasuredJson Confined { get; init; }
+
+    /// <summary>
     /// Where the ions that did not arrive went, by surface, largest first.
     /// </summary>
     /// <remarks>
@@ -363,6 +382,24 @@ public sealed record RunOutcome
     /// <summary>Why the integration stopped.</summary>
     public required string Outcome { get; init; }
 
+    /// <summary>Whether the engine computed what it was asked to.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not whether the instrument performed.</b> An ion that struck an electrode, or
+    /// that was still held when the declared flight time elapsed, is a result; the
+    /// transmission, the itemised losses and <c>confined</c> say what became of it. Only an
+    /// integrator that gave up - a step-size underflow, an exhausted step budget - leaves
+    /// numbers that stop part way with no bound on how wrong they are.
+    /// </para>
+    /// <para>
+    /// Carried here rather than derived from <see cref="Outcome"/> at the surface, because
+    /// deriving it there is what produced a list of the outcome names known when the line
+    /// was written. That list had to be widened twice, and still called six of the
+    /// thirty-seven shipped examples failures.
+    /// </para>
+    /// </remarks>
+    public required bool Completed { get; init; }
+
     /// <summary>Where the ion ended, in millimetres.</summary>
     public required IReadOnlyList<double> FinalPositionMm { get; init; }
 
@@ -489,10 +526,28 @@ public static class RunCommand
                     (double)charge.Population / Math.Max(1, model.Cloud.Ions)),
             ];
 
+        var held = flight.Remaining.Count;
+
+        var confinedFraction = launched > 0 ? (double)held / launched : 0.0;
+        var confinedQuantity = Quantity.Number(confinedFraction);
+
+        var confined = new Measured(
+            confinedQuantity,
+            UncertaintyInterval.Symmetric(
+                confinedQuantity,
+                Quantity.Number(
+                    Math.Max(
+                        Math.Sqrt(confinedFraction * (1.0 - confinedFraction) / Math.Max(1, launched)),
+                        1.0 / Math.Max(1, launched))),
+                0.68),
+            new Evidence.Ensemble(launched, launched >= 100),
+            []);
+
         return new EnsembleOutcome
         {
             Launched = launched,
             Arrived = arrived,
+            Confined = MeasuredJson.From(confined, "1"),
             Collisions = flight.Collisions,
             ScatteredIons = flight.ScatteredIons,
 
@@ -843,6 +898,7 @@ public static class RunCommand
                 "us"),
 
             Outcome = "SequenceCompleted",
+            Completed = true,
 
             // The packet's centre where the sequence left it. Not a single ion's final
             // position - there is no single ion - which is why this is a centroid and is
@@ -970,6 +1026,7 @@ public static class RunCommand
                 "us"),
 
             Outcome = "DensityEvolved",
+            Completed = true,
             FinalPositionMm = [],
             MaximumRelativeEnergyDrift = double.NaN,
             AcceptedSteps = result.Steps,
@@ -1404,6 +1461,7 @@ public static class RunCommand
             Manifest = manifest,
             FlightTime = MeasuredJson.From(flightTime, "us"),
             Outcome = finest.Outcome.ToString(),
+            Completed = finest.Outcome.Completed(),
             FinalPositionMm =
             [
                 finest.FinalState.Position.X * 1e3,

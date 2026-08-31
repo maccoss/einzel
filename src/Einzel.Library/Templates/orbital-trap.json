@@ -1,0 +1,158 @@
+{
+  "schemaVersion": "0.7",
+  "name": "orbital-trap",
+  "description": "An electrostatic orbital trap: ions circle a central spindle while oscillating along it, and the axial frequency is what the instrument measures. The field is quadro-logarithmic - a harmonic axial well superposed on a logarithmic radial one - and is declared analytically rather than solved, because the electrode shapes that produce it ARE its own equipotentials, so an analytic field is the exact statement of the geometry rather than an approximation to it. What makes the device work is an independence: dU/dz = k z carries no r, so the axial frequency sqrt(q k / m) is the same whatever the radius, whatever the angular momentum, and whatever the axial amplitude. Mass is read from a frequency only because of that. An ion is injected off the axis and off the centre plane, which is what a real injection does - it arrives through a slot at a radius inside the characteristic one, with a tangential velocity that puts it on an orbit and an axial offset that starts the oscillation. Descended from the Kingdon trap, which is the same logarithmic radial confinement with no axial well at all.",
+  "parameters": {
+    "curvature": {
+      "value": 20.0,
+      "unit": "V/mm^2",
+      "minimum": 1.0,
+      "maximum": 10000000.0,
+      "description": "Axial curvature of the potential, conventionally k. The one number the measured frequency comes from: omega = sqrt(q k / m), and nothing else enters it. At 20 V/mm^2 an m/z 500 ion oscillates at 313 kHz and is injected through 1.5 keV, which is the scale a compact orbital analyser runs at."
+    },
+    "characteristicRadius": {
+      "value": 20.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 200.0,
+      "description": "The radius at which the radial field vanishes, conventionally Rm. Inside it an ion is pulled toward the spindle and can orbit; outside it is pushed away, which is why a real trap has its outer electrode there."
+    },
+    "orbitRadius": {
+      "value": 10.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 190.0,
+      "description": "Where the ion is injected, between the spindle and the characteristic radius. It changes the orbit and the tangential speed needed to hold it - and does not change the axial frequency at all, which is the property the device rests on."
+    },
+    "axialOffset": {
+      "value": 3.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "description": "How far off the centre plane the ion enters. This is the amplitude of the axial oscillation, and it does not change its frequency: a harmonic well is isochronous, which is why a packet spread along the axis still gives one line."
+    },
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da",
+      "minimum": 1.0,
+      "maximum": 100000.0,
+      "description": "The quantity being measured. The axial frequency goes as its inverse square root, which is the calibration law of every orbital analyser."
+    },
+    "turns": {
+      "value": 40.0,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 100000.0,
+      "description": "How many axial oscillations to follow. A real transient is hundreds of thousands, since the resolving power grows with the length of the record; this is enough to measure a frequency."
+    },
+    "orbitPotential": {
+      "expression": "curvature * (characteristicRadius * characteristicRadius - orbitRadius * orbitRadius) / 4",
+      "unit": "V",
+      "description": "The circular-orbit condition written as the accelerating potential whose speed it is: m v^2 / 2q, which is k (Rm^2 - r^2) / 4. Independent of mass to charge, which is why one injection energy serves every ion an orbital analyser accepts."
+    },
+    "axialPeriod": {
+      "expression": "referencePeriod * sqrt((massToCharge / referenceMass) * (referenceCurvature / curvature))",
+      "unit": "us",
+      "description": "The axial period at this working point. Written as the reference times a dimensionless ratio, because sqrt is dimensionless-only - the square root of a mass over a curvature has no representation in an integer-exponent dimension system, and the grammar refuses it rather than dropping the dimension."
+    },
+    "flightTime": {
+      "expression": "turns * axialPeriod",
+      "unit": "us",
+      "description": "Long enough for the declared number of axial oscillations."
+    },
+    "referenceMass": {
+      "value": 500.0,
+      "unit": "Da",
+      "minimum": 1.0,
+      "maximum": 100000.0,
+      "description": "The mass the reference period below was measured at. Only the ratio to massToCharge is used, so this is a unit-bearing constant rather than a knob."
+    },
+    "referenceCurvature": {
+      "value": 20.0,
+      "unit": "V/mm^2",
+      "minimum": 1.0,
+      "maximum": 10000000.0,
+      "description": "The curvature the reference period was measured at, likewise. Changing either reference without the other changes nothing, since they appear only as ratios."
+    },
+    "referencePeriod": {
+      "value": 3.1983,
+      "unit": "us",
+      "minimum": 1e-06,
+      "maximum": 1000000.0,
+      "description": "The axial period at the reference mass and curvature. This is the one number here the grammar cannot derive: the period is 2 pi sqrt(m / (q k)) and the grammar has no elementary charge, so a dimensionless ratio has to be anchored to a measured one. Everything else scales off it exactly."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "expression": "massToCharge",
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "axialOffset",
+        "orbitRadius",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        0,
+        0,
+        1
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "orbitPotential",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "quadroLogarithmic",
+      "curvature": {
+        "expression": "curvature",
+        "unit": "V/mm^2"
+      },
+      "characteristicRadius": {
+        "expression": "characteristicRadius",
+        "unit": "mm"
+      },
+      "centre": {
+        "value": [
+          0,
+          0,
+          0
+        ],
+        "unit": "mm"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "characteristicRadius",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "maximumFlightTime": {
+      "expression": "flightTime",
+      "unit": "us"
+    },
+    "relativeTolerance": 1e-11
+  }
+}

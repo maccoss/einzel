@@ -200,10 +200,29 @@ public static class FlightTimeStudy
         {
             if (run.Outcome != TrajectoryOutcome.StopConditionMet)
             {
+                // The severity says which of two different things happened, because they
+                // were previously the same one. An ion that struck an electrode or was
+                // still held when the declared flight time elapsed is a RESULT - the
+                // integration did what the document asked, and the transmission, the
+                // itemised losses and `confined` say what became of it. An integration
+                // that underflowed its step floor or exhausted its step budget did not
+                // finish, and its numbers stop part way for a numerical reason.
+                var completed = run.Outcome.Completed();
+
                 warnings.Add(new ValidityWarning(
                     "TRAJECTORY_INCOMPLETE",
-                    $"an integration ended as {run.Outcome} rather than reaching the stopping surface",
-                    WarningSeverity.ValidityViolation));
+                    completed
+                        ? $"an integration ended as {run.Outcome} rather than reaching the "
+                          + "stopping surface. The run is complete and this is its result: "
+                          + "see the transmission, the itemised losses and, for a trap, the "
+                          + "confined fraction"
+                        : $"an integration ended as {run.Outcome}, which is the integrator "
+                          + "giving up rather than the ion arriving anywhere: the trajectory "
+                          + "stops part way and there is no bound on how far off it is",
+                    completed
+                        ? WarningSeverity.Qualified
+                        : WarningSeverity.ValidityViolation));
+
                 break;
             }
         }

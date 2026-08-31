@@ -151,7 +151,11 @@ public static class FiguresOfMerit
         new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false, AccuracyClass.Trajectory),
         new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical),
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical),
+        new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical),
         new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
+        new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary),
+        new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
+        new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
         new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false, AccuracyClass.Boundary),
         new("secularFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
         new("secularFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
@@ -419,6 +423,10 @@ public static class FiguresOfMerit
             "confined" => model => Confined(model, energySpread, ions, report),
             "meanKineticEnergy" => model => MeanKineticEnergy(model, report),
             "transitTime" => model => Transit(model, report),
+            "radialSpread" => model => RadialSpread(model, report),
+            "oscillationFrequencyX" => model => Oscillation(model, 0, report),
+            "oscillationFrequencyY" => model => Oscillation(model, 1, report),
+            "oscillationFrequencyZ" => model => Oscillation(model, 2, report),
             "secularFrequencyX" => model => Secular(model, 0, report),
             "secularFrequencyY" => model => Secular(model, 1, report),
             "secularFrequencyZ" => model => Secular(model, 2, report),
@@ -909,6 +917,72 @@ public static class FiguresOfMerit
     }
 
     /// <summary>
+    /// How wide the density is across the direction of travel, at the end of the run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The figure a driven diffusive run could not be asserted by.</b> An RF guide's
+    /// whole effect is radial: it holds ions off the walls, and lets them spread when it is
+    /// off. Neither of the two figures a density already had could see that. The transit is
+    /// contaminated - a ring stack has an axial ponderomotive corrugation, deepest at each
+    /// ring edge where the field is largest, which at a weak axial field nearly doubles the
+    /// time - and the transmission has no closed form. So the effect the mode exists to
+    /// model had no measurable quantity, which is the same gap <c>transitTime</c> and
+    /// <c>meanKineticEnergy</c> were added to close.
+    /// </para>
+    /// <para>
+    /// <b>Both regimes have a closed form, which is what makes it worth having.</b>
+    /// Unconfined, a packet spreads by diffusion alone and the width goes as
+    /// <c>sqrt(2 D t)</c> with <c>D</c> from the Einstein relation - arithmetic the solver
+    /// has no part in, and already the sharpest check it has. Confined in a harmonic
+    /// effective well, it settles at the thermal width <c>sqrt(kT / (m omega^2))</c>. A
+    /// figure that could only be compared against itself would not be worth adding.
+    /// </para>
+    /// <para>
+    /// About the packet's own centroid rather than about the axis, so it is a width rather
+    /// than a radius. That is the quantity with the closed forms, and it does not assume
+    /// the model put its axis anywhere in particular.
+    /// </para>
+    /// </remarks>
+    private static double? RadialSpread(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        if (!string.Equals(model.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            // The same refusal `transitTime` makes, for the same reason: a trajectory run
+            // has a packet width too, computed a different way over particles, and quietly
+            // returning that here would let a test pass against the mode it was not
+            // written for.
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/mode",
+                Constraint = "'radialSpread' is the width of a density, and this model declares "
+                    + $"'{model.TransportMode}' transport",
+                Suggestion = "use 'emittance' for a trajectory run's packet, or set "
+                    + "\"transport\": { \"mode\": \"diffusion\" }",
+            });
+        }
+
+        var (field, warnings) = Fields.FieldAssembly.BuildReported(model);
+        var outcome = DiffusionRun.Execute(model, field, warnings);
+
+        Forward(outcome.Warnings, report);
+
+        var density = outcome.Result.Density;
+
+        if (!(density.Population() > 0.0))
+        {
+            // Nothing left to have a width. Null rather than zero, which is a real answer
+            // and would read as a perfectly confined packet rather than an absent one -
+            // the exact inversion, on the figure whose whole subject is confinement.
+            return null;
+        }
+
+        return density.Spread().Y;
+    }
+
+    /// <summary>
     /// The fraction of launched ions that arrive, in its own right.
     /// </summary>
     /// <remarks>
@@ -960,6 +1034,98 @@ public static class FiguresOfMerit
     /// different question.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The strongest periodic line in the ion's motion along one axis, over the record.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The measurand of an entire instrument class, and it had no figure.</b> An
+    /// electrostatic orbital trap reads mass from the frequency of an ion's axial
+    /// oscillation - `omega = sqrt(q k / m)`, exact, and independent of the radius, the
+    /// angular momentum and the amplitude. Nothing here could measure it: the secular
+    /// figures refuse a static field, correctly, because a secular frequency is by
+    /// definition the slow motion in an RF field's effective well and a static field has
+    /// no such well.
+    /// </para>
+    /// <para>
+    /// So the refusal was right and the gap was real. This is the same Lomb-Scargle
+    /// machinery over a different band: everything from two cycles per record - fewer
+    /// than that is not a frequency, it is a trend - up to half the sampling rate.
+    /// </para>
+    /// <para>
+    /// <b>Lomb-Scargle rather than a transform</b>, for the reason the secular spectrum
+    /// gives: the trajectory is sampled at accepted integration steps, which cluster where
+    /// the physics is hard, so the series is not uniform. Resampling it first would be
+    /// inventing values the integrator never computed and then measuring them.
+    /// </para>
+    /// <para>
+    /// In a driven field this will find the drive, which is usually the largest line in
+    /// the spectrum. That is not a defect - it is what "the strongest line" means - and it
+    /// is exactly why <see cref="Secular"/> exists separately and searches below the drive.
+    /// </para>
+    /// </remarks>
+    private static double? Oscillation(
+        CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (launch, species, field, settings, detector, collisions) = Setup(model, report: report);
+
+        // Finely enough that the line is well inside the band rather than near its edge,
+        // and capped so a long record does not cost more samples than it needs.
+        var flight = settings.MaximumFlightTime;
+        var interval = Math.Min(model.SampleIntervalSi, flight / 4000.0);
+
+        var recorder = new TrajectoryRecorder(interval, capacity: 16384);
+
+        TrajectoryIntegrator.Integrate(
+            launch, species, field, settings, detector, recorder, collisions?.Invoke());
+
+        if (recorder.Samples.Count < 8)
+        {
+            return null;
+        }
+
+        var span = recorder.Samples[^1].TimeSeconds - recorder.Samples[0].TimeSeconds;
+
+        if (!(span > 0.0))
+        {
+            return null;
+        }
+
+        try
+        {
+            // Two cycles per record at the low end: a record holding one cycle cannot
+            // tell an oscillation from a drift, and Lomb-Scargle will happily fit the
+            // drift. At the high end, half the mean sampling rate.
+            var lowest = 2.0 / span;
+            var highest = 0.5 * (recorder.Samples.Count - 1) / span;
+
+            if (!(highest > lowest))
+            {
+                return null;
+            }
+
+            var spectrum = Analysis.SecularSpectrum.From(
+                recorder.Samples, axis, lowest, highest, 4000);
+
+            var peak = spectrum.Peak();
+
+            if (peak is null)
+            {
+                return null;
+            }
+
+            Forward(peak.Warnings, report);
+
+            var (value, _, _, _) = peak;
+
+            return value.SiValue;
+        }
+        catch (EinzelException)
+        {
+            return null;
+        }
+    }
+
     private static double? Secular(
         CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
     {
@@ -1037,6 +1203,28 @@ public static class FiguresOfMerit
     /// thermal cloud rather than a wider energy spread.
     /// </para>
     /// </remarks>
+    /// <summary>How many genuinely different ions an energy scan of this model has.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Every caller must offer a declared cloud first.</b> This is the deterministic,
+    /// seed-free energy scan a study wants when nothing else is stated; it is NOT the
+    /// population a document declares, and a figure that reaches here without checking
+    /// answers a different question from the one <c>einzel run</c> answers over the same
+    /// model. That divergence is not hypothetical - <c>confined</c> did exactly this while
+    /// its sibling <c>transmission</c> did not, and the two disagreed 20-fold on a trap
+    /// holding part of a hot cloud.
+    /// </para>
+    /// <para>
+    /// There are three call sites and all three check <c>model.Cloud.IsCloud</c> first, in
+    /// <see cref="Ensemble"/>, <see cref="Counted"/> and <see cref="Confined"/>. A fourth
+    /// belongs in that list before it belongs here.
+    /// </para>
+    /// </remarks>
+    /// <param name="model">The validated model.</param>
+    /// <param name="spread">Fractional energy spread the scan covers.</param>
+    /// <param name="ions">How many members were asked for.</param>
+    /// <param name="report">Sink for validity warnings.</param>
+    /// <returns>How many distinct trajectories the scan actually produces.</returns>
     private static int Distinct(
         CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
     {
@@ -1191,6 +1379,25 @@ public static class FiguresOfMerit
         if (ions <= 0)
         {
             return null;
+        }
+
+        // A DECLARED CLOUD IS THE POPULATION, exactly as `transmission` already had it.
+        // Without this the figure flew a deterministic energy scan while `einzel run`
+        // reported the cloud, so `einzel test` and `einzel run` would answer a question
+        // about confinement over two different populations - the same divergence this
+        // project has already found twice, once in a flight time and once because a
+        // declared gas reached only one of the two paths.
+        //
+        // It did not show up on `paul-trap-held`, which declares no cloud: its source is
+        // at rest, so `Distinct` collapses to one ion and both routes fly the same one.
+        // The example being green is what let this sit.
+        if (model.Cloud.IsCloud)
+        {
+            var cloud = FlyCloud(model, report);
+
+            return model.Cloud.Ions > 0
+                ? (double)cloud.Remaining.Count / model.Cloud.Ions
+                : null;
         }
 
         var held = 0;

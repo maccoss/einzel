@@ -1269,3 +1269,53 @@ for 32 gives the same mesh**. A first version of the node-count table above ran
 16/24/32/48/64 and produced two pairs of identical numbers; read without knowing that,
 it says the answer is insensitive to resolution over a fourfold range. It is already
 written down for the 3-D solver, and it caught me again here.
+
+
+## The quadro-logarithmic field
+
+`U(r, z) = (k/2)(z^2 - r^2/2) + (k/2) Rm^2 ln(r/Rm)` — a harmonic axial well superposed on
+a logarithmic radial one, and the field an orbital trap is built from. Named for its
+mathematics rather than for the instrument, following `HalfSpaceUniformField` and for the
+same reason: architecture invariant 2 keeps device names above `Einzel.Library`.
+
+**It satisfies Laplace exactly.** The quadratic part contributes `-k` to the radial
+Laplacian and `+k` to the axial one, and the logarithm is harmonic on its own, so the sum
+is zero everywhere off the axis. That is not a numerical property to be measured but an
+identity to be checked, and the residual below is the differencing rather than the field.
+
+**What it exists for is an independence rather than a value.** `dU/dz = k z` carries no
+`r`, so the axial frequency is `sqrt(q k / m)` whatever the radius, the angular momentum or
+the axial amplitude. Measuring mass by frequency rests entirely on that.
+
+| | |
+| --- | --- |
+| Axial frequency, r from 6 to 14 mm and z0 from 1 to 4 mm | constant to **4e-8** |
+| Frequency vs `sqrt(q k / m)`, m/z 200 to 2000 | **6.5e-9 to 1.9e-8** |
+| Azimuthal field component | **1.15e-16** of the field — machine epsilon |
+| Angular momentum along a flown orbit | 1.2e-10 |
+| Energy along the same | 2.3e-10 |
+| Laplacian, differenced | 5.7e-8 to 2.7e-7 of `k` |
+
+**The azimuthal check is separated from the trajectory one on purpose.** A surface of
+revolution can exert no torque about its own axis, so that component is zero as an identity
+and is asserted exactly. What a flown orbit measures is the *integrator's* fidelity to it,
+which lands at 1e-10 — and would keep looking fine if the field had acquired a small
+azimuthal term, since that is what a small drift looks like.
+
+**The axis is refused rather than clamped.** A logarithm has no value at zero, and the
+region is where the central electrode is. Returning a large number would let an ion be
+launched inside metal and flown there.
+
+**It needed a new dimension**, which is the sort of gap only a new kind of device finds:
+`V/m^2`, the curvature of a potential rather than its slope. Distinct from `V/m` by one
+power of length, which is exactly the distinction a dimension system exists to keep — a
+curvature quoted as a field is wrong by a length, and at millimetre scales that is a factor
+of a thousand. `V/mm^2` is a millionfold, not a thousandfold, which is the kind of slip
+worth making unwriteable.
+
+**And a sign error it very nearly kept**, recorded in `docs/lessons.md`: the radial
+component went in negated and *every frequency test passed anyway*, because the axial
+motion is exactly decoupled from the radial coordinate. A designed invariance is a designed
+blindness — the quantity an instrument is built to make independent of everything else is
+the one least able to tell you the rest is right. What caught it was `E = -grad U` and
+energy conservation, the two checks that span the components.

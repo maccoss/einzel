@@ -21,6 +21,9 @@ physics or the abstraction is wrong, and almost always the second.
 | `travelling-wave-guide` | A ring stack whose drive phase ramps along it, so the potential travels |
 | `multipole-guide` | Any even order — quadrupole, hexapole, octupole, and beyond — from one file |
 | `paul-trap` | A driven ring between two earthed endcaps: the three-dimensional quadrupole trap, solved axisymmetrically |
+| `kingdon-trap` | A wire on the axis of a cylinder: the electrostatic orbital trap, and the ancestor of the Orbitrap |
+| `orbital-trap` | A quadro-logarithmic field: ions circle a spindle while oscillating along it, and the axial frequency is the measurement |
+| `c-trap` | Four rods bent around an arc: the curved RF trap that injects an orbital analyser |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -870,3 +873,329 @@ an excitation that arrived.
 radius that still arrives", which read 0.65 mm on one radius grid and 0.20 mm on
 another for the same geometry — a maximum over a ragged set is a maximum over noise.
 Counting arrivals over a fixed grid is the same measurement made stable.
+
+
+## `kingdon-trap` — orbital motion, and the invariants that are exact
+
+A wire on the axis of a cylinder, the wire held negative to positive ions. The oldest
+electrostatic trap there is, and the device the Orbitrap descends from. It is worth having
+for three reasons, none of which is the device itself.
+
+**It is the first thing here that combines an axisymmetric solve with genuinely
+three-dimensional motion.** The geometry is two coaxial cylinders and is solved in a
+half-plane; the ion circles, so it uses all three coordinates. `AxisymmetricField` was
+built for exactly that and no device had exercised it.
+
+**Its closed forms are exact and strange.** In `phi = A ln(r)` the inward force goes as
+`1/r`, so the circular-orbit condition `m v^2 / r = q A / r` has the radius **cancel out of
+it**: every circular orbit has the same speed, whatever its radius. That is not a paraxial
+limit or a small-angle approximation. An inverse-square potential does the opposite — that
+is Kepler's third law — so the property is a statement about the logarithm rather than
+about orbits, and a field that is even slightly not logarithmic fails it.
+
+| launch radius | launch speed | radius wanders by |
+| --- | --- | --- |
+| 1.5 mm | 2047.02 m/s | 1.59% |
+| 4.0 mm | **the same** 2047.02 m/s | 1.03% |
+| 7.5 mm | **the same** 2047.02 m/s | 0.22% |
+
+A factor of five in radius, one speed, taken from `sqrt(q V / (m log(b/a)))` — which
+contains no radius at all. The template writes it as a derived parameter, so changing the
+geometry moves the launch with it.
+
+**And it has a tolerance-free invariant.** An axisymmetric solve has *exactly* zero
+azimuthal field, so there is no torque about the axis and angular momentum cannot change.
+Not to an accuracy — as an identity:
+
+| | |
+| --- | --- |
+| Angular momentum over 16 orbits | **2.9e-12** relative |
+| Axial excursion | **0.000 um** |
+| Orbital speed vs the closed form | ratio **1.000000000** |
+| Solved potential vs `A ln(r) + B`, r = 8 mm | 0.0002 V of 100 applied |
+| The same at r = 2 mm | 0.28 V |
+
+That last pair is the useful shape of an error: the departure from the logarithm is largest
+**near the wire**, which is 0.1 mm across on a 0.25 mm cell and therefore under-resolved,
+and it falls by three orders of magnitude on the way out. The orbit wander follows the same
+ordering. An error that is largest where the mesh is worst is discretisation; one that is
+uniform, or largest where the mesh is best, is a wrong operator.
+
+**What it needed below the library was a logarithm**, and that is LIB-1 working. Every
+closed form here is `ln(b/a)`, so without it the launch speed could only be a baked number
+— which section 9 forbids, and which would silently stop being right the moment anyone
+changed a radius. `log` is dimensionless-only for the reason `sqrt` is, and refuses a
+non-positive argument rather than propagating a negative infinity into a geometry. The same
+pattern as `multipole-guide`, which found the grammar had no trigonometry.
+
+**What it does not do:** confine axially. A wire and a cylinder are radially confining and
+axially indifferent; a real Kingdon trap adds end electrodes, and this one launches with no
+axial velocity so the ion stays in its plane. That is a real limitation of the template
+rather than of the platform — end electrodes are two more rectangles.
+
+
+## `c-trap` — a curved axis, which is invariant under nothing
+
+Four rods bent around a quarter circle, holding ions until a sequence pushes them out
+sideways through a slot. It injects an orbital analyser, and the curvature is the point: a
+packet ejected radially from a curved trap converges as it flies, so it arrives spatially
+focused rather than as a line.
+
+**It is the first device here that is neither a cross-section nor a surface of
+revolution.** A translational solve assumes the geometry repeats along an axis; an
+axisymmetric one assumes it repeats all the way round. A curved axis does neither, so this
+needs a genuine volume solve — the first template to.
+
+**The rods are chains of overlapping spheres**, because a `cylinder` in this format is
+axis-aligned and a bent rod is not. That needed **no new primitive**: `repeat` binds an
+index and `cosPi`/`sinPi` place a bead anywhere. Overlapping copies at one potential are
+deliberate rather than tolerated — the overlap check refuses only conductors that
+*disagree* about what they hold.
+
+| | |
+| --- | --- |
+| 49 electrode declarations | **1 basis channel** |
+| Cycles, convergence factor | 19, 0.3316 |
+| Solve time, 65 x 65 x 33 | 9.1 s |
+| Worst bead spacing | 1.005 rod radii |
+| Out-of-plane excursion, in-plane launch | **0.000 nm** |
+
+Four bent rods reduce to one solve for the same reason four straight ones do: the in-plane
+pair and the out-of-plane pair are exact negatives. Bending changes nothing about that, and
+it matters more here than in a cross-section — a second channel in a volume solve is
+another pass over the whole grid.
+
+**The drive is what carries the ion round**, checked against the same model with the
+amplitude at zero:
+
+| | outcome | closest approach, late in flight |
+| --- | --- | --- |
+| drive on | arrives at the arc's end | **8.4 um**, 0.5% of its own worst |
+| drive off | strikes a rod at 25.9 us | never nearer than **782 um**, 26% of its worst |
+
+Bounded against unbounded, which is what confinement means. Three earlier versions of that
+assertion compared the wrong pair of quantities and are written up in `docs/lessons.md`.
+
+### The slot, and what the beads eat of it
+
+Ejection needs a hole in the inner electrode, so it is declared as two segments with an
+angular gap. **The gap is not the opening.** The bounding bead at each end is a sphere of
+the rod radius sitting on the inner arc, and it reaches `asin(rodRadius / innerArcRadius)`
+past its own centre — 14.7 degrees on each side for the shipped numbers, so a declared
+27-degree gap opens **minus two**.
+
+Found by ejecting into it: before the slot existed the ion struck metal after travelling
+exactly the inscribed radius, and with a 27-degree gap it struck the bounding bead.
+
+**`slotHalfTurns` is now the opening**, measured between the two metal surfaces, and the
+bead reach is a derived parameter the segments are placed by. A parameter that means
+something other than what it says is worse than one that is missing — the arithmetic is
+right either way, and only one of the two spellings is right when somebody reads it.
+
+**That needed `asinPi` in the expression grammar**, which is the same shape as the Kingdon
+trap needing `log` and the multipole guide finding no trigonometry at all. Placing
+something by angle when what is known is a *length ratio* needs an inverse sine, and in
+half turns so that the result feeds straight back into `cosPi`/`sinPi` — there is no `pi`
+in the grammar, on purpose.
+
+The slot also had to move to the **middle** of the arc. At a quarter of the way along, the
+metal would have to stop `slotHalfTurns/2 + beadHalfTurns` short of the slot centre on the
+entrance side, which is a negative span.
+
+**And it has to be a cooled ion.** Launched at 439 m/s the packet drifts 12 degrees along
+the arc while it is being pushed out, and clips the far edge of the opening. A real C-trap
+cools its ions in gas before ejecting them, and modelling that is what makes the ejection
+work. `launchVolts` is that temperature, written the way a source declares one.
+
+### The push has to be against earth
+
+`ejectVolts` puts the outer rod at +V and the inner rods at **earth**, not at −V. The
+difference is the whole flight. The space inside the arc is bounded by the grounded domain
+and sits near earth, so with the inner rod at −V an ion falls V through the slot and then
+climbs the same V back out — it arrives where the analyser would be with nothing left, and
+turns round. Pushing against earth leaves that space field-free, and a field-free space is
+where a converging packet does its converging.
+
+This was not found by a failing test. It was found by asking where the energy goes, after
+the first ejection scan produced ions at 173, 346, 361 and 856 mm from a 20 mm trap.
+
+### The curvature focuses the packet, and not where the geometry says
+
+This is what the curvature is *for*, and the template claimed it in prose from the day it
+was written with nothing measuring it. Every ion is pushed out along its own radius, so
+their velocities all point inward and the packet converges as it flies. **A straight trap
+pushes every ion in the same direction**, so whatever length of trap the ions occupied they
+still occupy at the analyser.
+
+Five ions spread over ±7.2 degrees of arc, cooled, ejected at 60 V with the drive off:
+
+| bend radius | launch extent | waist | convergence | focus at |
+| --- | --- | --- | --- | --- |
+| 15 mm | 1.331 mm | 0.0547 mm | **24.3x** | 25.94 mm = **1.73 R** |
+| 20 mm | 1.774 mm | 0.0852 mm | **20.8x** | 38.38 mm = **1.92 R** |
+| *a straight trap* | — | — | *exactly 1.0x* | *never* |
+
+The straight-trap column needs no run: a parallel ejection is a rigid translation and a
+translation preserves every distance, so the comparison is arithmetic rather than a second
+model.
+
+**The focus is not at the arc centre**, which is the part a design has to know. Velocities
+aimed along radii meet at the centre, one bend radius away; measured, the packet crosses
+the centre *still converging* and reaches its waist at 1.73 and 1.92 bend radii. The slot
+is a lens as well as a hole — the ion is accelerated up to it and drifts field-free after
+it, which is an aperture lens by construction.
+
+**What is deliberately not claimed is a strength for that lens.** A thin-lens fit to the
+shorter bend — one fixed slot lens in series with a curvature whose focal length is the
+bend radius — implies `f_slot = −35.5 mm` and predicts **46.0 mm** for the longer bend
+against a measured **38.4**. So the two are not one fixed lens and one variable one, and
+the reason is visible in the geometry: the slot is declared as an *angle*, so its own
+opening scales with the bend as well. The prediction is recorded because it failed;
+carrying it as a formula would have been carrying a 17% error dressed as a model.
+
+### Leaving the drive on refocuses the ejection, through its cycle average
+
+A real C-trap switches its RF off to eject. With it left running the packet still
+converges, but it converges **three times sooner and two and a half times less well**:
+
+| | convergence | focus at |
+| --- | --- | --- |
+| drive off | **20.8x** | 38.37 mm |
+| drive on, phase 0.00 | 8.3x | 11.57 mm |
+| drive on, phase 0.25 | 6.1x | 12.21 mm |
+| drive on, phase 0.50 | 8.8x | 11.59 mm |
+| drive on, phase 0.75 | 8.7x | 11.07 mm |
+
+So an analyser placed where the quiet ejection focuses would be in entirely the wrong
+place. Whether the drive is on at the instant of ejection is a decision about where the
+analyser goes, not a detail of the hold.
+
+**The phase sweep is the half that says what mechanism it is, and it refuted the guess that
+prompted it.** An ejection into a field reversing at three megahertz looks like it should
+depend on where in the cycle the push arrived — every ion in the packet sees the same
+phase, so a kick would aim the whole packet somewhere different. It does not: over a whole
+cycle the focal distance moves **1.10x**, against the **3.14x** the drive itself causes. So
+what acts on the packet is the **cycle-averaged** force — the pseudopotential — and not the
+instantaneous field. The ion crosses about seventeen RF periods on its way to the waist,
+which is why the phase it started at washes out, and the tenth that remains is the one
+partial cycle at the beginning.
+
+Sweeping it at all is the point. One ejection with the drive running is a single sample of
+something periodic, and this project has already recorded what comes of quoting one: an
+isolation-efficiency curve whose shape reversed at an amplitude nobody had swept.
+
+### C-trap to orbital analyser: the handover, since the composition is not possible
+
+The two instruments cannot be composed into one document — see below, and SPEC.md
+Amendment 32. What *can* be done is the handover: measure what one delivers, measure what
+the other needs, and compare them in a currency both share.
+
+**That currency is time, not space, and the reason is the analyser's defining property.**
+In a quadro-logarithmic field the axial frequency depends on nothing but `m/q` — not the
+orbit radius, not the axial amplitude, not the energy — which `QuadroLogarithmicFieldTests`
+pins directly. So the analyser is indifferent to almost everything an injected packet
+varies in. Two ions at the same frequency still cancel if they start at different
+**phases**, and phase is set by when an ion arrived.
+
+So the injection specification is one ratio: the packet's spread in arrival time over the
+analyser's axial period. Both numbers come from the shipped templates — the spread by
+ejecting `c-trap`, the period by compiling `orbital-trap` and reading its own declared
+parameter.
+
+| | arrival spread | of a period | coherence |
+| --- | --- | --- | --- |
+| analyser axial period | 3.1983 us | — | — |
+| ejected, drive off | **60.02 ns** | 1.88% | **0.9990** |
+| ejected, drive on | 170.93 ns | 5.34% | 0.9893 |
+
+Coherence is the modulus of the mean of `exp(i omega t)` over the packet — the amplitude
+of the image current the ions actually induce, 1 for a packet that arrived together and 0
+for one smeared over a whole cycle. **The C-trap can inject this analyser**, with room to
+spare, and leaving the drive on costs a factor of 2.8 in spread and almost nothing in
+coherence.
+
+**What this does not show is that the curvature delivers the coherence.** Every ion sits
+the same distance from the rods whether the trap is bent or straight, so they fall through
+the same potential either way and a straight trap would arrive just as together. The 60 ns
+is the *slot's* doing — ions nearer its edge see a different fringe than ions at its
+centre. The curvature buys the other thing, measured above: a packet 20.8 times narrower in
+space, which is about passing an entrance aperture.
+
+That split is worth stating because it says where design effort goes. In this field the
+axial frequency is exactly amplitude-independent, so a spatially broad packet is **not** a
+dephased one — ions from different axial offsets oscillate at one frequency and stay in
+step, and only their amplitudes differ. A real analyser's field imperfections make the
+frequency weakly amplitude-dependent and give spatial compactness a second job; this model
+has no such imperfection and should not be read as though it did.
+
+### What cannot be done yet: the two instruments in one document
+
+The C-trap injects an orbital analyser, and **the two cannot be composed into one model.**
+Not because the sequencer cannot express the handover — it can — but because
+**analytic fields fill all space**. The quadro-logarithmic potential grows as `z^2`, so an
+orbital trap declared anywhere in the same document puts an enormous field across the
+C-trap.
+
+Two *solved* elements compose correctly, because each is bounded by its own domain and
+decays outside it. It is specifically an exact analytic field that cannot be one element of
+a beamline.
+
+The fix is a spatial region on an analytic element, outside which it contributes nothing —
+which introduces a field discontinuity at the region boundary, and the integrator already
+lands exactly on declared discontinuities. That is a real design question rather than an
+oversight, and it is the next thing this needs.
+## Ion processor to a multi-reflection analyser: the second handover
+
+The other injection path this platform is pointed at, and it has the same shape as the
+C-trap's: a trap accumulates and cools ions, then pulses them into an analyser. Here the
+trap is the shipped `rectilinear-trap` — the low-pressure region of an ion processor — and
+the analyser is the shipped mirror pair at its two-stage design point.
+
+**What is modelled and what is not.** Both halves are solved geometry. It is *not* a model
+of any particular commercial instrument: an asymmetric-track analyser gets its reflection
+count from a slow drift along the mirror axis, and nothing here models that drift. What is
+asked is the question that does not depend on it.
+
+**The currency is the arrival-time spread, and turn-around is the part no analyser can
+undo.** A time-of-flight analyser refocuses energy spread — that is what its mirrors are
+for — but ions that left the source at different *instants* stay apart for the whole
+flight. So the trap's turn-around is a floor on the peak width, and the resolving power it
+permits is `t / 2dt`, growing linearly with flight time.
+
+| | |
+| --- | --- |
+| trap turn-around | **4.220 ± 0.067 ns** (2,000 ions, converged) |
+| analyser period | 55.9366 us per oscillation, 767.0 mm cap to cap |
+| analyser energy limit, ±3% | R = 321,018 |
+
+| oscillations | flight time | path | R from turn-around |
+| --- | --- | --- | --- |
+| 1 | 55.9 us | 1.53 m | 6,627 |
+| 4 | 223.7 us | 6.14 m | 26,507 |
+| 8 | 447.5 us | 12.27 m | 53,015 |
+| 16 | 895.0 us | 24.54 m | **106,029** |
+| 32 | 1790.0 us | 49.09 m | 212,058 |
+| 64 | 3579.9 us | 98.18 m | 424,117 |
+
+**The two limits cross at 48 oscillations**, 2.7 ms of flight and 74 m of path. Below that
+the *trap* binds and a colder or harder-pushed source is worth more than a better mirror;
+above it the *mirror* binds and more reflections buy nothing at all. Every practical
+instrument sits well below the crossing, so **for this pairing the turn-around time is the
+thing to improve**.
+
+**One number in that comparison is arithmetic wearing a measurement's clothes**, and it is
+worth saying which. The energy-aberration limit comes out at 321,018 for 3, 6 and 12
+oscillations — identical to the digit, because `MirrorPair.Fly` computes one period and
+multiplies it rather than stitching legs (a choice recorded in `docs/lessons.md`, made
+because twelve legs give twelve chances to miss a root-find). So the flatness confirms the
+arithmetic, not the physics. The physical claim underneath is that every oscillation is
+identical — true of a periodic analyser, and **exactly what an asymmetric track gives up**,
+since its ions drift along the mirror axis and successive reflections sample different
+field. That departure is unmeasured here.
+
+**And the trap's own arrival spread is the wrong number to use**, which is the trap this
+comparison exists to avoid. At its own detector this packet is ~241 ns wide, almost all of
+it the spread in extraction depth — but that is an energy spread, and refocusing energy
+spread is what mirrors are for. Turn-around is the 1.8% of it that survives. Using the
+241 ns would understate the reachable resolving power by two orders of magnitude.
+

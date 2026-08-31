@@ -174,6 +174,29 @@ public enum CompiledFieldKind
     HalfSpaceUniform,
 
     /// <summary>
+    /// The ideal quadrupole field, driven: exactly quadrupolar by construction.
+    /// </summary>
+    /// <remarks>
+    /// The only <em>analytic</em> driven field the format offers, and it exists for the
+    /// reason the analytic tier exists at all - a closed form to check a solved geometry
+    /// against. Every other driven field here is solved, so an expectation written from
+    /// the ideal formula would have been asserting a modelling difference of a few per
+    /// cent as though it were arithmetic.
+    /// </remarks>
+    IdealQuadrupoleRf,
+
+    /// <summary>
+    /// A harmonic axial well superposed on a logarithmic radial one, satisfying
+    /// Laplace exactly.
+    /// </summary>
+    /// <remarks>
+    /// The field an orbital trap is built from. Named for its mathematics rather than
+    /// the instrument, because architecture invariant 2 keeps device names above
+    /// <c>Einzel.Library</c>.
+    /// </remarks>
+    QuadroLogarithmic,
+
+    /// <summary>
     /// A field solved from a Dirichlet geometry given in the document. The element
     /// that lets a device be a template rather than a class (LIB-1).
     /// </summary>
@@ -207,11 +230,94 @@ public enum CompiledFieldKind
 public sealed record CompiledPhase(
     string Name, double DurationSeconds, string Mode, double EndsAtSeconds);
 
+/// <summary>An axis-aligned box in metres, outside which a field element is silent.</summary>
+/// <param name="MinX">Lower bound along x.</param>
+/// <param name="MaxX">Upper bound along x.</param>
+/// <param name="MinY">Lower bound along y.</param>
+/// <param name="MaxY">Upper bound along y.</param>
+/// <param name="MinZ">Lower bound along z.</param>
+/// <param name="MaxZ">Upper bound along z.</param>
+public sealed record FieldRegion(
+    double MinX,
+    double MaxX,
+    double MinY,
+    double MaxY,
+    double MinZ,
+    double MaxZ)
+{
+    /// <summary>Signed distance to the boundary: negative inside, positive outside.</summary>
+    /// <param name="position">Where to evaluate, in metres.</param>
+    /// <returns>The signed distance in metres.</returns>
+    /// <remarks>
+    /// The exact box distance rather than a cheaper approximation, because the
+    /// integrator finds the boundary by bracketing this function's zero and lands on it:
+    /// a distance that is only right near the faces would put the landing in the wrong
+    /// place near an edge.
+    /// </remarks>
+    public double SignedDistance(in Vec3 position)
+    {
+        var dx = Math.Max(MinX - position.X, position.X - MaxX);
+        var dy = Math.Max(MinY - position.Y, position.Y - MaxY);
+        var dz = Math.Max(MinZ - position.Z, position.Z - MaxZ);
+
+        // Outside along at least one axis: the distance is the length of the positive
+        // part, which is exact at faces, edges and corners alike.
+        if (dx > 0.0 || dy > 0.0 || dz > 0.0)
+        {
+            var ox = Math.Max(dx, 0.0);
+            var oy = Math.Max(dy, 0.0);
+            var oz = Math.Max(dz, 0.0);
+
+            return Math.Sqrt((ox * ox) + (oy * oy) + (oz * oz));
+        }
+
+        // Inside: the least distance to any face, negative.
+        return Math.Max(dx, Math.Max(dy, dz));
+    }
+
+    /// <summary>Whether a point is inside, boundary included.</summary>
+    /// <param name="position">Where to test, in metres.</param>
+    /// <returns>True when the point is within the box.</returns>
+    public bool Contains(in Vec3 position) => SignedDistance(in position) <= 0.0;
+}
+
+
 /// <summary>A validated field element, in SI.</summary>
 public sealed record CompiledField
 {
     /// <summary>Which kind of element this is.</summary>
     public required CompiledFieldKind Kind { get; init; }
+
+    /// <summary>Steady potential on the x pair, in volts. The y pair takes its negative.</summary>
+    public double DirectPotentialSi { get; init; }
+
+    /// <summary>Zero-to-peak drive amplitude on the x pair, in volts.</summary>
+    public double DriveAmplitudeSi { get; init; }
+
+    /// <summary>Drive frequency, in hertz.</summary>
+    public double DriveFrequencySi { get; init; }
+
+    /// <summary>Axis to nearest electrode surface, in metres.</summary>
+    public double InscribedRadiusSi { get; init; }
+
+    /// <summary>Axial potential curvature, in volts per metre squared.</summary>
+    /// <remarks>
+    /// The one number an orbital analyser's frequency comes from: the axial motion is
+    /// <c>m z'' = -q k z</c>, so <c>omega = sqrt(q k / m)</c> and nothing else enters.
+    /// </remarks>
+    public double CurvatureSi { get; init; }
+
+    /// <summary>The radius at which the radial field vanishes, in metres.</summary>
+    public double CharacteristicRadiusSi { get; init; }
+
+    /// <summary>Where the axial well is centred, on the axis of symmetry.</summary>
+    public Vec3 Centre { get; init; }
+
+    /// <summary>
+    /// A box outside which this element contributes nothing, in metres. Null when the
+    /// element is unbounded, which is what an analytic field is by default.
+    /// </summary>
+    public FieldRegion? Region { get; init; }
 
     /// <summary>
     /// This element as it stands during each phase of the instrument's timeline, when

@@ -256,20 +256,57 @@ public sealed class ArrivalTimePeak
             new Evidence.Ensemble(Launched, Converged: Launched >= 100));
     }
 
+    /// <summary>The resolving power of a peak with no width: undefined, not zero.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It used to report zero, which is the exact opposite of the truth and contradicted
+    /// the warning printed beside it.</b> Resolving power is t / 2dt, so a width of zero
+    /// makes it unbounded — the best conceivable value — and a reader saw <c>resolving 0</c>,
+    /// the worst. The infinity was even computed, assigned to a local, and then not used.
+    /// </para>
+    /// <para>
+    /// NaN rather than infinity, because absent is what this surface means by "there is no
+    /// answer here": <c>FiniteDoubleConverter</c> writes a non-finite double as null, so
+    /// both would serialise the same, and NaN does not invite arithmetic that would
+    /// propagate silently. It is the rule already applied to an undefined Twiss orientation,
+    /// to a peak width with fewer than two arrivals, and to an energy drift with no scale.
+    /// </para>
+    /// </remarks>
     private Measured Unresolved(double mean)
     {
-        var quantity = Quantity.Number(double.PositiveInfinity);
+        var undefined = Quantity.Number(double.NaN);
 
         return new Measured(
-            Quantity.Number(0.0),
-            UncertaintyInterval.Symmetric(Quantity.Number(0.0), Quantity.Number(0.0), confidenceLevel: 0.68),
+            undefined,
+            // A zero half-width around an undefined value: the interval API refuses a
+            // non-finite width, and it is the VALUE that carries the signal here.
+            UncertaintyInterval.Symmetric(undefined, Quantity.Number(0.0), confidenceLevel: 0.68),
             new Evidence.Ensemble(Arrived, Converged: false),
             [
+                // QUALIFIED, NOT A VALIDITY VIOLATION. A violation means the result was
+                // computed outside the validity of the model used, and that is not what
+                // happened: the arrivals really do carry no spread, which for a field-free
+                // aperture is the correct answer rather than a symptom. `slit-transmission`
+                // grounds both jaws so the field is exactly zero and the transmission is
+                // pure geometry - its peak is degenerate BY CONSTRUCTION, and it raised
+                // this on every run.
+                //
+                // The case where a degenerate peak does mean something went wrong - an
+                // ensemble that is secretly one ion - has its own warning, `ensemble
+                // .degenerate`, which says so directly.
+                //
+                // Severity is not decoration. A false alarm on the class GRD-3 makes
+                // unsuppressible teaches readers to ignore the one class that must never
+                // be ignored, which is the same argument that reclassified a bounded
+                // field's potential step.
                 new ValidityWarning(
                     "PEAK_UNRESOLVED",
-                    "every arrival fell within floating-point resolution of the others, so the width is zero "
-                    + "and the resolving power is unbounded; the ensemble carries no spread to resolve",
-                    WarningSeverity.ValidityViolation),
+                    "every arrival fell within floating-point resolution of the others, so the "
+                    + "width is zero and the resolving power is unbounded rather than large; "
+                    + "it is reported as absent. The ensemble carries no spread to resolve, "
+                    + "which is the right answer where nothing in the instrument spreads "
+                    + "arrival times and a symptom where something was meant to",
+                    WarningSeverity.Qualified),
             ]);
     }
 

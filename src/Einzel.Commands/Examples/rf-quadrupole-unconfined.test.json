@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "rf-quadrupole-unconfined",
+  "description": "Closed form: sqrt(seed^2 + 2 D t), D = mu kT / q. The control for the confined half - same model, drive amplitude zero - and the half that says the 0.137 mm above is the well rather than the seed or the grid. The grid is sized to hold this packet's tails AND resolve the confined one, an eleven-fold range, which is why it is finer than a diffusive run of this size would otherwise need.",
+  "model": "../models/rf-quadrupole-unconfined.json",
+  "expect": [
+    {
+      "figureOfMerit": "radialSpread",
+      "value": 1.303075,
+      "unit": "mm",
+      "tolerance": 0.01
+    }
+  ]
+}

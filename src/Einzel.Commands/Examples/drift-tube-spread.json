@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "0.4",
+  "name": "drift-tube-spread",
+  "description": "A packet carried down a drift tube at 1 mbar, measured by how wide it gets rather than by when it arrives. Diffusion is isotropic, so the transverse width follows sqrt(seed^2 + 2 D t) with D from the Einstein relation D = mu kT / q - arithmetic this solver has no part in, and the sharpest check it has. The mobility is declared rather than derived, which is what keeps the expected number arithmetic: 0.09 m^2/(V s) at 300 K gives D = 2.3267e-3 m^2/s, so a 0.5 mm seed after 200 us is sqrt(0.5^2 + 2 x 2.3267e-3 x 200e-6 x 1e6) = 1.0866 mm. Nothing is collected over the window and the whole population is still in the tracked region, so the width is of the complete packet rather than of whatever survived. The axial field is what makes this more than a static blob: at 2 kV/m the packet is carried about 36 mm downstream, and the transverse width is unchanged to the seventh digit by it - 1.0865935 mm with no field, 1.0865873 at 2 kV/m and the same at 5. A drift does not broaden a packet, and a scheme that let it would fail here while passing every arrival-time check. radialSpread is the figure a driven diffusive run could not be asserted by: an RF guide's whole effect is radial, and neither of the two figures a density already had could see it - the transit is contaminated by the axial ponderomotive corrugation of a ring stack, and the transmission has no closed form.",
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "value": [
+        2,
+        0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.001,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "population": 10000,
+      "transverseSpread": {
+        "value": 0.5,
+        "unit": "mm"
+      },
+      "longitudinalSpread": {
+        "value": 0.5,
+        "unit": "mm"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "uniform",
+      "field": {
+        "value": [
+          2000.0,
+          0,
+          0
+        ],
+        "unit": "V/m"
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "value": [
+        199.0,
+        0.0,
+        0
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "diffusion",
+    "maximumFlightTime": {
+      "value": 200.0,
+      "unit": "us"
+    },
+    "mobility": {
+      "zeroField": {
+        "value": 0.09,
+        "unit": "m^2/(V s)"
+      }
+    },
+    "densityGrid": {
+      "minX": {
+        "value": -2,
+        "unit": "mm"
+      },
+      "maxX": {
+        "value": 200,
+        "unit": "mm"
+      },
+      "minY": {
+        "value": -30,
+        "unit": "mm"
+      },
+      "maxY": {
+        "value": 30,
+        "unit": "mm"
+      },
+      "intervalsX": 256,
+      "intervalsY": 256
+    },
+    "gas": {
+      "model": "hardSphere",
+      "pressure": {
+        "value": 1,
+        "unit": "mbar"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "crossSection": {
+        "value": 250,
+        "unit": "\u00c5^2"
+      }
+    }
+  }
+}
