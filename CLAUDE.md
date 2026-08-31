@@ -1046,6 +1046,12 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **And a trap that works exits with a failure code (4)** — found by writing that test, left unfixed, and recorded. `MaximumFlightTimeReached` is not in the exit logic's success set. **Third occurrence of one pattern**: fixed once for diffusive runs and once for sequenced ones, both times by widening a list of the outcomes known when it was written rather than asking *did this run finish what it was asked to do*. The fix is not a third widening — ending at the flight-time limit is success for a trap and failure for a beamline, and `confined` is now the quantity that could tell them apart.
 
+- **An orbital analyser's capture ramp is already expressible, which was the last thing assumed missing.** A real orbital trap does not switch on around an ion already in the right orbit — it takes a packet injected at a large radius and **ramps its voltage**, squeezing the orbit inward. Working out what a single document flying an ion from a C-trap into an analyser still needs, that looked like the gap. It is not: `curvature` is an expression over the parameter surface and a phase sets parameters, so the ramp costs nothing new.
+
+  Measured against the control that matters — the same document with the ramp flattened, differing in two numbers: **4.711 mm apart after 6 µs**, 1001 steps against 644. A stiffer well is a faster orbit, so the step count moves in the direction that says which way the ramp went. Without the flat control a ramped run proves only that a model with a sequence in it runs.
+
+  **What remains untested is whether capture can be TUNED** — matching injection radius, energy and timing to the ramp is a study rather than a feature, and so is how many phases approximate a smooth ramp closely enough.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
