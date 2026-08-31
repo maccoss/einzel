@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**747 tests across nine assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 31 examples, every expectation a closed form, a published value, or an exact invariant.
+**980 tests across twelve assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 36 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1640,7 +1640,39 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. **Finish the examples corpus (EX-1).** 32 of thirty, and the gate (EX-2) is built
+3. **A region on an analytic field element, so an exact analyser can join a
+   beamline.** Amendment 32, and it is now the thing blocking the most: the two
+   injection paths this platform is pointed at are both *pairs of instruments*, and
+   only one of the pair can be exact.
+
+   An analytic field has no extent, because a formula does not. That is harmless for
+   an idealisation of a whole instrument — a uniform field, a retarding half-space —
+   and stops being harmless the moment one is an exact statement of a real device
+   sitting *next to* another. The quadro-logarithmic potential grows as `z^2`, so an
+   orbital trap declared beside the C-trap that injects it puts an enormous field
+   across the C-trap.
+
+   **The cheap escape does not exist**, which is what makes this a task rather than a
+   note. Declaring the analyser as solved geometry so its own domain bounds it fails:
+   its electrodes are equipotentials of the field they produce, so their profile
+   satisfies `-r^2/2 + Rm^2 ln(r/Rm) = A - z^2` — transcendental in `r`, invertible
+   only through Lambert W — and the 2-D shape vocabulary is rectangle, disc and edge
+   profile, none of which is a curve a document can name.
+
+   What it needs is a box outside which an analytic element contributes nothing. The
+   field discontinuity that introduces is not a difficulty: §11 already makes a
+   declared discontinuity a first-class event and the integrator lands exactly on one.
+   What needs deciding is whether the region is declared or inferred, and what happens
+   where two overlap.
+
+   **Until then both pairings are two models with a measured handover**, which is done
+   and is worth having on its own — see the two entries in `docs/device-templates.md`.
+   The handover is a *number*, not a hope: for the C-trap, a 60.02 ns arrival spread
+   against a 3.1983 µs axial period, coherence 0.9990. For the ion processor, a
+   4.220 ns turn-around against a 55.9366 µs analyser period, crossing the mirror's own
+   aberration limit at 48 oscillations.
+
+4. **Finish the examples corpus (EX-1).** 32 of thirty, and the gate (EX-2) is built
    and green. What the first seventeen cost was mostly *deciding what can honestly be
    asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
    thermalisation, and a three-dimensional geometry.
@@ -1756,7 +1788,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    defects that no test written from inside the project would have caught**, because
    both were about a model that validates and answers a different question.
 
-4. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
+5. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
    restores the property multigrid is supposed to have.** `A_coarse = R A_fine P`: the
    coarse levels are built from the fine operator rather than from the geometry, so they
    cannot lose it. The finest level is untouched — it keeps its cut cells and its
@@ -1808,7 +1840,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `docs/numerics.md` were being compared across geometries as though a cycle were a
    unit of work.
 
-5. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
+6. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
    **density** was a single number for the whole model, so a differentially pumped
    instrument was not expressible: an imported field gave the neutrals a velocity
    everywhere and the same number of them everywhere. `pressureField` closes it — see
@@ -1828,7 +1860,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    same proportions collapse to **one** basis solve carrying two weights on two clocks,
    and two distinct spatial patterns give **two**.
 
-6. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
+7. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
    transmission-against-resolution curve closes onto the tabulated apex (Phase 3
    acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
    characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
@@ -1836,7 +1868,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `RfWaveform.Harmonic` comb that independently recovers the published digital
    cut-off at q = 0.712.
 
-7. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
+8. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
    declares `drives` and each electrode `taps` them by name. The travelling-wave
    guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
    confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
@@ -1845,7 +1877,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    zero — the usable amplitude window is narrow at both ends and finding a working
    point is a design study; see Amendment 24.
 
-8. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
+9. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps; and the event-driven models no longer refuse it — the ion's
    position is carried into the neutral draw, so a collision samples the gas where
@@ -1854,7 +1886,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
    seed.
 
-9. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
+10. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
    last quantity about a gas here that was a single number for a whole model, so an
    imported flow gave the neutrals a velocity everywhere and *the same number of them
    everywhere*. `pressureField` on the gas block, VTK ImageData like the velocity
@@ -1945,7 +1977,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    already made by there being one `temperature` in the document, but it is now the
    only thing about the gas that cannot vary from place to place.
 
-10. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
+11. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
     `journal`, `undo` and `attribution` existed only in the `Einzel.Commands`
     assembly *description string* - the same "named in a csproj and nowhere else"
     state `ITransportMode` was in before its seam was built. So "build MCP" was
@@ -2000,7 +2032,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
-11. **The shell (§16).** Three views of eleven, and the window opens on a model:
+12. **The shell (§16).** Three views of eleven, and the window opens on a model:
     `einzel-shell models/reflectron.json` gives a parameter tree with live validation
     and units on every field, the shared journal with agent and human attribution, and
     a 3-D viewport drawing trajectory bundles coloured by energy. What remains is eight
