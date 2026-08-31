@@ -714,9 +714,29 @@ public static class ModelValidator
         IReadOnlyList<PhaseSurface> timeline,
         List<EinzelError> errors)
     {
+        // Before the element itself, so that "a solved element may not declare a region"
+        // is reported even when the solve is also wrong. Hiding one mistake behind another
+        // makes a document take two rounds to fix and gives no reason for the second.
+        //
+        // Compiled once off the base surface and deliberately not re-derived per phase: a
+        // region is geometry, and the sequencer already refuses to let a stage move
+        // geometry. Moving one would change which element is silent where, which is a
+        // different instrument rather than a different setting of one.
+        var region = CompileRegion(field, path, p, errors);
+
         var baseline = CompileOnce(field, path, p, timeline, errors);
 
-        if (baseline is null || timeline.Count == 0 || !NeedsPhases(field.Type))
+        if (baseline is null)
+        {
+            return null;
+        }
+
+        if (region is not null)
+        {
+            baseline = baseline with { Region = region };
+        }
+
+        if (timeline.Count == 0 || !NeedsPhases(field.Type))
         {
             return baseline;
         }
@@ -749,6 +769,93 @@ public static class ModelValidator
         return moved
             ? baseline with { Phases = phases, PhaseBoundariesSeconds = boundaries }
             : baseline;
+    }
+
+    /// <summary>The box outside which an element is silent, if it declares one.</summary>
+    /// <remarks>
+    /// <para>
+    /// Refused on a solved element rather than ignored. A solve is already bounded by its
+    /// own domain, so a region would be a second statement about the same extent, and a
+    /// document that says a thing twice can say it two ways.
+    /// </para>
+    /// <para>
+    /// All six bounds are required rather than defaulted to infinity on the missing axes.
+    /// A half-open region is a legitimate thing to want, but "the axes I left out" is not
+    /// how anyone reads a partly-filled box, and the failure would be silent.
+    /// </para>
+    /// </remarks>
+    private static FieldRegion? CompileRegion(
+        FieldDocument field,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        if (field.Region is not { } region)
+        {
+            return null;
+        }
+
+        if (field.Type is "solved2d" or "solved3d")
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/region",
+                Constraint = $"a {field.Type} element is already bounded by its own solve "
+                    + "domain, so it may not also declare a region",
+                Suggestion = "remove the region, or move the solve domain if the extent is "
+                    + "what you meant to change",
+            });
+
+            return null;
+        }
+
+        var bounds = new[]
+        {
+            (region.MinX, "minX"), (region.MaxX, "maxX"),
+            (region.MinY, "minY"), (region.MaxY, "maxY"),
+            (region.MinZ, "minZ"), (region.MaxZ, "maxZ"),
+        };
+
+        var si = new double[6];
+
+        for (var k = 0; k < 6; k++)
+        {
+            var value = TryQuantity(
+                bounds[k].Item1, $"{path}/region/{bounds[k].Item2}",
+                Dimension.LengthDimension, p, errors);
+
+            if (value is null)
+            {
+                return null;
+            }
+
+            si[k] = value.Value.In("m");
+        }
+
+        for (var axis = 0; axis < 3; axis++)
+        {
+            if (si[(2 * axis) + 1] > si[2 * axis])
+            {
+                continue;
+            }
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/region/{bounds[(2 * axis) + 1].Item2}",
+                Constraint = $"a region's upper bound must exceed its lower one, but "
+                    + $"{bounds[(2 * axis) + 1].Item2} is {si[(2 * axis) + 1]:G6} m against "
+                    + $"{bounds[2 * axis].Item2} at {si[2 * axis]:G6} m",
+                Observed = new ObservedValue(si[(2 * axis) + 1], "m"),
+                Suggestion = "a region with no extent silences the element everywhere, "
+                    + "which is what removing the element does more clearly",
+            });
+
+            return null;
+        }
+
+        return new FieldRegion(si[0], si[1], si[2], si[3], si[4], si[5]);
     }
 
     /// <summary>Whether a kind needs whole compiled copies to follow a phase.</summary>

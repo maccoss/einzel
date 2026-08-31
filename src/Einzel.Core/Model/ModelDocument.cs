@@ -480,6 +480,55 @@ public sealed record FieldDocument
     /// origin.
     /// </summary>
     public VectorValue? Centre { get; init; }
+
+    /// <summary>
+    /// A box outside which this element contributes nothing. Analytic elements only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An analytic field has no extent, because a formula does not — it is defined
+    /// everywhere. That is harmless while such a field is an idealisation of a whole
+    /// instrument, and stops being harmless the moment one is an exact statement of a
+    /// real device sitting <b>next to</b> another. A quadro-logarithmic potential grows
+    /// as z squared, so an orbital trap declared beside the trap that injects it puts an
+    /// enormous field across that trap.
+    /// </para>
+    /// <para>
+    /// A solved element needs no region and may not declare one: it is already bounded by
+    /// its own solve domain, and two statements about the same extent is one too many.
+    /// </para>
+    /// </remarks>
+    public RegionDocument? Region { get; init; }
+}
+
+/// <summary>An axis-aligned box, given as its two opposite corners.</summary>
+/// <remarks>
+/// <b>The boundary is a field discontinuity and the potential does not generally match
+/// across it</b>, because a box is not an equipotential of anything interesting. The
+/// assembly measures the largest potential on the boundary and reports it: that is the
+/// energy an ion gains or loses per crossing, and placing the box where the field has
+/// decayed is what makes it small. The region says where the idealisation is meant to
+/// apply; it is not a conductor.
+/// </remarks>
+public sealed record RegionDocument
+{
+    /// <summary>Lower bound along x.</summary>
+    public QuantityValue? MinX { get; init; }
+
+    /// <summary>Upper bound along x.</summary>
+    public QuantityValue? MaxX { get; init; }
+
+    /// <summary>Lower bound along y.</summary>
+    public QuantityValue? MinY { get; init; }
+
+    /// <summary>Upper bound along y.</summary>
+    public QuantityValue? MaxY { get; init; }
+
+    /// <summary>Lower bound along z.</summary>
+    public QuantityValue? MinZ { get; init; }
+
+    /// <summary>Upper bound along z.</summary>
+    public QuantityValue? MaxZ { get; init; }
 }
 
 /// <summary>The surface that ends the flight.</summary>

@@ -224,13 +224,29 @@ public static class FieldAssembly
     {
         var (field, warnings) = BuildReported(model);
 
-        if (warnings.Count > 0)
+        // Narrowed from "any warning at all" to "any warning saying the field is WRONG".
+        //
+        // The distinction arrived with regions. An unconverged solve means the numbers this
+        // field will hand out may not be the ones the document describes, and a bare field
+        // has no envelope to carry that on - so refusing is the only honest option. A
+        // region's potential step is not that: the field is exactly what the document
+        // declares, and the step is a consequence of the geometry the author asked for.
+        // Throwing on it would make `Build` unusable for every composed beamline, which is
+        // the feature the region exists to enable.
+        //
+        // The step still becomes a ValidityViolation when it is large enough to matter -
+        // above ACC-1's budget against the beam energy - and then this refuses again.
+        var defects = warnings
+            .Where(w => w.Severity == Core.Results.WarningSeverity.ValidityViolation)
+            .ToList();
+
+        if (defects.Count > 0)
         {
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
                 Code = Core.Errors.ErrorCodes.ConvergenceFailed,
                 Path = "/fields",
-                Constraint = warnings[0].Message,
+                Constraint = defects[0].Message,
                 Suggestion = "run 'einzel solve' to see the residual and the convergence factor "
                     + "for every element and channel, or use FieldAssembly.BuildReported to carry "
                     + "the warning onto a result instead of failing",
@@ -261,6 +277,11 @@ public static class FieldAssembly
         for (var index = 0; index < model.Fields.Count; index++)
         {
             var element = model.Fields[index];
+
+            if (element.Region is { } bounded)
+            {
+                warnings.Add(RegionStep(element, bounded, index, model.AccelerationPotentialSi));
+            }
 
             switch (element.Kind)
             {
@@ -349,7 +370,132 @@ public static class FieldAssembly
     /// rather than imprecise.
     /// </remarks>
     /// <summary>One analytic element, at the values a single compilation holds.</summary>
-    private static IElectrostaticField Analytic(CompiledField element) => element.Kind switch
+    /// <remarks>
+    /// A declared region is applied here rather than at the call sites, so a sequenced
+    /// element gets it on every phase: this is the one place an analytic field is built.
+    /// </remarks>
+    private static IElectrostaticField Analytic(CompiledField element)
+    {
+        var field = AnalyticCore(element);
+
+        return element.Region is { } region
+            ? Einzel.Fields.Analytic.BoundedField.Around(field, region)
+            : field;
+    }
+
+    /// <summary>How much potential an ion gains or loses crossing a region boundary.</summary>
+    /// <remarks>
+    /// <para>
+    /// A region is a box and a box is not an equipotential of anything interesting, so the
+    /// potential does not match across it: an ion crossing gains or loses whatever the
+    /// inner field held there. That is a real energy error and it is reported <b>whether or
+    /// not it crosses a threshold</b>, which is REG-2's rule — a reader who sees 0.3 V
+    /// knows the boundary was checked, and one who sees nothing cannot tell that from its
+    /// not having been checked.
+    /// </para>
+    /// <para>
+    /// Sampled on a grid over the six faces rather than maximised analytically, because the
+    /// inner field is any analytic kind and only it knows its own shape. The sampling is
+    /// stated in the message: a coarse grid can miss a narrow spike, and a number that
+    /// does not say how it was obtained invites more trust than it has earned.
+    /// </para>
+    /// </remarks>
+    private static Core.Results.ValidityWarning RegionStep(
+        CompiledField element,
+        Core.Model.FieldRegion region,
+        int index,
+        double beamPotentialSi)
+    {
+        const int Samples = 17;
+
+        var inner = AnalyticCore(element);
+        var worst = 0.0;
+        var skipped = 0;
+
+        for (var a = 0; a < Samples; a++)
+        {
+            var fa = (double)a / (Samples - 1);
+
+            for (var b = 0; b < Samples; b++)
+            {
+                var fb = (double)b / (Samples - 1);
+
+                var x = region.MinX + (fa * (region.MaxX - region.MinX));
+                var y = region.MinY + (fa * (region.MaxY - region.MinY));
+                var z = region.MinZ + (fb * (region.MaxZ - region.MinZ));
+
+                var yb = region.MinY + (fb * (region.MaxY - region.MinY));
+
+                foreach (var point in new[]
+                {
+                    new Vec3(region.MinX, y, z), new Vec3(region.MaxX, y, z),
+                    new Vec3(x, region.MinY, z), new Vec3(x, region.MaxY, z),
+                    new Vec3(x, yb, region.MinZ), new Vec3(x, yb, region.MaxZ),
+                })
+                {
+                    double potential;
+
+                    try
+                    {
+                        potential = Math.Abs(inner.PotentialAt(in point));
+                    }
+                    catch (ArgumentOutOfRangeException)
+                    {
+                        // An analytic field may refuse a point rather than return a huge
+                        // number there - the quadro-logarithmic field does exactly that on
+                        // its axis, where the central electrode is, and a sampling grid
+                        // over a centred box lands on it. A refused point is not a step;
+                        // it is a place the field says has no potential. Counted rather
+                        // than passed over, because a survey with holes in it should say
+                        // how many.
+                        skipped++;
+                        continue;
+                    }
+
+                    if (double.IsFinite(potential) && potential > worst)
+                    {
+                        worst = potential;
+                    }
+                }
+            }
+        }
+
+        // Graded against the ion's own energy, because a step only means anything
+        // relative to what the ion is carrying: 100 V across a 10 V beam is a different
+        // instrument, and across a 4 kV beam it is 2.5 per cent.
+        var beam = Math.Abs(beamPotentialSi);
+        var fraction = beam > 0.0 ? worst / beam : double.PositiveInfinity;
+
+        // ACC-1's budget. Below it the step cannot reach a flight time at the accuracy this
+        // engine claims, so the model is usable and the number is worth knowing; above it
+        // the model is describing an energy the document did not intend.
+        var within = fraction <= 1e-6;
+
+        return new Core.Results.ValidityWarning(
+            "field.region-potential-step",
+            $"field element {index} is bounded by a region, and its potential reaches "
+                + $"{worst:G4} V on that boundary - {fraction:P3} of the {beam:G4} V this "
+                + "ion is accelerated through. A box is not an equipotential, so an ion "
+                + "crossing gains or loses that much energy per crossing"
+                + (within
+                    ? ", which is inside ACC-1's 1 ppm budget."
+                    : ", which is outside ACC-1's 1 ppm budget: any flight time across this "
+                      + "boundary is wrong by about that fraction.")
+                + $" Sampled on a {Samples}x{Samples} grid over each of the six faces, so a "
+                + "narrower spike than that spacing would be missed"
+                + (skipped > 0
+                    ? $", and {skipped} of those points were refused by the field itself "
+                      + "(a singular axis, say) and took no part"
+                    : string.Empty)
+                + ". Move the boundary out to where the field has decayed to make it "
+                + "smaller.",
+            within
+                ? Core.Results.WarningSeverity.Qualified
+                : Core.Results.WarningSeverity.ValidityViolation);
+    }
+
+    /// <summary>The unbounded analytic field itself, before any region is applied.</summary>
+    private static IElectrostaticField AnalyticCore(CompiledField element) => element.Kind switch
     {
         CompiledFieldKind.Uniform => UniformField.Create(element.Field),
 

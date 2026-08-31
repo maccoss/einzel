@@ -230,6 +230,58 @@ public enum CompiledFieldKind
 public sealed record CompiledPhase(
     string Name, double DurationSeconds, string Mode, double EndsAtSeconds);
 
+/// <summary>An axis-aligned box in metres, outside which a field element is silent.</summary>
+/// <param name="MinX">Lower bound along x.</param>
+/// <param name="MaxX">Upper bound along x.</param>
+/// <param name="MinY">Lower bound along y.</param>
+/// <param name="MaxY">Upper bound along y.</param>
+/// <param name="MinZ">Lower bound along z.</param>
+/// <param name="MaxZ">Upper bound along z.</param>
+public sealed record FieldRegion(
+    double MinX,
+    double MaxX,
+    double MinY,
+    double MaxY,
+    double MinZ,
+    double MaxZ)
+{
+    /// <summary>Signed distance to the boundary: negative inside, positive outside.</summary>
+    /// <param name="position">Where to evaluate, in metres.</param>
+    /// <returns>The signed distance in metres.</returns>
+    /// <remarks>
+    /// The exact box distance rather than a cheaper approximation, because the
+    /// integrator finds the boundary by bracketing this function's zero and lands on it:
+    /// a distance that is only right near the faces would put the landing in the wrong
+    /// place near an edge.
+    /// </remarks>
+    public double SignedDistance(in Vec3 position)
+    {
+        var dx = Math.Max(MinX - position.X, position.X - MaxX);
+        var dy = Math.Max(MinY - position.Y, position.Y - MaxY);
+        var dz = Math.Max(MinZ - position.Z, position.Z - MaxZ);
+
+        // Outside along at least one axis: the distance is the length of the positive
+        // part, which is exact at faces, edges and corners alike.
+        if (dx > 0.0 || dy > 0.0 || dz > 0.0)
+        {
+            var ox = Math.Max(dx, 0.0);
+            var oy = Math.Max(dy, 0.0);
+            var oz = Math.Max(dz, 0.0);
+
+            return Math.Sqrt((ox * ox) + (oy * oy) + (oz * oz));
+        }
+
+        // Inside: the least distance to any face, negative.
+        return Math.Max(dx, Math.Max(dy, dz));
+    }
+
+    /// <summary>Whether a point is inside, boundary included.</summary>
+    /// <param name="position">Where to test, in metres.</param>
+    /// <returns>True when the point is within the box.</returns>
+    public bool Contains(in Vec3 position) => SignedDistance(in position) <= 0.0;
+}
+
+
 /// <summary>A validated field element, in SI.</summary>
 public sealed record CompiledField
 {
@@ -260,6 +312,12 @@ public sealed record CompiledField
 
     /// <summary>Where the axial well is centred, on the axis of symmetry.</summary>
     public Vec3 Centre { get; init; }
+
+    /// <summary>
+    /// A box outside which this element contributes nothing, in metres. Null when the
+    /// element is unbounded, which is what an analytic field is by default.
+    /// </summary>
+    public FieldRegion? Region { get; init; }
 
     /// <summary>
     /// This element as it stands during each phase of the instrument's timeline, when

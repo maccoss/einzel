@@ -755,6 +755,97 @@ on a surface each macroparticle reaches at its own instant. It caps the step sho
 of the first arrival instead. That is why this is the reference method for space
 charge rather than a replacement for the path that carries ACC-1.
 
+## Bounding an analytic element, so two instruments can share a document
+
+An analytic field has no extent, **because a formula does not**. That is harmless while
+such a field is an idealisation of a whole instrument — a uniform field, a retarding
+half-space — and stops being harmless the moment one is an exact statement of a real device
+sitting *next to* another. A quadro-logarithmic potential grows as `z^2`, so an orbital
+analyser declared beside the trap that injects it puts an enormous field across that trap.
+
+Superposition is exact and the sequencer can express a handover, so nothing else about
+composing two devices was ever in doubt. **And the obvious escape does not exist:**
+declaring the analyser as solved geometry, so its own domain bounds it, fails because its
+electrodes are equipotentials of the field they produce — the profile satisfies
+`-r^2/2 + Rm^2 ln(r/Rm) = A - z^2`, transcendental in `r` and invertible only through
+Lambert W — and the 2-D shape vocabulary is rectangle, disc and edge profile, none of which
+is a curve a document can name.
+
+So an analytic element may declare a **region**: a box outside which it contributes nothing.
+
+```json
+{
+  "type": "quadroLogarithmic",
+  "curvature": { "value": 20, "unit": "V/mm^2" },
+  "characteristicRadius": { "value": 20, "unit": "mm" },
+  "region": {
+    "minX": { "value": -30, "unit": "mm" }, "maxX": { "value": 30, "unit": "mm" },
+    "minY": { "value": -30, "unit": "mm" }, "maxY": { "value": 30, "unit": "mm" },
+    "minZ": { "value": -30, "unit": "mm" }, "maxZ": { "value": 30, "unit": "mm" }
+  }
+}
+```
+
+Measured on a two-element document — an orbital analyser at the origin and an ordinary
+1 kV/m accelerating section 75 mm downstream:
+
+| in the second device | field along x |
+| --- | --- |
+| analyser unbounded | **−1,499,000 V/m** |
+| analyser bounded | **1,000.0 V/m**, exactly its own |
+
+**And on the axis it is worse than swamping.** Without a region the second device has a
+line through it at which the model cannot be asked a question at all, because that line is
+the analyser's singular axis and a quadro-logarithmic field refuses a point there rather
+than returning a large one.
+
+Inside the region nothing changes — asserted to the bit against the same field built alone,
+which is the control that makes the rest mean anything. All six bounds are required: a
+half-open region is a legitimate thing to want, but "the axes I left out" is not how anyone
+reads a partly-filled box. A **solved** element may not declare one, refused rather than
+ignored, because a solve is already bounded by its own domain and a document that says a
+thing twice can say it two ways. A region with no extent is refused too.
+
+### The boundary is a step, and the step is reported in the ion's own currency
+
+**A box is not an equipotential of anything interesting**, so the potential does not match
+across a region boundary and an ion crossing gains or loses whatever the inner field held
+there. That is not hidden. Every bounded element reports the largest potential anywhere on
+its boundary — REG-2's rule, whether or not it crosses a threshold — as a fraction of the
+potential the ion is accelerated through, because a step means nothing on its own: 100 V
+across a 10 V beam is a different instrument, and across a 4 kV beam it is 2.5%.
+
+The field discontinuity itself needs no apology: the boundary is presented as a signed
+distance whose zero the integrator brackets and lands on exactly, the same first-class event
+a declared discontinuity already is (§11). It is the *potential* step that costs energy.
+
+**`FieldAssembly.Build`'s contract narrowed when regions arrived**, and the line it now
+draws is worth knowing. It used to refuse a field with any warning at all — an unconverged
+solve means the numbers may not be the ones the document describes, and a bare field has no
+envelope to carry that on, so refusing is the only honest option. A region's step is not
+that: the field is exactly what the document declares. Throwing on every one would make
+`Build` unusable for the composed beamlines a region exists to enable. So the step is graded
+against ACC-1's 1 ppm budget, and **`Build` refuses only above it**.
+
+### The limitation, and the better design it points at
+
+**For the fields one most wants to bound, the step is large.** A uniform potential never
+decays, so bounding a 1 kV/m section 50 mm from its own zero puts a 100 V step at the
+boundary. A quadro-logarithmic potential *grows*, so bounding one at 30 mm puts 7,000 V
+there. The advice to "place the boundary where the field has decayed" has no place to point
+at for either.
+
+So a region as it stands is best read as **a statement that ions do not cross that
+boundary** — which is true of an analyser that keeps what it is given — and if one does, the
+run says by how much it was wrong.
+
+The failure points straight at the fix. A real device's field is bounded by a **conductor**,
+and a conductor is an equipotential — of the very field it produces. Bounding an analytic
+element by one of its own level sets rather than by a box would make the potential
+continuous by construction, offset so it is zero outside, with the field discontinuous in
+exactly the way `halfSpaceUniform` already is and the geometry exactly a real electrode.
+That is the next refinement, and it is not what was built here.
+
 ## Versioning
 
 Schema 0.1 through 0.5 all load. Every bump ships a migration and a test that the

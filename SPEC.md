@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**980 tests across twelve assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 36 examples, every expectation a closed form, a published value, or an exact invariant.
+**992 tests across twelve assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 36 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -751,8 +751,27 @@ a difficulty: the integrator already lands exactly on declared discontinuities, 
 11 makes that a first-class event. What it needs is a decision about whether the region is
 declared or inferred, and what happens where two regions overlap.
 
-Until then, an instrument built from an exact analytic analyser and a solved injector is
-two models with a measured handover between them, not one document.
+**Built, with a stated limitation.** An analytic element may declare a `region` — a box
+outside which it contributes nothing — and two instruments now share a document. Measured:
+an ordinary 1 kV/m accelerating section 75 mm from an orbital analyser feels **−1,499,000
+V/m** of that analyser unbounded and **exactly its own 1,000** bounded; on the axis the
+unbounded case is worse than swamping, since the model cannot be asked a question there at
+all. Inside the region nothing changes, to the bit.
+
+**What it does not solve is the potential step.** A box is not an equipotential, so an ion
+crossing gains or loses whatever the inner field held there — and for the fields one most
+wants to bound that is large, because a uniform potential never decays (100 V at 50 mm) and
+a quadro-logarithmic one grows (7,000 V at 30 mm). The step is reported on every bounded
+element, graded against ACC-1's budget as a fraction of the beam potential, and
+`FieldAssembly.Build` refuses above it. So a region is best read as a statement that ions
+do not cross that boundary; if one does, the run says by how much it was wrong.
+
+**The failure points straight at the next refinement.** A real device's field is bounded by
+a conductor, and a conductor is an equipotential of the very field it produces. Bounding an
+analytic element by one of its own level sets rather than by a box would make the potential
+continuous by construction — offset so it is zero outside, with the field discontinuous
+exactly as `halfSpaceUniform` already is, and the geometry exactly a real electrode. That
+is what should replace the box, and it was not built here.
 
 ### 31 - A thermal cloud's divergence is not the divergence an ion-optics beam has
 
