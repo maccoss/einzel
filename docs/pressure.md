@@ -1314,3 +1314,61 @@ A **non-positive sample is refused rather than clamped**, because mobility goes 
 a zero is an infinite drift and a stability limit of zero, so the run does not answer
 wrongly, it never finishes. The refusal names the alternative — a collisionless region is
 described by trajectory integration, not by diffusion.
+
+
+## `radialSpread`, and why a driven diffusive run could not be asserted without it
+
+A density had two figures of merit: `transitTime` and `transmission`. Neither can see what
+an RF guide does, and an RF guide is the device the whole pressure effort exists for.
+
+**The transit is contaminated.** A ring stack has an axial ponderomotive corrugation - the
+effective well is deepest at each ring edge, where the field is largest - so an ion drifting
+along the axis climbs in and out of a barrier at every ring. Measured on a 12.5 mm guide at
+600 V/m: **426.0 us with the drive off, against 810.7 us with it on**, where the closed form
+`L / (mu E)` is 425.9. The drive nearly doubles the transit. So "the RF confines radially
+and does nothing axially" is simply false, and a transit-based claim would be measuring the
+corrugation rather than the confinement.
+
+**And the transmission has no closed form.** At a working point where the drive decides the
+outcome - bore 1 mm, 600 V/m - it is 0.79 with the drive on and 0.08 with it off, a real
+tenfold. But neither number is arithmetic, and the corpus requires an expectation that is
+arithmetic, published, or an exact invariant.
+
+**Worse, at a comfortable working point the drive does not matter at all.** At 5 kV/m
+through a 2 mm bore the diffusion length over the 52 us transit is `sqrt(2 D t)` = 0.34 mm,
+so nothing reaches the wall either way: transmission 0.9977 with the drive on and 0.9740
+with it off. **A corpus example built there would pass with the ponderomotive path doing
+nothing at all** - the exact shape of test this project keeps finding and refusing.
+
+So the gap was a figure, not a model. `radialSpread` is the population-weighted standard
+deviation of the density across the direction of travel, about the packet's own centroid -
+radial in an axisymmetric solve, transverse in a cross-section. `DensityField.Spread()`
+already computed it; what did not exist was a way for a project test or a study to ask.
+That is the same gap `transitTime` and `meanKineticEnergy` were added to close.
+
+**Both regimes have a closed form, which is what makes it worth having.** Unconfined, the
+width follows `sqrt(seed^2 + 2 D t)` with `D = mu kT / q` from the Einstein relation:
+
+| | measured | closed form | |
+| --- | --- | --- | --- |
+| 50 us | 0.69474313 mm | 0.6947 | 6.2e-5 |
+| 200 us | 1.0865935 mm | 1.0866 | 5.9e-6 |
+| 800 us | 1.9934884 mm | 1.9932 | 1.5e-4 |
+
+**And the width does not care about the drift**, which is the stronger half: 1.0865935 mm
+with no field, 1.0865873 at 2 kV/m, and the same at 5 kV/m - identical to the seventh digit
+while the packet is carried a hundred millimetres downstream. Diffusion is isotropic and a
+uniform drift does not broaden a packet; a scheme that let it would fail here while passing
+every arrival-time check there is.
+
+`drift-tube-spread` ships as the corpus example, retaining its entire population over the
+window so the width is of the whole packet rather than of whatever survived.
+
+**What is still not in the corpus is the driven half.** Confined in a harmonic effective
+well the equilibrium width is `sqrt(kT / (m omega^2))`, which is a closed form - but the
+well of a *solved* rod geometry is not the ideal one, and writing the expectation from the
+ideal would be asserting a 7% modelling difference as though it were arithmetic. The honest
+route is an analytic RF field in the model format, which does not exist: the format offers
+`fieldFree`, `uniform`, `halfSpaceUniform`, `solved2d` and `solved3d`, and the only driven
+fields are solved. That is the next thing this needs, and it is a format gap rather than a
+physics one.
