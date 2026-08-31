@@ -197,6 +197,9 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("mirror separation is negative", failure.Error.Suggestion!, StringComparison.Ordinal);
     }
 
+    /// <summary>The timeout in the manifest below, named so the assertions cannot drift.</summary>
+    private const int TimeoutMs = 1200;
+
     [Fact]
     public void ARunawayExtensionIsKilledAtItsDeclaredTimeout()
     {
@@ -219,17 +222,51 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
                     pass
             """);
 
+        // Warmed, so the first call's file-system cache miss is nobody's measurement,
+        // and measured, because what follows has to be scale-free.
+        Bare();
+
+        var bare = Cheapest(Bare);
+
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var failure = Assert.Throws<EinzelException>(() => Run(folder, new JsonObject()));
         clock.Stop();
 
-        output.WriteLine($"killed after {clock.Elapsed.TotalMilliseconds:F0} ms");
+        var elapsed = clock.Elapsed.TotalMilliseconds;
+
+        output.WriteLine($"interpreter start alone   {bare,8:F0} ms");
+        output.WriteLine($"runaway killed after      {elapsed,8:F0} ms");
+        output.WriteLine($"enforcement's own share   {elapsed - bare,8:F0} ms  "
+            + $"against {TimeoutMs} declared");
 
         Assert.Equal(ErrorCodes.CostGateRefused, failure.Error.Code);
 
-        // Killed near the declared ceiling rather than eventually. A timeout that
-        // takes ten times as long as it says is not a resource bound.
-        Assert.InRange(clock.Elapsed.TotalMilliseconds, 1000, 6000);
+        // It waited. This catches a run that failed early for some other reason and
+        // reported a timeout it never actually served.
+        Assert.True(
+            elapsed >= 0.8 * TimeoutMs,
+            $"the runaway was stopped after {elapsed:F0} ms against a declared "
+            + $"{TimeoutMs} ms, which is too early to have been the timeout");
+
+        // AND IT WAS KILLED NEAR ITS DECLARED CEILING - measured over and above the cost
+        // of starting an interpreter at all, which is not this platform's to control.
+        //
+        // The absolute version of this assertion failed on a Windows build agent at
+        // 7,225 ms against a 6,000 ms ceiling, and that number is not a measurement of
+        // the timeout: it is the timeout plus however long that agent takes to start
+        // CPython, which here is 45-63 ms and on a loaded shared runner is seconds.
+        //
+        // The test twenty lines below already says this at length for PERF-7 - "a hard
+        // assertion here would be a test of the build agent" - having got it wrong twice.
+        // This one made the same mistake and nobody noticed, because it only shows on a
+        // machine slow enough to separate the two costs.
+        Assert.True(
+            elapsed - bare < 5.0 * TimeoutMs,
+            $"once the {bare:F0} ms of interpreter start is taken off, stopping the "
+            + $"runaway took {elapsed - bare:F0} ms against a declared {TimeoutMs} ms. "
+            + "That is the enforcement being slow rather than the machine being slow, "
+            + "and a timeout that takes several times as long as it says is not a "
+            + "resource bound");
     }
 
     [Fact]
