@@ -1483,6 +1483,37 @@ result stops looking. When a diagnostic's "not computed" value coincides with it
 value, the two must be distinguished at the point where the computation is skipped, not
 left to the reader.
 
+## A list of known outcomes, three times, where the question was never asked
+
+`einzel run` exits 4 — ConvergenceFailure — on `paul-trap-held`, an example that behaves
+exactly as designed. The exit logic reads
+
+    run.Outcome is "StopConditionMet" or "DensityEvolved"
+
+and `MaximumFlightTimeReached` is not in it. **This is the third sighting.** The list had
+to learn `DensityEvolved` after a working diffusive run reported itself as a failure, and
+the sequenced path needed the same fix again. Each time it was widened; each time the next
+mode broke it.
+
+The reason is that the list is a **proxy** for the question, and the question is *did this
+run finish what it was asked to do*. "Which outcome was it" is equivalent to that only for
+the modes that existed when the line was written.
+
+**But the fix here is not a third widening, and working out why is the useful part.** The
+tempting rule is "ended at the time limit with everything still inside and nothing struck →
+success", which describes a trap holding its ions. It also describes **a beamline whose ion
+ran out of flight time half way down the column** — same outcome, same loss channel, same
+counts. The two are indistinguishable from the result alone.
+
+So the distinction is not in the physics, it is in **what the model is for**, and nothing in
+the document says. That makes it a schema question rather than a bug: a trap would have to
+declare that reaching the time limit is its intended end. Recorded rather than guessed at.
+
+The generalisation: **when a proxy for a question keeps needing to be widened, the fix is
+usually to ask the question — but check first that the question is answerable from what you
+have.** Here it is not, and noticing that is what stops a fourth widening that would make a
+lost beam look like a held one.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
