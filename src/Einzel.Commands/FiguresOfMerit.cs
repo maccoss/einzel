@@ -1203,6 +1203,28 @@ public static class FiguresOfMerit
     /// thermal cloud rather than a wider energy spread.
     /// </para>
     /// </remarks>
+    /// <summary>How many genuinely different ions an energy scan of this model has.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Every caller must offer a declared cloud first.</b> This is the deterministic,
+    /// seed-free energy scan a study wants when nothing else is stated; it is NOT the
+    /// population a document declares, and a figure that reaches here without checking
+    /// answers a different question from the one <c>einzel run</c> answers over the same
+    /// model. That divergence is not hypothetical - <c>confined</c> did exactly this while
+    /// its sibling <c>transmission</c> did not, and the two disagreed 20-fold on a trap
+    /// holding part of a hot cloud.
+    /// </para>
+    /// <para>
+    /// There are three call sites and all three check <c>model.Cloud.IsCloud</c> first, in
+    /// <see cref="Ensemble"/>, <see cref="Counted"/> and <see cref="Confined"/>. A fourth
+    /// belongs in that list before it belongs here.
+    /// </para>
+    /// </remarks>
+    /// <param name="model">The validated model.</param>
+    /// <param name="spread">Fractional energy spread the scan covers.</param>
+    /// <param name="ions">How many members were asked for.</param>
+    /// <param name="report">Sink for validity warnings.</param>
+    /// <returns>How many distinct trajectories the scan actually produces.</returns>
     private static int Distinct(
         CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
     {
