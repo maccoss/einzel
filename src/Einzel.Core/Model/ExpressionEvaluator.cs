@@ -211,7 +211,7 @@ public static class ExpressionEvaluator
                 path,
                 $"unexpected character at position {_position} of '{text}'",
                 "expressions accept numbers, parameter names, + - * /, parentheses, and "
-                + "abs, sqrt, log, floor, mod, min, max, cosPi, sinPi");
+                + "abs, sqrt, log, floor, mod, min, max, cosPi, sinPi, asinPi");
         }
 
         private Quantity ParseNumber()
@@ -373,6 +373,51 @@ public static class ExpressionEvaluator
                             : double.SinPi(arguments[0].SiValue));
                 }
 
+                case "asinPi" when arguments.Count == 1:
+                {
+                    // The inverse of sinPi, and in the same units: half turns out, so a
+                    // result feeds straight back into cosPi/sinPi with no conversion and
+                    // no pi anywhere in a document.
+                    //
+                    // What needs it is placing something by angle when what is known is a
+                    // LENGTH RATIO. A sphere of radius a whose centre sits at radius R
+                    // reaches asin(a / R) round the arc - the tangent from the origin - so
+                    // a curved electrode built from beads cannot say where its own surface
+                    // ends without this. The C-trap's ejection slot is exactly that: the
+                    // gap between two bead centres is not the opening between two surfaces,
+                    // and a template that confuses them declares a 27 degree slot that is
+                    // shut.
+                    if (!arguments[0].Dimension.IsDimensionless)
+                    {
+                        throw Failure(
+                            path,
+                            "asinPi requires a dimensionless argument, but was given one of "
+                            + $"dimension {arguments[0].Dimension}",
+                            "form a ratio first, for example asinPi(rodRadius / armRadius)");
+                    }
+
+                    // Refused rather than returning NaN. Outside [-1, 1] the ratio was
+                    // built the wrong way up or names a body larger than the arm carrying
+                    // it, and NaN would travel silently into a placement - which is the
+                    // failure this project has already had four times over, a quantity
+                    // that is not a number reaching a serialiser long after the mistake.
+                    if (Math.Abs(arguments[0].SiValue) > 1.0)
+                    {
+                        throw Failure(
+                            path,
+                            "asinPi requires an argument between -1 and 1, but was given "
+                            + $"{arguments[0].SiValue:G6}",
+                            "check the ratio is the right way up: a body cannot subtend an "
+                            + "angle at a radius smaller than itself");
+                    }
+
+                    // Asin then a division rather than double.AsinPi, which does not
+                    // exist. The quarter-turn exactness cosPi and sinPi are chosen for is
+                    // not available in this direction and is not needed: nothing is placed
+                    // AT the result, it is added to an angle that is placed.
+                    return Quantity.Number(Math.Asin(arguments[0].SiValue) / Math.PI);
+                }
+
                 case "log" when arguments.Count == 1:
                 {
                     // Dimensionless only, for the reason sqrt and cosPi are, and here
@@ -422,7 +467,7 @@ public static class ExpressionEvaluator
                         path,
                         $"'{name}' is not a known function, or was called with {arguments.Count} arguments",
                         "available: abs(x), sqrt(x), floor(x), mod(a, b), min(a, b), max(a, b), "
-                            + "cosPi(x), sinPi(x) - the last two in half turns, so cosPi(0.5) is "
+                            + "cosPi(x), sinPi(x), asinPi(x) - the last three in half turns, so cosPi(0.5) is "
                             + "exactly zero");
             }
         }

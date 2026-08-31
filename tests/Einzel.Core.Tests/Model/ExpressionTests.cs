@@ -181,4 +181,73 @@ public sealed class ExpressionTests
     {
         Assert.Throws<Einzel.Core.Errors.EinzelException>(() => Evaluate("0 - gap"));
     }
+
+    /// <summary>asinPi inverts sinPi, in the same units.</summary>
+    /// <remarks>
+    /// A round trip rather than a table of values, because a table would be asserting
+    /// this engine's arithmetic against arithmetic done the same way. What must hold is
+    /// that the answer feeds straight back into sinPi and returns what went in — which
+    /// is the only property any document relies on.
+    /// </remarks>
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.05)]
+    [InlineData(0.2)]
+    [InlineData(0.5)]
+    [InlineData(-0.3)]
+    public void AsinPiInvertsSinPi(double halfTurns)
+    {
+        var sine = Evaluate($"sinPi({halfTurns.ToString(System.Globalization.CultureInfo.InvariantCulture)})");
+
+        var back = Evaluate(
+            $"asinPi({sine.SiValue.ToString("R", System.Globalization.CultureInfo.InvariantCulture)})");
+
+        Assert.Equal(halfTurns, back.SiValue, 1e-15);
+    }
+
+    /// <summary>Half turns out, so the result composes with cosPi and sinPi.</summary>
+    /// <remarks>
+    /// <para>
+    /// The unit is the whole point of the function existing in this form. What needs it
+    /// is placing something by angle when what is known is a LENGTH RATIO: a bead of
+    /// radius a whose centre sits at radius R reaches asin(a / R) round an arc, the
+    /// tangent from the origin. Returning radians would put a factor of pi into every
+    /// document that used it, and there is no pi in the grammar on purpose.
+    /// </para>
+    /// <para>
+    /// A quarter turn is the value to pin, because it is the one a half-turn convention
+    /// has to get exactly right: asinPi(1) is 0.5, not 0.49999999999999994.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("asinPi(1)", 0.5)]
+    [InlineData("asinPi(0)", 0.0)]
+    [InlineData("asinPi(-1)", -0.5)]
+    [InlineData("cosPi(asinPi(0.6))", 0.8)]
+    public void AsinPiIsInHalfTurns(string expression, double expected)
+    {
+        Assert.Equal(expected, Evaluate(expression).SiValue, 1e-14);
+    }
+
+    /// <summary>A ratio built the wrong way up is refused, not returned as NaN.</summary>
+    /// <remarks>
+    /// Outside [-1, 1] the argument names a body larger than the arm carrying it, or a
+    /// ratio inverted. NaN would travel silently into a placement, and this project has
+    /// had that failure four times over — a quantity that is not a number reaching a
+    /// serialiser long after the mistake that made it.
+    /// </remarks>
+    [Theory]
+    [InlineData("asinPi(1.5)")]
+    [InlineData("asinPi(-2)")]
+    public void AsinPiRefusesAnArgumentOutsideItsDomain(string expression)
+    {
+        Assert.Throws<EinzelException>(() => Evaluate(expression));
+    }
+
+    /// <summary>asinPi is dimensionless-only, as sqrt, log and cosPi are.</summary>
+    [Fact]
+    public void AsinPiRequiresADimensionlessArgument()
+    {
+        Assert.Throws<EinzelException>(() => Evaluate("asinPi(gap)"));
+    }
 }

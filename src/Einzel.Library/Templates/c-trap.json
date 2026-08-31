@@ -64,14 +64,14 @@
       "unit": "V",
       "minimum": 0.0,
       "maximum": 20000.0,
-      "description": "A steady push across the in-plane pair: the outer rod positive and the inner negative, so a positive ion is driven INWARD, through the slot a real C-trap has in its inner electrode and toward the analyser sitting inside the arc. Zero by default, so the template is a trap unless a document says otherwise - the same way the rectilinear trap carries both of its configurations. A sequence raising this from nought is what an ejection is."
+      "description": "A steady push on the OUTER rod, with the inner one held at earth, so a positive ion is driven INWARD through the slot and toward the analyser sitting inside the arc. Zero by default, so the template is a trap unless a document says otherwise - the same way the rectilinear trap carries both of its configurations. A sequence raising this from nought is what an ejection is. Against earth rather than symmetrically about it, and the difference is the whole flight: with the inner rod at minus V the ion falls V through the slot and then climbs the same V back out, because the space inside the arc is bounded by the grounded domain and sits near earth - so it arrives at the analyser with nothing left and turns round. Pushing against earth leaves that space field-free, which is where the ejected packet does its converging."
     },
     "slotHalfTurns": {
       "value": 0.15,
       "unit": "1",
       "minimum": 0.0,
       "maximum": 0.9,
-      "description": "Angular width of the slot in the inner electrode, in half turns. This is the hole ions leave through, and without one an ejection pushes the packet straight into metal - which is what this template did before the slot existed, and said so by striking a rod after exactly the inscribed radius of travel. Wider passes more of the packet and weakens the trapping field near it, which is the trade a real design makes."
+      "description": "Angular width of the OPENING in the inner electrode, in half turns, measured between the two metal surfaces rather than between the two end beads' centres - see beadHalfTurns, which is the difference and is not small. This is the hole ions leave through, and without one an ejection pushes the packet straight into metal. Wider passes more of the packet and weakens the trapping field near it, which is the trade a real design makes."
     },
     "innerBeads": {
       "value": 5.0,
@@ -80,17 +80,26 @@
       "maximum": 200.0,
       "description": "Beads in each of the two inner-electrode segments. Fewer than the other rods because each segment spans less arc."
     },
-    "slotCentre": {
-      "expression": "arcHalfTurns / 4",
-      "unit": "1"
+    "launchHalfTurns": {
+      "value": 0.125,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Where round the arc an ion starts, in half turns from the entrance. The default is a quarter of the way along the default arc, which is where the slot is - so the shipped model launches an ion at the ejection point. It is a free parameter rather than an expression over arcHalfTurns because it is a genuinely independent choice: a trap holds ions all along its length, and where one starts is a question about the ion rather than about the trap. Sweeping it is how the packet an ejection produces is measured, since ions at different points round the arc are pushed out along different radii."
     },
-    "slotStart": {
-      "expression": "slotCentre - slotHalfTurns / 2",
-      "unit": "1"
+    "launchVolts": {
+      "value": 0.5,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 1000.0,
+      "description": "Kinetic energy an ion starts with, as the potential that would give it - so it is the temperature of the packet expressed the way a source declares one. It matters most for an EJECTION: a real C-trap cools its ions in gas before pulsing them out, and an ion still moving along the arc when the push arrives leaves at an angle to the radius. At the default 0.5 V an m/z 500 ion travels at 439 m/s and drifts about twelve degrees round the arc while it is being ejected, which is enough to clip the far edge of the slot. Cooling is not a refinement here; it is what makes the ejection work."
     },
-    "slotEnd": {
-      "expression": "slotCentre + slotHalfTurns / 2",
-      "unit": "1"
+    "ejectPhase": {
+      "value": 0.0,
+      "unit": "1",
+      "minimum": -1.0,
+      "maximum": 1.0,
+      "description": "Phase of the drive, in half turns, applied equally to every rod - so it is a rigid shift of the generator against the clock, which for an ion released at t = 0 is the RF phase it is EJECTED at. It exists because a single ejection with the drive running is one sample of something periodic, and quoting one sample as the answer is how a demonstration gets mistaken for a measurement. Sweeping it is what says whether an ejected packet depends on when in the cycle it left."
     },
     "rodRadius": {
       "expression": "inscribedRadius * rodRatio",
@@ -99,6 +108,29 @@
     "rodCentre": {
       "expression": "inscribedRadius + rodRadius",
       "unit": "mm"
+    },
+    "innerArcRadius": {
+      "expression": "bendRadius - rodCentre",
+      "unit": "mm",
+      "description": "Radius of the arc the INNER rod's centreline follows. The slot is a hole in that rod, so this is the radius its angles are measured at."
+    },
+    "beadHalfTurns": {
+      "expression": "asinPi(rodRadius / innerArcRadius)",
+      "unit": "1",
+      "description": "How far round the arc one bead's SURFACE reaches past its own centre - asin(a/R), the tangent from the origin, in half turns. This is the whole reason asinPi exists in the grammar. The gap between the two inner segments' end BEADS is not the opening between their two SURFACES, and the difference is not small: here it is 14.7 degrees a side. A first version of this template took slotHalfTurns as the bead gap, so a declared 27 degree slot opened MINUS 2 degrees and the ejected ion struck metal after travelling exactly the inscribed radius. A parameter that means something other than what it says is worse than one that is missing."
+    },
+    "slotCentre": {
+      "expression": "arcHalfTurns / 2",
+      "unit": "1",
+      "description": "Where the slot sits, in half turns - the middle of the arc. It has to be far enough from either end to fit: the metal stops slotHalfTurns/2 + beadHalfTurns short of the centre on each side, which at a quarter of the way along the default arc would be a negative span."
+    },
+    "slotStart": {
+      "expression": "slotCentre - slotHalfTurns / 2 - beadHalfTurns",
+      "unit": "1"
+    },
+    "slotEnd": {
+      "expression": "slotCentre + slotHalfTurns / 2 + beadHalfTurns",
+      "unit": "1"
     },
     "cellSize": {
       "expression": "inscribedRadius / cellsPerRadius",
@@ -123,21 +155,21 @@
   "source": {
     "position": {
       "expression": [
-        "bendRadius * cosPi(arcHalfTurns / 4)",
-        "bendRadius * sinPi(arcHalfTurns / 4)",
+        "bendRadius * cosPi(launchHalfTurns)",
+        "bendRadius * sinPi(launchHalfTurns)",
         "0"
       ],
       "unit": "mm"
     },
     "direction": {
       "expression": [
-        "-sinPi(arcHalfTurns / 4)",
-        "cosPi(arcHalfTurns / 4)",
+        "-sinPi(launchHalfTurns)",
+        "cosPi(launchHalfTurns)",
         "0"
       ]
     },
     "accelerationPotential": {
-      "value": 0.5,
+      "expression": "launchVolts",
       "unit": "V"
     }
   },
@@ -207,12 +239,15 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "-ejectVolts",
+              "expression": "0",
               "unit": "V"
             },
             "driveAmplitude": {
               "expression": "rfAmplitude",
               "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
             }
           },
           {
@@ -241,12 +276,15 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "-ejectVolts",
+              "expression": "0",
               "unit": "V"
             },
             "driveAmplitude": {
               "expression": "rfAmplitude",
               "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
             }
           },
           {
@@ -281,6 +319,9 @@
             "driveAmplitude": {
               "expression": "rfAmplitude",
               "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
             }
           },
           {
@@ -315,6 +356,9 @@
             "driveAmplitude": {
               "expression": "-rfAmplitude",
               "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
             }
           },
           {
@@ -349,6 +393,9 @@
             "driveAmplitude": {
               "expression": "-rfAmplitude",
               "unit": "V"
+            },
+            "drivePhase": {
+              "expression": "ejectPhase"
             }
           }
         ]

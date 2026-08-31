@@ -273,6 +273,359 @@ public sealed class CTrapTests(ITestOutputHelper output)
             + "inscribed radius - it is not being held, it is being missed");
     }
 
+    /// <summary>Flies one ion with no detector, recording finely.</summary>
+    /// <remarks>
+    /// The model's own flight ceiling is a HOLD time — a trap is asked to keep ions for as
+    /// long as the instrument wants them. An ejection is over in microseconds, so the
+    /// ceiling is supplied here instead; letting an ion that missed the slot rattle for the
+    /// full hold was most of the cost of this measurement and none of its information.
+    /// </remarks>
+    private static IReadOnlyList<TrajectorySample> Eject(
+        CompiledModel model,
+        IElectrostaticField field,
+        double stepUs,
+        double maxUs)
+    {
+        var species = IonSpecies.FromModel(model);
+
+        var launch = new PhaseState(
+            model.SourcePosition, model.SourceDirection * model.LaunchSpeedSi());
+
+        // No detector: an ejected ion flies inward toward the arc centre, which is where
+        // the analyser would be and where this model has nothing at all. What is wanted is
+        // the whole path, so the stop function never fires.
+        var recorder = new TrajectoryRecorder(stepUs * 1e-6, capacity: 8192);
+
+        TrajectoryIntegrator.Integrate(
+            launch,
+            species,
+            field,
+            new IntegrationSettings
+            {
+                RelativeTolerance = model.RelativeTolerance,
+                MaximumFlightTime = maxUs * 1e-6,
+            },
+            (in PhaseState _) => 1.0,
+            recorder);
+
+        return recorder.Samples;
+    }
+
+    /// <summary>Position of one ion at a given time, linearly between samples.</summary>
+    private static Vec3? At(IReadOnlyList<TrajectorySample> path, double t)
+    {
+        if (path.Count == 0 || t < path[0].TimeSeconds || t > path[^1].TimeSeconds)
+        {
+            return null;
+        }
+
+        for (var k = 1; k < path.Count; k++)
+        {
+            if (path[k].TimeSeconds < t)
+            {
+                continue;
+            }
+
+            var span = path[k].TimeSeconds - path[k - 1].TimeSeconds;
+            var f = span <= 0.0 ? 0.0 : (t - path[k - 1].TimeSeconds) / span;
+
+            return path[k - 1].Position + ((path[k].Position - path[k - 1].Position) * f);
+        }
+
+        return path[^1].Position;
+    }
+
+    private static Vec3 Centroid(Vec3[] points)
+    {
+        var sum = new Vec3(0.0, 0.0, 0.0);
+
+        foreach (var p in points)
+        {
+            sum += p;
+        }
+
+        return sum * (1.0 / points.Length);
+    }
+
+    /// <summary>RMS distance of a set of points from their own centroid.</summary>
+    private static double Extent(Vec3[] points)
+    {
+        var centre = Centroid(points);
+        var sum = 0.0;
+
+        foreach (var p in points)
+        {
+            var d = p - centre;
+            sum += Vec3.Dot(d, d);
+        }
+
+        return Math.Sqrt(sum / points.Length);
+    }
+
+    /// <summary>What an ejected packet does: where it is narrowest and how narrow.</summary>
+    /// <param name="LaunchExtent">RMS spread of the ions at launch, in metres.</param>
+    /// <param name="Waist">RMS spread at its narrowest, in metres.</param>
+    /// <param name="Travelled">Distance the packet centroid covered to get there.</param>
+    /// <param name="WaistRadius">Where that is, as a radius from the arc centre.</param>
+    private sealed record FocusResult(
+        double LaunchExtent,
+        double Waist,
+        double Travelled,
+        double WaistRadius)
+    {
+        /// <summary>How much narrower the packet is at its waist than at launch.</summary>
+        /// <remarks>
+        /// Exactly 1 for a straight trap, whatever the field does, because a parallel
+        /// ejection is a rigid translation and a translation preserves every distance.
+        /// So this needs no second run to compare against.
+        /// </remarks>
+        public double Convergence => LaunchExtent / Waist;
+    }
+
+    /// <summary>Ejects a spread of ions and finds the waist of the packet they make.</summary>
+    private FocusResult MeasureFocus(double bendMm, double rfVolts, double phase, bool trace)
+    {
+        const double Spread = 0.04;   // half turns either side of the slot centre
+        const double EjectVolts = 60.0;
+
+        var offsets = new[] { -Spread, -Spread / 2.0, 0.0, Spread / 2.0, Spread };
+
+        var paths = new List<IReadOnlyList<TrajectorySample>>();
+
+        // One solve for the whole spread. Where round the arc an ion starts changes the
+        // launch and nothing about the geometry, so re-solving per ion would be five
+        // passes over a volume to compute the same field five times.
+        IElectrostaticField? field = null;
+
+        foreach (var offset in offsets)
+        {
+            var model = Compile(
+                ("bendRadius", Quantity.From(bendMm, "mm")),
+                ("ejectVolts", Quantity.From(EjectVolts, "V")),
+                ("rfAmplitude", Quantity.From(rfVolts, "V")),
+                ("ejectPhase", Quantity.Number(phase)),
+                // Cooled. An ion still running along the arc leaves at an angle to its own
+                // radius, which is an aberration on the focus rather than a focus.
+                ("launchVolts", Quantity.From(0.005, "V")),
+                ("launchHalfTurns", Quantity.From(0.25 + offset, "1")));
+
+            field ??= FieldAssembly.Build(model);
+
+            paths.Add(Eject(model, field, stepUs: 0.01, maxUs: 24.0));
+        }
+
+        var launchExtent = Extent([.. paths.Select(p => p[0].Position)]);
+
+        var last = paths.Min(p => p[^1].TimeSeconds);
+
+        var waist = double.MaxValue;
+        var waistTime = 0.0;
+
+        if (trace)
+        {
+            output.WriteLine(
+                $"bend radius {bendMm:F1} mm, RF {rfVolts:F0} V at phase {phase:F2}, "
+                + $"launch extent {launchExtent * 1e3:F3} mm");
+
+            output.WriteLine("     t/us   centroid r/mm   packet extent/mm");
+        }
+
+        for (var k = 1; k <= 400; k++)
+        {
+            var t = last * k / 400.0;
+
+            var points = paths.Select(p => At(p, t)).ToList();
+
+            if (points.Any(q => q is null))
+            {
+                continue;
+            }
+
+            var here = points.Select(q => q!.Value).ToArray();
+            var extent = Extent(here);
+
+            if (extent < waist)
+            {
+                waist = extent;
+                waistTime = t;
+            }
+
+            if (trace && k % 40 == 0)
+            {
+                var centre = Centroid(here);
+
+                output.WriteLine(
+                    $"  {t * 1e6,7:F3}   "
+                    + $"{Math.Sqrt((centre.X * centre.X) + (centre.Y * centre.Y)) * 1e3,13:F3}"
+                    + $"   {extent * 1e3,16:F4}");
+            }
+        }
+
+        var atWaist = Centroid([.. paths.Select(p => At(p, waistTime)!.Value)]);
+        var atLaunch = Centroid([.. paths.Select(p => p[0].Position)]);
+
+        return new FocusResult(
+            launchExtent,
+            waist,
+            Math.Sqrt(Vec3.Dot(atWaist - atLaunch, atWaist - atLaunch)),
+            Math.Sqrt((atWaist.X * atWaist.X) + (atWaist.Y * atWaist.Y)));
+    }
+
+    /// <summary>A curved trap ejects a converging packet; a straight one cannot.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what the curvature is for.</b> Every ion in a curved trap is pushed out
+    /// along its own radius, so their velocities all point inward and the packet converges
+    /// as it flies — it arrives at the analyser spatially focused rather than as a line. A
+    /// straight trap pushes every ion in the SAME direction, so whatever length of trap the
+    /// ions occupied, they still occupy after the flight. The template has claimed this in
+    /// its description since it was written and nothing measured it.
+    /// </para>
+    /// <para>
+    /// The comparison against a straight trap needs no second run because it is arithmetic:
+    /// a rigid translation preserves every distance, so a parallel ejection carries the
+    /// launch extent through unchanged whatever the field does, and the convergence measured
+    /// here is exactly 1 for one.
+    /// </para>
+    /// <para>
+    /// <b>The focus is not at the arc centre, which is the part a design has to know.</b>
+    /// Aiming every velocity along a radius would put it there, one bend radius away; it is
+    /// measured at 1.73 and 1.92 bend radii, so the packet crosses the centre still
+    /// converging and reaches its waist well beyond. The slot is a lens as well as a hole —
+    /// the ion is accelerated up to it and drifts field-free after it, which is an aperture
+    /// lens by construction. What is NOT claimed is a strength for it: a thin-lens fit to
+    /// the shorter bend predicts 46.0 mm for the longer one against a measured 38.4, so the
+    /// two are not one fixed lens and one variable one. The slot's own opening scales with
+    /// the bend as well, since it is declared as an angle.
+    /// </para>
+    /// <para>
+    /// The control for "is it the curvature" is to change the bend radius and watch the
+    /// focus follow, which is why this runs at two.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(20.0)]
+    [InlineData(15.0)]
+    public void CurvatureFocusesTheEjectedPacket(double bendMm)
+    {
+        var focus = MeasureFocus(bendMm, rfVolts: 0.0, phase: 0.0, trace: true);
+
+        output.WriteLine(
+            $"waist {focus.Waist * 1e3:F4} mm, {focus.Travelled * 1e3:F3} mm from launch "
+            + $"= {focus.Travelled / (bendMm * 1e-3):F3} bend radii, "
+            + $"{focus.WaistRadius * 1e3:F3} mm from the arc centre");
+
+        output.WriteLine(
+            $"launch extent / waist = {focus.Convergence:F1}x; a straight trap would be 1.0x");
+
+        // It focuses at all. A parallel ejection gives exactly 1.0 here whatever the field
+        // does, so anything well above 1 is the curvature.
+        Assert.True(
+            focus.Convergence > 5.0,
+            $"the packet went from {focus.LaunchExtent * 1e3:F3} mm at launch to "
+            + $"{focus.Waist * 1e3:F3} mm at its narrowest, a factor of "
+            + $"{focus.Convergence:F2}. That is not a focus");
+
+        // And the curvature is what sets the distance: the focus lands within a factor of
+        // two of one bend radius at both radii, which a fixed-length lens would not do.
+        var inRadii = focus.Travelled / (bendMm * 1e-3);
+
+        Assert.InRange(inRadii, 1.2, 2.5);
+    }
+
+    /// <summary>Leaving the drive on refocuses the ejection, and it does it by cycle average.</summary>
+    /// <remarks>
+    /// <para>
+    /// A real C-trap switches its RF off to eject. With it left running the packet still
+    /// converges, but it converges <b>three times sooner and two and a half times less
+    /// well</b> — so an analyser placed where the quiet ejection focuses would be in
+    /// entirely the wrong place, and one placed at the driven focus would receive a poorer
+    /// packet. Whether the drive is on at the instant of ejection is a design decision
+    /// about where the analyser goes, not a detail of the hold.
+    /// </para>
+    /// <para>
+    /// <b>The phase sweep is the half that says what mechanism it is</b>, and it refuted
+    /// the guess that prompted it. An ejection into a field reversing at three megahertz
+    /// looks like it should depend on where in the cycle the push arrived — every ion in
+    /// the packet sees the same phase, so a kick would aim the whole packet somewhere
+    /// different. It does not: over a whole cycle the focal distance moves by about a
+    /// tenth, against the threefold shift the drive itself causes. So what acts on the
+    /// packet is the <b>cycle-averaged</b> force — the pseudopotential — and not the
+    /// instantaneous field. The ion crosses about seventeen RF periods on its way to the
+    /// waist, which is why the phase it started at washes out, and the tenth that remains
+    /// is the one partial cycle at the beginning.
+    /// </para>
+    /// <para>
+    /// Sweeping it at all is the point: one ejection with the drive running is a single
+    /// sample of something periodic, and this project has already recorded once what comes
+    /// of quoting one — an isolation-efficiency curve whose shape reversed at an amplitude
+    /// nobody had swept.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void LeavingTheDriveOnMovesTheFocusThroughItsCycleAverage()
+    {
+        double[] phases = [0.0, 0.25, 0.5, 0.75];
+
+        var quiet = MeasureFocus(20.0, rfVolts: 0.0, phase: 0.0, trace: false);
+
+        output.WriteLine(
+            $"  drive off       : {quiet.Convergence,6:F1}x at "
+            + $"{quiet.Travelled * 1e3,7:F2} mm");
+
+        var travelled = new List<double>();
+        var convergence = new List<double>();
+
+        foreach (var phase in phases)
+        {
+            var driven = MeasureFocus(20.0, rfVolts: 500.0, phase: phase, trace: false);
+
+            travelled.Add(driven.Travelled);
+            convergence.Add(driven.Convergence);
+
+            output.WriteLine(
+                $"  drive on, {phase:F2} ht: {driven.Convergence,6:F1}x at "
+                + $"{driven.Travelled * 1e3,7:F2} mm");
+        }
+
+        var phaseSpread = travelled.Max() / travelled.Min();
+        var driveShift = quiet.Travelled / travelled.Max();
+
+        output.WriteLine(
+            $"the drive moves the focus {driveShift:F2}x; over a whole RF cycle the phase "
+            + $"moves it {phaseSpread:F2}x - "
+            + $"effects of {driveShift - 1.0:F2} against {phaseSpread - 1.0:F2}");
+
+        // The drive matters a great deal to WHERE the packet focuses.
+        Assert.True(
+            driveShift > 2.0,
+            $"the quiet ejection focused at {quiet.Travelled * 1e3:F2} mm and the driven "
+            + $"one at {travelled.Max() * 1e3:F2} mm, only {driveShift:F2}x apart - so "
+            + "leaving the drive running would not change where an analyser goes");
+
+        // And it does it through the cycle average, not through the phase. This is the
+        // discriminating half: a kick would put the phase spread at the same scale as the
+        // drive shift, and instead it is an order smaller.
+        // Compared as EXCESS OVER ONE, not as the ratios themselves. A ratio that says
+        // "no variation" is 1 rather than 0, so the size of an effect measured as a ratio
+        // is its distance from 1 - and a first version of this assertion compared 1.10
+        // against 3.14/4, which no phase spread could ever satisfy however flat it was.
+        Assert.True(
+            phaseSpread - 1.0 < (driveShift - 1.0) / 4.0,
+            $"the focal distance moved {phaseSpread:F2}x across one RF cycle against the "
+            + $"drive's own {driveShift:F2}x. Those are comparable, so the packet is being "
+            + "kicked by the instantaneous field rather than steered by its cycle average, "
+            + "and no single number describes a driven ejection");
+
+        // Every phase is worse than switching off, which is the reason to switch off
+        // rather than to pick a phase.
+        Assert.True(
+            convergence.Max() < quiet.Convergence,
+            $"the best driven ejection converged {convergence.Max():F1}x against "
+            + $"{quiet.Convergence:F1}x with the drive off, so there is a phase at which "
+            + "leaving the drive running costs nothing");
+    }
+
     /// <summary>An in-plane launch stays in the plane, exactly.</summary>
     /// <remarks>
     /// The geometry is symmetric about the plane of the arc — the out-of-plane rods are a

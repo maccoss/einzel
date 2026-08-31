@@ -970,8 +970,8 @@ amplitude at zero:
 
 | | outcome | closest approach, late in flight |
 | --- | --- | --- |
-| drive on | arrives at the arc's end | **2.5 um** |
-| drive off | strikes a rod at 25.9 us | never nearer than **782 um** |
+| drive on | arrives at the arc's end | **8.4 um**, 0.5% of its own worst |
+| drive off | strikes a rod at 25.9 us | never nearer than **782 um**, 26% of its worst |
 
 Bounded against unbounded, which is what confinement means. Three earlier versions of that
 assertion compared the wrong pair of quantities and are written up in `docs/lessons.md`.
@@ -980,19 +980,109 @@ assertion compared the wrong pair of quantities and are written up in `docs/less
 
 Ejection needs a hole in the inner electrode, so it is declared as two segments with an
 angular gap. **The gap is not the opening.** The bounding bead at each end is a sphere of
-the rod radius sitting on the inner arc, and it reaches into the gap by
-`rodRadius / innerArcRadius` — 14.5 degrees on each side for the shipped numbers, so a
-27-degree gap is *closed* and a 45-degree gap opens only 16 degrees.
+the rod radius sitting on the inner arc, and it reaches `asin(rodRadius / innerArcRadius)`
+past its own centre — 14.7 degrees on each side for the shipped numbers, so a declared
+27-degree gap opens **minus two**.
 
 Found by ejecting into it: before the slot existed the ion struck metal after travelling
-exactly the inscribed radius, and with a 27-degree gap it struck the bounding bead. With
-the gap widened past what the beads eat, the ion leaves.
+exactly the inscribed radius, and with a 27-degree gap it struck the bounding bead.
+
+**`slotHalfTurns` is now the opening**, measured between the two metal surfaces, and the
+bead reach is a derived parameter the segments are placed by. A parameter that means
+something other than what it says is worse than one that is missing — the arithmetic is
+right either way, and only one of the two spellings is right when somebody reads it.
+
+**That needed `asinPi` in the expression grammar**, which is the same shape as the Kingdon
+trap needing `log` and the multipole guide finding no trigonometry at all. Placing
+something by angle when what is known is a *length ratio* needs an inverse sine, and in
+half turns so that the result feeds straight back into `cosPi`/`sinPi` — there is no `pi`
+in the grammar, on purpose.
+
+The slot also had to move to the **middle** of the arc. At a quarter of the way along, the
+metal would have to stop `slotHalfTurns/2 + beadHalfTurns` short of the slot centre on the
+entrance side, which is a negative span.
 
 **And it has to be a cooled ion.** Launched at 439 m/s the packet drifts 12 degrees along
 the arc while it is being pushed out, and clips the far edge of the opening. A real C-trap
 cools its ions in gas before ejecting them, and modelling that is what makes the ejection
-work: at 62 m/s it goes straight through and reaches a plane 14 mm inside the arc in
-4.29 us.
+work. `launchVolts` is that temperature, written the way a source declares one.
+
+### The push has to be against earth
+
+`ejectVolts` puts the outer rod at +V and the inner rods at **earth**, not at −V. The
+difference is the whole flight. The space inside the arc is bounded by the grounded domain
+and sits near earth, so with the inner rod at −V an ion falls V through the slot and then
+climbs the same V back out — it arrives where the analyser would be with nothing left, and
+turns round. Pushing against earth leaves that space field-free, and a field-free space is
+where a converging packet does its converging.
+
+This was not found by a failing test. It was found by asking where the energy goes, after
+the first ejection scan produced ions at 173, 346, 361 and 856 mm from a 20 mm trap.
+
+### The curvature focuses the packet, and not where the geometry says
+
+This is what the curvature is *for*, and the template claimed it in prose from the day it
+was written with nothing measuring it. Every ion is pushed out along its own radius, so
+their velocities all point inward and the packet converges as it flies. **A straight trap
+pushes every ion in the same direction**, so whatever length of trap the ions occupied they
+still occupy at the analyser.
+
+Five ions spread over ±7.2 degrees of arc, cooled, ejected at 60 V with the drive off:
+
+| bend radius | launch extent | waist | convergence | focus at |
+| --- | --- | --- | --- | --- |
+| 15 mm | 1.331 mm | 0.0547 mm | **24.3x** | 25.94 mm = **1.73 R** |
+| 20 mm | 1.774 mm | 0.0852 mm | **20.8x** | 38.38 mm = **1.92 R** |
+| *a straight trap* | — | — | *exactly 1.0x* | *never* |
+
+The straight-trap column needs no run: a parallel ejection is a rigid translation and a
+translation preserves every distance, so the comparison is arithmetic rather than a second
+model.
+
+**The focus is not at the arc centre**, which is the part a design has to know. Velocities
+aimed along radii meet at the centre, one bend radius away; measured, the packet crosses
+the centre *still converging* and reaches its waist at 1.73 and 1.92 bend radii. The slot
+is a lens as well as a hole — the ion is accelerated up to it and drifts field-free after
+it, which is an aperture lens by construction.
+
+**What is deliberately not claimed is a strength for that lens.** A thin-lens fit to the
+shorter bend — one fixed slot lens in series with a curvature whose focal length is the
+bend radius — implies `f_slot = −35.5 mm` and predicts **46.0 mm** for the longer bend
+against a measured **38.4**. So the two are not one fixed lens and one variable one, and
+the reason is visible in the geometry: the slot is declared as an *angle*, so its own
+opening scales with the bend as well. The prediction is recorded because it failed;
+carrying it as a formula would have been carrying a 17% error dressed as a model.
+
+### Leaving the drive on refocuses the ejection, through its cycle average
+
+A real C-trap switches its RF off to eject. With it left running the packet still
+converges, but it converges **three times sooner and two and a half times less well**:
+
+| | convergence | focus at |
+| --- | --- | --- |
+| drive off | **20.8x** | 38.37 mm |
+| drive on, phase 0.00 | 8.3x | 11.57 mm |
+| drive on, phase 0.25 | 6.1x | 12.21 mm |
+| drive on, phase 0.50 | 8.8x | 11.59 mm |
+| drive on, phase 0.75 | 8.7x | 11.07 mm |
+
+So an analyser placed where the quiet ejection focuses would be in entirely the wrong
+place. Whether the drive is on at the instant of ejection is a decision about where the
+analyser goes, not a detail of the hold.
+
+**The phase sweep is the half that says what mechanism it is, and it refuted the guess that
+prompted it.** An ejection into a field reversing at three megahertz looks like it should
+depend on where in the cycle the push arrived — every ion in the packet sees the same
+phase, so a kick would aim the whole packet somewhere different. It does not: over a whole
+cycle the focal distance moves **1.10x**, against the **3.14x** the drive itself causes. So
+what acts on the packet is the **cycle-averaged** force — the pseudopotential — and not the
+instantaneous field. The ion crosses about seventeen RF periods on its way to the waist,
+which is why the phase it started at washes out, and the tenth that remains is the one
+partial cycle at the beginning.
+
+Sweeping it at all is the point. One ejection with the drive running is a single sample of
+something periodic, and this project has already recorded what comes of quoting one: an
+isolation-efficiency curve whose shape reversed at an amplitude nobody had swept.
 
 ### What cannot be done yet: the two instruments in one document
 

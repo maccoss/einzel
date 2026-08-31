@@ -399,6 +399,26 @@ What it bought: `multipole-guide` is **one template** with `poleCount` as a
 parameter, and 4 / 6 / 8 / 12 rods each reduce to **one basis solve** (8 cycles,
 factor 0.024–0.029). Twelve rods cost what four do.
 
+**And the same argument arrived a third time, for the inverse.** The C-trap's
+electrodes are chains of beads on an arc, and its ejection slot is the gap between
+two of them — but the gap between two bead *centres* is not the opening between two
+*surfaces*. A sphere of radius `a` centred at radius `R` reaches `asin(a/R)` past
+its own centre, which for the shipped numbers is **14.7 degrees on each side**, so
+a declared 27-degree slot opened **minus two** and the ejected ion struck the
+bounding bead.
+
+So the grammar gained `asinPi`, and the pattern is worth naming: placing something
+by angle when what is known is a **length ratio** needs an inverse trigonometric
+function, and it needs to return **half turns** so that the result composes with
+`cosPi` and `sinPi` without a `pi` appearing in a document. There is no `pi` in the
+grammar and there should not be — half turns exist precisely so that a quarter turn
+is exact.
+
+This is now the fourth device to find a gap one level down (`log` for the Kingdon
+trap, trigonometry for the multipole guide, a parametric `drivePhase` for the
+travelling wave, `asinPi` here). LIB-1 says to believe that signal, and each time it
+has been a **function**, never an abstraction.
+
 **Recommend §9 note that the grammar's function set is part of what "every
 placement is a parametric expression" means.** A placement that cannot be written
 is a device that cannot be a template, and the list of functions is therefore a
@@ -706,6 +726,24 @@ even though the sequencer can express the handover and superposition is exact.
 **Two solved elements compose correctly**, because each is bounded by its own domain and
 decays outside it. So the gap is specific: an exact analytic field cannot be one element of
 a multi-element beamline, and the exactness is precisely why anyone would want it there.
+
+**And the obvious escape does not work, which is what makes this an amendment rather than a
+task.** The natural answer is "declare the analyser as solved geometry instead, and let its
+domain bound it". An orbital trap's electrodes are surfaces of revolution, and an
+axisymmetric solve is exactly the tool - but the electrodes **are equipotentials of the very
+field they produce**, so their profile satisfies
+
+    -r^2 / 2 + Rm^2 ln(r / Rm) = A - z^2
+
+which is transcendental in r: an `r^2` and a `ln r` in the same equation, invertible only
+through Lambert W. The expression grammar has `sqrt` and `log` and no way to invert that,
+and the 2-D shape vocabulary is rectangle, disc and edge profile - none of which is a curve
+a document can name. So the analyser cannot be declared as geometry either.
+
+The two facts together are the finding: **an exact orbital analyser can be modelled alone
+and cannot be modelled beside anything.** Its field is unbounded and its geometry is
+inexpressible, and those are the only two ways the format has of placing a device in a
+document.
 
 **Recommend section 9 give an analytic element an optional region** - a box outside which
 it contributes nothing. That introduces a field discontinuity at the boundary, which is not

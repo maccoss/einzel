@@ -1358,6 +1358,43 @@ Three things generalise.
 **The audit was worth more than either fix.** Both defects were in code that had been
 reviewed, tested, and written up as working.
 
+## A ratio's size is its distance from one, not its value
+
+Comparing two effects that are both expressed as ratios, I wrote
+
+    Assert.True(phaseSpread < driveShift / 4.0, ...)
+
+meaning "the phase matters much less than the drive does". It cannot pass. A ratio that
+says *no variation at all* is **1**, not 0, so a phase spread of 1.10 is not four times
+smaller than a drive shift of 3.14 — it is an effect of **0.10** against one of **2.14**,
+which is twenty-one times smaller. The comparison has to be on the excess over one.
+
+The measurement was right and the assertion was wrong, which is the dangerous way round:
+the number printed beside it, `1.10x`, is exactly what "the phase hardly matters" looks
+like, so the failure read as a physics result rather than as arithmetic.
+
+**Where else this bites:** any quantity whose null value is 1 rather than 0 — a ratio, a
+speed-up, a scale factor, a convergence factor, an enhancement. `a < b / 4` is a claim
+about magnitudes, and it only means what it looks like when zero is the null.
+
+## A device driven outside the regime an effect lives in reports the effect's absence
+
+The scan that established the C-trap's focusing first ran with the RF at 500 V and the
+ejection at 60 V. The packet did not converge, and the obvious reading was that the
+curvature does not focus.
+
+It was not. The ions were rattling in a well eight times deeper than the push and leaving
+at whatever phase they happened to escape at — **11 to 23 degrees off radial**, four of
+five striking the slot edges. A real C-trap switches its RF off to eject, and with the
+drive off the same geometry focuses **20.8x**.
+
+This has appeared here before, in a confinement test run on two flat plates: the
+ponderomotive force goes as the gradient of E squared, a nearly uniform field has no well,
+the packet moved 0.1% either way, and the test passed on a threshold of "less than where it
+began". **The absence of an effect and an operating point that cannot show it produce the
+same output.** Before concluding a mechanism is absent, check that the operating point
+admits it.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
