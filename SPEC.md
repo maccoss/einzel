@@ -2077,12 +2077,24 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
-12. **The shell (§16).** Three views of eleven, and the window opens on a model:
-    `einzel-shell models/reflectron.json` gives a parameter tree with live validation
-    and units on every field, the shared journal with agent and human attribution, and
-    a 3-D viewport drawing trajectory bundles coloured by energy. What remains is eight
-    views, and the honest summary of them is *presentation over something that already
-    works* — which is what AGT-2 is supposed to produce.
+12. **The shell (§16).** **Six of the eleven views exist** — the table in
+    [the shell section](#the-shell-and-the-rest-of-16) is the current one; this entry
+    said three for a while after it stopped being true. The window opens on a model, and
+    what remains divides into three kinds rather than one:
+
+    - **Presentation over something that already works** — the sequence editor shows a
+      timeline and does not edit it, and the animation timeline has per-phase rates and
+      frame export but no scrubbing. Both have the path underneath them; what is missing
+      is the input surface. The figure composer is the same shape and can be built last,
+      since `RenderSpec` is already text the CLI executes.
+    - **A view with a requirement behind it.** The extension manager is the only one that
+      would retire a tagged requirement rather than present an existing capability:
+      **LIC-2 asks that extensions carry their own licences and the manager surface
+      them, and nothing surfaces them.** That makes it the sixth instance of the pattern
+      §16 has produced five times already — a view that cannot be built until the command
+      layer gains something — and the one with the most engine-side content left.
+    - **A view that needs a whole assembly.** The update notice needs §18 and
+      `Einzel.Update`, which does not exist.
 
     **Twice a view could not be built until a command existed, and both times the
     command layer gained the capability.** The model tree needed `einzel outline`,
