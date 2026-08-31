@@ -1483,6 +1483,44 @@ result stops looking. When a diagnostic's "not computed" value coincides with it
 value, the two must be distinguished at the point where the computation is skipped, not
 left to the reader.
 
+## Exit codes and validity violations are orthogonal, and enumerating said so
+
+Having fixed the exit code to ask whether the engine finished, the obvious next step looked
+like making it also fail when a run carries a non-suppressible **validity violation** — that
+being, on the face of it, exactly "the engine did not compute what the document describes".
+An unconverged field is the motivating case: `FieldAssembly.Build` refuses to hand over a
+bare field for it, while `einzel run` exits 0.
+
+**Enumerating first turned that from a task into a settled no.** Eleven of the thirty-seven
+shipped examples carry a validity violation:
+
+| | |
+| --- | --- |
+| `mobility.outside` | 5 — a low-field mobility outside its fitted range |
+| `spacecharge.ignored` | 4 — the packet's own charge implies an error over budget |
+| `spacecharge.point` | 2 — a cloud with no extent, so no estimate is possible |
+| `rf.quiver`, `diffusion.implicit` | 1 each |
+
+Every one of them behaves exactly as designed, and each asserts a closed form in its own
+test file *knowing* the caveat applies. So the change would have failed 30% of the reference
+corpus — worse than the rule it was meant to complete, which failed 16%.
+
+**The reason is the doctrine, which the idea contradicted without my noticing.** Taint, never
+block: the platform never stops you working, it refuses to let a result look cleaner than it
+is. A validity violation is the mechanism for "this number carries a caveat you cannot
+suppress". An exit code is the mechanism for "the command failed". They are deliberately
+orthogonal, and coupling them would turn every unsuppressible caveat into a broken build.
+
+What that leaves genuinely open is much narrower than the note it replaces: an *unconverged
+field* specifically, where `Build` already refuses and `run` does not. That is one warning
+code, not a class.
+
+**The pattern, twice in one sitting.** Both halves of this were decided by counting the
+population rather than by reasoning about the motivating case, and both times the count
+changed the answer — once from "add a schema field" to "ask a different question", once from
+"do it" to "don't". A rule about results is testable against the corpus of results before it
+is written.
+
 ## The proxy was the outcome; the question was who failed
 
 Written up as an open question the night before, and now settled — the answer was not the
