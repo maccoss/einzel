@@ -281,6 +281,10 @@ public static class FieldAssembly
                     elements.Add(Sequenced(element, Analytic));
                     break;
 
+                case CompiledFieldKind.QuadroLogarithmic:
+                    elements.Add(Sequenced(element, Analytic));
+                    break;
+
                 case CompiledFieldKind.Solved3D:
                 {
                     var solve = element.Solve3D!;
@@ -353,6 +357,11 @@ public static class FieldAssembly
             element.PlanePoint,
             element.InwardNormal,
             Quantity.Si(element.PotentialGradientSi, Dimension.ElectricField)),
+
+        CompiledFieldKind.QuadroLogarithmic => QuadroLogarithmicField.Create(
+            Quantity.Si(element.CurvatureSi, Dimension.ElectricFieldGradient),
+            Quantity.Si(element.CharacteristicRadiusSi, Dimension.LengthDimension),
+            element.Centre),
 
         CompiledFieldKind.IdealQuadrupoleRf => Einzel.Fields.Analytic.IdealQuadrupoleRf.Create(
             Quantity.Si(element.DirectPotentialSi, Dimension.ElectricPotential),

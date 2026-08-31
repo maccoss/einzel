@@ -457,6 +457,29 @@ public sealed record FieldDocument
     /// so this is the one length the working point is most sensitive to.
     /// </remarks>
     public QuantityValue? InscribedRadius { get; init; }
+
+    /// <summary>
+    /// Quadro-logarithmic only: the axial potential curvature, of dimension volts per
+    /// metre squared.
+    /// </summary>
+    /// <remarks>
+    /// It sets the axial oscillation frequency and nothing else, which is the whole
+    /// point of the field: <c>omega = sqrt(q k / m)</c> carries no radius, no angular
+    /// momentum and no amplitude.
+    /// </remarks>
+    public QuantityValue? Curvature { get; init; }
+
+    /// <summary>
+    /// Quadro-logarithmic only: the radius at which the radial field vanishes. Bound
+    /// orbits live inside it.
+    /// </summary>
+    public QuantityValue? CharacteristicRadius { get; init; }
+
+    /// <summary>
+    /// Quadro-logarithmic only: where the axial well is centred. Absent means the
+    /// origin.
+    /// </summary>
+    public VectorValue? Centre { get; init; }
 }
 
 /// <summary>The surface that ends the flight.</summary>

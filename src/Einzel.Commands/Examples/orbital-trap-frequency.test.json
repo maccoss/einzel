@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "orbital-trap-frequency",
+  "description": "Closed form: sqrt(q k / m) / 2 pi, with the curvature and the mass to charge both declared in the model - arithmetic this engine has no part in. The two per cent tolerance is not slack for the physics, which is exact: it is room for the Fourier limit of the record, which at 160 oscillations puts the measurement 5.8e-4 away and reports an uncertainty of 1/T larger than that. What the tolerance cannot absorb is a frequency that depends on the orbit radius or the axial amplitude, which is what a field that was not exactly quadro-logarithmic would give.",
+  "model": "../models/orbital-trap-frequency.json",
+  "expect": [
+    {
+      "figureOfMerit": "oscillationFrequencyX",
+      "value": 312.66608,
+      "unit": "kHz",
+      "tolerance": 0.02
+    }
+  ]
+}

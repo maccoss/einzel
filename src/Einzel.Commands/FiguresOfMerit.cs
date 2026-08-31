@@ -153,6 +153,9 @@ public static class FiguresOfMerit
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical),
         new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical),
         new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
+        new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary),
+        new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
+        new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
         new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false, AccuracyClass.Boundary),
         new("secularFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
         new("secularFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
@@ -421,6 +424,9 @@ public static class FiguresOfMerit
             "meanKineticEnergy" => model => MeanKineticEnergy(model, report),
             "transitTime" => model => Transit(model, report),
             "radialSpread" => model => RadialSpread(model, report),
+            "oscillationFrequencyX" => model => Oscillation(model, 0, report),
+            "oscillationFrequencyY" => model => Oscillation(model, 1, report),
+            "oscillationFrequencyZ" => model => Oscillation(model, 2, report),
             "secularFrequencyX" => model => Secular(model, 0, report),
             "secularFrequencyY" => model => Secular(model, 1, report),
             "secularFrequencyZ" => model => Secular(model, 2, report),
@@ -1028,6 +1034,98 @@ public static class FiguresOfMerit
     /// different question.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The strongest periodic line in the ion's motion along one axis, over the record.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The measurand of an entire instrument class, and it had no figure.</b> An
+    /// electrostatic orbital trap reads mass from the frequency of an ion's axial
+    /// oscillation - `omega = sqrt(q k / m)`, exact, and independent of the radius, the
+    /// angular momentum and the amplitude. Nothing here could measure it: the secular
+    /// figures refuse a static field, correctly, because a secular frequency is by
+    /// definition the slow motion in an RF field's effective well and a static field has
+    /// no such well.
+    /// </para>
+    /// <para>
+    /// So the refusal was right and the gap was real. This is the same Lomb-Scargle
+    /// machinery over a different band: everything from two cycles per record - fewer
+    /// than that is not a frequency, it is a trend - up to half the sampling rate.
+    /// </para>
+    /// <para>
+    /// <b>Lomb-Scargle rather than a transform</b>, for the reason the secular spectrum
+    /// gives: the trajectory is sampled at accepted integration steps, which cluster where
+    /// the physics is hard, so the series is not uniform. Resampling it first would be
+    /// inventing values the integrator never computed and then measuring them.
+    /// </para>
+    /// <para>
+    /// In a driven field this will find the drive, which is usually the largest line in
+    /// the spectrum. That is not a defect - it is what "the strongest line" means - and it
+    /// is exactly why <see cref="Secular"/> exists separately and searches below the drive.
+    /// </para>
+    /// </remarks>
+    private static double? Oscillation(
+        CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        var (launch, species, field, settings, detector, collisions) = Setup(model, report: report);
+
+        // Finely enough that the line is well inside the band rather than near its edge,
+        // and capped so a long record does not cost more samples than it needs.
+        var flight = settings.MaximumFlightTime;
+        var interval = Math.Min(model.SampleIntervalSi, flight / 4000.0);
+
+        var recorder = new TrajectoryRecorder(interval, capacity: 16384);
+
+        TrajectoryIntegrator.Integrate(
+            launch, species, field, settings, detector, recorder, collisions?.Invoke());
+
+        if (recorder.Samples.Count < 8)
+        {
+            return null;
+        }
+
+        var span = recorder.Samples[^1].TimeSeconds - recorder.Samples[0].TimeSeconds;
+
+        if (!(span > 0.0))
+        {
+            return null;
+        }
+
+        try
+        {
+            // Two cycles per record at the low end: a record holding one cycle cannot
+            // tell an oscillation from a drift, and Lomb-Scargle will happily fit the
+            // drift. At the high end, half the mean sampling rate.
+            var lowest = 2.0 / span;
+            var highest = 0.5 * (recorder.Samples.Count - 1) / span;
+
+            if (!(highest > lowest))
+            {
+                return null;
+            }
+
+            var spectrum = Analysis.SecularSpectrum.From(
+                recorder.Samples, axis, lowest, highest, 4000);
+
+            var peak = spectrum.Peak();
+
+            if (peak is null)
+            {
+                return null;
+            }
+
+            Forward(peak.Warnings, report);
+
+            var (value, _, _, _) = peak;
+
+            return value.SiValue;
+        }
+        catch (EinzelException)
+        {
+            return null;
+        }
+    }
+
     private static double? Secular(
         CompiledModel model, int axis, Action<Core.Results.ValidityWarning>? report = null)
     {

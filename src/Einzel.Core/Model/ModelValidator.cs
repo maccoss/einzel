@@ -758,7 +758,8 @@ public static class ModelValidator
     /// would solve every field twice over.
     /// </remarks>
     private static bool NeedsPhases(string? type) =>
-        type is "uniform" or "halfSpaceUniform" or "idealQuadrupoleRf";
+        type is "uniform" or "halfSpaceUniform" or "idealQuadrupoleRf"
+            or "quadroLogarithmic";
 
     /// <summary>Whether two compilations of one analytic element hold the same numbers.</summary>
     private static bool Same(CompiledField a, CompiledField b) =>
@@ -771,7 +772,10 @@ public static class ModelValidator
         && a.DirectPotentialSi.Equals(b.DirectPotentialSi)
         && a.DriveAmplitudeSi.Equals(b.DriveAmplitudeSi)
         && a.DriveFrequencySi.Equals(b.DriveFrequencySi)
-        && a.InscribedRadiusSi.Equals(b.InscribedRadiusSi);
+        && a.InscribedRadiusSi.Equals(b.InscribedRadiusSi)
+        && a.CurvatureSi.Equals(b.CurvatureSi)
+        && a.CharacteristicRadiusSi.Equals(b.CharacteristicRadiusSi)
+        && a.Centre == b.Centre;
 
     private static CompiledField? CompileOnce(
         FieldDocument field,
@@ -792,6 +796,61 @@ public static class ModelValidator
                 {
                     Kind = CompiledFieldKind.Uniform,
                     Field = vector.Value,
+                };
+            }
+
+            case "quadroLogarithmic":
+            {
+                var curvature = TryQuantity(
+                    field.Curvature, $"{path}/curvature",
+                    Dimension.ElectricFieldGradient, p, errors);
+
+                var characteristic = TryQuantity(
+                    field.CharacteristicRadius, $"{path}/characteristicRadius",
+                    Dimension.LengthDimension, p, errors);
+
+                var centre = field.Centre is null
+                    ? Vec3.Zero
+                    : TryVector(field.Centre, $"{path}/centre", Dimension.LengthDimension, p, errors)
+                        ?? Vec3.Zero;
+
+                if (curvature is null || characteristic is null)
+                {
+                    return null;
+                }
+
+                // Both refused rather than defaulted. A zero curvature is no axial well
+                // at all - the frequency this field exists to define would be zero - and
+                // a zero characteristic radius puts the logarithm's singularity nowhere.
+                foreach (var (value, where, what) in new[]
+                {
+                    (curvature.Value.In("V/m^2"), $"{path}/curvature", "a curvature"),
+                    (characteristic.Value.In("m"), $"{path}/characteristicRadius",
+                        "a characteristic radius"),
+                })
+                {
+                    if (!(value > 0.0))
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.ValueOutOfBounds,
+                            Path = where,
+                            Constraint = $"{what} must be positive",
+                            Observed = new ObservedValue(value, "SI"),
+                            Suggestion = "an orbital well needs both; use a static field "
+                                + "element if nothing is meant to oscillate",
+                        });
+
+                        return null;
+                    }
+                }
+
+                return new CompiledField
+                {
+                    Kind = CompiledFieldKind.QuadroLogarithmic,
+                    CurvatureSi = curvature.Value.In("V/m^2"),
+                    CharacteristicRadiusSi = characteristic.Value.In("m"),
+                    Centre = centre,
                 };
             }
 
@@ -901,7 +960,7 @@ public static class ModelValidator
                     Path = $"{path}/type",
                     Constraint =
                         "a field element must declare one of: fieldFree, uniform, halfSpaceUniform, "
-                        + "idealQuadrupoleRf, solved2d, solved3d",
+                        + "idealQuadrupoleRf, quadroLogarithmic, solved2d, solved3d",
                     Observed = new ObservedValue(0.0, field.Type ?? "null"),
                     Suggestion = "use \"halfSpaceUniform\" for an ideal single-stage ion mirror",
                 });

@@ -186,6 +186,17 @@ public enum CompiledFieldKind
     IdealQuadrupoleRf,
 
     /// <summary>
+    /// A harmonic axial well superposed on a logarithmic radial one, satisfying
+    /// Laplace exactly.
+    /// </summary>
+    /// <remarks>
+    /// The field an orbital trap is built from. Named for its mathematics rather than
+    /// the instrument, because architecture invariant 2 keeps device names above
+    /// <c>Einzel.Library</c>.
+    /// </remarks>
+    QuadroLogarithmic,
+
+    /// <summary>
     /// A field solved from a Dirichlet geometry given in the document. The element
     /// that lets a device be a template rather than a class (LIB-1).
     /// </summary>
@@ -236,6 +247,19 @@ public sealed record CompiledField
 
     /// <summary>Axis to nearest electrode surface, in metres.</summary>
     public double InscribedRadiusSi { get; init; }
+
+    /// <summary>Axial potential curvature, in volts per metre squared.</summary>
+    /// <remarks>
+    /// The one number an orbital analyser's frequency comes from: the axial motion is
+    /// <c>m z'' = -q k z</c>, so <c>omega = sqrt(q k / m)</c> and nothing else enters.
+    /// </remarks>
+    public double CurvatureSi { get; init; }
+
+    /// <summary>The radius at which the radial field vanishes, in metres.</summary>
+    public double CharacteristicRadiusSi { get; init; }
+
+    /// <summary>Where the axial well is centred, on the axis of symmetry.</summary>
+    public Vec3 Centre { get; init; }
 
     /// <summary>
     /// This element as it stands during each phase of the instrument's timeline, when
