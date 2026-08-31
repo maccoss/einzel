@@ -94,11 +94,30 @@ public sealed record IonCloudSettings
     /// </remarks>
     public double EnergyFractionSpread { get; init; }
 
+    /// <summary>
+    /// Half-angle of the cone the beam fills, in radians. Zero for a parallel beam.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Directions are drawn uniformly in solid angle inside the cone, so this is a
+    /// hard limit rather than a width - an aperture truncates, and the number names
+    /// the largest angle that gets through rather than a typical one.
+    /// </para>
+    /// <para>
+    /// It composes with the directed speed rather than replacing it, so the energy
+    /// is unchanged: tilting a velocity does not lengthen it. That is what makes it
+    /// the counterpart of <see cref="EnergyFractionSpread"/> and what a temperature
+    /// cannot do, since a thermal draw changes speed and direction together.
+    /// </para>
+    /// </remarks>
+    public double DivergenceRadians { get; init; }
+
     /// <summary>Whether this describes more than a single ion on the axis.</summary>
     public bool IsCloud =>
         Ions > 1
         || TemperatureK > 0.0
         || TransverseSpreadM > 0.0
         || LongitudinalSpreadM > 0.0
-        || EnergyFractionSpread > 0.0;
+        || EnergyFractionSpread > 0.0
+        || DivergenceRadians > 0.0;
 }

@@ -45,6 +45,51 @@ harmonics of its own into exactly the multipoles being measured - four parts in
 ten thousand of the main term at nominal, and a few parts in a hundred million at
 the optimum.
 
+### The einzel lens, against an independent vendor's figures
+
+**Mass Spec Pro, "Einzel Lens"** (massspecpro.com/technology/ion-optics/einzel-lens-0)
+— three coaxial cylinders, outer two earthed, centre "uphill". Three parametric studies,
+each drawn as ray bundles with no numbers on the axes, and each therefore stating an
+**ordering** rather than a value. That is the useful kind of target: an ordering cannot
+be satisfied by a coincidence and is not a number this engine produced and then had
+enshrined.
+
+All three reproduce, measured as transmission through an aperture at the focal plane —
+which is how a focus is measured in practice, and needed no new figure of merit.
+
+| study | the page's claim | measured |
+| --- | --- | --- |
+| Centre voltage, 50 eV beam | focusing improves as the potential approaches 50 eV | 0 V **0.000**, 20 V 0.003, 30 V 0.003, 40 V 0.123, 42 V **0.207** |
+| Kinetic energy spread, 0/+42/0 V | focusing falls apart as the spread widens | 50±0 **0.207**, ±5 0.107, ±10 0.093, ±15 **0.063** |
+| Pressure, 0/+42/0 V | collisions make focusing poor | UHV **0.207**, 5e-4 Torr 0.110, 1e-3 0.093, 2e-3 **0.033** |
+
+Monotone in all three, in the stated direction. The mechanism is legible in the itemised
+losses rather than only in the totals: at 0 V the beam dies on the **exit tube** (157 of
+300 ions), and at +42 V it survives to the **far aperture** (117). That shift is the
+focusing.
+
+The pressure study is the one that exercises most: it drives the collision models at the
+page's own operating points, and the sixfold degradation from UHV to 2 mTorr is consistent
+with its advice that above about 1 mTorr an RF multipole is the better instrument.
+
+**What this cost, and it is the interesting part.** The beam is specified as *"50 eV with
+a 20 degree angular spread"*, and the model format had no way to say that. The omission was
+deliberate and documented — a thermal cloud already has a divergence, and offering both
+would let a document say two things about the same physics. That reasoning is right for a
+**source** and wrong for a beam defined downstream by an **aperture**, which is what an
+einzel lens exists to re-image. Nor can a temperature stand in: matched to give the same
+divergence it spreads the energy by **43%**, turning a 50 ± 0 eV beam into the page's own
+50 ± 15 eV case, so the first two studies stop being separable. Schema 0.7 adds
+`divergence`. See SPEC.md Amendment 31.
+
+**Caveats, since the page publishes no dimensions.** The geometry is ours — a compact lens,
+because a 20 degree cone does not survive the shipped template's 28 mm of 5 mm bore (182 of
+300 ions are on the entrance tube before reaching the lens). So what is reproduced is the
+three orderings and the mechanism, not any absolute number, and the absolute transmission
+is low because the beam overfills this bore. A vendor page is also not a peer-reviewed
+source; it is an independent implementation of textbook optics, which is worth exactly that
+much and no more.
+
 ---
 
 ## 1. The Ion Processor — conjoined collision cell and pulsed extraction trap

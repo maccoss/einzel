@@ -1,0 +1,196 @@
+{
+  "schemaVersion": "0.7",
+  "name": "kingdon-trap",
+  "description": "A wire on the axis of a cylinder, the wire held negative to positive ions: the oldest electrostatic trap there is, and the ancestor of the Orbitrap. An ion given tangential velocity orbits the wire the way a planet orbits a star, except that the potential is logarithmic rather than inverse-square - and that one difference is the whole character of the device. In phi = A ln(r), the inward force goes as 1/r, so the circular-orbit condition m v^2 / r = q A / r has the radius cancel out of it: EVERY circular orbit has the same speed, whatever its radius. An ion is confined not because it is held at a particular radius but because it cannot get out at any. Solved axisymmetrically, which is what the geometry is: two coaxial cylinders and nothing else. The ion, though, moves in all three dimensions - it circles - and that combination is what this template exercises. The azimuthal field of an axisymmetric solve is exactly zero, so angular momentum is conserved by construction rather than by accuracy, which makes it a tolerance-free check on the whole transport path. A wire and a cylinder confine radially and not axially: a real Kingdon trap adds end electrodes, and this one launches with no axial velocity so the ion stays in its plane.",
+  "parameters": {
+    "wireRadius": {
+      "value": 0.1,
+      "unit": "mm",
+      "minimum": 0.005,
+      "maximum": 5.0,
+      "description": "Radius of the central wire. The field goes as 1/r, so a thinner wire means a much stronger field near it and a wider useful range of orbits - which is why these are wires rather than rods."
+    },
+    "cylinderRadius": {
+      "value": 10.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 200.0,
+      "description": "Inner radius of the outer cylinder, which is earthed. Only the ratio to the wire radius matters: it appears in every closed form here as log(cylinderRadius / wireRadius) and nowhere on its own."
+    },
+    "wallThickness": {
+      "value": 2.0,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 20.0,
+      "description": "Radial thickness of the outer cylinder. It reaches the domain edge, so this only has to be enough to hold the boundary away from the trapping volume."
+    },
+    "length": {
+      "value": 40.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 400.0,
+      "description": "Axial length of both electrodes. They span the whole domain, so the field is purely radial and the closed forms below are exact rather than approximate - there are no ends for a fringe to come from."
+    },
+    "wireVoltage": {
+      "value": 100.0,
+      "unit": "V",
+      "minimum": 1.0,
+      "maximum": 20000.0,
+      "description": "Magnitude of the wire's potential. Applied negative, so a positive ion is pulled inward: a trap for one polarity is a lens for the other, and this template picks positive ions."
+    },
+    "launchRadius": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0.05,
+      "maximum": 190.0,
+      "description": "Where the ion starts, between the wire and the cylinder. Change it and the orbit changes radius while the orbital SPEED does not, which is the property this device is built on."
+    },
+    "cellsPerRadius": {
+      "value": 40.0,
+      "unit": "1",
+      "minimum": 4.0,
+      "maximum": 400.0,
+      "description": "Grid cells across the cylinder radius. The wire is the smallest feature by a hundredfold, so this is the number to raise if the potential near it looks wrong."
+    },
+    "logRatio": {
+      "expression": "log(cylinderRadius / wireRadius)",
+      "unit": "1",
+      "description": "The one combination of the two radii that appears anywhere. A logarithmic potential has no length scale of its own - only this ratio - which is why a Kingdon trap works over such a wide range of radii."
+    },
+    "orbitPotential": {
+      "expression": "wireVoltage / (2 * logRatio)",
+      "unit": "V",
+      "description": "The accelerating potential whose speed is exactly the circular-orbit speed. From m v^2 / r = q E(r) with E = wireVoltage / (r logRatio), the radius cancels and v^2 = q wireVoltage / (m logRatio) - so the kinetic energy is half of q wireVoltage / logRatio, and this is that energy as a potential. It contains no radius, which is the whole point."
+    },
+    "outerRadius": {
+      "expression": "cylinderRadius + wallThickness",
+      "unit": "mm"
+    },
+    "cellSize": {
+      "expression": "cylinderRadius / cellsPerRadius",
+      "unit": "mm"
+    },
+    "midLength": {
+      "expression": "length / 2",
+      "unit": "mm"
+    },
+    "detectorX": {
+      "expression": "length",
+      "unit": "mm"
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": ["midLength", "launchRadius", "0"],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [0, 0, 1]
+    },
+    "accelerationPotential": {
+      "expression": "orbitPotential",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "minX": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "minY": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "length",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "outerRadius",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "wire",
+            "shape": "rectangle",
+            "minX": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "length",
+              "unit": "mm"
+            },
+            "minY": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "wireRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-wireVoltage",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "cylinder",
+            "shape": "rectangle",
+            "minX": {
+              "value": 0,
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "length",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "cylinderRadius",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "outerRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": ["detectorX", "0", "0"],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [-1, 0, 0]
+    }
+  },
+  "transport": {
+    "maximumFlightTime": {
+      "value": 200,
+      "unit": "us"
+    },
+    "relativeTolerance": 1e-10
+  }
+}

@@ -465,8 +465,33 @@ public static class ModelValidator
         var longitudinal = Optional(
             cloud.LongitudinalSpread, "/source/cloud/longitudinalSpread", Dimension.LengthDimension, p, errors);
 
-        if (temperature is null || transverse is null || longitudinal is null)
+        // Dimensionless, because that is what an angle is in SI - `deg` and `mrad` are
+        // conversions to radians, not a separate dimension. So the unit is required and
+        // is the whole of the meaning: 20 and 20 deg differ by a factor of 57.
+        var divergence = Optional(
+            cloud.Divergence, "/source/cloud/divergence", Dimension.Dimensionless, p, errors);
+
+        if (temperature is null || transverse is null || longitudinal is null || divergence is null)
         {
+            return null;
+        }
+
+        // A half-angle, so a right angle is already a hemisphere and anything at or past
+        // it is not a beam. Refused rather than clamped: a document asking for 120 degrees
+        // of divergence has confused a half-angle for a full one, and silently halving it
+        // would answer a question nobody asked.
+        if (divergence.Value >= Math.PI / 2.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/source/cloud/divergence",
+                Constraint = "divergence is the half-angle of the cone the beam fills, so it "
+                    + "must be under 90 degrees",
+                Observed = new ObservedValue(divergence.Value * 180.0 / Math.PI, "deg"),
+                Suggestion = "halve it if you meant the full opening angle",
+            });
+
             return null;
         }
 
@@ -475,6 +500,7 @@ public static class ModelValidator
             (temperature.Value, "/source/cloud/temperature"),
             (transverse.Value, "/source/cloud/transverseSpread"),
             (longitudinal.Value, "/source/cloud/longitudinalSpread"),
+            (divergence.Value, "/source/cloud/divergence"),
         })
         {
             if (value < 0.0)
@@ -516,6 +542,7 @@ public static class ModelValidator
             TransverseSpreadM = transverse.Value,
             LongitudinalSpreadM = longitudinal.Value,
             EnergyFractionSpread = cloud.EnergyFractionSpread,
+            DivergenceRadians = divergence.Value,
         };
     }
 

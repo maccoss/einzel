@@ -21,6 +21,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `travelling-wave-guide` | A ring stack whose drive phase ramps along it, so the potential travels |
 | `multipole-guide` | Any even order — quadrupole, hexapole, octupole, and beyond — from one file |
 | `paul-trap` | A driven ring between two earthed endcaps: the three-dimensional quadrupole trap, solved axisymmetrically |
+| `kingdon-trap` | A wire on the axis of a cylinder: the electrostatic orbital trap, and the ancestor of the Orbitrap |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -870,3 +871,62 @@ an excitation that arrived.
 radius that still arrives", which read 0.65 mm on one radius grid and 0.20 mm on
 another for the same geometry — a maximum over a ragged set is a maximum over noise.
 Counting arrivals over a fixed grid is the same measurement made stable.
+
+
+## `kingdon-trap` — orbital motion, and the invariants that are exact
+
+A wire on the axis of a cylinder, the wire held negative to positive ions. The oldest
+electrostatic trap there is, and the device the Orbitrap descends from. It is worth having
+for three reasons, none of which is the device itself.
+
+**It is the first thing here that combines an axisymmetric solve with genuinely
+three-dimensional motion.** The geometry is two coaxial cylinders and is solved in a
+half-plane; the ion circles, so it uses all three coordinates. `AxisymmetricField` was
+built for exactly that and no device had exercised it.
+
+**Its closed forms are exact and strange.** In `phi = A ln(r)` the inward force goes as
+`1/r`, so the circular-orbit condition `m v^2 / r = q A / r` has the radius **cancel out of
+it**: every circular orbit has the same speed, whatever its radius. That is not a paraxial
+limit or a small-angle approximation. An inverse-square potential does the opposite — that
+is Kepler's third law — so the property is a statement about the logarithm rather than
+about orbits, and a field that is even slightly not logarithmic fails it.
+
+| launch radius | launch speed | radius wanders by |
+| --- | --- | --- |
+| 1.5 mm | 2047.02 m/s | 1.59% |
+| 4.0 mm | **the same** 2047.02 m/s | 1.03% |
+| 7.5 mm | **the same** 2047.02 m/s | 0.22% |
+
+A factor of five in radius, one speed, taken from `sqrt(q V / (m log(b/a)))` — which
+contains no radius at all. The template writes it as a derived parameter, so changing the
+geometry moves the launch with it.
+
+**And it has a tolerance-free invariant.** An axisymmetric solve has *exactly* zero
+azimuthal field, so there is no torque about the axis and angular momentum cannot change.
+Not to an accuracy — as an identity:
+
+| | |
+| --- | --- |
+| Angular momentum over 16 orbits | **2.9e-12** relative |
+| Axial excursion | **0.000 um** |
+| Orbital speed vs the closed form | ratio **1.000000000** |
+| Solved potential vs `A ln(r) + B`, r = 8 mm | 0.0002 V of 100 applied |
+| The same at r = 2 mm | 0.28 V |
+
+That last pair is the useful shape of an error: the departure from the logarithm is largest
+**near the wire**, which is 0.1 mm across on a 0.25 mm cell and therefore under-resolved,
+and it falls by three orders of magnitude on the way out. The orbit wander follows the same
+ordering. An error that is largest where the mesh is worst is discretisation; one that is
+uniform, or largest where the mesh is best, is a wrong operator.
+
+**What it needed below the library was a logarithm**, and that is LIB-1 working. Every
+closed form here is `ln(b/a)`, so without it the launch speed could only be a baked number
+— which section 9 forbids, and which would silently stop being right the moment anyone
+changed a radius. `log` is dimensionless-only for the reason `sqrt` is, and refuses a
+non-positive argument rather than propagating a negative infinity into a geometry. The same
+pattern as `multipole-guide`, which found the grammar had no trigonometry.
+
+**What it does not do:** confine axially. A wire and a cylinder are radially confining and
+axially indifferent; a real Kingdon trap adds end electrodes, and this one launches with no
+axial velocity so the ion stays in its plane. That is a real limitation of the template
+rather than of the platform — end electrodes are two more rectangles.

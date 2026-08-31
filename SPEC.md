@@ -690,6 +690,40 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 31 - A thermal cloud's divergence is not the divergence an ion-optics beam has
+
+The model format carries `energyFractionSpread` with an argument written where it is
+taken: it "varies the energy without varying the direction, which a temperature cannot
+express". The mirror of that - varying the **direction** without varying the energy - was
+deliberately left out, on the grounds that "a thermal cloud already has one, and offering
+both lets a document say two things about the same physics".
+
+**That reasoning is right for a source and wrong for a beam.** An ion born warm and then
+accelerated does get its divergence from its temperature, in a fixed ratio. A beam defined
+downstream by an **aperture** does not, and an einzel lens exists precisely to re-image
+such a beam. Every ion-optics description in the wild specifies one that way: *"50 eV with
+a 20 degree angular spread"* is a sentence the format could not represent.
+
+**And a temperature cannot stand in for it**, which is what makes this a gap rather than a
+verbosity. Matched to give the same divergence at 50 eV, a temperature spreads the energy
+by **43%** - turning a 50 +/- 0 eV beam into a 50 +/- 15 eV one, which is a different
+study's independent variable. Divergence and energy spread are separable in the instrument
+and were not separable in the format.
+
+**Recommend the format carry both, with the interaction stated rather than prevented.**
+Schema 0.7 adds `divergence`: a cone half-angle, drawn **uniformly in solid angle**, not a
+Gaussian - an aperture truncates rather than weights, and the rays pile near the rim where
+the aberration lives. Measured against the closed form, mean cos(theta) comes out
+0.969832 against 0.969846 for uniform solid angle and 0.979816 for uniform polar angle: 700
+times closer to the right one. A tilt costs no energy exactly (4.5e-13 m/s on 4000), since
+rotating a vector does not lengthen it.
+
+**The third design decision this week that was right for its case and wrong for a new
+one**, after `SessionJournal` refusing invalid edits and `CompiledDrive` allowing one drive
+per solve. The pattern is worth naming: a constraint argued from the cases in front of you
+is sound and is not a law. When a new requirement meets one, re-read the argument rather
+than the rule - it is usually still true, and usually no longer sufficient.
+
 ### 30 - A manifest said what a result was made of and not what it was about
 
 `PRJ-3` requires a run manifest to fully determine its run, and lists what that takes:

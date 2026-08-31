@@ -210,7 +210,8 @@ public static class ExpressionEvaluator
             throw Failure(
                 path,
                 $"unexpected character at position {_position} of '{text}'",
-                "expressions accept numbers, parameter names, + - * /, parentheses, and sqrt, abs, min, max");
+                "expressions accept numbers, parameter names, + - * /, parentheses, and "
+                + "abs, sqrt, log, floor, mod, min, max, cosPi, sinPi");
         }
 
         private Quantity ParseNumber()
@@ -370,6 +371,44 @@ public static class ExpressionEvaluator
                         name == "cosPi"
                             ? double.CosPi(arguments[0].SiValue)
                             : double.SinPi(arguments[0].SiValue));
+                }
+
+                case "log" when arguments.Count == 1:
+                {
+                    // Dimensionless only, for the reason sqrt and cosPi are, and here
+                    // the restriction is not merely defensible but the physics: the
+                    // logarithm of a length depends on the unit, while every place a
+                    // logarithm actually appears in ion optics it is the log of a
+                    // ratio of two radii. A coaxial potential is A ln(r/b); a Kingdon
+                    // trap's orbital speed is sqrt(qV / (m ln(b/a))). Writing those
+                    // requires log and requires it of a ratio.
+                    if (!arguments[0].Dimension.IsDimensionless)
+                    {
+                        throw Failure(
+                            path,
+                            "log requires a dimensionless argument, but was given one of "
+                            + $"dimension {arguments[0].Dimension}",
+                            "form a ratio first, for example log(cylinderRadius / wireRadius)");
+                    }
+
+                    // Refused rather than returning negative infinity or NaN. A
+                    // non-positive argument means the ratio was built the wrong way up
+                    // or an electrode has collapsed, and either way the number that
+                    // came out of it would be propagated into a geometry.
+                    if (!(arguments[0].SiValue > 0.0))
+                    {
+                        throw Failure(
+                            path,
+                            "log requires a positive argument, but was given "
+                            + $"{arguments[0].SiValue:G6}",
+                            "check the ratio is the right way up, for example "
+                            + "log(cylinderRadius / wireRadius) with the outer radius on top");
+                    }
+
+                    // Natural, because that is the one that appears in the physics. A
+                    // base-ten logarithm has no place in a field expression and having
+                    // both would make `log` the ambiguous spelling.
+                    return Quantity.Number(Math.Log(arguments[0].SiValue));
                 }
 
                 case "min" when arguments.Count == 2:

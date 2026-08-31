@@ -177,11 +177,11 @@ public static class ModelSchema
     /// cheaper than an older build reading it, ignoring the field it does not know, and
     /// reporting a different flight with no indication that anything was dropped.
     /// </remarks>
-    public const string CurrentVersion = "0.6";
+    public const string CurrentVersion = "0.7";
 
     /// <summary>Versions this build can read.</summary>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -286,6 +286,39 @@ public sealed record CloudDocument
     /// the direction, which a temperature cannot express.
     /// </remarks>
     public double EnergyFractionSpread { get; init; }
+
+    /// <summary>
+    /// Half-angle of the cone the beam fills, as an angle. Directions are drawn
+    /// uniformly in solid angle within it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The mirror of <see cref="EnergyFractionSpread"/>: that varies the energy
+    /// without varying the direction, and this varies the direction without varying
+    /// the energy. A temperature can express neither, because it does both at once
+    /// in a fixed ratio.
+    /// </para>
+    /// <para>
+    /// <b>A cone rather than a Gaussian</b>, which is the one decision here worth
+    /// arguing. Every other spread on a cloud is Gaussian, because every other one
+    /// describes a source. This one describes what an <em>aperture</em> or an
+    /// upstream optic left behind, and an aperture truncates rather than weights -
+    /// there is a hard largest angle and nothing beyond it. Drawing it Gaussian
+    /// would put a tail outside the acceptance the number is naming.
+    /// </para>
+    /// <para>
+    /// <b>Uniform in solid angle, not in angle.</b> A beam filling a round aperture
+    /// is uniform over its area, which maps to uniform solid angle - so the density
+    /// per unit polar angle goes as sin(theta) and most rays sit near the edge of
+    /// the cone. Uniform in theta would concentrate them on the axis and understate
+    /// the aberration the cone exists to probe.
+    /// </para>
+    /// <para>
+    /// Declaring this and a temperature together is allowed and they add: a warm
+    /// source behind a defining aperture is an ordinary thing to have.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? Divergence { get; init; }
 }
 
 /// <summary>An imported neutral velocity field, as it appears in a model.</summary>

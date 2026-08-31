@@ -55,6 +55,7 @@ public static class IonCloud
         ArgumentOutOfRangeException.ThrowIfNegative(settings.TransverseSpreadM);
         ArgumentOutOfRangeException.ThrowIfNegative(settings.LongitudinalSpreadM);
         ArgumentOutOfRangeException.ThrowIfNegative(settings.EnergyFractionSpread);
+        ArgumentOutOfRangeException.ThrowIfNegative(settings.DivergenceRadians);
 
         var states = new PhaseState[settings.Ions];
         var random = new Random(settings.Seed);
@@ -91,7 +92,31 @@ public static class IonCloud
 
             var scaled = speed * Math.Sqrt(Math.Max(0.0, 1.0 + fraction));
 
-            var velocity = (along * scaled)
+            // A tilt rather than an added transverse velocity, so the speed - and
+            // therefore the energy - is exactly unchanged. That is the whole point of
+            // having this beside a temperature: an aperture selects directions and
+            // takes nothing out of the beam energy, while a thermal draw moves both
+            // together in a fixed ratio.
+            //
+            // Uniform in solid angle inside the cone: cos(theta) uniform between the
+            // axis and the cone edge, azimuth uniform. Sampling theta uniformly would
+            // pile the rays onto the axis and understate the aberration a cone is
+            // declared to probe.
+            var directed = along * scaled;
+
+            if (settings.DivergenceRadians > 0.0)
+            {
+                var cosMax = Math.Cos(settings.DivergenceRadians);
+                var cosTheta = 1.0 - (random.NextDouble() * (1.0 - cosMax));
+                var sinTheta = Math.Sqrt(Math.Max(0.0, 1.0 - (cosTheta * cosTheta)));
+                var azimuth = 2.0 * Math.PI * random.NextDouble();
+
+                directed = ((along * cosTheta)
+                    + (acrossA * (sinTheta * Math.Cos(azimuth)))
+                    + (acrossB * (sinTheta * Math.Sin(azimuth)))) * scaled;
+            }
+
+            var velocity = directed
                 + (along * (thermal * Gaussian(random)))
                 + (acrossA * (thermal * Gaussian(random)))
                 + (acrossB * (thermal * Gaussian(random)));
