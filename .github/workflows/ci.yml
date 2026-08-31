@@ -35,10 +35,19 @@ jobs:
         os: [ubuntu-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      # Pinned to majors that run on node24. GitHub deprecated the node20 action
+      # runtime, and an action on it warns on every job - which is the kind of
+      # warning that trains people to ignore the warnings, on a project whose
+      # build treats them as errors everywhere else.
+      #
+      # Check the runtime rather than the version number when bumping these:
+      # `gh api repos/actions/checkout/contents/action.yml?ref=<tag> --jq .content
+      # | base64 -d | grep -A2 '^runs:'`. A major bump is not the same thing as a
+      # runtime bump, and neither implies the other.
+      - uses: actions/checkout@v7
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
