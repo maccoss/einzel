@@ -1712,10 +1712,15 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    4.220 ns turn-around against a 55.9366 µs analyser period, crossing the mirror's own
    aberration limit at 48 oscillations.
 
-4. **Finish the examples corpus (EX-1).** 32 of thirty, and the gate (EX-2) is built
-   and green. What the first seventeen cost was mostly *deciding what can honestly be
-   asserted*, and that work is done — the remaining four are breadth: an MR-TOF, a
-   thermalisation, and a three-dimensional geometry.
+4. ~~**Finish the examples corpus (EX-1).**~~ — **met.** 37 against the thirty §5 asks
+   for, and the gate (EX-2) is built and green at about 51 s. What the first seventeen
+   cost was mostly *deciding what can honestly be asserted*, and that work is done. The
+   three named as remaining are all shipped: `mr-tof-oscillations`, `thermalisation` and
+   `parallel-plate-gap-3d`.
+
+   Breadth beyond thirty is now an ordinary way to add a check rather than an outstanding
+   deliverable — `bounded-accelerating-gap` was added the same night the region was built,
+   which is the loop working as intended.
 
    ~~The last is deliberately deferred~~ — **`parallel-plate-gap-3d` now ships**, which
    is the deferral closed by item 4: two square plates in a cubic box, reducing to
