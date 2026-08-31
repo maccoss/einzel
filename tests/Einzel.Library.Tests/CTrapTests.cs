@@ -626,6 +626,191 @@ public sealed class CTrapTests(ITestOutputHelper output)
             + "leaving the drive running costs nothing");
     }
 
+    /// <summary>What the C-trap hands an orbital analyser, in the analyser's own currency.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The two instruments cannot be composed into one document</b> — an exact analytic
+    /// field fills all space, and the quadro-logarithmic potential grows as z squared, so
+    /// an orbital trap declared beside its C-trap puts an enormous field across it. SPEC.md
+    /// Amendment 32. What can be done is the handover: measure what one delivers, measure
+    /// what the other needs, and compare them in a currency both share.
+    /// </para>
+    /// <para>
+    /// <b>That currency turns out to be time, not space</b>, and the reason is the
+    /// analyser's defining property. In a quadro-logarithmic field the axial frequency
+    /// depends on nothing but m/q — not on the orbit radius, not on the axial amplitude,
+    /// not on the energy — which `QuadroLogarithmicFieldTests` pins directly. So an
+    /// analyser is indifferent to almost everything an injected packet varies in. Two ions
+    /// at the same frequency still cancel if they start at different <b>phases</b>, and
+    /// phase is set by when an ion arrived.
+    /// </para>
+    /// <para>
+    /// So the injection specification is a single ratio: the packet's spread in arrival
+    /// time over the analyser's axial period. The image current is the sum of each ion's
+    /// oscillation, so its amplitude is the modulus of the mean of exp(i omega t) — 1 for a
+    /// packet that arrived together, 0 for one smeared over a whole cycle.
+    /// </para>
+    /// <para>
+    /// Both numbers come from the shipped templates rather than from constants written
+    /// here: the spread from ejecting the C-trap, the period from compiling `orbital-trap`
+    /// and reading its own declared parameter. That is what makes this a comparison between
+    /// two instruments rather than between two of my assumptions.
+    /// </para>
+    /// <para>
+    /// <b>What this does NOT show is that the curvature delivers the coherence.</b> Every
+    /// ion sits the same distance from the rods whether the trap is bent or straight, so
+    /// they fall through the same potential either way and a straight trap would arrive
+    /// just as together. The 60 ns measured here is the <i>slot's</i> doing — ions nearer
+    /// its edge see a different fringe than ions at its centre. The curvature buys
+    /// something else, measured separately in
+    /// <see cref="CurvatureFocusesTheEjectedPacket"/>: a packet 20.8 times narrower in
+    /// space, which is about passing an entrance aperture rather than about frequency.
+    /// </para>
+    /// <para>
+    /// That split is worth stating because it says where design effort goes. In this
+    /// field the axial frequency is exactly amplitude-independent, so a spatially broad
+    /// packet is not a dephased one — ions launched from different axial offsets oscillate
+    /// at one frequency and stay in step, and only their amplitudes differ. A real
+    /// analyser's field imperfections make the frequency weakly amplitude-dependent and
+    /// give spatial compactness a second job; this model has no such imperfection and
+    /// should not be read as if it did.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheEjectedPacketArrivesInsideTheAnalysersAxialPeriod()
+    {
+        // The analyser's half, from its own template.
+        var analyser = ModelJson.Parse(DeviceTemplates.Read("orbital-trap"));
+        var analyserModel = ModelValidator.Validate(analyser).Model!;
+
+        var axialPeriod = analyserModel.Parameters["axialPeriod"].SiValue;
+
+        Assert.True(axialPeriod > 0.0, "the orbital trap declares an axial period");
+
+        // The C-trap's half.
+        var quiet = MeasureEjection(bendMm: 20.0, rfVolts: 0.0);
+        var driven = MeasureEjection(bendMm: 20.0, rfVolts: 500.0);
+
+        output.WriteLine($"analyser axial period          {axialPeriod * 1e6,9:F4} us");
+
+        foreach (var (name, run) in new[] { ("drive off", quiet), ("drive on ", driven) })
+        {
+            var phase = 2.0 * Math.PI * run.Spread / axialPeriod;
+
+            // The image current is the sum of each ion's oscillation. For a spread that is
+            // small against the period this is close to 1 - (omega sigma)^2 / 2; it is
+            // computed rather than approximated because the driven case is not small.
+            var real = 0.0;
+            var imaginary = 0.0;
+
+            foreach (var t in run.Times)
+            {
+                real += Math.Cos(2.0 * Math.PI * t / axialPeriod);
+                imaginary += Math.Sin(2.0 * Math.PI * t / axialPeriod);
+            }
+
+            var coherence = Math.Sqrt((real * real) + (imaginary * imaginary)) / run.Times.Count;
+
+            output.WriteLine(
+                $"{name}: arrival spread {run.Spread * 1e9,8:F2} ns "
+                + $"= {run.Spread / axialPeriod,7:P2} of a period, "
+                + $"phase {phase,6:F3} rad, coherence {coherence,6:F4}");
+        }
+
+        // The packet arrives well inside one axial period, so every ion begins its
+        // oscillation at essentially the same phase and the image current does not cancel.
+        // This is the whole content of "the C-trap can inject this analyser".
+        Assert.True(
+            quiet.Spread < 0.1 * axialPeriod,
+            $"the ejected packet is spread over {quiet.Spread * 1e9:F1} ns against an axial "
+            + $"period of {axialPeriod * 1e6:F3} us, which is "
+            + $"{quiet.Spread / axialPeriod:P1} of a cycle - the ions would start their "
+            + "oscillations at different phases and the image current would cancel");
+    }
+
+    /// <summary>An ejection, reported in the currency an analyser cares about.</summary>
+    private static (double Spread, List<double> Times) MeasureEjection(double bendMm, double rfVolts)
+    {
+        const double Spread = 0.04;
+        const double EjectVolts = 60.0;
+
+        var offsets = new[] { -Spread, -Spread / 2.0, 0.0, Spread / 2.0, Spread };
+
+        var paths = new List<IReadOnlyList<TrajectorySample>>();
+
+        IElectrostaticField? field = null;
+
+        foreach (var offset in offsets)
+        {
+            var model = Compile(
+                ("bendRadius", Quantity.From(bendMm, "mm")),
+                ("ejectVolts", Quantity.From(EjectVolts, "V")),
+                ("rfAmplitude", Quantity.From(rfVolts, "V")),
+                ("launchVolts", Quantity.From(0.005, "V")),
+                ("launchHalfTurns", Quantity.From(0.25 + offset, "1")));
+
+            field ??= FieldAssembly.Build(model);
+
+            paths.Add(Eject(model, field, stepUs: 0.005, maxUs: 24.0));
+        }
+
+        // Find the waist the same way the focusing measurement does.
+        var last = paths.Min(p => p[^1].TimeSeconds);
+        var waist = double.MaxValue;
+        var waistTime = 0.0;
+
+        for (var k = 1; k <= 400; k++)
+        {
+            var t = last * k / 400.0;
+            var points = paths.Select(p => At(p, t)).ToList();
+
+            if (points.Any(q => q is null))
+            {
+                continue;
+            }
+
+            var extent = Extent([.. points.Select(q => q!.Value)]);
+
+            if (extent < waist)
+            {
+                waist = extent;
+                waistTime = t;
+            }
+        }
+
+        var plane = Centroid([.. paths.Select(p => At(p, waistTime)!.Value)]);
+        var earlier = Centroid([.. paths.Select(p => At(p, waistTime * 0.9)!.Value)]);
+        var heading = plane - earlier;
+        var normal = heading * (1.0 / Math.Sqrt(Vec3.Dot(heading, heading)));
+
+        var times = new List<double>();
+
+        foreach (var path in paths)
+        {
+            for (var k = 1; k < path.Count; k++)
+            {
+                var before = Vec3.Dot(path[k - 1].Position - plane, normal);
+                var after = Vec3.Dot(path[k].Position - plane, normal);
+
+                if (before > 0.0 || after < 0.0)
+                {
+                    continue;
+                }
+
+                var span = after - before;
+                var f = Math.Abs(span) < double.Epsilon ? 0.0 : -before / span;
+
+                times.Add(
+                    path[k - 1].TimeSeconds
+                    + (f * (path[k].TimeSeconds - path[k - 1].TimeSeconds)));
+
+                break;
+            }
+        }
+
+        return (times.Count < 2 ? double.NaN : times.Max() - times.Min(), times);
+    }
+
     /// <summary>An in-plane launch stays in the plane, exactly.</summary>
     /// <remarks>
     /// The geometry is symmetric about the plane of the arc — the out-of-plane rods are a

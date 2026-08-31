@@ -1084,6 +1084,50 @@ Sweeping it at all is the point. One ejection with the drive running is a single
 something periodic, and this project has already recorded what comes of quoting one: an
 isolation-efficiency curve whose shape reversed at an amplitude nobody had swept.
 
+### C-trap to orbital analyser: the handover, since the composition is not possible
+
+The two instruments cannot be composed into one document — see below, and SPEC.md
+Amendment 32. What *can* be done is the handover: measure what one delivers, measure what
+the other needs, and compare them in a currency both share.
+
+**That currency is time, not space, and the reason is the analyser's defining property.**
+In a quadro-logarithmic field the axial frequency depends on nothing but `m/q` — not the
+orbit radius, not the axial amplitude, not the energy — which `QuadroLogarithmicFieldTests`
+pins directly. So the analyser is indifferent to almost everything an injected packet
+varies in. Two ions at the same frequency still cancel if they start at different
+**phases**, and phase is set by when an ion arrived.
+
+So the injection specification is one ratio: the packet's spread in arrival time over the
+analyser's axial period. Both numbers come from the shipped templates — the spread by
+ejecting `c-trap`, the period by compiling `orbital-trap` and reading its own declared
+parameter.
+
+| | arrival spread | of a period | coherence |
+| --- | --- | --- | --- |
+| analyser axial period | 3.1983 us | — | — |
+| ejected, drive off | **60.02 ns** | 1.88% | **0.9990** |
+| ejected, drive on | 170.93 ns | 5.34% | 0.9893 |
+
+Coherence is the modulus of the mean of `exp(i omega t)` over the packet — the amplitude
+of the image current the ions actually induce, 1 for a packet that arrived together and 0
+for one smeared over a whole cycle. **The C-trap can inject this analyser**, with room to
+spare, and leaving the drive on costs a factor of 2.8 in spread and almost nothing in
+coherence.
+
+**What this does not show is that the curvature delivers the coherence.** Every ion sits
+the same distance from the rods whether the trap is bent or straight, so they fall through
+the same potential either way and a straight trap would arrive just as together. The 60 ns
+is the *slot's* doing — ions nearer its edge see a different fringe than ions at its
+centre. The curvature buys the other thing, measured above: a packet 20.8 times narrower in
+space, which is about passing an entrance aperture.
+
+That split is worth stating because it says where design effort goes. In this field the
+axial frequency is exactly amplitude-independent, so a spatially broad packet is **not** a
+dephased one — ions from different axial offsets oscillate at one frequency and stay in
+step, and only their amplitudes differ. A real analyser's field imperfections make the
+frequency weakly amplitude-dependent and give spatial compactness a second job; this model
+has no such imperfection and should not be read as though it did.
+
 ### What cannot be done yet: the two instruments in one document
 
 The C-trap injects an orbital analyser, and **the two cannot be composed into one model.**
