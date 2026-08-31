@@ -998,6 +998,19 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **What cannot be done yet: the two instruments in one document.** Analytic fields fill all space, and the quadro-logarithmic potential grows as z², so an orbital trap declared beside its C-trap puts an enormous field across it. Two *solved* elements compose correctly, each bounded by its own domain — so the gap is specifically that an exact analytic field cannot be one element of a beamline, and the exactness is why anyone would want it there. SPEC.md Amendment 32.
 
+- **Ion processor to a multi-reflection analyser: the second handover, and the crossing where the binding limit changes hands.** Same shape as the C-trap's — a trap accumulates and cools, then pulses into an analyser — with the shipped `rectilinear-trap` and the shipped mirror pair, both solved. **Not** a model of a particular instrument: an asymmetric-track analyser gets its reflection count from a slow drift along the mirror axis, and nothing here models that drift.
+
+  **Turn-around is the part of the arrival spread no analyser can undo.** Mirrors refocus energy spread; ions that left at different *instants* stay apart for the whole flight. So R = t/(2Δt) grows linearly with flight time while the mirror's own aberration limit does not grow at all.
+
+  | | | | |
+  | --- | --- | --- | --- |
+  | trap turn-around | **4.220 ± 0.067 ns** (2,000 ions) | analyser period | 55.9366 µs/oscillation |
+  | analyser energy limit, ±3% | R = 321,018 | cap to cap | 767.0 mm |
+
+  8 oscillations (12.3 m) gives R = 53,015; 16 (24.5 m) gives 106,029. **The two limits cross at 48 oscillations** — 2.7 ms, 74 m — so every practical instrument sits below it and **the turn-around is the thing to improve**, not the mirror.
+
+  **One number there is arithmetic wearing a measurement's clothes.** The aberration limit is 321,018 at 3, 6 *and* 12 oscillations, identical to the digit, because `MirrorPair.Fly` computes one period and multiplies rather than stitching legs. So the flatness confirms the arithmetic, not the physics; the physical claim underneath is that every oscillation is identical, which is **exactly what an asymmetric track gives up**. Unmeasured here, and labelled as such. And **the trap's own 241 ns arrival spread is the wrong number** — that is extraction-depth spread, which is an energy spread and is what mirrors are *for*; using it would understate the reachable R by two orders of magnitude.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

@@ -1144,3 +1144,58 @@ The fix is a spatial region on an analytic element, outside which it contributes
 which introduces a field discontinuity at the region boundary, and the integrator already
 lands exactly on declared discontinuities. That is a real design question rather than an
 oversight, and it is the next thing this needs.
+## Ion processor to a multi-reflection analyser: the second handover
+
+The other injection path this platform is pointed at, and it has the same shape as the
+C-trap's: a trap accumulates and cools ions, then pulses them into an analyser. Here the
+trap is the shipped `rectilinear-trap` — the low-pressure region of an ion processor — and
+the analyser is the shipped mirror pair at its two-stage design point.
+
+**What is modelled and what is not.** Both halves are solved geometry. It is *not* a model
+of any particular commercial instrument: an asymmetric-track analyser gets its reflection
+count from a slow drift along the mirror axis, and nothing here models that drift. What is
+asked is the question that does not depend on it.
+
+**The currency is the arrival-time spread, and turn-around is the part no analyser can
+undo.** A time-of-flight analyser refocuses energy spread — that is what its mirrors are
+for — but ions that left the source at different *instants* stay apart for the whole
+flight. So the trap's turn-around is a floor on the peak width, and the resolving power it
+permits is `t / 2dt`, growing linearly with flight time.
+
+| | |
+| --- | --- |
+| trap turn-around | **4.220 ± 0.067 ns** (2,000 ions, converged) |
+| analyser period | 55.9366 us per oscillation, 767.0 mm cap to cap |
+| analyser energy limit, ±3% | R = 321,018 |
+
+| oscillations | flight time | path | R from turn-around |
+| --- | --- | --- | --- |
+| 1 | 55.9 us | 1.53 m | 6,627 |
+| 4 | 223.7 us | 6.14 m | 26,507 |
+| 8 | 447.5 us | 12.27 m | 53,015 |
+| 16 | 895.0 us | 24.54 m | **106,029** |
+| 32 | 1790.0 us | 49.09 m | 212,058 |
+| 64 | 3579.9 us | 98.18 m | 424,117 |
+
+**The two limits cross at 48 oscillations**, 2.7 ms of flight and 74 m of path. Below that
+the *trap* binds and a colder or harder-pushed source is worth more than a better mirror;
+above it the *mirror* binds and more reflections buy nothing at all. Every practical
+instrument sits well below the crossing, so **for this pairing the turn-around time is the
+thing to improve**.
+
+**One number in that comparison is arithmetic wearing a measurement's clothes**, and it is
+worth saying which. The energy-aberration limit comes out at 321,018 for 3, 6 and 12
+oscillations — identical to the digit, because `MirrorPair.Fly` computes one period and
+multiplies it rather than stitching legs (a choice recorded in `docs/lessons.md`, made
+because twelve legs give twelve chances to miss a root-find). So the flatness confirms the
+arithmetic, not the physics. The physical claim underneath is that every oscillation is
+identical — true of a periodic analyser, and **exactly what an asymmetric track gives up**,
+since its ions drift along the mirror axis and successive reflections sample different
+field. That departure is unmeasured here.
+
+**And the trap's own arrival spread is the wrong number to use**, which is the trap this
+comparison exists to avoid. At its own detector this packet is ~241 ns wide, almost all of
+it the spread in extraction depth — but that is an energy spread, and refocusing energy
+spread is what mirrors are for. Turn-around is the 1.8% of it that survives. Using the
+241 ns would understate the reachable resolving power by two orders of magnitude.
+
