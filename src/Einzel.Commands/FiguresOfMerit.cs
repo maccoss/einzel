@@ -1359,6 +1359,25 @@ public static class FiguresOfMerit
             return null;
         }
 
+        // A DECLARED CLOUD IS THE POPULATION, exactly as `transmission` already had it.
+        // Without this the figure flew a deterministic energy scan while `einzel run`
+        // reported the cloud, so `einzel test` and `einzel run` would answer a question
+        // about confinement over two different populations - the same divergence this
+        // project has already found twice, once in a flight time and once because a
+        // declared gas reached only one of the two paths.
+        //
+        // It did not show up on `paul-trap-held`, which declares no cloud: its source is
+        // at rest, so `Distinct` collapses to one ion and both routes fly the same one.
+        // The example being green is what let this sit.
+        if (model.Cloud.IsCloud)
+        {
+            var cloud = FlyCloud(model, report);
+
+            return model.Cloud.Ions > 0
+                ? (double)cloud.Remaining.Count / model.Cloud.Ions
+                : null;
+        }
+
         var held = 0;
         var members = Distinct(model, spread, ions, report);
 

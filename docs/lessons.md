@@ -1514,6 +1514,43 @@ usually to ask the question — but check first that the question is answerable 
 have.** Here it is not, and noticing that is what stops a fourth widening that would make a
 lost beam look like a held one.
 
+## A guard that checks a string is present cannot see a no-op
+
+Writing a test that needed a trap model with a bigger ion cloud, I edited the document by
+string replacement and guarded it the way this project already learned to:
+
+    Assert.Contains("\"cloud\"", document);
+
+The trap **already declared a cloud**, of one ion. So the replacement inserted a second
+`"cloud"` key, `System.Text.Json` took the last of the two — the original — the run flew one
+ion, and the guard passed on a string that had been there all along.
+
+The existing rule came from three shipped tests that edited a scaffolded model by string
+replacement against a layout the corpus had reformatted: the edit matched nothing, and each
+test reported the feature it was checking as broken. The fix then was to assert the
+replacement happened. **What that fix has to assert is that the document CHANGED**, not that
+it now contains something — because the second is true whenever the thing was already there,
+which is exactly the case where a replacement quietly does nothing.
+
+    Assert.NotEqual(original, document);
+
+## A test that cannot fail in the regime it is written for
+
+The same test then compared `einzel run`'s confinement against the `confined` figure of
+merit over a trap holding **all** of its ions. Both said 100%, and both would have said 100%
+with the defect restored — a trap that holds everything reports the same number by any
+route, and so does one that holds nothing.
+
+The regime where the two can differ is **partial** confinement. With the cloud made hot
+enough that the trap keeps 5% of it, the run says 5.0% and the unfixed figure says 100%.
+The test now asserts that the reported fraction is strictly between, so it cannot pass on a
+trap where the comparison is vacuous.
+
+**Agreement between two computations is evidence only in a regime where they could
+disagree.** This project has the same finding from the other direction — an advection test
+whose cell Péclet sat below the threshold of the bug, and a confinement test on two flat
+plates that could not make a ponderomotive well.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

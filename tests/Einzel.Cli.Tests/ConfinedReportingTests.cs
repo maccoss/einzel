@@ -109,6 +109,86 @@ public sealed class ConfinedReportingTests(ITestOutputHelper output) : IDisposab
         Assert.Equal(0.0, ejected, 6);
     }
 
+    /// <summary>The figure of merit and the run agree over a declared cloud.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>They did not.</b> `einzel run` counts what is still inside from the flight it
+    /// did, over the declared cloud. The `confined` figure of merit — which is what
+    /// `einzel test` and every study call — flew a deterministic energy scan instead and
+    /// ignored the cloud entirely, where its sibling `transmission` had honoured one all
+    /// along. So the two answered a question about confinement over two different
+    /// populations.
+    /// </para>
+    /// <para>
+    /// <b>It did not show on the shipped example, which is why it sat.</b>
+    /// `paul-trap-held` declares no cloud: its source is at rest, so the scan collapses to
+    /// a single ion and both routes fly the same one. A model with a cloud is what
+    /// separates them, and this is that model — the same trap with twenty thermal ions.
+    /// </para>
+    /// <para>
+    /// This is the third time in this project that one quantity computed two ways has
+    /// diverged between `run` and `test`: once in a flight time, once because a declared
+    /// gas reached only one path, and now this.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheFigureAndTheRunAgreeOverADeclaredCloud()
+    {
+        var path = Materialise("paul-trap-held");
+
+        var original = File.ReadAllText(path);
+
+        // The trap already declares a cloud OF ONE ION, so widening it is the edit rather
+        // than adding one. A first version of this test inserted a second "cloud" key and
+        // System.Text.Json took the last of the two - the original - so the run flew one
+        // ion and the agreement below was between two single-ion answers.
+        //
+        // Its guard was "the document contains cloud", which was already true. A check
+        // that a string is PRESENT cannot see a no-op when the string was there before;
+        // what has to be asserted is that the document CHANGED.
+        // Twenty ions, and DELIBERATELY HOT ENOUGH THAT THE TRAP HOLDS ONLY PART OF
+        // THEM. That is the only regime in which the two routes can differ: a trap that
+        // holds everything reports 100% by either, and a trap that holds nothing reports
+        // zero by either, so agreement there would prove nothing at all. At this
+        // temperature the run holds 5% and the unfixed figure - which flies one nominal
+        // launch rather than the cloud - says 100%.
+        var document = original
+            .Replace("\"ions\": 1,", "\"ions\": 20,", StringComparison.Ordinal)
+            .Replace("\"value\": 300,", "\"value\": 300000,", StringComparison.Ordinal);
+
+        Assert.NotEqual(original, document);
+
+        File.WriteAllText(path, document);
+
+        var run = Cli("run", path, "--json");
+
+        var reported = JsonNode.Parse(run.Stdout)!["ensemble"]!["confined"]!["value"]!
+            .GetValue<double>();
+
+        var model = Core.Model.ModelValidator
+            .Validate(Io.ModelJson.Parse(document))
+            .Model!;
+
+        var figure = Commands.FiguresOfMerit.Evaluator("confined")(model);
+
+        output.WriteLine($"run reports {reported:P1}, the figure reports {figure:P1}");
+
+        Assert.NotNull(figure);
+
+        Assert.Equal(reported, figure!.Value, 6);
+
+        // And the trap really is holding only part of the cloud, so the agreement above
+        // is between two numbers that COULD have differed. Without this the test would
+        // pass on a fully-confining trap where both routes trivially say 100%.
+        Assert.InRange(reported, 0.001, 0.5);
+
+        // And the cloud really was flown, rather than both routes collapsing to one ion
+        // again - which would make the agreement above meaningless.
+        Assert.Equal(
+            20,
+            JsonNode.Parse(run.Stdout)!["ensemble"]!["launched"]!.GetValue<int>());
+    }
+
     /// <summary>The terminal says it, and only when there is something to say.</summary>
     /// <remarks>
     /// A beamline holds nothing at the end of its run, so a line of zeros on every ordinary
