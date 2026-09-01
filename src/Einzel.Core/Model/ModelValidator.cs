@@ -1641,6 +1641,68 @@ public static class ModelValidator
                     return null;
                 }
 
+                // Dimensionless, because a half turn is an angle expressed as a ratio and
+                // the grammar has no unit for one - the same treatment a drive phase gets.
+                var tilt = electrode.TiltHalfTurns is null
+                    ? Quantity.Si(0.0, Dimension.Dimensionless)
+                    : TryQuantity(
+                        electrode.TiltHalfTurns, $"{path}/tiltHalfTurns",
+                        Dimension.Dimensionless, p, errors);
+
+                if (tilt is null)
+                {
+                    return null;
+                }
+
+                var tiltAxis = electrode.TiltAxis switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (tiltAxis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/tiltAxis",
+                        Constraint = "a tilt axis must be 'x', 'y' or 'z'",
+                        Observed = new ObservedValue(0.0, electrode.TiltAxis ?? "(none)"),
+                        Suggestion =
+                            "'z' when omitted; the tilt is about that axis through the box's "
+                            + "own centre, in half turns",
+                    });
+
+                    return null;
+                }
+
+                // A tilt is stated as an angle, and an angle beyond a half turn describes a
+                // box already describable the short way round. Refused rather than wrapped,
+                // because a document meaning 0.05 and writing 5 has made a unit mistake -
+                // and the whole point of half turns is that the unit is not guessable from
+                // the number.
+                if (Math.Abs(tilt.Value.SiValue) > 0.5)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/tiltHalfTurns",
+                        Constraint =
+                            $"box '{name}' declares a tilt of {tilt.Value.SiValue:G4} half "
+                            + "turns, and every orientation is reachable within half a turn "
+                            + "either way",
+                        Observed = new ObservedValue(tilt.Value.SiValue, "1"),
+                        Suggestion =
+                            "half turns, not degrees or radians: 1.0 is half a turn, so a "
+                            + "right angle is 0.5 and a 200 um convergence over 350 mm is "
+                            + "1.8e-4",
+                    });
+
+                    return null;
+                }
+
                 return common with
                 {
                     Shape = Electrode3DShape.Box,
@@ -1650,6 +1712,8 @@ public static class ModelValidator
                     MaxX = maxX.Value.SiValue,
                     MaxY = maxY.Value.SiValue,
                     MaxZ = maxZ.Value.SiValue,
+                    TiltAxis = tiltAxis.Value,
+                    TiltHalfTurns = tilt.Value.SiValue,
                 };
             }
 

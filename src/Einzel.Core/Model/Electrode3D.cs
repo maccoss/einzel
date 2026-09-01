@@ -81,6 +81,87 @@ public sealed record CompiledElectrode3D
     /// <summary>Which axis a cylinder runs along.</summary>
     public CylinderAxis Axis { get; init; }
 
+    /// <summary>Which axis a box is tilted about, through its own centre.</summary>
+    public CylinderAxis TiltAxis { get; init; }
+
+    /// <summary>How far a box is tilted about <see cref="TiltAxis"/>, in half turns.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Boxes only, and a small angle is the point.</b> Every primitive here is
+    /// axis-aligned, which builds the devices the specification's table asks for and
+    /// cannot express a plate that is deliberately <i>not</i> parallel to another. An
+    /// asymmetric-track analyser is exactly that: its two mirrors converge by a couple of
+    /// hundred microns over a third of a metre, and that convergence is the whole mechanism
+    /// - it is what makes the drift decelerate and reverse. Without it the model is a
+    /// generic multi-reflection analyser wearing the right dimensions.
+    /// </para>
+    /// <para>
+    /// <b>Half turns rather than radians</b>, the convention the drive decomposition and the
+    /// expression grammar already chose, and for the same reason: <c>double.CosPi</c> is
+    /// exact at every quarter turn, where <c>Math.Cos(Math.PI / 2)</c> is 6.1e-17 and would
+    /// tilt a nominally upright plate by a rounding.
+    /// </para>
+    /// <para>
+    /// <b>A tilt below one cell is resolved, not lost</b>, because the surface is a cut cell:
+    /// Shortley-Weller stores how far a conductor is as a fraction of a cell, so a 200 um
+    /// convergence on a 1.2 mm mesh is carried rather than rasterised away. That is the same
+    /// property that made the shape derivative in FLD-1 legible, met again.
+    /// </para>
+    /// </remarks>
+    public double TiltHalfTurns { get; init; }
+
+    /// <summary>Whether this electrode is tilted at all.</summary>
+    private bool IsTilted => Shape == Electrode3DShape.Box && TiltHalfTurns != 0.0;
+
+    /// <summary>Takes a point into the box's own frame, where it is axis-aligned again.</summary>
+    /// <remarks>
+    /// The whole of what a tilt costs: rotate the query by minus the tilt about the box's
+    /// centre and every existing formula applies unchanged. Written this way rather than as
+    /// a new shape because a tilted box <i>is</i> a box - giving it its own signed-distance
+    /// and first-entry code would be two implementations of one solid, which is how the two
+    /// disagree later.
+    /// </remarks>
+    private (double X, double Y, double Z) ToLocal(double x, double y, double z)
+    {
+        if (!IsTilted)
+        {
+            return (x, y, z);
+        }
+
+        var centreX = 0.5 * (MinX + MaxX);
+        var centreY = 0.5 * (MinY + MaxY);
+        var centreZ = 0.5 * (MinZ + MaxZ);
+
+        var dx = x - centreX;
+        var dy = y - centreY;
+        var dz = z - centreZ;
+
+        // Minus the tilt: the box is declared tilted, so a world point comes back by
+        // rotating the other way.
+        var cos = double.CosPi(TiltHalfTurns);
+        var sin = double.SinPi(TiltHalfTurns);
+
+        return TiltAxis switch
+        {
+            CylinderAxis.X => (
+                x,
+                centreY + (dy * cos) + (dz * sin),
+                centreZ - (dy * sin) + (dz * cos)),
+
+            CylinderAxis.Y => (
+                centreX + (dx * cos) - (dz * sin),
+                y,
+                centreZ + (dx * sin) + (dz * cos)),
+
+            CylinderAxis.Z => (
+                centreX + (dx * cos) + (dy * sin),
+                centreY - (dx * sin) + (dy * cos),
+                z),
+
+            _ => throw Unhandled(),
+        };
+    }
+
     /// <summary>Lower end of a cylinder along its axis, in metres.</summary>
     public double Lower { get; init; }
 
@@ -172,9 +253,7 @@ public sealed record CompiledElectrode3D
             CentreX - Radius, CentreY - Radius, CentreZ - Radius,
             CentreX + Radius, CentreY + Radius, CentreZ + Radius),
 
-        Electrode3DShape.Box => (
-            Math.Min(MinX, MaxX), Math.Min(MinY, MaxY), Math.Min(MinZ, MaxZ),
-            Math.Max(MinX, MaxX), Math.Max(MinY, MaxY), Math.Max(MinZ, MaxZ)),
+        Electrode3DShape.Box => TiltedBounds(),
 
         Electrode3DShape.Cylinder => Axis switch
         {
@@ -215,6 +294,53 @@ public sealed record CompiledElectrode3D
     /// <returns><see langword="true"/> when inside or on the surface.</returns>
     public bool Contains(double x, double y, double z) => SignedDistance(x, y, z) <= 0.0;
 
+    /// <summary>The axis-aligned box that contains this box, tilted or not.</summary>
+    /// <remarks>
+    /// <b>The one query a rotation really changes.</b> Signed distance and first entry both
+    /// work in the box's own frame and need nothing; a bounding box is a statement in world
+    /// coordinates and genuinely grows. Rotating a half-extent about an axis mixes the other
+    /// two, and the extent of the result is the sum of their absolute contributions - which
+    /// is exact rather than a bound, since a box's corners realise it.
+    /// </remarks>
+    private (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
+        TiltedBounds()
+    {
+        var lowX = Math.Min(MinX, MaxX);
+        var lowY = Math.Min(MinY, MaxY);
+        var lowZ = Math.Min(MinZ, MaxZ);
+        var highX = Math.Max(MinX, MaxX);
+        var highY = Math.Max(MinY, MaxY);
+        var highZ = Math.Max(MinZ, MaxZ);
+
+        if (!IsTilted)
+        {
+            return (lowX, lowY, lowZ, highX, highY, highZ);
+        }
+
+        var centreX = 0.5 * (lowX + highX);
+        var centreY = 0.5 * (lowY + highY);
+        var centreZ = 0.5 * (lowZ + highZ);
+
+        var halfX = 0.5 * (highX - lowX);
+        var halfY = 0.5 * (highY - lowY);
+        var halfZ = 0.5 * (highZ - lowZ);
+
+        var cos = Math.Abs(double.CosPi(TiltHalfTurns));
+        var sin = Math.Abs(double.SinPi(TiltHalfTurns));
+
+        (halfX, halfY, halfZ) = TiltAxis switch
+        {
+            CylinderAxis.X => (halfX, (halfY * cos) + (halfZ * sin), (halfY * sin) + (halfZ * cos)),
+            CylinderAxis.Y => ((halfX * cos) + (halfZ * sin), halfY, (halfX * sin) + (halfZ * cos)),
+            CylinderAxis.Z => ((halfX * cos) + (halfY * sin), (halfX * sin) + (halfY * cos), halfZ),
+            _ => throw Unhandled(),
+        };
+
+        return (
+            centreX - halfX, centreY - halfY, centreZ - halfZ,
+            centreX + halfX, centreY + halfY, centreZ + halfZ);
+    }
+
     /// <summary>
     /// Signed distance to this electrode's surface: negative inside, positive
     /// outside, zero on it.
@@ -238,9 +364,13 @@ public sealed record CompiledElectrode3D
 
             case Electrode3DShape.Box:
             {
-                var dx = Math.Max(MinX - x, x - MaxX);
-                var dy = Math.Max(MinY - y, y - MaxY);
-                var dz = Math.Max(MinZ - z, z - MaxZ);
+                // A rotation is rigid, so a distance measured in the box's own frame is the
+                // distance in the world - which is why the tilt needs nothing but this.
+                var (localX, localY, localZ) = ToLocal(x, y, z);
+
+                var dx = Math.Max(MinX - localX, localX - MaxX);
+                var dy = Math.Max(MinY - localY, localY - MaxY);
+                var dz = Math.Max(MinZ - localZ, localZ - MaxZ);
 
                 if (dx <= 0.0 && dy <= 0.0 && dz <= 0.0)
                 {
@@ -307,9 +437,16 @@ public sealed record CompiledElectrode3D
         {
             case Electrode3DShape.Box:
             {
-                if (!Slab(fromX, toX, MinX, MaxX, out var xLow, out var xHigh)
-                    || !Slab(fromY, toY, MinY, MaxY, out var yLow, out var yHigh)
-                    || !Slab(fromZ, toZ, MinZ, MaxZ, out var zLow, out var zHigh))
+                // Both ends into the box's frame. A rotation is affine, so the segment maps
+                // to a segment and the fraction along it is preserved exactly - which is
+                // what lets the slab test come back unchanged and still return a fraction
+                // the caller can use in world coordinates.
+                var (fromLocalX, fromLocalY, fromLocalZ) = ToLocal(fromX, fromY, fromZ);
+                var (toLocalX, toLocalY, toLocalZ) = ToLocal(toX, toY, toZ);
+
+                if (!Slab(fromLocalX, toLocalX, MinX, MaxX, out var xLow, out var xHigh)
+                    || !Slab(fromLocalY, toLocalY, MinY, MaxY, out var yLow, out var yHigh)
+                    || !Slab(fromLocalZ, toLocalZ, MinZ, MaxZ, out var zLow, out var zHigh))
                 {
                     return null;
                 }

@@ -111,6 +111,31 @@ public sealed record Electrode3DDocument : ITappedElectrode
     /// <summary>Cylinder: which axis it runs along, one of <c>x</c>, <c>y</c>, <c>z</c>.</summary>
     public string? Axis { get; init; }
 
+    /// <summary>Box: which axis it is tilted about, one of <c>x</c>, <c>y</c>, <c>z</c>.</summary>
+    /// <remarks>
+    /// Defaults to <c>z</c> and is only read when <see cref="TiltHalfTurns"/> is non-zero,
+    /// so an untilted box needs neither.
+    /// </remarks>
+    public string? TiltAxis { get; init; }
+
+    /// <summary>Box: how far it is tilted about <see cref="TiltAxis"/>, in half turns.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Half turns, so a right angle is exact.</b> One quarter is a right angle, one half
+    /// is upside down; <c>double.CosPi(0.5)</c> is exactly zero where
+    /// <c>Math.Cos(Math.PI / 2)</c> is 6.1e-17, which would tilt a nominally upright plate
+    /// by a rounding. The same convention as <c>cosPi</c> in the expression grammar and as
+    /// a drive phase.
+    /// </para>
+    /// <para>
+    /// <b>What it is for</b> is a plate deliberately not parallel to another - an
+    /// asymmetric-track analyser's mirrors converge by a couple of hundred microns over a
+    /// third of a metre, and that convergence is the mechanism rather than a tolerance.
+    /// A tilt far below one cell is still resolved, because the surface is a cut cell.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? TiltHalfTurns { get; init; }
+
     /// <summary>Cylinder: lower end along its axis.</summary>
     public QuantityValue? Lower { get; init; }
 

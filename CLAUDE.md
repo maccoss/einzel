@@ -1094,6 +1094,30 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   **A measurement mistake worth keeping:** an end-to-end check timed a scan at 50.6 s against 31.0 s minutes earlier, which reads as the estimate being badly wrong. The full test suite was running in parallel. **A wall-clock comparison on a loaded machine measures the load**, and the estimate is the one number in this project most likely to be validated that way.
 
 
+- **A box may be tilted, and the Astral's convergence is the reason.** Every three-dimensional primitive is axis-aligned, which builds the devices §1's table asks for and cannot express one thing: a plate deliberately **not** parallel to another. An asymmetric-track analyser's two mirrors converge by a couple of hundred microns over a third of a metre, and that convergence is the **mechanism** rather than a tolerance — it is what makes the drift decelerate and reverse. Without it the model validates, solves, converges, and produces a drift that never reverses.
+
+  **An attribute, not an abstraction — the fifth time.** After `log` for the Kingdon trap, trigonometry for the multipole guide, `asinPi` for the C-trap and a parametric `drivePhase` for the travelling wave. LIB-1 says to believe the signal when a device forces a change below `Einzel.Library`; each time it has been narrow and the abstraction has held. **A tilted box is a box**, so signed distance and first entry rotate the query into the box's own frame and run unchanged — a rotation is rigid, so a distance measured there is the distance in the world, and affine, so a segment fraction is preserved exactly. The only query that genuinely changes is the bounding box, which the shell extracts conductors over.
+
+  **Half turns, so 1.0 is 180° and a right angle is 0.5** — and a test caught me getting my own convention wrong, writing 0.25 and expecting a right angle. The same confusion had reached the validator's error message, where it would have taught it to whoever tripped the bound.
+
+  | convergence | of a cell, each end | asymmetry | step |
+  | --- | --- | --- | --- |
+  | 1 µm | 0.0010 | 1.6577e-3 V | — |
+  | 2 µm | 0.0020 | 3.3154e-3 V | **2.0000** |
+  | 5 µm | 0.0050 | 8.2886e-3 V | **2.5000** |
+  | 200 µm | 0.2000 | 3.3254e-1 V | 2.0045 |
+
+  **Proportional to a thousandth of a cell**, against a parallel control reporting **7.1e-15 V** — the cut cell doing what FLD-1 built it for, met in a new place.
+
+  **A ladder rather than two points, and that is what found something.** Two tilts an octave apart gave **1.85** against 2 expected — a number one is tempted to explain as a second-order term. The ladder said otherwise: the ratio *rose* toward 2 as the tilt grew, which is the signature of an additive offset rather than a higher-order term, and the slope was dead constant at 0.0018 V/µm. The response was `0.031 + 0.0018 δ`, and the intercept survived down to a thousandth of a cell.
+
+  **It was the geometry, not the tilt: the plate faces sat exactly on grid nodes.** Moving every face a quarter cell off the lattice removed the intercept completely. The mechanism is recorded as a hypothesis — a node lying exactly on a Dirichlet surface is classified inside, so an arbitrarily small tilt moves the surface off that node on one side and not the other, a whole node's change in classification rather than a small change in a cut length. **The modelling rule that generalises: do not place a conductor face exactly on a cell boundary when the quantity of interest is a small geometric perturbation.**
+
+  **And the control proved less than it appeared to.** The parallel pair reports 7e-15 V, which reads as "the mesh is clean" — but the untilted problem is *exactly* symmetric, so it would report zero however badly discretised or converged it was. A control that cannot fail for the reason you are worried about is not a control for that reason. SPEC.md Amendment 34.
+
+- **Two measurements about running this engine, both of which change planning.** A **Release build is 3.27x faster than Debug** (2.16 s against 7.06 on the shipped C-trap), and every timing published from a development session is a Debug timing unless it says otherwise. The estimate needs no telling: because its rate is a pilot measured at runtime, it followed the speed-up on its own — 6.25 s in Debug to 0.98 s in Release for the same model. What does not scale is process start, which the estimate excludes by design, so its wall-clock ratio looks worse on a short Release run (0.60x) while its share of the *computation* is the same 0.85-0.9x as in Debug.
+
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

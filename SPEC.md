@@ -710,6 +710,49 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 34 - Every 3-D primitive is axis-aligned, and one real device is defined by not being
+
+**r06 §9's shape vocabulary for a volume solve** is a box, a sphere and a cylinder along an
+axis. The type's own remarks say why that is enough - "between them they build the devices
+the specification's table asks for" - and add the escape clause, "a device that needs a
+fourth is a fair reason to add one".
+
+**The device that needs something is the asymmetric-track analyser, and it does not need a
+fourth shape.** Its two ion mirrors converge by a couple of hundred microns over a third of
+a metre, and that convergence is the **mechanism** rather than a tolerance: it is what makes
+the drift decelerate and reverse, which is the whole behaviour the geometry exists for.
+Every primitive being axis-aligned means a plate deliberately not parallel to another is not
+expressible at any resolution - so such a model would validate, solve, converge, and produce
+a drift that never reverses.
+
+**What it needed was an attribute, not an abstraction**, which is the fifth time here: `log`
+for the Kingdon trap, trigonometry for the multipole guide, `asinPi` for the C-trap, a
+parametric `drivePhase` for the travelling wave, and now a tilt on a box. LIB-1 says to
+believe the signal when a device forces a change below `Einzel.Library`; the signal each
+time has been narrow and the abstraction has held.
+
+**A tilted box is a box**, so signed distance and first entry rotate the query into the box's
+own frame and run unchanged - a rotation is rigid, so a distance measured there is the
+distance in the world, and affine, so a segment fraction is preserved exactly. The only
+query that genuinely changes is the bounding box.
+
+**Half turns, so a right angle is 0.5 and is exact.** The convention `cosPi` and a drive
+phase already use, for the reason this project has now met three times: `Math.Cos(Math.PI/2)`
+is 6.1e-17, so a nominally upright plate would be tilted by a rounding and a symmetric
+geometry would carry an asymmetry made of floating point.
+
+**Measured: the response is proportional to a thousandth of a cell.** On a 0.5 mm mesh, step
+ratios of 2.0000 and 2.5000 for steps of 2 and 2.5 over a two-hundred-fold range, against a
+parallel control reporting 7.1e-15 V. That is the cut cell doing what it was built for -
+FLD-1's argument, met in a new place.
+
+**And it found a degeneracy worth recording**: a conductor face lying *exactly* on the node
+lattice makes the response affine rather than proportional, with an offset worth about
+seventeen microns of convergence. A quarter-cell offset removes it entirely. The mechanism
+is recorded as a hypothesis; the measurement and the cure are established. **Recommend the
+model format's guidance say so** - do not place a conductor face exactly on a cell boundary
+when the quantity of interest is a small geometric perturbation.
+
 ### 33 - GRD-8's estimate is about a machine and an operation, and was about neither
 
 **r06 §GRD-8**: *"Any operation exceeding a configurable cost threshold requires a prior

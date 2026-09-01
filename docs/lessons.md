@@ -1687,6 +1687,64 @@ disagreeing about whether the field belongs inside the loop — and the correct 
 right there to be copied. **When two neighbouring routines do the same thing at different
 cost, the cheaper one is usually not an optimisation but the intended shape.**
 
+## A ladder, because two points cannot tell a slope from an offset
+
+Adding a tilt to a box needed one claim demonstrated: that a tilt far below one cell
+reaches the solved field, because the surface is a cut cell. The obvious test is two
+tilts an octave apart — if the response doubles, it is proportional and therefore
+resolved rather than rasterised.
+
+It came out **1.85**, against 2 expected. That is the kind of number one is tempted to
+explain: a few per cent off, plausibly a second-order term in the geometry, widen the
+band and move on.
+
+Running a ladder instead of two points said what it actually was:
+
+| convergence | asymmetry | ratio to previous |
+| --- | --- | --- |
+| 1 µm | 3.2624e-2 V | — |
+| 2 µm | 3.4299e-2 V | 1.0513 |
+| 5 µm | 3.9637e-2 V | 1.1556 |
+| 25 µm | 7.5430e-2 V | 1.4217 |
+| 100 µm | 2.0961e-1 V | 1.7444 |
+| 400 µm | 7.5075e-1 V | 1.9324 |
+
+**The ratio rises toward 2 as the tilt grows, which is the signature of an additive
+offset, not of a second-order term.** A second-order term would make the ratio depart
+from 2 more as the perturbation grew, not less. And the slope is dead constant at
+0.0018 V/µm across the whole ladder — so the response was `0.031 + 0.0018 δ`, perfectly
+linear with an intercept that had no business being there.
+
+The intercept survived down to a tilt of one micron — a thousandth of a cell — where the
+proportional part is twenty times smaller than it. So something discontinuous was
+happening the instant the tilt became non-zero.
+
+**It was the geometry, not the tilt.** The plate faces sat exactly on grid nodes. Moving
+every face a quarter cell off the lattice removed the intercept completely, and the same
+ladder became exactly proportional — step ratios of 2.0000 and 2.5000 for steps of 2 and
+2.5, over a four-hundred-fold range.
+
+The mechanism is a hypothesis and is recorded as one: a node lying exactly on a Dirichlet
+surface is classified inside, so an arbitrarily small tilt moves the surface off that node
+on one side and not the other — a whole node's change in classification rather than a small
+change in a cut length. What is established is the measurement and the cure.
+
+**Three things generalise.**
+
+**Two points cannot distinguish `aδ` from `aδ + c`.** Any two-point ratio test of
+proportionality is really a test of "is the offset small compared with the signal at the
+sizes I happened to pick", and the answer changes with the sizes. A ladder costs one loop.
+
+**A ratio that drifts toward its expected value as the perturbation grows is an offset;
+one that drifts away is a genuine higher-order term.** The direction of the drift names
+the cause, and it is free to look at.
+
+**The control proved less than it appeared to.** The parallel-plate case reported 7e-15 V
+of asymmetry, which reads as "the mesh is clean". It is not evidence of that: the untilted
+problem is *exactly* symmetric, so it would report zero however badly discretised or
+converged it was. A control that cannot fail for the reason you are worried about is not a
+control for that reason.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
