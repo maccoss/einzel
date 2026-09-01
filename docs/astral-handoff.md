@@ -243,6 +243,68 @@ The ceiling is now 2.5x each angle's own ballistic transit.
 where ACC-6 asks for 1/500), `TRAJECTORY_INCOMPLETE` on the reversed side, which is what a
 reversed ion *is*, and `ENERGY_DRIFT_EXCEEDS_BUDGET` at this 4 mm cell.
 
+### Step 2: the foil energised, and the well recovered from the dynamics
+
+**The model now runs at the published configuration** — a 200 µm spacer, ~2° injection, the
+foil at its published −20 V — and the ion turns round at **355 mm, inside the paper's stated
+310–360 mm drift**. With the foil off it overshoots to 444 mm.
+
+**The bias does the work; the geometry does none.** Three runs at c = 0.20 mm:
+
+| | out-and-back |
+| --- | --- |
+| foil removed entirely | 1803.37 µs |
+| foil present, grounded | 1800.79 µs |
+| foil at −20 V | **933.98 µs** |
+
+0.14 per cent between the first two, so a grounded conductor in the drift region changes
+nothing measurable and the returning contribution is electrostatic — which is what the paper
+describes. Deepening the bias shortens the out-and-back monotonically (1800 / 1625 / 1197 /
+934 µs at 0 / −5 / −10 / −20 V): a stiffer well has a shorter period.
+
+**The confirming measurement is the sign change, because only a centred well can produce
+one.** The foil pulls the turning point *in* when the ion turns beyond the well and pushes it
+*out* when the ion turns near the centre — an ion that turns just past mid-drift was
+accelerated over almost its whole outbound path, so it goes further:
+
+| c | turning at 0 V | at −20 V | shift |
+| --- | --- | --- | --- |
+| 0.22 mm | 419.2 mm | 350.7 mm | **−68.5** |
+| 0.25 mm | 369.3 mm | 344.8 mm | −24.5 |
+| 0.35 mm | 253.9 mm | 311.4 mm | **+57.5** |
+| 0.40 mm | 221.5 mm | 291.8 mm | +70.3 |
+
+The crossover — where the foil stops mattering — should sit at **twice the well centre**, and
+the well is centred at mid-drift, 175 mm, by construction. Interpolating the shift to zero
+gives **334.8 mm against 350 predicted: 4.3 per cent, with nothing fitted.** The residual is
+the sort the model should have — a parabolic *width* is not a parabolic *potential*, the
+mirror tilt adds a linear ramp on top, and the ion launches at 10 mm rather than 0.
+
+That is the dynamics recovering a geometric quantity independently, which is what separates
+this from a curve fitted through the published numbers.
+
+### Two instruments retired on the way, and both were mine
+
+**`c_rev = 0.267 mm` is withdrawn.** It answered *"does the drift stop before the detector at
+325 mm"*, and the question that matters is *"does the ion turn round inside the analyser"* —
+an ion can sail past 325, reverse out in the padded region where a real instrument has no
+mirrors, and come home. Both measurements were internally correct and neither answered the
+right question. Everything built on 0.267 — including this template shipping at a 300 µm
+spacer as a placeholder — went with it.
+
+**And the flight-time fit is invalid once the foil is energised.** It assumes uniform
+deceleration, and a well is the opposite of that. It said so itself: the fitted `v_z0` came
+back at 829.1 and 972.5 m/s against a closed form of **877.69** that cannot depend on the
+foil. That check exists in `docs/lessons.md` precisely because a fit returns a plausible
+number rather than an error, and here it stopped a figure of merit being built on a broken
+instrument.
+
+**What is still not established.** The foil geometry remains a guess constrained only by the
+derived 2.9–3.7 V swing and the leaf shape in the figures — different leaves give the same
+swing. This is one ion on axis at one angle: no cloud, no acceptance, no resolving power. And
+the 350 mm drift and 625 mm cap-to-cap are values derived here, so "355 mm is inside 310–360"
+leans partly on numbers this project chose.
+
 ### What was wrong with all three measurements below
 
 Three faults, found by re-measuring with the outcome **reported** rather than inferred.

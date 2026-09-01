@@ -11,11 +11,11 @@
       "description": "Nominal beam energy. Stewart et al.: 4 keV entering the analyser."
     },
     "convergence": {
-      "value": 0.3,
+      "value": 0.2,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 40.0,
-      "description": "how much closer the two mirrors are at the far end of the drift than the near end - the spacer that sets the mirror tilt. THE PUBLISHED FIGURE IS 200 um AND THIS SHIPS AT 300, which is not a disagreement with the paper but a placeholder for the ion foil. The paper says the drift is reversed by the mirror tilt AS WELL AS refraction on the foil; this model has only the tilt, so it needs more of it. Mirror tilt alone reverses the drift at 0.267 mm here, so 200 um does not come back at all. Fitting the foil should bring this down toward the published value, and how far is the measurement that would confirm the foil model."
+      "description": "how much closer the two mirrors are at the far end of the drift than the near end - the spacer that sets the mirror tilt. THE PUBLISHED FIGURE, and the model now runs at it. With the foil at its published -20 V the ion turns round at 355 mm, inside the paper's stated 310-360 mm drift; with the foil off it overshoots to 444 mm. An earlier note here said mirror tilt alone reverses at 0.267 mm and this template therefore had to ship at 300 um - that figure was measured with a detector at 325 mm, which asks whether the drift stops before a plane rather than whether it turns inside the analyser, and it is withdrawn."
     },
     "injectionAngle": {
       "value": 0.022343931724278912,
@@ -147,11 +147,11 @@
       "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
     },
     "foilVolts": {
-      "value": 0.0,
+      "value": -20.0,
       "unit": "V",
       "minimum": -20.0,
       "maximum": 0.0,
-      "description": "the ion foil bias. Published as tunable between 0 and -20 V. SHIPS AT ZERO, so the foil is present in the geometry and does nothing until it is fitted - a default that makes a device worse is worse than no default, and nothing yet establishes the value."
+      "description": "the ion foil bias. Published as tunable between 0 and -20 V, and shipped at the deep end because that is where the model reproduces the instrument. MEASURED: the bias does the returning work and the foil's presence does none - removing the electrodes entirely gives 1803.4 us against 1800.8 grounded, and -20 V gives 933.98. Deepening it shortens the out-and-back monotonically, which is a stiffer well having a shorter period."
     },
     "foilThickness": {
       "value": 2.0,
