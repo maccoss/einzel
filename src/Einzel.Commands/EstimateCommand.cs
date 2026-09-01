@@ -581,6 +581,7 @@ public static class EstimateCommand
                         // which carries every other field forward - while this one is
                         // copied field by field and so drops whatever was added last.
                         Faces = Fields.Solved.Geometry3D.FacesOf(firstVolume.Faces),
+                        ReflectAboutX = firstVolume.ReflectAboutX,
                     };
 
                     var pilot = Fields.Solved.GeometryBuilder3D.BuildGrid(geometry);
@@ -630,6 +631,7 @@ public static class EstimateCommand
                         volume.Tolerance)
                     {
                         Faces = Fields.Solved.Geometry3D.FacesOf(volume.Faces),
+                        ReflectAboutX = volume.ReflectAboutX,
                     });
 
                 var volumeNodes = space.NodeCount;

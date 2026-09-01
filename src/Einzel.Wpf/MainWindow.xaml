@@ -323,21 +323,24 @@
 
         <Border Margin="8,0,8,0" BorderThickness="1" BorderBrush="#C9CFD4">
           <!--
-            Dark, and darker than it was, which is the opposite of what the symptom
-            suggested. Everything here is a thin line or a semi-transparent surface, and
-            against #141A20 the dark end of every scale - the slowest ion, the most
-            negative electrode - was the hardest thing in the picture to see.
+            White, and the reason is not taste. Einzel.Render draws the publication figure
+            on white, and Amendment 25 says every shell action is expressible as a CLI
+            invocation - so a viewport that looks nothing like the figure it previews is an
+            inconsistency rather than a preference.
 
-            Lightening the ground does not fix that: a sequential ramp spans dark to light
-            by construction, so it passes through every background luminance, and measured
+            A sequential ramp spans dark to light by construction, so it passes through
+            every background luminance and no ground rescues an unmodified one: measured
             across grounds from #101010 to #D0D0D0 the worst contrast anywhere on viridis
-            never rises above 1.25. What fixes it is lifting the ramps off the ground and
-            then putting the ground as far below them as it will go. Worst contrast
-            anywhere: 4.70 on the energy scale and 6.77 on the potential one, against 1.01
-            and 2.49 before.
+            never rises above 1.25. What fixes it is pushing the ramps away from the ground
+            and then putting the ground as far from them as it will go - which was a dark
+            ground with lifted ramps, and is now a white one with darkened ramps.
+
+            THE GROUND AND THE RAMPS ARE A PAIR. A light ground with the old bright ramps
+            measures 1.09 at worst, which is worse than either arrangement; if this colour
+            changes, ColourRamp changes with it. Worst contrast anywhere against white:
+            4.79 on the energy scale and 3.03 on the potential one.
           -->
           <hx:Viewport3DX x:Name="Viewport"
-                          BackgroundColor="#081019"
                           ShowCoordinateSystem="True"
                           ShowViewCube="True"
                           IsZoomEnabled="True"

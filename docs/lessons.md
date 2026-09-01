@@ -1827,6 +1827,92 @@ guarantees, and additionally the measured pair **only when the run reports both 
 — printing which case applied, so a run that skipped the second assertion says so rather than
 passing quietly.
 
+## A speedup measured across two builds is a measurement of the builds
+
+Parallelising the study drivers, the first number was **12.8x** — a 31-point scan going
+from 30.6 s to 2.39 s. It was wrong, and the way it was wrong is worth keeping.
+
+The 30.6 s baseline had been measured earlier, from a **Debug** binary. The 2.39 s came from
+**Release**. Release is 3.27x faster on its own, so most of the apparent speedup was the
+build. The same-binary comparison is 4.57 s to 1.50 s: **3.05x**.
+
+**Same binary, same input, one variable moving.** Obvious stated plainly, and easy to miss
+when the baseline is a number you already have written down and the new measurement is one
+you just took. A remembered baseline carries no record of how it was produced.
+
+### The control that localised the real limit
+
+3.05x on what looked like sixteen cores is poor, and the tempting conclusion — "the parallel
+machinery does not scale" — is checkable. Run the identical driver over a figure of merit
+that does arithmetic instead of solving a field:
+
+| DOP | solve-bound scan | CPU-bound control |
+| --- | --- | --- |
+| 1 | 1.00x | 1.00x |
+| 2 | 1.57x | 2.06x |
+| 4 | 2.53x | 3.93x |
+| 8 | **5.25x** | 3.92x |
+| 16 | 4.75x — *worse than 8* | **6.74x** |
+
+The machinery is fine: the control reaches 6.74x and *gains* from hyperthreading. The solve
+peaks at the **eight physical cores** and then loses ground, which is what a stencil sweep
+does once the memory bus is saturated — the extra threads add no bandwidth and cost cache.
+
+**Two things follow.** The machine has 8 physical cores and 16 logical, so the ceiling was
+never 16; and for this workload `Environment.ProcessorCount` is a *worse* default than the
+physical count, measurably, by about 10 per cent. More usefully, it says where the remaining
+headroom is not: threading *inside* one solve competes for the same saturated bus, so a
+multi-threaded smoother should be expected to disappoint, while a GPU — which brings its own
+memory bandwidth — is the thing that would actually lift the ceiling.
+
+**The general shape: when a parallel speedup disappoints, run the same harness over a
+workload with the opposite bottleneck.** If the control scales and the real work does not,
+the limit is in the work, and no amount of tuning the parallelism will move it.
+
+## A decision the plane path made, that the volume path never did
+
+Adding `reflectAboutX` to a volume solve looked like a one-line change: the plane path solves
+half a geometry and superposes it with a mirrored copy, and `ReflectedField` mirrors a
+coordinate of *any* field rather than knowing how it was meshed. So it should compose.
+
+It came back **roughly double** — a mirrored half reading 153 V where the full solve read 99.
+Doubling is the signature of a superposition adding two contributions where it should be
+taking a union, and the union only works if each half contributes **nothing outside its own
+domain**.
+
+`SolvedField2D` does exactly that: it carries an outside potential and returns zero field
+beyond its grid. `SolvedField3D` had no such notion at all — no bounds check anywhere. It
+called the tricubic unconditionally, and a tricubic asked for a point it was never fitted
+over does not decline; it continues the cubic. Measured on a 20 mm box holding one plate at
+**100 V**:
+
+| outside by | potential | field |
+| --- | --- | --- |
+| 0.5 mm | −1.6 V | 3.3 kV/m |
+| 14 mm | −283 V | 53 kV/m |
+| 80 mm | −43,113 V | 1.6 MV/m |
+| 180 mm | **−486,643 V** | **8.1 MV/m** |
+
+Four orders past the applied potential, violating the maximum principle — the cheapest exact
+check there is that a solve has not gone wrong, and one this project already runs *inside*
+the domain.
+
+**It had already been observed and misread.** An Astral skeleton whose ion escaped its 635 mm
+analyser was found 4,643 mm away, and that was written down as the ion "coasting" once
+outside the field. It was not coasting. It was being accelerated by a field nobody declared.
+
+**The shape to watch for: a decision taken on one path and never ported to its sibling.**
+This is the same finding as the 3-D solver supporting Neumann faces that no document could
+ask for, and as `ITransportMode` named only in a csproj — a capability or a policy that
+exists on one side of a dimension boundary and silently does not on the other. The plane and
+volume paths here are deliberately separate, because refactoring a numerical core that
+carries every validated number is how those numbers get quietly lost — and the price of that
+separation is that every decision has to be made twice, or it is made once and forgotten.
+
+**The check that would have caught it years earlier costs nothing**: assert the maximum
+principle *outside* the domain as well as inside. No potential anywhere — in the solved box
+or beyond it — may exceed the largest applied value.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
@@ -2176,3 +2262,223 @@ actually caught them were:
   size wearing the costume of a claim about the diff. Replaced by recomputing the expected
   diff in the test and comparing it exactly, which cannot be satisfied by a wrong
   implementation and does not care how many electrodes there are.
+
+## A rotation about the wrong axis is silent
+
+The Astral skeleton tilted its mirror stacks with `tiltAxis: "x"` to make the two mirrors
+converge along the drift, which is the mechanism that reverses an asymmetric-track
+analyser's drift and the entire point of the model. **A rotation about x mixes y and z**,
+so what it actually converged was the two *boards*, across the gap the ion flies down. The
+mirror surfaces have their normals along **x**, and a rotation about x leaves them exactly
+where they were.
+
+Everything worked. The model validated, solved in the same number of cycles, flew an ion,
+and **the drift decelerated and reversed** — because converging boards do decelerate a
+drift, through the transverse confinement stiffening as the gap narrows. It is a real
+mechanism, roughly three times weaker, and it produced a reversal convergence 8× the
+published spacer that was then attributed to unknown electrode depths.
+
+**What caught it was an analytic model disagreeing by a constant factor.** A tilted mirror
+gives each reflection a z-impulse of θ times its x-impulse, and the x-impulse is fixed at
+`2·m·v_x`, so `Δv_z = −2·v_x·θ` per reflection whatever the mirror depth. Inverting the
+measured deceleration through that relation gives an *effective oscillation period*, which
+came out at 151 µs where the ion's real period is ~32 µs. A 4.7× shortfall that no
+parameter error explains is not a parameter error.
+
+The generalisation: **a geometric transformation can be well-formed, validated, and
+applied to the wrong degree of freedom, and the result is a working model of a different
+instrument.** Nothing in a units check, a schema check or a convergence check can see it,
+because none of them knows what the rotation was *for*. What sees it is a closed form for
+the effect the transformation is supposed to produce — and the tell is a discrepancy that
+is a constant factor rather than a trend, because a wrong mechanism has its own scaling.
+
+The control that settles it costs one run: **reverse the tilt sign.** One sign shortened
+the transit and one lengthened it and reversed the drift, which is what a tilt must do. A
+mechanism that decelerated whichever way the mirrors leaned would not be a tilt.
+
+## A binary predicate over a diverging observable throws the physics away
+
+Finding where an ion stops arriving was posed as `einzel boundary` over "does a flight
+time exist". That predicate is false three different ways — the drift reversed, the ion
+struck an electrode, or the flight-time ceiling was reached — and a bisection cannot tell
+them apart. Two of four points in a depth scan turned out to be measuring *arrives →
+strikes metal*, and the trend drawn through them was reported as physics.
+
+**The underlying observable was not binary at all.** The drift decelerates, so the transit
+lengthens smoothly and diverges: 185.13, 198.87, 238.18 µs before it stops arriving.
+Fitting `Z = v_z0·t − ½·k·c·t²` to **two** runs recovers the launch drift speed and the
+deceleration constant, agreeing with the eleven-evaluation bisection to 14 per cent and
+with an independently measured drift speed to 0.9 per cent.
+
+Two rules. **Report the outcome, not its shadow** — a run that says `StruckElectrode` and
+names the surface distinguishes all three cases for free, and the figure of merit that
+returns null for each does not. And **a bisection result is only comparable across runs
+that share a bracket**: the same geometry searched over `[0.02, 2.0]` and `[0.01, 8.0]`
+gave 1.99 mm and 0.31 mm, which reads as a non-monotone physical trend and is two
+different questions.
+
+## A warning emitted and not read costs the same as one never emitted
+
+`BoundarySearch` throws when both ends of a bracket agree, and walks outward from the
+converged bracket to raise `boundary.multiple-crossings` when the predicate flips back.
+Both were built for exactly the failure above. Neither helped, because the analysis script
+read `boundary.value` and never looked at `warnings`.
+
+This project has fixed *the shortest spelling discards the evidence* four times inside the
+engine — `FieldAssembly.Build` dropping its `SolveReport`, the sweep evaluator dropping
+its warnings, `CollisionSampler`'s two unread flags, `SampledOutsideDensity`. The fifth
+was outside it, in throwaway analysis code, and cost a wrong conclusion that reached a
+tracked document. **Engine-side discipline about carrying evidence does not survive the
+boundary into the scripts that consume it**, and scripts are where results are actually
+read.
+
+## A flight-time ceiling impersonates physics
+
+Looking for the convergence at which an analyser's drift reverses, `c = 0.20 mm` came back
+`MaximumFlightTimeReached` at z = 312.1 mm, short of the 325 mm detector — which reads
+unambiguously as an ion that turned round. It had not. Raised from a 450 µs ceiling to
+2000 µs, the same model **arrives**, at 478.47 µs: the ion was moving forward the whole
+time and was 13 mm short when the clock stopped.
+
+The failure is that `MaximumFlightTimeReached` is one outcome for two situations — the ion
+is confined, or the run was too short — and near a threshold the transit **diverges**, so
+the slowest arriving cases are exactly the ones the ceiling clips. A threshold search over
+that predicate finds the ceiling and reports it as the physics, and it will be a smooth,
+plausible function of the parameter being scanned.
+
+**The check is to look at where the ion ended, not that it ran out of time**, and to raise
+the ceiling until the answer stops moving. Same family as the incomplete-arrival trap
+already documented for `einzel compare`, where a mean transit over the subset that arrived
+is not a transit time; and the same family as the Paul trap's ejection edge, where "did the
+ion reach an electrode within N cycles" measured the hold rather than the design.
+
+## A cancellation is a claim about the mechanism, not about the algebra
+
+Two measured quantities divided one another and the messy term dropped out: out-and-back
+time `2·v_z0/(k·c)` over oscillation period `2·v_x/(L·k)` cancels `k` *and* the period, and
+leaves `N = α·L/c`. It was written up as a design law — the oscillation count depends on
+the injection angle, the drift length and the spacer and on nothing else.
+
+**It is a factor of 1.84 out.** N is 45.94 measured against 24.95 predicted. The algebra is
+right and one of the two expressions is not: `k·T = 2·v_x/L` is the *specular* result, and
+it holds only if the mirror delivers the full `2·m·v_x·θ` of z-impulse per reflection. This
+one delivers **0.578** of it.
+
+The failure is that **the cancellation was doing double duty**. It was a piece of algebra,
+and it was also — silently — the assumption that the idealisation feeding it was exact.
+Nothing in the derivation flagged which of its inputs was measured and which was modelled,
+because after cancelling, neither appears.
+
+What repairs it is to *name* the residue rather than let it hide in the coefficient:
+`η = k·T·L/(2·v_x)`, and `N = α·L/(η·c)`. The form is exact and was worth trusting — checked
+by the `1/c` scaling over a threefold range and, more sharply, by the **`α/c` invariance**:
+scale both and predict no change, which held to 0.5 per cent while the turning point moved
+as `α²/c` and so flew a genuinely different trajectory each time. Only the coefficient was
+wrong, and it turned out to be the useful part: `η` is a property of the mirror, it is
+measurable, and it is the figure of merit an earlier scan had been looking for and missing.
+
+**The check that would have caught it immediately is to evaluate both sides.** The relation
+was validated against a *time* — 1275 µs predicted against 1356.96 measured, 6 per cent —
+which is a real check and does not touch the coefficient, because the same fitted `k` sits
+on both sides. Counting the oscillations needs one extra thing, a trajectory, and it is the
+only measurement that puts the modelled quantity and the observed one side by side.
+
+## A fitted parameter with a closed form is a free validity check on the fit
+
+Fitting a deceleration from two flight times returns two numbers, and only one of them was
+wanted. The other — the launch drift speed — is fixed by the ion's energy and launch angle
+at `sqrt(2qV/m)·sinα`, and the fit is not told it. So every fit carries its own audit: if
+`v_z0` does not come back at the closed-form value, the fit is not describing the thing it
+was set up to describe, whatever the parameter of interest looks like.
+
+It earned its keep twice within an hour. Padding the solve domain moved the fitted `v_z0`
+from 858.3 to 877.8 m/s against a closed-form **877.69** — so the unpadded model was
+absorbing its boundary's distortion into a quantity that cannot depend on the geometry at
+all, and **the fit converging onto the closed form is a second, independent reason to pad**.
+And a mirror-depth point returned `v_z0` = **14,453 m/s** with an efficiency of 10.57, from
+combining a decelerating trajectory with one that turned out to be *accelerated* five-fold
+along the drift. Two trajectories of different kinds still fit a rate; they produce a number,
+not an error.
+
+**The number looked fine.** 10.57 sits plausibly beside 0.578 if nobody is checking, and it
+is exactly the sort of point a power law gets drawn through — which is how the retracted
+depth trend happened in the first place. What made it visible was not that it looked wrong
+but that a quantity with an independent value disagreed with that value.
+
+The generalisation: **when a fit returns more parameters than you need, check the ones you
+did not want against whatever fixes them.** They cost nothing to compare and they are the
+only part of the fit that can be wrong in a way the residual cannot see.
+
+## One scalar cannot set the resolution of a shape with three extents
+
+Sub-cell geometry has now been lost twice by the same mechanism wearing different ratios.
+First by sampling an electrode over the whole solve domain: a 1 mm plate in a 60 mm box at
+48 cells falls between lattice planes and produces **no surface at all, silently**. That was
+fixed by extracting over the electrode's own bounding box — which is correct, and assumed
+the box is roughly cubic.
+
+**An analyser's stripe is 4 mm thick and 635 mm long, so its own box is as badly proportioned
+as the domain was.** 48 cells across the longest span gives 15 mm cells, the metal again lies
+between two sample planes, and the surface is again empty. The padding made it worse: 8 per
+cent of the *largest* extent applied to *every* axis put 50 mm of padding around a 4 mm board,
+so the metal occupied a fortieth of the box before sampling began.
+
+**The obvious repair causes the mirror-image failure.** Take the step from the *thinnest*
+span and the slab resolves — and its length is tessellated at the same spacing, giving 72,000
+triangles for what is a box and a 77 MB file for sixteen of them. Both failures are silent and
+neither raises anything; one produces nothing and the other produces far too much, and only
+the second is even noticeable.
+
+The repair is per-axis: `clamp(cells × span / longest, 4, cells)`, with padding a fraction of
+each axis's own extent. On an isotropic shape every axis lands on the requested count and
+nothing changes, which is what keeps the existing sphere checks meaningful.
+
+**The rule: a resolution set by one scalar over a shape with three independent extents will
+mis-serve some shape, and which one depends on which extent the scalar came from.** There is
+no correct single choice — the longest loses thin things, the thinnest bankrupts long ones,
+and the mean does both a little. If a routine takes one `cells` and applies it to a box,
+ask what it does to the worst aspect ratio it will ever see, because the answer is never
+"nothing" and is usually silent.
+
+The test that discriminates is a *pair*: a slab must mesh **with its thickness** — a surface
+can be extracted and be a sheet, which has triangles and looks plausible — and it must not
+cost its aspect ratio in triangles. Each mutation fails exactly one of them, and an isotropic
+control catches the case where a fix changes what was already right.
+
+## A taper inside a long channel does nothing, and the geometry looks right the whole time
+
+Modelling the Astral's ion foil, the first parameterisation was a pair of plates above and
+below the ion path with the **gap to the axis tapering along the drift** — narrow where the
+returning force is wanted, opening away from it. The geometry was built and verified: the
+taper ran the right way, its slope fitted to 2.2 per cent of the declared value over 26
+sampled levels, and the electrodes cleared both the mirrors and the boards.
+
+**The on-axis potential varied by 0.0003 V across the whole drift, at a −20 V bias.** Not
+small — zero, against a requirement of 2.9 to 3.7 V derived from the published numbers.
+
+The plates spanned the entire field-free region: 339 mm long with a 12 to 31 mm gap. **Deep
+inside a channel bounded above and below by one equipotential, the potential is that
+equipotential**, and the taper does not enter — the gap only matters within a few gap-widths
+of an end, and a channel that long effectively has no ends. So the structure floated the
+whole drift region uniformly to the bias, and a uniform offset has no gradient and exerts no
+force at all.
+
+**Nothing about the geometry was wrong.** Every check run against it passed — extent, taper
+direction, slope, clearances, mesh — because they were all checks that the solid was the
+intended solid. What was wrong was the assumption that the intended solid would produce a
+field that varied. Those are different claims and only the second one mattered.
+
+Two things generalise.
+
+**A shape check is not a field check.** Confirming an electrode is where it was meant to be
+says nothing about whether it does what it was meant to do, and for anything relying on
+fringing or partial coverage the two can diverge completely. Measure the field the geometry
+was built to produce before building anything on top of it — a figure of merit, a fit, a
+study. Here that ordering cost one solve and saved building an optimisation around a shape
+with no authority.
+
+**Aspect ratio decides whether a conductor is felt as a shape or as a level.** A conductor
+long compared to its gap is a *level*: everything inside sits at its potential. It becomes a
+*shape* only when its extent is comparable to its distance from the point of interest. That
+is the same fact the multipole rods and the funnel rings rely on, met from the side where it
+destroys the effect rather than the side where it creates one.

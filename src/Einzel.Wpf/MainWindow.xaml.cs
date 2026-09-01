@@ -162,6 +162,13 @@ public partial class MainWindow : Window
 
         Viewport.Items.Clear();
 
+        // The ground comes from ColourRamp, which is where the ramps it has to be legible
+        // against live. Set here rather than in the XAML so the two cannot be edited apart.
+        Viewport.BackgroundColor = System.Windows.Media.Color.FromRgb(
+            (byte)Math.Round(ColourRamp.Ground.R * 255.0),
+            (byte)Math.Round(ColourRamp.Ground.G * 255.0),
+            (byte)Math.Round(ColourRamp.Ground.B * 255.0));
+
         // Without a light in the scene a Phong surface renders at its ambient term alone,
         // which is to say almost black - the electrodes were drawn correctly and could not
         // be seen. A headlight rather than a fixed direction, so a surface never goes dark
@@ -190,6 +197,8 @@ public partial class MainWindow : Window
         DrawField(viewport);
         DrawPaths(viewport);
         DrawDensity(viewport);
+        DrawEnds(viewport);
+        DrawFates(viewport);
 
         Scales(viewport);
         Notes(viewport);
@@ -325,7 +334,226 @@ public partial class MainWindow : Window
         }
     }
 
-    private void DrawConductors(ViewportViewModel viewport)
+    /// <summary>The launch point and the detector plane, so the picture has a start and a finish.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A marker for the source and a quad for the detector</b>, both sized from the
+    /// instrument rather than in fixed millimetres, because a marker that reads on a 600 mm
+    /// analyser is invisible on a 20 mm lens. The size comes from the command layer, where
+    /// the extent is already known.
+    /// </para>
+    /// <para>
+    /// <b>Both are drawing conventions and not dimensions</b> (GRD-12). A source is a point
+    /// and a detector is an unbounded plane; what is drawn has a size chosen to be seen, and
+    /// a reader must not take the quad's edges for the detector's extent. The launch arrow is
+    /// drawn because direction is the half of a source a point cannot show - and on an
+    /// analyser whose ions reverse, it is the only thing distinguishing the end they leave
+    /// from the end they return to.
+    /// </para>
+    /// <para>
+    /// <b>Built by hand rather than with a mesh library helper.</b> Two solids of a dozen
+    /// triangles each are less code than establishing which of a toolkit's namespaces holds
+    /// its builder, and they carry no version question.
+    /// </para>
+    /// </remarks>
+    private void DrawEnds(ViewportViewModel viewport)
+    {
+        if (viewport.Ends is not { } ends)
+        {
+            return;
+        }
+
+        var span = (float)ends.SpanMm;
+
+        var source = new Vector3(
+            (float)ends.SourceMm[0], (float)ends.SourceMm[1], (float)ends.SourceMm[2]);
+
+        var along = Vector3.Normalize(new Vector3(
+            (float)ends.LaunchDirection[0],
+            (float)ends.LaunchDirection[1],
+            (float)ends.LaunchDirection[2]));
+
+        // An octahedron at the launch point and a spike along the launch direction: the
+        // point says where, the spike says which way.
+        var marker = Solid(
+            [
+                source + new Vector3(span * 0.4f, 0, 0), source - new Vector3(span * 0.4f, 0, 0),
+                source + new Vector3(0, span * 0.4f, 0), source - new Vector3(0, span * 0.4f, 0),
+                source + new Vector3(0, 0, span * 0.4f), source - new Vector3(0, 0, span * 0.4f),
+                source + (along * span * 2.0f),
+            ],
+            [
+                0, 2, 4,  2, 1, 4,  1, 3, 4,  3, 0, 4,
+                2, 0, 5,  1, 2, 5,  3, 1, 5,  0, 3, 5,
+                0, 2, 6,  2, 1, 6,  1, 3, 6,  3, 0, 6,
+            ]);
+
+        Viewport.Items.Add(new MeshGeometryModel3D
+        {
+            Geometry = marker,
+            Material = new PhongMaterial
+            {
+                DiffuseColor = new Color4(0.13f, 0.42f, 0.18f, 1f),
+                SpecularColor = new Color4(0.25f, 0.25f, 0.25f, 1f),
+                SpecularShininess = 24f,
+            },
+            CullMode = SharpDX.Direct3D11.CullMode.None,
+        });
+
+        // The detector plane as a square about its declared point. The two in-plane axes
+        // come from whichever world axis is least parallel to the normal, so the cross
+        // product never degenerates.
+        var normal = Vector3.Normalize(new Vector3(
+            (float)ends.DetectorNormal[0],
+            (float)ends.DetectorNormal[1],
+            (float)ends.DetectorNormal[2]));
+
+        var seed = Math.Abs(normal.X) < 0.9f ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0);
+        var u = Vector3.Normalize(Vector3.Cross(normal, seed));
+        var v = Vector3.Cross(normal, u);
+
+        var centre = new Vector3(
+            (float)ends.DetectorMm[0], (float)ends.DetectorMm[1], (float)ends.DetectorMm[2]);
+
+        var half = span * 1.4f;
+
+        Viewport.Items.Add(new MeshGeometryModel3D
+        {
+            Geometry = Solid(
+                [
+                    centre - (u * half) - (v * half),
+                    centre + (u * half) - (v * half),
+                    centre + (u * half) + (v * half),
+                    centre - (u * half) + (v * half),
+                ],
+                [0, 1, 2, 0, 2, 3]),
+            Material = new PhongMaterial
+            {
+                DiffuseColor = new Color4(0.16f, 0.34f, 0.70f, 0.45f),
+                SpecularColor = new Color4(0.20f, 0.20f, 0.20f, 1f),
+                SpecularShininess = 16f,
+            },
+            IsTransparent = true,
+            CullMode = SharpDX.Direct3D11.CullMode.None,
+        });
+    }
+
+    /// <summary>A marker where each ion stopped, coloured by what stopped it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The fate was computed and only ever shown as text.</b> A line reading "1 arrived"
+    /// under the viewport is true and does not answer the question a viewer is actually
+    /// asking, which is whether <em>that</em> path reached <em>that</em> plane — and on an
+    /// analyser whose ions reverse and come back past their own launch point, the end of a
+    /// trajectory is genuinely hard to find by eye.
+    /// </para>
+    /// <para>
+    /// <b>Green for arrived, red for struck, amber for anything else</b> — which is almost
+    /// always the flight-time ceiling, and is neither a success nor a collision. Three
+    /// outcomes and three colours, because collapsing the third into either of the others is
+    /// how "the run stopped early" comes to look like "the ion was confined". The detector
+    /// plane is blue rather than red for the same reason: red means an ion hit something.
+    /// </para>
+    /// </remarks>
+    private void DrawFates(ViewportViewModel viewport)
+    {
+        if (viewport.Ends is not { } ends)
+        {
+            return;
+        }
+
+        var span = (float)ends.SpanMm * 0.30f;
+
+        foreach (var path in viewport.Trajectories)
+        {
+            if (path.PointsMm.Count == 0)
+            {
+                continue;
+            }
+
+            var last = path.PointsMm[^1];
+            var at = new Vector3((float)last[0], (float)last[1], (float)last[2]);
+
+            var colour = path.Fate switch
+            {
+                "arrived" => new Color4(0.11f, 0.60f, 0.22f, 1f),
+                "MaximumFlightTimeReached" => new Color4(0.85f, 0.60f, 0.10f, 1f),
+                "StepSizeUnderflow" or "StepBudgetExhausted" => new Color4(0.85f, 0.60f, 0.10f, 1f),
+                _ => new Color4(0.75f, 0.14f, 0.14f, 1f),
+            };
+
+            Viewport.Items.Add(new MeshGeometryModel3D
+            {
+                Geometry = Solid(
+                    [
+                        at + new Vector3(span, 0, 0), at - new Vector3(span, 0, 0),
+                        at + new Vector3(0, span, 0), at - new Vector3(0, span, 0),
+                        at + new Vector3(0, 0, span), at - new Vector3(0, 0, span),
+                    ],
+                    [
+                        0, 2, 4,  2, 1, 4,  1, 3, 4,  3, 0, 4,
+                        2, 0, 5,  1, 2, 5,  3, 1, 5,  0, 3, 5,
+                    ]),
+                Material = new PhongMaterial
+                {
+                    DiffuseColor = colour,
+                    SpecularColor = new Color4(0.25f, 0.25f, 0.25f, 1f),
+                    SpecularShininess = 24f,
+                },
+                CullMode = SharpDX.Direct3D11.CullMode.None,
+            });
+        }
+    }
+
+    /// <summary>A mesh from positions and triangles, with normals from the faces.</summary>
+    /// <remarks>
+    /// Per-vertex normals accumulated from the faces that share the vertex, which is what
+    /// makes a marker read as a solid rather than as a flat silhouette. A degenerate face
+    /// contributes nothing rather than a zero-length normal, since normalising one of those
+    /// paints the vertex black.
+    /// </remarks>
+    private static MeshGeometry3D Solid(Vector3[] positions, int[] triangles)
+    {
+        var normals = new Vector3[positions.Length];
+
+        for (var i = 0; i + 2 < triangles.Length; i += 3)
+        {
+            var (a, b, c) = (triangles[i], triangles[i + 1], triangles[i + 2]);
+            var face = Vector3.Cross(positions[b] - positions[a], positions[c] - positions[a]);
+
+            if (face.LengthSquared() <= 0.0f)
+            {
+                continue;
+            }
+
+            face = Vector3.Normalize(face);
+            normals[a] += face;
+            normals[b] += face;
+            normals[c] += face;
+        }
+
+        var built = new Vector3Collection();
+        var facing = new Vector3Collection();
+
+        for (var i = 0; i < positions.Length; i++)
+        {
+            built.Add(positions[i]);
+            facing.Add(
+                normals[i].LengthSquared() > 0.0f
+                    ? Vector3.Normalize(normals[i])
+                    : new Vector3(0, 1, 0));
+        }
+
+        return new MeshGeometry3D
+        {
+            Positions = built,
+            Normals = facing,
+            Indices = new IntCollection(triangles),
+            TextureCoordinates = null,
+        };
+    }
+
+   private void DrawConductors(ViewportViewModel viewport)
     {
         if (ShowElectrodes.IsChecked != true)
         {

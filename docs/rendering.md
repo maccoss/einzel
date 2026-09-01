@@ -549,6 +549,107 @@ and a 50 µm channel and neither is readable in the other's unit. A span that pr
 a point on the section plane is skipped rather than drawn as a dot, which would read as a
 dimension of zero rather than as one seen end on.
 
+## The conductors can leave the program, as a mesh
+
+`einzel export <model> --mesh` writes the electrode surfaces as Wavefront OBJ, one named
+object per electrode with its potential as a comment above it.
+
+**The extraction already existed and could not get out.** `Surfaces.FromSignedDistance`
+builds each conductor from its own signed distance and its tests run on the Linux runner
+against a sphere's area and volume, Pappus, and watertightness — and the only consumer was
+the Windows viewport. So the one artifact that lets an external renderer draw the geometry
+was reachable only through the shell, which is invariant 1 pointing the wrong way: nothing
+below the shell may depend on it, and here something useful below the shell was usable only
+through it.
+
+**OBJ rather than a VTK format, and the reason is the audience.** This engine already writes
+ImageData and UnstructuredGrid, and consistency would argue for PolyData — but those exist to
+be read by ParaView for analysis and this exists to be read by a renderer for a picture. OBJ
+names each object, so every electrode arrives under the name the model author gave it, which
+is the same name a loss itemisation or an error message uses. ParaView reads it too, though
+it merges the objects. Hand-written for the reason the PDF writer is (LIC-1).
+
+**Millimetres, stated in the header**, because OBJ carries no unit and most renderers treat
+one unit as one metre — which would make a 625 mm analyser 0.6 units long. §9 refuses an
+unlabelled quantity everywhere else and a mesh file is not an exception.
+
+**A latent bug found by validating the file rather than trusting it.** OBJ keeps *separate*
+index counters for positions and normals, and the writer advanced one for both. That is
+indistinguishable from correct while every object carries normals — which is every object
+this engine produces today — and silently wrong from the first one that does not: every
+later object would point at normals belonging to something else. No parse error, no missing
+geometry, just shading that is quietly of a different solid.
+
+It is worth recording *how* it surfaced. The file was reported as not opening, and the first
+instinct was to look for a malformed line. There was none — the file validated on every
+structural check — and the actual causes were a wiped temp directory and a `.einzel` folder
+that Blender's file browser hides. **The bug was found while proving the file innocent**,
+which is the argument for validating an output format against the format rather than against
+the fact that one consumer happened to accept it.
+
+## Sub-cell geometry was lost a second time, through the aspect ratio
+
+The shell viewport once produced **no conductors at all, silently**, because a 1 mm plate is
+thinner than a cell of a 48-cell grid over the whole solve domain. That was fixed by
+extracting over the electrode's own bounding box — and the same failure came back through a
+ratio nobody had thought about.
+
+**An analyser's stripe is 4 mm thick and 635 mm long.** Its own bounding box is therefore as
+badly proportioned as the domain was: 48 cells across the longest span gives 15 mm cells, the
+metal falls between two sample planes, and the surface is empty again. Worse, the padding that
+keeps a surface strictly inside its box was 8 per cent of the *largest* extent applied to
+*every* axis — 50.8 mm of padding onto a 4 mm board, inflating its thinnest direction
+twenty-six-fold before the sampling even started.
+
+**The obvious fix causes the opposite failure.** Taking the step from the *thinnest* span
+resolves the slab and then tessellates its length at the same spacing: 72,000 triangles for
+what is a box, and sixteen of them made a **77 MB** file. Both failures are silent, in
+opposite directions, and neither raises anything.
+
+So each axis is resolved on its own — `clamp(cells × span / longest, 4, cells)` — with the
+padding a fraction of each axis's own extent. The cells are then not cubes, which costs
+nothing, because surface nets works on a lattice and the spacings were already carried
+separately. **On an isotropic shape every axis lands on the requested count and the mesh is
+bit-identical to what it was**, which is what keeps the sphere checks meaningful. The Astral's
+sixteen stripes went from nothing, to 1.16 M triangles, to **16,320 in 0.89 MB**.
+
+The rule: **a resolution set by one scalar over a shape with three independent extents will
+mis-serve some shape.** Which one depends on which extent the scalar was taken from, and
+every choice is wrong for something.
+
+## An extracted surface is eroded by about half a cell, and that is visible
+
+A conductor is drawn as the zero level set of its signed distance, and surface nets places
+one vertex per straddling cell rather than on the surface itself. So a plate comes out
+**about half a cell short at each end**, and on an electrode that gets few cells the effect
+is easy to see and easy to measure off by mistake.
+
+On the shipped Astral, whose stage-1 plates are 20 mm long inside a box 935 mm long, the x
+axis lands on the floor of 4 cells at 5.8 mm each: the plate meshes at **16.94 mm against
+20 declared**, and the *gaps* between stages therefore read about 6 mm wider than they are.
+
+**It is a drawing convention and not a dimension** (GRD-12), the same status as the depth a
+cross-section's prism is drawn to. A figure that needs a dimension should carry a declared
+one, which is measured from the model rather than from the picture — that is what
+`dimensions` is for. Raising the per-axis floor tightens it at a cost in triangles, and the
+right floor is a judgement about what these meshes are for rather than a number to derive.
+
+## A section that cuts no metal says so
+
+A figure of an instrument with no instrument in it, and the only sign was a missing key in
+the path counts. Three states drew exactly nothing and looked identical: the plane misses the
+metal, the device has no metal on this plane, and the extraction failed.
+
+`render.plane-misses-conductors` now fires when a model declares conductors and none of them
+intersect the plane, **and it reports how far away the nearest one is** — which is the
+actionable half. "No conductor lies on this plane" sends a reader looking for a bug; *"the
+nearest of them is 1 mm from this plane"* tells them they aimed at a 20-to-24 mm board and cut
+at 25, which is exactly the mistake that prompted this.
+
+**It is not a defect in the device.** Any stripe-on-boards analyser has all its electrodes off
+the plane the ion flies in, so the default section — the one containing the trajectory — is
+correctly empty of metal. The plane is moved with a render spec's `plane` block.
+
 ## Not built
 
 - **`render still`** - a raster projection. Nothing in this build rasterises.

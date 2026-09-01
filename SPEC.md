@@ -1468,7 +1468,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `RND-1` | Rendering is an engine capability, not a shell feature. Einzel.Render sits below the shell; the figure composer and einzel render are peer consumers of ... | **Met** | `Einzel.Render` sits below any shell and draws headlessly on the Linux CI runner with no display, window manager or font server. |
+| `RND-1` | Rendering is an engine capability, not a shell feature. Einzel.Render sits below the shell; the figure composer and einzel render are peer consumers of ... | **Met** | `Einzel.Render` sits below any shell and draws headlessly on the Linux CI runner with no display, window manager or font server. **And the conductor surfaces now leave the program**: the surface-nets extraction was headless, tested on Linux, and consumed only by the Windows viewport, so the artifact that lets an external renderer draw a three-dimensional geometry needed the shell - invariant 1 pointing the wrong way. `einzel export --mesh` writes them as OBJ, one named object per electrode. Building it found the sub-cell failure returning through the *electrode's own aspect ratio*: a 4 x 635 mm stripe meshes to nothing at 48 cells across its longest span, and resolving by the thinnest instead gives 1.16 M triangles and a 77 MB file. Per-axis now; bit-identical on an isotropic shape. |
 | `RND-2` | A render spec is text , lives in figures/ , and is versioned with the model. The figure in a paper is regenerable from the repository rather than being a ... | **Met** | A render spec is text in `figures/`, versioned with the model. |
 | `RND-3` | 2D sections and orthographic projections emit SVG and PDF , through a geometric projection pipeline that produces paths rather than pixels. This is a ... | **Met** | SVG and PDF from a path pipeline. Both writers are hand-authored; a test walks every PDF cross-reference offset. |
 | `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | Not built | No raster path at all, so neither shaded 3D nor `render still`. Section 23 leaves open whether hidden-line vector output is worth building. |
@@ -2295,10 +2295,82 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     anywhere, so "outside validity" becomes "between 12 and 31 millimetres"), and the
     sequence editor (the declared timeline, marked with what each phase moves).
 
+    **One gap closed since**: the conductor surfaces can be exported (`einzel export --mesh`),
+    so a three-dimensional geometry can be rendered without Windows — and doing it found that
+    the viewport itself was drawing none of the Astral's sixteen stripes, because an
+    electrode's own bounding box can be as badly proportioned as the solve domain was.
+
     **Next, in order of what unblocks the most:** the density cloud, which needs only a
     surface since the density is already computed and contoured; the figure composer, whose
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
+
+13. **The Astral inverse problem, restated after a wrong turn.** The gap between this
+    model and the published 200 µm spacer was recorded as **6.3×** and attributed to the
+    four unknown electrode depths. Both halves were wrong.
+
+    **The depth scan was measuring three different things.** Its predicate was "does a
+    flight time exist", which is false for a reversed ion, a struck ion and a timed-out
+    ion alike; two of its four points were the *arrives → strikes metal* crossing, one
+    was a bisection over a bracket the others did not share, and `mouth = d4` meant
+    scaling the depths walked the mirrors together and shrank the field-free gap from
+    365 mm to 53 — which is physically right for a fixed envelope, where depth and
+    field-free length are one degree of freedom rather than two, but makes it a scan along
+    a trade written up as a scan in one variable. **The engine said so and was
+    not read** — `BoundarySearch` raises `boundary.multiple-crossings` for exactly this,
+    and the analysis script read `boundary.value` and dropped `warnings`. That is the
+    *shortest spelling discards the evidence* failure this project has fixed four times
+    inside the engine, committed once outside it, where results are actually read.
+
+    **The cause was the tilt axis.** `tiltAxis: "x"` mixes y and z, so it converged the
+    two **boards**; the mirror surfaces have their normals along x and a rotation about x
+    leaves them where they were. The model contained no mirror-tilt impulse at all, and
+    what decelerated its drift was the transverse confinement stiffening — real, and
+    about three times weaker. Caught by an analytic model disagreeing by a **constant
+    factor**: a tilted mirror gives `Δv_z = −2·v_x·θ` per reflection whatever its depth,
+    and inverting the measured deceleration through that gave an effective oscillation
+    period of 151 µs where the ion's is at most ~32 — a bound on the shortfall, not a
+    measurement of it, which is why the mechanism was then compared directly.
+
+    | | reversal convergence | against 200 µm |
+    | --- | --- | --- |
+    | boards (axis x), converged domain | 1.5778 mm | 7.9× |
+    | mirrors (axis y), launch mid-drift | 0.5397 mm | 2.70× |
+    | **mirrors, launch at the drift start** | **0.267 mm**, bracketed [0.26, 0.28] | **1.33×** |
+
+    The last is a *tested prediction*: a two-run fit gave 0.267 and two runs that took no
+    part in it bracket it (0.26 arrives, 0.28 reverses). **A flight-time ceiling
+    impersonated physics on the way** — at 450 µs, c = 0.20 read as reversed at z = 312.1;
+    at 2000 µs the same model arrives, at 478.47 µs, still moving forward and 13 mm short.
+
+    **What came out of it that is worth more than the number:** `N = α·L/(η·c)`. Out-and-back
+    time is `2·v_z0/(k·c)`, and the specular argument says `k·T = 2·v_x/L`, which would cancel
+    the period and leave `α·L/c`. **Measured, it does not cancel to one**: N is 45.94 against
+    24.95, a factor 1.84, and `η = k·T·L/(2·v_x)` — the fraction of the ideal specular impulse
+    the mirror actually delivers — is **0.578**. The functional form is exact and the
+    coefficient belongs to the mirror.
+
+    Both scalings were checked: `1/c` to within 4 per cent over a threefold range, and the
+    sharper `α/c` **invariance** — vary both, predict no change — to **0.5 per cent**, while
+    the turning point moves as `α²/c` and so is a genuinely different trajectory each time.
+    The period is now measured from a trajectory rather than estimated: **29.54 µs**, and
+    identical to 0.03 per cent whichever axis is tilted, which is what makes the two
+    efficiencies comparable — **0.195 for boards against 0.578 for mirrors**.
+
+    **And η reopens the electrode depths as a well-posed question.** The specular impulse
+    `2·m·v_x·θ` is depth-independent, which is why the depth scan was unlikely to constrain
+    anything; `η` is not, since it is set by how the equipotentials lie along the part of the
+    mirror the ion traverses. It is measurable from two runs and a trajectory.
+
+    **What is left.** The depths are still unmeasured, and the analytic model says why the
+    scan was unlikely to constrain them: a tilted mirror's impulse is depth-independent,
+    so they need a figure of merit that moves with them — the mirror's own energy-focusing
+    order, which `astral-mirror` already measures in two dimensions. Two smaller things:
+    `tiltAxis` accepts only a coordinate axis, so a device converging its boards **and**
+    tilting its mirrors cannot be written, though by Euler's theorem it is a single
+    rotation about a tilted one; and the template models the outbound drift, since placing
+    the return detector needs the offset a real asymmetric track uses and this model has
+    none.
 
 ## Open decisions
 

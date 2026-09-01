@@ -323,20 +323,33 @@ public static class StudyCommand
         WarningLedger ledger,
         out ExtensionObjective.Provenance? provenance)
     {
-        Func<CompiledModel, double?> inner;
+        // THE SINK IS PER EVALUATION, NOT PER STUDY. Baking `ledger.Add` into one
+        // evaluator made every evaluation report into one shared scope, which is right
+        // only while they run strictly one after another: concurrently, the dedup that
+        // makes the unit "one evaluation" instead of "one emission" would suppress one
+        // evaluation's warning because another had just earned the same code.
+        //
+        // Rebuilding the evaluator per evaluation costs a name lookup and a delegate,
+        // which is nothing against the solve every evaluation does anyway.
+        Func<EvaluationWarnings, Func<CompiledModel, double?>> build;
 
         if (!ExtensionObjective.Names(name))
         {
             provenance = null;
-            inner = FiguresOfMerit.Evaluator(name, energySpread, ions, ledger.Add);
+            build = evaluation =>
+                FiguresOfMerit.Evaluator(name, energySpread, ions, evaluation.Add);
         }
         else
         {
-            inner = ExtensionObjective.Evaluator(
+            var extension = ExtensionObjective.Evaluator(
                 name, project.Extensions, Path.Combine(project.Scratch, "ext"),
                 out var used, energySpread, ions);
 
             provenance = used;
+
+            // An extension reports nothing to the ledger, so it needs no sink and is
+            // built once - it launches a process, which is not free to reconstruct.
+            build = _ => extension;
         }
 
         // One evaluation is one draw however many warnings it emitted, and the
@@ -344,13 +357,15 @@ public static class StudyCommand
         // half way still has to say what it saw on the way.
         return model =>
         {
+            var evaluation = ledger.BeginEvaluation();
+
             try
             {
-                return inner(model);
+                return build(evaluation)(model);
             }
             finally
             {
-                ledger.EndEvaluation();
+                evaluation.Close();
             }
         };
     }
@@ -517,7 +532,8 @@ public static class StudyCommand
             study.Seed,
             study.OneAtATime,
             figure.Dimension,
-            Path.GetDirectoryName(modelPath));
+            Path.GetDirectoryName(modelPath),
+            study.MaxParallelism);
 
         // One conversion from SI into the figure's unit, applied to everything the
         // sweep reports, so nothing leaves here as a bare number under a label it
@@ -603,7 +619,8 @@ public static class StudyCommand
             figure.Name, project, study.EnergySpread, study.Ions, ledger, out var extension);
 
         var result = ParameterScan.Run(
-            document, axis, evaluate, Path.GetDirectoryName(modelPath));
+            document, axis, evaluate, Path.GetDirectoryName(modelPath),
+            study.MaxParallelism);
 
         // One conversion out of SI for the figure and one for the scan variable, so
         // nothing leaves here as a bare number under a label it does not match.

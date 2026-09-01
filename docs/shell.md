@@ -547,3 +547,64 @@ that knew where `models/` sits would grow its own idea of what a project is.
 The pattern is worth noticing: almost every remaining row is presentation over something
 that already works, which is what AGT-2 is supposed to produce and is weak evidence that it
 has.
+
+## The ground moved to white, and the ramps had to move with it
+
+The viewport drew on `#081019`, chosen by measurement: a sequential ramp spans dark to light
+by construction, so it passes through *every* background luminance and no ground rescues an
+unmodified one — across grounds from `#101010` to `#D0D0D0` the worst contrast anywhere on
+viridis never exceeds 1.25. What works is pushing the ramps away from the ground and then
+putting the ground as far from them as it goes.
+
+**That argument is symmetric, and the dark half of it was the wrong half to take.**
+`Einzel.Render` draws the publication figure on white, and Amendment 25 makes every shell
+action expressible as a CLI invocation — so a viewport that looks nothing like the figure it
+previews is an inconsistency rather than a preference.
+
+| | dark ground | white ground |
+| --- | --- | --- |
+| energy ramp, worst contrast | 4.70 | **4.79** |
+| potential ramp, worst contrast | 6.77 | **3.03** |
+
+Viridis is now **darkened toward black at its bright end by 0.50**, the exact mirror of the
+0.44 lift it carried before, and 0.50 is again where the two requirements meet: 0.60 reaches
+6.74 and stops being monotone in lightness, which is the property viridis was chosen for. The
+diverging ramp moved from a near-white neutral to a **mid-grey** one — the neutral is earth,
+the value a reader looks for first, and a near-white centre is right on black and invisible
+on white.
+
+**The ground and the ramps are one decision, so they live in one file.** `ColourRamp.Ground`
+holds the background and the XAML takes it from there, because a white ground with the old
+bright ramps measures **1.09** — worse than either arrangement. The contrast test reads that
+same constant rather than restating it, so the two cannot be edited apart; making exactly
+that mistake fails the test at 1.26.
+
+## A flight needs a visible beginning, end, and outcome
+
+The viewport drew conductors, a field and trajectories, and nothing saying where a flight
+started or whether it finished. That was tolerable while every model was a beamline read
+left to right, and stopped being so with an analyser whose ions launch part-way along a
+drift, reverse, and are caught **behind their own launch point** — nothing in the picture
+said which end was which.
+
+Three things, all from `ViewportCommand` because UI-1 leaves the window computing nothing:
+
+- **The source**, an octahedron with a spike along the launch direction. Direction is the
+  half of a source a point cannot show, and on an instrument that reverses it is the only
+  thing distinguishing the end the ions leave from the end they return to.
+- **The detector**, a translucent quad on its plane, in **blue** — red is reserved for an ion
+  that struck something.
+- **Where each ion stopped**, coloured by what stopped it: green arrived, red struck, amber
+  anything else. The fate was already computed and only ever shown as a text line reading
+  "1 arrived", which is true and does not answer the question a viewer is asking, which is
+  whether *that* path reached *that* plane.
+
+**Three outcomes get three colours, which is not tidiness.** Amber is almost always the
+flight-time ceiling, and folding it into either green or red is how "the run stopped early"
+comes to look like "the ion was confined" — a conflation this project has already had to fix
+in the exit codes and in `einzel compare`.
+
+**Both markers are drawing conventions, not dimensions** (GRD-12). A source is a point and a
+detector is an unbounded plane; the sizes are chosen to be visible — a fortieth of the
+instrument's extent, computed where the extent is already known — and a reader must not take
+the quad's edges for the detector's extent.

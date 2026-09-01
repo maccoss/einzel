@@ -1143,6 +1143,37 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 - **Two measurements about running this engine, both of which change planning.** A **Release build is 3.27x faster than Debug** (2.16 s against 7.06 on the shipped C-trap), and every timing published from a development session is a Debug timing unless it says otherwise. The estimate needs no telling: because its rate is a pilot measured at runtime, it followed the speed-up on its own — 6.25 s in Debug to 0.98 s in Release for the same model. What does not scale is process start, which the estimate excludes by design, so its wall-clock ratio looks worse on a short Release run (0.60x) while its share of the *computation* is the same 0.85-0.9x as in Debug.
 
 
+- **Studies use the machine, and the speedup is a fifth of what I predicted.** Evaluation-level parallelism in the two drivers whose evaluations are independent — `ParameterScan` and `ToleranceStudy` — with `maxParallelism` declared in the study file.
+
+  | DOP | solve-bound scan | CPU-bound control |
+  | --- | --- | --- |
+  | 1 | 1.00x | 1.00x |
+  | 4 | 2.53x | 3.93x |
+  | 8 | **5.25x** | 3.92x |
+  | 16 | 4.75x — *worse* | **6.74x** |
+
+  **The machinery is fine; the solve is memory-bandwidth bound.** The control — same driver, arithmetic instead of a solve — reaches 6.74x and *gains* from hyperthreading, while the solve peaks at the eight physical cores and loses ground beyond them. So plan on about 5x, and expect a threaded smoother to disappoint for the same reason: it competes for the same saturated bus. A GPU brings its own bandwidth, which is the one thing that would lift the ceiling.
+
+  **A number I had to retract**: the first measurement was **12.8x**, from comparing a Debug sequential baseline against a Release parallel run. Release is 3.27x faster on its own, so almost all of it was the build. Same binary, same input, one variable moving.
+
+  **Three pieces of shared state were wrong, and all three produce plausible numbers rather than crashes.** The `WarningLedger` deduped per *study* rather than per evaluation, so concurrently one evaluation's warning silently suppresses another's identical code — a study wrong throughout reporting itself wrong on half its draws (mutation: 1997 of 2000 where the truth is 1000). The draw sequence *is* the study, so draws are made in seed order before anything is evaluated. And the exemplar message kept whoever finished first — `CONVERGENCE_ORDER_BELOW_NOMINAL` quotes its own draw's observed order — so two runs of one seeded sweep gave identical counts, identical figures, and a different example, failing `ASweepIsReproducibleFromItsSeed` on a string nobody had thought of as a result.
+
+- **A volume solve invented a field outside its own box, and the mirror found it.** Adding `reflectAboutX` to `solve3d` looked like a one-line change and came back **double**: superposition adding two contributions where it should take a union. The union works only if each half contributes nothing outside its domain — which `SolvedField2D` has always done and `SolvedField3D` never did. It called the tricubic unconditionally, and a tricubic asked for a point it was never fitted over continues the cubic. On a 20 mm box holding one plate at **100 V**: **−486,643 V at 8.1 MV/m** 180 mm outside, four orders past the applied potential.
+
+  **It had already been observed and misread**: the Astral skeleton's escaped ion, found 4,643 mm from a 635 mm analyser, was written down as "coasting". It was being accelerated by a field nobody declared.
+
+  Bounded, the mirrored half reproduces the full solve to **0.00000 V of 100 applied**, and on the Astral gives the same flight — **120.0580 µs both ways** — for **1.90x** less solve, at the same 13 cycles and the same 0.1997 convergence factor.
+
+- **The Astral's drift decelerates and reverses.** The convergence is the mechanism, and it is now measured with a clean control. Per 40 mm segment, parallel boards give **1374.34 m/s in every segment, to the last digit** — a translationally invariant analyser has no axial force — while 800 µm of convergence decelerates monotonically to 1174 m/s, decrements growing 11, 30, 38, 48, 73.
+
+  Pushed further it turns around: at 1° injection and 800 µm the ion goes out to z = 321 mm, stops, and comes back, and the flat −843 m/s at the end is it coasting *outside* the box, which is only true because of the fix above.
+
+  **The reversal threshold is a fourth-power law in the injection angle**: 11.447 mm at 2°, 0.4638 mm at 1°, under 0.05 mm at 0.5° — 24.7x per halving, bisected by `einzel boundary`. Halving the angle doubles the reflections *and* quarters the axial energy, which predicts a cube; the measurement says more, and two points cannot say what else.
+
+  **Not reconciled with the published instrument**, and the gap points the right way: 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4. The remainder is in the guesses — `d1..d4` are free and the board gap is assumed — which is the inverse problem the model exists to pose. It is a shipped template now (`astral-3d`), so that is a study rather than a hand-edited file.
+
+  **Known wrong and stated on the template**: the drift faces are Neumann, which says the structure repeats along z — true while the boards are parallel, false the moment they converge.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

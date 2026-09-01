@@ -68,6 +68,15 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
     /// </remarks>
     public ObservableCollection<DensityShell> Density { get; } = [];
 
+    /// <summary>Where the flight begins and where it is caught, or null when there is none.</summary>
+    /// <remarks>
+    /// A drawing of an instrument with no beginning and no end is hard to read, and this is
+    /// sharpest on an analyser whose ions launch part-way along a drift, reverse, and are
+    /// caught behind where they started - nothing in the picture otherwise says which end is
+    /// which.
+    /// </remarks>
+    public FlightEnds? Ends { get; private set; }
+
     /// <summary>Whether there is a density cloud to show.</summary>
     public bool HasDensity { get; private set; }
 
@@ -187,6 +196,7 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         {
             Trajectories.Clear();
             Conductors.Clear();
+            Ends = null;
             Equipotentials.Clear();
             Density.Clear();
             Warnings.Clear();
@@ -231,6 +241,7 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         }
 
         HasDensity = outcome.Density.Count > 0;
+        Ends = outcome.Ends;
 
         Warnings.Clear();
 

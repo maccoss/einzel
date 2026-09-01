@@ -285,4 +285,49 @@ public sealed class ParameterScanTests(ITestOutputHelper output)
 
         Assert.Equal(ErrorCodes.UnitsIncompatible, failure.Error.Code);
     }
+
+    /// <summary>Running the points at once gives exactly the sequential curve.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Bit-identical, not close.</b> The points are independent — each compiles its own
+    /// model from the same immutable document and solves its own field — and every seed a
+    /// point uses is its own, so nothing about a point's answer depends on what else is
+    /// running. Anything less than exact equality would mean it does.
+    /// </para>
+    /// <para>
+    /// The ordering is asserted with it, because the rows are written by index rather than
+    /// appended: a scan whose curve arrived in completion order would reorder itself run to
+    /// run, which breaks CLI-6's deterministic output and, worse, breaks <c>verify</c> —
+    /// the stored result would stop matching a re-run of the same study.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void RunningThePointsAtOnceGivesTheSequentialCurve()
+    {
+        var axis = new ScanAxis(
+            "alpha", Quantity.From(40.0, "mm"), Quantity.From(200.0, "mm"), 64);
+
+        var sequential = ParameterScan.Run(Model(), axis, Alpha, maxParallelism: 1);
+        var parallel = ParameterScan.Run(Model(), axis, Alpha, maxParallelism: 16);
+
+        Assert.Equal(sequential.Points.Count, parallel.Points.Count);
+
+        for (var i = 0; i < sequential.Points.Count; i++)
+        {
+            var a = sequential.Points[i];
+            var b = parallel.Points[i];
+
+            // Index and parameter value pin the ordering; the figure pins the answer.
+            Assert.Equal(a.Index, b.Index);
+            Assert.Equal(a.ValueSi, b.ValueSi);
+            Assert.Equal(a.FigureOfMerit, b.FigureOfMerit);
+            Assert.Equal(a.Failure, b.Failure);
+        }
+
+        // And the rows really are in scan order, which is what makes the index assertion
+        // above mean something rather than comparing two identically-shuffled lists.
+        Assert.Equal(
+            Enumerable.Range(0, axis.Points),
+            parallel.Points.Select(p => p.Index));
+    }
 }

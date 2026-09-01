@@ -2,6 +2,7 @@ using Einzel.Core.Errors;
 using Einzel.Core.Model;
 using Einzel.Fields.Solved;
 using Einzel.Project;
+using Einzel.Render;
 
 namespace Einzel.Commands;
 
@@ -40,6 +41,127 @@ public sealed record ExportOutcome
 /// </remarks>
 public static class ExportCommand
 {
+    /// <summary>Exports the conductor surfaces as a Wavefront OBJ mesh.</summary>
+    /// <param name="modelPath">Path to the model file.</param>
+    /// <param name="project">Where artifacts belong.</param>
+    /// <param name="dryRun">Report what would be written and write nothing (CLI-4).</param>
+    /// <returns>The outcome.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The extraction is <see cref="ViewportCommand"/>'s, not a second one.</b> It already
+    /// turns each electrode's signed distance into an oriented surface and knows what a solve
+    /// claims about the third dimension — a cross-section extrudes, an axisymmetric half-plane
+    /// revolves, a volume solve is extracted properly. Writing that again here would be two
+    /// implementations of one geometry, which is how they come to disagree; this method is a
+    /// file format and nothing else.
+    /// </para>
+    /// <para>
+    /// <b>Each electrode keeps its own name and its potential travels with it</b> as a comment,
+    /// because a grey mesh of eleven identical-looking plates is not much use for a figure and
+    /// the number a reader wants to colour by is the one the model declared. The drive
+    /// amplitude is written too where there is one: an electrode holding zero DC and all of its
+    /// potential as RF reads as earthed otherwise, which is the mistake this project has made
+    /// six times.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="project"/> is null.</exception>
+    /// <exception cref="ArgumentException"><paramref name="modelPath"/> is null or blank.</exception>
+    /// <exception cref="EinzelException">The model does not validate, or declares no conductors.</exception>
+    public static ExportOutcome Mesh(string modelPath, ProjectLayout project, bool dryRun = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        ArgumentNullException.ThrowIfNull(project);
+
+        var absolute = Path.GetFullPath(modelPath);
+        var viewport = ViewportCommand.Execute(absolute);
+
+        if (viewport.Conductors.Count == 0)
+        {
+            // The two ways to get here are different problems and the message has to say
+            // which. A model with no electrodes has nothing to mesh and never did; a model
+            // with electrodes that produced no surface is a defect in the extraction, and
+            // telling that author to "check the model declares electrodes" sends them to
+            // look at the one thing that is already right.
+            var declared = ModelValidator.Validate(
+                Io.ModelJson.Parse(File.ReadAllText(absolute)), null,
+                Path.GetDirectoryName(absolute)).Model?.Fields
+                .Sum(f => (f.Solve?.Electrodes.Count ?? 0) + (f.Solve3D?.Electrodes.Count ?? 0))
+                ?? 0;
+
+            throw new EinzelException(new EinzelError
+            {
+                Code = "NOTHING_TO_EXPORT",
+                Path = "/fields",
+                Constraint = "a mesh export needs at least one conductor surface",
+                Observed = new ObservedValue(0, "conductor surfaces"),
+                Suggestion = declared == 0
+                    ? "this model declares no electrodes. Only a solved element has any - an "
+                        + "analytic field is a formula and has no geometry to mesh - so check "
+                        + "that it has a 'solve', 'solve3d' or axisymmetric element with "
+                        + "electrodes in it"
+                    : Vanished(declared),
+                Severity = ErrorSeverity.Error,
+            });
+        }
+
+        var parts = viewport.Conductors
+            .Select(c => new NamedSurface(
+                c.Name,
+                c.VerticesMm,
+                c.Normals,
+                c.Triangles,
+                c.DriveAmplitudeVolts != 0.0
+                    ? FormattableString.Invariant(
+                        $"{c.Name}: {c.PotentialVolts:G6} V DC, drive amplitude {c.DriveAmplitudeVolts:G6} V")
+                    : FormattableString.Invariant($"{c.Name}: {c.PotentialVolts:G6} V")))
+            .ToList();
+
+        var stem = Path.GetFileNameWithoutExtension(absolute);
+        var path = Path.Combine(project.Scratch, $"{stem}.conductors.obj");
+
+        var triangles = parts.Sum(p => p.Triangles.Count / 3);
+
+        if (!dryRun)
+        {
+            Directory.CreateDirectory(project.Scratch);
+            File.WriteAllText(
+                path,
+                ObjWriter.Write(
+                    parts,
+                    [
+                        FormattableString.Invariant($"model: {stem}"),
+                        FormattableString.Invariant(
+                            $"{parts.Count} conductor(s), {triangles} triangles"),
+                        "surfaces are the zero level set of each electrode's signed distance",
+                    ]));
+        }
+
+        return new ExportOutcome
+        {
+            What = "conductors",
+            Format = "obj",
+            Artifacts = [path],
+            Written = !dryRun,
+        };
+    }
+
+    /// <summary>What to say when electrodes were declared and none of them meshed.</summary>
+    /// <remarks>
+    /// Split into its own method because <c>FormattableString.Invariant</c> takes one
+    /// interpolated string and not a concatenation of one with several literals, which is
+    /// the shape a long message naturally has.
+    /// </remarks>
+    private static string Vanished(int declared)
+    {
+        var count = FormattableString.Invariant($"this model declares {declared} electrode(s)");
+
+        return count
+            + " and none of them produced a surface, which is a defect in the extraction "
+            + "rather than in the model. It has happened twice for sub-cell geometry: an "
+            + "electrode thinner than the sampling step falls between lattice planes and "
+            + "vanishes silently";
+    }
+
     /// <summary>Exports a model's solved potential fields as VTU.</summary>
     /// <param name="modelPath">Path to the model file.</param>
     /// <param name="project">Where artifacts belong.</param>
@@ -102,6 +224,7 @@ public static class ExportCommand
                     Drives = solve3d.Drives,
                     Stages = solve3d.Stages,
                     Faces = Geometry3D.FacesOf(solve3d.Faces),
+                    ReflectAboutX = solve3d.ReflectAboutX,
                 };
 
                 var channels = GeometryBuilder3D.SolveChannels(geometry);

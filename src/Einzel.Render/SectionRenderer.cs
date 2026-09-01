@@ -326,7 +326,35 @@ public static class SectionRenderer
                 equipotentialStyle);
         }
 
-        DrawConductors(paths, model, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
+        var (declaredConductors, cutConductors, nearestConductor) =
+            DrawConductors(paths, model, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage);
+
+        // A figure of an instrument with no instrument in it, and until now the only sign
+        // was a missing key in the path counts. A plane that misses the metal, a device
+        // whose electrodes are all off this plane, and an extraction that failed all drew
+        // exactly nothing and looked identical.
+        if (declaredConductors > 0 && cutConductors == 0)
+        {
+            var gap = double.IsFinite(nearestConductor)
+                ? FormattableString.Invariant(
+                    $" The nearest of them is {nearestConductor * 1e3:G4} mm from this plane.")
+                : string.Empty;
+
+            warnings =
+            [
+                .. warnings,
+                new ValidityWarning(
+                    "render.plane-misses-conductors",
+                    $"none of the {declaredConductors} declared conductor(s) intersect the "
+                    + "plane being drawn, so this figure shows the field and the ion with no "
+                    + "instrument in it." + gap
+                    + " Move the plane onto the metal with a render spec's 'plane' block - a "
+                    + "device whose electrodes all sit off the beam plane, which is any "
+                    + "stripe-on-boards analyser, has nothing to draw on the plane the ion "
+                    + "flies in",
+                    WarningSeverity.Provenance),
+            ];
+        }
 
         var kept = 0;
         var raw = 0;
@@ -731,7 +759,7 @@ public static class SectionRenderer
         return [.. levels];
     }
 
-    private static void DrawConductors(
+    private static (int Declared, int Cut, double Nearest) DrawConductors(
         List<ScenePath> paths,
         CompiledModel model,
         SectionPlane plane,
@@ -754,6 +782,13 @@ public static class SectionRenderer
 
         var fill = new PathStyle(ConductorEdge, 0.18, ConductorFill);
 
+        // Counted so the caller can tell "this plane misses the metal" from "this device
+        // has no metal" and from "the extraction failed". All three drew nothing, and
+        // omitting the key left them indistinguishable.
+        var declared = 0;
+        var cut = 0;
+        var nearest = double.PositiveInfinity;
+
         foreach (var element in model.Fields)
         {
             // The half-plane of a cylindrical solve is mirrored about the axis, so a
@@ -765,29 +800,61 @@ public static class SectionRenderer
 
             foreach (var electrode in element.Solve?.Electrodes ?? [])
             {
+                declared++;
+
                 var values = Contours.Sample(
                     plane, minU, minV, stepU, stepV, columns, rows,
                     point => electrode.SignedDistance(
                         point.X, mirrored ? Math.Abs(point.Y) : point.Y));
 
+                nearest = Math.Min(nearest, Nearest(values));
+
                 foreach (var run in Contours.Trace(values, minU, minV, stepU, stepV, 0.0))
                 {
+                    cut++;
                     Emit(paths, run, tolerance, toPage, fill, "conductors");
                 }
             }
 
             foreach (var electrode in element.Solve3D?.Electrodes ?? [])
             {
+                declared++;
+
                 var values = Contours.Sample(
                     plane, minU, minV, stepU, stepV, columns, rows,
                     point => electrode.SignedDistance(point.X, point.Y, point.Z));
 
+                nearest = Math.Min(nearest, Nearest(values));
+
                 foreach (var run in Contours.Trace(values, minU, minV, stepU, stepV, 0.0))
                 {
+                    cut++;
                     Emit(paths, run, tolerance, toPage, fill, "conductors");
                 }
             }
         }
+
+        return (declared, cut, nearest);
+    }
+
+    /// <summary>The smallest signed distance anywhere on the sampled plane, in metres.</summary>
+    /// <remarks>
+    /// <b>This is the actionable half of the warning.</b> "No conductor lies on this plane"
+    /// sends a reader looking for a bug; "the nearest conductor is 1.0 mm away" tells them
+    /// they aimed a plane at a 20-to-24 mm board and cut at 25. The samples are taken on the
+    /// plane and the distance is a distance in space, so it is the real gap rather than an
+    /// in-plane one.
+    /// </remarks>
+    private static double Nearest(double[,] values)
+    {
+        var least = double.PositiveInfinity;
+
+        foreach (var value in values)
+        {
+            least = Math.Min(least, value);
+        }
+
+        return least;
     }
 
     /// <summary>Draws the declared dimensions, measuring each as it goes.</summary>

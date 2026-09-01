@@ -42,14 +42,43 @@ public sealed class SolvedField3D : IElectrostaticField, IConductorBounded
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position)
     {
+        // OUTSIDE THE BOX THERE IS NO FIELD, RATHER THAN AN EXTRAPOLATED ONE.
+        //
+        // A tricubic asked for a point it was never fitted over does not decline - it
+        // continues the cubic, and a cubic continued explodes. Measured on a 20 mm box
+        // holding one plate at 100 V: half a millimetre out it reported -1.6 V, fourteen
+        // millimetres out -283 V, and 180 mm out -486,643 V at 8.1 MV/m. That is four
+        // orders past the applied potential and violates the maximum principle, which is
+        // the cheapest exact check there is that a solve has not gone wrong.
+        //
+        // The consequence is not academic: an ion that leaves a volume domain was being
+        // accelerated by a field nobody declared. An Astral skeleton whose ion escaped its
+        // 635 mm analyser was found 4,643 mm away, which reads as coasting and was not.
+        //
+        // The plane path has always done this - `SolvedField2D` carries an outside
+        // potential and returns zero field beyond its grid - and it is what makes
+        // superposing a solved half with its mirror image a union rather than a sum.
+        if (!_grid.Contains(position.X, position.Y, position.Z))
+        {
+            return Vec3.Zero;
+        }
+
         _interpolant.Gradient(position.X, position.Y, position.Z, out var gx, out var gy, out var gz);
 
         return new Vec3(-gx, -gy, -gz);
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Zero outside the solved box, for the reason <see cref="ElectricFieldAt"/> gives.
+    /// Zero rather than the nearest boundary value, because a volume solve's domain is
+    /// declared to enclose the geometry: what is outside it is vacuum the document did not
+    /// describe, and a constant offset there would add an energy no electrode supplied.
+    /// </remarks>
     public double PotentialAt(in Vec3 position) =>
-        _interpolant.Value(position.X, position.Y, position.Z);
+        _grid.Contains(position.X, position.Y, position.Z)
+            ? _interpolant.Value(position.X, position.Y, position.Z)
+            : 0.0;
 
     /// <inheritdoc/>
     /// <remarks>

@@ -25,33 +25,48 @@ namespace Einzel.Wpf;
 /// </remarks>
 public static class ColourRamp
 {
-    /// <summary>How far the dark end of the ramp is lifted toward white.</summary>
+    /// <summary>The ground both ramps are drawn against, as red, green and blue.</summary>
+    /// <remarks>
+    /// <b>Here rather than in the XAML, because the ground and the ramps are one decision.</b>
+    /// A sequential ramp passes through every background luminance, so what makes either
+    /// legible is the pairing: ramps pushed away from the ground, and the ground put as far
+    /// from them as it goes. A light ground with the dark-ground ramps measures 1.09 at
+    /// worst, which is worse than either arrangement — so the two must move together, and
+    /// keeping them in separate files is how they come not to.
+    /// </remarks>
+    public static readonly (double R, double G, double B) Ground = (1.0, 1.0, 1.0);
+
+    /// <summary>How far the bright end of the ramp is darkened toward black.</summary>
     /// <remarks>
     /// <para>
-    /// <b>The viewport draws on a dark ground, and a near-black line on it is not a line.</b>
-    /// Viridis begins at a very dark purple - right for a filled heat map, wrong for a
-    /// one-pixel trajectory, and the ions it would hide are the slow ones at a turning
-    /// point, which are the interesting ones.
+    /// <b>The viewport draws on white, and a pale line on it is not a line.</b> Viridis ends
+    /// at a bright yellow — right for a filled heat map, wrong for a one-pixel trajectory,
+    /// and the ions it would hide are the fast ones.
     /// </para>
     /// <para>
     /// <b>No ground fixes it, which is the part worth knowing.</b> A sequential ramp spans
     /// dark to light by construction, so it passes through <em>every</em> background
     /// luminance: measured across grounds from #101010 to #D0D0D0, the worst contrast
-    /// anywhere on viridis never rises above 1.25. Nor does truncating help much - skipping
-    /// the darkest 60% still only reaches 2.83, because the ramp's whole lower half is
-    /// dark. What works is lifting it: blending toward white by an amount that falls to
-    /// zero at the bright end keeps the hue progression and the ordering, and moves the
-    /// floor off the ground.
+    /// anywhere on viridis never rises above 1.25. What works is pushing the ramp away from
+    /// the ground and then putting the ground as far from it as it will go.
     /// </para>
     /// <para>
-    /// <b>0.44 is where the two requirements meet.</b> Lifting further breaks monotone
-    /// lightness - the lifted floor rises above the mid-ramp and the scale dips in the
-    /// middle - which is the property the ramp was chosen for in the first place. At 0.44,
-    /// against the viewport's ground, the worst contrast anywhere on the ramp is
-    /// <b>4.70 against 1.01</b> unlifted.
+    /// <b>This is the mirror of what was here before</b>, and the reason for the flip is not
+    /// taste. <c>Einzel.Render</c> draws the publication figure on white, and Amendment 25
+    /// says every shell action is expressible as a CLI invocation — so a viewport that looks
+    /// nothing like the figure it previews is an inconsistency rather than a preference. The
+    /// ground moved from #081019 to white and the ramps had to move with it; they are a pair
+    /// and a light ground with dark-ground ramps is worse than either arrangement.
+    /// </para>
+    /// <para>
+    /// <b>0.50 is where the two requirements meet.</b> Darkening further breaks monotone
+    /// lightness — the darkened ceiling falls below the mid-ramp and the scale humps in the
+    /// middle — which is the property the ramp was chosen for. Measured against white, the
+    /// worst contrast anywhere on the ramp is <b>4.79</b> at 0.50 and <b>1.26</b> undarkened;
+    /// at 0.60 it reaches 6.74 and is no longer monotone.
     /// </para>
     /// </remarks>
-    private const double DarkEndLifted = 0.44;
+    private const double BrightEndDarkened = 0.50;
 
     /// <summary>Viridis at eight points, evenly spaced from zero to one.</summary>
     private static readonly (double R, double G, double B)[] Anchors =
@@ -83,12 +98,11 @@ public static class ColourRamp
     /// deficiencies because the hues differ in more than one channel.
     /// </para>
     /// <para>
-    /// <b>Bright at both ends, because the viewport draws on a dark ground.</b> The
-    /// print-standard cool-warm ramp runs from a dark navy to a dark crimson, and both of
-    /// those sink into a dark background - the ends of the scale, which are the electrodes
-    /// doing the most, become the hardest things to see. Every anchor here is above about
-    /// half lightness. The same ramp on paper would be too pale; that figure is drawn by
-    /// <c>Einzel.Render</c> and does not use this.
+    /// <b>Saturated at both ends and grey in the middle, because the viewport draws on
+    /// white.</b> A ramp bright at both ends washes out against a light ground - the ends of
+    /// the scale, which are the electrodes doing the most, become the hardest things to see -
+    /// and a near-white neutral makes earth invisible, which is the one value a reader looks
+    /// for first.
     /// </para>
     /// </remarks>
     public static (double R, double G, double B) Diverging(double fraction)
@@ -100,15 +114,22 @@ public static class ColourRamp
 
         var t = Math.Clamp(fraction, 0.0, 1.0);
 
-        // Cool-warm for a dark ground: a saturated cyan-blue, a light blue, a near-white
-        // neutral at earth, a warm apricot, a saturated coral.
+        // Cool-warm for a light ground: a deep blue, a mid blue, a MID-GREY neutral at
+        // earth, a warm terracotta, a deep red.
+        //
+        // The neutral is the anchor that decides this. A near-white centre is right on a
+        // dark ground and disappears on a light one - and it is earth, the value a reader
+        // looks for first. Measured against white, worst contrast anywhere on the ramp is
+        // 3.03 here, against 1.09 for the bright dark-ground anchors and 1.26 for the
+        // print-standard cool-warm, whose neutral is a light grey for paper that is being
+        // printed on rather than displayed against.
         (double R, double G, double B)[] anchors =
         [
-            (0.259, 0.616, 0.980),
-            (0.529, 0.788, 1.000),
-            (0.925, 0.925, 0.925),
-            (1.000, 0.780, 0.510),
-            (1.000, 0.478, 0.361),
+            (0.129, 0.259, 0.639),
+            (0.325, 0.478, 0.796),
+            (0.545, 0.545, 0.560),
+            (0.831, 0.451, 0.365),
+            (0.647, 0.075, 0.110),
         ];
 
         var scaled = t * (anchors.Length - 1);
@@ -149,15 +170,15 @@ public static class ColourRamp
         var a = Anchors[lower];
         var b = Anchors[lower + 1];
 
-        // Lifted toward white by an amount that falls to zero at the bright end, so the
-        // ramp keeps its hue order and its top colour exactly.
-        var lift = DarkEndLifted * (1.0 - f);
+        // Darkened by an amount that falls to zero at the dark end, so the ramp keeps its
+        // hue order and its bottom colour exactly.
+        var shade = BrightEndDarkened * f;
 
         double Toward(double low, double high)
         {
             var value = low + ((high - low) * t);
 
-            return value + ((1.0 - value) * lift);
+            return value * (1.0 - shade);
         }
 
         return (Toward(a.R, b.R), Toward(a.G, b.G), Toward(a.B, b.B));
