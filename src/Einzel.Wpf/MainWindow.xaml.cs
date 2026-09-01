@@ -198,6 +198,7 @@ public partial class MainWindow : Window
         DrawPaths(viewport);
         DrawDensity(viewport);
         DrawEnds(viewport);
+        DrawFates(viewport);
 
         Scales(viewport);
         Notes(viewport);
@@ -428,13 +429,80 @@ public partial class MainWindow : Window
                 [0, 1, 2, 0, 2, 3]),
             Material = new PhongMaterial
             {
-                DiffuseColor = new Color4(0.62f, 0.13f, 0.13f, 0.55f),
+                DiffuseColor = new Color4(0.16f, 0.34f, 0.70f, 0.45f),
                 SpecularColor = new Color4(0.20f, 0.20f, 0.20f, 1f),
                 SpecularShininess = 16f,
             },
             IsTransparent = true,
             CullMode = SharpDX.Direct3D11.CullMode.None,
         });
+    }
+
+    /// <summary>A marker where each ion stopped, coloured by what stopped it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The fate was computed and only ever shown as text.</b> A line reading "1 arrived"
+    /// under the viewport is true and does not answer the question a viewer is actually
+    /// asking, which is whether <em>that</em> path reached <em>that</em> plane — and on an
+    /// analyser whose ions reverse and come back past their own launch point, the end of a
+    /// trajectory is genuinely hard to find by eye.
+    /// </para>
+    /// <para>
+    /// <b>Green for arrived, red for struck, amber for anything else</b> — which is almost
+    /// always the flight-time ceiling, and is neither a success nor a collision. Three
+    /// outcomes and three colours, because collapsing the third into either of the others is
+    /// how "the run stopped early" comes to look like "the ion was confined". The detector
+    /// plane is blue rather than red for the same reason: red means an ion hit something.
+    /// </para>
+    /// </remarks>
+    private void DrawFates(ViewportViewModel viewport)
+    {
+        if (viewport.Ends is not { } ends)
+        {
+            return;
+        }
+
+        var span = (float)ends.SpanMm * 0.30f;
+
+        foreach (var path in viewport.Trajectories)
+        {
+            if (path.PointsMm.Count == 0)
+            {
+                continue;
+            }
+
+            var last = path.PointsMm[^1];
+            var at = new Vector3((float)last[0], (float)last[1], (float)last[2]);
+
+            var colour = path.Fate switch
+            {
+                "arrived" => new Color4(0.11f, 0.60f, 0.22f, 1f),
+                "MaximumFlightTimeReached" => new Color4(0.85f, 0.60f, 0.10f, 1f),
+                "StepSizeUnderflow" or "StepBudgetExhausted" => new Color4(0.85f, 0.60f, 0.10f, 1f),
+                _ => new Color4(0.75f, 0.14f, 0.14f, 1f),
+            };
+
+            Viewport.Items.Add(new MeshGeometryModel3D
+            {
+                Geometry = Solid(
+                    [
+                        at + new Vector3(span, 0, 0), at - new Vector3(span, 0, 0),
+                        at + new Vector3(0, span, 0), at - new Vector3(0, span, 0),
+                        at + new Vector3(0, 0, span), at - new Vector3(0, 0, span),
+                    ],
+                    [
+                        0, 2, 4,  2, 1, 4,  1, 3, 4,  3, 0, 4,
+                        2, 0, 5,  1, 2, 5,  3, 1, 5,  0, 3, 5,
+                    ]),
+                Material = new PhongMaterial
+                {
+                    DiffuseColor = colour,
+                    SpecularColor = new Color4(0.25f, 0.25f, 0.25f, 1f),
+                    SpecularShininess = 24f,
+                },
+                CullMode = SharpDX.Direct3D11.CullMode.None,
+            });
+        }
     }
 
     /// <summary>A mesh from positions and triangles, with normals from the faces.</summary>

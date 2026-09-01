@@ -578,3 +578,33 @@ holds the background and the XAML takes it from there, because a white ground wi
 bright ramps measures **1.09** — worse than either arrangement. The contrast test reads that
 same constant rather than restating it, so the two cannot be edited apart; making exactly
 that mistake fails the test at 1.26.
+
+## A flight needs a visible beginning, end, and outcome
+
+The viewport drew conductors, a field and trajectories, and nothing saying where a flight
+started or whether it finished. That was tolerable while every model was a beamline read
+left to right, and stopped being so with an analyser whose ions launch part-way along a
+drift, reverse, and are caught **behind their own launch point** — nothing in the picture
+said which end was which.
+
+Three things, all from `ViewportCommand` because UI-1 leaves the window computing nothing:
+
+- **The source**, an octahedron with a spike along the launch direction. Direction is the
+  half of a source a point cannot show, and on an instrument that reverses it is the only
+  thing distinguishing the end the ions leave from the end they return to.
+- **The detector**, a translucent quad on its plane, in **blue** — red is reserved for an ion
+  that struck something.
+- **Where each ion stopped**, coloured by what stopped it: green arrived, red struck, amber
+  anything else. The fate was already computed and only ever shown as a text line reading
+  "1 arrived", which is true and does not answer the question a viewer is asking, which is
+  whether *that* path reached *that* plane.
+
+**Three outcomes get three colours, which is not tidiness.** Amber is almost always the
+flight-time ceiling, and folding it into either green or red is how "the run stopped early"
+comes to look like "the ion was confined" — a conflation this project has already had to fix
+in the exit codes and in `einzel compare`.
+
+**Both markers are drawing conventions, not dimensions** (GRD-12). A source is a point and a
+detector is an unbounded plane; the sizes are chosen to be visible — a fortieth of the
+instrument's extent, computed where the extent is already known — and a reader must not take
+the quad's edges for the detector's extent.
