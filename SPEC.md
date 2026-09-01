@@ -710,6 +710,145 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 35 - A volume solve could not declare a face a mirror, and the solver always could
+
+**r06 §9's boundary conditions** are stated for a solve without distinguishing the plane and
+volume paths, and the plane path has carried `rightEdge` from the beginning. The volume path
+carried nothing: `DirichletMask3D` has all six faces as settable conditions and
+`OperatorStencil3D` honours them, and **no document could ask for one**. The capability
+existed and was unreachable - the same shape as `ITransportMode` named only in a csproj
+description, and `drivePhase` a plain double until a travelling wave needed a ramp.
+
+**A grounded domain boundary is a third electrode**, which this project has already
+documented once. A stripe electrode running the length of an analyser's drift makes the field
+independent of the drift direction, so grounding those faces imposes an axial field the real
+instrument does not have. Measured on two rails spanning their domain in z: **-62,577 V/m of
+axial field with the faces grounded, -0.0000 with them mirrored**, and with mirrors the
+transverse field is identical to the digit at 5 mm and 20 mm from the face.
+
+**Found by an ion going the wrong way**, not by a failing test: an Astral skeleton at a 3.5
+per cent injection angle should drift at +1375 m/s and measured **-480**.
+
+**Recommend r06 say the boundary vocabulary is the same in both dimensions**, since the
+argument for it is the same and the omission was an accident of which path was written first.
+
+### 34 - Every 3-D primitive is axis-aligned, and one real device is defined by not being
+
+**r06 §9's shape vocabulary for a volume solve** is a box, a sphere and a cylinder along an
+axis. The type's own remarks say why that is enough - "between them they build the devices
+the specification's table asks for" - and add the escape clause, "a device that needs a
+fourth is a fair reason to add one".
+
+**The device that needs something is the asymmetric-track analyser, and it does not need a
+fourth shape.** Its two ion mirrors converge by a couple of hundred microns over a third of
+a metre, and that convergence is the **mechanism** rather than a tolerance: it is what makes
+the drift decelerate and reverse, which is the whole behaviour the geometry exists for.
+Every primitive being axis-aligned means a plate deliberately not parallel to another is not
+expressible at any resolution - so such a model would validate, solve, converge, and produce
+a drift that never reverses.
+
+**What it needed was an attribute, not an abstraction**, which is the fifth time here: `log`
+for the Kingdon trap, trigonometry for the multipole guide, `asinPi` for the C-trap, a
+parametric `drivePhase` for the travelling wave, and now a tilt on a box. LIB-1 says to
+believe the signal when a device forces a change below `Einzel.Library`; the signal each
+time has been narrow and the abstraction has held.
+
+**A tilted box is a box**, so signed distance and first entry rotate the query into the box's
+own frame and run unchanged - a rotation is rigid, so a distance measured there is the
+distance in the world, and affine, so a segment fraction is preserved exactly. The only
+query that genuinely changes is the bounding box.
+
+**Half turns, so a right angle is 0.5 and is exact.** The convention `cosPi` and a drive
+phase already use, for the reason this project has now met three times: `Math.Cos(Math.PI/2)`
+is 6.1e-17, so a nominally upright plate would be tilted by a rounding and a symmetric
+geometry would carry an asymmetry made of floating point.
+
+**Measured: the response is proportional to a thousandth of a cell.** On a 0.5 mm mesh, step
+ratios of 2.0000 and 2.5000 for steps of 2 and 2.5 over a two-hundred-fold range, against a
+parallel control reporting 7.1e-15 V. That is the cut cell doing what it was built for -
+FLD-1's argument, met in a new place.
+
+**And it found a degeneracy worth recording**: a conductor face lying *exactly* on the node
+lattice makes the response affine rather than proportional, with an offset worth about
+seventeen microns of convergence. A quarter-cell offset removes it entirely. The mechanism
+is recorded as a hypothesis; the measurement and the cure are established. **Recommend the
+model format's guidance say so** - do not place a conductor face exactly on a cell boundary
+when the quantity of interest is a small geometric perturbation.
+
+### 33 - GRD-8's estimate is about a machine and an operation, and was about neither
+
+**r06 §GRD-8**: *"Any operation exceeding a configurable cost threshold requires a prior
+estimate."* The requirement is right and the implementation answered a different question
+twice over.
+
+**It costed a model, and the operation is a study.** `einzel estimate` took a model file
+and reported what one run of it costs. But nobody plans a multi-day job around one run -
+they plan around a scan, a sweep, an optimisation or a boundary search, which is where the
+hundreds of evaluations are. The gate was therefore short by the evaluation count, and
+short *silently*, which is the worst direction for a number whose entire purpose is to
+decide whether to start.
+
+**The multiplier needs no pilot**, which is what makes this a defect rather than a
+limitation: a study file **states its own extent** - a scan its points, a sweep its draws,
+an optimiser and a bisection their evaluation ceilings. Costing it is arithmetic over
+numbers already in the document.
+
+**And the arithmetic is not the obvious one.** An evaluation solves the field once and
+flies every ensemble member through it, so a study costs
+`evaluations x (solve + members x flight)`. Multiplying the model's own total by the
+evaluation count charges a whole solve per member - measured at **4.8x over** on the
+shipped mirror pair at nine members.
+
+**Second: an absolute time is a statement about a machine, which is Amendment 27 again.**
+The rate was one hardcoded constant - 13 s per million nodes, measured on the 2-D
+templates on one developer's box - and it was applied to volume solves too, where the
+stencil is 27-point rather than five and the coarse levels are Galerkin. On the shipped
+C-trap that put a 5.9 s solve at **1.81 s**. It is now measured by solving a coarsened
+copy of *the model's own geometry*, which also captures the difference between a
+boundary-value problem and one with interior electrodes.
+
+**So GRD-8's estimate is not free, and r06's framing implies it is.** The requirement gates
+on a number "available without doing the work", and a number that is *useful* on unseen
+hardware cannot be: it costs one coarsened solve and one short flight. **Recommend GRD-8 be
+restated** as requiring an estimate whose cost is bounded and stated, rather than one that
+does no work - with the opt-out that keeps PERF-8's cold-start budget reachable
+(`--no-calibrate`, which says in the basis line that nothing was measured here).
+
+**A study that varies the geometry varies its own cost**, so the flight is sampled at the
+ends of the study's own declared range and averaged - measured at **2.2x** across a mirror
+separation scan, which an estimate taken at the declared values alone missed by 0.57x. The
+sampling is gated on the study being long enough to absorb it: three samples cost about one
+and a half evaluations, which is 7 per cent of twenty and under one per cent of the hundreds
+a real optimisation declares.
+
+**Sampling the fraction is what makes it wrong**, and getting that wrong first is worth
+recording. A pilot flies part of a flight and scales up - and the only length available to
+scale against is the declared *maximum* flight time, which is a ceiling rather than an
+expectation. The nominal ion arrived inside the fraction and the extremes did not, so they
+were scaled by the whole ceiling and the estimate came out **3.4x over**. A study samples
+few points against many evaluations, so a sample can afford the whole flight at the real
+cell size, and then nothing is extrapolated.
+
+**Third: the mesh a solve gets is not the one the document asked for, and nothing said so.**
+Each axis rounds its interval count up to a power of two, so cost is a **step function** of
+the cell size and the node count is the product of three such roundings. On a
+635 x 48 x 350 mm analyser a requested 1 mm gives 0.62 x 0.75 x 0.68 mm and **34.2 M nodes
+where the request implies 10.7 M** - finer than asked on every axis, never coarser, and
+**asking for 1.5 mm instead costs 7.9x less**. That is not waste and nothing about it is
+wrong; it is a fact about the cost of a plan, and GRD-8's estimate is where it belongs.
+
+**Fourth, and found by reviewing the above: an evaluation is not always an ensemble.** The
+arithmetic assumes `members` independent ions through one solved field, which is the ordinary
+case and not the only one. A **diffusive** run steps a density and a **space-charge** run
+advances the whole packet in lockstep - in both, what the model estimate already covers *is*
+one evaluation, flights included. Multiplying by the ion count double-counts, and for a
+diffusive model it charges for trajectories that mode does not produce (TRN-2, RND-8) while
+flying pilot ions through a model that has none.
+
+**What remains excluded is stated on every estimate**: process start and just-in-time
+compilation, being fixed costs that matter for a thirty-second scan and not for a multi-day
+one. Measured on a mirror-separation scan - the adversarial case, since it sweeps across a focusing condition and evaluation cost varies 2.2x along it: **23.1 s estimated against 30.3 s of wall clock (0.76x), of which about 5 s is process start the estimate excludes by design** - so 0.89x of the computation itself. Run-to-run spread is 1 per cent.
+
 ### 32 - An exact analytic field cannot be one element of a beamline
 
 Section 9 lists the field kinds a document may declare, and section 6's whole architecture
@@ -1265,7 +1404,7 @@ in a table.
 | `GRD-5` | Preview results are labelled and cannot be promoted Tagged permanently; cannot be quoted, exported, fed to an optimizer, or rendered without visible ... | **Met** | The taint rides on the number, and a preview writes nothing - a tainted result in `results/` would be reported as current by `verify`. |
 | `GRD-6` | Extension results are attributed Carries the extension identity and version; cannot present itself as first-party. | **Met** | Extension results carry the extension identity and interpreter; the manifest records `null` where no interpreter took part. |
 | `GRD-7` | Results are immutable and traceable Every result references a manifest. Every rendered artifact references a result. | **Met** | Every result references a manifest. Studies wrote none at all until recently; sweeps, optimisations and scans all write one now. |
-| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` reports cost before the run. A diffusive run's step is computable exactly and predicted 901 against 901 actual; a trajectory run's cost is path-dependent and the estimate says so. |
+| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyser at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. See Amendment 33. |
 | `GRD-9` | Human work is never silently lost Where an agent and a human share a live model, mutations are attributed in a shared linear journal. | **Met** | `SessionJournal`, served by `Einzel.Mcp`. The attribution and the shared linear stack are MCP-1's row. What this row adds is the *never silently lost* half, and building MCP-1 did **not** deliver it: the journal knew only about mutations made through it, so a person editing the model in their own editor had their change overwritten by the agent's next whole-document edit with nothing anywhere to say so. **The sharper consequence was to undo** - an unrecorded change breaks the chain, so walking back landed on a document predating the person's edit and discarded it as a *side effect of reversing something else*. `Reconcile` now records an outside change as an entry attributed to `outside` (not to the person: another tool, another session and a git checkout look identical from here), refuses an edit written against the document as it was, and makes the refusal recoverable by having `model_read` take the change up. Checked by mutation - a no-op `Reconcile` fails three of nine journal tests. `docs/live-session.md` |
 | `GRD-10` | Drift is detectable, in both directions A stored result can be checked against both the current model and the currently installed engine. | **Met** | `einzel verify` separates drift from notes: an edited model or a changed solver-behaviour version invalidates; a different engine build with identical numerics does not. |
 | `GRD-11` | Known-defective versions taint their output A result produced by a version below the published floor (§18) carries a non-suppressible defect warning. The ... | Partial | The taint mechanism exists and rides in the warning list. There is no published defect floor to compare against, because there are no releases. |

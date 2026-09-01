@@ -31,6 +31,59 @@ public sealed record Geometry3D(
 
     /// <summary>The timed sequence it is operated through, or empty for one state.</summary>
     public IReadOnlyList<CompiledStage3D> Stages { get; init; } = [];
+
+    /// <summary>What each face of the domain is, in the order lower/upper x, y, z.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Dirichlet by default, which is a grounded box and is a third electrode.</b> That
+    /// is right for a device inside a housing and wrong for one whose geometry is invariant
+    /// along an axis - a stripe electrode running the length of an analyser's drift makes
+    /// the field independent of the drift direction, so grounding those faces imposes an
+    /// axial field the real instrument does not have.
+    /// </para>
+    /// <para>
+    /// A Neumann face is a mirror, so declaring both z faces Neumann says the structure
+    /// repeats forever along z, which is what a stripe electrode means. The solver has
+    /// always supported this; until now no document could ask for it.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<EdgeCondition> Faces { get; init; } = [];
+
+    /// <summary>The six faces a compiled solve declares, in this type's own terms.</summary>
+    /// <param name="declared">The compiled faces, or empty for a grounded box.</param>
+    /// <returns>Six conditions, or empty.</returns>
+    /// <remarks>
+    /// One conversion in one place: <c>Einzel.Core</c> cannot name this assembly's
+    /// <see cref="EdgeCondition"/>, and two enums that must agree are exactly the pair that
+    /// stops agreeing. Every construction site calls this rather than mapping it again.
+    /// <para>
+    /// There were briefly three of these enums, the third being a Core-side one invented for
+    /// the volume path alone - although <see cref="Core.Model.BoundaryKind"/> already meant
+    /// dirichlet-or-neumann for the plane path. Two is the irreducible number, because an
+    /// assembly boundary sits between them; three was a duplicate.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<EdgeCondition> FacesOf(
+        IReadOnlyList<Core.Model.BoundaryKind> declared)
+    {
+        ArgumentNullException.ThrowIfNull(declared);
+
+        if (declared.Count != 6)
+        {
+            return [];
+        }
+
+        var faces = new EdgeCondition[6];
+
+        for (var face = 0; face < 6; face++)
+        {
+            faces[face] = declared[face] == Core.Model.BoundaryKind.Neumann
+                ? EdgeCondition.Neumann
+                : EdgeCondition.Dirichlet;
+        }
+
+        return faces;
+    }
 }
 
 
@@ -129,6 +182,17 @@ public static class GeometryBuilder3D
         ArgumentNullException.ThrowIfNull(grid);
 
         var mask = new DirichletMask3D(grid);
+
+        if (geometry.Faces.Count == 6)
+        {
+            mask.LowerX = geometry.Faces[0];
+            mask.UpperX = geometry.Faces[1];
+            mask.LowerY = geometry.Faces[2];
+            mask.UpperY = geometry.Faces[3];
+            mask.LowerZ = geometry.Faces[4];
+            mask.UpperZ = geometry.Faces[5];
+        }
+
         List<CompiledElectrode3D>? missed = null;
 
         foreach (var electrode in geometry.Electrodes)

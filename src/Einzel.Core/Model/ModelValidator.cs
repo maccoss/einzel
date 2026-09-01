@@ -1641,6 +1641,68 @@ public static class ModelValidator
                     return null;
                 }
 
+                // Dimensionless, because a half turn is an angle expressed as a ratio and
+                // the grammar has no unit for one - the same treatment a drive phase gets.
+                var tilt = electrode.TiltHalfTurns is null
+                    ? Quantity.Si(0.0, Dimension.Dimensionless)
+                    : TryQuantity(
+                        electrode.TiltHalfTurns, $"{path}/tiltHalfTurns",
+                        Dimension.Dimensionless, p, errors);
+
+                if (tilt is null)
+                {
+                    return null;
+                }
+
+                var tiltAxis = electrode.TiltAxis switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (tiltAxis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/tiltAxis",
+                        Constraint = "a tilt axis must be 'x', 'y' or 'z'",
+                        Observed = new ObservedValue(0.0, electrode.TiltAxis ?? "(none)"),
+                        Suggestion =
+                            "'z' when omitted; the tilt is about that axis through the box's "
+                            + "own centre, in half turns",
+                    });
+
+                    return null;
+                }
+
+                // A tilt is stated as an angle, and an angle beyond a half turn describes a
+                // box already describable the short way round. Refused rather than wrapped,
+                // because a document meaning 0.05 and writing 5 has made a unit mistake -
+                // and the whole point of half turns is that the unit is not guessable from
+                // the number.
+                if (Math.Abs(tilt.Value.SiValue) > 0.5)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/tiltHalfTurns",
+                        Constraint =
+                            $"box '{name}' declares a tilt of {tilt.Value.SiValue:G4} half "
+                            + "turns, and every orientation is reachable within half a turn "
+                            + "either way",
+                        Observed = new ObservedValue(tilt.Value.SiValue, "1"),
+                        Suggestion =
+                            "half turns, not degrees or radians: 1.0 is half a turn, so a "
+                            + "right angle is 0.5 and a 200 um convergence over 350 mm is "
+                            + "1.8e-4",
+                    });
+
+                    return null;
+                }
+
                 return common with
                 {
                     Shape = Electrode3DShape.Box,
@@ -1650,12 +1712,38 @@ public static class ModelValidator
                     MaxX = maxX.Value.SiValue,
                     MaxY = maxY.Value.SiValue,
                     MaxZ = maxZ.Value.SiValue,
+                    TiltAxis = tiltAxis.Value,
+                    TiltHalfTurns = tilt.Value.SiValue,
                 };
             }
 
             case "sphere":
             case "cylinder":
             {
+                // A TILT IS A BOX'S PROPERTY, AND IS REFUSED RATHER THAN DROPPED HERE.
+                // The properties live on the shared electrode document, so a sphere or a
+                // cylinder declaring one binds cleanly and the unrecognised-property
+                // refusal never fires - leaving a document that validates, solves, and
+                // answers a different question than the one it appears to ask. That is the
+                // failure the strict key checking exists to prevent, reached through a
+                // recognised key that is meaningless for this shape.
+                if (electrode.TiltHalfTurns is not null || electrode.TiltAxis is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/{(electrode.TiltHalfTurns is not null ? "tiltHalfTurns" : "tiltAxis")}",
+                        Constraint =
+                            $"'{name}' is a {electrode.Shape} and only a box may be tilted",
+                        Observed = new ObservedValue(0.0, electrode.Shape ?? "(none)"),
+                        Suggestion =
+                            "remove the tilt, or describe this electrode as a box - a sphere "
+                            + "is unchanged by rotation and a cylinder is oriented by 'axis'",
+                    });
+
+                    return null;
+                }
+
                 var centreX = TryQuantity(electrode.CentreX, $"{path}/centreX", length, p, errors);
                 var centreY = TryQuantity(electrode.CentreY, $"{path}/centreY", length, p, errors);
                 var radius = TryQuantity(electrode.Radius, $"{path}/radius", length, p, errors);
@@ -1867,6 +1955,24 @@ public static class ModelValidator
             return null;
         }
 
+        // Six faces, each Dirichlet unless declared otherwise. A grounded box is the safe
+        // default and is a third electrode; a document whose geometry is invariant along an
+        // axis says so by declaring that axis's faces Neumann.
+        //
+        // THE SAME PARSER THE PLANE PATH USES. `Boundary` already reads exactly this
+        // vocabulary, with the same error code and suggestion, and it accumulates rather
+        // than returning on the first bad face - so a document with two wrong face names is
+        // told about both in one pass instead of taking two rounds to fix.
+        var faces = new[]
+        {
+            Boundary(solve.LowerXEdge, $"{path}/lowerXEdge", errors),
+            Boundary(solve.UpperXEdge, $"{path}/upperXEdge", errors),
+            Boundary(solve.LowerYEdge, $"{path}/lowerYEdge", errors),
+            Boundary(solve.UpperYEdge, $"{path}/upperYEdge", errors),
+            Boundary(solve.LowerZEdge, $"{path}/lowerZEdge", errors),
+            Boundary(solve.UpperZEdge, $"{path}/upperZEdge", errors),
+        };
+
         return new CompiledField
         {
             Kind = CompiledFieldKind.Solved3D,
@@ -1883,6 +1989,7 @@ public static class ModelValidator
                 Drives = drives,
                 Stages = stages,
                 Electrodes = electrodes,
+                Faces = faces,
             },
         };
     }

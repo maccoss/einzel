@@ -64,6 +64,38 @@ public sealed record SolvedField3DDocument
 
     /// <summary>The electrodes.</summary>
     public IReadOnlyList<Electrode3DDocument>? Electrodes { get; init; }
+
+    /// <summary>Lower x face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The default is a grounded box, and a grounded box is a third electrode.</b> That
+    /// is right for a device inside a housing and wrong for one whose geometry is invariant
+    /// along an axis: a stripe electrode running the length of an analyser's drift makes the
+    /// field independent of the drift direction, so grounding those faces imposes an axial
+    /// field the real instrument does not have — and an ion drifts the wrong way.
+    /// </para>
+    /// <para>
+    /// A Neumann face is a mirror, so declaring both faces of an axis Neumann says the
+    /// structure repeats forever along it. Cheaper as well as truer: a domain that has to
+    /// hold the end fields must be longer than the ones that matter.
+    /// </para>
+    /// </remarks>
+    public string? LowerXEdge { get; init; }
+
+    /// <summary>Upper x face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? UpperXEdge { get; init; }
+
+    /// <summary>Lower y face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? LowerYEdge { get; init; }
+
+    /// <summary>Upper y face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? UpperYEdge { get; init; }
+
+    /// <summary>Lower z face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? LowerZEdge { get; init; }
+
+    /// <summary>Upper z face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? UpperZEdge { get; init; }
 }
 
 /// <summary>A three-dimensional electrode, as it appears in a model document.</summary>
@@ -110,6 +142,31 @@ public sealed record Electrode3DDocument : ITappedElectrode
 
     /// <summary>Cylinder: which axis it runs along, one of <c>x</c>, <c>y</c>, <c>z</c>.</summary>
     public string? Axis { get; init; }
+
+    /// <summary>Box: which axis it is tilted about, one of <c>x</c>, <c>y</c>, <c>z</c>.</summary>
+    /// <remarks>
+    /// Defaults to <c>z</c> and is only read when <see cref="TiltHalfTurns"/> is non-zero,
+    /// so an untilted box needs neither.
+    /// </remarks>
+    public string? TiltAxis { get; init; }
+
+    /// <summary>Box: how far it is tilted about <see cref="TiltAxis"/>, in half turns.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Half turns, so a right angle is exact.</b> One quarter is a right angle, one half
+    /// is upside down; <c>double.CosPi(0.5)</c> is exactly zero where
+    /// <c>Math.Cos(Math.PI / 2)</c> is 6.1e-17, which would tilt a nominally upright plate
+    /// by a rounding. The same convention as <c>cosPi</c> in the expression grammar and as
+    /// a drive phase.
+    /// </para>
+    /// <para>
+    /// <b>What it is for</b> is a plate deliberately not parallel to another - an
+    /// asymmetric-track analyser's mirrors converge by a couple of hundred microns over a
+    /// third of a metre, and that convergence is the mechanism rather than a tolerance.
+    /// A tilt far below one cell is still resolved, because the surface is a cut cell.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? TiltHalfTurns { get; init; }
 
     /// <summary>Cylinder: lower end along its axis.</summary>
     public QuantityValue? Lower { get; init; }
@@ -195,6 +252,16 @@ public sealed record CompiledSolvedField3D
 
     /// <summary>The electrodes.</summary>
     public required IReadOnlyList<CompiledElectrode3D> Electrodes { get; init; }
+
+    /// <summary>
+    /// What each face of the domain is, in the order lower/upper x, y, z. Empty means all
+    /// six are Dirichlet, which is a grounded box.
+    /// </summary>
+    /// <remarks>
+    /// A grounded box is a third electrode - right for a device inside a housing, wrong for
+    /// one whose geometry is invariant along an axis. See the document's own remarks.
+    /// </remarks>
+    public IReadOnlyList<BoundaryKind> Faces { get; init; } = [];
 }
 
 /// <summary>One state of a timed sequence in three dimensions, validated.</summary>

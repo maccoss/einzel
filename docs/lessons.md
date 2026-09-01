@@ -1633,6 +1633,200 @@ disagree.** This project has the same finding from the other direction — an ad
 whose cell Péclet sat below the threshold of the bug, and a confinement test on two flat
 plates that could not make a ponderomotive well.
 
+## A loop invariant nobody profiled, in the hottest loop the project has
+
+The deterministic energy sweep behind `resolvingPower` and `transmission` called
+`Setup` — and so `FieldAssembly` — **inside** its member loop:
+
+```csharp
+for (var k = 0; k < members; k++)
+{
+    var offset = spread * fraction;
+    var (launch, species, field, settings, detector, collisions) = Setup(model, offset, report);
+    ...
+}
+```
+
+An energy offset changes how fast the ion is launched. It changes **nothing whatever**
+about the field it flies through — `Setup`'s only use of the offset is one `Math.Sqrt` in
+the launch speed. So that was the same solve, computed from the same `CompiledModel`,
+thrown away and recomputed, once per energy member.
+
+**It cost 249 ms per ion, flat, against a whole solve of about 270.** The flatness is the
+tell: a per-ion cost that does not fall as ions are added is a per-ion *fixed* cost, and
+the only fixed cost of that size in the path is the solve. Twenty-one ions took 5.23 s to
+do one solve's worth of work and twenty-one flights.
+
+Hoisting it gave **bit-identical values** — 90176.37243580694, 136915.00595510416,
+123107.75087866254, 27.315480249008885, to the last digit — and took 21 ions to 1.53 s.
+
+**Why it survived.** Nothing was wrong. Every number was right, every test passed, and the
+figure of merit is *supposed* to build a field. The comment in `WarningLedger` even
+records the behaviour as understood — "an ensemble figure builds the field once per ion,
+so one draw emits the same code twenty-one times" — as a fact about warning counting
+rather than as a cost. **A cost is invisible to a suite that only checks answers**, and
+this one had been paid by every study, every optimisation and every literature regression
+in the project.
+
+**Where it matters is not where it was measured.** The saving *is* the solve, so it grows
+with it: on a 2-D mirror it is 3.4x, and on a volume geometry whose solve is seconds and
+whose flight is milliseconds it approaches the member count. The 240-evaluation optimiser
+run over the Astral mirror was paying 2,160 solves for 240 distinct fields.
+
+**The test is self-calibrating, which is what makes it a test rather than a threshold.** A
+wall-clock bound is a statement about a machine (SPEC.md Amendment 27). What is asserted
+instead is a ratio between two things measured on the same machine in the same run: *the
+marginal cost of one more energy member, against one whole solve of the same model.*
+Solving per member costs a whole solve per member by construction, so any bound under one
+catches it. Measured at **0.18 solves hoisted and 1.16 with the solve put back**, and the
+bound sits at 0.5 — between the two states rather than hard against either.
+
+**And the generalisation.** `FlyCloud`, ten lines further down the same file, had always
+shared one field across every ion in a cloud. Two loops over an ensemble, in one class,
+disagreeing about whether the field belongs inside the loop — and the correct one was
+right there to be copied. **When two neighbouring routines do the same thing at different
+cost, the cheaper one is usually not an optimisation but the intended shape.**
+
+## A ladder, because two points cannot tell a slope from an offset
+
+Adding a tilt to a box needed one claim demonstrated: that a tilt far below one cell
+reaches the solved field, because the surface is a cut cell. The obvious test is two
+tilts an octave apart — if the response doubles, it is proportional and therefore
+resolved rather than rasterised.
+
+It came out **1.85**, against 2 expected. That is the kind of number one is tempted to
+explain: a few per cent off, plausibly a second-order term in the geometry, widen the
+band and move on.
+
+Running a ladder instead of two points said what it actually was:
+
+| convergence | asymmetry | ratio to previous |
+| --- | --- | --- |
+| 1 µm | 3.2624e-2 V | — |
+| 2 µm | 3.4299e-2 V | 1.0513 |
+| 5 µm | 3.9637e-2 V | 1.1556 |
+| 25 µm | 7.5430e-2 V | 1.4217 |
+| 100 µm | 2.0961e-1 V | 1.7444 |
+| 400 µm | 7.5075e-1 V | 1.9324 |
+
+**The ratio rises toward 2 as the tilt grows, which is the signature of an additive
+offset, not of a second-order term.** A second-order term would make the ratio depart
+from 2 more as the perturbation grew, not less. And the slope is dead constant at
+0.0018 V/µm across the whole ladder — so the response was `0.031 + 0.0018 δ`, perfectly
+linear with an intercept that had no business being there.
+
+The intercept survived down to a tilt of one micron — a thousandth of a cell — where the
+proportional part is twenty times smaller than it. So something discontinuous was
+happening the instant the tilt became non-zero.
+
+**It was the geometry, not the tilt.** The plate faces sat exactly on grid nodes. Moving
+every face a quarter cell off the lattice removed the intercept completely, and the same
+ladder became exactly proportional — step ratios of 2.0000 and 2.5000 for steps of 2 and
+2.5, over a four-hundred-fold range.
+
+The mechanism is a hypothesis and is recorded as one: a node lying exactly on a Dirichlet
+surface is classified inside, so an arbitrarily small tilt moves the surface off that node
+on one side and not the other — a whole node's change in classification rather than a small
+change in a cut length. What is established is the measurement and the cure.
+
+**Three things generalise.**
+
+**Two points cannot distinguish `aδ` from `aδ + c`.** Any two-point ratio test of
+proportionality is really a test of "is the offset small compared with the signal at the
+sizes I happened to pick", and the answer changes with the sizes. A ladder costs one loop.
+
+**A ratio that drifts toward its expected value as the perturbation grows is an offset;
+one that drifts away is a genuine higher-order term.** The direction of the drift names
+the cause, and it is free to look at.
+
+**The control proved less than it appeared to.** The parallel-plate case reported 7e-15 V
+of asymmetry, which reads as "the mesh is clean". It is not evidence of that: the untilted
+problem is *exactly* symmetric, so it would report zero however badly discretised or
+converged it was. A control that cannot fail for the reason you are worried about is not a
+control for that reason.
+
+## Assert the arithmetic that consumes a measurement, not the measurement
+
+Two tests passed on a developer's machine and failed on CI, in opposite directions, for
+one reason. Both were mine, and the engine was right in both.
+
+**On a fast runner the pilot was too fast to time.** `estimate` measures the machine by
+solving a coarsened copy of the model's own geometry, and refuses to quote a rate from a
+pilot under 15 ms — below that the timer measures the clock rather than the solve. The
+Windows runner did it in **12 ms**, so the basis correctly said *"too little to time"* and
+fell back to the documented rate. The test asserted the measured branch unconditionally.
+
+**On a shared runner two calibrations disagreed.** A study test compared the totals of a
+25-point and a 50-point scan and asserted the ratio was 2, reasoning that "both are
+calibrated on the same machine in the same run, so everything machine-specific cancels".
+That holds on an idle box. On CI it came out **1.125**, because two pilot measurements
+minutes apart can differ by more than the quantity under test. The test was measuring the
+runner's variance.
+
+Both are SPEC.md Amendment 27 — *an absolute time is a statement about a machine* — which
+this project learned from the extension timing tests and wrote down, and which I then
+walked into twice more while building a feature whose entire subject is timing.
+
+**The fixes are not looser bounds.** A wider range would have made both tests pass and
+tested nothing:
+
+- The calibration test asserts the **disjunction**: the basis must say either that it
+  measured this machine or why it could not, and *exactly one* of those. That is the
+  reporting contract (GRD-12), and it holds on any hardware.
+- The study test asserts the **arithmetic invariant**: a study's total *is* its evaluation
+  count times its per-evaluation cost, to nine figures. That is what the code guarantees,
+  and it is machine-independent by construction.
+
+**The rule.** Where a value is derived from a measurement of the machine, do not assert the
+value — assert the arithmetic that consumes it, or the contract that reports it. The
+measurement is the input, and an input you do not control is not a thing to have
+expectations about.
+
+**A fourth failure, of a different kind, and it was hiding behind a bad grep.** A theory
+pinned resolving power to values this build had produced, to full round-trip precision, and
+failed on Linux at **122623.78 against 123107.75** — four parts in a thousand. Resolving
+power is `t / 2dt` where `dt` is a difference of nearly-equal flight times, so **catastrophic
+cancellation turns a last-bit difference into a per-mille one**, and last-bit differences
+across platforms are ordinary: `exp` and `pow` are not bit-specified and the JIT makes its
+own vectorisation and FMA choices.
+
+The guard moved to **flight time**, which is an accumulation rather than a difference and
+therefore does not amplify. Writing that down forced a correction to my own reasoning: I had
+justified the assertion as catching a per-member solve, and **a per-member solve gives the
+identical answer** — that is precisely what "bit-identical" meant. No value assertion can
+detect it; the cost test is what guards the hoist. The value test guards what the refactor
+actually touched.
+
+**And how it stayed hidden for two CI runs.** I read the failures with
+`grep -oE "Einzel\.[A-Za-z.]+Tests\.[A-Za-z]+\.[A-Za-z]+ \[FAIL\]"`, which cannot match a
+parameterised `[Theory]` — its name carries the arguments. Two runs' worth of failures were
+in the log and my filter could not see them, so each round I fixed what I could see and
+pushed into the same wall. **A filter over failure output is itself a test of nothing if it
+can silently match less than everything**; read the count, or match the failure marker rather
+than the name.
+
+**And a corollary about scale.** It is not only *how long* something takes that is a
+statement about a machine; so is the assumption that a given amount of work takes long
+enough to time at all. The 12 ms pilot was not a slow machine or a fast one — it was work
+too small for the clock, which is a threshold effect and appears without warning when the
+hardware changes.
+
+**A third failure sharpened it further, and it is the version worth remembering.** A test
+asserted that a volume solve is costed above a plane solve — sound, since a 27-point stencil
+costs more than a five-point one. On CI it reported `plane 13.0, volume 11.2` and failed.
+13.0 is *exactly* the documented fallback constant: the plane pilot had come in under the
+timing floor and fallen back, while the volume pilot measured. **The test compared a constant
+against a measurement**, and each number was perfectly reasonable on its own.
+
+So the rule has two halves. Do not assert a value that came from measuring the machine — and
+**do not compare two values that may not have come from the same place.** A fallback is
+invisible at the point of comparison: both are doubles, both are labelled "s per million
+nodes", and nothing in the arithmetic says one of them was never measured. The fix asserts
+the ordering of the *documented* constants, which is deterministic and is what the code
+guarantees, and additionally the measured pair **only when the run reports both as measured**
+— printing which case applied, so a run that skipped the second assertion says so rather than
+passing quietly.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

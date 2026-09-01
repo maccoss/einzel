@@ -989,3 +989,92 @@ Measured on a volume geometry: two generators reaching the same electrodes in th
 proportions collapse to **one** basis solve carrying two weights on two clocks, and two
 distinct spatial patterns give **two**.
 
+## A box may be tilted
+
+Every three-dimensional primitive is axis-aligned — a box, a sphere, a cylinder along an
+axis — which builds the devices §1's table asks for and cannot express one thing: a plate
+that is deliberately **not** parallel to another.
+
+That is not an exotic case. An asymmetric-track analyser's two ion mirrors converge by a
+couple of hundred microns over a third of a metre, and the convergence is the **mechanism**
+rather than a tolerance: it is what makes the drift decelerate and reverse. Without it the
+model is a generic multi-reflection analyser wearing the right dimensions.
+
+```json
+{
+  "name": "upperBoard",
+  "shape": "box",
+  "minX": { "value": 0,   "unit": "mm" },
+  "maxX": { "value": 635, "unit": "mm" },
+  "minY": { "value": 20,  "unit": "mm" },
+  "maxY": { "value": 24,  "unit": "mm" },
+  "minZ": { "value": 0,   "unit": "mm" },
+  "maxZ": { "value": 350, "unit": "mm" },
+  "tiltAxis": "x",
+  "tiltHalfTurns": { "expression": "asinPi(convergence / driftLength)", "unit": "1" },
+  "potential": { "value": 0, "unit": "V" }
+}
+```
+
+**Half turns, so `1.0` is 180° and a right angle is `0.5`** — the convention `cosPi` and a
+drive phase already use, and for the same reason: `double.CosPi(0.5)` is exactly zero where
+`Math.Cos(Math.PI / 2)` is 6.1e-17, which would tilt a nominally upright plate by a rounding
+and give a symmetric geometry a spurious asymmetry made of floating point. A tilt beyond
+half a turn is refused rather than wrapped, because every orientation of a box is reachable
+within that and a document meaning 0.05 and writing 5 has made a unit mistake.
+
+The tilt is about the box's own centre, and applies to boxes only.
+
+### It is a rotation of the query, not a fourth shape
+
+A tilted box *is* a box. Signed distance and first entry both rotate the query into the
+box's own frame and then run the formulas they always ran — a rotation is rigid, so a
+distance measured in that frame is the distance in the world, and affine, so the fraction
+along a segment is preserved exactly. Giving a tilted box its own geometry code would be two
+implementations of one solid, and two implementations of one solid disagree eventually.
+
+The one query that genuinely changes is the **bounding box**, which is a statement in world
+coordinates and grows: rotating a half-extent mixes the other two, and the result is exact
+rather than a bound because a box's corners realise it. The shell extracts a conductor's
+surface over exactly that box, so one that was too small would lose the tilted corners
+silently.
+
+### A sub-cell tilt survives, measured
+
+Shortley–Weller stores how far a conductor is as a fraction of a cell, so a tilt far below
+one cell is carried rather than rasterised away. On a 0.5 mm mesh, a convergence swept over
+a two-hundred-fold range:
+
+| convergence | of a cell (each end) | asymmetry | step |
+| --- | --- | --- | --- |
+| 1 µm | 0.0010 | 1.6577e-3 V | — |
+| 2 µm | 0.0020 | 3.3154e-3 V | **2.0000** |
+| 5 µm | 0.0050 | 8.2886e-3 V | **2.5000** |
+| 25 µm | 0.0250 | 4.1445e-2 V | 2.0001 |
+| 100 µm | 0.1000 | 1.6590e-1 V | 2.0011 |
+| 200 µm | 0.2000 | 3.3254e-1 V | 2.0045 |
+
+Proportional to a thousandth of a cell. The control is a parallel pair, which is symmetric
+in x and reports **7.1e-15 V** — so the mesh introduces no asymmetry of its own and the
+tilted numbers are the tilt.
+
+**A ladder rather than two points, and that is what found something.** Two points cannot
+tell proportionality from an affine response, and the first version of this measurement had
+an offset in it.
+
+### A conductor face exactly on the node lattice is degenerate
+
+With the plate faces landing exactly on grid nodes, the proportional response above acquires
+a **fixed offset worth about seventeen microns of convergence**: a tilt of one micron and a
+tilt of ten report nearly the same asymmetry, and the step ratios come out 1.05, 1.16, 1.34
+instead of 2. Moving every face a quarter cell off the lattice removes it completely.
+
+This is not about tilting — it is about where a conductor sits relative to the nodes. The
+mechanism is recorded as a hypothesis: a node lying exactly on a Dirichlet surface is
+classified inside, so an arbitrarily small tilt moves the surface off that node on one side
+and not the other, which is a whole node's change in classification rather than a small
+change in a cut length. What is established is the measurement and the cure.
+
+**The modelling rule:** do not place a conductor face exactly on a cell boundary when the
+quantity of interest is a small geometric perturbation. Same shape as the parallel-plate
+example's two mistakes — the geometry, not the discretisation, was what needed fixing.

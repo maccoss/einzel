@@ -803,15 +803,53 @@ public static class Program
         return (int)(outcome.Healthy ? ExitCode.Success : ExitCode.ValidationFailure);
     }
 
+    /// <summary>Whether a file is a study rather than a model.</summary>
+    /// <remarks>
+    /// A study names the model it studies; a model names no model. That one property is
+    /// an exact discriminator and needs no schema version, so a file from any earlier
+    /// version is classified the same way.
+    /// </remarks>
+    private static bool IsStudy(string path)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && document.RootElement.TryGetProperty("model", out var model)
+                && model.ValueKind == System.Text.Json.JsonValueKind.String;
+        }
+        catch (Exception failure) when (
+            failure is IOException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            // Not readable or not JSON: let the model path report it properly, with
+            // AGT-3's code and suggestion, rather than failing here as "not a study".
+            return false;
+        }
+    }
+
     private static int Estimate(CommandLine options)
     {
         if (options.Positional.Count == 0)
         {
-            Console.Error.WriteLine("usage: einzel estimate <model.json> [--json]");
+            Console.Error.WriteLine("usage: einzel estimate <model.json|study.json> [--json]");
             return (int)ExitCode.ValidationFailure;
         }
 
-        var outcome = EstimateCommand.Execute(options.Positional[0]);
+        var path = options.Positional[0];
+
+        // Calibration is on unless refused: an estimate is worth having about the
+        // machine that will do the work. --no-calibrate keeps PERF-8's cold-start
+        // budget, which a pilot solve on a volume geometry does not.
+        var calibrate = !options.Has("no-calibrate");
+
+        // A study is costed as a study. Detected rather than declared by a flag,
+        // because the file already says which it is and a flag would let the two
+        // disagree - the cost of getting that wrong is a plan short by a factor of
+        // the evaluation count.
+        var outcome = IsStudy(path)
+            ? EstimateCommand.ForStudy(path, calibrate)
+            : EstimateCommand.Execute(path, calibrate);
 
         if (options.Has("json"))
         {
@@ -834,8 +872,22 @@ public static class Program
                 $"field {element.Index}  {element.Type,-14} {size,-12} {element.Seconds,8:F2} s  {element.MemoryMiB,7:F1} MiB"));
         }
 
+        if (outcome.Study is { } study)
+        {
+            var flown = study.Members == 1 ? "trajectory" : "trajectories";
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"per eval      {study.SecondsPerEvaluation:F2} s  (one solve, {study.Members} {flown})"));
+
+            var bound = study.EvaluationsAreACeiling ? " at most" : string.Empty;
+
+            Console.Out.WriteLine(string.Create(
+                invariant, $"{study.Kind,-13} {study.Evaluations} evaluations{bound}"));
+        }
+
         Console.Out.WriteLine(string.Create(
-            invariant, $"total         {outcome.Seconds:F2} s, peak {outcome.MemoryMiB:F1} MiB"));
+            invariant, $"total         {EstimateCommand.Duration(outcome.Seconds)}, peak {outcome.MemoryMiB:F1} MiB"));
 
         Console.Out.WriteLine();
         Console.Out.WriteLine($"basis: {outcome.Basis}");

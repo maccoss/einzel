@@ -180,6 +180,7 @@ public static class SolveCommand
                 {
                     Drives = solve3d.Drives,
                     Stages = solve3d.Stages,
+                    Faces = Geometry3D.FacesOf(solve3d.Faces),
                 };
 
                 var volume = GeometryBuilder3D.BuildGrid(geometry);

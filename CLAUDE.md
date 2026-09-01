@@ -1067,6 +1067,81 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   **An SPDX identifier by convention rather than by validation.** A checker that recognised some spellings and not others would report an unrecognised licence as no licence, which is exactly the failure the field exists to prevent.
 
   What is left of LIC-2 is the extension manager *pane* — presentation over something that now works.
+- **`einzel estimate` costs a study, and the loop invariant that made every study dearer than it needed to be.** GRD-8 gates an operation above a cost threshold, and the operation anyone plans a multi-day job around is a **study** — a scan, a sweep, an optimisation, a boundary search. `estimate` took a model, so the number it gave was short by the evaluation count, silently, which is the worst direction for a number whose whole job is deciding whether to start.
+
+  **The multiplier costs nothing, which is what makes this a defect rather than a limitation** — every driver states its own extent, so it is arithmetic over numbers already in the file. A ceiling is reported *as* a ceiling: a scan computes every point it declares, a search stops when it converges. **And the arithmetic is not the obvious one**: an evaluation solves once and flies every member through that one field, so a study is `evaluations x (solve + members x flight)`. Multiplying the model's own total by the evaluation count charges a whole solve per member — **4.8x over** at nine members.
+
+  **The energy sweep was doing exactly that, and had been from the beginning.** `Setup` — and so `FieldAssembly` — was called *inside* the member loop, and an energy offset changes the launch speed and nothing whatever about the field. **249 ms per ion, flat, against a whole solve of 270.** The flatness is the tell: a per-ion cost that does not fall as ions are added is a per-ion fixed cost. Hoisting it gave **bit-identical values to the last digit** (90176.37243580694, 136915.00595510416, 123107.75087866254, 27.315480249008885) and took 21 ions from 5.23 s to 1.53 s.
+
+  **Nothing was wrong, which is why it survived.** Every number was right and a figure of merit is *supposed* to build a field. The behaviour was even written down — "an ensemble figure builds the field once per ion, so one draw emits the same code twenty-one times" — as a fact about warning counting rather than as a cost. **A cost is invisible to a suite that only checks answers.** And `FlyCloud`, ten lines down the same file, had always shared one field across a whole cloud: two loops over an ensemble in one class disagreeing about whether the field belongs inside the loop, with the correct one there to be copied.
+
+  **The saving is the solve, so it grows with it** — 3.4x on a 2-D mirror, approaching the member count on a volume geometry whose solve is seconds and whose flight is milliseconds. The 240-evaluation Astral search was paying **2,160 solves for 240 distinct fields**.
+
+  **The guard is self-calibrating, which is what makes it a test rather than a threshold.** A wall-clock bound is a statement about a machine (Amendment 27); what is asserted is a ratio between two things measured on the same machine in the same run — the marginal cost of one more member, against one whole solve of the same model. Solving per member costs a whole solve per member by construction. Measured at **0.18 solves hoisted and 1.16 with the solve put back**, bound at 0.5, between the two rather than hard against either.
+
+  **The rate is now measured on this machine, on this geometry.** It was one hardcoded constant — 13 s per million nodes, from the 2-D templates on one developer's box — applied to volume solves too, where the stencil is 27-point and the coarse levels are Galerkin: on the C-trap that put a 5.9 s solve at **1.81 s**. The trajectory term is measured too, by a short pilot flight, and says which of two things happened — the whole flight where it finishes inside the window, otherwise scaled with the bias **named rather than corrected for**, because which limit binds (resolution or tolerance) depends on the model. End to end: **6.25 s estimated against 7.06 s actual**, where the same model was 1.81 s before.
+
+  **Pilots repeat while repeating is cheap.** A single timing of a short pilot is mostly jitting: the plane rate swung between **14.9 and 29.0** s per million nodes run to run, a factor of two straight into the estimate. Cheapest of up to five, stopping once the pilot has cost about a second — self-limiting in the right direction, since the short pilot is the noisy one and is cheap to repeat. Spread went to **2 per cent**.
+
+  **A study that varies geometry varies its own cost, so the flight is sampled across the study's own declared range.** A mirror separation scan runs **2.2x** dearer at one end than the other because it crosses a focus, and costing at the declared values alone missed it by **0.57x**. Gated on the study declaring twenty evaluations, from the arithmetic rather than by taste: three samples cost about one and a half evaluations, 7 per cent of twenty and under one per cent of the hundreds an optimisation declares.
+
+  **Sampling a *fraction* of a flight is what makes it wrong, and I did that first.** A part-flight has to be scaled up, and the only length available to scale against is the declared **maximum** flight time — a ceiling, not an expectation. The nominal ion arrived inside the fraction and the extremes did not, so they were scaled by the whole ceiling: **3.4x over**. A sample now flies the whole flight at the real cell size, and nothing is extrapolated.
+
+  **And the mesh a solve gets is not the one the document asked for.** Each axis rounds its interval count up to a power of two, so **cost is a step function of the cell size** and the node count is the product of three such roundings. On a 635 x 48 x 350 mm analyser — the Astral's own aspect ratio — a requested 1 mm gives **0.62 x 0.75 x 0.68 mm and 34.2 M nodes where the request implies 10.7 M**, and asking for **1.5 mm costs 7.9x less**. Nothing about that is wrong: the mesh is finer than asked and never coarser. What was missing is that somebody planning a multi-day run could not see it. **The suggested size is evaluated with the grid's own arithmetic**, because the rule of thumb — twice the finest spacing — lands *exactly* on the power-of-two boundary and rounds the wrong side: 1.24 mm gave the identical mesh, a no-op that looked authoritative. The test asks for the suggested size and checks the node count falls by the promised factor: promised 7.9x, delivered 7.9x.
+
+  **Measured honestly on that adversarial scan: 23.1 s estimated against 30.3 s of wall clock (0.76x)**, of which about 5 s is process start the estimate excludes by design — so **0.89x of the computation itself**, at a 1 per cent run-to-run spread. Process start and JIT stay excluded and stated: a fixed cost, negligible for a multi-day study and not for a thirty-second one. SPEC.md Amendment 33.
+
+  **A measurement mistake worth keeping:** an end-to-end check timed a scan at 50.6 s against 31.0 s minutes earlier, which reads as the estimate being badly wrong. The full test suite was running in parallel. **A wall-clock comparison on a loaded machine measures the load**, and the estimate is the one number in this project most likely to be validated that way.
+
+
+- **A box may be tilted, and the Astral's convergence is the reason.** Every three-dimensional primitive is axis-aligned, which builds the devices §1's table asks for and cannot express one thing: a plate deliberately **not** parallel to another. An asymmetric-track analyser's two mirrors converge by a couple of hundred microns over a third of a metre, and that convergence is the **mechanism** rather than a tolerance — it is what makes the drift decelerate and reverse. Without it the model validates, solves, converges, and produces a drift that never reverses.
+
+  **An attribute, not an abstraction — the fifth time.** After `log` for the Kingdon trap, trigonometry for the multipole guide, `asinPi` for the C-trap and a parametric `drivePhase` for the travelling wave. LIB-1 says to believe the signal when a device forces a change below `Einzel.Library`; each time it has been narrow and the abstraction has held. **A tilted box is a box**, so signed distance and first entry rotate the query into the box's own frame and run unchanged — a rotation is rigid, so a distance measured there is the distance in the world, and affine, so a segment fraction is preserved exactly. The only query that genuinely changes is the bounding box, which the shell extracts conductors over.
+
+  **Half turns, so 1.0 is 180° and a right angle is 0.5** — and a test caught me getting my own convention wrong, writing 0.25 and expecting a right angle. The same confusion had reached the validator's error message, where it would have taught it to whoever tripped the bound.
+
+  | convergence | of a cell, each end | asymmetry | step |
+  | --- | --- | --- | --- |
+  | 1 µm | 0.0010 | 1.6577e-3 V | — |
+  | 2 µm | 0.0020 | 3.3154e-3 V | **2.0000** |
+  | 5 µm | 0.0050 | 8.2886e-3 V | **2.5000** |
+  | 200 µm | 0.2000 | 3.3254e-1 V | 2.0045 |
+
+  **Proportional to a thousandth of a cell**, against a parallel control reporting **7.1e-15 V** — the cut cell doing what FLD-1 built it for, met in a new place.
+
+  **A ladder rather than two points, and that is what found something.** Two tilts an octave apart gave **1.85** against 2 expected — a number one is tempted to explain as a second-order term. The ladder said otherwise: the ratio *rose* toward 2 as the tilt grew, which is the signature of an additive offset rather than a higher-order term, and the slope was dead constant at 0.0018 V/µm. The response was `0.031 + 0.0018 δ`, and the intercept survived down to a thousandth of a cell.
+
+  **It was the geometry, not the tilt: the plate faces sat exactly on grid nodes.** Moving every face a quarter cell off the lattice removed the intercept completely. The mechanism is recorded as a hypothesis — a node lying exactly on a Dirichlet surface is classified inside, so an arbitrarily small tilt moves the surface off that node on one side and not the other, a whole node's change in classification rather than a small change in a cut length. **The modelling rule that generalises: do not place a conductor face exactly on a cell boundary when the quantity of interest is a small geometric perturbation.**
+
+  **And the control proved less than it appeared to.** The parallel pair reports 7e-15 V, which reads as "the mesh is clean" — but the untilted problem is *exactly* symmetric, so it would report zero however badly discretised or converged it was. A control that cannot fail for the reason you are worried about is not a control for that reason. SPEC.md Amendment 34.
+
+
+- **A volume solve may declare a face a mirror, and an ion drifting backwards is what found it.** `DirichletMask3D` has carried all six faces as settable conditions since the 3-D solver was written, and `OperatorStencil3D` honours them — **and no document could ask for one**. The plane path has had `rightEdge` throughout. Same shape as `ITransportMode` named only in a csproj, and `drivePhase` a plain double until a travelling wave needed a ramp.
+
+  **A grounded domain boundary is a third electrode**, which this project already documented for the parallel-plate example. A stripe electrode running the length of an analyser's drift makes the field independent of the drift direction, so grounding those faces imposes an axial field the real instrument does not have. Measured on two rails spanning their domain in z: **−62,577 V/m of axial field with the faces grounded, −0.0000 with them mirrored.** The control matters — a mirrored solve reporting zero proves nothing unless the grounded one is large.
+
+  **Found by an ion going the wrong way.** An Astral skeleton at a 3.5% injection angle should drift at +1375 m/s; it measured **−480**. With the faces mirrored it drifts at **1374 m/s against a predicted 1374**, and z-invariance is exact — the off-axis transverse field is **−31,804.2225 V/m at both 5 mm and 20 mm from the face**, to the digit.
+
+  **The invariance check was vacuous first**, sampled on the axis where two symmetric rails give zero transverse field by symmetry: 0 compared with 0, which passes against a solve with no z-invariance at all. Off-axis it discriminates.
+
+- **The 3-D Astral skeleton flies, and the second bug was the mirrors being inside-out.** Depth must be measured from each mirror's **mouth** inward, so U4 (+6012 V, the reflector) sits furthest from the beam and U1 (−7360 V, accelerating) nearest it. Measuring from x = 0 put the reflector at the mouth, so the ion met +6012 V on arrival instead of being accelerated in; with the grounded faces as well it escaped to **x = 4643 mm in a 635 mm analyser** and coasted, which is where 20,000,000 steps went.
+
+  | | |
+  | --- | --- |
+  | flight time | **120.058 µs** against a predicted 165 mm / 1374 m/s = 120.1 µs |
+  | drift rate | 1374 m/s against `v·sinθ` = **1374 m/s** |
+  | steps | 16,012, against 20,000,000 |
+  | transverse | y = −0.00 mm throughout |
+  | energy drift | 2.16e-6, just over ACC-4's 1e-6 at a 4 mm cell |
+
+  **And the cost picture is the opposite of what the broken run suggested.** That run spent 94% of its time flying, because the escaped ion coasted for 20,000,000 steps. Working, at a 4 mm cell in Release: **solve 5.298 s (94.3%), flight 0.321 s** — and the gap widens with refinement, since node count goes as 1/cell³ while step count goes as 1/cell. The solve is healthy rather than pathological (3 levels, limited by the thin 17-node axis; 13 cycles; factor 0.20; ~52 M node-updates/s on one core). **A number measured on a broken model describes the bug, not the instrument** — and it had already reached a planning document and inverted a priority there.
+
+  **What it does not yet show** is 24 oscillations: at 3.5% the ion crosses the drift in **3.77**. Getting 24 needs the drift to **reverse**, which is what the mirror convergence provides and is not modelled yet — so the oscillation count is the first real test of the tilt. `docs/astral-handoff.md` carries the corrected generator and the order of work.
+
+  **And a trap of my own, in the reader rather than the engine.** A probe read `flightTimeSeconds` from `--json` and printed **0.000 µs** for a 120 µs flight: there is no such key, because `flightTime` is a GRD-1 envelope, and `dict.get(k) or 0` turned the miss into a plausible zero. GRD-1 prevents the engine emitting a bare number; nothing stops a consumer reintroducing one.
+
+- **Two measurements about running this engine, both of which change planning.** A **Release build is 3.27x faster than Debug** (2.16 s against 7.06 on the shipped C-trap), and every timing published from a development session is a Debug timing unless it says otherwise. The estimate needs no telling: because its rate is a pilot measured at runtime, it followed the speed-up on its own — 6.25 s in Debug to 0.98 s in Release for the same model. What does not scale is process start, which the estimate excludes by design, so its wall-clock ratio looks worse on a short Release run (0.60x) while its share of the *computation* is the same 0.85-0.9x as in Debug.
+
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
