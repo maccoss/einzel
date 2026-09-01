@@ -444,7 +444,21 @@ behind the launch point to catch the return:
 | | 6.0 per cent |
 
 `v_z0` and `k` come from the two-run fit at a *different* convergence and a *different*
-drift length, and the detector geometry took no part in either. The 6 per cent is the
+drift length, and the detector geometry took no part in either.
+
+**And the `1/c` scaling holds across a threefold range**, which is the part of the relation
+that is falsifiable — a wrong mechanism would give some other power. Anchored on the
+measured c = 0.30 point and predicting the rest:
+
+| c | predicted | measured | |
+| --- | --- | --- | --- |
+| 0.40 mm | 1017.7 µs | 1010.96 µs | 0.993 |
+| 0.60 mm | 678.5 µs | 665.11 µs | 0.980 |
+| 0.90 mm | 452.3 µs | 434.87 µs | 0.961 |
+
+The ratio drifting *down* with `c` is the constant-`a_z` approximation degrading in the
+direction it should: a larger spacer turns the ion round sooner, so it samples less of the
+drift and less of the geometry the fit averaged over. The 6 per cent is the
 deceleration not being quite uniform — the mirrors are closer at the far end, so the
 oscillation period shortens as the ion drifts, and a constant-`a_z` model reverses the ion
 slightly too late.
