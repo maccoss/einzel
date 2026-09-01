@@ -145,6 +145,60 @@
       "minimum": 0.0,
       "maximum": 400.0,
       "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
+    },
+    "foilVolts": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": -20.0,
+      "maximum": 0.0,
+      "description": "the ion foil bias. Published as tunable between 0 and -20 V. SHIPS AT ZERO, so the foil is present in the geometry and does nothing until it is fitted - a default that makes a device worse is worse than no default, and nothing yet establishes the value."
+    },
+    "foilThickness": {
+      "value": 2.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 6.0,
+      "description": "how thick the foil electrodes are."
+    },
+    "foilInset": {
+      "value": 10.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 60.0,
+      "description": "how far the foil stops short of each mirror mouth, so it sits in the field-free region between the mirrors rather than reaching into a retarding field."
+    },
+    "foilGap": {
+      "value": 8.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 18.0,
+      "description": "half-gap from the ion path to each foil electrode. Penetration is governed by width measured in units of THIS, so it sets the scale the widths are read against."
+    },
+    "foilNearHalfWidth": {
+      "value": 16.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 60.0,
+      "description": "half-width of the foil in the plane of the drift, at the injection end. Penetration saturates by about w/gap = 4 - a conductor that wide is felt as a level rather than a shape - so there is nothing to gain above it and the first parameterisation, at w/gap = 42, produced no on-axis variation whatever."
+    },
+    "foilFarHalfWidth": {
+      "value": 3.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 60.0,
+      "description": "half-width at the far end. A CANDIDATE, not a fit: in an isolated 2-D cross-section, grading 16 mm down to 3 mm at an 8 mm gap swings the on-axis potential by 3.31 V against the 2.9 to 3.7 V the published deceleration requires - but that swing runs from 4.76 V to 2.25 V as the surroundings recede from 20 to 160 mm, so the isolated study picks candidates and cannot settle the value. WIDER MEANS MORE NEGATIVE ON AXIS, and a positive ion is pulled toward more negative potential, so the returning force needs the foil wide at injection and narrowing along the drift."
+    },
+    "foilSlices": {
+      "value": 16.0,
+      "unit": "1",
+      "minimum": 4.0,
+      "maximum": 64.0,
+      "description": "how many steps approximate the graded width. A convergence parameter, not a design one: the shape is a wedge and this is how finely it is cut. The box primitive has parallel faces, so a varying width is a staircase."
+    },
+    "foilSliceLength": {
+      "expression": "driftLength / foilSlices",
+      "unit": "mm",
+      "description": "axial length of one step."
     }
   },
   "ion": {
@@ -799,6 +853,82 @@
             },
             "potential": {
               "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "foilTop",
+            "shape": "box",
+            "repeat": {
+              "count": {
+                "expression": "foilSlices"
+              },
+              "index": "slice"
+            },
+            "minX": {
+              "expression": "midPlane - (foilNearHalfWidth + foilFarHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength - foilNearHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength)",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + (foilNearHalfWidth + foilFarHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength - foilNearHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "foilGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "foilGap + foilThickness",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "foilSliceLength * slice",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "foilSliceLength * slice + foilSliceLength",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "foilVolts",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "foilBottom",
+            "shape": "box",
+            "repeat": {
+              "count": {
+                "expression": "foilSlices"
+              },
+              "index": "slice"
+            },
+            "minX": {
+              "expression": "midPlane - (foilNearHalfWidth + foilFarHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength - foilNearHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength)",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + (foilNearHalfWidth + foilFarHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength - foilNearHalfWidth * (foilSliceLength * slice + foilSliceLength / 2) / driftLength)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-foilGap - foilThickness",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-foilGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "foilSliceLength * slice",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "foilSliceLength * slice + foilSliceLength",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "foilVolts",
               "unit": "V"
             }
           }

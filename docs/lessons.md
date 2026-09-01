@@ -2444,3 +2444,41 @@ The test that discriminates is a *pair*: a slab must mesh **with its thickness**
 can be extracted and be a sheet, which has triangles and looks plausible — and it must not
 cost its aspect ratio in triangles. Each mutation fails exactly one of them, and an isotropic
 control catches the case where a fix changes what was already right.
+
+## A taper inside a long channel does nothing, and the geometry looks right the whole time
+
+Modelling the Astral's ion foil, the first parameterisation was a pair of plates above and
+below the ion path with the **gap to the axis tapering along the drift** — narrow where the
+returning force is wanted, opening away from it. The geometry was built and verified: the
+taper ran the right way, its slope fitted to 2.2 per cent of the declared value over 26
+sampled levels, and the electrodes cleared both the mirrors and the boards.
+
+**The on-axis potential varied by 0.0003 V across the whole drift, at a −20 V bias.** Not
+small — zero, against a requirement of 2.9 to 3.7 V derived from the published numbers.
+
+The plates spanned the entire field-free region: 339 mm long with a 12 to 31 mm gap. **Deep
+inside a channel bounded above and below by one equipotential, the potential is that
+equipotential**, and the taper does not enter — the gap only matters within a few gap-widths
+of an end, and a channel that long effectively has no ends. So the structure floated the
+whole drift region uniformly to the bias, and a uniform offset has no gradient and exerts no
+force at all.
+
+**Nothing about the geometry was wrong.** Every check run against it passed — extent, taper
+direction, slope, clearances, mesh — because they were all checks that the solid was the
+intended solid. What was wrong was the assumption that the intended solid would produce a
+field that varied. Those are different claims and only the second one mattered.
+
+Two things generalise.
+
+**A shape check is not a field check.** Confirming an electrode is where it was meant to be
+says nothing about whether it does what it was meant to do, and for anything relying on
+fringing or partial coverage the two can diverge completely. Measure the field the geometry
+was built to produce before building anything on top of it — a figure of merit, a fit, a
+study. Here that ordering cost one solve and saved building an optimisation around a shape
+with no authority.
+
+**Aspect ratio decides whether a conductor is felt as a shape or as a level.** A conductor
+long compared to its gap is a *level*: everything inside sits at its potential. It becomes a
+*shape* only when its extent is comparable to its distance from the point of interest. That
+is the same fact the multipole rods and the funnel rings rely on, met from the side where it
+destroys the effect rather than the side where it creates one.

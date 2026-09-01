@@ -43,11 +43,37 @@ public sealed class AstralTiltAxisTests(ITestOutputHelper output)
         return solve!.Electrodes!;
     }
 
+    /// <summary>The mirror stacks, which are the electrodes these assertions are about.</summary>
+    /// <remarks>
+    /// <para>
+    /// Scoped by name rather than taken as "all electrodes", because the model also carries
+    /// the ion foil, which is deliberately <em>not</em> tilted — its shape varies in the
+    /// plane of the drift instead. Asserting over everything was right while the mirrors were
+    /// the only electrodes and became wrong the moment something else was added.
+    /// </para>
+    /// <para>
+    /// <b>The count is asserted, so the scoping cannot quietly empty the set.</b> A rename
+    /// that no longer matched would leave these tests passing over nothing, which is the
+    /// vacuous truth this project has met four times.
+    /// </para>
+    /// </remarks>
+    private static List<Electrode3DDocument> Mirrors()
+    {
+        var mirrors = Electrodes()
+            .Where(e => e.Name!.StartsWith("near", StringComparison.Ordinal)
+                || e.Name!.StartsWith("far", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(16, mirrors.Count);
+
+        return mirrors;
+    }
+
     /// <summary>Every mirror electrode is rotated about y, which is what tilts a mirror.</summary>
     [Fact]
     public void TheMirrorsAreTiltedAboutY()
     {
-        var electrodes = Electrodes();
+        var electrodes = Mirrors();
 
         Assert.NotEmpty(electrodes);
 
@@ -74,7 +100,7 @@ public sealed class AstralTiltAxisTests(ITestOutputHelper output)
     [Fact]
     public void TheNearAndFarStacksLeanOppositeWays()
     {
-        var electrodes = Electrodes();
+        var electrodes = Mirrors();
 
         var near = electrodes.Where(e => e.Name!.StartsWith("near", StringComparison.Ordinal)).ToList();
         var far = electrodes.Where(e => e.Name!.StartsWith("far", StringComparison.Ordinal)).ToList();
@@ -108,5 +134,42 @@ public sealed class AstralTiltAxisTests(ITestOutputHelper output)
             $"the near stack is tilted by '{a}' and the far by '{b}'. They must be opposite "
             + "signs of one parameter, or the two mirrors do not converge and the drift "
             + "cannot reverse");
+    }
+
+    /// <summary>The ion foil is present, and is deliberately not a tilted mirror.</summary>
+    /// <remarks>
+    /// <para>
+    /// The complement of the two assertions above, and the reason they had to be scoped. The
+    /// foil's shape varies in the plane of the drift — its width, not its gap — because a
+    /// gap taper inside a channel that long produced an on-axis swing of 0.0003 V against a
+    /// requirement of 2.9 to 3.7 V.
+    /// </para>
+    /// <para>
+    /// Asserted so that scoping the mirror tests by name cannot become a way of quietly
+    /// dropping electrodes out of any check at all.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheFoilIsPresentAndIsNotTilted()
+    {
+        var foils = Electrodes()
+            .Where(e => e.Name!.StartsWith("foil", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(2, foils.Count);
+
+        foreach (var foil in foils)
+        {
+            Assert.True(
+                string.IsNullOrEmpty(foil.TiltAxis),
+                $"{foil.Name} declares a tilt about '{foil.TiltAxis}'. The foil is shaped by "
+                + "width along the drift, not by a gap taper - a taper inside a channel this "
+                + "long swings the on-axis potential by 0.0003 V");
+
+            Assert.NotNull(foil.Repeat);
+        }
+
+        // Every electrode is either a mirror or a foil: nothing has fallen out of both.
+        Assert.Equal(Electrodes().Count, Mirrors().Count + foils.Count);
     }
 }

@@ -888,6 +888,45 @@ Named so nobody rediscovers them as bugs:
   mirrors — are the ones this document previously recorded, and they are real but are not
   the load-bearing omission. The load-bearing one is that it helps turn the ions round.
 
+  **The shape is constrained by a measured design curve — and by how much that curve
+  depends on what surrounds the foil.** On-axis penetration is a local, essentially
+  two-dimensional property: at any given z the cross-section is two plates of half-width w
+  at gap g, long in the drift direction. Measuring it as a 2-D problem converges in seconds
+  where the 68 M-node volume solve did not converge at all, and moved the answer by a third:
+
+  | cell | w/gap 0.5 | w/gap 1.0 | w/gap 2.0 |
+  | --- | --- | --- | --- |
+  | 2.00 mm | 85.9% | 93.5% | 98.6% |
+  | 0.25 mm | 85.6% | 93.6% | 98.7% |
+
+  Converged, and the full curve at an 8 mm gap runs **72.2% at w/gap 0.125** through 85.5%
+  at 0.5 to **99.9% at w/gap 4** — so the foil saturates as a *level* by about four gaps
+  wide, which is why the first parameterisation at w/gap 42 produced nothing at all.
+
+  **The swing, which is what the physics needs, is not a property of the foil alone.**
+  Between a wide end at w/gap 2 and a narrow end at w/gap 0.375, moving the grounded wall
+  that stands in for the surroundings:
+
+  | half-box | swing |
+  | --- | --- |
+  | 20 mm | 4.759 V |
+  | 40 mm | 3.308 V |
+  | 80 mm | 2.538 V |
+  | 160 mm | **2.250 V** |
+
+  It halves as the surroundings recede. **The required 2.9–3.7 V sits inside that range**, so
+  a foil of entirely plausible size can supply the missing returning impulse — but which
+  point on it is the real one is set by the analyser's own structure, not by a box chosen for
+  the study. The mirrors are 170 mm away in x and there is no grounded surface near the foil,
+  which argues for the open end of the range and therefore for a narrower far end than
+  w/gap 0.375.
+
+  **So the 2-D study picks candidates and cannot settle the value.** That has to come from
+  the foil solved inside the full analyser, which is what the template now carries. The
+  earlier version of this section quoted 80.6% / 98.3% / 3.54 V from a 4 mm cell in the
+  volume solve; those were **not mesh-converged** and were 36 per cent high. They are
+  withdrawn.
+
   **What is still needed to build it**: the electrode shapes. The paper says the shapes are
   precise and purpose-made and does not give them, which leaves them where `d1..d4` are — a
   free parameter of the inverse problem rather than a number to look up.
