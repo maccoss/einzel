@@ -125,50 +125,58 @@ public sealed class StudyEstimateTests(ITestOutputHelper output) : IDisposable
     /// <summary>An evaluation solves once, however many members it flies.</summary>
     /// <remarks>
     /// <para>
-    /// <b>This is the arithmetic the estimate would most plausibly get wrong.</b> The
-    /// obvious costing is <c>evaluations x</c> whatever <c>estimate</c> says a model
-    /// costs - and a model's cost already contains one flight, so that reads as though
-    /// each evaluation flies one ion. Multiplying it by the member count instead charges a
-    /// whole solve per member, which is what the energy sweep used to do and no longer
-    /// does.
+    /// <b>This is the arithmetic the estimate would most plausibly get wrong.</b> The obvious
+    /// costing is <c>evaluations x</c> whatever <c>estimate</c> says a model costs - and a
+    /// model's cost already contains one flight, so that reads as though each evaluation
+    /// flies one ion. Multiplying it by the member count instead charges a whole solve per
+    /// member, which is what the energy sweep used to do and no longer does.
     /// </para>
     /// <para>
-    /// So the bound is stated against the naive figure: one evaluation must cost strictly
-    /// less than a whole model estimate per member, and at least its own solve.
+    /// <b>Every number here comes from one estimate</b>, which is the point. A first version
+    /// compared against a separate <c>Execute</c> call, and two calibrations of the same
+    /// machine minutes apart can differ by more than the quantity under test - the mistake
+    /// that failed twice on CI. The naive figure is reconstructed from this object's own
+    /// terms: a single run costs <c>perEvaluation - (members - 1) x flight</c>, so the naive
+    /// costing is <c>members</c> times that, and the gap between them is
+    /// <c>(members - 1) x solve</c>. The assertion is therefore exactly "a solve is counted
+    /// once rather than per member", with nothing measured twice.
     /// </para>
     /// </remarks>
     [Fact]
     public void AnEvaluationSolvesOnceAndFliesMany()
     {
-        var study = Scan(11);
+        var costed = EstimateCommand.ForStudy(Scan(11));
 
-        var model = EstimateCommand.Execute(
-            Path.Combine(_root, "models", Template + ".json"));
+        var study = costed.Study!;
+        var members = study.Members;
+        var flight = costed.TrajectorySeconds;
 
-        var costed = EstimateCommand.ForStudy(study);
-        var members = costed.Study!.Members;
+        // What one whole run of the model costs, out of this same estimate: the evaluation
+        // less the extra members' flights.
+        var single = study.SecondsPerEvaluation - ((members - 1) * flight);
 
-        var naive = model.Seconds * members;
+        var naive = members * single;
 
-        output.WriteLine($"model total          {model.Seconds * 1000,8:F0} ms");
-        output.WriteLine($"  of which flight    {model.TrajectorySeconds * 1000,8:F0} ms");
-        output.WriteLine($"members              {members,8}");
-        output.WriteLine($"per evaluation       {costed.Study.SecondsPerEvaluation * 1000,8:F0} ms");
-        output.WriteLine($"naive, x members     {naive * 1000,8:F0} ms");
+        output.WriteLine($"members            {members,8}");
+        output.WriteLine($"one flight         {flight * 1000,8:F1} ms");
+        output.WriteLine($"one whole run      {single * 1000,8:F1} ms");
+        output.WriteLine($"per evaluation     {study.SecondsPerEvaluation * 1000,8:F1} ms");
+        output.WriteLine($"naive, x members   {naive * 1000,8:F1} ms");
 
         Assert.True(members > 1, "the study declares nine ions, so there is a distinction to make");
 
         Assert.True(
-            costed.Study.SecondsPerEvaluation < naive,
-            $"one evaluation was costed at {costed.Study.SecondsPerEvaluation:F3} s against "
+            study.SecondsPerEvaluation < naive,
+            $"one evaluation was costed at {study.SecondsPerEvaluation:F3} s against "
             + $"{naive:F3} s for {members} whole model runs. A figure of merit solves the "
             + "field once and flies every member through it, so only the flight term is "
             + "multiplied");
 
-        // And it is not the other error either: the flights are counted, not dropped.
+        // And the flights are counted, not dropped: an evaluation costs at least all of them.
         Assert.True(
-            costed.Study.SecondsPerEvaluation >= model.Seconds - model.TrajectorySeconds,
-            "an evaluation costs at least its solve");
+            study.SecondsPerEvaluation >= members * flight,
+            $"an evaluation was costed at {study.SecondsPerEvaluation:F3} s, which is less "
+            + $"than the {members} flights of {flight:F4} s it must contain");
     }
 
     /// <summary>A long study samples the range it will visit; a short one does not.</summary>

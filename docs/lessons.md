@@ -1788,6 +1788,22 @@ enough to time at all. The 12 ms pilot was not a slow machine or a fast one — 
 too small for the clock, which is a threshold effect and appears without warning when the
 hardware changes.
 
+**A third failure sharpened it further, and it is the version worth remembering.** A test
+asserted that a volume solve is costed above a plane solve — sound, since a 27-point stencil
+costs more than a five-point one. On CI it reported `plane 13.0, volume 11.2` and failed.
+13.0 is *exactly* the documented fallback constant: the plane pilot had come in under the
+timing floor and fallen back, while the volume pilot measured. **The test compared a constant
+against a measurement**, and each number was perfectly reasonable on its own.
+
+So the rule has two halves. Do not assert a value that came from measuring the machine — and
+**do not compare two values that may not have come from the same place.** A fallback is
+invisible at the point of comparison: both are doubles, both are labelled "s per million
+nodes", and nothing in the arithmetic says one of them was never measured. The fix asserts
+the ordering of the *documented* constants, which is deterministic and is what the code
+guarantees, and additionally the measured pair **only when the run reports both as measured**
+— printing which case applied, so a run that skipped the second assertion says so rather than
+passing quietly.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

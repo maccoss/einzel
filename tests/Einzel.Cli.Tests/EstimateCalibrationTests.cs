@@ -154,15 +154,24 @@ public sealed class EstimateCalibrationTests(ITestOutputHelper output) : IDispos
     /// <remarks>
     /// <para>
     /// <b>This is the defect that prompted the work.</b> A volume cycle carries a 27-point
-    /// stencil where a plane carries five, and its coarse levels are built by Galerkin
-    /// rather than rediscretised. Both were costed at 13 s per million nodes, which put the
-    /// C-trap's 5.9 s solve at 1.81 s.
+    /// stencil where a plane carries five, and its coarse levels are built by Galerkin rather
+    /// than rediscretised. Both were costed at 13 s per million nodes, which put the C-trap's
+    /// 5.9 s solve at 1.81 s.
     /// </para>
     /// <para>
-    /// What is asserted is that the volume rate comes out <i>above</i> the plane rate on the
-    /// same machine, because that ordering is a property of the two stencils rather than of
-    /// any particular hardware — a machine-independent claim, which is the only kind worth
-    /// asserting here.
+    /// <b>The comparison is only meaningful when both rates come from the same source</b>, and
+    /// a first version did not check that. On a fast CI runner the <i>plane</i> pilot came in
+    /// under the floor below which timing a pilot measures the clock, so it fell back to the
+    /// documented 13.0 while the volume pilot measured 11.2 - and the test compared a constant
+    /// against a measurement and failed. Two numbers of different provenance are not
+    /// comparable however reasonable each is on its own.
+    /// </para>
+    /// <para>
+    /// So the ordering is asserted against the documented constants, which is deterministic
+    /// and is the guarantee the code makes; and additionally against the measured pair
+    /// <i>when both were measured</i>, which is the physical claim. The mode is printed either
+    /// way, so a run where the second assertion did not apply says so rather than passing
+    /// quietly.
     /// </para>
     /// </remarks>
     [Fact]
@@ -176,19 +185,61 @@ public sealed class EstimateCalibrationTests(ITestOutputHelper output) : IDispos
             return double.Parse(number, System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        static bool Measured(string basis, string kind)
+        {
+            var after = basis[basis.IndexOf(kind, StringComparison.Ordinal)..];
+            var sentence = after.Split(". ", StringSplitOptions.None)[0];
+
+            return sentence.Contains("measured on this machine", StringComparison.Ordinal);
+        }
+
+        // The documented constants, which the code guarantees and which do not depend on
+        // any machine finishing a pilot quickly or slowly.
+        var quotedPlane = Cli("estimate", Template("planar-mirror-pair"), "--no-calibrate").Stdout;
+        var quotedVolume = Cli("estimate", Template("c-trap"), "--no-calibrate").Stdout;
+
+        var documentedPlane = Rate(quotedPlane, "Plane solves: ");
+        var documentedVolume = Rate(quotedVolume, "Volume solves: ");
+
+        output.WriteLine($"documented   plane {documentedPlane,6:F1}   volume {documentedVolume,6:F1}"
+            + $"   ({documentedVolume / documentedPlane:F1}x)");
+
+        Assert.True(
+            documentedVolume > documentedPlane,
+            $"the documented volume rate is {documentedVolume:F1} s per million nodes against "
+            + $"{documentedPlane:F1} for a plane, so the 27-point stencil is charged no more "
+            + "than the five-point one and every uncalibrated volume estimate runs under");
+
+        // And the physical claim, when this machine actually measured both. A pilot under
+        // the timing floor falls back to the constant, and comparing that with a measured
+        // rate compares two different things.
         var plane = Cli("estimate", Template("planar-mirror-pair")).Stdout;
         var volume = Cli("estimate", Template("c-trap")).Stdout;
+
+        var bothMeasured = Measured(plane, "Plane solves: ") && Measured(volume, "Volume solves: ");
 
         var planeRate = Rate(plane, "Plane solves: ");
         var volumeRate = Rate(volume, "Volume solves: ");
 
-        output.WriteLine($"plane   {planeRate:F1} s per million nodes");
-        output.WriteLine($"volume  {volumeRate:F1} s per million nodes  ({volumeRate / planeRate:F1}x)");
+        output.WriteLine($"measured     plane {planeRate,6:F1}   volume {volumeRate,6:F1}"
+            + $"   ({volumeRate / planeRate:F1}x)   both measured: {bothMeasured}");
+
+        if (!bothMeasured)
+        {
+            // Said out loud rather than passed over: on this run one pilot was too fast to
+            // time, so the measured pair is not a like-for-like comparison and only the
+            // documented ordering above was checked.
+            output.WriteLine(
+                "  one pilot fell back to the documented rate, so the measured ordering "
+                + "was not asserted on this run");
+
+            return;
+        }
 
         Assert.True(
             volumeRate > planeRate,
-            $"a volume solve was costed at {volumeRate:F1} s per million nodes against "
-            + $"{planeRate:F1} for a plane, so the 27-point stencil is being charged no more "
-            + "than the five-point one and a volume estimate will run under");
+            $"a volume solve measured {volumeRate:F1} s per million nodes against "
+            + $"{planeRate:F1} for a plane on the same machine in the same run, and the "
+            + "27-point stencil should cost more than the five-point one");
     }
 }
