@@ -76,14 +76,25 @@ public sealed class EstimateCalibrationTests(ITestOutputHelper output) : IDispos
         return path;
     }
 
-    /// <summary>The estimate says it measured this machine, and what it measured.</summary>
+    /// <summary>The estimate says what it measured, or why it could not.</summary>
     /// <remarks>
+    /// <para>
     /// GRD-12's rule applied to a cost: a number whose provenance is not stated invites more
-    /// trust than it has earned. The basis line carries the pilot's node count and its time,
-    /// so a reader can see whether the measurement was worth anything.
+    /// trust than it has earned. Either way the basis names the pilot's size, so a reader can
+    /// see whether the measurement was worth anything.
+    /// </para>
+    /// <para>
+    /// <b>A disjunction, and it has to be.</b> A first version asserted the measured branch
+    /// unconditionally and <b>failed on a fast CI runner</b>, where the pilot solve took
+    /// 12 ms - under the floor below which timing a pilot measures the clock rather than the
+    /// solve. The engine was right and the test was asserting a machine speed. SPEC.md
+    /// Amendment 27's own lesson met from a new direction: an absolute time is a statement
+    /// about a machine, and so is the assumption that a given amount of work takes long
+    /// enough to time at all.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void ACalibratedEstimateSaysWhatItMeasured()
+    public void ACalibratedEstimateSaysWhatItMeasuredOrWhyItCouldNot()
     {
         var estimate = Cli("estimate", Template("planar-mirror-pair"));
 
@@ -95,8 +106,17 @@ public sealed class EstimateCalibrationTests(ITestOutputHelper output) : IDispos
 
         output.WriteLine(basis.Trim());
 
-        Assert.Contains("measured on this machine", basis, StringComparison.Ordinal);
-        Assert.Contains("nodes in", basis, StringComparison.Ordinal);
+        var measured = basis.Contains("measured on this machine", StringComparison.Ordinal);
+        var tooFast = basis.Contains("too little to time", StringComparison.Ordinal);
+
+        Assert.True(
+            measured ^ tooFast,
+            "a calibrated estimate must say either that it measured this machine or why it "
+            + $"could not, and exactly one of those - the basis was: {basis.Trim()}");
+
+        // Either way the pilot's size is on the page, which is what makes the claim
+        // checkable rather than merely asserted.
+        Assert.Contains("nodes", basis, StringComparison.Ordinal);
     }
 
     /// <summary>Refusing to calibrate says the number is not about this machine.</summary>

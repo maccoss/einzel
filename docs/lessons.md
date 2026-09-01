@@ -1745,6 +1745,49 @@ problem is *exactly* symmetric, so it would report zero however badly discretise
 converged it was. A control that cannot fail for the reason you are worried about is not a
 control for that reason.
 
+## Assert the arithmetic that consumes a measurement, not the measurement
+
+Two tests passed on a developer's machine and failed on CI, in opposite directions, for
+one reason. Both were mine, and the engine was right in both.
+
+**On a fast runner the pilot was too fast to time.** `estimate` measures the machine by
+solving a coarsened copy of the model's own geometry, and refuses to quote a rate from a
+pilot under 15 ms — below that the timer measures the clock rather than the solve. The
+Windows runner did it in **12 ms**, so the basis correctly said *"too little to time"* and
+fell back to the documented rate. The test asserted the measured branch unconditionally.
+
+**On a shared runner two calibrations disagreed.** A study test compared the totals of a
+25-point and a 50-point scan and asserted the ratio was 2, reasoning that "both are
+calibrated on the same machine in the same run, so everything machine-specific cancels".
+That holds on an idle box. On CI it came out **1.125**, because two pilot measurements
+minutes apart can differ by more than the quantity under test. The test was measuring the
+runner's variance.
+
+Both are SPEC.md Amendment 27 — *an absolute time is a statement about a machine* — which
+this project learned from the extension timing tests and wrote down, and which I then
+walked into twice more while building a feature whose entire subject is timing.
+
+**The fixes are not looser bounds.** A wider range would have made both tests pass and
+tested nothing:
+
+- The calibration test asserts the **disjunction**: the basis must say either that it
+  measured this machine or why it could not, and *exactly one* of those. That is the
+  reporting contract (GRD-12), and it holds on any hardware.
+- The study test asserts the **arithmetic invariant**: a study's total *is* its evaluation
+  count times its per-evaluation cost, to nine figures. That is what the code guarantees,
+  and it is machine-independent by construction.
+
+**The rule.** Where a value is derived from a measurement of the machine, do not assert the
+value — assert the arithmetic that consumes it, or the contract that reports it. The
+measurement is the input, and an input you do not control is not a thing to have
+expectations about.
+
+**And a corollary about scale.** It is not only *how long* something takes that is a
+statement about a machine; so is the assumption that a given amount of work takes long
+enough to time at all. The 12 ms pilot was not a slow machine or a fast one — it was work
+too small for the clock, which is a threshold effect and appears without warning when the
+hardware changes.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that

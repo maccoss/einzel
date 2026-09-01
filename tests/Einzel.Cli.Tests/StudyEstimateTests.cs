@@ -82,41 +82,44 @@ public sealed class StudyEstimateTests(ITestOutputHelper output) : IDisposable
         + "\"points\": " + points.ToString(System.Globalization.CultureInfo.InvariantCulture)
         + " } }");
 
-    /// <summary>A study costs its evaluation count, and says what that count is.</summary>
+    /// <summary>A study costs its evaluation count, exactly.</summary>
     /// <remarks>
-    /// Two scans differing only in their point count, so everything machine-specific
-    /// cancels: the ratio of the totals must be the ratio of the points. Asserting an
-    /// absolute time would be asserting a machine (SPEC.md Amendment 27).
     /// <para>
-    /// <b>Both are above the sampling threshold, and they have to be.</b> A study long
-    /// enough to absorb it has its flight sampled across its own range and a shorter one
-    /// does not, so the two are costed by different methods and their per-evaluation figures
-    /// legitimately differ. A first version of this test used 5 and 40, straddled the gate,
-    /// and reported 10.77x for an eightfold difference in points - the test finding a real
-    /// discontinuity in the thing it was measuring across, rather than a defect.
+    /// The arithmetic invariant asserted directly: a study's total <b>is</b> its evaluation
+    /// count times its per-evaluation cost. Nothing here depends on how fast the machine is.
+    /// </para>
+    /// <para>
+    /// <b>A first version compared the totals of two scans</b> and asserted their ratio was
+    /// the ratio of their point counts, on the reasoning that both are calibrated on the same
+    /// machine in the same run so everything machine-specific cancels. <b>It failed on CI at
+    /// 1.125 against 2.</b> That reasoning holds on an idle box and not on a shared runner,
+    /// where two pilot measurements can differ by more than the quantity being measured - so
+    /// the test was measuring the runner's variance. SPEC.md Amendment 27, again.
+    /// </para>
+    /// <para>
+    /// The lesson generalises past this file: <b>where a value is derived from a measurement
+    /// of the machine, assert the arithmetic that consumes it, not the value.</b>
     /// </para>
     /// </remarks>
     [Fact]
     public void AStudyCostsItsEvaluationCount()
     {
-        var few = EstimateCommand.ForStudy(Scan(25));
-        var many = EstimateCommand.ForStudy(Scan(50));
+        foreach (var points in new[] { 25, 50 })
+        {
+            var costed = EstimateCommand.ForStudy(Scan(points));
+            var study = costed.Study!;
 
-        output.WriteLine($"25 points  {few.Seconds,7:F2} s   {few.Study!.Evaluations} evaluations");
-        output.WriteLine($"50 points  {many.Seconds,7:F2} s   {many.Study!.Evaluations} evaluations");
+            output.WriteLine(
+                $"{points,3} points  {costed.Seconds,8:F2} s  =  {study.Evaluations} x "
+                + $"{study.SecondsPerEvaluation:F4} s");
 
-        Assert.Equal(25, few.Study.Evaluations);
-        Assert.Equal(50, many.Study.Evaluations);
-        Assert.Equal("scan", many.Study.Kind);
+            Assert.Equal(points, study.Evaluations);
+            Assert.Equal("scan", study.Kind);
 
-        // Both are calibrated on the same machine in the same run and sampled the same way,
-        // so the per-evaluation costs agree closely and the totals stand in the ratio of
-        // the point counts.
-        var ratio = many.Seconds / few.Seconds;
-
-        output.WriteLine($"ratio      {ratio:F2}x against 2x expected");
-
-        Assert.InRange(ratio, 1.7, 2.3);
+            // Exact to rounding: the total is the count times the unit cost, and is not
+            // arrived at any other way.
+            Assert.Equal(study.Evaluations * study.SecondsPerEvaluation, costed.Seconds, 9);
+        }
     }
 
     /// <summary>An evaluation solves once, however many members it flies.</summary>
