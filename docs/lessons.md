@@ -1782,6 +1782,29 @@ value — assert the arithmetic that consumes it, or the contract that reports i
 measurement is the input, and an input you do not control is not a thing to have
 expectations about.
 
+**A fourth failure, of a different kind, and it was hiding behind a bad grep.** A theory
+pinned resolving power to values this build had produced, to full round-trip precision, and
+failed on Linux at **122623.78 against 123107.75** — four parts in a thousand. Resolving
+power is `t / 2dt` where `dt` is a difference of nearly-equal flight times, so **catastrophic
+cancellation turns a last-bit difference into a per-mille one**, and last-bit differences
+across platforms are ordinary: `exp` and `pow` are not bit-specified and the JIT makes its
+own vectorisation and FMA choices.
+
+The guard moved to **flight time**, which is an accumulation rather than a difference and
+therefore does not amplify. Writing that down forced a correction to my own reasoning: I had
+justified the assertion as catching a per-member solve, and **a per-member solve gives the
+identical answer** — that is precisely what "bit-identical" meant. No value assertion can
+detect it; the cost test is what guards the hoist. The value test guards what the refactor
+actually touched.
+
+**And how it stayed hidden for two CI runs.** I read the failures with
+`grep -oE "Einzel\.[A-Za-z.]+Tests\.[A-Za-z]+\.[A-Za-z]+ \[FAIL\]"`, which cannot match a
+parameterised `[Theory]` — its name carries the arguments. Two runs' worth of failures were
+in the log and my filter could not see them, so each round I fixed what I could see and
+pushed into the same wall. **A filter over failure output is itself a test of nothing if it
+can silently match less than everything**; read the count, or match the failure marker rather
+than the name.
+
 **And a corollary about scale.** It is not only *how long* something takes that is a
 statement about a machine; so is the assumption that a given amount of work takes long
 enough to time at all. The 12 ms pilot was not a slow machine or a fast one — it was work
