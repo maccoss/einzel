@@ -2382,3 +2382,29 @@ was validated against a *time* — 1275 µs predicted against 1356.96 measured, 
 which is a real check and does not touch the coefficient, because the same fitted `k` sits
 on both sides. Counting the oscillations needs one extra thing, a trajectory, and it is the
 only measurement that puts the modelled quantity and the observed one side by side.
+
+## A fitted parameter with a closed form is a free validity check on the fit
+
+Fitting a deceleration from two flight times returns two numbers, and only one of them was
+wanted. The other — the launch drift speed — is fixed by the ion's energy and launch angle
+at `sqrt(2qV/m)·sinα`, and the fit is not told it. So every fit carries its own audit: if
+`v_z0` does not come back at the closed-form value, the fit is not describing the thing it
+was set up to describe, whatever the parameter of interest looks like.
+
+It earned its keep twice within an hour. Padding the solve domain moved the fitted `v_z0`
+from 858.3 to 877.8 m/s against a closed-form **877.69** — so the unpadded model was
+absorbing its boundary's distortion into a quantity that cannot depend on the geometry at
+all, and **the fit converging onto the closed form is a second, independent reason to pad**.
+And a mirror-depth point returned `v_z0` = **14,453 m/s** with an efficiency of 10.57, from
+combining a decelerating trajectory with one that turned out to be *accelerated* five-fold
+along the drift. Two trajectories of different kinds still fit a rate; they produce a number,
+not an error.
+
+**The number looked fine.** 10.57 sits plausibly beside 0.578 if nobody is checking, and it
+is exactly the sort of point a power law gets drawn through — which is how the retracted
+depth trend happened in the first place. What made it visible was not that it looked wrong
+but that a quantity with an independent value disagreed with that value.
+
+The generalisation: **when a fit returns more parameters than you need, check the ones you
+did not want against whatever fixes them.** They cost nothing to compare and they are the
+only part of the fit that can be wrong in a way the residual cannot see.

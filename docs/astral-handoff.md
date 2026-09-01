@@ -266,9 +266,12 @@ shortest spelling discards the evidence* shape this project has fixed four times
 the engine, committed once outside it. A warning that is emitted and not read costs the
 same as one never emitted.
 
-**2. It was never a depth study.** `mouth = d4`, so the mirror **position** is derived
-from the depth. Scaling `d1..d4` walks the two mirrors toward each other and shrinks the
-field-free gap between them:
+**2. It was a scan along a trade, and was written up as a scan in one variable.**
+`mouth = d4`, so the mirror's back sits at the cap and its mouth at depth `d4` — which is
+**physically right for a fixed envelope**, since a deeper mirror must reach further toward
+the centre. What it is not is a free depth axis: at a fixed 625 mm cap-to-cap, depth and
+field-free length are one degree of freedom, not two, and scaling `d1..d4` walks the
+mirrors together:
 
 | d4 | field-free gap = capToCap − 2·d4 |
 | --- | --- |
@@ -276,8 +279,11 @@ field-free gap between them:
 | 195 mm | 235 mm |
 | 286 mm | **53 mm** |
 
-Four different instruments, not one instrument at four depths. A depth study needs
-`mouth` freed from `d4` first.
+So the far ends of that scan are not deeper versions of one instrument, they are different
+points on the depth-against-drift trade, and comparing them needs saying which. **Varying
+depth at fixed field-free length is a different question and needs a bigger envelope**, not
+a different parameterisation — `mouth` freed from `d4` would just put the mirror's back
+outside the cap.
 
 **3. A bisection is only comparable across runs that share a bracket.** The confirming
 run used `[0.02, 2.0]` where every other depth used `[0.01, 8.0]`, and returned
@@ -502,6 +508,56 @@ the average speed is about half the launch value and the true count is about twi
 ballistic one. **Which of these matches the real instrument is not settled here**, because
 the published "prism angle" of about 2° is a third number again and it is not clear which
 angle it names.
+
+### Depth is a weak lever, and η is not where it acts
+
+`η` looked like the figure of merit the electrode depths had been missing. Measured, it is
+not — it barely moves. Depths scaled together at a fixed 625 mm envelope, with `k` from two
+runs and the period counted from a trajectory at each:
+
+| d4 | field-free gap | period | **η** | reversal convergence |
+| --- | --- | --- | --- | --- |
+| 100 mm | 425 mm | 32.29 µs | **0.587** | 0.2871 mm |
+| 130 mm | 365 mm | 29.53 µs | **0.578** | 0.2666 mm |
+
+**η is flat to 1.5 per cent across a 30 per cent change in depth**, so the impulse
+efficiency is a property of the mirror's *shape* — the stage proportions and potentials,
+held fixed here — rather than of its scale.
+
+What does move is the period, and it moves **down** with depth: at a fixed envelope the
+field-free gap shrinks faster than the penetration grows, so a deeper mirror is a *shorter*
+oscillation. Since `c_rev ∝ T/η` and `η` is flat, **the whole depth dependence of the
+reversal convergence runs through the period** — 7.7 per cent in `c_rev` against 9.3 per
+cent in `T`, which is the relation closing on itself.
+
+**So depth is a weak lever: about 8 per cent of `c_rev` for 30 per cent of depth.** That is
+the honest replacement for the retracted power law, and it is one more reason the tilt axis
+rather than the depths had to be the 6× — nothing available in `d1..d4` at this envelope
+comes close.
+
+**A free validity check on every fit, which earned its keep immediately.** The fitted `v_z0`
+has a closed form the fit is not told — `sqrt(2qV/m)·sinα` = 877.69 m/s — so a fit that
+comes back with anything else is not describing a decelerating drift. A third depth,
+d4 = 160 mm, returned **14,453 m/s** and an η of 10.57. Arithmetic on nonsense, caught by one
+comparison rather than by the number looking wrong — 10.57 sits perfectly plausibly next to
+0.578 if nobody is checking, and it is exactly what a power law would have been drawn
+through.
+
+**What it is doing there is worth knowing, and it is the geometry rather than the solver.**
+The two runs the fit combined are not the same kind of trajectory at all:
+
+| c | outcome | time | implied drift |
+| --- | --- | --- | --- |
+| 0.05 mm | arrives | 378.85 µs | 831.5 m/s — decelerated, as expected |
+| 0.20 mm | arrives | **68.54 µs** | **4596 m/s — accelerated 5.2×** |
+
+At a 305 mm field-free gap between two 160 mm mirrors the ion stops behaving like a
+drifting oscillator and is pushed *along* the drift instead. Whether that is a real
+property of a deep, closely-spaced pair or an artefact of a 4 mm cell in a now-crowded
+domain is **not established here**, and it is the reason the depth table above stops at two
+points rather than three. Fitting a rate to two trajectories of different kinds produces a
+number rather than an error, which is the whole argument for checking `v_z0` against its
+closed form on every fit.
 
 ### What this does and does not establish
 

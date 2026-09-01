@@ -2309,7 +2309,9 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     ion alike; two of its four points were the *arrives → strikes metal* crossing, one
     was a bisection over a bracket the others did not share, and `mouth = d4` meant
     scaling the depths walked the mirrors together and shrank the field-free gap from
-    365 mm to 53. Four instruments, not one at four depths. **The engine said so and was
+    365 mm to 53 — which is physically right for a fixed envelope, where depth and
+    field-free length are one degree of freedom rather than two, but makes it a scan along
+    a trade written up as a scan in one variable. **The engine said so and was
     not read** — `BoundarySearch` raises `boundary.multiple-crossings` for exactly this,
     and the analysis script read `boundary.value` and dropped `warnings`. That is the
     *shortest spelling discards the evidence* failure this project has fixed four times
