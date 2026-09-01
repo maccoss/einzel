@@ -2408,3 +2408,39 @@ but that a quantity with an independent value disagreed with that value.
 The generalisation: **when a fit returns more parameters than you need, check the ones you
 did not want against whatever fixes them.** They cost nothing to compare and they are the
 only part of the fit that can be wrong in a way the residual cannot see.
+
+## One scalar cannot set the resolution of a shape with three extents
+
+Sub-cell geometry has now been lost twice by the same mechanism wearing different ratios.
+First by sampling an electrode over the whole solve domain: a 1 mm plate in a 60 mm box at
+48 cells falls between lattice planes and produces **no surface at all, silently**. That was
+fixed by extracting over the electrode's own bounding box — which is correct, and assumed
+the box is roughly cubic.
+
+**An analyser's stripe is 4 mm thick and 635 mm long, so its own box is as badly proportioned
+as the domain was.** 48 cells across the longest span gives 15 mm cells, the metal again lies
+between two sample planes, and the surface is again empty. The padding made it worse: 8 per
+cent of the *largest* extent applied to *every* axis put 50 mm of padding around a 4 mm board,
+so the metal occupied a fortieth of the box before sampling began.
+
+**The obvious repair causes the mirror-image failure.** Take the step from the *thinnest*
+span and the slab resolves — and its length is tessellated at the same spacing, giving 72,000
+triangles for what is a box and a 77 MB file for sixteen of them. Both failures are silent and
+neither raises anything; one produces nothing and the other produces far too much, and only
+the second is even noticeable.
+
+The repair is per-axis: `clamp(cells × span / longest, 4, cells)`, with padding a fraction of
+each axis's own extent. On an isotropic shape every axis lands on the requested count and
+nothing changes, which is what keeps the existing sphere checks meaningful.
+
+**The rule: a resolution set by one scalar over a shape with three independent extents will
+mis-serve some shape, and which one depends on which extent the scalar came from.** There is
+no correct single choice — the longest loses thin things, the thinnest bankrupts long ones,
+and the mean does both a little. If a routine takes one `cells` and applies it to a box,
+ask what it does to the worst aspect ratio it will ever see, because the answer is never
+"nothing" and is usually silent.
+
+The test that discriminates is a *pair*: a slab must mesh **with its thickness** — a surface
+can be extracted and be a sheet, which has triangles and looks plausible — and it must not
+cost its aspect ratio in triangles. Each mutation fails exactly one of them, and an isotropic
+control catches the case where a fix changes what was already right.

@@ -1263,14 +1263,24 @@ public static class Program
     {
         if (options.Positional.Count == 0)
         {
-            Console.Error.WriteLine("usage: einzel export <model.json> [--project <dir>] [--dry-run] [--json]");
+            Console.Error.WriteLine("usage: einzel export <model.json> [--mesh] [--project <dir>] [--dry-run] [--json]");
             Console.Error.WriteLine("writes the solved potential field as VTK ImageData for ParaView");
+            Console.Error.WriteLine("  --mesh  write the conductor surfaces as Wavefront OBJ instead,");
+            Console.Error.WriteLine("          one named object per electrode, for any 3D renderer");
             return (int)ExitCode.ValidationFailure;
         }
 
         var modelPath = Path.GetFullPath(options.Positional[0]);
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
-        var outcome = ExportCommand.Vtu(modelPath, new ProjectLayout(root), options.Has("dry-run"));
+        var layout = new ProjectLayout(root);
+        var dryRun = options.Has("dry-run");
+
+        // A mesh and a field volume are different artifacts about the same model, so this
+        // is a choice of what to export rather than of how - which is why it is a flag on
+        // 'export' and not a verb of its own.
+        var outcome = options.Has("mesh")
+            ? ExportCommand.Mesh(modelPath, layout, dryRun)
+            : ExportCommand.Vtu(modelPath, layout, dryRun);
 
         if (options.Has("json"))
         {

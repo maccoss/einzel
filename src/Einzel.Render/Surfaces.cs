@@ -55,6 +55,23 @@ public static class Surfaces
     /// <returns>The signed distance: negative inside, positive outside.</returns>
     public delegate double SignedDistance(double x, double y, double z);
 
+    /// <summary>How many cells the thinnest direction of a box must get.</summary>
+    /// <remarks>
+    /// Four rather than two: two puts a sample plane on each face of a slab, so the
+    /// extracted surface is made entirely of boundary cases and a slab comes out as a
+    /// sheet with no thickness.
+    /// </remarks>
+    private const int MinimumCellsAcross = 4;
+
+    /// <summary>How many cells one axis of a box gets.</summary>
+    /// <param name="span">This axis, in metres.</param>
+    /// <param name="longest">The longest axis of the same box, in metres.</param>
+    /// <param name="cells">The count the longest axis is asked to have.</param>
+    /// <returns>The count for this axis, at least <see cref="MinimumCellsAcross"/>.</returns>
+    private static int Resolution(double span, double longest, int cells) =>
+        Math.Clamp(
+            (int)Math.Ceiling(cells * span / longest), MinimumCellsAcross, cells);
+
     /// <summary>Extracts the zero surface of a signed distance over a box.</summary>
     /// <param name="distance">Negative inside the conductor.</param>
     /// <param name="minX">Box corner, in metres.</param>
@@ -83,6 +100,12 @@ public static class Surfaces
     /// it.
     /// </para>
     /// </remarks>
+    /// <summary>How many cells the thinnest direction of a box must get.</summary>
+    /// <remarks>
+    /// Four rather than two: two puts a sample plane on each face of a slab and the
+    /// extracted surface is then entirely made of boundary cases, which marching schemes
+    /// handle correctly and degenerately - a slab comes out as a sheet with no thickness.
+    /// </remarks>
     public static SurfaceMesh FromSignedDistance(
         SignedDistance distance,
         double minX, double minY, double minZ,
@@ -99,11 +122,27 @@ public static class Surfaces
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(Math.Min(spanX, Math.Min(spanY, spanZ)));
 
         var longest = Math.Max(spanX, Math.Max(spanY, spanZ));
-        var step = longest / cells;
 
-        var nx = Math.Max(2, (int)Math.Ceiling(spanX / step));
-        var ny = Math.Max(2, (int)Math.Ceiling(spanY / step));
-        var nz = Math.Max(2, (int)Math.Ceiling(spanZ / step));
+        // Counted per axis rather than taken from one step, because a box may be any
+        // shape. A uniform step from the LONGEST span loses anything thin - an analyser's
+        // stripe is 4 mm thick and 635 mm long, so 48 cells across the length gives 15 mm
+        // cells and the metal falls between two sample planes, producing no surface at all
+        // and saying nothing. That is the sub-cell failure the electrode's own bounding box
+        // was introduced to fix, returning through the box's aspect ratio instead of the
+        // domain's.
+        //
+        // Taking the step from the THINNEST span instead fixes that and over-tessellates
+        // the other way: the same stripe came out at 72,000 triangles for what is a box,
+        // and sixteen of them made a 77 MB file. So each axis is resolved on its own,
+        // between a floor that keeps a slab a slab and the requested count.
+        //
+        // The cells are then not cubes, which costs nothing: surface nets works on a
+        // lattice and the spacings are already carried separately. On an isotropic shape
+        // every axis lands on `cells` and the mesh is exactly what it was before - which
+        // is what keeps the sphere's area, volume and Pappus checks meaningful.
+        var nx = Resolution(spanX, longest, cells);
+        var ny = Resolution(spanY, longest, cells);
+        var nz = Resolution(spanZ, longest, cells);
 
         var hx = spanX / nx;
         var hy = spanY / ny;
@@ -202,7 +241,13 @@ public static class Surfaces
             }
         }
 
-        return Orient(new SurfaceMesh(vertices, new double[vertices.Count], triangles), distance, step);
+        // The gradient is differenced at the SMALLEST spacing, since the cells need not be
+        // cubes: a step longer than the thinnest direction of a slab would sample straight
+        // through it and normalise a gradient of nearly nothing.
+        var finest = Math.Min(hx, Math.Min(hy, hz));
+
+        return Orient(
+            new SurfaceMesh(vertices, new double[vertices.Count], triangles), distance, finest);
     }
 
     /// <summary>Revolves a closed profile in the half-plane about the x axis.</summary>

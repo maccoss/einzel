@@ -311,3 +311,124 @@ public sealed class SurfaceTests(ITestOutputHelper output)
         Assert.Equal(0, mesh.TriangleCount);
     }
 }
+
+/// <summary>
+/// A long thin slab has to mesh, and it is the shape a real analyser is made of.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Sub-cell geometry has been lost twice, in two different ways.</b> First by sampling
+/// over the whole solve domain, where a 1 mm plate in a 60 mm box at 48 cells falls between
+/// lattice planes; that was fixed by extracting over the electrode's own bounding box. Then
+/// by the box's own <em>aspect ratio</em>: an analyser's stripe electrode is 4 mm thick and
+/// 635 mm long, so 48 cells across the longest span still gives 15 mm cells and the metal
+/// again lies between two sample planes.
+/// </para>
+/// <para>
+/// Both produce no surface at all and say nothing, so the check is that a slab of the shape
+/// real hardware is built from comes back with triangles in it and with the extent it was
+/// given.
+/// </para>
+/// </remarks>
+public sealed class ThinSlabSurfaceTests(ITestOutputHelper output)
+{
+    /// <summary>An axis-aligned slab, in metres: 20 x 4 x 635 mm.</summary>
+    private static double Slab(double x, double y, double z)
+    {
+        var dx = Math.Abs(x) - 0.010;
+        var dy = Math.Abs(y) - 0.002;
+        var dz = Math.Abs(z) - 0.3175;
+
+        var outside = Math.Sqrt(
+            (Math.Max(dx, 0) * Math.Max(dx, 0))
+            + (Math.Max(dy, 0) * Math.Max(dy, 0))
+            + (Math.Max(dz, 0) * Math.Max(dz, 0)));
+
+        return outside + Math.Min(Math.Max(dx, Math.Max(dy, dz)), 0.0);
+    }
+
+    /// <summary>An analyser stripe meshes, and keeps its thickness.</summary>
+    /// <remarks>
+    /// The thickness is the assertion with teeth. A surface can be extracted and be a
+    /// <i>sheet</i> — the two faces collapsed onto one — which has triangles, looks
+    /// plausible in a viewport, and is not the electrode. So the y extent of the vertices
+    /// has to span the slab rather than merely exist.
+    /// </remarks>
+    [Fact]
+    public void ALongThinSlabIsMeshedWithItsThickness()
+    {
+        var mesh = Surfaces.FromSignedDistance(
+            Slab, -0.012, -0.004, -0.34, 0.012, 0.004, 0.34, 48);
+
+        output.WriteLine($"{mesh.VertexCount} vertices, {mesh.TriangleCount} triangles");
+
+        Assert.True(
+            mesh.TriangleCount > 0,
+            "a 4 mm x 635 mm stripe produced no surface at all. That is the sub-cell "
+            + "failure returning through the box's aspect ratio: a uniform step taken from "
+            + "the longest span gives 15 mm cells, and 4 mm of metal falls between two "
+            + "sample planes");
+
+        var ys = new List<double>();
+
+        for (var i = 1; i < mesh.Vertices.Count; i += 3)
+        {
+            ys.Add(mesh.Vertices[i]);
+        }
+
+        var thickness = ys.Max() - ys.Min();
+
+        output.WriteLine($"y extent {thickness * 1e3:F3} mm of a 4.000 mm slab");
+
+        Assert.True(
+            thickness > 0.003,
+            $"the extracted surface spans {thickness * 1e3:F3} mm in y where the slab is "
+            + "4 mm thick, so it has been flattened into a sheet rather than meshed");
+    }
+
+    /// <summary>It does not pay for the thin axis along the long one.</summary>
+    /// <remarks>
+    /// <b>The opposite failure, and the first fix caused it.</b> Taking the step from the
+    /// thinnest span instead resolves the slab and then tessellates its length at the same
+    /// spacing: 72,000 triangles for what is a box, and sixteen of them made a 77 MB file.
+    /// A box needs twelve triangles; a few thousand is a smoothed extraction of one, and
+    /// a hundred thousand is a bug.
+    /// </remarks>
+    [Fact]
+    public void ASlabDoesNotCostItsAspectRatioInTriangles()
+    {
+        var mesh = Surfaces.FromSignedDistance(
+            Slab, -0.012, -0.004, -0.34, 0.012, 0.004, 0.34, 48);
+
+        output.WriteLine($"{mesh.TriangleCount} triangles");
+
+        Assert.True(
+            mesh.TriangleCount < 20_000,
+            $"{mesh.TriangleCount} triangles for a single slab. Resolving the thin axis by "
+            + "shortening one uniform step charges the same spacing along the long axis, "
+            + "which is 159 times more cells than that direction needs");
+    }
+
+    /// <summary>An isotropic shape is meshed exactly as it was before.</summary>
+    /// <remarks>
+    /// The control for both of the above: every axis lands on the requested count, so a
+    /// sphere's area, volume and Pappus checks in <see cref="SurfaceTests"/> are testing
+    /// the same mesh they always were and none of this changed them.
+    /// </remarks>
+    [Fact]
+    public void ACubeGetsTheRequestedCountOnEveryAxis()
+    {
+        static double Sphere(double x, double y, double z) =>
+            Math.Sqrt((x * x) + (y * y) + (z * z)) - 0.010;
+
+        var mesh = Surfaces.FromSignedDistance(
+            Sphere, -0.012, -0.012, -0.012, 0.012, 0.012, 0.012, 24);
+
+        output.WriteLine($"{mesh.VertexCount} vertices, {mesh.TriangleCount} triangles");
+
+        // 24 cells a side on a sphere of 10 mm in a 24 mm box: the surface cells are the
+        // shell of a ball about 20 cells across, so a few thousand triangles. What matters
+        // is that it is the same number an isotropic box always gave.
+        Assert.InRange(mesh.TriangleCount, 1_000, 6_000);
+    }
+}

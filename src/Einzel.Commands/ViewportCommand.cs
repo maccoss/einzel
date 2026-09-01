@@ -698,14 +698,20 @@ public static class ViewportCommand
                     // and the extraction is not clipped by its own box.
                     var around = electrode.Bounds;
 
-                    var pad = 0.08 * Math.Max(
-                        around.MaxX - around.MinX,
-                        Math.Max(around.MaxY - around.MinY, around.MaxZ - around.MinZ));
+                    // Padded per axis by a fraction of THAT axis, not of the largest.
+                    // A stripe 4 mm thick and 635 mm long was being padded by 8 per cent
+                    // of 635 - inflating its thinnest direction twenty-six-fold, so the
+                    // metal occupied a fortieth of the box being sampled and disappeared.
+                    // The padding exists to keep the surface strictly inside the box, and
+                    // for that each axis only needs a fraction of itself.
+                    var padX = Pad(around.MaxX - around.MinX);
+                    var padY = Pad(around.MaxY - around.MinY);
+                    var padZ = Pad(around.MaxZ - around.MinZ);
 
                     var mesh = Surfaces.FromSignedDistance(
                         electrode.SignedDistance,
-                        around.MinX - pad, around.MinY - pad, around.MinZ - pad,
-                        around.MaxX + pad, around.MaxY + pad, around.MaxZ + pad,
+                        around.MinX - padX, around.MinY - padY, around.MinZ - padZ,
+                        around.MaxX + padX, around.MaxY + padY, around.MaxZ + padZ,
                         VolumeCells);
 
                     if (mesh.TriangleCount > 0)
@@ -1046,6 +1052,15 @@ public static class ViewportCommand
 
     /// <summary>Cells along the longest axis when extracting a volume conductor.</summary>
     private const int VolumeCells = 48;
+
+    /// <summary>How far to pad one axis of an electrode's box, in metres.</summary>
+    /// <remarks>
+    /// A fraction of the axis's own span, with a floor so a degenerate axis still gets a
+    /// box with something in it: a perfectly flat electrode has zero extent one way, and
+    /// zero padding there would ask for a sample box of no volume, which the extractor
+    /// refuses rather than meshes.
+    /// </remarks>
+    private static double Pad(double span) => Math.Max(0.08 * span, 1e-6);
 
     /// <summary>Columns when contouring a conductor in the section plane.</summary>
     /// <remarks>
