@@ -1973,6 +1973,41 @@ public static class ModelValidator
             Boundary(solve.UpperZEdge, $"{path}/upperZEdge", errors),
         };
 
+        // Mirroring is optional, and a mid-plane outside the solved box is a mistake worth
+        // naming: the reflected half would sit somewhere other than against the solved one.
+        double? reflect = null;
+
+        if (solve.ReflectAboutX is not null)
+        {
+            var plane = TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors);
+
+            if (plane is null)
+            {
+                return null;
+            }
+
+            if (plane.Value.SiValue < minX.Value.SiValue || plane.Value.SiValue > maxX.Value.SiValue)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/reflectAboutX",
+                    Constraint =
+                        $"the mirror plane is at {plane.Value.SiValue:G6} m, outside the solved "
+                        + $"box [{minX.Value.SiValue:G6}, {maxX.Value.SiValue:G6}] - the reflected "
+                        + "half would not meet the solved one",
+                    Observed = new ObservedValue(plane.Value.SiValue, "m"),
+                    Suggestion =
+                        "put it at the edge of the domain the half is solved over, usually maxX, "
+                        + "and declare that face neumann so the plane is a symmetry plane",
+                });
+
+                return null;
+            }
+
+            reflect = plane.Value.SiValue;
+        }
+
         return new CompiledField
         {
             Kind = CompiledFieldKind.Solved3D,
@@ -1990,6 +2025,7 @@ public static class ModelValidator
                 Stages = stages,
                 Electrodes = electrodes,
                 Faces = faces,
+                ReflectAboutX = reflect,
             },
         };
     }

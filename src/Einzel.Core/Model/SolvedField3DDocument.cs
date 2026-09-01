@@ -65,6 +65,22 @@ public sealed record SolvedField3DDocument
     /// <summary>The electrodes.</summary>
     public IReadOnlyList<Electrode3DDocument>? Electrodes { get; init; }
 
+    /// <summary>Mirror the solved half about this plane along x, or omit for none.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Solve half an instrument and reflect it.</b> An analyser symmetric about a plane
+    /// costs twice what it needs to, and in a volume solve halving the domain halves the
+    /// dominant cost - on a 3-D Astral, where the solve is 94 per cent of a run, this is the
+    /// cheapest factor of two there is.
+    /// </para>
+    /// <para>
+    /// <b>Declare the mid-plane face Neumann alongside it.</b> A mirror plane is a symmetry
+    /// plane; grounding it instead puts a conductor down the middle of the instrument. The
+    /// plane path pairs <c>rightEdge</c> with <c>reflectAboutX</c> for exactly this reason.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? ReflectAboutX { get; init; }
+
     /// <summary>Lower x face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
     /// <remarks>
     /// <para>
@@ -262,6 +278,9 @@ public sealed record CompiledSolvedField3D
     /// one whose geometry is invariant along an axis. See the document's own remarks.
     /// </remarks>
     public IReadOnlyList<BoundaryKind> Faces { get; init; } = [];
+
+    /// <summary>Where to mirror the solved half, in metres along x, or null for none.</summary>
+    public double? ReflectAboutX { get; init; }
 }
 
 /// <summary>One state of a timed sequence in three dimensions, validated.</summary>

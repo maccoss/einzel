@@ -102,6 +102,7 @@ public static class ExportCommand
                     Drives = solve3d.Drives,
                     Stages = solve3d.Stages,
                     Faces = Geometry3D.FacesOf(solve3d.Faces),
+                    ReflectAboutX = solve3d.ReflectAboutX,
                 };
 
                 var channels = GeometryBuilder3D.SolveChannels(geometry);

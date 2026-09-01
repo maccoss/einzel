@@ -102,6 +102,25 @@ public sealed class Grid3D
     /// <summary>Whether the cells are cubes.</summary>
     public bool IsCubic => SpacingX == SpacingY && SpacingY == SpacingZ;
 
+    /// <summary>The far corner along x, in metres.</summary>
+    public double MaxX => OriginX + ((CountX - 1) * SpacingX);
+
+    /// <summary>The far corner along y, in metres.</summary>
+    public double MaxY => OriginY + ((CountY - 1) * SpacingY);
+
+    /// <summary>The far corner along z, in metres.</summary>
+    public double MaxZ => OriginZ + ((CountZ - 1) * SpacingZ);
+
+    /// <summary>Whether a point lies inside the grid box.</summary>
+    /// <param name="x">x, in metres.</param>
+    /// <param name="y">y, in metres.</param>
+    /// <param name="z">z, in metres.</param>
+    /// <returns><see langword="true"/> when inside or on the boundary.</returns>
+    public bool Contains(double x, double y, double z) =>
+        x >= OriginX && x <= MaxX
+        && y >= OriginY && y <= MaxY
+        && z >= OriginZ && z <= MaxZ;
+
     /// <summary>x of a node index.</summary>
     /// <param name="i">Node index along x.</param>
     /// <returns>The coordinate, in metres.</returns>

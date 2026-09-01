@@ -49,6 +49,29 @@ public sealed record Geometry3D(
     /// </remarks>
     public IReadOnlyList<EdgeCondition> Faces { get; init; } = [];
 
+    /// <summary>Where to mirror the solved half, in metres along x, or null for none.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Solve half an instrument and reflect it.</b> An analyser symmetric about a plane
+    /// costs twice what it needs to: the far half is the near half seen backwards, and a
+    /// volume solve is the one place where halving the domain halves the dominant cost. On a
+    /// 3-D Astral, where the solve is 94 per cent of a run, that is the cheapest factor of
+    /// two available.
+    /// </para>
+    /// <para>
+    /// The plane path has had this from the beginning. It composes here unchanged because
+    /// <see cref="ReflectedField"/> mirrors a coordinate of any field rather than knowing
+    /// anything about how that field was meshed - so the two halves are identical by
+    /// construction and no difference between them can come from their having been
+    /// discretised differently.
+    /// </para>
+    /// <para>
+    /// Declare the mid-plane face Neumann alongside it. A mirror plane is a symmetry plane,
+    /// and grounding it instead puts a conductor down the middle of the instrument.
+    /// </para>
+    /// </remarks>
+    public double? ReflectAboutX { get; init; }
+
     /// <summary>The six faces a compiled solve declares, in this type's own terms.</summary>
     /// <param name="declared">The compiled faces, or empty for a grounded box.</param>
     /// <returns>Six conditions, or empty.</returns>
@@ -172,6 +195,12 @@ public static class GeometryBuilder3D
         };
     }
 
+    /// <summary>Mirrors a solved half about the declared plane, or returns it unchanged.</summary>
+    private static IElectrostaticField Reflected(IElectrostaticField field, Geometry3D geometry) =>
+        geometry.ReflectAboutX is { } plane
+            ? new SuperposedField([field, new ReflectedField(field, plane)])
+            : field;
+
     private static DirichletMask3D Assemble(
         Geometry3D geometry,
         Grid3D grid,
@@ -287,7 +316,7 @@ public static class GeometryBuilder3D
         if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
             var (statik, staticReport) = Build(geometry);
-            return (statik, staticReport);
+            return (Reflected(statik, geometry), staticReport);
         }
 
         var groups = Groups(geometry);
@@ -301,7 +330,11 @@ public static class GeometryBuilder3D
 
         for (var index = 0; index < groups.Count; index++)
         {
-            channels.Add(new SolvedField3D(solves[index].Potential, geometry.Electrodes));
+            // Reflected per channel rather than once over the composition, matching the
+            // plane path: superposition is linear either way, and mirroring each basis
+            // field keeps the drive weights attached to the thing they weight.
+            channels.Add(Reflected(
+                new SolvedField3D(solves[index].Potential, geometry.Electrodes), geometry));
             direct.Add(groups[index].Direct);
             harmonics.Add(groups[index].Harmonics);
 

@@ -1869,6 +1869,50 @@ memory bandwidth — is the thing that would actually lift the ceiling.
 workload with the opposite bottleneck.** If the control scales and the real work does not,
 the limit is in the work, and no amount of tuning the parallelism will move it.
 
+## A decision the plane path made, that the volume path never did
+
+Adding `reflectAboutX` to a volume solve looked like a one-line change: the plane path solves
+half a geometry and superposes it with a mirrored copy, and `ReflectedField` mirrors a
+coordinate of *any* field rather than knowing how it was meshed. So it should compose.
+
+It came back **roughly double** — a mirrored half reading 153 V where the full solve read 99.
+Doubling is the signature of a superposition adding two contributions where it should be
+taking a union, and the union only works if each half contributes **nothing outside its own
+domain**.
+
+`SolvedField2D` does exactly that: it carries an outside potential and returns zero field
+beyond its grid. `SolvedField3D` had no such notion at all — no bounds check anywhere. It
+called the tricubic unconditionally, and a tricubic asked for a point it was never fitted
+over does not decline; it continues the cubic. Measured on a 20 mm box holding one plate at
+**100 V**:
+
+| outside by | potential | field |
+| --- | --- | --- |
+| 0.5 mm | −1.6 V | 3.3 kV/m |
+| 14 mm | −283 V | 53 kV/m |
+| 80 mm | −43,113 V | 1.6 MV/m |
+| 180 mm | **−486,643 V** | **8.1 MV/m** |
+
+Four orders past the applied potential, violating the maximum principle — the cheapest exact
+check there is that a solve has not gone wrong, and one this project already runs *inside*
+the domain.
+
+**It had already been observed and misread.** An Astral skeleton whose ion escaped its 635 mm
+analyser was found 4,643 mm away, and that was written down as the ion "coasting" once
+outside the field. It was not coasting. It was being accelerated by a field nobody declared.
+
+**The shape to watch for: a decision taken on one path and never ported to its sibling.**
+This is the same finding as the 3-D solver supporting Neumann faces that no document could
+ask for, and as `ITransportMode` named only in a csproj — a capability or a policy that
+exists on one side of a dimension boundary and silently does not on the other. The plane and
+volume paths here are deliberately separate, because refactoring a numerical core that
+carries every validated number is how those numbers get quietly lost — and the price of that
+separation is that every decision has to be made twice, or it is made once and forgotten.
+
+**The check that would have caught it years earlier costs nothing**: assert the maximum
+principle *outside* the domain as well as inside. No potential anywhere — in the solved box
+or beyond it — may exceed the largest applied value.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
