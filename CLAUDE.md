@@ -1134,6 +1134,8 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   | transverse | y = −0.00 mm throughout |
   | energy drift | 2.16e-6, just over ACC-4's 1e-6 at a 4 mm cell |
 
+  **And the cost picture is the opposite of what the broken run suggested.** That run spent 94% of its time flying, because the escaped ion coasted for 20,000,000 steps. Working, at a 4 mm cell in Release: **solve 5.298 s (94.3%), flight 0.321 s** — and the gap widens with refinement, since node count goes as 1/cell³ while step count goes as 1/cell. The solve is healthy rather than pathological (3 levels, limited by the thin 17-node axis; 13 cycles; factor 0.20; ~52 M node-updates/s on one core). **A number measured on a broken model describes the bug, not the instrument** — and it had already reached a planning document and inverted a priority there.
+
   **What it does not yet show** is 24 oscillations: at 3.5% the ion crosses the drift in **3.77**. Getting 24 needs the drift to **reverse**, which is what the mirror convergence provides and is not modelled yet — so the oscillation count is the first real test of the tilt. `docs/astral-handoff.md` carries the corrected generator and the order of work.
 
   **And a trap of my own, in the reader rather than the engine.** A probe read `flightTimeSeconds` from `--json` and printed **0.000 µs** for a 120 µs flight: there is no such key, because `flightTime` is a GRD-1 envelope, and `dict.get(k) or 0` turned the miss into a plausible zero. GRD-1 prevents the engine emitting a bare number; nothing stops a consumer reintroducing one.

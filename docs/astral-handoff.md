@@ -245,10 +245,27 @@ process start, which it excludes and says so. On the 3-D skeleton it read 3348 s
 actual 2265 s (1.48× over, the safe direction). It self-calibrates, so it will report the
 new machine's speed and the Release speed-up without being told.
 
-### The flight dominates the solve, ~20:1
+### The solve dominates, and refining makes it worse
 
-On the 3-D skeleton: solve ~140 s, flight the rest of an hour. This inverts the usual
-assumption and it matters for where effort goes (§6).
+**Corrected.** An earlier reading of this page said the flight dominated the solve about
+20:1. That was measured on the **broken** skeleton, whose ion escaped the analyser and
+coasted for 20,000,000 steps. With a working model:
+
+| 4 mm cell, Release | | |
+| --- | --- | --- |
+| solve | **5.298 s** | **94.3%** |
+| flight | 0.321 s | 5.7% — 16,012 steps at 20 µs each |
+
+And the gap widens with refinement: **node count goes as 1/cell³ while the step count goes
+as 1/cell**, because the step is capped by the cell size. Halving the cell is ~8× the solve
+and ~2× the flight.
+
+The solve is healthy, not pathological — 3 levels (limited by the thin 17-node y axis), 13
+cycles, convergence factor 0.20, about 52 M node-updates/s on one core. It is slow because
+there is a lot of it.
+
+**A study inherits this.** One evaluation is `solve + members × flight`; at 4 mm with nine
+members that is 5.3 + 2.9 s, so the solve is 65% — and at 1 mm it is ~97%.
 
 ---
 
@@ -297,11 +314,22 @@ cliff.**
 Shard *across starting points* instead and take the best, which is a restart strategy rather
 than parallelism.
 
-### If you want real parallelism, that is a project
+### If you want real parallelism, in priority order
 
-Evaluation-level parallelism inside the study drivers is the highest-value piece (14× on a
-16-core box, and the drivers already take a pure `Func<CompiledModel, double?>`). It is not
-built. Do not assume it while planning.
+1. **Evaluation-level parallelism in the study drivers.** ~14× on a 16-core box for the
+   inverse problem, which is the actual goal. The drivers already take a pure
+   `Func<CompiledModel, double?>`, so the shape is there. Perfect scaling, no
+   synchronisation. **The constraint is memory**: each evaluation solves its own field, so
+   14 in flight at 4.35 M nodes is ~2.8 GB and at 34 M nodes is ~22 GB.
+2. **A multi-threaded red-black smoother.** Red-black Gauss–Seidel is the textbook parallel
+   case — every node of one colour is independent of the others. This is what helps a
+   *single* solve, which evaluation parallelism cannot. Expect 4–8× rather than 16, because
+   a 27-point stencil sweep is memory-bandwidth bound.
+3. **GPU (ILGPU) last.** A real project with genuine numerics risk, and TST-1 requires the
+   scalar reference implementation be kept and never allowed to rot.
+
+**1 and 2 compete for the same cores** — you cannot multiply them. For a study, 1 is
+strictly better; for one big solve, 2 is the only option.
 
 ---
 
@@ -316,8 +344,11 @@ Named so nobody rediscovers them as bugs:
 - **Prism deflectors** setting the ~2° inclination. The skeleton fakes this with an
   injection angle.
 - **The einzel lenses** in the injection path.
-- **`reflectAboutX` for `solve3d`.** The 2-D path has it; the 3-D path does not. It would
-  halve the domain — but the solve is ~4% of the cost, so it is **low priority** now.
+- **`reflectAboutX` for `solve3d`.** The 2-D path has it; the 3-D path does not. **This is
+  now high priority, not low** — an earlier version of this page called it low on the
+  strength of the mistaken "flight dominates" reading. The Astral is symmetric about its
+  mid-plane, so reflecting halves the domain and therefore halves the dominant cost. It is
+  also the cheapest 2× available: no numerics risk, and the 2-D path shows the shape.
 - **`MirrorPair.Fly` cannot express an asymmetric track at all.** It computes one period and
   multiplies, so any resolving power it reports for a *symmetric* pair is arithmetic, flat
   to the digit across oscillation counts. Do not read it as a 3-D result.
