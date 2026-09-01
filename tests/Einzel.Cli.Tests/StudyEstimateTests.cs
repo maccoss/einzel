@@ -211,8 +211,12 @@ public sealed class StudyEstimateTests(ITestOutputHelper output) : IDisposable
         Assert.Contains(Sampled, long_.Basis, StringComparison.Ordinal);
 
         // And the short one says why it did not, rather than silently costing at the
-        // nominal and letting that read as a measurement of the range.
-        Assert.Contains("too short to be worth sampling", brief.Basis, StringComparison.Ordinal);
+        // nominal and letting that read as a measurement of the range. It names the number
+        // of pilots it declined to spend, because "too short" without a cost is a judgement
+        // the reader cannot check - and because there are two other reasons a range goes
+        // unsampled, each with its own wording.
+        Assert.Contains("too short to spend", brief.Basis, StringComparison.Ordinal);
+        Assert.Contains("extra pilots sampling the range", brief.Basis, StringComparison.Ordinal);
     }
 
     /// <summary>A sample flies a whole flight, so nothing is extrapolated.</summary>

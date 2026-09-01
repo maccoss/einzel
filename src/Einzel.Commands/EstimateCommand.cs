@@ -514,6 +514,15 @@ public static class EstimateCommand
                     {
                         Drives = firstVolume.Drives,
                         Stages = firstVolume.Stages,
+
+                        // THE SAME BOUNDARY-VALUE PROBLEM AS THE RUN. A Neumann face
+                        // constrains fewer nodes and converges differently, so a pilot
+                        // that quietly grounded every face would measure the rate of a
+                        // problem nobody asked about. The plane pilot above escapes this
+                        // by construction - it is `firstPlane with { CellSize = ... }`,
+                        // which carries every other field forward - while this one is
+                        // copied field by field and so drops whatever was added last.
+                        Faces = Fields.Solved.Geometry3D.FacesOf(firstVolume.Faces),
                     };
 
                     var pilot = Fields.Solved.GeometryBuilder3D.BuildGrid(geometry);
@@ -550,13 +559,20 @@ public static class EstimateCommand
             // number that is always nought is worse than none: it reads as an answer.
             if (element.Solve3D is { } volume)
             {
+                // Node counts only - BuildGrid meshes the declared box and never solves,
+                // so the boundary conditions cannot change its answer. Carried anyway, so
+                // that a later reader does not have to establish that, and so this stays
+                // one line from being a geometry that could be solved.
                 var space = Fields.Solved.GeometryBuilder3D.BuildGrid(
                     new Fields.Solved.Geometry3D(
                         volume.MinX, volume.MinY, volume.MinZ,
                         volume.MaxX, volume.MaxY, volume.MaxZ,
                         volume.CellSize,
                         volume.Electrodes,
-                        volume.Tolerance));
+                        volume.Tolerance)
+                    {
+                        Faces = Fields.Solved.Geometry3D.FacesOf(volume.Faces),
+                    });
 
                 var volumeNodes = space.NodeCount;
 
@@ -861,7 +877,18 @@ public static class EstimateCommand
             ? compiled.Cloud.Ions
             : study.Ions;
 
-        var solve = model.Seconds - model.TrajectorySeconds;
+        // WHETHER AN EVALUATION IS A PACKET OR AN ENSEMBLE OF INDEPENDENT IONS, and the
+        // two cost completely differently.
+        //
+        // The ordinary case flies `members` independent ions through one solved field, so
+        // the solve is paid once and the flight `members` times. But a diffusive run steps
+        // a density and a space-charge run advances the whole packet in lockstep: in both,
+        // what `Execute` already costed IS one whole evaluation, flights included. Adding
+        // `members x flight` on top of those double-counts the very work they describe -
+        // and for a diffusive model the flights do not exist at all, since that mode
+        // produces no trajectories (TRN-2, RND-8).
+        var wholeRun = validation.Model?.ModelsSpaceCharge == true
+            || validation.Model?.TransportMode == "diffusion";
 
         // SAMPLED WHERE THE STUDY WILL GO, not only at the nominal. A study that varies
         // the geometry varies its own cost, and on the shipped mirror pair a separation
@@ -871,30 +898,34 @@ public static class EstimateCommand
         // moved 4 per cent across the same range), so it is the flight that is resampled.
         //
         // Guarded on the evaluation count so the estimate can never be a meaningful
-        // fraction of the work it is estimating: two extra pilots against ten or more
-        // evaluations is at worst a fifth, and against the hundreds a real study declares
-        // it is nothing.
-        var (flight, spread) = evaluations >= ExtremeSamplingThreshold
+        // fraction of the work it is estimating, and skipped entirely where an evaluation
+        // is a whole run - there is no separable flight term there to resample.
+        var (flight, spread) = !wholeRun && evaluations >= ExtremeSamplingThreshold
             ? SampledFlight(document, directory, model.TrajectorySeconds, Extremes(study))
             : (model.TrajectorySeconds, string.Empty);
 
-        var perEvaluation = compile + solve + (members * flight);
+        var perEvaluation = wholeRun
+            ? compile + model.Seconds
+            : compile + (model.Seconds - model.TrajectorySeconds) + (members * flight);
+
         var seconds = evaluations * perEvaluation;
+
+        var each = wholeRun
+            ? "is one whole run of the model - a density stepped, or a packet advanced in "
+            + "lockstep - so its flights are already inside the figure above and are not "
+            + "counted again"
+            : $"solves once and flies {members} "
+            + $"trajector{(members == 1 ? "y" : "ies")} through that one field";
 
         var basis = model.Basis
             + $" This is a study: {how} Each evaluation re-compiles the document "
-            + $"({compile * 1000.0:F0} ms, measured), solves once, and flies {members} "
-            + $"trajector{(members == 1 ? "y" : "ies")} through that one field, so it costs "
+            + $"({compile * 1000.0:F0} ms, measured) and {each}, so it costs "
             + $"{perEvaluation:F2} s, and {evaluations} of them cost {Duration(seconds)}."
             + spread
             + (ceiling
                 ? " That count is a ceiling the search may stop short of."
                 : " Every one of those evaluations is computed.")
-            + (spread.Length > 0
-                ? string.Empty
-                : " Costed at the model's declared parameter values: a study that varies "
-                + "the geometry varies its own cost, and this one is too short to be worth "
-                + "sampling the range for.")
+            + Unsampled(wholeRun, spread, evaluations, Extremes(study).Count)
             + " Process start and just-in-time compilation are not included - a fixed cost, "
             + "which is negligible for a long study and is not for a short one.";
 
@@ -903,6 +934,13 @@ public static class EstimateCommand
             Seconds = seconds,
             AboveThreshold = seconds > ThresholdSeconds,
             Basis = basis,
+
+            // The flight the arithmetic above actually used, not the nominal pilot it
+            // started from. Leaving the nominal here made the record contradict itself:
+            // a caller deriving the solve term as Seconds/Evaluations - Members x this
+            // got a number that did not reconcile, silently, because both fields look
+            // equally authoritative.
+            TrajectorySeconds = wholeRun ? 0.0 : flight,
             Study = new StudyEstimate
             {
                 StudyPath = absolute,
@@ -960,6 +998,41 @@ public static class EstimateCommand
             + (attribution > 0
                 ? $", plus {attribution} more for one-at-a-time attribution."
                 : "."));
+    }
+
+    /// <summary>Why the study's range was not sampled, when it was not.</summary>
+    /// <remarks>
+    /// Three different reasons, and the first version of this said the same wrong thing for
+    /// two of them. A 504-evaluation tolerance sweep is not "too short to be worth sampling":
+    /// its channels perturb <em>around</em> the nominal, so the nominal is already the right
+    /// place to measure and there is nothing to sample. Saying otherwise invites somebody to
+    /// lengthen a study that would gain nothing from it.
+    /// </remarks>
+    private static string Unsampled(bool wholeRun, string spread, int evaluations, int samples)
+    {
+        if (spread.Length > 0)
+        {
+            return string.Empty;
+        }
+
+        if (wholeRun)
+        {
+            return " The flight was not sampled across the range, because an evaluation here "
+                + "is one whole run and has no separable flight term.";
+        }
+
+        if (samples == 0)
+        {
+            return " The flight was not sampled across a range, because this study declares "
+                + "none - its draws perturb around the model's declared values, which is "
+                + "where the flight was measured.";
+        }
+
+        return string.Create(
+            Inv,
+            $" Costed at the model's declared parameter values: a study that varies the "
+            + $"geometry varies its own cost, and at {evaluations} evaluations this one is "
+            + $"too short to spend {samples} extra pilots sampling the range.");
     }
 
     /// <summary>Seconds as something a person can plan against.</summary>
