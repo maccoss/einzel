@@ -601,6 +601,14 @@ At that design condition the reversal threshold is:
 **The scaling law was right to 12 per cent at an angle it was never fitted on**, which is
 what makes it a law rather than a curve through two points.
 
+> **The 1.28° is wrong and so is the 6.3× and the later 1.33×.** Stewart et al. give the
+> working inclination as **about 2°**, adjusted by the second prism after the first
+> reflection — not a prism angle to be reconciled with a derived one. The 1.28° here came
+> from a *ballistic* oscillation count, which halves the true count because the drift
+> decelerates. At the paper's 2° the convergence mirror tilt alone would need is 0.49 mm at
+> best against a published 0.200, so the gap is about 4× and its cause is named in the paper:
+> the ion foil. See §7.
+
 **And getting the oscillation count right closed most of the gap**: 57x at the original
 2°/4-oscillation skeleton, **6.3x** here. The remainder is in the geometry that is guessed.
 
@@ -848,36 +856,42 @@ like: same binary, same study file, only the degree of parallelism moving.
 
 Named so nobody rediscovers them as bugs:
 
-- **Ion foil electrodes.** Published as biased 0 to −20 V above and below the path. Not in
-  the skeleton, and **this is the most consequential omission in the model, not a detail.**
+- **Ion foil electrodes.** Mounted between the mirrors, above and below the ion path, at a
+  tunable 0 to −20 V. **Not in the model, and the paper says outright that this is why the
+  drift does not reverse here.**
 
-  This document previously described the foil only as *shaping to compensate temporal
-  aberration*. Hamish Stewart, in conversation with the author, describes it as **critical
-  to controlling z-axis focusing** — the drift direction. Those are different claims and the
-  second one reaches straight into everything measured here, because **every z-direction
-  result in this document attributes all of the drift dynamics to the mirror convergence,
-  for the sufficient reason that convergence is the only thing in the model that acts along
-  z.**
+  Stewart et al., *Anal. Chem.* 2023 (doi:10.1021/acs.analchem.3c02856) states that the
+  drift is eventually reversed by a returning electrostatic potential formed by the mirror
+  tilt *as well as* refraction on the ion foil. So reversal has two contributors and this
+  model has one — for the sufficient reason that mirror convergence is the only thing in it
+  acting along the drift.
 
-  If the real analyser focuses its drift with a foil, then the two machines are not doing
-  the same thing with their convergence:
+  **How much is missing is calculable from the paper's own numbers**, and the conclusion does
+  not rest on this project's guessed geometry. The paper gives an inclination of about 2°,
+  set by the second prism after the first reflection, and a drift decelerating to rest over
+  12–13 oscillations. Decelerating a 2° drift to rest in 12.5 oscillations by mirror tilt
+  alone requires:
 
-  - This model's drift is a **free, decelerating** one, reversed by convergence alone. A
-    foil-focused drift is a **confined** one, and confinement and reversal are separate
-    jobs — a packet can be held against z-spreading by a periodic lens while the turnaround
-    is set by something else entirely.
-  - So `c_rev = 0.267 mm` against a published 200 µm is a **1.33× agreement between two
-    different mechanisms**, and its closeness should be treated as unexplained rather than
-    as confirmation. It is exactly the kind of agreement that stops an investigation.
-  - `N = α·L/(η·c)` is derived for convergence-only drift dynamics and has no term for a
-    periodic focusing element. Its two scalings were verified *within this model*, which
-    tests the derivation and says nothing about whether the model is the right one.
+  | | convergence needed |
+  | --- | --- |
+  | at the measured impulse efficiency η = 0.578 | **0.846 mm** |
+  | in the ideal specular limit, η = 1 | **0.489 mm** |
+  | **published spacer** | **0.200 mm** |
 
-  **It is expressible today and costs no engine work**: box electrodes at declared potentials
-  above and below the path, which is what every other electrode here already is. What is
-  missing is the geometry — the foil's shape and position are not something this author has.
-  Adding it is the next thing worth doing to these numbers, ahead of any further refinement
-  of the convergence.
+  **Even the specular upper bound is 2.4× short**, so mirror tilt alone provably cannot
+  reverse this drift at the published parameters and the foil is doing the majority of the
+  work: between about **59% and 76%** of the returning impulse, with the tilt supplying the
+  rest.
+
+  Its other stated jobs — compensating the temporal aberration the mirror asymmetry induces,
+  improving the spatial focus at the detector, and absorbing mechanical misalignment of the
+  mirrors — are the ones this document previously recorded, and they are real but are not
+  the load-bearing omission. The load-bearing one is that it helps turn the ions round.
+
+  **What is still needed to build it**: the electrode shapes. The paper says the shapes are
+  precise and purpose-made and does not give them, which leaves them where `d1..d4` are — a
+  free parameter of the inverse problem rather than a number to look up.
+
 - **Drift deceleration and reversal.** A consequence of the convergence, which is now
   expressible but not yet exercised in a flying model.
 - **Prism deflectors** setting the ~2° inclination. The skeleton fakes this with an
