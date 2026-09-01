@@ -166,8 +166,10 @@ public sealed class ViewportViewModelTests(ITestOutputHelper output) : IDisposab
     [Fact]
     public void BothRampsAreLegibleAgainstTheViewportGround()
     {
-        // The viewport's own background, from MainWindow.xaml.
-        var ground = (R: 0x08 / 255.0, G: 0x10 / 255.0, B: 0x19 / 255.0);
+        // The viewport's own background, read from where it is declared rather than
+        // restated here. A copy would let the ground move without this test noticing,
+        // which is exactly the pairing the test exists to enforce.
+        var ground = ColourRamp.Ground;
 
         static double Channel(double v) =>
             v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4);

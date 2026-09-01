@@ -547,3 +547,34 @@ that knew where `models/` sits would grow its own idea of what a project is.
 The pattern is worth noticing: almost every remaining row is presentation over something
 that already works, which is what AGT-2 is supposed to produce and is weak evidence that it
 has.
+
+## The ground moved to white, and the ramps had to move with it
+
+The viewport drew on `#081019`, chosen by measurement: a sequential ramp spans dark to light
+by construction, so it passes through *every* background luminance and no ground rescues an
+unmodified one — across grounds from `#101010` to `#D0D0D0` the worst contrast anywhere on
+viridis never exceeds 1.25. What works is pushing the ramps away from the ground and then
+putting the ground as far from them as it goes.
+
+**That argument is symmetric, and the dark half of it was the wrong half to take.**
+`Einzel.Render` draws the publication figure on white, and Amendment 25 makes every shell
+action expressible as a CLI invocation — so a viewport that looks nothing like the figure it
+previews is an inconsistency rather than a preference.
+
+| | dark ground | white ground |
+| --- | --- | --- |
+| energy ramp, worst contrast | 4.70 | **4.79** |
+| potential ramp, worst contrast | 6.77 | **3.03** |
+
+Viridis is now **darkened toward black at its bright end by 0.50**, the exact mirror of the
+0.44 lift it carried before, and 0.50 is again where the two requirements meet: 0.60 reaches
+6.74 and stops being monotone in lightness, which is the property viridis was chosen for. The
+diverging ramp moved from a near-white neutral to a **mid-grey** one — the neutral is earth,
+the value a reader looks for first, and a near-white centre is right on black and invisible
+on white.
+
+**The ground and the ramps are one decision, so they live in one file.** `ColourRamp.Ground`
+holds the background and the XAML takes it from there, because a white ground with the old
+bright ramps measures **1.09** — worse than either arrangement. The contrast test reads that
+same constant rather than restating it, so the two cannot be edited apart; making exactly
+that mistake fails the test at 1.26.

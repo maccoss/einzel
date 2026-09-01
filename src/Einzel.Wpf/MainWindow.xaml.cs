@@ -162,6 +162,13 @@ public partial class MainWindow : Window
 
         Viewport.Items.Clear();
 
+        // The ground comes from ColourRamp, which is where the ramps it has to be legible
+        // against live. Set here rather than in the XAML so the two cannot be edited apart.
+        Viewport.BackgroundColor = System.Windows.Media.Color.FromRgb(
+            (byte)Math.Round(ColourRamp.Ground.R * 255.0),
+            (byte)Math.Round(ColourRamp.Ground.G * 255.0),
+            (byte)Math.Round(ColourRamp.Ground.B * 255.0));
+
         // Without a light in the scene a Phong surface renders at its ambient term alone,
         // which is to say almost black - the electrodes were drawn correctly and could not
         // be seen. A headlight rather than a fixed direction, so a surface never goes dark
