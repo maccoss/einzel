@@ -233,6 +233,50 @@ The ceiling is now 2.5x each angle's own ballistic transit.
 where ACC-6 asks for 1/500), `TRAJECTORY_INCOMPLETE` on the reversed side, which is what a
 reversed ion *is*, and `ENERGY_DRIFT_EXCEEDS_BUDGET` at this 4 mm cell.
 
+### The design condition, and the gap to the published instrument narrowing to 6.3x
+
+**24 oscillations is an out-and-back number, and that fixes the injection angle.** With the
+published 30 m path, 625 mm cap-to-cap and a 335 mm drift, the arithmetic is
+`oscillations = 2 x drift / (2 x capToCap x sin θ)` — the factor of two because the ion
+comes back — and 24 of them needs **1.28°**, against a published prism angle of about 2°.
+A one-way track would need 0.64°, which is further from the published figure, so the
+out-and-back reading is the one the numbers support.
+
+At that design condition the reversal threshold is:
+
+| | |
+| --- | --- |
+| bisected | **1.2513 mm**, bracket [1.2357, 1.2669] |
+| predicted by the angle scaling law | ~1.4 mm |
+| published spacer | 0.200 mm |
+
+**The scaling law was right to 12 per cent at an angle it was never fitted on**, which is
+what makes it a law rather than a curve through two points.
+
+**And getting the oscillation count right closed most of the gap**: 57x at the original
+2°/4-oscillation skeleton, **6.3x** here. The remainder is in the geometry that is guessed.
+
+### It is not the board gap, which was the obvious guess
+
+| board gap | reversal convergence |
+| --- | --- |
+| 40 mm | 1.2513 mm |
+| 30 mm | **2.5487 mm** |
+
+**Narrower needs *more* convergence, not less** — about `gap^-2.5` — so the board gap moves
+the threshold strongly and in the wrong direction to explain the gap to 200 µm. Closing 6.3x
+by gap alone would need about **84 mm**, which is not a credible board separation for this
+envelope.
+
+**And below about 20 mm the question stops being well posed**: at a 20 mm gap the search
+refuses, correctly, because both ends of its bracket are on the same side — the ion at 6 mm
+of convergence **strikes an electrode at 69.5 µs** rather than reversing. There is a maximum
+useful convergence set by the gap and the beam's transverse extent, and past it the mirrors
+close on the beam before the drift can turn around.
+
+**So the remaining 6.3x is most likely in the electrode depths `d1..d4`** — the parameters no
+paper states, and the ones this model exists to solve for.
+
 ### Against the published instrument
 
 Not reconciled, and the gap is in the right direction. The instrument uses **200 µm** at
