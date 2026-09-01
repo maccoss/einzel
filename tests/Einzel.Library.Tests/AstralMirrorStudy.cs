@@ -57,7 +57,7 @@ public sealed class AstralMirrorStudy(ITestOutputHelper output)
     /// spatial focusing. U2 is still below earth; U3 and U4 straddle the beam energy, so an
     /// ion at the nominal 4 keV turns between them.
     /// </remarks>
-    private static readonly string[] Names = ["d1", "d2", "d3", "d4"];
+    private static readonly string[] Names = ["stage1", "stage2", "stage3", "stage4"];
 
     private static readonly double[] Coefficients = [-1.840, -1.158, 0.916, 1.503];
 
@@ -211,10 +211,16 @@ public sealed class AstralMirrorStudy(ITestOutputHelper output)
         var result = Optimiser.Run(
             document,
             [
-                new DesignVariable("d1", Quantity.From(5.0, "mm"), Quantity.From(120.0, "mm")),
-                new DesignVariable("d2", Quantity.From(10.0, "mm"), Quantity.From(200.0, "mm")),
-                new DesignVariable("d3", Quantity.From(20.0, "mm"), Quantity.From(280.0, "mm")),
-                new DesignVariable("d4", Quantity.From(30.0, "mm"), Quantity.From(340.0, "mm")),
+                // THE STAGE THICKNESSES, not the depths. Searching the depths directly let
+                // the simplex put d2 below d1 - a mirror whose potential breakpoints run
+                // backwards, which the edge profile's ascending-`at` requirement does not
+                // cover and which no bound on an individual depth can prevent, because the
+                // constraint is between them. A thickness is positive by declaration, so
+                // every point the search can reach is a monotone profile.
+                new DesignVariable("stage1", Quantity.From(5.0, "mm"), Quantity.From(120.0, "mm")),
+                new DesignVariable("stage2", Quantity.From(5.0, "mm"), Quantity.From(120.0, "mm")),
+                new DesignVariable("stage3", Quantity.From(5.0, "mm"), Quantity.From(120.0, "mm")),
+                new DesignVariable("stage4", Quantity.From(5.0, "mm"), Quantity.From(120.0, "mm")),
             ],
             objective,
             ObjectiveSense.Maximise,
@@ -248,10 +254,21 @@ public sealed class AstralMirrorStudy(ITestOutputHelper output)
             return value.In("mm");
         }
 
-        var depths = Names.Select(n => Millimetres(result.Best[n])).ToArray();
+        // Cumulative, which is what the template derives - and monotone by construction,
+        // since every thickness is positive.
+        var depths = Names
+            .Select(n => Millimetres(result.Best[n]))
+            .Aggregate(new List<double>(), (running, thickness) =>
+            {
+                running.Add((running.Count > 0 ? running[^1] : 0.0) + thickness);
+                return running;
+            });
 
-        output.WriteLine(
-            $"  ordered? {string.Join(" < ", depths.Select(x => $"{x:F1}"))}");
+        output.WriteLine($"  depths {string.Join(" < ", depths.Select(x => $"{x:F1}"))} mm");
+
+        Assert.True(
+            depths.Zip(depths.Skip(1)).All(pair => pair.Second > pair.First),
+            "depths derived from positive thicknesses must ascend");
 
         // The search found something better than the guess, which is the claim this test
         // makes on its own. What that number IS gets compared against the paper next door.

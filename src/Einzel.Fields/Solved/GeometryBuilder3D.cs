@@ -56,9 +56,15 @@ public sealed record Geometry3D(
     /// One conversion in one place: <c>Einzel.Core</c> cannot name this assembly's
     /// <see cref="EdgeCondition"/>, and two enums that must agree are exactly the pair that
     /// stops agreeing. Every construction site calls this rather than mapping it again.
+    /// <para>
+    /// There were briefly three of these enums, the third being a Core-side one invented for
+    /// the volume path alone - although <see cref="Core.Model.BoundaryKind"/> already meant
+    /// dirichlet-or-neumann for the plane path. Two is the irreducible number, because an
+    /// assembly boundary sits between them; three was a duplicate.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<EdgeCondition> FacesOf(
-        IReadOnlyList<Core.Model.EdgeCondition3D> declared)
+        IReadOnlyList<Core.Model.BoundaryKind> declared)
     {
         ArgumentNullException.ThrowIfNull(declared);
 
@@ -71,7 +77,7 @@ public sealed record Geometry3D(
 
         for (var face = 0; face < 6; face++)
         {
-            faces[face] = declared[face] == Core.Model.EdgeCondition3D.Neumann
+            faces[face] = declared[face] == Core.Model.BoundaryKind.Neumann
                 ? EdgeCondition.Neumann
                 : EdgeCondition.Dirichlet;
         }

@@ -1720,6 +1720,30 @@ public static class ModelValidator
             case "sphere":
             case "cylinder":
             {
+                // A TILT IS A BOX'S PROPERTY, AND IS REFUSED RATHER THAN DROPPED HERE.
+                // The properties live on the shared electrode document, so a sphere or a
+                // cylinder declaring one binds cleanly and the unrecognised-property
+                // refusal never fires - leaving a document that validates, solves, and
+                // answers a different question than the one it appears to ask. That is the
+                // failure the strict key checking exists to prevent, reached through a
+                // recognised key that is meaningless for this shape.
+                if (electrode.TiltHalfTurns is not null || electrode.TiltAxis is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/{(electrode.TiltHalfTurns is not null ? "tiltHalfTurns" : "tiltAxis")}",
+                        Constraint =
+                            $"'{name}' is a {electrode.Shape} and only a box may be tilted",
+                        Observed = new ObservedValue(0.0, electrode.Shape ?? "(none)"),
+                        Suggestion =
+                            "remove the tilt, or describe this electrode as a box - a sphere "
+                            + "is unchanged by rotation and a cylinder is oriented by 'axis'",
+                    });
+
+                    return null;
+                }
+
                 var centreX = TryQuantity(electrode.CentreX, $"{path}/centreX", length, p, errors);
                 var centreY = TryQuantity(electrode.CentreY, $"{path}/centreY", length, p, errors);
                 var radius = TryQuantity(electrode.Radius, $"{path}/radius", length, p, errors);
@@ -1934,44 +1958,20 @@ public static class ModelValidator
         // Six faces, each Dirichlet unless declared otherwise. A grounded box is the safe
         // default and is a third electrode; a document whose geometry is invariant along an
         // axis says so by declaring that axis's faces Neumann.
-        var faces = new EdgeCondition3D[6];
-
-        var declared = new[]
+        //
+        // THE SAME PARSER THE PLANE PATH USES. `Boundary` already reads exactly this
+        // vocabulary, with the same error code and suggestion, and it accumulates rather
+        // than returning on the first bad face - so a document with two wrong face names is
+        // told about both in one pass instead of taking two rounds to fix.
+        var faces = new[]
         {
-            (solve.LowerXEdge, "lowerXEdge"), (solve.UpperXEdge, "upperXEdge"),
-            (solve.LowerYEdge, "lowerYEdge"), (solve.UpperYEdge, "upperYEdge"),
-            (solve.LowerZEdge, "lowerZEdge"), (solve.UpperZEdge, "upperZEdge"),
+            Boundary(solve.LowerXEdge, $"{path}/lowerXEdge", errors),
+            Boundary(solve.UpperXEdge, $"{path}/upperXEdge", errors),
+            Boundary(solve.LowerYEdge, $"{path}/lowerYEdge", errors),
+            Boundary(solve.UpperYEdge, $"{path}/upperYEdge", errors),
+            Boundary(solve.LowerZEdge, $"{path}/lowerZEdge", errors),
+            Boundary(solve.UpperZEdge, $"{path}/upperZEdge", errors),
         };
-
-        for (var face = 0; face < declared.Length; face++)
-        {
-            var (value, property) = declared[face];
-
-            var condition = value switch
-            {
-                null or "dirichlet" => EdgeCondition3D.Dirichlet,
-                "neumann" => EdgeCondition3D.Neumann,
-                _ => (EdgeCondition3D?)null,
-            };
-
-            if (condition is null)
-            {
-                errors.Add(new EinzelError
-                {
-                    Code = ErrorCodes.SchemaInvalid,
-                    Path = $"{path}/{property}",
-                    Constraint = $"'{value}' is not a face condition",
-                    Observed = new ObservedValue(0.0, value ?? "(none)"),
-                    Suggestion =
-                        "one of: dirichlet (a grounded wall, the default), neumann (a mirror, "
-                        + "so the structure repeats forever across that face)",
-                });
-
-                return null;
-            }
-
-            faces[face] = condition.Value;
-        }
 
         return new CompiledField
         {

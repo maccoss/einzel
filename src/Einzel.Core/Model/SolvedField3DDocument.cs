@@ -214,16 +214,6 @@ public sealed record Electrode3DDocument : ITappedElectrode
     public IReadOnlyList<TapTermDocument>? Taps { get; init; }
 }
 
-/// <summary>What a face of a solve domain is.</summary>
-public enum EdgeCondition3D
-{
-    /// <summary>Held at zero: a grounded wall, and a third electrode.</summary>
-    Dirichlet,
-
-    /// <summary>A mirror: the structure repeats forever across it.</summary>
-    Neumann,
-}
-
 /// <summary>A three-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField3D
 {
@@ -271,7 +261,7 @@ public sealed record CompiledSolvedField3D
     /// A grounded box is a third electrode - right for a device inside a housing, wrong for
     /// one whose geometry is invariant along an axis. See the document's own remarks.
     /// </remarks>
-    public IReadOnlyList<EdgeCondition3D> Faces { get; init; } = [];
+    public IReadOnlyList<BoundaryKind> Faces { get; init; } = [];
 }
 
 /// <summary>One state of a timed sequence in three dimensions, validated.</summary>

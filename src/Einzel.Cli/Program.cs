@@ -828,15 +828,6 @@ public static class Program
         }
     }
 
-    /// <summary>Seconds as something a person can plan against.</summary>
-    private static string Elapsed(double seconds) => seconds switch
-    {
-        < 90.0 => string.Create(CultureInfo.InvariantCulture, $"{seconds:F2} s"),
-        < 5400.0 => string.Create(CultureInfo.InvariantCulture, $"{seconds / 60.0:F1} min"),
-        < 172800.0 => string.Create(CultureInfo.InvariantCulture, $"{seconds / 3600.0:F1} h"),
-        _ => string.Create(CultureInfo.InvariantCulture, $"{seconds / 86400.0:F1} days"),
-    };
-
     private static int Estimate(CommandLine options)
     {
         if (options.Positional.Count == 0)
@@ -896,7 +887,7 @@ public static class Program
         }
 
         Console.Out.WriteLine(string.Create(
-            invariant, $"total         {Elapsed(outcome.Seconds)}, peak {outcome.MemoryMiB:F1} MiB"));
+            invariant, $"total         {EstimateCommand.Duration(outcome.Seconds)}, peak {outcome.MemoryMiB:F1} MiB"));
 
         Console.Out.WriteLine();
         Console.Out.WriteLine($"basis: {outcome.Basis}");

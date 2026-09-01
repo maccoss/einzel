@@ -45,7 +45,10 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
     {
         Directory.CreateDirectory(_root);
 
-        var path = Path.Combine(_root, $"box-{cellMm:F2}.json".Replace('.', 'p'));
+        // The cell size is made filename-safe BEFORE the extension is appended - applying
+        // the replace afterwards eats the dot in ".json" too and writes files that are not
+        // recognisably models.
+        var path = Path.Combine(_root, $"box-{cellMm:F2}".Replace('.', 'p') + ".json");
 
         var text = """
             {

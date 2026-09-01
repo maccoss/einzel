@@ -181,6 +181,73 @@ public sealed class NeumannFaceTests(ITestOutputHelper output)
         Assert.Equal(offAxisMiddle.Y, offAxisNear.Y, 6);
     }
 
+    /// <summary>A tilt on a shape that cannot be tilted is refused, not dropped.</summary>
+    /// <remarks>
+    /// The tilt properties live on the shared electrode document, so a sphere or cylinder
+    /// declaring one binds cleanly and the unrecognised-property refusal never fires. Left
+    /// alone, the box branch never runs and the model solves as an axis-aligned cylinder -
+    /// validating, converging, and answering a different question than it appears to ask,
+    /// which is the failure strict key checking exists to prevent.
+    /// </remarks>
+    [Fact]
+    public void ATiltOnANonBoxShapeIsRefused()
+    {
+        // The control: the two rails are boxes, and a box may be tilted. Without this the
+        // test would pass equally if tilts were refused everywhere.
+        Assert.True(ModelValidator.Validate(ModelJson.Parse(Document(mirrored: true))).IsValid);
+
+        var validation = ModelValidator.Validate(ModelJson.Parse(TiltedCylinder));
+
+        Assert.False(validation.IsValid);
+
+        var error = validation.Errors[0];
+
+        output.WriteLine($"{error.Code} at {error.Path}");
+        output.WriteLine($"  {error.Constraint}");
+        output.WriteLine($"  {error.Suggestion}");
+
+        Assert.Contains("tiltHalfTurns", error.Path, StringComparison.Ordinal);
+        Assert.Contains("only a box may be tilted", error.Constraint, StringComparison.Ordinal);
+    }
+
+    /// <summary>A cylinder that declares a tilt, which is meaningless for its shape.</summary>
+    private const string TiltedCylinder = """
+        {
+          "schemaVersion": "0.7",
+          "name": "tilted-cylinder",
+          "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+          "source": {
+            "position": { "value": [0, 0, 0], "unit": "mm" },
+            "direction": { "value": [1, 0, 0] },
+            "accelerationPotential": { "value": 100, "unit": "V" }
+          },
+          "fields": [ { "type": "solved3d", "solve3d": {
+              "minX": { "value": -10, "unit": "mm" }, "maxX": { "value": 10, "unit": "mm" },
+              "minY": { "value": -10, "unit": "mm" }, "maxY": { "value": 10, "unit": "mm" },
+              "minZ": { "value": -10, "unit": "mm" }, "maxZ": { "value": 10, "unit": "mm" },
+              "cellSize": { "value": 1.25, "unit": "mm" },
+              "electrodes": [ {
+                "name": "rod", "shape": "cylinder", "axis": "z",
+                "centreX": { "value": 0, "unit": "mm" },
+                "centreY": { "value": 0, "unit": "mm" },
+                "radius": { "value": 2, "unit": "mm" },
+                "lower": { "value": -8, "unit": "mm" },
+                "upper": { "value": 8, "unit": "mm" },
+                "tiltHalfTurns": { "value": 0.1, "unit": "1" },
+                "potential": { "value": 100, "unit": "V" }
+              } ] } } ],
+          "detector": {
+            "planePoint": { "value": [9, 0, 0], "unit": "mm" },
+            "normal": { "value": [-1, 0, 0] }
+          },
+          "transport": {
+            "maximumFlightTime": { "value": 50, "unit": "us" },
+            "relativeTolerance": 1e-10
+          }
+        }
+        """;
+
+
     /// <summary>An unknown face condition is refused, naming what is permitted.</summary>
     /// <remarks>
     /// AGT-3: an error is a recovery instruction. A misspelled condition silently treated as

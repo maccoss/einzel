@@ -38,33 +38,53 @@
       "maximum": 5.0,
       "description": "U4 as a multiple of the ion energy. Above 1, so it reflects the beam."
     },
-    "d1": {
+    "stage1": {
       "value": 20.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 200.0,
-      "description": "Depth at which U1 is reached, from the mirror entrance. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Thickness of the first stage, from the mirror entrance inward. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+    },
+    "stage2": {
+      "value": 30.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 200.0,
+      "description": "Thickness of the second stage."
+    },
+    "stage3": {
+      "value": 40.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 200.0,
+      "description": "Thickness of the third stage."
+    },
+    "stage4": {
+      "value": 40.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 200.0,
+      "description": "Thickness of the fourth stage, ending at the cap."
+    },
+    "d1": {
+      "expression": "stage1",
+      "unit": "mm",
+      "description": "Depth at which U1 is reached, from the mirror entrance. Derived from the stage thicknesses, so the profile always ascends."
     },
     "d2": {
-      "value": 50.0,
+      "expression": "stage1 + stage2",
       "unit": "mm",
-      "minimum": 3.0,
-      "maximum": 250.0,
-      "description": "Depth at which U2 is reached."
+      "description": "Depth at which U2 is reached.. Derived from the stage thicknesses, so the profile always ascends."
     },
     "d3": {
-      "value": 90.0,
+      "expression": "stage1 + stage2 + stage3",
       "unit": "mm",
-      "minimum": 4.0,
-      "maximum": 300.0,
-      "description": "Depth at which U3 is reached."
+      "description": "Depth at which U3 is reached.. Derived from the stage thicknesses, so the profile always ascends."
     },
     "d4": {
-      "value": 130.0,
+      "expression": "stage1 + stage2 + stage3 + stage4",
       "unit": "mm",
-      "minimum": 5.0,
-      "maximum": 350.0,
-      "description": "Total mirror depth: the cap sits here at U4."
+      "description": "Total mirror depth: the cap sits here at U4.. Derived from the stage thicknesses, so the profile always ascends."
     },
     "boardGap": {
       "value": 40.0,

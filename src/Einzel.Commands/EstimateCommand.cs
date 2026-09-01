@@ -118,6 +118,26 @@ public sealed record EstimateOutcome
 
     /// <summary>The study this costs, or null when a model was costed directly.</summary>
     public StudyEstimate? Study { get; init; }
+
+    /// <summary>
+    /// How far the repeated pilots spread, as a fraction of the cheapest.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>How firm the number is, which was measured and then discarded.</b> GRD-1 asks that
+    /// a quantitative result carry a measure of its own uncertainty, and an estimate somebody
+    /// plans a multi-day run against is such a result - the more so since it stopped being a
+    /// quoted constant and started being measured on the machine that will do the work.
+    /// </para>
+    /// <para>
+    /// Zero means nothing was repeated, not that the number is exact: a documented rate, an
+    /// uncalibrated estimate, or a pilot so expensive that the repeat budget allowed one
+    /// attempt all report zero, and the basis says which. Taking the cheapest of several is
+    /// what makes this a floor rather than a confidence interval - it is the observed spread
+    /// of runs on an otherwise idle machine, and says nothing about a loaded one.
+    /// </para>
+    /// </remarks>
+    public double PilotSpread { get; init; }
 }
 
 /// <summary>
@@ -246,10 +266,25 @@ public static class EstimateCommand
     /// becoming a run.
     /// </para>
     /// </remarks>
-    private static double CheapestMilliseconds(Action work)
+    private static double CheapestMilliseconds(Action work) => Repeat(work).Cheapest;
+
+    /// <summary>Repeats a pilot and reports both the cheapest run and how far they spread.</summary>
+    /// <param name="work">The pilot.</param>
+    /// <returns>The cheapest run in milliseconds, and the dearest as a fraction of it.</returns>
+    /// <remarks>
+    /// <b>The spread is known here and was being thrown away.</b> GRD-1 asks that a
+    /// quantitative result carry a measure of how firm it is, and an estimate somebody plans
+    /// a multi-day run against is exactly such a result - the more so now that it is measured
+    /// on the machine rather than quoted from a constant. A single attempt reports a spread
+    /// of zero, which is the honest answer: nothing was repeated, so nothing is known about
+    /// the variation.
+    /// </remarks>
+    private static (double Cheapest, double Spread) Repeat(Action work)
     {
         var best = double.PositiveInfinity;
+        var worst = 0.0;
         var spent = 0.0;
+        var attempts = 0;
 
         for (var attempt = 0; attempt < PilotAttempts && spent < PilotRepeatBudgetMs; attempt++)
         {
@@ -259,9 +294,11 @@ public static class EstimateCommand
 
             spent += clock.Elapsed.TotalMilliseconds;
             best = Math.Min(best, clock.Elapsed.TotalMilliseconds);
+            worst = Math.Max(worst, clock.Elapsed.TotalMilliseconds);
+            attempts++;
         }
 
-        return best;
+        return (best, attempts > 1 && best > 0.0 ? (worst - best) / best : 0.0);
     }
 
     /// <summary>How long the repeats may cost in total before settling for what is measured.</summary>
@@ -328,6 +365,19 @@ public static class EstimateCommand
                 MaximumSteps = PilotStepCeiling,
             };
 
+            // A DECLARED GAS TAKES PART. Without this the pilot flew in vacuum and the
+            // basis still said "the whole flight, measured", so a model at 1e-2 mbar was
+            // costed by a flight that schedules none of the thousands of collisions the
+            // real one does - and the estimate ran under, which is the direction
+            // Amendment 33 exists to prevent. The same silent substitution RunCommand's
+            // own comment warns against, and that this repo already fixed once for the
+            // regime inspector.
+            //
+            // A fresh sampler per attempt, because CheapestMilliseconds repeats the flight
+            // and a shared one would let the second attempt continue the first's draws -
+            // a different trajectory, timed as though it were the same one.
+            var gas = DiffusionRun.GasFor(coarse);
+
             Transport.Integration.TrajectoryResult flown = default!;
 
             var pilotSeconds = CheapestMilliseconds(
@@ -337,7 +387,11 @@ public static class EstimateCommand
                     field,
                     settings,
                     (in Transport.PhaseState state) =>
-                        Core.Geometry.Vec3.Dot(state.Position - point, normal)))
+                        Core.Geometry.Vec3.Dot(state.Position - point, normal),
+                    collisions: gas.IsPresent
+                        ? new Transport.Collisions.CollisionSampler(
+                            gas, species.MassSi, species.ChargeSi, coarse.Gas.Seed)
+                        : null))
                 / 1000.0;
             var covered = flown.FlightTimeSeconds;
 
@@ -404,7 +458,8 @@ public static class EstimateCommand
     /// constant is used and the basis line says which it was.
     /// </para>
     /// </remarks>
-    private static (double Rate, string How) CalibrateRate(Func<long> pilot, double fallback)
+    private static (double Rate, string How, double Spread) CalibrateRate(
+        Func<long> pilot, double fallback)
     {
         try
         {
@@ -420,14 +475,15 @@ public static class EstimateCommand
             // cheap to repeat, and a long one is already well measured and would be
             // expensive to.
             var nodes = 0L;
-            var milliseconds = CheapestMilliseconds(() => nodes = pilot());
+            var (milliseconds, spread) = Repeat(() => nodes = pilot());
 
             if (nodes <= 0 || milliseconds < PilotFloorMs)
             {
                 return (
                     fallback,
                     $"{fallback:G3} s per million nodes, the documented rate: a pilot solve of "
-                    + $"{nodes:N0} nodes took {milliseconds:F0} ms, too little to time");
+                    + $"{nodes:N0} nodes took {milliseconds:F0} ms, too little to time",
+                    0.0);
             }
 
             var rate = milliseconds / 1000.0 / (nodes / 1e6);
@@ -436,8 +492,9 @@ public static class EstimateCommand
                 rate,
                 $"{rate:G3} s per million nodes, measured on this machine by solving this "
                 + $"geometry at {PilotCoarsening:G2}x the cell size - {nodes:N0} nodes in "
-                + $"{milliseconds:F0} ms - and extrapolated on node count, which holds "
-                + "because multigrid cycle counts are grid-independent");
+                + $"{milliseconds:F0} ms, repeats spreading {spread:P0} - and extrapolated on "
+                + "node count, which holds because multigrid cycle counts are grid-independent",
+                spread);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -448,7 +505,8 @@ public static class EstimateCommand
             return (
                 fallback,
                 $"{fallback:G3} s per million nodes, the documented rate: this geometry does "
-                + "not survive being coarsened for a pilot, so nothing was measured here");
+                + "not survive being coarsened for a pilot, so nothing was measured here",
+                0.0);
         }
     }
 
@@ -489,7 +547,7 @@ public static class EstimateCommand
         var firstVolume = model.Fields.FirstOrDefault(f => f.Solve3D is not null)?.Solve3D;
 
         var planeRate = firstPlane is null || !calibrate
-            ? (SecondsPerMegaNode, Documented(SecondsPerMegaNode))
+            ? (SecondsPerMegaNode, Documented(SecondsPerMegaNode), 0.0)
             : CalibrateRate(
                 () =>
                 {
@@ -501,7 +559,7 @@ public static class EstimateCommand
                 SecondsPerMegaNode);
 
         var volumeRate = firstVolume is null || !calibrate
-            ? (VolumeSecondsPerMegaNode, Documented(VolumeSecondsPerMegaNode))
+            ? (VolumeSecondsPerMegaNode, Documented(VolumeSecondsPerMegaNode), 0.0)
             : CalibrateRate(
                 () =>
                 {
@@ -653,6 +711,17 @@ public static class EstimateCommand
             basis = diffusiveBasis;
         }
 
+        var firmness = Math.Max(planeRate.Item3, volumeRate.Item3);
+
+        if (firmness > 0.0)
+        {
+            basis = basis + string.Create(
+                Inv,
+                $" Repeating the pilots on this machine spread {firmness:P0} of the cheapest, "
+                + $"which is how firm this number is - on an idle machine, and a floor rather "
+                + $"than a confidence interval.");
+        }
+
         var mesh = MeshNote(elements);
 
         if (mesh.Length > 0)
@@ -678,6 +747,7 @@ public static class EstimateCommand
             ThresholdSeconds = ThresholdSeconds,
             Basis = basis,
             TrajectorySeconds = trajectory.Seconds,
+            PilotSpread = Math.Max(planeRate.Item3, volumeRate.Item3),
         };
     }
 
@@ -763,11 +833,9 @@ public static class EstimateCommand
         double nominal,
         List<IReadOnlyDictionary<string, Core.Units.Quantity>> samples)
     {
-        if (samples.Count == 0)
-        {
-            return (nominal, string.Empty);
-        }
-
+        // No early return on an empty list: the nominal is measured the same way whether or
+        // not there are extremes to go with it, which is what keeps the flight term one
+        // quantity at every study length.
         var flights = new List<double>();
 
         // THE WHOLE DECLARED FLIGHT, not the pilot fraction, and the nominal is resampled
@@ -801,12 +869,22 @@ public static class EstimateCommand
             }
         }
 
-        if (flights.Count < 2)
+        if (flights.Count == 0)
         {
+            // Not even the nominal could be flown - fall back to what the model estimate
+            // measured, which says in its own basis how it was arrived at.
             return (nominal, string.Empty);
         }
 
         var mean = flights.Average();
+
+        if (flights.Count == 1)
+        {
+            // The nominal alone, measured the same way the sampled case measures it. There
+            // is no range to report a spread across, and the caller says why.
+            return (mean, string.Empty);
+        }
+
         var ratio = flights.Max() / Math.Max(flights.Min(), double.Epsilon);
 
         return (
@@ -861,17 +939,16 @@ public static class EstimateCommand
         //
         // Cheapest of three, because the property is a floor and the runtime charges
         // one-off costs to whichever window they fire in.
-        var compile = double.PositiveInfinity;
-        ModelValidator.Validate(document, null, directory);
+        // ONE REPEAT POLICY, and the compilation it produced is the one that is kept.
+        // A hand-rolled loop here meant two policies - this one always ran three times with
+        // no budget while `CheapestMilliseconds` repeats up to five within a second - and a
+        // fifth Validate whose only purpose was to hand back a result the last timed
+        // iteration already had. For a model with an imported gas or pressure field every
+        // one of those resolves and reads that file from disk.
+        ModelValidation validation = default!;
 
-        for (var attempt = 0; attempt < 3; attempt++)
-        {
-            var clock = System.Diagnostics.Stopwatch.StartNew();
-            _ = ModelValidator.Validate(document, null, directory);
-            compile = Math.Min(compile, clock.Elapsed.TotalSeconds);
-        }
-
-        var validation = ModelValidator.Validate(document, null, directory);
+        var compile = CheapestMilliseconds(
+            () => validation = ModelValidator.Validate(document, null, directory)) / 1000.0;
 
         var members = validation.Model is { Cloud.IsCloud: true } compiled
             ? compiled.Cloud.Ions
@@ -897,12 +974,24 @@ public static class EstimateCommand
         // that matters. Almost all of that variation is the flight (the solve's node count
         // moved 4 per cent across the same range), so it is the flight that is resampled.
         //
-        // Guarded on the evaluation count so the estimate can never be a meaningful
-        // fraction of the work it is estimating, and skipped entirely where an evaluation
-        // is a whole run - there is no separable flight term there to resample.
-        var (flight, spread) = !wholeRun && evaluations >= ExtremeSamplingThreshold
-            ? SampledFlight(document, directory, model.TrajectorySeconds, Extremes(study))
-            : (model.TrajectorySeconds, string.Empty);
+        // THE THRESHOLD GATES THE EXTREMES, NOT THE MEASUREMENT. Both paths go through
+        // SampledFlight, which always flies the nominal at the full window and the real cell
+        // size, so the flight term means one thing at every study length. Gating the whole
+        // measurement instead made it a coarsened extrapolation below the threshold and a
+        // full-fidelity mean above it - so a 19-point and a 21-point scan over one model
+        // were costed in different currencies and the per-evaluation figure jumped at a
+        // boundary that has nothing to do with the model.
+        //
+        // What the threshold still buys is the extremes: two extra pilots are worth spending
+        // against hundreds of evaluations and not against a handful. The nominal costs one
+        // evaluation's worth of measurement, which a study of any length can absorb.
+        var (flight, spread) = wholeRun
+            ? (0.0, string.Empty)
+            : SampledFlight(
+                document,
+                directory,
+                model.TrajectorySeconds,
+                evaluations >= ExtremeSamplingThreshold ? Extremes(study) : []);
 
         var perEvaluation = wholeRun
             ? compile + model.Seconds
@@ -1036,11 +1125,16 @@ public static class EstimateCommand
     }
 
     /// <summary>Seconds as something a person can plan against.</summary>
+    /// <param name="seconds">The duration, in seconds.</param>
+    /// <returns>The duration in whatever unit a reader can act on.</returns>
     /// <remarks>
     /// GRD-8's number is read to decide whether to start the work now or overnight, and
-    /// "108,000 s" does not answer that question while "1 day 6 h" does.
+    /// "108,000 s" does not answer that question while "1 day 6 h" does. Public because the
+    /// CLI prints the same quantity beside the basis sentence that contains it, and two
+    /// spellings of one duration on one page is a reader's problem before it is a
+    /// maintenance one.
     /// </remarks>
-    private static string Duration(double seconds) => seconds switch
+    public static string Duration(double seconds) => seconds switch
     {
         < 90.0 => $"{seconds:F0} s",
         < 5400.0 => $"{seconds / 60.0:F0} min",
