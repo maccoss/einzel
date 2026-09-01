@@ -373,16 +373,44 @@ Named so nobody rediscovers them as bugs:
 - **Prism deflectors** setting the ~2° inclination. The skeleton fakes this with an
   injection angle.
 - **The einzel lenses** in the injection path.
-- **`reflectAboutX` for `solve3d`.** The 2-D path has it; the 3-D path does not. **This is
-  now high priority, not low** — an earlier version of this page called it low on the
-  strength of the mistaken "flight dominates" reading. The Astral is symmetric about its
-  mid-plane, so reflecting halves the domain and therefore halves the dominant cost. It is
-  also the cheapest 2× available: no numerics risk, and the 2-D path shows the shape.
+- ~~**`reflectAboutX` for `solve3d`.**~~ **Built, and it delivers the factor of two.** On the
+  skeleton: 257 x 17 x 129 = 0.56 M nodes in 4.87 s whole, against 129 x 17 x 129 = 0.28 M in
+  **2.57 s** halved — **1.90x** — at the *same* 13 cycles and the same 0.1997 convergence
+  factor, so the half is the same problem rather than an easier one. The flight is identical:
+  **120.0580 us** both ways, landing at x = 389.07, z = 340.00 both ways.
+
+  Declare the mid-plane face Neumann alongside it, keep only the electrodes in the solved
+  half, and the reflection supplies the rest:
+
+  ```json
+  "maxX":        { "value": 312.5, "unit": "mm" },
+  "upperXEdge":  "neumann",
+  "reflectAboutX": { "value": 312.5, "unit": "mm" }
+  ```
+
+  **It also uncovered a defect worth knowing about** — see the next entry.
 - **`MirrorPair.Fly` cannot express an asymmetric track at all.** It computes one period and
   multiplies, so any resolving power it reports for a *symmetric* pair is arithmetic, flat
   to the digit across oscillation counts. Do not read it as a 3-D result.
 
 ---
+
+## 7a. A volume field used to invent a field outside its own box
+
+**Fixed, and it changes how an earlier observation on this page should be read.** A
+`SolvedField3D` called its tricubic unconditionally, with no bounds check, and a tricubic
+asked for a point it was never fitted over continues the cubic rather than declining. On a
+20 mm box holding one plate at 100 V it reported **−486,643 V at 8.1 MV/m** 180 mm outside —
+four orders past the applied potential.
+
+**So "the ion escaped to x = 4643 mm and then coasted" was wrong.** It was not coasting; it
+was being accelerated by a field nobody declared. Expect escaped ions to behave differently
+now — they stop being accelerated at the domain wall, so a geometry that used to fling them
+away will now let them drift.
+
+The plane path has always returned zero outside its grid, which is also what makes
+superposing a half with its mirror a union rather than a sum. Nothing in the suite moved
+when this was fixed, so no published number depended on it.
 
 ## 8. Traps already paid for — do not re-pay them
 
