@@ -1503,8 +1503,13 @@ public static class Program
 
                 foreach (var entry in outcome.Extensions)
                 {
+                    // LIC-2. An extension is third-party code run against this engine,
+                    // and a missing licence is printed as MISSING rather than left off the
+                    // line: the one extension worth asking about must not look like the
+                    // ones that answered.
                     Console.Out.WriteLine(
                         $"  {entry.Name} {entry.Version}  {entry.Kind}/{entry.Trust}"
+                        + $"  licence {entry.Licence ?? "NOT DECLARED"}"
                         + $"{(entry.Incompatibility is null ? string.Empty : "  INCOMPATIBLE: " + entry.Incompatibility)}");
                 }
 

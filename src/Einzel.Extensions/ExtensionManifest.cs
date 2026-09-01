@@ -92,6 +92,35 @@ public sealed record ExtensionManifest
     /// <summary>One sentence saying what it does.</summary>
     public string? Description { get; init; }
 
+    /// <summary>
+    /// The licence this extension is offered under, as an SPDX identifier where one
+    /// applies.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// LIC-2: extensions carry their own licences and the extension manager surfaces
+    /// them. An extension is third-party code that runs against this engine, and LIC-1
+    /// is absolute about what may enter the default build - so somebody deciding whether
+    /// to install one needs to know what it is offered under before they install it,
+    /// not after.
+    /// </para>
+    /// <para>
+    /// <b>Optional, and absent means UNKNOWN rather than permissive.</b> That is the
+    /// distinction the whole requirement rests on: a missing licence is the case where
+    /// care is most needed, and defaulting it to anything - or omitting the line - would
+    /// make the one extension worth asking about look like the ones that answered. It is
+    /// the same rule this engine applies to an undefined measurement, and it matters more
+    /// here, because the reader cannot recompute the answer for themselves.
+    /// </para>
+    /// <para>
+    /// An SPDX identifier by convention rather than by validation. The engine does not
+    /// interpret this, and a checker that recognised some spellings and not others would
+    /// report an unrecognised licence as no licence - which is the failure this field
+    /// exists to prevent.
+    /// </para>
+    /// </remarks>
+    public string? Licence { get; init; }
+
     /// <summary>What it extends.</summary>
     public ExtensionKind Kind { get; init; } = ExtensionKind.Objective;
 

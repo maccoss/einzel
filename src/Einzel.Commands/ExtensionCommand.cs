@@ -23,6 +23,15 @@ public sealed record ExtensionEntry
     /// <summary>One sentence saying what it does.</summary>
     public string? Description { get; init; }
 
+    /// <summary>
+    /// What the extension is offered under, or null when it does not say (LIC-2).
+    /// </summary>
+    /// <remarks>
+    /// Null rather than a placeholder, so a caller cannot mistake "did not declare one"
+    /// for a licence it recognises. The renderers say "not declared" in words.
+    /// </remarks>
+    public string? Licence { get; init; }
+
     /// <summary>Where it lives, relative to the project root.</summary>
     public required string Directory { get; init; }
 
@@ -102,6 +111,7 @@ public static class ExtensionCommand
                 Kind = installed.Manifest.Kind.ToString(),
                 Trust = installed.Manifest.Trust.ToString(),
                 Description = installed.Manifest.Description,
+                Licence = installed.Manifest.Licence,
                 Directory = Path.GetRelativePath(project.Root, installed.Directory),
                 Incompatibility =
                     ExtensionCatalogue.Incompatibility(installed.Manifest, EngineBuild.Version),
@@ -234,6 +244,12 @@ public static class ExtensionCommand
             Name = name,
             Version = "0.1.0",
             Description = $"An objective composing the engine's own figures of merit.",
+
+            // Scaffolded with a licence already in it, for the reason `init` writes a
+            // model that runs: a field that has to be added later is one that gets left
+            // out. Apache-2.0 matches this repository's own, and an author who wants
+            // something else edits one line - which is a better prompt than an absence.
+            Licence = "Apache-2.0",
             Kind = kind,
             Trust = ExtensionTrust.Sandboxed,
             Entry = "extension.py",
