@@ -159,6 +159,68 @@ if __name__ == "__main__":
 Work at a **4 mm cell** (0.56 M nodes, solves in seconds) while debugging kinematics — field
 accuracy does not matter until the trajectory is sane.
 
+### The convergence works: the drift decelerates, and it reverses
+
+**Measured, with a clean control.** Tilting the mirror boards about x makes the gap vary
+along the drift, which is what breaks the translational invariance and gives the drift
+somewhere to go.
+
+First, the tilt reaches the solved field, and proportionally — the potential on axis at
+100 mm depth, compared between one end of the drift and the other:
+
+| convergence | difference between the ends |
+| --- | --- |
+| none | 2e-6 V — round-off |
+| 200 µm | **7.417 V** |
+| 800 µm | **30.91 V** |
+
+4.167x for a 4x tilt: proportional, as the cut-cell measurement predicted at millimetre
+scale and this confirms at instrument scale.
+
+Then the drift velocity along the analyser, per 40 mm segment:
+
+| segment | parallel boards | converging 800 µm |
+| --- | --- | --- |
+| 175 → 200 mm | 1374.34 m/s | 1363.25 |
+| 200 → 240 | 1374.34 | 1333.11 |
+| 240 → 280 | 1374.34 | 1294.98 |
+| 280 → 320 | 1374.34 | 1246.95 |
+| 320 → 340 | **1374.34** | **1174.03** |
+
+**The parallel control is constant to the last digit printed**, which is what a
+translationally invariant analyser must do — there is no axial force for it to feel. The
+converging case decelerates monotonically, and the decrements grow: 11, 30, 38, 48, 73 m/s.
+
+**And pushed further, it reverses.** At 12.8 mm of convergence the ion never reaches the
+detector: it goes out to z = 314 mm, stops, and comes back to z = 64 mm.
+
+| t µs | 20 | 60 | 100 | 140 | 180 | 220 | 260 | 300 | 400 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| z mm | 198.6 | 231.8 | 258.1 | 291.0 | **313.9** | 281.1 | 250.6 | 224.3 | 64.4 |
+
+That is the asymmetric track's defining behaviour, and it is what a generic MR-TOF cannot do.
+
+### Two things this measurement is NOT
+
+**It is not quantitative near the z boundaries, and the reason is a boundary condition that
+is now wrong.** The skeleton declares both z faces Neumann because stripe electrodes make
+the geometry repeat along the drift — which was true while the boards were parallel and is
+**false the moment they converge**. A Neumann face is a mirror, so beyond z = 350 the gap
+widens again and beyond z = 0 likewise: the modelled instrument is a bowtie, not a wedge.
+The returning velocities above (−2045 m/s against +1180 outbound) are larger than a
+conservative axial well should give, and that asymmetry is the most likely place the wrong
+boundary shows.
+
+**Fixing it is a modelling question, not an engine one.** A real analyser ends in deflectors
+and an ion foil, not in a symmetry plane. Until those exist, take the deceleration and the
+reversal as demonstrated and the numbers as indicative.
+
+**And the convergence needed is 12.8 mm, not the published 200 µm** — because this skeleton
+makes 3.77 oscillations where the instrument makes 24. The deceleration accumulates per
+reflection, so a sixth of the reflections needs far more per reflection. Getting the
+published geometry to reverse at its published convergence is the next real test, and it
+needs the oscillation count first.
+
 ### The injection angle does not give 24 oscillations, and that is the point
 
 At 3.5% the ion crosses the 350 mm drift in **3.77 oscillations**, not 24. Getting 24 over a
