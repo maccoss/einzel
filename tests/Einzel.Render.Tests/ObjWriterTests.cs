@@ -115,6 +115,44 @@ public sealed class ObjWriterTests(ITestOutputHelper output)
         Assert.DoesNotContain("o nothing", text, StringComparison.Ordinal);
     }
 
+    /// <summary>Normals are counted separately from positions.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>OBJ keeps two counters and a writer naturally keeps one.</b> While every object
+    /// carries normals the two advance together and a single offset is indistinguishable
+    /// from the correct thing — which is why this survived being written, reviewed and
+    /// exercised on a real sixteen-electrode model.
+    /// </para>
+    /// <para>
+    /// The first object here has no normals, so from the second object on the two counters
+    /// differ by exactly its vertex count. A shared offset points every later face at
+    /// normals belonging to something else: no parse error, no missing geometry, just
+    /// lighting that is quietly wrong.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NormalIndicesAreCountedSeparatelyFromPositions()
+    {
+        var flat = new NamedSurface("flat", [0, 0, 0, 1, 0, 0, 0, 1, 0], [], [0, 1, 2]);
+
+        var text = ObjWriter.Write([flat, Triangle("shaded", 10.0)]);
+
+        output.WriteLine(text);
+
+        var faces = text.Split('\n')
+            .Where(l => l.StartsWith("f ", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(2, faces.Count);
+
+        // No normals on the first object, so its face carries bare position indices.
+        Assert.Equal("f 1 2 3", faces[0].Trim());
+
+        // The second object's positions continue from 4, but its normals are the FIRST
+        // normals in the file and so start at 1. A shared counter would write 4//4 5//5 6//6.
+        Assert.Equal("f 4//1 5//2 6//3", faces[1].Trim());
+    }
+
     /// <summary>The geometry survives the round trip, read back as a parser would.</summary>
     /// <remarks>
     /// Positions are compared as numbers rather than as text, because what matters is that

@@ -77,6 +77,12 @@ public static class ObjWriter
         // object's vertices.
         var vertexBase = 1;
 
+        // Positions and normals have SEPARATE counters in OBJ. One offset serving both is
+        // correct exactly while every object carries normals, and silently wrong from the
+        // first object that does not: every later object then points at normals belonging
+        // to something else, which is shading nonsense rather than a parse error.
+        var normalBase = 1;
+
         foreach (var part in parts)
         {
             if (part.Triangles.Count == 0)
@@ -119,30 +125,39 @@ public static class ObjWriter
                 var c = part.Triangles[i + 2] + vertexBase;
 
                 text.Append("f ");
-                Face(text, a, hasNormals);
+                Face(text, a, part.Triangles[i] + normalBase, hasNormals);
                 text.Append(' ');
-                Face(text, b, hasNormals);
+                Face(text, b, part.Triangles[i + 1] + normalBase, hasNormals);
                 text.Append(' ');
-                Face(text, c, hasNormals);
+                Face(text, c, part.Triangles[i + 2] + normalBase, hasNormals);
                 text.Append('\n');
             }
 
             vertexBase += part.VerticesMm.Count / 3;
+
+            if (hasNormals)
+            {
+                normalBase += part.Normals.Count / 3;
+            }
         }
 
         return text.ToString();
     }
 
     /// <summary>One face vertex, with its normal where there is one.</summary>
-    private static void Face(StringBuilder text, int index, bool hasNormals)
+    /// <param name="text">Where to write it.</param>
+    /// <param name="vertex">One-based position index, counted across the whole file.</param>
+    /// <param name="normal">One-based normal index, counted separately from positions.</param>
+    /// <param name="hasNormals">Whether this object supplied normals at all.</param>
+    private static void Face(StringBuilder text, int vertex, int normal, bool hasNormals)
     {
-        text.Append(index.ToString(CultureInfo.InvariantCulture));
+        text.Append(vertex.ToString(CultureInfo.InvariantCulture));
 
         if (hasNormals)
         {
             // The empty texture slot is required: "v//vn" is a vertex and its normal,
             // where "v/vn" would be read as a vertex and a texture coordinate.
-            text.Append("//").Append(index.ToString(CultureInfo.InvariantCulture));
+            text.Append("//").Append(normal.ToString(CultureInfo.InvariantCulture));
         }
     }
 

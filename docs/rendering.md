@@ -573,6 +573,20 @@ it merges the objects. Hand-written for the reason the PDF writer is (LIC-1).
 one unit as one metre — which would make a 625 mm analyser 0.6 units long. §9 refuses an
 unlabelled quantity everywhere else and a mesh file is not an exception.
 
+**A latent bug found by validating the file rather than trusting it.** OBJ keeps *separate*
+index counters for positions and normals, and the writer advanced one for both. That is
+indistinguishable from correct while every object carries normals — which is every object
+this engine produces today — and silently wrong from the first one that does not: every
+later object would point at normals belonging to something else. No parse error, no missing
+geometry, just shading that is quietly of a different solid.
+
+It is worth recording *how* it surfaced. The file was reported as not opening, and the first
+instinct was to look for a malformed line. There was none — the file validated on every
+structural check — and the actual causes were a wiped temp directory and a `.einzel` folder
+that Blender's file browser hides. **The bug was found while proving the file innocent**,
+which is the argument for validating an output format against the format rather than against
+the fact that one consumer happened to accept it.
+
 ## Sub-cell geometry was lost a second time, through the aspect ratio
 
 The shell viewport once produced **no conductors at all, silently**, because a 1 mm plate is
