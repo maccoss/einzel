@@ -2262,3 +2262,92 @@ actually caught them were:
   size wearing the costume of a claim about the diff. Replaced by recomputing the expected
   diff in the test and comparing it exactly, which cannot be satisfied by a wrong
   implementation and does not care how many electrodes there are.
+
+## A rotation about the wrong axis is silent
+
+The Astral skeleton tilted its mirror stacks with `tiltAxis: "x"` to make the two mirrors
+converge along the drift, which is the mechanism that reverses an asymmetric-track
+analyser's drift and the entire point of the model. **A rotation about x mixes y and z**,
+so what it actually converged was the two *boards*, across the gap the ion flies down. The
+mirror surfaces have their normals along **x**, and a rotation about x leaves them exactly
+where they were.
+
+Everything worked. The model validated, solved in the same number of cycles, flew an ion,
+and **the drift decelerated and reversed** — because converging boards do decelerate a
+drift, through the transverse confinement stiffening as the gap narrows. It is a real
+mechanism, roughly three times weaker, and it produced a reversal convergence 8× the
+published spacer that was then attributed to unknown electrode depths.
+
+**What caught it was an analytic model disagreeing by a constant factor.** A tilted mirror
+gives each reflection a z-impulse of θ times its x-impulse, and the x-impulse is fixed at
+`2·m·v_x`, so `Δv_z = −2·v_x·θ` per reflection whatever the mirror depth. Inverting the
+measured deceleration through that relation gives an *effective oscillation period*, which
+came out at 151 µs where the ion's real period is ~32 µs. A 4.7× shortfall that no
+parameter error explains is not a parameter error.
+
+The generalisation: **a geometric transformation can be well-formed, validated, and
+applied to the wrong degree of freedom, and the result is a working model of a different
+instrument.** Nothing in a units check, a schema check or a convergence check can see it,
+because none of them knows what the rotation was *for*. What sees it is a closed form for
+the effect the transformation is supposed to produce — and the tell is a discrepancy that
+is a constant factor rather than a trend, because a wrong mechanism has its own scaling.
+
+The control that settles it costs one run: **reverse the tilt sign.** One sign shortened
+the transit and one lengthened it and reversed the drift, which is what a tilt must do. A
+mechanism that decelerated whichever way the mirrors leaned would not be a tilt.
+
+## A binary predicate over a diverging observable throws the physics away
+
+Finding where an ion stops arriving was posed as `einzel boundary` over "does a flight
+time exist". That predicate is false three different ways — the drift reversed, the ion
+struck an electrode, or the flight-time ceiling was reached — and a bisection cannot tell
+them apart. Two of four points in a depth scan turned out to be measuring *arrives →
+strikes metal*, and the trend drawn through them was reported as physics.
+
+**The underlying observable was not binary at all.** The drift decelerates, so the transit
+lengthens smoothly and diverges: 185.13, 198.87, 238.18 µs before it stops arriving.
+Fitting `Z = v_z0·t − ½·k·c·t²` to **two** runs recovers the launch drift speed and the
+deceleration constant, agreeing with the eleven-evaluation bisection to 14 per cent and
+with an independently measured drift speed to 0.9 per cent.
+
+Two rules. **Report the outcome, not its shadow** — a run that says `StruckElectrode` and
+names the surface distinguishes all three cases for free, and the figure of merit that
+returns null for each does not. And **a bisection result is only comparable across runs
+that share a bracket**: the same geometry searched over `[0.02, 2.0]` and `[0.01, 8.0]`
+gave 1.99 mm and 0.31 mm, which reads as a non-monotone physical trend and is two
+different questions.
+
+## A warning emitted and not read costs the same as one never emitted
+
+`BoundarySearch` throws when both ends of a bracket agree, and walks outward from the
+converged bracket to raise `boundary.multiple-crossings` when the predicate flips back.
+Both were built for exactly the failure above. Neither helped, because the analysis script
+read `boundary.value` and never looked at `warnings`.
+
+This project has fixed *the shortest spelling discards the evidence* four times inside the
+engine — `FieldAssembly.Build` dropping its `SolveReport`, the sweep evaluator dropping
+its warnings, `CollisionSampler`'s two unread flags, `SampledOutsideDensity`. The fifth
+was outside it, in throwaway analysis code, and cost a wrong conclusion that reached a
+tracked document. **Engine-side discipline about carrying evidence does not survive the
+boundary into the scripts that consume it**, and scripts are where results are actually
+read.
+
+## A flight-time ceiling impersonates physics
+
+Looking for the convergence at which an analyser's drift reverses, `c = 0.20 mm` came back
+`MaximumFlightTimeReached` at z = 312.1 mm, short of the 325 mm detector — which reads
+unambiguously as an ion that turned round. It had not. Raised from a 450 µs ceiling to
+2000 µs, the same model **arrives**, at 478.47 µs: the ion was moving forward the whole
+time and was 13 mm short when the clock stopped.
+
+The failure is that `MaximumFlightTimeReached` is one outcome for two situations — the ion
+is confined, or the run was too short — and near a threshold the transit **diverges**, so
+the slowest arriving cases are exactly the ones the ceiling clips. A threshold search over
+that predicate finds the ceiling and reports it as the physics, and it will be a smooth,
+plausible function of the parameter being scanned.
+
+**The check is to look at where the ion ended, not that it ran out of time**, and to raise
+the ceiling until the answer stops moving. Same family as the incomplete-arrival trap
+already documented for `einzel compare`, where a mean transit over the subset that arrived
+is not a transit time; and the same family as the Paul trap's ejection edge, where "did the
+ion reach an electrode within N cycles" measured the hold rather than the design.

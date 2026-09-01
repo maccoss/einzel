@@ -2300,6 +2300,60 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
 
+13. **The Astral inverse problem, restated after a wrong turn.** The gap between this
+    model and the published 200 µm spacer was recorded as **6.3×** and attributed to the
+    four unknown electrode depths. Both halves were wrong.
+
+    **The depth scan was measuring three different things.** Its predicate was "does a
+    flight time exist", which is false for a reversed ion, a struck ion and a timed-out
+    ion alike; two of its four points were the *arrives → strikes metal* crossing, one
+    was a bisection over a bracket the others did not share, and `mouth = d4` meant
+    scaling the depths walked the mirrors together and shrank the field-free gap from
+    365 mm to 53. Four instruments, not one at four depths. **The engine said so and was
+    not read** — `BoundarySearch` raises `boundary.multiple-crossings` for exactly this,
+    and the analysis script read `boundary.value` and dropped `warnings`. That is the
+    *shortest spelling discards the evidence* failure this project has fixed four times
+    inside the engine, committed once outside it, where results are actually read.
+
+    **The cause was the tilt axis.** `tiltAxis: "x"` mixes y and z, so it converged the
+    two **boards**; the mirror surfaces have their normals along x and a rotation about x
+    leaves them where they were. The model contained no mirror-tilt impulse at all, and
+    what decelerated its drift was the transverse confinement stiffening — real, and
+    about three times weaker. Caught by an analytic model disagreeing by a **constant
+    factor**: a tilted mirror gives `Δv_z = −2·v_x·θ` per reflection whatever its depth,
+    and inverting the measured deceleration through that gave an effective oscillation
+    period of 151 µs where the ion's is at most ~32 — a bound on the shortfall, not a
+    measurement of it, which is why the mechanism was then compared directly.
+
+    | | reversal convergence | against 200 µm |
+    | --- | --- | --- |
+    | boards (axis x), converged domain | 1.5778 mm | 7.9× |
+    | mirrors (axis y), launch mid-drift | 0.5397 mm | 2.70× |
+    | **mirrors, launch at the drift start** | **0.267 mm**, bracketed [0.26, 0.28] | **1.33×** |
+
+    The last is a *tested prediction*: a two-run fit gave 0.267 and two runs that took no
+    part in it bracket it (0.26 arrives, 0.28 reverses). **A flight-time ceiling
+    impersonated physics on the way** — at 450 µs, c = 0.20 read as reversed at z = 312.1;
+    at 2000 µs the same model arrives, at 478.47 µs, still moving forward and 13 mm short.
+
+    **What came out of it that is worth more than the number:** `N = α·L/c`. Out-and-back
+    time is `2·v_z0/(k·c)` and the period is `2·v_x/(L·k)`, so both cancel and the
+    oscillation count depends only on injection angle, drift length and spacer — not on
+    mirror depth, cap-to-cap distance or ion energy. Those set the *time*, and so the
+    resolving power at a given path, which makes the two halves of the design separable.
+    Validated end to end at **1275 µs predicted against 1356.96 measured** on a full
+    out-and-back with a return detector, with nothing refitted.
+
+    **What is left.** The depths are still unmeasured, and the analytic model says why the
+    scan was unlikely to constrain them: a tilted mirror's impulse is depth-independent,
+    so they need a figure of merit that moves with them — the mirror's own energy-focusing
+    order, which `astral-mirror` already measures in two dimensions. Two smaller things:
+    `tiltAxis` accepts only a coordinate axis, so a device converging its boards **and**
+    tilting its mirrors cannot be written, though by Euler's theorem it is a single
+    rotation about a tilted one; and the template models the outbound drift, since placing
+    the return detector needs the offset a real asymmetric track uses and this model has
+    none.
+
 ## Open decisions
 
 §23's list, with what has been settled since.

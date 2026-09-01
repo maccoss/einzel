@@ -160,6 +160,9 @@ That is the asymmetric track's defining behaviour, and it is what a generic MR-T
 
 ### Two things this measurement is NOT
 
+> **Partly settled.** The Neumann-face caveat below is real and has since been measured: it is worth about 11 per cent, converged at 50 mm of z padding, and grounding those faces instead pins the ion in z entirely. See *The drift faces are worth 11 per cent*.
+
+
 **It is not quantitative near the z boundaries, and the reason is a boundary condition that
 is now wrong.** The skeleton declares both z faces Neumann because stripe electrodes make
 the geometry repeat along the drift — which was true while the boards were parallel and is
@@ -202,6 +205,9 @@ out-of-domain fix it would have been flung by a fabricated field instead.
 
 ### The reversal threshold, bisected — and it is a very steep power law
 
+> **Superseded** — bisected on a predicate that cannot tell reversal from striking an electrode. See *What was wrong with all three measurements below*.
+
+
 `einzel boundary` finds the convergence at which the drift reverses: the ion arrives below
 it and does not above, and a figure that stops existing is outside by construction, so a
 cut-off is exactly what this search is for. Eleven to fourteen evaluations rather than a
@@ -233,7 +239,244 @@ The ceiling is now 2.5x each angle's own ballistic transit.
 where ACC-6 asks for 1/500), `TRAJECTORY_INCOMPLETE` on the reversed side, which is what a
 reversed ion *is*, and `ENERGY_DRIFT_EXCEEDS_BUDGET` at this 4 mm cell.
 
+### What was wrong with all three measurements below
+
+Three faults, found by re-measuring with the outcome **reported** rather than inferred.
+
+**1. The predicate could not tell reversal from striking metal.** Every bisection here
+asked "does a flight time exist", which is false for a reversed ion, a struck ion and a
+timed-out ion alike. Re-run reporting `outcome`:
+
+| d4 | 0.10 mm | 0.20 | 0.40 | 0.80 | 1.60 |
+| --- | --- | --- | --- | --- | --- |
+| 130 mm | arrives | arrives | arrives | arrives | **reversed** |
+| 195 mm | arrives | arrives | **struck** | struck | struck |
+| 231.9 mm | **struck** | struck | struck | struck | struck |
+| 286 mm | arrives | **reversed** | reversed | reversed | reversed |
+
+At 195 mm the search found the *arrives → strikes metal* crossing. At 231.9 mm the ion
+strikes across the whole declared range. **Only 130 and 286 mm measured a reversal at
+all**, so the "power law" through four points was drawn through two.
+
+**The engine was not at fault, and that is the uncomfortable part.** `BoundarySearch`
+throws when both bracket ends agree, and its confirmation walk raises
+`boundary.multiple-crossings` when the predicate flips back — both built for exactly
+this. The analysis script read `boundary.value` and dropped `warnings`: the same *the
+shortest spelling discards the evidence* shape this project has fixed four times inside
+the engine, committed once outside it. A warning that is emitted and not read costs the
+same as one never emitted.
+
+**2. It was never a depth study.** `mouth = d4`, so the mirror **position** is derived
+from the depth. Scaling `d1..d4` walks the two mirrors toward each other and shrinks the
+field-free gap between them:
+
+| d4 | field-free gap = capToCap − 2·d4 |
+| --- | --- |
+| 130 mm | 365 mm |
+| 195 mm | 235 mm |
+| 286 mm | **53 mm** |
+
+Four different instruments, not one instrument at four depths. A depth study needs
+`mouth` freed from `d4` first.
+
+**3. A bisection is only comparable across runs that share a bracket.** The confirming
+run used `[0.02, 2.0]` where every other depth used `[0.01, 8.0]`, and returned
+**1.9884 mm** — *worse* than the 1.2513 mm baseline it was meant to improve on. A
+non-monotone result from a monotone physical trend is the signal that the brackets, not
+the physics, differ.
+
+### A better observable: the transit diverges, so fit it rather than bracketing it
+
+The drift decelerates, so the transit **lengthens smoothly and diverges** rather than
+flipping — 185.13, 198.87, 238.18 µs at 0.05, 0.40, 1.00 mm, then pinned at the flight-time
+ceiling. Fitting `Z = v_z0·t − ½·k·c·t²` to **two** runs gives both the launch drift speed
+and the deceleration constant:
+
+| | |
+| --- | --- |
+| `v_z0` from the fit | **858.3 m/s** |
+| `v_z0` from the low-convergence transit alone | 850.8 m/s |
+| `k` | 1.6533e-3 µs⁻² |
+| reversal convergence `v_z0²/(2kZ)` | 1.4145 mm |
+| the same, bisected in 11 evaluations | 1.2513 mm |
+
+**Two runs against eleven, agreeing to 14 per cent**, and what comes back is a physical
+constant rather than a bracket that means nothing outside its own range. The 14 per cent
+is the deceleration not being quite uniform; a bracket cannot report that at all.
+
+### The drift faces are worth 11 per cent, and the alternative is catastrophic
+
+§4 recorded the Neumann drift faces as the leading caveat — a mirror face says the
+structure repeats along z, which is true of parallel boards and **false the moment they
+converge**, so the modelled instrument is a bowtie rather than a wedge. That is still
+true, and it is now *measured* rather than feared. Padding the domain in z while holding
+the ion's drift fixed at 10 → 325 mm:
+
+| z padding | k (µs⁻²) | reversal convergence |
+| --- | --- | --- |
+| none (as shipped) | 1.6533e-3 | 1.4145 mm |
+| 50 mm | 1.5535e-3 | 1.5665 mm |
+| 150 mm | 1.5473e-3 | 1.5778 mm |
+
+**7.4 per cent from none to 50 mm, then 0.4 per cent** — converged. So the shipped
+template's zero padding costs about 11 per cent of the answer, and the caveat is real but
+an order of magnitude too small to matter for the question this model exists to ask.
+
+**And grounding those faces instead is not a slightly different answer, it is a different
+instrument.** With `lowerZEdge`/`upperZEdge` removed, the domain walls become earthed
+plates 10 mm from where the ion is trying to turn round, and the mirror stack at kilovolts
+against them digs an axial well the ion simply sits in: **z = 168.0 mm at c = 0.10 and
+169.1 mm at c = 0.80**, launched at 167.5, for the whole 450 µs. It does not drift at all.
+Neumann is the right choice of the two, and now for a measured reason.
+
+### The tilt axis was rotating the wrong thing
+
+**`tiltAxis: "x"` converges the boards, not the mirrors.** A rotation about x mixes y and
+z, so it closes the y gap between the two boards along the drift. The mirror surfaces have
+their normals along **x**, and a rotation about x leaves them exactly where they were — so
+the model contained **no mirror-tilt impulse at all**.
+
+That is the whole missing factor, and the arithmetic says so twice. A tilted mirror gives
+each reflection a z-impulse of θ times its x-impulse, and the x-impulse is fixed at
+`2·m·v_x` — so `Δv_z = −2·v_x·θ` per reflection, **independent of mirror depth**, and
+`a_z = 2·v_x·c/(L·T)`. Inverting the measured `k` gives an effective oscillation period of
+**151 µs**. The ion's real period is **at most ~32 µs** — its 182 µs flight covers at most
+7.14 m (39.2 mm/µs, which it only reaches outside the mirrors) at no less than the 1.25 m
+mouth-to-mouth round trip, so at least 5.7 oscillations. **That makes 4.7× an upper bound
+on the shortfall rather than a measurement of it**, which is enough to say the mechanism is
+wrong and not enough to say by how much; the direct comparison below is what settles that.
+What the board convergence does decelerate the drift by is the transverse confinement stiffening as the gap narrows, which is real and weaker.
+
+Rebuilding the same geometry with `tiltAxis: "y"` on the mirror stacks, near and far
+tilted oppositely so the mirrors converge along the drift:
+
+| tilt | c = 0.10 | c = 0.80 | k (µs⁻²) |
+| --- | --- | --- | --- |
+| boards, axis x | 182.54 µs | 211.04 µs | +1.547e-3 |
+| mirrors, axis y, near +θ | 171.75 µs | 138.60 µs | **−4.682e-3** |
+| mirrors, axis y, near −θ | 188.68 µs | **reversed at z = 204.7** | +4.530e-3 |
+
+**The sign is a control, not a nuisance.** One sign shortens the transit — the mirrors
+*diverge* and the drift accelerates — and the other lengthens it and reverses. A mechanism
+that produced deceleration whichever way the mirrors were tilted would not be a tilt.
+
+### Against the published spacer, reconciled to 1.33x
+
+Two changes, each measured on its own: the tilt axis, and launching at the **start** of
+the drift rather than its middle. The second is not a fudge — the skeleton launched at
+`driftLength / 2` and so threw away half the length the instrument has to turn the ion
+round in, and the reversal condition depends on the drift available.
+
+| | reversal convergence | against a 200 µm spacer |
+| --- | --- | --- |
+| boards (axis x), launch mid-drift, no z padding | 1.2513 mm bisected, 1.4145 fitted | 6.3–7.1× |
+| boards, converged domain | 1.5778 mm | 7.9× |
+| **mirrors (axis y), launch mid-drift** | **0.5397 mm** | **2.70×** |
+| **mirrors (axis y), launch at drift start** | **0.267 mm** | **1.33×** |
+
+At the full drift the transit lengthens 377.43 → 400.77 → 431.94 → 478.47 µs across
+c = 0.05 → 0.20 mm and the drift has reversed by 0.30, so the fitted 0.267 mm sits inside
+a measured bracket. **The remaining 1.33× is smaller than the uncertainty in the geometry
+that is still guessed** — the four electrode depths, the board gap, the exact ion energy —
+so there is no longer a discrepancy to attribute to them.
+
+**A flight-time ceiling impersonated physics on the way here, and it is worth recording
+because it nearly became the headline.** At the model's 450 µs ceiling, c = 0.20 mm
+appeared to reverse: the run ended `MaximumFlightTimeReached` at z = 312.1 mm, short of
+the 325 mm detector. Raised to 2000 µs, the same model **arrives**, at 478.47 µs — the ion
+was still moving forward the whole time, 13 mm short when the clock stopped. This is the
+incomplete-arrival trap already documented for `einzel compare`, met from the other side:
+*a mean over the subset that arrived is not a transit time, and a run that stopped early
+is not a run that turned round.* The verdict now tests where the ion **ended**, not that
+it ran out of time.
+
+**The 0.267 mm is a tested prediction, not a fitted number.** The fit used c = 0.05 and
+0.20 only; two further runs, which took no part in it, bracket it:
+
+| c | outcome | |
+| --- | --- | --- |
+| 0.26 mm | arrives, 616.66 µs | |
+| 0.28 mm | reversed, ends at z = −782.7 mm | driven back out of the analyser |
+
+so **c_rev = 0.267 mm, bracketed [0.26, 0.28]**. The transit at 0.26 is 616.66 µs against
+377.43 at 0.05 — the divergence is what makes the threshold sharp.
+
+**And the fit's other output is checkable against a closed form the engine had no part
+in.** The launch drift speed is `sqrt(2qV/m)·sinα` = **877.69 m/s** for m/z 500 at 4 kV
+and 1.28°, and the fit is not told any of those numbers — it sees two transit times through
+a solved 3-D field. Better still, it is a second and independent reason to pad the domain:
+
+| | fitted `v_z0` | against 877.69 |
+| --- | --- | --- |
+| no z padding | 858.3 m/s | −2.2% |
+| 150 mm padding | 876.9, 877.6, 877.8 m/s | **−0.1%** |
+
+**The fit converges onto the closed form as the domain converges.** With the Neumann face
+10 mm from the turning point the fit absorbs the boundary's distortion into the one
+parameter that should not depend on the geometry at all, and says so by being 2.2% wrong
+about a quantity fixed by the ion's energy and launch angle.
+
+### The oscillation count has a closed form, and the period cancels out
+
+Out-and-back time is `2·v_z0/(k·c)` and the oscillation period is `T = 2·v_x/(L·k)`, so
+dividing them cancels both `k` and `T`:
+
+> **N = α · L / c**
+
+The number of oscillations depends on the injection angle, the drift length that defines
+the tilt, and the spacer — and **on nothing else**. Not the mirror depth, not the cap-to-cap
+distance, not the ion energy, not the board gap. Every one of those changes the oscillation
+period and the deceleration rate by the *same* factor, because both are set by how long the
+ion spends between reflections.
+
+That is worth having because it separates the design problem in two. The spacer and the
+injection angle fix the **path length**; everything else fixes the **time**, and so the
+resolving power at that path length. They can be chosen independently.
+
+**Validated end to end, with nothing refitted.** A model at c = 0.30 mm — just above the
+0.27 mm reversal threshold, so the ion turns round inside the drift — with a detector placed
+behind the launch point to catch the return:
+
+| | |
+| --- | --- |
+| predicted out-and-back time, `2·v_z0/(k·c)` | 1275 µs |
+| measured | **1356.96 µs** |
+| | 6.0 per cent |
+
+`v_z0` and `k` come from the two-run fit at a *different* convergence and a *different*
+drift length, and the detector geometry took no part in either. The 6 per cent is the
+deceleration not being quite uniform — the mirrors are closer at the far end, so the
+oscillation period shortens as the ion drifts, and a constant-`a_z` model reverses the ion
+slightly too late.
+
+**A caution this relation makes concrete.** At the published 200 µm and this model's 350 mm
+drift, `N = 24` requires **α = 0.0137 (0.79°)**, where the design condition recorded earlier
+in this document is 1.28°. That earlier figure came from a *ballistic* count — the drift
+speed held constant across the traverse — and the drift is precisely what decelerates, so
+the average speed is about half the launch value and the true count is about twice the
+ballistic one. **Which of these matches the real instrument is not settled here**, because
+the published "prism angle" of about 2° is a third number again and it is not clear which
+angle it names.
+
+### What this does and does not establish
+
+**It does not establish that the real instrument tilts its mirrors rather than its
+boards.** What it establishes is that *this* model, with mirror convergence, needs a
+spacer of 0.27 mm where the published instrument uses 0.200, and with board convergence
+needs 1.58 mm. A drift reversal is what an asymmetric-track analyser is for, and only one
+of the two mechanisms produces it at the published scale — which is evidence, not proof,
+and the template records it as such.
+
+**The four electrode depths remain unmeasured.** The scan that appeared to constrain them
+did not, and the analytic model says why it was unlikely to: a tilted mirror's z-impulse
+is `2·m·v_x·θ` whatever its depth, so depth enters only through the oscillation period.
+Constraining `d1..d4` needs a figure of merit they actually move — the mirror's own
+energy-focusing order, which `astral-mirror` already measures in two dimensions.
+
 ### The design condition, and the gap to the published instrument narrowing to 6.3x
+
+> **Superseded — read **What was wrong with all three measurements below**, immediately above, first.** The reversal convergences quoted here were bisected on a predicate that cannot tell reversal from striking an electrode, and the depth conclusion is withdrawn.
+
 
 **24 oscillations is an out-and-back number, and that fixes the injection angle.** With the
 published 30 m path, 625 mm cap-to-cap and a 335 mm drift, the arithmetic is
@@ -258,6 +501,9 @@ what makes it a law rather than a curve through two points.
 
 ### It is not the board gap, which was the obvious guess
 
+> **Superseded** — same contaminated predicate; the gap trend has not been re-measured.
+
+
 | board gap | reversal convergence |
 | --- | --- |
 | 40 mm | 1.2513 mm |
@@ -278,6 +524,9 @@ close on the beam before the drift can turn around.
 paper states, and the ones this model exists to solve for.
 
 ### Against the published instrument
+
+> **Superseded** — the gap is now 1.33x, not 57x, and the cause was the tilt axis rather than the electrode depths. See *Against the published spacer, reconciled to 1.33x*.
+
 
 Not reconciled, and the gap is in the right direction. The instrument uses **200 µm** at
 about 2° with **24 oscillations**; this skeleton needs **11.4 mm** at 2° with **4**. More
