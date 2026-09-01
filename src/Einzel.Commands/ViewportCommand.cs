@@ -43,6 +43,36 @@ public sealed record ConductorSurface(
     IReadOnlyList<double> Normals,
     IReadOnlyList<int> Triangles);
 
+/// <summary>Where a flight begins and where it is caught.</summary>
+/// <param name="SourceMm">The launch point, as x, y, z in millimetres.</param>
+/// <param name="LaunchDirection">Unit vector the ion sets off along.</param>
+/// <param name="DetectorMm">A point on the detector plane, in millimetres.</param>
+/// <param name="DetectorNormal">The plane normal, pointing back into the flight volume.</param>
+/// <param name="SpanMm">
+/// How large to draw them, in millimetres - a fraction of the instrument, so a marker is
+/// visible on a 600 mm analyser and not overwhelming on a 20 mm lens.
+/// </param>
+/// <remarks>
+/// <para>
+/// <b>A drawing of an instrument with no beginning and no end is hard to read</b>, and this
+/// analyser made it obvious: ions launch 10 mm into a 350 mm drift, reverse, and are caught
+/// on a plane behind where they started. Nothing in the picture said which end was which,
+/// so a viewer had to infer the direction of travel from the trajectory's own shape.
+/// </para>
+/// <para>
+/// <b>Both are drawing conventions rather than dimensions</b> (GRD-12). A source is a point
+/// and a detector is an unbounded plane; the sphere and the quad drawn for them have sizes
+/// chosen to be visible, and <see cref="SpanMm"/> is that choice made explicit rather than
+/// left in the shell where a reader could mistake it for the detector's extent.
+/// </para>
+/// </remarks>
+public sealed record FlightEnds(
+    IReadOnlyList<double> SourceMm,
+    IReadOnlyList<double> LaunchDirection,
+    IReadOnlyList<double> DetectorMm,
+    IReadOnlyList<double> DetectorNormal,
+    double SpanMm);
+
 /// <summary>One shell of the density, at a stated level.</summary>
 /// <param name="DensityPerCubicMetre">The level this surface sits at, in ions per m3.</param>
 /// <param name="DecadesBelowPeak">
@@ -96,6 +126,8 @@ public sealed record Equipotential(
 /// <param name="DensityAtUs">
 /// The instant the shells are the density at, or absent where there is no density.
 /// </param>
+/// <param name="Ends">Where the flight begins and where it is caught, or null when
+/// the model has no flight to draw ends for.</param>
 /// <param name="Warnings">What the viewport must show alongside (GRD-2).</param>
 /// <remarks>
 /// <para>
@@ -123,6 +155,7 @@ public sealed record ViewportOutcome(
     IReadOnlyList<DensityShell> Density,
     double? PeakDensityPerCubicMetre,
     double? DensityAtUs,
+    FlightEnds? Ends,
     IReadOnlyList<ValidityWarning> Warnings);
 
 /// <summary>
@@ -213,7 +246,7 @@ public static class ViewportCommand
             return new ViewportOutcome(
                 absolute, [], false, null, null,
                 conductors, Levels(model, field, low, high), low, high,
-                shells, peak, at, warnings);
+                shells, peak, at, Ends(model, []), warnings);
         }
 
         var species = IonSpecies.FromModel(model);
@@ -271,7 +304,57 @@ public static class ViewportCommand
         return new ViewportOutcome(
             absolute, paths, true, lowest, highest,
             surfaces, Levels(model, field, floor, ceiling, paths), floor, ceiling,
-            [], null, null, warnings);
+            [], null, null, Ends(model, paths), warnings);
+    }
+
+    /// <summary>Where the flight begins and ends, with a size to draw them at.</summary>
+    /// <remarks>
+    /// <b>The span is a fraction of what is drawn, not a fixed length.</b> A marker sized in
+    /// millimetres is invisible on a 600 mm analyser and swallows a 20 mm lens; taken from
+    /// the extent, one number works for both. Measured over the trajectories where there are
+    /// any and the geometry otherwise, which is the same extent the camera frames.
+    /// </remarks>
+    private static FlightEnds Ends(CompiledModel model, IReadOnlyList<TrajectoryPath> paths)
+    {
+        var low = new[] { double.MaxValue, double.MaxValue, double.MaxValue };
+        var high = new[] { double.MinValue, double.MinValue, double.MinValue };
+
+        void Cover(double x, double y, double z)
+        {
+            Span<double> at = [x, y, z];
+
+            for (var i = 0; i < 3; i++)
+            {
+                low[i] = Math.Min(low[i], at[i]);
+                high[i] = Math.Max(high[i], at[i]);
+            }
+        }
+
+        foreach (var point in paths.SelectMany(p => p.PointsMm))
+        {
+            Cover(point[0], point[1], point[2]);
+        }
+
+        Cover(model.SourcePosition.X * 1e3, model.SourcePosition.Y * 1e3, model.SourcePosition.Z * 1e3);
+        Cover(model.DetectorPoint.X * 1e3, model.DetectorPoint.Y * 1e3, model.DetectorPoint.Z * 1e3);
+
+        var extent = 0.0;
+
+        for (var i = 0; i < 3; i++)
+        {
+            extent = Math.Max(extent, high[i] - low[i]);
+        }
+
+        // A fortieth of the instrument: large enough to find, small enough not to hide the
+        // geometry it sits in. Floored so a degenerate extent still draws something.
+        var span = Math.Max(extent / 40.0, 0.5);
+
+        return new FlightEnds(
+            [model.SourcePosition.X * 1e3, model.SourcePosition.Y * 1e3, model.SourcePosition.Z * 1e3],
+            [model.SourceDirection.X, model.SourceDirection.Y, model.SourceDirection.Z],
+            [model.DetectorPoint.X * 1e3, model.DetectorPoint.Y * 1e3, model.DetectorPoint.Z * 1e3],
+            [model.DetectorNormal.X, model.DetectorNormal.Y, model.DetectorNormal.Z],
+            span);
     }
 
     /// <summary>The density, as nested shells at decades below its peak.</summary>

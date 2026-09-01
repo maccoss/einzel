@@ -927,6 +927,39 @@ Named so nobody rediscovers them as bugs:
   volume solve; those were **not mesh-converged** and were 36 per cent high. They are
   withdrawn.
 
+  **The published figures settle the shape class, and it is not a wedge.** The analyser
+  panel shows the foil as **leaf shapes — broad at mid-drift and tapering to points at both
+  ends of it.** That is a different thing from a monotonic taper, and the difference is the
+  whole mechanism:
+
+  | shape | on-axis potential | what it does |
+  | --- | --- | --- |
+  | monotonic wedge | a ramp | a constant returning force, and no focusing |
+  | **leaf, widest in the middle** | **a well centred in the drift** | **focuses the drift and returns it** |
+
+  Wider means more negative on axis, so a leaf puts a potential *well* at mid-drift and a
+  positive ion displaced either way along the drift is pulled back toward the centre. One
+  shape therefore does both jobs the sources describe — the focusing Stewart names, and the
+  "refraction on the ion foil" the paper credits for part of the reversal — where a wedge
+  can only do the second and does it without focusing.
+
+  **It also reframes the flight.** "Decelerating over the first 12–13 oscillations and
+  drifting back over the following 12–13" reads naturally as **half a period of slow axial
+  oscillation in the foil's well**, rather than as a linear ramp that happens to run out in
+  the right place. That is a prediction rather than a restatement: the well's axial period
+  should be about twice the flight time, and measuring it would confirm the foil model
+  instead of merely fitting it.
+
+  The template's profile is a parabola peaking at mid-drift — `foilMidHalfWidth` and
+  `foilEndHalfWidth`, needing only multiplication and so no new grammar. Verified from the
+  mesh as symmetric, 4.57 mm at the first and last slice centres rising to 15.93 mm at the
+  middle, which is the parabola evaluated exactly at those centres rather than an
+  approximation to it.
+
+  **Two electrodes, where the figures show four.** Two is the minimum that produces the well,
+  and going to four is a parameter change rather than a structural one; there is no
+  measurement yet asking for the other two.
+
   **What is still needed to build it**: the electrode shapes. The paper says the shapes are
   precise and purpose-made and does not give them, which leaves them where `d1..d4` are — a
   free parameter of the inverse problem rather than a number to look up.
