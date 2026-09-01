@@ -617,6 +617,23 @@ The rule: **a resolution set by one scalar over a shape with three independent e
 mis-serve some shape.** Which one depends on which extent the scalar was taken from, and
 every choice is wrong for something.
 
+## An extracted surface is eroded by about half a cell, and that is visible
+
+A conductor is drawn as the zero level set of its signed distance, and surface nets places
+one vertex per straddling cell rather than on the surface itself. So a plate comes out
+**about half a cell short at each end**, and on an electrode that gets few cells the effect
+is easy to see and easy to measure off by mistake.
+
+On the shipped Astral, whose stage-1 plates are 20 mm long inside a box 935 mm long, the x
+axis lands on the floor of 4 cells at 5.8 mm each: the plate meshes at **16.94 mm against
+20 declared**, and the *gaps* between stages therefore read about 6 mm wider than they are.
+
+**It is a drawing convention and not a dimension** (GRD-12), the same status as the depth a
+cross-section's prism is drawn to. A figure that needs a dimension should carry a declared
+one, which is measured from the model rather than from the picture — that is what
+`dimensions` is for. Raising the per-axis floor tightens it at a cost in triangles, and the
+right floor is a judgement about what these meshes are for rather than a number to derive.
+
 ## A section that cuts no metal says so
 
 A figure of an instrument with no instrument in it, and the only sign was a missing key in

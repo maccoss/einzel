@@ -176,6 +176,10 @@ boundary shows.
 and an ion foil, not in a symmetry plane. Until those exist, take the deceleration and the
 reversal as demonstrated and the numbers as indicative.
 
+**And the foil is not only an end effect** — see §7. If it controls z focusing along the
+whole drift, the missing element is not at the boundary but everywhere the ion goes, and the
+convergence in this model is standing in for two mechanisms at once.
+
 ### The convergence needed is set by the oscillation count, and that was testable
 
 The 12.8 mm above is **not** a disagreement with the published 200 µm. The deceleration
@@ -844,8 +848,36 @@ like: same binary, same study file, only the degree of parallelism moving.
 
 Named so nobody rediscovers them as bugs:
 
-- **Ion foil electrodes.** Published as biased 0 to −20 V above and below the path, shaped
-  to compensate temporal aberration. Not in the skeleton.
+- **Ion foil electrodes.** Published as biased 0 to −20 V above and below the path. Not in
+  the skeleton, and **this is the most consequential omission in the model, not a detail.**
+
+  This document previously described the foil only as *shaping to compensate temporal
+  aberration*. Hamish Stewart, in conversation with the author, describes it as **critical
+  to controlling z-axis focusing** — the drift direction. Those are different claims and the
+  second one reaches straight into everything measured here, because **every z-direction
+  result in this document attributes all of the drift dynamics to the mirror convergence,
+  for the sufficient reason that convergence is the only thing in the model that acts along
+  z.**
+
+  If the real analyser focuses its drift with a foil, then the two machines are not doing
+  the same thing with their convergence:
+
+  - This model's drift is a **free, decelerating** one, reversed by convergence alone. A
+    foil-focused drift is a **confined** one, and confinement and reversal are separate
+    jobs — a packet can be held against z-spreading by a periodic lens while the turnaround
+    is set by something else entirely.
+  - So `c_rev = 0.267 mm` against a published 200 µm is a **1.33× agreement between two
+    different mechanisms**, and its closeness should be treated as unexplained rather than
+    as confirmation. It is exactly the kind of agreement that stops an investigation.
+  - `N = α·L/(η·c)` is derived for convergence-only drift dynamics and has no term for a
+    periodic focusing element. Its two scalings were verified *within this model*, which
+    tests the derivation and says nothing about whether the model is the right one.
+
+  **It is expressible today and costs no engine work**: box electrodes at declared potentials
+  above and below the path, which is what every other electrode here already is. What is
+  missing is the geometry — the foil's shape and position are not something this author has.
+  Adding it is the next thing worth doing to these numbers, ahead of any further refinement
+  of the convergence.
 - **Drift deceleration and reversal.** A consequence of the convergence, which is now
   expressible but not yet exercised in a flying model.
 - **Prism deflectors** setting the ~2° inclination. The skeleton fakes this with an
