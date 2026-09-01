@@ -116,6 +116,23 @@ public sealed record StudyDocument
     /// <summary>Optimisation: ceiling on objective evaluations.</summary>
     public int MaximumEvaluations { get; init; } = 200;
 
+    /// <summary>How many evaluations may run at once, or null for one per processor.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Memory is the constraint, not cores.</b> Every evaluation in flight holds its own
+    /// solved field, so peak memory is this times one solve: on a 34 M-node volume geometry
+    /// that is 1.6 GiB each, and one per processor on a sixteen-core machine is 26 GiB. The
+    /// plane geometries most studies scan are a few hundred megabytes and need no limit.
+    /// </para>
+    /// <para>
+    /// It changes what a study <i>costs</i> and never what it <i>says</i>: draws are made in
+    /// seed order before anything is evaluated, and every row is written by index, so the
+    /// result is identical at any setting. A sweep run at one and at sixteen is the same
+    /// study, which is asserted rather than assumed.
+    /// </para>
+    /// </remarks>
+    public int? MaxParallelism { get; init; }
+
     /// <summary>Optimisation: convergence tolerance on the parameters, as a fraction of the box.</summary>
     public double ParameterTolerance { get; init; } = 1e-4;
 

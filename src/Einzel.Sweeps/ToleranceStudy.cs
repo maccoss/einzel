@@ -102,6 +102,14 @@ public static class ToleranceStudy
     /// to say so, because GRD-1 reports a quantity and a quantity without its
     /// dimension is the bare number the rule exists to prevent.
     /// </param>
+    /// <param name="maxParallelism">
+    /// How many draws may be evaluated at once, or null for one per processor.
+    /// <para>
+    /// Lower it when a single solve is large: each draw in flight holds its own solved
+    /// field, so peak memory is this times one solve. The draws themselves are always
+    /// made in seed order, so this changes what the study costs and never what it says.
+    /// </para>
+    /// </param>
     /// <returns>The draws, the attribution, and the distribution.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The draw count is negative.</exception>
@@ -122,7 +130,8 @@ public static class ToleranceStudy
         int seed = 1,
         bool oneAtATime = true,
         Dimension figureDimension = default,
-        string? sourceDirectory = null)
+        string? sourceDirectory = null,
+        int? maxParallelism = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(channels);
@@ -146,8 +155,17 @@ public static class ToleranceStudy
                 Suggestion = "a study cannot attribute variance about a nominal that does not exist",
             });
 
+        // DRAWN IN ORDER, EVALUATED AT ONCE. The draw sequence *is* the study: `Random` is
+        // consumed one call at a time and a seeded sweep has to reproduce from its manifest
+        // (PRJ-3), so drawing inside a parallel loop would race the generator and, worse,
+        // make the same seed give a different study on every run.
+        //
+        // Splitting the two costs nothing, because the draw is arithmetic and the
+        // evaluation is a solve and a flight. The perturbations are identical to what the
+        // sequential version produced, draw for draw.
         var random = new Random(seed);
-        var rows = new List<SweepDraw>(draws);
+
+        var perturbations = new Dictionary<string, Quantity>[draws];
 
         for (var d = 0; d < draws; d++)
         {
@@ -158,11 +176,28 @@ public static class ToleranceStudy
                 overrides[channel.Parameter] = channel.Draw(surface[channel.Parameter], random);
             }
 
-            rows.Add(Evaluate(document, overrides, evaluate, d, sourceDirectory));
+            perturbations[d] = overrides;
         }
 
+        var parallelism = new ParallelOptions
+        {
+            // Memory is the constraint, not cores: every draw in flight holds its own
+            // solved field. See ParameterScan.Run for the arithmetic.
+            MaxDegreeOfParallelism = Math.Max(1, maxParallelism ?? Environment.ProcessorCount),
+        };
+
+        var drawn = new SweepDraw[draws];
+
+        Parallel.For(
+            0,
+            draws,
+            parallelism,
+            d => drawn[d] = Evaluate(document, perturbations[d], evaluate, d, sourceDirectory));
+
+        var rows = new List<SweepDraw>(drawn);
+
         var sensitivity = oneAtATime
-            ? Attribute(document, channels, surface, evaluate, nominal, sourceDirectory)
+            ? Attribute(document, channels, surface, evaluate, nominal, sourceDirectory, parallelism)
             : [];
 
         return new ToleranceStudyResult(rows, sensitivity, Distribution(rows, draws, figureDimension), nominal);
@@ -174,27 +209,40 @@ public static class ToleranceStudy
         ParameterSurface surface,
         Func<CompiledModel, double?> evaluate,
         double nominal,
-        string? sourceDirectory)
+        string? sourceDirectory,
+        ParallelOptions parallelism)
     {
+        // Two evaluations per channel, all independent, and each as expensive as a draw -
+        // so attribution over a dozen channels is two dozen solves and runs at once like
+        // the draws do. Written by index so the pre-sort order does not depend on which
+        // channel finished first; the sort below is by swing and would hide a reordering
+        // rather than surface it.
+        var measured = new (double? Low, double? High)[channels.Count];
+
+        Parallel.For(
+            0,
+            channels.Count,
+            parallelism,
+            index =>
+            {
+                var channel = channels[index];
+                var (low, high) = channel.Extremes(surface[channel.Parameter]);
+
+                double? At(Quantity value) => Evaluate(
+                    document,
+                    new Dictionary<string, Quantity>(StringComparer.Ordinal) { [channel.Parameter] = value },
+                    evaluate,
+                    -1,
+                    sourceDirectory).FigureOfMerit;
+
+                measured[index] = (At(low), At(high));
+            });
+
         var results = new List<ChannelSensitivity>(channels.Count);
 
-        foreach (var channel in channels)
+        for (var index = 0; index < channels.Count; index++)
         {
-            var (low, high) = channel.Extremes(surface[channel.Parameter]);
-
-            var atLow = Evaluate(
-                document,
-                new Dictionary<string, Quantity>(StringComparer.Ordinal) { [channel.Parameter] = low },
-                evaluate,
-                -1,
-                sourceDirectory).FigureOfMerit;
-
-            var atHigh = Evaluate(
-                document,
-                new Dictionary<string, Quantity>(StringComparer.Ordinal) { [channel.Parameter] = high },
-                evaluate,
-                -1,
-                sourceDirectory).FigureOfMerit;
+            var (atLow, atHigh) = measured[index];
 
             // A channel whose extreme fails outright is maximally sensitive, not
             // insensitive: it has found a geometry that does not work at all.
@@ -202,7 +250,8 @@ public static class ToleranceStudy
                 ? double.PositiveInfinity
                 : Math.Max(Math.Abs(atLow.Value - nominal), Math.Abs(atHigh.Value - nominal));
 
-            results.Add(new ChannelSensitivity(channel.Parameter, atLow, atHigh, nominal, swing));
+            results.Add(new ChannelSensitivity(
+                channels[index].Parameter, atLow, atHigh, nominal, swing));
         }
 
         results.Sort((a, b) => b.Swing.CompareTo(a.Swing));

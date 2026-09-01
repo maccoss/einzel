@@ -243,4 +243,59 @@ public sealed class ToleranceStudyTests
 
         Assert.Contains("alpha", failure.Error.Suggestion, StringComparison.Ordinal);
     }
+
+    /// <summary>The same seed gives the same study however many draws run at once.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The draw sequence is the study.</b> <c>Random</c> is consumed one call at a time,
+    /// so drawing inside a parallel loop would both race the generator and make the same
+    /// seed produce a different sweep on every run — which would quietly break PRJ-3, whose
+    /// whole claim is that a manifest determines its run and results are therefore
+    /// regenerable rather than precious.
+    /// </para>
+    /// <para>
+    /// So the draws are made in order and only the evaluations run at once. Asserted on the
+    /// perturbed values themselves rather than on the summary statistics: a distribution can
+    /// match while the individual draws differ, and it is the draws that have to reproduce.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheSameSeedGivesTheSameStudyAtAnyParallelism()
+    {
+        PerturbationChannel[] channels =
+        [
+            Channel("alpha", 5.0, "mm"),
+            Channel("beta", 1.0, "mm"),
+            Channel("gamma", 200.0, "V"),
+        ];
+
+        ToleranceStudyResult Sweep(int parallelism) => ToleranceStudy.Run(
+            Model(), channels, Figure, draws: 200, seed: 20260901,
+            oneAtATime: true, maxParallelism: parallelism);
+
+        var sequential = Sweep(1);
+        var parallel = Sweep(16);
+
+        Assert.Equal(sequential.Draws.Count, parallel.Draws.Count);
+
+        for (var d = 0; d < sequential.Draws.Count; d++)
+        {
+            // The figure pins the answer; the index pins the ordering. Both exact - a draw
+            // is arithmetic on a seeded number and nothing about it depends on what else
+            // was running.
+            Assert.Equal(sequential.Draws[d].Index, parallel.Draws[d].Index);
+            Assert.Equal(sequential.Draws[d].FigureOfMerit, parallel.Draws[d].FigureOfMerit);
+        }
+
+        // Attribution runs at once too, and its ranking must not depend on which channel
+        // finished first.
+        Assert.Equal(
+            sequential.Sensitivity.Select(c => c.Parameter),
+            parallel.Sensitivity.Select(c => c.Parameter));
+
+        for (var c = 0; c < sequential.Sensitivity.Count; c++)
+        {
+            Assert.Equal(sequential.Sensitivity[c].Swing, parallel.Sensitivity[c].Swing);
+        }
+    }
 }

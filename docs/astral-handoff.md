@@ -316,20 +316,49 @@ than parallelism.
 
 ### If you want real parallelism, in priority order
 
-1. **Evaluation-level parallelism in the study drivers.** ~14× on a 16-core box for the
-   inverse problem, which is the actual goal. The drivers already take a pure
-   `Func<CompiledModel, double?>`, so the shape is there. Perfect scaling, no
-   synchronisation. **The constraint is memory**: each evaluation solves its own field, so
-   14 in flight at 4.35 M nodes is ~2.8 GB and at 34 M nodes is ~22 GB.
+1. ~~**Evaluation-level parallelism in the study drivers.**~~ **Built, and it gives about
+   5x rather than the ~14x this page first predicted.** `ParameterScan.Run` and
+   `ToleranceStudy.Run` take a `maxParallelism`, a study file declares it, and results are
+   bit-identical at any setting. What the prediction got wrong is measured below.
 2. **A multi-threaded red-black smoother.** Red-black Gauss–Seidel is the textbook parallel
    case — every node of one colour is independent of the others. This is what helps a
-   *single* solve, which evaluation parallelism cannot. Expect 4–8× rather than 16, because
-   a 27-point stencil sweep is memory-bandwidth bound.
+   *single* solve, which evaluation parallelism cannot. **But the measurement below says to
+   expect little**: the solve is already bandwidth-saturated at eight threads, and threading
+   *inside* one solve competes for the same bandwidth rather than adding any.
 3. **GPU (ILGPU) last.** A real project with genuine numerics risk, and TST-1 requires the
-   scalar reference implementation be kept and never allowed to rot.
+   scalar reference implementation be kept and never allowed to rot. A GPU has its *own*
+   memory bandwidth, which — given the finding below — is the one thing that would actually
+   lift the ceiling.
 
 **1 and 2 compete for the same cores** — you cannot multiply them. For a study, 1 is
 strictly better; for one big solve, 2 is the only option.
+
+### What parallelism actually bought, measured
+
+Two ladders in process, on this 8-core / 16-thread i9-9900K, so the CLI's cold start does
+not swamp a short study:
+
+| DOP | solve-bound (32-point mirror scan) | CPU-bound control (no solve) |
+| --- | --- | --- |
+| 1 | 1.00x | 1.00x |
+| 2 | 1.57x | 2.06x |
+| 4 | 2.53x | 3.93x |
+| 8 | **5.25x** | 3.92x |
+| 16 | 4.75x — *worse than 8* | **6.74x** |
+
+**The parallel machinery is fine; the solve is memory-bandwidth bound.** The CPU-bound
+control — same driver, same evaluator shape, arithmetic instead of a solve — reaches 6.74x
+and *benefits* from hyperthreading. The solve-bound ladder peaks at the eight physical cores
+and then loses ground, which is what a stencil sweep does when the memory bus is already
+saturated: the extra threads add no bandwidth and cost cache.
+
+**So plan on about 5x, and do not expect the 16 logical cores to help.** A 240-evaluation
+Astral search is a fifth of its sequential time, not a fourteenth.
+
+**And a measurement error worth not repeating.** This page first recorded 12.8x, from
+comparing a *Debug* sequential baseline against a *Release* parallel run. Release is 3.27x
+faster on its own, so almost all of the apparent speedup was the build. Compare like with
+like: same binary, same study file, only the degree of parallelism moving.
 
 ---
 

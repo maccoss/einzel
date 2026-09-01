@@ -286,6 +286,14 @@ public static class ParameterScan
     /// Produces the figure of merit from a validated model, or null where this point
     /// produces none.
     /// </param>
+    /// <param name="maxParallelism">
+    /// How many points may be evaluated at once, or null for one per processor.
+    /// <para>
+    /// Lower it when a single solve is large: each point in flight holds its own solved
+    /// field, so peak memory is this times one solve. Cores are rarely the binding
+    /// constraint; memory is.
+    /// </para>
+    /// </param>
     /// <returns>One row per point, and what the scan has to say about its own range.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">
@@ -301,7 +309,8 @@ public static class ParameterScan
         ModelDocument document,
         ScanAxis axis,
         Func<CompiledModel, double?> evaluate,
-        string? sourceDirectory = null)
+        string? sourceDirectory = null,
+        int? maxParallelism = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(axis);
@@ -348,20 +357,47 @@ public static class ParameterScan
             nominal = null;
         }
 
-        var points = new List<ScanPoint>(axis.Points);
+        // THE POINTS ARE INDEPENDENT, SO THEY RUN AT ONCE. Every point compiles its own
+        // model from the same immutable document and solves its own field; nothing is
+        // shared but the evaluator, whose only mutable state is the warning ledger, and
+        // that now scopes per evaluation and merges under a lock.
+        //
+        // WRITTEN BY INDEX, NOT APPENDED, so the curve comes back in scan order whatever
+        // order the points finish in. CLI-6 asks for deterministic output, and a scan whose
+        // rows arrive in completion order would reorder itself run to run on the same
+        // machine - which also breaks `verify`, since the result would no longer match.
+        //
+        // The seeds do not depend on the order either: a cloud draws from its own declared
+        // seed and a collision sampler from the gas seed plus the ion's index, so a point
+        // computes the same number wherever it runs.
+        //
+        // MEMORY IS THE CONSTRAINT, NOT CORES. Each point in flight holds its own solved
+        // field, so peak memory is the degree of parallelism times one solve - on a
+        // 34 M-node volume geometry that is 1.6 GiB each, and sixteen at once is 26 GiB.
+        // The caller lowers `maxParallelism` when the solve is large; the default is one
+        // per processor, which is right for the plane geometries most studies scan.
+        var rows = new ScanPoint[axis.Points];
 
-        for (var index = 0; index < axis.Points; index++)
-        {
-            var value = axis.At(index);
+        var parallelism = Math.Max(1, maxParallelism ?? Environment.ProcessorCount);
 
-            var overrides = new Dictionary<string, Quantity>(StringComparer.Ordinal)
+        Parallel.For(
+            0,
+            axis.Points,
+            new ParallelOptions { MaxDegreeOfParallelism = parallelism },
+            index =>
             {
-                [axis.Parameter] = value,
-            };
+                var value = axis.At(index);
 
-            points.Add(Evaluate(
-                document, overrides, evaluate, index, value.SiValue, sourceDirectory));
-        }
+                var overrides = new Dictionary<string, Quantity>(StringComparer.Ordinal)
+                {
+                    [axis.Parameter] = value,
+                };
+
+                rows[index] = Evaluate(
+                    document, overrides, evaluate, index, value.SiValue, sourceDirectory);
+            });
+
+        var points = new List<ScanPoint>(rows);
 
         if (points.All(p => p.FigureOfMerit is null))
         {

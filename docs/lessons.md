@@ -1827,6 +1827,48 @@ guarantees, and additionally the measured pair **only when the run reports both 
 — printing which case applied, so a run that skipped the second assertion says so rather than
 passing quietly.
 
+## A speedup measured across two builds is a measurement of the builds
+
+Parallelising the study drivers, the first number was **12.8x** — a 31-point scan going
+from 30.6 s to 2.39 s. It was wrong, and the way it was wrong is worth keeping.
+
+The 30.6 s baseline had been measured earlier, from a **Debug** binary. The 2.39 s came from
+**Release**. Release is 3.27x faster on its own, so most of the apparent speedup was the
+build. The same-binary comparison is 4.57 s to 1.50 s: **3.05x**.
+
+**Same binary, same input, one variable moving.** Obvious stated plainly, and easy to miss
+when the baseline is a number you already have written down and the new measurement is one
+you just took. A remembered baseline carries no record of how it was produced.
+
+### The control that localised the real limit
+
+3.05x on what looked like sixteen cores is poor, and the tempting conclusion — "the parallel
+machinery does not scale" — is checkable. Run the identical driver over a figure of merit
+that does arithmetic instead of solving a field:
+
+| DOP | solve-bound scan | CPU-bound control |
+| --- | --- | --- |
+| 1 | 1.00x | 1.00x |
+| 2 | 1.57x | 2.06x |
+| 4 | 2.53x | 3.93x |
+| 8 | **5.25x** | 3.92x |
+| 16 | 4.75x — *worse than 8* | **6.74x** |
+
+The machinery is fine: the control reaches 6.74x and *gains* from hyperthreading. The solve
+peaks at the **eight physical cores** and then loses ground, which is what a stencil sweep
+does once the memory bus is saturated — the extra threads add no bandwidth and cost cache.
+
+**Two things follow.** The machine has 8 physical cores and 16 logical, so the ceiling was
+never 16; and for this workload `Environment.ProcessorCount` is a *worse* default than the
+physical count, measurably, by about 10 per cent. More usefully, it says where the remaining
+headroom is not: threading *inside* one solve competes for the same saturated bus, so a
+multi-threaded smoother should be expected to disappoint, while a GPU — which brings its own
+memory bandwidth — is the thing that would actually lift the ceiling.
+
+**The general shape: when a parallel speedup disappoints, run the same harness over a
+workload with the opposite bottleneck.** If the control scales and the real work does not,
+the limit is in the work, and no amount of tuning the parallelism will move it.
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
