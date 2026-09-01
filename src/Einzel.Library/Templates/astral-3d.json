@@ -1,0 +1,826 @@
+{
+  "schemaVersion": "0.7",
+  "name": "astral-3d",
+  "description": "The Thermo Astral analyser as a solved volume: five-electrode mirrors at the published potentials, converging along the drift. THE CONVERGENCE IS THE MECHANISM rather than a tolerance - it breaks translational invariance, which is what makes the drift decelerate and reverse, and a multi-reflection analyser whose mirrors are parallel cannot do that however it is tuned. Measured: with the boards parallel the drift is constant to the last digit printed; converging, it decelerates monotonically and, given enough reflections, reverses. GUESSED: the electrode depths d1..d4, because no paper states them - they are the free parameters of an inverse problem against the published acceptance window. KNOWN WRONG: the drift faces are declared neumann, which says the structure repeats along z. True while the boards are parallel, false the moment they converge, so the field within about a board gap of either end is a mirrored wedge rather than the real instrument's deflectors and ion foil. Take the deceleration and the reversal as demonstrated and the numbers near the ends as indicative.",
+  "parameters": {
+    "ionEnergy": {
+      "value": 4000.0,
+      "unit": "V",
+      "minimum": 100.0,
+      "maximum": 20000.0,
+      "description": "Nominal beam energy. Stewart et al.: 4 keV entering the analyser."
+    },
+    "convergence": {
+      "value": 0.8,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 40.0,
+      "description": "How much closer the mirrors are at one end of the drift than the other. THE MECHANISM: it breaks translational invariance and gives the drift somewhere to go. Published as a 200 um spacer; what is needed depends on the oscillation count, since the deceleration accumulates per reflection."
+    },
+    "injectionAngle": {
+      "value": 0.035,
+      "unit": "1",
+      "minimum": 0.0005,
+      "maximum": 0.2,
+      "description": "Tangent of the angle the prisms set. Fixes the drift speed and so the oscillation count. Published as about 2 degrees."
+    },
+    "driftLength": {
+      "value": 350.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 800.0,
+      "description": "Extent along the drift. Published 310-360 mm."
+    },
+    "capToCap": {
+      "value": 625.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 3000.0,
+      "description": "Derived from published figures: 30 m over 24 oscillations, out and back."
+    },
+    "boardGap": {
+      "value": 40.0,
+      "unit": "mm",
+      "minimum": 5.0,
+      "maximum": 120.0,
+      "description": "Board-to-board separation at the drift mid-point."
+    },
+    "boardThickness": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 20.0,
+      "description": "How thick each board is in y."
+    },
+    "vacuumPad": {
+      "value": 6.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 60.0,
+      "description": "Vacuum between the outermost metal and the solve boundary."
+    },
+    "detectorInset": {
+      "value": 10.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 100.0,
+      "description": "How far inside the far end the collecting plane sits."
+    },
+    "d1": {
+      "value": 20.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 350.0,
+      "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+    },
+    "d2": {
+      "value": 50.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 350.0,
+      "description": "Depth at which U2 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+    },
+    "d3": {
+      "value": 90.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 350.0,
+      "description": "Depth at which U3 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+    },
+    "d4": {
+      "value": 130.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 350.0,
+      "description": "Depth at which U4 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+    },
+    "halfGap": {
+      "expression": "boardGap / 2",
+      "unit": "mm",
+      "description": ""
+    },
+    "mouth": {
+      "expression": "d4",
+      "unit": "mm",
+      "description": "Where each mirror opens toward the beam."
+    },
+    "boardOuter": {
+      "expression": "halfGap + boardThickness",
+      "unit": "mm",
+      "description": ""
+    },
+    "domainY": {
+      "expression": "halfGap + boardThickness + vacuumPad",
+      "unit": "mm",
+      "description": ""
+    },
+    "domainMaxX": {
+      "expression": "capToCap + vacuumPad",
+      "unit": "mm",
+      "description": ""
+    },
+    "domainMinX": {
+      "expression": "-vacuumPad",
+      "unit": "mm",
+      "description": ""
+    },
+    "midPlane": {
+      "expression": "capToCap / 2",
+      "unit": "mm",
+      "description": ""
+    },
+    "detectorZ": {
+      "expression": "driftLength - detectorInset",
+      "unit": "mm",
+      "description": ""
+    },
+    "boardTilt": {
+      "expression": "asinPi(convergence / 2 / driftLength)",
+      "unit": "1",
+      "description": "Half turns each board tilts about x, so the pair converges by `convergence` over the drift. asinPi rather than an arctangent because the grammar has none, and the two agree to third order - about 7e-10 of the value at this angle."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "midPlane",
+        "0",
+        "driftLength / 2"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "expression": [
+        "1",
+        "0",
+        "injectionAngle"
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "ionEnergy",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved3d",
+      "solve3d": {
+        "minX": {
+          "expression": "domainMinX",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainMaxX",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainY",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainY",
+          "unit": "mm"
+        },
+        "minZ": {
+          "value": 0.0,
+          "unit": "mm"
+        },
+        "maxZ": {
+          "expression": "driftLength",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "value": 4.0,
+          "unit": "mm"
+        },
+        "lowerZEdge": "neumann",
+        "upperZEdge": "neumann",
+        "electrodes": [
+          {
+            "name": "near1top",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.84 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1top",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.84 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1bot",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.84 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1bot",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.84 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2top",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2top",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2bot",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2bot",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3top",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3top",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3bot",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3bot",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4top",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4top",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "-boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4bot",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4bot",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "value": 0.0,
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength",
+              "unit": "mm"
+            },
+            "tiltAxis": "x",
+            "tiltHalfTurns": {
+              "expression": "boardTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "midPlane",
+        "0",
+        "detectorZ"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        0,
+        0,
+        -1
+      ]
+    }
+  },
+  "transport": {
+    "maximumFlightTime": {
+      "value": 1200,
+      "unit": "us"
+    },
+    "relativeTolerance": 1e-10
+  }
+}

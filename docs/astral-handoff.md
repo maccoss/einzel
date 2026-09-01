@@ -90,71 +90,29 @@ measured depth from x = 0, which put the reflector at the mouth — the ion met 
 arrival instead of being accelerated in. Combined with bug 1 it escaped to **x = 4643 mm**
 in a 635 mm analyser and then coasted, which is where the 20 M steps went.
 
-### The generator, corrected
+### It is a shipped template now, and parametric
 
-Save as `build.py` and run `python3 build.py <cell-mm> <flight-us> <name>`.
-
-```python
-import json, io, sys
-
-E     = 4000.0                             # beam energy, eV (Stewart et al.)
-C     = [-1.840, -1.158, 0.916, 1.503]     # Table 1 coefficients, U1..U4
-D     = [20.0, 50.0, 90.0, 130.0]          # depths from the mirror MOUTH - the free parameters
-GAP   = 40.0                               # board-to-board, mm
-BOARD = 4.0                                # board thickness in y, mm
-CAP   = 625.0                              # cap to cap: 30 m / 24 osc / 2
-DRIFT = 350.0                              # z extent, mm
-PAD   = 6.0                                # vacuum outside the boards, mm
-
-def stripes():
-    """Five-electrode mirrors at both ends, depth measured from each mouth inward."""
-    out, lo = [], 0.0
-    for k, (c, d) in enumerate(zip(C, D), start=1):
-        for side, y0, y1 in (("top", GAP/2, GAP/2 + BOARD),
-                             ("bot", -(GAP/2 + BOARD), -GAP/2)):
-            common = {"shape": "box",
-                      "minY": {"value": y0, "unit": "mm"},
-                      "maxY": {"value": y1, "unit": "mm"},
-                      "minZ": {"value": 0.0, "unit": "mm"},
-                      "maxZ": {"value": DRIFT, "unit": "mm"},
-                      "potential": {"value": c * E, "unit": "V"}}
-            out.append({"name": f"near{k}{side}",
-                        "minX": {"value": D[-1] - d,  "unit": "mm"},
-                        "maxX": {"value": D[-1] - lo, "unit": "mm"}, **common})
-            out.append({"name": f"far{k}{side}",
-                        "minX": {"value": CAP - D[-1] + lo, "unit": "mm"},
-                        "maxX": {"value": CAP - D[-1] + d,  "unit": "mm"}, **common})
-        lo = d
-    return out
-
-def model(cell, flight_us, angle=0.035, z0=DRIFT/2):
-    return {
-      "schemaVersion": "0.7", "name": "astral-3d",
-      "ion": {"massToCharge": {"value": 500, "unit": "Da"}, "chargeNumber": 1},
-      "source": {"position":  {"value": [CAP/2, 0, z0], "unit": "mm"},
-                 "direction": {"value": [1, 0, angle]},
-                 "accelerationPotential": {"value": E, "unit": "V"}},
-      "fields": [{"type": "solved3d", "solve3d": {
-          "minX": {"value": -PAD, "unit": "mm"}, "maxX": {"value": CAP + PAD, "unit": "mm"},
-          "minY": {"value": -(GAP/2 + BOARD + PAD), "unit": "mm"},
-          "maxY": {"value":  (GAP/2 + BOARD + PAD), "unit": "mm"},
-          "minZ": {"value": 0.0, "unit": "mm"}, "maxZ": {"value": DRIFT, "unit": "mm"},
-          "cellSize": {"value": cell, "unit": "mm"},
-          # THE DRIFT DIRECTION IS FIELD-FREE. Stripe electrodes run the length of z, so
-          # the geometry repeats along it and those faces are mirrors, not grounded walls.
-          "lowerZEdge": "neumann", "upperZEdge": "neumann",
-          "electrodes": stripes()}}],
-      "detector": {"planePoint": {"value": [CAP/2, 0, DRIFT - 10.0], "unit": "mm"},
-                   "normal": {"value": [0, 0, -1]}},
-      "transport": {"maximumFlightTime": {"value": flight_us, "unit": "us"},
-                    "relativeTolerance": 1e-10}}
-
-if __name__ == "__main__":
-    cell = float(sys.argv[1]) if len(sys.argv) > 1 else 4.0
-    us   = float(sys.argv[2]) if len(sys.argv) > 2 else 20.0
-    name = sys.argv[3] if len(sys.argv) > 3 else "astral"
-    io.open(f"{name}.json", "w", encoding="utf-8").write(json.dumps(model(cell, us), indent=2))
+```bash
+einzel new models/astral.json --from-template astral-3d
 ```
+
+The hand-written generator this page used to carry is gone: the geometry is a template with a
+**declared parameter surface**, so `convergence`, `injectionAngle`, `driftLength`, `boardGap`
+and the four electrode depths are things a study can scan, sweep or optimise rather than
+numbers to regenerate a file for. It reproduces the hand-written skeleton exactly — 128.3455
+µs, x = 508.35, z = 340.00, both ways.
+
+Two things about writing it are worth knowing before you edit it:
+
+- **Every length must be a declared parameter.** The grammar has no unit literals, so
+  `mouth - 20` is metres minus a pure number and is refused. That is why `vacuumPad`,
+  `boardThickness` and `detectorInset` exist as parameters rather than as constants.
+- **Use unary minus, not `0 - x`.** A dimensionless zero satisfies any dimension in some
+  positions and not as the left operand of a subtraction; `-halfGap` always works.
+
+The tilt is `asinPi(convergence / 2 / driftLength)` because the grammar has no arctangent.
+At this angle the two agree to about 7e-10 of the value, which is stated in the parameter's
+own description rather than left for a reader to wonder about.
 
 Work at a **4 mm cell** (0.56 M nodes, solves in seconds) while debugging kinematics — field
 accuracy does not matter until the trajectory is sane.
