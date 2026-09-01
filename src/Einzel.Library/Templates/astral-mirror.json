@@ -1,0 +1,345 @@
+{
+  "schemaVersion": "0.7",
+  "name": "astral-mirror",
+  "description": "One mirror of the Thermo Astral analyser, at its published potentials. Stewart et al. (J. Mass Spectrom. 2024) give the mirror's electrical design completely - five electrodes, 'one grounded U0, one strongly accelerating to provide spatial focusing U1, and three reflecting U2-U4' - with each potential as a coefficient of the nominal ion energy, optimised in simulation to give a flat time of flight over 4000 V +/- 100 V. WHAT NO PAPER STATES IS THE ELECTRODE LENGTHS, which is what decides where those potential steps sit along the axis. So d1..d4 are the free parameters here and the coefficients are not: this is an inverse problem, find a geometry consistent with the published potentials and the published acceptance window, rather than a reproduction of a stated design. The ion accelerates hard on entry - c1 is negative, so U1 is 7,360 V below earth for a 4 keV beam - and turns between U3 and U4, because reflection happens where the potential reaches the beam energy and only U4 is above it. This is the SYMMETRIC pair. The instrument's mirrors converge slightly so that ions drift down their length and successive reflections sample different field, which is what the name ASymmetric TRAck Lossless refers to and what this model deliberately does not include.",
+  "parameters": {
+    "ionEnergy": {
+      "value": 4000.0,
+      "unit": "V",
+      "minimum": 100.0,
+      "maximum": 20000.0,
+      "description": "Nominal beam energy. Stewart et al.: ions are accelerated to 4 keV on entering the analyser."
+    },
+    "c1": {
+      "value": -1.84,
+      "unit": "1",
+      "minimum": -5.0,
+      "maximum": 5.0,
+      "description": "U1 as a multiple of the ion energy - Table 1, column C. Negative: the strongly accelerating electrode that provides spatial focusing."
+    },
+    "c2": {
+      "value": -1.158,
+      "unit": "1",
+      "minimum": -5.0,
+      "maximum": 5.0,
+      "description": "U2 as a multiple of the ion energy."
+    },
+    "c3": {
+      "value": 0.916,
+      "unit": "1",
+      "minimum": -5.0,
+      "maximum": 5.0,
+      "description": "U3 as a multiple of the ion energy."
+    },
+    "c4": {
+      "value": 1.503,
+      "unit": "1",
+      "minimum": -5.0,
+      "maximum": 5.0,
+      "description": "U4 as a multiple of the ion energy. Above 1, so it reflects the beam."
+    },
+    "d1": {
+      "value": 20.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 200.0,
+      "description": "Depth at which U1 is reached, from the mirror entrance. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+    },
+    "d2": {
+      "value": 50.0,
+      "unit": "mm",
+      "minimum": 3.0,
+      "maximum": 250.0,
+      "description": "Depth at which U2 is reached."
+    },
+    "d3": {
+      "value": 90.0,
+      "unit": "mm",
+      "minimum": 4.0,
+      "maximum": 300.0,
+      "description": "Depth at which U3 is reached."
+    },
+    "d4": {
+      "value": 130.0,
+      "unit": "mm",
+      "minimum": 5.0,
+      "maximum": 350.0,
+      "description": "Total mirror depth: the cap sits here at U4."
+    },
+    "boardGap": {
+      "value": 40.0,
+      "unit": "mm",
+      "minimum": 5.0,
+      "maximum": 120.0,
+      "description": "Distance between the boards carrying the edge profile."
+    },
+    "capToCap": {
+      "value": 625.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 3000.0,
+      "description": "DERIVED FROM PUBLISHED FIGURES, not stated: a 30 m flight path over 24 oscillations is 1.25 m per oscillation, out and back."
+    },
+    "halfGap": {
+      "expression": "boardGap / 2",
+      "unit": "mm"
+    },
+    "midPlane": {
+      "expression": "capToCap / 2",
+      "unit": "mm"
+    },
+    "cellSize": {
+      "expression": "boardGap / 32",
+      "unit": "mm"
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 500.0,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "midPlane",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "expression": "ionEnergy",
+      "unit": "V"
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": {
+          "expression": "-d4",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "midPlane",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-halfGap",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "halfGap",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "topBoard",
+            "shape": "edgeProfile",
+            "edge": "top",
+            "profile": [
+              {
+                "at": {
+                  "expression": "-d4",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c4 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "-d3",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c3 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "-d2",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c2 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "-d1",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c1 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "value": 0,
+                  "unit": "mm"
+                },
+                "potential": {
+                  "value": 0,
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "midPlane",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "value": 0,
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "bottomBoard",
+            "shape": "edgeProfile",
+            "edge": "bottom",
+            "profile": [
+              {
+                "at": {
+                  "expression": "-d4",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c4 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "-d3",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c3 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "-d2",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c2 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "-d1",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "expression": "c1 * ionEnergy",
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "value": 0,
+                  "unit": "mm"
+                },
+                "potential": {
+                  "value": 0,
+                  "unit": "V"
+                }
+              },
+              {
+                "at": {
+                  "expression": "midPlane",
+                  "unit": "mm"
+                },
+                "potential": {
+                  "value": 0,
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "cap",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "-d4",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "c4 * ionEnergy",
+              "unit": "V"
+            }
+          }
+        ],
+        "rightEdge": "neumann",
+        "reflectAboutX": {
+          "expression": "midPlane",
+          "unit": "mm"
+        },
+        "boundaryIsDiscontinuous": false
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "midPlane",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "maximumFlightTime": {
+      "value": 1,
+      "unit": "ms"
+    },
+    "sampleInterval": {
+      "value": 50,
+      "unit": "ns"
+    }
+  }
+}

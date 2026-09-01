@@ -88,7 +88,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel new <model.json> --from-template <name>` | Start from a shipped device |
 | `einzel new <model.json> --from-example <name>` | Start from a reference model, **and get its test** |
 | `einzel validate <model.json>` | Units, bounds, dimensions, regime validity. Instant |
-| `einzel estimate <model.json>` | What a run will cost, without running it (GRD-8) |
+| `einzel estimate <model.json\|study.json>` | What a run or a whole study will cost, before starting it (GRD-8) |
 | `einzel solve <model.json>` | Solve the fields only, and report how they went |
 | `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
@@ -691,3 +691,132 @@ delete and results regenerable rather than precious. It is also what lets drift 
 detected in both directions: a stored result can be checked against both the
 current model and the currently installed engine, in a plain folder, with no
 repository involved.
+
+## What `estimate` measures, and what it does not
+
+GRD-8 gates an operation above a cost threshold, and the operation somebody actually
+plans against is usually a **study** — a scan, a tolerance sweep, an optimisation or a
+boundary search. `estimate` takes either:
+
+```bash
+einzel estimate models/reflectron.json
+einzel estimate studies/separation-scan.json
+```
+
+A study is detected rather than declared by a flag: a study names the model it studies
+and a model names no model, which is exact and needs no schema version.
+
+```
+field 0  Solved2D       513x33           0.25 s      0.8 MiB
+per eval      0.75 s  (one solve, 9 trajectories)
+scan          31 evaluations
+total         23.15 s, peak 0.8 MiB
+```
+
+**The multiplier costs nothing.** Every driver states its own extent — a scan its points,
+a sweep its draws, an optimiser and a bisection their evaluation ceilings — so this is
+arithmetic over numbers already in the file. A ceiling is reported *as* a ceiling, because
+a scan computes every point it declares while a search stops when it converges.
+
+**The two terms scale differently.** An evaluation solves the field once and flies every
+ensemble member through it, so a study costs `evaluations x (solve + members x flight)`.
+Multiplying the model's own total by the evaluation count charges a whole solve per
+member — 4.8x over on the shipped mirror pair at nine members.
+
+### The rate is measured on this machine, on this geometry
+
+An absolute time is a statement about a machine (SPEC.md Amendments 27 and 33). The rate
+was one hardcoded constant applied to plane and volume solves alike, and on the shipped
+C-trap it put a 5.9 s solve at **1.81 s** — an estimate that runs *under* being worse than
+one that runs over. It is now measured by solving a coarsened copy of the model's own
+geometry, which also captures the difference between a boundary-value problem and one with
+interior electrodes.
+
+The trajectory term is measured too, by a short pilot flight, and says which of two things
+happened:
+
+```
+Trajectory: the whole flight, measured: it ended as StopConditionMet after 46.43 us
+            and 1,658 steps.
+
+Trajectory: 731 steps over 6 us took 31 ms, scaled to the declared 120 us. Flown
+            through a field solved at 2x the cell size, so this is a FLOOR wherever
+            the step is capped by resolution rather than by tolerance.
+```
+
+If the ion finishes inside the pilot window there is nothing to extrapolate. Otherwise it
+scales on flight time covered and names the bias rather than applying a correction factor,
+because which limit binds — resolution or tolerance — depends on the model.
+
+**Pilots repeat while repeating is cheap.** A single timing of a short pilot is mostly
+jitting and scheduling: the plane rate swung between 14.9 and 29.0 s per million nodes run
+to run. Taking the cheapest of up to five, and stopping once the pilot has cost about a
+second, brings that to about **2 per cent** — self-limiting in the right direction, since
+a short pilot is the noisy one and is cheap to repeat while a long one is already well
+measured.
+
+Measured end to end on a volume model: **6.25 s estimated against 7.06 s actual**, where
+the same model estimated 1.81 s before.
+
+### The mesh you get is not the mesh you asked for
+
+Each axis rounds its own interval count up to a power of two, so the cost of a solve is a
+**step function of the cell size** — and the node count is the product of three such
+roundings. `estimate` now reports what the mesh will actually be, and where the next step
+down is:
+
+```
+The mesh is 0.62 x 0.75 x 0.684 mm against a requested 1 mm, because each axis rounds
+its interval count up to a power of two - finer than asked for on every axis, never
+coarser, with the node count the product of three such roundings. Cost is therefore a
+step function of the cell size: asking for 1.5 mm would give 4.35 M nodes against
+34.2 M, which is 7.9x less.
+```
+
+That is a 635 x 48 x 350 mm analyser — the Astral's own aspect ratio, which is what made
+this worth reporting. **Nothing there is wrong**: the mesh is finer than asked for and never
+coarser. What was missing is that somebody planning a multi-day run had no way to see, from
+the estimate, that a 50 per cent coarser request costs an eighth.
+
+**The suggestion is evaluated, not reasoned about**, and getting that wrong first is the
+reason. Twice the finest spacing lands *exactly* on the power-of-two boundary and rounds the
+wrong side of it: 1.24 mm against a 1 mm request produced the **identical** mesh, so the
+advice was a no-op that looked authoritative. The candidate now goes through the same
+arithmetic the grid uses, and a test asks for the suggested size and checks the node count
+really falls by the promised factor — promised 7.9x, delivered 7.9x.
+
+### A study's flight is sampled across its own range
+
+Evaluation cost varies along a study that varies geometry — **2.2x** across a mirror
+separation scan, because the scan crosses a focusing condition. Costing at the declared
+values alone missed that by **0.57x**, so the flight is sampled at the ends of the study's
+own declared range and averaged, with the spread reported:
+
+```
+The flight was sampled at 3 points across the study's own range and averaged,
+because a study that varies the geometry varies its own cost: here the dearest
+point was 1.3x the cheapest.
+```
+
+The mean rather than the worst, because a study visits its whole range and pays the average
+of it. Gated on the study declaring at least twenty evaluations: a sample is one solve and
+one flight against an evaluation's one solve and *members* flights, so three samples cost
+about one and a half evaluations — 7 per cent of twenty, under one per cent of the hundreds
+a real optimisation declares.
+
+**A sample flies the whole flight at the real cell size**, and getting that wrong first is
+the instructive part. Flying a *fraction* means scaling up, and the only length available to
+scale against is the declared **maximum** flight time — a ceiling, not an expectation. The
+nominal ion arrived inside the fraction and the extremes did not, so they were scaled by the
+whole ceiling and the estimate came out **3.4x over**.
+
+### What it excludes, stated on every estimate
+
+**Process start and just-in-time compilation** — a fixed cost, negligible for a multi-day
+study and not for a thirty-second one. On the separation scan: **23.1 s estimated against
+30.3 s of wall clock (0.76x)**, of which about 5 s is process start, so **0.89x of the
+computation itself**. Run-to-run spread is 1 per cent.
+
+`--no-calibrate` skips both pilots and quotes documented constants instead, which keeps
+PERF-8's 500 ms cold-start budget reachable on a volume geometry. It says so in the basis
+line: an uncalibrated estimate must not look like a measured one.

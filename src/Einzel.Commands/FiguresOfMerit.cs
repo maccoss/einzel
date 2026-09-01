@@ -548,15 +548,26 @@ public static class FiguresOfMerit
         // never asked; one arrival is no peak at all, and says so.
         var members = Distinct(model, spread, ions, report);
 
+        // SOLVED ONCE, NOT ONCE PER MEMBER. An energy offset changes how fast the ion
+        // is launched and nothing whatever about the field it flies through, so the
+        // solve inside this loop was the same solve every time. On the shipped mirror
+        // pair that was 249 ms per ion of which the flight is about 50: twenty-one ions
+        // cost 5.23 s where the work is one solve and twenty-one flights.
+        //
+        // The saving grows with the solve, so it is largest exactly where it matters -
+        // a volume geometry whose solve is seconds and whose flight is milliseconds.
+        // `FlyCloud` has always shared one field across every ion in a cloud, so this
+        // is that established arrangement applied to the sweep beside it.
+        var (_, species, field, settings, detector, collisions) = Setup(model, report: report);
+
         for (var k = 0; k < members; k++)
         {
             var fraction = members == 1 ? 0.0 : (2.0 * k / (members - 1.0)) - 1.0;
             var offset = spread * fraction;
 
-            var (launch, species, field, settings, detector, collisions) = Setup(model, offset, report);
-
             var result = TrajectoryIntegrator.Integrate(
-                launch, species, field, settings, detector, collisions: collisions?.Invoke());
+                LaunchAt(model, offset), species, field, settings, detector,
+                collisions: collisions?.Invoke());
 
             if (result.Outcome == TrajectoryOutcome.StopConditionMet)
             {
@@ -1475,6 +1486,18 @@ public static class FiguresOfMerit
         SpaceChargeMode = "none",
     };
 
+    /// <summary>Where and how fast an ion at a given fractional energy offset starts.</summary>
+    /// <remarks>
+    /// <b>Energy scales as the square of speed</b>, so a fractional energy offset is a
+    /// square root in velocity. Treating it as a velocity fraction is a factor of two in
+    /// the linear term and four in the quadratic, and it has been got wrong here before -
+    /// which is why this is one function rather than the same three lines in the two
+    /// places that need them.
+    /// </remarks>
+    private static PhaseState LaunchAt(CompiledModel model, double energyOffset) =>
+        new(model.SourcePosition,
+            model.SourceDirection * (model.LaunchSpeedSi() * Math.Sqrt(1.0 + energyOffset)));
+
     private static (PhaseState Launch, IonSpecies Species, IElectrostaticField Field,
         IntegrationSettings Settings, TrajectoryStopFunction Detector,
         Func<Transport.Collisions.CollisionSampler>? Collisions) Setup(
@@ -1501,12 +1524,7 @@ public static class FiguresOfMerit
 
         var species = IonSpecies.FromModel(model);
 
-        // Energy scales as the square of speed, so a fractional energy offset is
-        // a square root in velocity. Treating it as a velocity fraction is a
-        // factor of two in the linear term and four in the quadratic, and it has
-        // been got wrong here before.
-        var speed = model.LaunchSpeedSi() * Math.Sqrt(1.0 + energyOffset);
-        var launch = new PhaseState(model.SourcePosition, model.SourceDirection * speed);
+        var launch = LaunchAt(model, energyOffset);
 
         var detectorPoint = model.DetectorPoint;
         var detectorNormal = model.DetectorNormal;

@@ -1633,6 +1633,60 @@ disagree.** This project has the same finding from the other direction — an ad
 whose cell Péclet sat below the threshold of the bug, and a confinement test on two flat
 plates that could not make a ponderomotive well.
 
+## A loop invariant nobody profiled, in the hottest loop the project has
+
+The deterministic energy sweep behind `resolvingPower` and `transmission` called
+`Setup` — and so `FieldAssembly` — **inside** its member loop:
+
+```csharp
+for (var k = 0; k < members; k++)
+{
+    var offset = spread * fraction;
+    var (launch, species, field, settings, detector, collisions) = Setup(model, offset, report);
+    ...
+}
+```
+
+An energy offset changes how fast the ion is launched. It changes **nothing whatever**
+about the field it flies through — `Setup`'s only use of the offset is one `Math.Sqrt` in
+the launch speed. So that was the same solve, computed from the same `CompiledModel`,
+thrown away and recomputed, once per energy member.
+
+**It cost 249 ms per ion, flat, against a whole solve of about 270.** The flatness is the
+tell: a per-ion cost that does not fall as ions are added is a per-ion *fixed* cost, and
+the only fixed cost of that size in the path is the solve. Twenty-one ions took 5.23 s to
+do one solve's worth of work and twenty-one flights.
+
+Hoisting it gave **bit-identical values** — 90176.37243580694, 136915.00595510416,
+123107.75087866254, 27.315480249008885, to the last digit — and took 21 ions to 1.53 s.
+
+**Why it survived.** Nothing was wrong. Every number was right, every test passed, and the
+figure of merit is *supposed* to build a field. The comment in `WarningLedger` even
+records the behaviour as understood — "an ensemble figure builds the field once per ion,
+so one draw emits the same code twenty-one times" — as a fact about warning counting
+rather than as a cost. **A cost is invisible to a suite that only checks answers**, and
+this one had been paid by every study, every optimisation and every literature regression
+in the project.
+
+**Where it matters is not where it was measured.** The saving *is* the solve, so it grows
+with it: on a 2-D mirror it is 3.4x, and on a volume geometry whose solve is seconds and
+whose flight is milliseconds it approaches the member count. The 240-evaluation optimiser
+run over the Astral mirror was paying 2,160 solves for 240 distinct fields.
+
+**The test is self-calibrating, which is what makes it a test rather than a threshold.** A
+wall-clock bound is a statement about a machine (SPEC.md Amendment 27). What is asserted
+instead is a ratio between two things measured on the same machine in the same run: *the
+marginal cost of one more energy member, against one whole solve of the same model.*
+Solving per member costs a whole solve per member by construction, so any bound under one
+catches it. Measured at **0.18 solves hoisted and 1.16 with the solve put back**, and the
+bound sits at 0.5 — between the two states rather than hard against either.
+
+**And the generalisation.** `FlyCloud`, ten lines further down the same file, had always
+shared one field across every ion in a cloud. Two loops over an ensemble, in one class,
+disagreeing about whether the field belongs inside the loop — and the correct one was
+right there to be copied. **When two neighbouring routines do the same thing at different
+cost, the cheaper one is usually not an optimisation but the intended shape.**
+
 ## The pattern
 
 Every one of these produced a *plausible* number. None threw. The things that
