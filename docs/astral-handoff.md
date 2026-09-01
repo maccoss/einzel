@@ -200,10 +200,48 @@ so it is not an artefact of the boundary. The flat −843 m/s at the end is the 
 left the solve box, where the field is now zero and it genuinely coasts; before the
 out-of-domain fix it would have been flung by a fabricated field instead.
 
-**What is still not the published geometry**: 800 µm against 200 µm, and ≥38 oscillations
-against 24. Both are within a factor of four, which for a skeleton whose electrode lengths
-are guesses is the right kind of agreement — but closing it is the next real test, and it
-needs the oscillation count pinned first.
+### The reversal threshold, bisected — and it is a very steep power law
+
+`einzel boundary` finds the convergence at which the drift reverses: the ion arrives below
+it and does not above, and a figure that stops existing is outside by construction, so a
+cut-off is exactly what this search is for. Eleven to fourteen evaluations rather than a
+grid.
+
+| injection | oscillations | reversal convergence | bracket |
+| --- | --- | --- | --- |
+| 2.0° | 4.0 | **11.447 mm** | [11.428, 11.467] |
+| 1.0° | ~8 | **0.4638 mm** | [0.4405, 0.4872] |
+| 0.5° | ~16 | **< 0.05 mm** | bounded above only |
+
+**24.7x for one halving of the injection angle** — an exponent of 4.6 over that octave.
+Two mechanisms multiply: halving the angle doubles the reflections, so the deceleration
+accumulates over twice as many, *and* it quarters the axial kinetic energy that has to be
+removed. That predicts a cube; the measurement says closer to a fourth power, so something
+else is contributing and two points cannot say what.
+
+**The control that makes these numbers mean anything**: at 0.5° with the convergence set to
+*exactly* zero, the ion arrives in **479.96 µs** against a ballistic 479.9 — so the geometry
+transports it perfectly when nothing is converging, and every reversal above is the
+convergence rather than an accumulating error.
+
+**A trap paid for here**: the first attempt gave every angle a 400 µs flight ceiling. The
+0.5° case has a *ballistic* transit of 480 µs, so it would have been scored as reversed at
+every convergence including zero — a window shorter than the phenomenon measures the window.
+The ceiling is now 2.5x each angle's own ballistic transit.
+
+**Qualifications the search itself reports**: `boundary.below-acc6` (bisected to 1 per cent,
+where ACC-6 asks for 1/500), `TRAJECTORY_INCOMPLETE` on the reversed side, which is what a
+reversed ion *is*, and `ENERGY_DRIFT_EXCEEDS_BUDGET` at this 4 mm cell.
+
+### Against the published instrument
+
+Not reconciled, and the gap is in the right direction. The instrument uses **200 µm** at
+about 2° with **24 oscillations**; this skeleton needs **11.4 mm** at 2° with **4**. More
+reflections need less convergence each, which accounts for some of it — the published device
+packs 0.072 oscillations per mm of drift against this skeleton's 0.024 — but not a factor of
+57. The rest is in the guesses: the electrode depths `d1..d4` are free parameters and the
+board gap is assumed. **That is the inverse problem this model exists to pose**, and it is
+now a study rather than a hand-edited file.
 
 ### The injection angle does not give 24 oscillations, and that is the point
 
