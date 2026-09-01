@@ -1115,6 +1115,29 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **And the control proved less than it appeared to.** The parallel pair reports 7e-15 V, which reads as "the mesh is clean" — but the untilted problem is *exactly* symmetric, so it would report zero however badly discretised or converged it was. A control that cannot fail for the reason you are worried about is not a control for that reason. SPEC.md Amendment 34.
 
+
+- **A volume solve may declare a face a mirror, and an ion drifting backwards is what found it.** `DirichletMask3D` has carried all six faces as settable conditions since the 3-D solver was written, and `OperatorStencil3D` honours them — **and no document could ask for one**. The plane path has had `rightEdge` throughout. Same shape as `ITransportMode` named only in a csproj, and `drivePhase` a plain double until a travelling wave needed a ramp.
+
+  **A grounded domain boundary is a third electrode**, which this project already documented for the parallel-plate example. A stripe electrode running the length of an analyser's drift makes the field independent of the drift direction, so grounding those faces imposes an axial field the real instrument does not have. Measured on two rails spanning their domain in z: **−62,577 V/m of axial field with the faces grounded, −0.0000 with them mirrored.** The control matters — a mirrored solve reporting zero proves nothing unless the grounded one is large.
+
+  **Found by an ion going the wrong way.** An Astral skeleton at a 3.5% injection angle should drift at +1375 m/s; it measured **−480**. With the faces mirrored it drifts at **1374 m/s against a predicted 1374**, and z-invariance is exact — the off-axis transverse field is **−31,804.2225 V/m at both 5 mm and 20 mm from the face**, to the digit.
+
+  **The invariance check was vacuous first**, sampled on the axis where two symmetric rails give zero transverse field by symmetry: 0 compared with 0, which passes against a solve with no z-invariance at all. Off-axis it discriminates.
+
+- **The 3-D Astral skeleton flies, and the second bug was the mirrors being inside-out.** Depth must be measured from each mirror's **mouth** inward, so U4 (+6012 V, the reflector) sits furthest from the beam and U1 (−7360 V, accelerating) nearest it. Measuring from x = 0 put the reflector at the mouth, so the ion met +6012 V on arrival instead of being accelerated in; with the grounded faces as well it escaped to **x = 4643 mm in a 635 mm analyser** and coasted, which is where 20,000,000 steps went.
+
+  | | |
+  | --- | --- |
+  | flight time | **120.058 µs** against a predicted 165 mm / 1374 m/s = 120.1 µs |
+  | drift rate | 1374 m/s against `v·sinθ` = **1374 m/s** |
+  | steps | 16,012, against 20,000,000 |
+  | transverse | y = −0.00 mm throughout |
+  | energy drift | 2.16e-6, just over ACC-4's 1e-6 at a 4 mm cell |
+
+  **What it does not yet show** is 24 oscillations: at 3.5% the ion crosses the drift in **3.77**. Getting 24 needs the drift to **reverse**, which is what the mirror convergence provides and is not modelled yet — so the oscillation count is the first real test of the tilt. `docs/astral-handoff.md` carries the corrected generator and the order of work.
+
+  **And a trap of my own, in the reader rather than the engine.** A probe read `flightTimeSeconds` from `--json` and printed **0.000 µs** for a 120 µs flight: there is no such key, because `flightTime` is a GRD-1 envelope, and `dict.get(k) or 0` turned the miss into a plausible zero. GRD-1 prevents the engine emitting a bare number; nothing stops a consumer reintroducing one.
+
 - **Two measurements about running this engine, both of which change planning.** A **Release build is 3.27x faster than Debug** (2.16 s against 7.06 on the shipped C-trap), and every timing published from a development session is a Debug timing unless it says otherwise. The estimate needs no telling: because its rate is a pilot measured at runtime, it followed the speed-up on its own — 6.25 s in Debug to 0.98 s in Release for the same model. What does not scale is process start, which the estimate excludes by design, so its wall-clock ratio looks worse on a short Release run (0.60x) while its share of the *computation* is the same 0.85-0.9x as in Debug.
 
 

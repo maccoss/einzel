@@ -1931,6 +1931,48 @@ public static class ModelValidator
             return null;
         }
 
+        // Six faces, each Dirichlet unless declared otherwise. A grounded box is the safe
+        // default and is a third electrode; a document whose geometry is invariant along an
+        // axis says so by declaring that axis's faces Neumann.
+        var faces = new EdgeCondition3D[6];
+
+        var declared = new[]
+        {
+            (solve.LowerXEdge, "lowerXEdge"), (solve.UpperXEdge, "upperXEdge"),
+            (solve.LowerYEdge, "lowerYEdge"), (solve.UpperYEdge, "upperYEdge"),
+            (solve.LowerZEdge, "lowerZEdge"), (solve.UpperZEdge, "upperZEdge"),
+        };
+
+        for (var face = 0; face < declared.Length; face++)
+        {
+            var (value, property) = declared[face];
+
+            var condition = value switch
+            {
+                null or "dirichlet" => EdgeCondition3D.Dirichlet,
+                "neumann" => EdgeCondition3D.Neumann,
+                _ => (EdgeCondition3D?)null,
+            };
+
+            if (condition is null)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{path}/{property}",
+                    Constraint = $"'{value}' is not a face condition",
+                    Observed = new ObservedValue(0.0, value ?? "(none)"),
+                    Suggestion =
+                        "one of: dirichlet (a grounded wall, the default), neumann (a mirror, "
+                        + "so the structure repeats forever across that face)",
+                });
+
+                return null;
+            }
+
+            faces[face] = condition.Value;
+        }
+
         return new CompiledField
         {
             Kind = CompiledFieldKind.Solved3D,
@@ -1947,6 +1989,7 @@ public static class ModelValidator
                 Drives = drives,
                 Stages = stages,
                 Electrodes = electrodes,
+                Faces = faces,
             },
         };
     }

@@ -710,6 +710,28 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 35 - A volume solve could not declare a face a mirror, and the solver always could
+
+**r06 §9's boundary conditions** are stated for a solve without distinguishing the plane and
+volume paths, and the plane path has carried `rightEdge` from the beginning. The volume path
+carried nothing: `DirichletMask3D` has all six faces as settable conditions and
+`OperatorStencil3D` honours them, and **no document could ask for one**. The capability
+existed and was unreachable - the same shape as `ITransportMode` named only in a csproj
+description, and `drivePhase` a plain double until a travelling wave needed a ramp.
+
+**A grounded domain boundary is a third electrode**, which this project has already
+documented once. A stripe electrode running the length of an analyser's drift makes the field
+independent of the drift direction, so grounding those faces imposes an axial field the real
+instrument does not have. Measured on two rails spanning their domain in z: **-62,577 V/m of
+axial field with the faces grounded, -0.0000 with them mirrored**, and with mirrors the
+transverse field is identical to the digit at 5 mm and 20 mm from the face.
+
+**Found by an ion going the wrong way**, not by a failing test: an Astral skeleton at a 3.5
+per cent injection angle should drift at +1375 m/s and measured **-480**.
+
+**Recommend r06 say the boundary vocabulary is the same in both dimensions**, since the
+argument for it is the same and the omission was an accident of which path was written first.
+
 ### 34 - Every 3-D primitive is axis-aligned, and one real device is defined by not being
 
 **r06 §9's shape vocabulary for a volume solve** is a box, a sphere and a cylinder along an

@@ -64,6 +64,38 @@ public sealed record SolvedField3DDocument
 
     /// <summary>The electrodes.</summary>
     public IReadOnlyList<Electrode3DDocument>? Electrodes { get; init; }
+
+    /// <summary>Lower x face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The default is a grounded box, and a grounded box is a third electrode.</b> That
+    /// is right for a device inside a housing and wrong for one whose geometry is invariant
+    /// along an axis: a stripe electrode running the length of an analyser's drift makes the
+    /// field independent of the drift direction, so grounding those faces imposes an axial
+    /// field the real instrument does not have — and an ion drifts the wrong way.
+    /// </para>
+    /// <para>
+    /// A Neumann face is a mirror, so declaring both faces of an axis Neumann says the
+    /// structure repeats forever along it. Cheaper as well as truer: a domain that has to
+    /// hold the end fields must be longer than the ones that matter.
+    /// </para>
+    /// </remarks>
+    public string? LowerXEdge { get; init; }
+
+    /// <summary>Upper x face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? UpperXEdge { get; init; }
+
+    /// <summary>Lower y face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? LowerYEdge { get; init; }
+
+    /// <summary>Upper y face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? UpperYEdge { get; init; }
+
+    /// <summary>Lower z face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? LowerZEdge { get; init; }
+
+    /// <summary>Upper z face: <c>dirichlet</c> (the default) or <c>neumann</c>.</summary>
+    public string? UpperZEdge { get; init; }
 }
 
 /// <summary>A three-dimensional electrode, as it appears in a model document.</summary>
@@ -182,6 +214,16 @@ public sealed record Electrode3DDocument : ITappedElectrode
     public IReadOnlyList<TapTermDocument>? Taps { get; init; }
 }
 
+/// <summary>What a face of a solve domain is.</summary>
+public enum EdgeCondition3D
+{
+    /// <summary>Held at zero: a grounded wall, and a third electrode.</summary>
+    Dirichlet,
+
+    /// <summary>A mirror: the structure repeats forever across it.</summary>
+    Neumann,
+}
+
 /// <summary>A three-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField3D
 {
@@ -220,6 +262,16 @@ public sealed record CompiledSolvedField3D
 
     /// <summary>The electrodes.</summary>
     public required IReadOnlyList<CompiledElectrode3D> Electrodes { get; init; }
+
+    /// <summary>
+    /// What each face of the domain is, in the order lower/upper x, y, z. Empty means all
+    /// six are Dirichlet, which is a grounded box.
+    /// </summary>
+    /// <remarks>
+    /// A grounded box is a third electrode - right for a device inside a housing, wrong for
+    /// one whose geometry is invariant along an axis. See the document's own remarks.
+    /// </remarks>
+    public IReadOnlyList<EdgeCondition3D> Faces { get; init; } = [];
 }
 
 /// <summary>One state of a timed sequence in three dimensions, validated.</summary>

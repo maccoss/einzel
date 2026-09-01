@@ -320,6 +320,7 @@ public static class FieldAssembly
                     {
                         Drives = solve.Drives,
                         Stages = solve.Stages,
+                        Faces = Solved.Geometry3D.FacesOf(solve.Faces),
                     };
 
                     var (built, report3d) = Solved.GeometryBuilder3D.BuildField(geometry);
