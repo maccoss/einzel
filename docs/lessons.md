@@ -2351,3 +2351,34 @@ the ceiling until the answer stops moving. Same family as the incomplete-arrival
 already documented for `einzel compare`, where a mean transit over the subset that arrived
 is not a transit time; and the same family as the Paul trap's ejection edge, where "did the
 ion reach an electrode within N cycles" measured the hold rather than the design.
+
+## A cancellation is a claim about the mechanism, not about the algebra
+
+Two measured quantities divided one another and the messy term dropped out: out-and-back
+time `2·v_z0/(k·c)` over oscillation period `2·v_x/(L·k)` cancels `k` *and* the period, and
+leaves `N = α·L/c`. It was written up as a design law — the oscillation count depends on
+the injection angle, the drift length and the spacer and on nothing else.
+
+**It is a factor of 1.84 out.** N is 45.94 measured against 24.95 predicted. The algebra is
+right and one of the two expressions is not: `k·T = 2·v_x/L` is the *specular* result, and
+it holds only if the mirror delivers the full `2·m·v_x·θ` of z-impulse per reflection. This
+one delivers **0.578** of it.
+
+The failure is that **the cancellation was doing double duty**. It was a piece of algebra,
+and it was also — silently — the assumption that the idealisation feeding it was exact.
+Nothing in the derivation flagged which of its inputs was measured and which was modelled,
+because after cancelling, neither appears.
+
+What repairs it is to *name* the residue rather than let it hide in the coefficient:
+`η = k·T·L/(2·v_x)`, and `N = α·L/(η·c)`. The form is exact and was worth trusting — checked
+by the `1/c` scaling over a threefold range and, more sharply, by the **`α/c` invariance**:
+scale both and predict no change, which held to 0.5 per cent while the turning point moved
+as `α²/c` and so flew a genuinely different trajectory each time. Only the coefficient was
+wrong, and it turned out to be the useful part: `η` is a property of the mirror, it is
+measurable, and it is the figure of merit an earlier scan had been looking for and missing.
+
+**The check that would have caught it immediately is to evaluate both sides.** The relation
+was validated against a *time* — 1275 µs predicted against 1356.96 measured, 6 per cent —
+which is a real check and does not touch the coefficient, because the same fitted `k` sits
+on both sides. Counting the oscillations needs one extra thing, a trajectory, and it is the
+only measurement that puts the modelled quantity and the observed one side by side.

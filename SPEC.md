@@ -2336,13 +2336,24 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     impersonated physics on the way** — at 450 µs, c = 0.20 read as reversed at z = 312.1;
     at 2000 µs the same model arrives, at 478.47 µs, still moving forward and 13 mm short.
 
-    **What came out of it that is worth more than the number:** `N = α·L/c`. Out-and-back
-    time is `2·v_z0/(k·c)` and the period is `2·v_x/(L·k)`, so both cancel and the
-    oscillation count depends only on injection angle, drift length and spacer — not on
-    mirror depth, cap-to-cap distance or ion energy. Those set the *time*, and so the
-    resolving power at a given path, which makes the two halves of the design separable.
-    Validated end to end at **1275 µs predicted against 1356.96 measured** on a full
-    out-and-back with a return detector, with nothing refitted.
+    **What came out of it that is worth more than the number:** `N = α·L/(η·c)`. Out-and-back
+    time is `2·v_z0/(k·c)`, and the specular argument says `k·T = 2·v_x/L`, which would cancel
+    the period and leave `α·L/c`. **Measured, it does not cancel to one**: N is 45.94 against
+    24.95, a factor 1.84, and `η = k·T·L/(2·v_x)` — the fraction of the ideal specular impulse
+    the mirror actually delivers — is **0.578**. The functional form is exact and the
+    coefficient belongs to the mirror.
+
+    Both scalings were checked: `1/c` to within 4 per cent over a threefold range, and the
+    sharper `α/c` **invariance** — vary both, predict no change — to **0.5 per cent**, while
+    the turning point moves as `α²/c` and so is a genuinely different trajectory each time.
+    The period is now measured from a trajectory rather than estimated: **29.54 µs**, and
+    identical to 0.03 per cent whichever axis is tilted, which is what makes the two
+    efficiencies comparable — **0.195 for boards against 0.578 for mirrors**.
+
+    **And η reopens the electrode depths as a well-posed question.** The specular impulse
+    `2·m·v_x·θ` is depth-independent, which is why the depth scan was unlikely to constrain
+    anything; `η` is not, since it is set by how the equipotentials lie along the part of the
+    mirror the ion traverses. It is measurable from two runs and a trajectory.
 
     **What is left.** The depths are still unmeasured, and the analytic model says why the
     scan was unlikely to constrain them: a tilted mirror's impulse is depth-independent,

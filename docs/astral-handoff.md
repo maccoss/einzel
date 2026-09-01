@@ -416,22 +416,36 @@ a solved 3-D field. Better still, it is a second and independent reason to pad t
 parameter that should not depend on the geometry at all, and says so by being 2.2% wrong
 about a quantity fixed by the ion's energy and launch angle.
 
-### The oscillation count has a closed form, and the period cancels out
+### The oscillation count has a closed form, and it carries the mirror's efficiency
 
-Out-and-back time is `2·v_z0/(k·c)` and the oscillation period is `T = 2·v_x/(L·k)`, so
-dividing them cancels both `k` and `T`:
+Out-and-back time is `2·v_z0/(k·c)`, so the oscillation count is `N = 2·v_z0/(k·c·T)`.
+The specular argument says `k·T = 2·v_x/L`, which would cancel both and leave `α·L/c`.
+**Measured, it does not cancel to one.** Write the shortfall as a dimensionless efficiency
 
-> **N = α · L / c**
+> **η = k · T · L / (2 · v_x)** and then **N = α · L / (η · c)**
 
-The number of oscillations depends on the injection angle, the drift length that defines
-the tilt, and the spacer — and **on nothing else**. Not the mirror depth, not the cap-to-cap
-distance, not the ion energy, not the board gap. Every one of those changes the oscillation
-period and the deceleration rate by the *same* factor, because both are set by how long the
-ion spends between reflections.
+`η` is the fraction of the ideal specular z-impulse the mirror actually delivers, and for
+this geometry it is **0.578**, so the coefficient is 1.73 rather than 1.
 
-That is worth having because it separates the design problem in two. The spacer and the
-injection angle fix the **path length**; everything else fixes the **time**, and so the
-resolving power at that path length. They can be chosen independently.
+| | |
+| --- | --- |
+| measured out-and-back at c = 0.30 mm | 1356.96 µs |
+| measured oscillation period | 29.54 µs |
+| **so N measured** | **45.94** |
+| `α·L/c` | 24.95 |
+| ratio | **1.84** |
+
+**The functional form is exactly right and the coefficient is a property of the mirror.**
+What `α`, `L` and `c` fix is `N·η`; the mirror design fixes `η` and the period separately.
+That is still a separation of the design into two halves — it is just that the second half
+has a name and a measurable value rather than being absent.
+
+**And it reopens the electrode depths as a well-posed question.** The specular impulse
+`2·m·v_x·θ` per reflection is depth-independent, which is why the depth scan was unlikely
+to constrain anything — but `η` is not: it is set by how the equipotentials are oriented
+along the part of the mirror the ion actually traverses, which is exactly what the stage
+depths and potentials determine. **`η` is the figure of merit the depths move**, and it is
+measured from two runs and a trajectory.
 
 **Validated end to end, with nothing refitted.** A model at c = 0.30 mm — just above the
 0.27 mm reversal threshold, so the ion turns round inside the drift — with a detector placed
@@ -446,8 +460,8 @@ behind the launch point to catch the return:
 `v_z0` and `k` come from the two-run fit at a *different* convergence and a *different*
 drift length, and the detector geometry took no part in either.
 
-**And the `1/c` scaling holds across a threefold range**, which is the part of the relation
-that is falsifiable — a wrong mechanism would give some other power. Anchored on the
+**Two falsifiable scalings, and both hold.** The `1/c` dependence, anchored on the measured
+c = 0.30 point — a wrong mechanism would give some other power. Anchored on the
 measured c = 0.30 point and predicting the rest:
 
 | c | predicted | measured | |
@@ -458,7 +472,24 @@ measured c = 0.30 point and predicting the rest:
 
 The ratio drifting *down* with `c` is the constant-`a_z` approximation degrading in the
 direction it should: a larger spacer turns the ion round sooner, so it samples less of the
-drift and less of the geometry the fit averaged over. The 6 per cent is the
+drift and less of the geometry the fit averaged over.
+
+**And the `α/c` invariance, which is the sharper of the two** because it varies two things
+and predicts *no change*, so there is nothing for a coincidence to hide behind. Scaling both
+together leaves `N` alone while the turning point moves as `α²/c`, so the ion is genuinely
+flying a different trajectory each time:
+
+| scale on both α and c | time | vs reference |
+| --- | --- | --- |
+| 1.00 (reference) | 1356.96 µs | — |
+| 0.75 | 1350.97 µs | 0.996 |
+| 0.50 | 1354.31 µs | 0.998 |
+| 0.35 | 1364.07 µs | 1.005 |
+
+**Invariant to 0.5 per cent over a threefold range of both parameters**, with the turning
+point moving by the same factor of three. Scaled *down* rather than up on purpose: the
+turning point goes as `α²/c`, so doubling both would put it 600 mm past the launch and
+outside the padded domain, where the field is zero and the ion would never come back. The 6 per cent is the
 deceleration not being quite uniform — the mirrors are closer at the far end, so the
 oscillation period shortens as the ion drifts, and a constant-`a_z` model reverses the ion
 slightly too late.
