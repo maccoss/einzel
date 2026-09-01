@@ -215,11 +215,37 @@ boundary shows.
 and an ion foil, not in a symmetry plane. Until those exist, take the deceleration and the
 reversal as demonstrated and the numbers as indicative.
 
-**And the convergence needed is 12.8 mm, not the published 200 µm** — because this skeleton
-makes 3.77 oscillations where the instrument makes 24. The deceleration accumulates per
-reflection, so a sixth of the reflections needs far more per reflection. Getting the
-published geometry to reverse at its published convergence is the next real test, and it
-needs the oscillation count first.
+### The convergence needed is set by the oscillation count, and that was testable
+
+The 12.8 mm above is **not** a disagreement with the published 200 µm. The deceleration
+accumulates *per reflection*, and this skeleton makes 3.77 oscillations where the instrument
+makes 24 — so the same total deceleration needs far more per reflection. Holding the
+convergence at **800 µm** and varying only the injection angle:
+
+| injection | oscillations | outcome | mean drift |
+| --- | --- | --- | --- |
+| 2.0° | 4.03 | arrives | **+1285.6 m/s** |
+| 1.0° | ≥37.7 | never arrives | **−350.1 m/s** |
+| 0.5° | ≥37.7 | never arrives | **−303.5 m/s** |
+
+A negative mean drift means the ion finished *behind* where it started. So at the published
+order of magnitude for the convergence, and a plausible oscillation count, the track
+reverses. The 1.0° profile:
+
+| t µs | 50 | 150 | 300 | 450 | 600 | 750 | 900 | 1050 | 1200 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| z mm | 207.8 | 264.3 | **321.3** | 305.2 | 233.8 | 134.1 | 7.7 | −118.8 | −245.2 |
+| drift m/s | +656 | +565 | +380 | **−108** | −476 | −664 | −843 | −843 | −843 |
+
+**The turn-around happens inside the modelled region** — at z ≈ 321 mm of a 350 mm domain —
+so it is not an artefact of the boundary. The flat −843 m/s at the end is the ion having
+left the solve box, where the field is now zero and it genuinely coasts; before the
+out-of-domain fix it would have been flung by a fabricated field instead.
+
+**What is still not the published geometry**: 800 µm against 200 µm, and ≥38 oscillations
+against 24. Both are within a factor of four, which for a skeleton whose electrode lengths
+are guesses is the right kind of agreement — but closing it is the next real test, and it
+needs the oscillation count pinned first.
 
 ### The injection angle does not give 24 oscillations, and that is the point
 
