@@ -45,7 +45,7 @@ well-posed (§16).
 | drift impulse per reflection | **V·sin(2α) exactly** — ratio 1.000000000 at three tilts, and unchanged by an eightfold change of mirror gradient | §13 |
 | the anisotropy a tilt creates | exact to **5.4e-20** in the field, 1.7e-18 through a document | §12 |
 | reversal against the closed form | 618.31 mm measured against 618.0 predicted; 61 reflections against 61.1 | §14 |
-| **the drift reversal, against the published instrument** | **334.76 mm, 25 reflections, 13.39 mm per reflection** against a published 310–360 mm, 24–26, 13.40 mm — mirror tilt alone, no foil | §17 |
+| **the drift reversal, from the shipped template** | **334.61 mm, 25 reflections, 13.38 mm per reflection** against a published 310–360 mm, 24–26, 13.40 mm — mirror tilt alone, foil at 0 V | §17 |
 | the injection angle, inverted from published D and N | **2.04° to 2.56°**, against [A]'s "about two degrees" | §14 |
 | the foil produces a drift well | −19.9 V of −20 applied; shallow at 41% of the drift and deep at 67%, matching its own measured contour | §11 |
 | a volume solve contributes nothing outside its box | mirrored half reproduces the full solve to 0.00000 V of 100 applied | §7a |
@@ -2422,6 +2422,34 @@ does.
 graded-foil configuration overshot at that angle; the overshoot was the foil contribution
 that should not have been there. `D/N` inverts to 2.29\u00b0 and the tilt-only model reproduces
 everything at it.
+
+### Shipped, and the published input separated from the guess
+
+The template now declares the published quantity and the guessed one apart, because the
+whole uncertainty in the drift reversal sits in one of them:
+
+| parameter | value | status |
+| --- | --- | --- |
+| `spacerThickness` | 0.200 mm | **published** |
+| `tiltBaseline` | 250 mm | **guessed** \u2014 the length the spacer tilts each mirror over |
+| `mirrorTilt` | `asinPi(spacerThickness / tiltBaseline)` | derived |
+| `convergence` | 0.56 mm | derived, and reported because earlier revisions declared it directly |
+| `injectionAngle` | 0.03998, i.e. 2.29\u00b0 | from `D/N`, which contains no convergence term |
+| `foilVolts` | **0 V** | inside the published 0 to \u221220 V, so the foil contributes nothing |
+
+`einzel run` on the shipped file, unmodified except for a detector at the injection end:
+
+| | drift | reflections | drift per reflection |
+| --- | --- | --- | --- |
+| **measured** | **334.61 mm** | **25** | **13.38 mm** |
+| published | 310 to 360 mm | 24 to 26 | 13.40 mm |
+
+**The foil ships at zero bias on purpose.** It contributes exactly nothing there, so the
+reversal this template reproduces is unambiguously the tilt's and not a foil contribution
+standing in for a geometry error - which is precisely the mistake that produced the
+superseded \u00a7\u00a714 and 15. The geometry is kept because countering the mirrors' time-of-flight
+aberration is the foil's published job and the profile that does it is an unrun
+optimisation.
 
 ### What this does to the resolving power
 

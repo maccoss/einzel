@@ -10,19 +10,26 @@
       "maximum": 20000.0,
       "description": "Nominal beam energy. Stewart et al.: 4 keV entering the analyser."
     },
-    "convergence": {
+    "spacerThickness": {
       "value": 0.2,
       "unit": "mm",
       "minimum": 0.0,
-      "maximum": 40.0,
-      "description": "Cap-to-cap gap narrowing over the drift length, so the mirrors converge toward +z, the direction the ion drifts. Each mirror cross-section is extruded along an axis tilted by half of that: the near stack by +mirrorTilt and the far by -mirrorTilt. Published value 0.200 mm, from a 200 micron spacer."
+      "maximum": 5.0,
+      "description": "Thickness of the spacer that tilts the mirrors relative to one another. PUBLISHED: Stewart et al. give 200 microns. What it is not published over is the baseline - see tiltBaseline - and that is the whole of the uncertainty in the drift reversal."
+    },
+    "tiltBaseline": {
+      "value": 250.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 1000.0,
+      "description": "Length the spacer tilts each mirror over, so the tilt angle is asin(spacerThickness / tiltBaseline). GUESSED, and it is the most consequential unpublished number in this model: 250 mm reproduces every published reversal figure (334.76 mm of drift, 25 reflections, 13.39 mm per reflection against a published 310 to 360, 24 to 26, 13.40) while reading the 200 microns as closing the GAP across the 350 mm drift instead gives 714.81 mm and 61 reflections. The two readings differ by 2.8x in the tilt. Handoff section 17."
     },
     "injectionAngle": {
-      "value": 0.03492076949174773,
+      "value": 0.03998,
       "unit": "1",
-      "minimum": 0.0005,
-      "maximum": 0.2,
-      "description": "Tangent of the angle between the ion trajectory and the mirror axis, which sets the drift rate as V tan(theta). Stewart et al. give the working inclination as about two degrees, adjusted by the second electrostatic prism after the first reflection."
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Tangent of the angle between the trajectory and the mirror axis, setting the drift rate as V tan(theta). 0.03998 is 2.29 degrees, which is what the published drift distance and oscillation count imply through D/N = t_r V tan(theta) / 2 - a relation containing no convergence term, so it fixes the angle independently of whatever decelerates the drift. Stewart et al. state \"about two degrees\". Handoff sections 14 and 17."
     },
     "driftLength": {
       "value": 350.0,
@@ -135,9 +142,9 @@
       "description": "kept for reference: where a detector at the FAR end of the drift would sit. The shipped detector is behind the launch point instead, because an asymmetric-track analyser's ions drift out, reverse, and come back - catching them at the far end measures only the outbound half and hides the behaviour the device is named for."
     },
     "mirrorTilt": {
-      "expression": "asinPi(convergence / 2 / driftLength)",
+      "expression": "asinPi(spacerThickness / tiltBaseline)",
       "unit": "1",
-      "description": "half the angle between the two mirror assemblies. Tilting the MIRRORS (about y) is what reverses the drift: each reflection turns the velocity by twice this, so the drift decelerates by 2*v_x*theta per reflection whatever the mirror depth. Tilting the BOARDS (about x) instead closes the gap the ion flies down, which also decelerates the drift but about three times more weakly - see docs/astral-handoff.md."
+      "description": "Tilt of each mirror, in half turns. The near stack takes +mirrorTilt and the far -mirrorTilt, which brings both mouths toward the mid-plane as z increases."
     },
     "zPad": {
       "value": 150.0,
@@ -147,11 +154,11 @@
       "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
     },
     "foilVolts": {
-      "value": -20.0,
+      "value": 0.0,
       "unit": "V",
       "minimum": -40.0,
       "maximum": 40.0,
-      "description": "Foil bias at the injection end of the drift. Negative retards a positive ion, and the published range is 0 to -20 V. Measured here, the foil supplies 0.41 V/m of drift impulse per volt when uniformly biased and far more when graded; at -20 V graded it reverses the drift at 342.7 mm against a published 310 to 360."
+      "description": "Foil bias at the injection end. PUBLISHED range 0 to -20 V. Shipped at 0, so the foil element contributes exactly nothing and the reversal is the mirror tilt alone, which is what the detector paper says does it. The foil geometry is kept because its published job - countering the time-of-flight aberration the converging mirrors induce - is the open problem, and the profile that does it is an optimisation this model has not run. Handoff sections 16 and 17."
     },
     "foilThickness": {
       "value": 2.0,
@@ -237,6 +244,11 @@
       "minimum": 0.0,
       "maximum": 1.0,
       "description": "How far the foil bias is graded along the drift. 0 biases every slice at foilVolts; 1 grades linearly from foilVolts at the injection end to zero at the far end, which is a resistor chain. The grade is what makes the deceleration the right SHAPE: both settings reverse the drift once the foil spans it, but graded gives 12.70 mm of drift per reflection against a published 13.40 and uniform gives 18.30."
+    },
+    "convergence": {
+      "expression": "2 * driftLength * sinPi(mirrorTilt) / cosPi(mirrorTilt)",
+      "unit": "mm",
+      "description": "How much the cap-to-cap gap narrows across the drift length. DERIVED from the spacer and its baseline, and reported because it is the quantity the earlier revisions of this template declared directly. 0.56 mm at the shipped values."
     }
   },
   "ion": {

@@ -138,20 +138,17 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The foil supplies most of the drift reversal - mirror tilt alone is 31 to 38 per
-    /// cent of what the published reversal needs, and the exact impulse law forbids any
-    /// electrode design from changing that. Flown, this configuration reverses at 342.7 mm
-    /// after 13.5 oscillations against a published 310 to 360 mm after 12 to 13.
+    /// The foil does NOT supply the drift reversal - the mirror tilt alone does, which this
+    /// document once concluded otherwise and the detector paper settles. What the foil is
+    /// for is countering the time-of-flight aberration the converging mirrors induce, and
+    /// the profile that does that is not known here. It ships at zero bias.
     /// </para>
     /// <para>
-    /// Three properties are asserted because each was got wrong on the way. The mirror
-    /// strips must be present and <b>grounded</b>, or the element is not the basis field
-    /// <c>psi_foil</c> and superposing it double-counts nothing while omitting the foil's
-    /// own boundary. The foil must <b>span the whole drift</b> - a foil starting a quarter
-    /// of the way along cannot reverse the drift at all, because the net work of a
-    /// conservative axial field is <c>q(phi_start - phi_end)</c> and an ion that crosses
-    /// the whole bump nets nothing. And the bias must be <b>graded</b>: uniform also
-    /// reverses, but with a third too few oscillations.
+    /// The mirror strips must be present and <b>grounded</b>, or the element is not the
+    /// basis field <c>psi_foil</c> at all. And the bias must ship at <b>zero</b>, so that
+    /// the reversal this template reproduces is unambiguously the tilt's and not a foil
+    /// contribution standing in for a geometry error - which is exactly the mistake that
+    /// produced the superseded sections 14 and 15 of the handoff.
     /// </para>
     /// </remarks>
     [Fact]
@@ -176,11 +173,12 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
         Assert.All(grounded, e => Assert.Equal(0.0, e.Potential?.Value));
         Assert.All(plates, e => Assert.Contains("foilGrade", e.Potential!.Expression!, StringComparison.Ordinal));
 
-        // Spanning the drift, not starting part way along it.
-        Assert.Equal(0.0, document.Parameters!["foilStartFrac"].Value);
-
-        // Graded, not uniform. Both reverse; only graded gets D/N right.
-        Assert.Equal(1.0, document.Parameters!["foilGrade"].Value);
+        // Shipped at zero bias, so the foil contributes exactly nothing and the drift
+        // reversal is the mirror tilt alone - which is what the detector paper says does
+        // it. Zero is inside the published 0 to -20 V range. The geometry is kept because
+        // countering the mirrors' time-of-flight aberration is the foil's published job and
+        // the profile that does it is an unrun optimisation.
+        Assert.Equal(0.0, document.Parameters!["foilVolts"].Value);
 
         output.WriteLine($"foil: {plates.Count} plates graded, {grounded.Count} mirror strips grounded");
     }
