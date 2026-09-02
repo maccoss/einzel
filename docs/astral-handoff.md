@@ -2835,3 +2835,72 @@ being run on the true per-oscillation path (half an oscillation from the mid-pla
 the same `c1` as the whole track if every oscillation is identical), and its result should be
 confirmed *here*, by flying an energy-spread cloud round the whole track and reading R off the
 arrivals. That confirmation is the measurement \u00a719 said was missing.
+
+## 21. Three measurements on the true path
+
+All three were run once the full track flew, and each closes or reopens something above.
+
+### `te1` on the true per-oscillation path: it cancels `c1` and worsens everything else
+
+Half an oscillation from the mid-plane, shipped depths, 21 ions, ±2.5%:
+
+| `te1` | -0.012 | -0.008 | -0.004 | 0.000 | **0.004** | 0.008 | 0.012 | 0.020 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `\|c1\|` | 0.0369 | 0.0295 | 0.0214 | 0.0124 | **0.0025** | 0.0084 | 0.0206 | 0.0494 |
+| `\|c2\|` | 0.324 | 0.359 | 0.400 | 0.448 | **0.503** | 0.567 | 0.642 | 0.832 |
+| `\|c3\|` | 1.27 | 1.49 | 1.74 | 2.03 | **2.37** | 2.75 | 3.21 | 4.47 |
+
+`c1` crosses zero near `te1` = 0.005, and **`c2` and `c3` grow monotonically as it does** - so at
+the shipped depths, trimming `c1` to zero leaves `c2` = 0.52 and caps R near 1,500 at the
+acceptance. `te1` is the instrument's own `c1` knob and it cannot reach the higher orders; that
+is why the paper has a second vector, and why **the depths must carry `c2` and `c3`**. The fit is
+now well-posed for the first time: depths for the higher orders, `te1` for the first. The
+slope `dc1/dte1` is 2.2 here against the published 1.0 - the same factor of two as \u00a719.
+
+### The drift is a constant-force motion, measured
+
+Same full track as \u00a720, injection angle scaled ±5% so `v_z0` varies at fixed `|v|`:
+
+| angle / a0 | flight | dT/T | dv/v | **(dT/T)/(dv/v)** |
+| --- | --- | --- | --- | --- |
+| 0.950 | 811.29 \u00b5s | -4.97% | -5.0% | 0.993 |
+| 0.975 | 832.47 | -2.49% | -2.5% | 0.994 |
+| 1.025 | 874.95 | +2.49% | +2.5% | 0.996 |
+| 1.050 | 896.22 | +4.98% | +5.0% | 0.996 |
+
+**Ratio +0.99: the return time is exactly proportional to `v_z0`**, which is what a constant
+axial force gives (round trip `2 v_z0 / a`, with the reversal point scaling as `v_z0^2`). Not
+isochronous. At 300 K the thermal `v_z` spread is about 4.5%, so **the drift alone caps R near
+11** with the mirrors perfect. That is the foil's published job, now quantified: make the return
+time independent of `v_z0`. A harmonic axial well *centred at the injection point* does exactly
+that, since its period is amplitude-independent; \u00a715's quadratic attempt reached 27% rather than
+orders because its well centre landed at z \u2248 61 mm.
+
+**And the published foil is a contoured plate at a uniform voltage, not a graded one.** Its inner
+edge follows the cosine measured from the pixels in \u00a711 - thin at 41% of the drift, thick at 67% -
+and the on-axis potential varies along z because the *shape* brings metal nearer or further,
+with the whole plate at one voltage in the published 0 to -20 V range. \u00a715's graded-voltage
+ramp was a different mechanism. The test being run is the published one: uniform -20 V,
+contoured, does it move the ratio.
+
+### Mesh convergence: `c2` and `c3` converge, `c1` has a floor
+
+Shipped depths, `te1` = 0, true path, 21 ions:
+
+| cell | `\|c1\|` | `\|c2\|` | `\|c3\|` | flight |
+| --- | --- | --- | --- | --- |
+| 1.00 mm | 0.01074 | 0.4568 | 2.132 | 17.1083 \u00b5s |
+| 0.50 mm | 0.01241 | 0.4477 | 2.032 | 17.0931 |
+| 0.25 mm | 0.01082 | 0.4440 | 2.044 | 17.1084 |
+
+`c2` converges at roughly second order (changes 9.1e-3 then 3.8e-3) and `c3` settles. **`c1` does
+not converge - it wanders by ±0.0015 across three meshes**, so this solve has a noise floor on
+the first-order coefficient of about that size, and `|c1|` below ~0.002 is unresolved. Two
+consequences. Any depth fit here cannot demonstrate a first-order focus sharper than the floor,
+which alone caps R near 13,000 at ±2.5% (`1/(2 x 0.0015 x 0.025)`). And \u00a718's `|c1|` = 0.000102
+at `d2` = 36 was inside the floor - the scaling law there still holds, since `c2 s` dominates
+`c1` for spreads above 0.003 either way, but the cancellation was not resolved to that figure.
+The FLD-1 floor of Amendment 36, met in a new place: a first-order time-energy coefficient is
+a small difference of large flight times, and the strips' cut cells set how small a difference
+survives. Refining the mesh did not move it, so it is not simple discretisation of the
+Laplacian; the fit's sensitivity to the scan endpoints is the next suspect.
