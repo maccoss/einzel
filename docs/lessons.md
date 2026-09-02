@@ -2482,3 +2482,30 @@ long compared to its gap is a *level*: everything inside sits at its potential. 
 *shape* only when its extent is comparable to its distance from the point of interest. That
 is the same fact the multipole rods and the funnel rings rely on, met from the side where it
 destroys the effect rather than the side where it creates one.
+
+## Fixing a multiplication in one path is not fixing it
+
+`einzel estimate` costed a **study** at one evaluation until that was corrected — the number
+was short by the evaluation count, silently, in the command whose whole job is saying what a
+run costs before it is started. The fix landed, was tested, and was written up.
+
+It left the **model** path charging for a single trajectory whatever cloud the source
+declares. The shipped rectilinear trap declares two thousand ions, so its estimate was short
+by a factor of two thousand, in exactly the same way and for exactly as long.
+
+**The reason is worth naming: the fix was made while thinking about studies.** Every line
+read in that session was a study line, the tests written were study tests, and the model path
+computes the same quantity a few hundred lines away without the multiplication. Nothing about
+working on the first would surface the second — the two look identical from inside whichever
+one is open.
+
+So: **when a quantity is multiplied by a count in one path, ask the same question of every
+other path that computes it.** The grep is `TrajectorySeconds` or whatever the quantity is
+called, and it takes a minute. Both of these were found by *using* the command rather than by
+a test, which is the more expensive way round.
+
+The fix also has to carry the same reasoning the first one worked out — a diffusive run steps
+a density and produces no trajectories, and a space-charge run advances its packet in lockstep
+so its members are not independent flights. In both, the model's own cost already is the whole
+run, and multiplying double-counts. That logic existed, correct, one method away, and had to
+be repeated rather than shared, which is its own small warning.

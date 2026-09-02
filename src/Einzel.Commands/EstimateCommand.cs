@@ -596,7 +596,22 @@ public static class EstimateCommand
             ? PilotFlight(model, PilotCoarsening)
             : (Seconds: 0.0, How: string.Empty);
 
-        seconds += trajectory.Seconds;
+        // A CLOUD FLIES ONCE PER ION THROUGH ONE SOLVED FIELD, so the flight is paid as many
+        // times as there are ions and the solve is paid once. Costing a single trajectory
+        // was silently short by the ion count - the shipped rectilinear trap declares 2000
+        // of them - which is the same defect this command already had for studies, where
+        // the number was short by the evaluation count.
+        //
+        // Not multiplied for a diffusive run, which steps a density and produces no
+        // trajectories at all, nor for a space-charge run, which advances the whole packet
+        // in lockstep so its members are not independent flights. In both the model's own
+        // cost already IS the whole run.
+        var members = model.Cloud.IsCloud && !model.ModelsSpaceCharge
+            && model.TransportMode != "diffusion"
+                ? Math.Max(1, model.Cloud.Ions)
+                : 1;
+
+        seconds += members * trajectory.Seconds;
 
         var basis = string.Join(
             " ",
@@ -722,6 +737,15 @@ public static class EstimateCommand
                 $" Repeating the pilots on this machine spread {firmness:P0} of the cheapest, "
                 + $"which is how firm this number is - on an idle machine, and a floor rather "
                 + $"than a confidence interval.");
+        }
+
+        if (members > 1)
+        {
+            basis = basis + string.Create(
+                Inv,
+                $" The source declares a cloud of {members} ions, which fly independently "
+                + $"through one solved field - so the solve is paid once and the flight "
+                + $"{members} times.");
         }
 
         var mesh = MeshNote(elements);
