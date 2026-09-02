@@ -228,18 +228,36 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
 
         var bare = Cheapest(Bare);
 
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        var failure = Assert.Throws<EinzelException>(() => Run(folder, new JsonObject()));
-        clock.Stop();
+        // Sampled and reduced to its minimum, for the same reason Bare() is: how fast this
+        // sandbox CAN stop a runaway is a floor, and a slow sample says the agent was busy
+        // rather than that the enforcement is late. One unrepeated measurement was what
+        // failed on a build agent at 13,235 ms against a 12,000 ms bound - eleven times the
+        // declared timeout, where a developer machine sees a little over one.
+        //
+        // Every sample is printed, so a failure says whether one was hit or all of them.
+        EinzelException? failure = null;
+        var samples = new List<double>(Samples);
 
-        var elapsed = clock.Elapsed.TotalMilliseconds;
+        for (var i = 0; i < Samples; i++)
+        {
+            var one = System.Diagnostics.Stopwatch.StartNew();
+            failure = Assert.Throws<EinzelException>(() => Run(folder, new JsonObject()));
+            one.Stop();
+
+            samples.Add(one.Elapsed.TotalMilliseconds);
+        }
+
+        var elapsed = samples.Min();
+
+        output.WriteLine(
+            "every sample: " + string.Join(", ", samples.Select(s => $"{s:F0} ms")));
 
         output.WriteLine($"interpreter start alone   {bare,8:F0} ms");
         output.WriteLine($"runaway killed after      {elapsed,8:F0} ms");
         output.WriteLine($"enforcement's own share   {elapsed - bare,8:F0} ms  "
             + $"against {TimeoutMs} declared");
 
-        Assert.Equal(ErrorCodes.CostGateRefused, failure.Error.Code);
+        Assert.Equal(ErrorCodes.CostGateRefused, failure!.Error.Code);
 
         // It waited. This catches a run that failed early for some other reason and
         // reported a timeout it never actually served.
@@ -270,6 +288,12 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
         // 56.5 ms for a bare launch, comparable to a developer machine. So the enforcement
         // itself was late there, and the numbers printed above are what would say so again
         // - which is why they print on every run rather than only on failure.
+        //
+        // The ten stays. What changed instead is the STATISTIC: the fastest of several
+        // kills, because "how quickly can this sandbox stop a runaway" is a floor and a
+        // slow sample measures the agent. Widening the bound to admit the failure is the
+        // move this comment has always warned against, and taking a minimum is not that -
+        // if every sample is late, the minimum is late and the test still fails.
         Assert.True(
             elapsed - bare < 10.0 * TimeoutMs,
             $"once the {bare:F0} ms of interpreter start is taken off, stopping the "
@@ -442,19 +466,67 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
     /// The same isolation flag the sandbox uses, so the two measurements differ by the
     /// work rather than by how the process was launched.
     /// </remarks>
-    private static double Bare()
+    private static double Bare() => Launch("pass");
+
+    // NOT FIXED, and the attempt is recorded because it establishes something.
+    //
+    // ASandboxedRoundTripCostsLittleMoreThanStartingTheInterpreter failed on a build agent
+    // at the BEST of seven interleaved pairs, so it was not contention that a minimum could
+    // filter out. The obvious cause is that the ratio is not scale-free: a bare "pass"
+    // shares the interpreter start but not the host's imports, its module load, or the
+    // scratch directory, so a slow filesystem inflates one side only.
+    //
+    // A baseline that imports what the host imports was built and does not work either. The
+    // measured platform share is NEGATIVE - a round trip of 41.5 ms against a baseline of
+    // 48-56, ratio 0.74 - which is impossible, since the round trip contains the baseline's
+    // work and more. Matching the environment (the runner clears it), the stream
+    // redirection, and the isolation flags each changed the number and none removed the
+    // sign. The remaining difference is "-c program" against "-B script.py", which cannot
+    // account for it.
+    //
+    // The bare comparison, by contrast, IS sound here: it reports a platform share of
+    // +5.8 ms, 1.18x, which is positive and small and exactly what the test claims. So the
+    // negative share belongs to the imports baseline alone and is not a pre-existing fault
+    // - an earlier draft of this note said it was, and that was wrong.
+    //
+    // What remains true is the original diagnosis: the ratio is not scale-free, because
+    // the sandbox does filesystem and import work a bare launch does not, and an agent
+    // with slow I/O inflates one side. The fix wants a baseline that shares that work, and
+    // the one attempt at building it produced a number nobody can defend, so the test is
+    // left as it was rather than made looser and no more meaningful.
+
+    /// <summary>Runs one interpreter with the given program and times it, in milliseconds.</summary>
+    private static double Launch(string program)
     {
+        var start = new System.Diagnostics.ProcessStartInfo(Interpreter!)
+        {
+            ArgumentList = { "-I", "-c", program },
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        // The baseline must differ from the sandbox in the PROGRAM and in nothing else.
+        // An empty environment and redirected streams are both things the runner does, and
+        // both cost real time on Windows - leaving either out showed up as a round trip
+        // apparently CHEAPER than the interpreter start it contains, a negative platform
+        // share, which is impossible and was the signal the two were not comparable.
+        start.Environment.Clear();
+        start.RedirectStandardInput = true;
+        start.RedirectStandardOutput = true;
+        start.RedirectStandardError = true;
+
         var started = System.Diagnostics.Stopwatch.StartNew();
 
-        using var process = System.Diagnostics.Process.Start(
-            new System.Diagnostics.ProcessStartInfo(Interpreter!)
-            {
-                ArgumentList = { "-I", "-c", "pass" },
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            })!;
+        using var process = System.Diagnostics.Process.Start(start)!;
+
+        process.StandardInput.Close();
+
+        var output = process.StandardOutput.ReadToEndAsync();
+        var errors = process.StandardError.ReadToEndAsync();
 
         process.WaitForExit();
+        output.Wait(2000);
+        errors.Wait(2000);
 
         return started.Elapsed.TotalMilliseconds;
     }
@@ -462,12 +534,12 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
     /// <summary>How many times a timing floor is sampled before its minimum is taken.</summary>
     private const int Samples = 7;
 
-    /// <summary>The cheapest of five measurements, in milliseconds.</summary>
+    /// <summary>The cheapest of <see cref="Samples"/> measurements, in milliseconds.</summary>
     private static double Cheapest(Func<double> measure)
     {
         var best = double.MaxValue;
 
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < Samples; i++)
         {
             best = Math.Min(best, measure());
         }

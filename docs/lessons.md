@@ -2482,3 +2482,44 @@ long compared to its gap is a *level*: everything inside sits at its potential. 
 *shape* only when its extent is comparable to its distance from the point of interest. That
 is the same fact the multipole rods and the funnel rings rely on, met from the side where it
 destroys the effect rather than the side where it creates one.
+
+## A baseline must differ from the measurement in exactly one thing
+
+Two timing tests in the extension sandbox failed on Windows CI on consecutive runs of the
+same branch, and passing in between — so the code was not the variable. Both assert a
+*floor*: how fast the sandbox can stop a runaway, and how little the boundary costs above
+starting an interpreter.
+
+**One was a statistic problem and the fix is the project's own precedent.** The timeout test
+measured a single kill. A floor sampled once is not a floor, and a slow sample says the agent
+was busy — so it now takes the fastest of seven and prints them all, exactly as
+`AllocationDoesNotGrowWithStepCount` does. The bound did not move. **Taking a minimum is not
+widening a bound**: if every sample is late the minimum is late and the test still fails,
+where widening admits the failure permanently.
+
+**The other was a baseline problem and is not fixed.** The round-trip test already took the
+cheapest of seven interleaved pairs and still failed on CI, so contention was not the cause.
+The diagnosis is that its ratio is not scale-free: it compares "start Python" against "start
+Python, import two modules, load a module from disk, create a scratch directory, and marshal",
+so an agent with slow I/O inflates one side only.
+
+A baseline importing what the host imports was built to close that gap, and it reported a
+**negative platform share** — a round trip cheaper than the work it contains, which is
+impossible. Matching the empty environment the runner uses, then the stream redirection, then
+the isolation flags, each moved the number and none removed the sign. It was reverted.
+
+Three things worth keeping from that.
+
+**An impossible intermediate value is a stop signal, not a curiosity.** The negative share
+appeared in the first measurement and it took three more rounds of matching before it was
+treated as disqualifying. A ratio below one, where one side strictly contains the other's
+work, cannot be a slow machine or a noisy sample.
+
+**Reverting was the right outcome and it took longer than it should have** — the change would
+have made the bound *looser* while leaving it just as meaningless, which is worse than the
+flakiness. Effort already spent is not a reason to ship.
+
+**And the write-up was wrong before the code was.** The note explaining the revert claimed the
+negative share was pre-existing on the bare baseline too. It is not: the bare comparison
+reports +5.8 ms, 1.18×, positive and small. The claim was written from the shape of the
+argument rather than from a measurement that was one command away.
