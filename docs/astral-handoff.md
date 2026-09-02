@@ -2721,3 +2721,71 @@ parameters against one condition, so cancelling anything leaves a three-paramete
 `c2`, the spatial focus, and the turning depth that \u00a714's `capToCap` derivation rests on are
 what pick a point in it. R was still rising at the edge of the scan above; where it turns
 over, and what it reaches, is the next measurement.
+
+## 19. Two checks that moved the goalposts
+
+Both were run to answer "what would convince us the model is right", and both came back
+saying the focusing work in \u00a718 is narrower than it read.
+
+### The `C(1)` test: the one unfitted published check, and it is a factor of two out
+
+Every good agreement so far is one of two kinds: a closed form the engine ought to match, or
+a number the model was fitted to. Table 1's `C(1)` vector is neither. The paper says applying
+it with `TE1` = 0.01 shifts `(t|e)` by about 2.5 ppm/V; since `c1 = e0 (t|e)` and `e0` =
+4000 V, that predicts **`dc1/dTE1` = 1.0** - dimensionless, and nothing in this model was
+fitted to it. Potentials written as `ionEnergy (C0_k + te1 C1_k)`, shipped depths, one
+reflection, ±2.5%:
+
+| `te1` | -0.030 | -0.020 | -0.010 | 0.000 | 0.010 | 0.020 | 0.030 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `\|c1\|` | 0.0560 | 0.0423 | 0.0254 | **0.0043** | 0.0228 | 0.0584 | 0.1064 |
+
+**The slope near zero is 1.85 to 2.12 against a published 1.0.** Same order, a factor of two,
+and the factor is plausibly a definitional half in how `(t|e)` is written - T goes as one over
+the root of energy, so a natural `(t|e)` may absorb the half. Not resolved, and not the clean
+confirmation it was meant to be. The response is also **not linear** over the range: the slope
+runs 1.37 to 4.80 across ±0.03, so "shifts by a constant" holds near zero and not far from
+it. Recorded as a discrepancy to settle against the paper's definition, not as a failure.
+
+### `c1` depends on the field-free path, so a mirror is focused FOR a drift length
+
+The `te1` = 0 row gives `|c1|` = 0.0043 at the shipped depths, where \u00a718 measured 0.0189 -
+same mirror, different launch and detector offsets. Isolated directly, same depths, one
+reflection, only the free path changing:
+
+| launch offset | flight | `\|c1\|` |
+| --- | --- | --- |
+| 5 mm | 17.449 \u00b5s | **0.0224** |
+| 20 mm | 18.595 \u00b5s | **0.0518** |
+| 60 mm | 21.648 \u00b5s | **0.1151** |
+| 120 mm | 25.904 \u00b5s | **0.1730** |
+
+**`c1` grows 7.7-fold with the free path.** It is not a property of the mirror; it is a
+property of the mirror *and* the drift together - which is physically right, since first-order
+focus is the condition that the mirror's positive `dT/dE` cancels the free flight's negative
+one. A mirror is focused *for* a given path.
+
+**So \u00a718's optimised depths are the right answer to the wrong question.** They focus a free
+path of about 530 mm - one reflection with a 10 mm offset - where the Astral's is about
+1.08 m per oscillation. The scaling laws stand (they are about which order binds); the
+particular depths, and every R quoted from them, are for a measurement geometry rather than
+for the instrument.
+
+**The consequence is the same one \u00a718 already listed and under-weighted: the focusing has to
+be measured on the real track.** One reflection with an arbitrary launch point is not the
+experiment. The full flight - 24 to 26 oscillations, the real drift per oscillation, a thermal
+cloud, a detector - is the only configuration in which "the mirror is focused" means what it
+means for the instrument, and it has never been run.
+
+### What convincing would take, ranked
+
+| | status |
+| --- | --- |
+| **the full flight**, 24-26 oscillations, thermal cloud, to a detector | never run - the experiment everything above stands in for |
+| **`C(1)` sensitivity** settled against the paper's `(t|e)` definition | measured 2.0 against 1.0; definition unresolved |
+| **drift isochronicity** - R with a 300 K cloud | 1.31; the foil's real job, untouched |
+| **`tiltBaseline`** settled or bounded | a 2.8-fold ambiguity every reversal number rests on |
+| **mesh convergence** on R at narrow spread | 23 ps may be numerical |
+| **spatial focus** at the detector | not measured |
+
+The first row is the one that matters. Everything else is a proxy for it.
