@@ -25,8 +25,15 @@ and the whole factor is in what "a 200 µm thick spacer" tilts over: 200 µm clo
 across the 350 mm drift, or 200 µm per mirror over a ~250 mm baseline. None of the four
 papers says. It is now the most consequential unpublished number here.
 
-**What remains is the resolving power**, and the fourth paper names the mechanism for the
-harder half. A tilted mirror pair applies a *constant* force, so the drift period depends on
+**The resolving power now has a measured route.** Cancelling the first-order time-energy
+coefficient with one electrode depth takes the mirror from `R = 21.5/s` to `R = 1.2/s²`,
+confirmed by `R·s²` holding constant to 12% over a 25-fold range of spread — which puts
+**R > 100,000 at an energy spread of ±0.35%**, and 1,138,010 at ±0.1%. Reaching the
+published figure across the published ±2.5% *acceptance* needs three orders cancelled, which
+is exactly the "third-order temporal focus" [B] describes and why the calibration carries two
+correction vectors on top of the geometry (§18).
+
+**What remains beyond that** is the drift, and the fourth paper names the mechanism. A tilted mirror pair applies a *constant* force, so the drift period depends on
 amplitude; the published requirement is that it be constant to **5e-6**, and the ion foil's
 stated job is to "counter ToF aberrations induced by the converging ion mirrors" — exactly
 that. There is a dedicated paper on it (Grinfeld et al., Int. J. Mass Spectrom. 2024, 1060,
@@ -66,32 +73,25 @@ Two earlier accounts of this gap are **withdrawn**: the 57× figure (a bisection
 that could not tell reversal from striking an electrode) and the 1.33× reconciliation
 (measured on a tilt the solver could not see, with the sign inverted — §12).
 
-### The resolving power, in two parts
+### The resolving power, and the route to the published figure
 
-**Every R below is this model's, not the instrument's.** The Astral reaches about 100,000
-at m/z 200 and the papers report >100,000; that is the target, and the numbers here are how
-far short the model falls. Measured on the reproducing configuration, 8 ions of m/z 500 out
-and back:
+**Every R here is this model's, not the instrument's.** The Astral reaches about 100,000 at
+m/z 200; these are m/z 500.
 
-| | arrival width | model R |
+| | model R | scaling |
 | --- | --- | --- |
-| 300 K thermal, 0.4 mm spatial, ±2.5% energy | 355 µs | 1.31 |
-| ±2.5% energy alone | 565 ns | 760 |
-| ±0.1% energy alone | 19.9 ns | 21,566 |
-| **the instrument**, ~m/z 200 | — | **~100,000** |
+| as shipped, mirrors unfitted | 760 at ±2.5% | **`21.5/s`** — first-order limited |
+| `d2` = 36 mm, `c1` cancelled | 2,044 at ±2.5%; **1,138,010 at ±0.1%** | **`1.2/s²`** — second-order limited |
+| with a 300 K thermal cloud on top | 1.31 | the drift, not the mirror (§16) |
 
-**`R × spread` is 21.5 and constant over a 25-fold range**, so the mirrors do *no* energy
-focusing — the first-order term is uncancelled. That is the figure of merit a `d1..d4` fit
-should move, and it should move by orders. Note also that ±2.5% is the mirrors' stated
-*acceptance window*, not a beam's spread, so using it as a cloud width flies the worst case
-the design tolerates.
+**`R·s` and `R·s²` each hold constant to about 12% across a 25-fold range of spread**, which
+is what identifies the binding order without appealing to a fit. One electrode depth moved
+the mirror from the first row to the second, and R crosses 100,000 at ±0.35%.
 
-**Neither limit is a tuning failure** (§16). The thermal one needs the drift *period* constant
-to **5e-6**, which needs the foil's well harmonic to ~1e-4 of its depth; the best profile
-chosen by hand is 15%, and closing that is a 16-parameter optimisation rather than a
-derivation. The energy one is expected: applying Thermo's optimised potential coefficients to
-guessed electrode depths gives a mirror that is not at its own focus, which is what makes the
-depth fit well-posed at last.
+Two things that follow. **Optimising at the acceptance picks the wrong geometry** — at ±2.5%
+a scan prefers `d2` = 44 mm, and by ±0.1% that choice is six-fold worse than `d2` = 36. And
+**the published figure across the published acceptance needs three orders cancelled**, one
+per degree of freedom, which is what [B]'s "third-order temporal focus" means (§18).
 
 ### What is assumed rather than derived
 
@@ -2582,6 +2582,65 @@ acceptance" - and it is worth stating because minimising `|c1|` is the plan anyb
 reach for first, including this document an hour before it was measured. The coefficients
 earn their place by saying *which* term to attack; they are the wrong thing to attack
 directly.
+
+### R > 100,000 is reachable, and one parameter got there
+
+Scanning the energy spread at each depth separates the two regimes, and the scaling settles
+which order binds without any appeal to the fit:
+
+| `d2` = 36 mm, `c1` cancelled | R | **R x s^2** |
+| --- | --- | --- |
+| ±2.50% | 2,044 | 1.278 |
+| ±1.00% | 12,330 | 1.233 |
+| ±0.50% | 48,621 | 1.216 |
+| ±0.25% | 187,471 | 1.172 |
+| ±0.10% | **1,138,010** | **1.138** |
+
+| `d2` = 44 mm, `c1` merely small | R | **R x s** |
+| --- | --- | --- |
+| ±2.50% | 9,552 | 238.8 |
+| ±1.00% | 18,463 | 184.6 |
+| ±0.50% | 36,527 | 182.6 |
+| ±0.25% | 74,016 | 185.0 |
+| ±0.10% | 175,552 | 175.6 |
+
+**`R x s^2` is constant at 36 mm and `R x s` is constant at 44 mm**, each over a 25-fold
+range. So 36 mm is genuinely first-order focused and second-order limited, while 44 mm is
+still first-order limited with a `c1` merely 6.8 times smaller than nominal - and
+0.01885/0.00276 = 6.8 accounts for its whole gain. **44 mm is not a focus.**
+
+**Which depth is better depends on the spread you optimise at, and that is the trap.** At
+±2.5% the scan picks 44 mm, 9,552 against 2,044. At ±0.1% the ordering reverses six-fold,
+1,138,010 against 175,552, because `1/s^2` overtakes `1/s`. **Optimising at the acceptance
+window rather than at the beam's actual spread selects the wrong geometry** - and ±2.5% is
+the acceptance, per \u00a71.
+
+**One parameter reaches the published figure.** With `c1` cancelled, `R x s^2` = 1.2, so
+R = 100,000 at an energy spread of **±0.35%**, and better than that below it.
+
+### Why the paper says "third-order temporal focus"
+
+The scaling makes the design legible. Each order cancelled costs one degree of freedom and
+buys one power of the energy spread:
+
+| orders cancelled | free parameters needed | scaling | R at ±2.5% |
+| --- | --- | --- | --- |
+| none | - | `1/s` | 760, measured |
+| `c1` | 1 | `1/s^2` | 2,044, measured |
+| `c1`, `c2` | 2 | `1/s^3` | order 3e4, not yet measured |
+| **`c1`, `c2`, `c3`** | **3** | **`1/s^4`** | **>1e5** |
+
+So reaching the published resolving power *across the published ±2.5% acceptance* needs
+three orders cancelled, which is exactly what [B] describes: "Such regime generates the
+**third-order temporal focus** and provides, correspondingly, the best possible resolving
+power of the analyzer." And it is why the calibration has **two** correction vectors,
+`TE1` and `TE2`, on top of the electrode geometry - `d1..d4` supply the geometric degrees of
+freedom and the two parameters trim the orders the geometry cannot hold exactly.
+
+**That makes the next step concrete rather than exploratory**: cancel `c1` and `c2`
+simultaneously over two depths and check that `R x s^3` goes constant. Two parameters, one
+objective each, and the prediction is a scaling law rather than a number - which is the kind
+of target that cannot be hit by accident.
 
 **Two things not to read into the numbers yet.** This is **one reflection**, so it measures
 a mirror in isolation rather than twenty-five of them compounding. And `d1..d4` are four
