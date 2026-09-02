@@ -14,19 +14,26 @@ Read `SPEC.md` first, as always. This page is scoped to the Astral work.
 
 ## Where this stands
 
-**The drift reversal is reproduced.** With an exact mirror law and an ion foil biased
-inside the published 0 to −20 V and graded along the drift, the model reverses the drift at
-**342.7 mm after 13.5 oscillations**, against a published **310 to 360 mm after 12 to 13**.
-The no-foil control does not reverse at all. That was the first of the two things wrong with
-this model and it is now right (§§13–15).
+**The drift reversal is reproduced exactly, by the mirror tilt alone.** At a convergence of
+0.56 mm and the 2.29° the published figures themselves imply, with **no ion foil in the
+model**, it reverses at **334.76 mm after 25 reflections with 13.39 mm of drift per
+reflection** — against a published **310 to 360 mm, 24 to 26 reflections, 13.40 mm** (§17).
+Two published numbers fix the two unknowns and the third checks.
 
-**What remains is the resolving power, and it splits into two problems with different
-owners** (§16). The drift is not *isochronous* — a constant force gives a return time linear
-in the drift velocity, so a 300 µs arrival spread is structural rather than a tuning failure,
-and the fix is a harmonic drift potential the foil can supply inside its published bias
-range. And these mirrors have no time-energy focus and cannot have one, because the published
-potential coefficients were optimised against Thermo's electrode depths and `d1..d4` here are
-guesses. That second one is what finally makes the depth fit well-posed.
+**The convergence is the one number to question.** 0.56 mm is 2.8× what this document used,
+and the whole factor is in what "a 200 µm thick spacer" tilts over: 200 µm closing the *gap*
+across the 350 mm drift, or 200 µm per mirror over a ~250 mm baseline. None of the four
+papers says. It is now the most consequential unpublished number here.
+
+**What remains is the resolving power**, and the fourth paper names the mechanism for the
+harder half. A tilted mirror pair applies a *constant* force, so the drift period depends on
+amplitude; the published requirement is that it be constant to **5e-6**, and the ion foil's
+stated job is to "counter ToF aberrations induced by the converging ion mirrors" — exactly
+that. There is a dedicated paper on it (Grinfeld et al., Int. J. Mass Spectrom. 2024, 1060,
+169017), which is the one to get next. The other half is that these mirrors have no
+time-energy focus and cannot have one, because Thermo's optimised potential coefficients are
+applied here to guessed electrode depths — which is what finally makes the depth fit
+well-posed (§16).
 
 ### Verified, with controls
 
@@ -38,8 +45,7 @@ guesses. That second one is what finally makes the depth fit well-posed.
 | drift impulse per reflection | **V·sin(2α) exactly** — ratio 1.000000000 at three tilts, and unchanged by an eightfold change of mirror gradient | §13 |
 | the anisotropy a tilt creates | exact to **5.4e-20** in the field, 1.7e-18 through a document | §12 |
 | reversal against the closed form | 618.31 mm measured against 618.0 predicted; 61 reflections against 61.1 | §14 |
-| **the drift reversal, against the published instrument** | **342.7 mm and 13.5 oscillations against a published 310–360 mm and 12–13** — the no-foil control does not reverse at all | §15 |
-| drift per reflection, the injection-angle proxy | 12.70 mm against a published 13.40 | §15 |
+| **the drift reversal, against the published instrument** | **334.76 mm, 25 reflections, 13.39 mm per reflection** against a published 310–360 mm, 24–26, 13.40 mm — mirror tilt alone, no foil | §17 |
 | the injection angle, inverted from published D and N | **2.04° to 2.56°**, against [A]'s "about two degrees" | §14 |
 | the foil produces a drift well | −19.9 V of −20 applied; shallow at 41% of the drift and deep at 67%, matching its own measured contour | §11 |
 | a volume solve contributes nothing outside its box | mirrored half reproduces the full solve to 0.00000 V of 100 applied | §7a |
@@ -92,19 +98,23 @@ depth fit well-posed at last.
 
 ### Next, in order
 
-1. **Optimise the foil's 16-slice profile for drift isochronicity.** §16 puts the
-   requirement at 5e-6 in the drift period, needs the well harmonic to ~1e-4 of its depth,
-   and measures the best hand-chosen profile at 15%. A bias grade will not reach it; this is
-   a 16-parameter objective and the first thing in this work that genuinely wants
-   `Einzel.Sweeps`. It is also the likeliest reason the published contour is "specially
-   shaped" rather than a simple taper.
-2. **Fit `d1..d4` against the energy focus** — minimise the arrival width of an
+1. **Settle the convergence.** §17 reproduces every published reversal figure at 0.56 mm and
+   nothing at 0.20 mm, and the whole 2.8× is in what a 200 µm spacer tilts over. Look for a
+   mirror-assembly length or a mounting baseline in the patent literature or the detector
+   paper's figures. **Every reversal number in this document depends on it.**
+2. **Get Grinfeld, Stewart, Makarov, Int. J. Mass Spectrom. 2024, 1060, 169017** —
+   *isochronous drift in elongated ion mirrors*. §16 derives the requirement (drift period
+   constant to 5e-6) and §17 confirms the foil's published job is exactly to meet it. There
+   is a whole paper on how; read it before optimising blind.
+3. **Optimise the foil's 16-slice profile for drift isochronicity**, if (2) does not simply
+   give the answer. 16 parameters, and the first thing here that genuinely wants
+   `Einzel.Sweeps`.
+4. **Fit `d1..d4` against the energy focus** — minimise the arrival width of an
    energy-spread cloud at zero temperature, where 19.2 µs is the number to beat. §13 forbids
-   fitting them against the reversal; this is the target they actually control.
-3. **Table 1's `C⁽¹⁾` perturbation**, ~2.5 ppm/V per unit `TE1` — tests the mirrors' energy
-   response *differentially*, so it does not wait on (2).
-4. **A corpus example pinning 342.74 mm**, so the reversal cannot silently regress.
-5. Re-derive §11's drift-fraction calibration, or bound it.
+   fitting them against the reversal; this is the target they control.
+5. **Table 1's `C⁽¹⁾` perturbation**, ~2.5 ppm/V per unit `TE1` — differential, so it
+   does not wait on (4).
+6. **A corpus example pinning the reversal**, once (1) is settled.
 
 ### Reading the rest of this page
 
@@ -1943,6 +1953,11 @@ and 1.0 mm cells).
 
 ## 14. What the published numbers imply, now that the mirror is exact
 
+> **Partly superseded by §17.** The closed-form reproduction and the `D/N` inversion stand.
+> The conclusion that the ion foil supplies 58 to 69 per cent of the returning impulse does
+> not: it rested on a convergence too small by a factor of 2.8.
+
+
 With the mirror law exact and the analyser length re-derived, the published figures can be
 inverted rather than merely compared against. Three published quantities, one exact law,
 and the arithmetic closes.
@@ -2084,6 +2099,11 @@ its stated 5 per cent; or the reversal is shaped by something not yet in this mo
 as "electrodes", plural, and four of them were counted.
 
 ## 15. The foil closes the gap, graded and spanning the whole drift
+
+> **Superseded by §17.** The measurements here are correct and a graded foil really does
+> decelerate the drift, but it is not what the instrument does — the mirror tilt alone
+> reverses the drift once the convergence is read correctly.
+
 
 Section 14 established that the ion foil must supply 11.0 to 13.8 V/m of axial field, a
 3.9 to 4.3 V rise across the drift, and that a **uniform** bias on the measured contour
@@ -2340,3 +2360,78 @@ published ~2.5 ppm/V per unit `TE1`; comparing this model's response to that per
 tests the mirrors' energy behaviour *differentially*, without needing the absolute focus to
 be right first. It was already the sharpest available literature regression; it is now also
 the natural companion to the depth fit.
+
+## 17. The tilt alone reverses the drift. Sections 14 and 15 are superseded.
+
+A fourth paper settles this, and it arrived after \u00a7\u00a714 and 15 were written.
+
+> **[C]** Stewart, Petzoldt, Shanley, Grinfeld, Denisov et al., *A High Dynamic Range Ion
+> Detector for Multireflection Time-of-Flight Analyzers*, J. Am. Soc. Mass Spectrom.
+> **2024**;35:2390\u20132399. Reports >1e4 single-shot dynamic range and **>100k resolving
+> power** with 10 keV postacceleration, focal-plane correction and an integrated tilt
+> corrector.
+
+Its description of the analyser is unambiguous, and it is quoted rather than paraphrased
+because it contradicts what this document previously concluded:
+
+> **Asymmetry, or tilting of the mirrors relative to one another, applies a counter force
+> reducing the ions' drift velocity and ultimately halting and reversing it**, so that ions
+> are returned back to the postaccelerator, where they are accelerated to 14 keV and focused
+> onto the detector surface. **The ion foil compensation electrodes serve to both counter
+> ToF aberrations induced by the converging ion mirrors** and improve the spatial focus of
+> the returned ions, maximizing transmission through the analyzer.
+
+So the **tilt does the reversal on its own**, and the foil's job is to counter the *time-of-flight
+aberration* the converging mirrors induce - which is precisely the amplitude-dependent drift
+period \u00a716 measured. [C] also cites a dedicated paper on it: **Grinfeld, Stewart, Makarov,
+*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Int. J. Mass
+Spectrom. 2024, 1060, 169017** - which is the paper to get next.
+
+### Measured: mirrors only, no foil
+
+| convergence, injection angle | max z | reflections | drift per reflection |
+| --- | --- | --- | --- |
+| 0.20 mm, 2.00\u00b0 \u2014 this document's earlier reading | 714.81 mm | 61 | 11.72 mm |
+| 0.40 mm, 2.00\u00b0 | 357.53 mm | 31 | 11.53 mm |
+| **0.56 mm, 2.29\u00b0** | **334.76 mm** | **25** | **13.39 mm** |
+| **published** | **310 to 360 mm** | **24 to 26** | **13.40 mm** |
+
+**All three published figures, exactly, with no foil in the model.** And it is not a fit with
+spare parameters: `D/N` fixes the injection angle without reference to the convergence
+(\u00a714), and the convergence then follows from either `N` or `D` alone. Two published numbers,
+two unknowns, and the third number checks.
+
+### What was wrong, and it was one thing
+
+`\u03b1 = 8.0e-4` is needed; this document used `2.857e-4`. The factor of 2.8 is entirely in what
+"a 200-\u00b5m thick spacer" is taken to tilt over. The template computed
+`asin(convergence / 2 / driftLength)` - reading the *gap* as closing by 200 \u00b5m across the
+*drift length*. The value that works corresponds to a 200 \u00b5m spacer acting over a **~250 mm
+baseline**, tilting each mirror by 200 \u00b5m rather than closing the gap by it. Which of those
+the hardware means is not stated in any of the three papers, and it is now the single most
+consequential unpublished number in this model.
+
+**So \u00a714's conclusion that the foil supplies 58 to 69 per cent of the returning impulse is
+withdrawn**, along with \u00a715's search for a foil configuration to deliver it. Both were built
+on a convergence too small by 2.8x, and the deficit they attributed to a missing mechanism
+was the geometry. \u00a715's graded-foil result stands as a measurement - a graded foil *does*
+decelerate the drift, and the numbers in it are correct - but it is not what the instrument
+does.
+
+**And \u00a714's inverted injection angle of 2.29\u00b0 was right.** It was withdrawn in \u00a715 because the
+graded-foil configuration overshot at that angle; the overshoot was the foil contribution
+that should not have been there. `D/N` inverts to 2.29\u00b0 and the tilt-only model reproduces
+everything at it.
+
+### What this does to the resolving power
+
+It makes \u00a716 sharper rather than obsolete. The foil's published job is exactly the problem
+\u00a716 identified and quantified: the drift period must be constant to **5e-6** across the
+thermal spread in `v_z0`, the constant force of a tilted mirror pair makes it
+amplitude-dependent instead, and closing that is a shape optimisation over the foil's
+profile. [C] calls that "countering ToF aberrations induced by the converging ion mirrors",
+and Grinfeld et al. 2024 is a whole paper about it.
+
+**The one thing to fix first is the convergence**, since every reversal number in this
+document depends on it and the model now reproduces the published instrument when it is
+right.
