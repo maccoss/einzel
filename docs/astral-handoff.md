@@ -37,10 +37,25 @@ and not a numerical artefact; the tilted case is meaningless without it.
 
 ### The two numbers that are wrong
 
-**Reversal needs 57× too much convergence.** At 2° injection this model reverses at
-**11.4 mm** of mirror convergence. The published spacer is **200 µm**. Even the specular
-upper bound is 2.4× short, and the ion foil cannot make up the difference — see §11,
-*A premise this corrects*.
+**Reversal needs 1.3× to 4× too much convergence, depending on the injection angle.**
+The 57× figure that circulated earlier in this document is **superseded** — it came from a
+bisection on a predicate that could not tell reversal from striking an electrode (§3, *What
+was wrong with all three measurements below*). The reconciled numbers:
+
+| | model reverses at | published spacer | gap |
+| --- | --- | --- | --- |
+| template's 1.28° (a ballistic count, and wrong) | **0.267 mm** | 0.200 mm | **1.33×** |
+| paper's 2°, at the measured impulse efficiency η = 0.578 | ~0.85 mm | 0.200 mm | **~4×** |
+| paper's 2°, a perfectly specular mirror (η = 1) | ~0.49 mm | 0.200 mm | **~2.5×** |
+
+Two things follow. **The mirror is not far from specular** — η = 0.578 is the remaining
+factor the electrode depths could move, and it is measured from a single reflection rather
+than inferred (§3). And **a specular mirror with the published 200 µm spacer reverses a
+drift at 335 mm only if that drift is about 1.47°** (1.12° at η = 0.578) — against [A]'s
+"about two degrees". So either the effective drift angle is lower than [A]'s round number,
+or something beyond mirror tilt supplies a returning potential. [A] names the ion foil for
+that role; §11 finds the measured foil contour cannot do it in a single-bias configuration.
+**That is the open contradiction at the centre of this model.**
 
 **Resolving power is 6.56 against a published >100,000.** Decomposed on the energised
 template, each spread on its own with the others at zero:
@@ -145,6 +160,54 @@ Spectrom.* 2023, [PMC10767742](https://pmc.ncbi.nlm.nih.gov/articles/PMC10767742
 | Mirror convergence | **200 µm spacer** | B |
 | Resolving power | > 100,000 | A |
 | Detector | HDR | A |
+
+#### What [A] says, verbatim, about the track
+
+Checked against the PMC full text rather than recalled. Each of these bears on a modelling
+decision and the wording matters:
+
+> After the first reflection, the inclination angle of ion packets is adjusted by the
+> second electrostatic prism to the optimal value of **about two degrees**.
+
+So 2° is the *drift* angle, set after the first reflection, not a prism setting to be
+reconciled with a derived one. The template's 1.28° contradicts this and came from a
+ballistic oscillation count, which halves the true count because the drift decelerates.
+
+> The asymmetric ion mirrors are designed to be slightly converging toward each other,
+> making the ion drift decelerate over the course of the first **12-13 oscillations**
+> toward the distant end of the mirrors.
+
+> The drift is eventually reversed by a returning electrostatic potential formed by
+> **mirror tilt as well as refraction on the ion foil**, and over the following 12-13
+> oscillations, the ions drift back to the second electrostatic prism of the injection
+> optics.
+
+**This sentence is in tension with §11's conclusion that the foil is a lens and not a
+decelerator.** [A] names the foil as one of two contributors to the *returning* potential;
+[B] names the convergence as what stops the drift and convergence-plus-foil as what
+refocuses. The measured contour (§11) produces a well deepest at two-thirds of the drift,
+which in a single-bias configuration cannot form a returning potential at 310-360 mm in
+either sign. The likeliest resolutions, none established: the four plates are biased
+independently rather than at one potential; the drift-fraction calibration of the contour
+is off by more than its stated ±5%; or [A]'s "refraction" is describing the refocusing [B]
+attributes to the foil. Recorded as open rather than resolved.
+
+> The ion foil electrodes are mounted between the mirrors, above and below the ion path,
+> and are biased with a small tunable potential between 0 and -20 V.
+
+> The precise shapes of the ion foil electrodes serve to compensate for the temporal
+> aberration induced by the mirror asymmetry and improve the quality of the spatial focus
+> at the detector, as well as to compensate for mechanical misalignments of the mirrors.
+
+> While making a complete set of **24-26 oscillations** over the >30 m track, the ion
+> packets are separated according to their mass-to-charge ratios and, being **refocused
+> spatially**, arrive at a high dynamic range detector located at the **proximal end next
+> to the ion processor**.
+
+And from [B], the second prism is also the *drift focusing* control: detuning it by ±5 V
+moved the analyser "slightly detuned from its apex" and made space-charge overtones
+appear sooner. So the second prism sets both the drift angle and where the drift focus
+lands, which is one knob and not two.
 
 #### The mirror calibration - the most directly usable thing in either paper
 
@@ -1323,7 +1386,7 @@ changed the plan and one of them is written here incorrectly.
    of this page.
 4. **The inverse problem: fit `d1..d4`.** Still the next substantial piece, and now better
    posed — fit against the *measured reversal distance* rather than only the 4000 ± 100 V
-   window, since reversal is where the model is 57× out and the energy window is already
+   window, since reversal is where the model is 1.3–4× out and the energy window is already
    reproduced (R = 2,600 on energy spread alone).
 5. ~~**Ion foil**~~ — built, and then rebuilt from a pixel measurement of the published
    figure. Its shape is no longer a free parameter. **Prisms and the rest of the injection
@@ -1442,14 +1505,20 @@ no such ramp in either sign of bias:
   flank — at φ = 4.872 V, which the table puts at **z ≈ 105 mm**, against a published
   310–360 mm. And a hill is a *defocusing* lens in z, an unstable equilibrium at its top.
 
-**A well centred at two-thirds of the drift is a lens, not a decelerator**, and that is what
-the paper describes: the convergence "reduced the drift rate of each ion, and its drift was
+**A well centred at two-thirds of the drift is a lens, not a decelerator** - and here the
+two papers pull in different directions. [A] says the drift "is eventually reversed by a
+returning electrostatic potential formed by mirror tilt **as well as refraction on the ion
+foil**", naming the foil as a contributor to reversal. [B] describes what the well does: the convergence "reduced the drift rate of each ion, and its drift was
 eventually stopped at a distance L", while "the optimized convergence of the mirrors **and**
 a set of specially shaped electrodes, referred to as ion foil, cause the drift **spread** to
 reduce on the way back from the drift reversal point" (J. Mass Spectrom. 2024;59(4):e5006,
-<https://doi.org/10.1002/jms.5006>). Two mechanisms, two jobs: convergence stops the drift,
-the foil focuses it. The 2.9–3.7 V "required swing" derived above is the answer to a
-question the foil does not turn out to be answering.
+<https://doi.org/10.1002/jms.5006>). Under [B]'s reading: two mechanisms, two jobs - convergence stops the drift, the foil
+focuses it - and the 2.9–3.7 V "required swing" derived above is the answer to a question
+the foil is not answering. Under [A]'s reading the foil *does* help reverse, and the
+measured contour then cannot be the whole story: either the four plates are biased
+independently, or the contour's drift-fraction calibration is off by more than its stated
+±5%, or [A]'s "refraction" is loose language for [B]'s refocusing. **Unresolved**, and
+recorded in §1 under *What [A] says, verbatim*.
 
 **So the reversal deficit is now unexplained, and that is the finding to carry forward.**
 Mirror tilt at the published 200 µm spacer is 2.4× short even in the specular limit, and the

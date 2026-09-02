@@ -448,7 +448,7 @@ reproduced in any respect. It is also the first target whose geometry had to be
 | target | published | status |
 | --- | --- | --- |
 | oscillations / flight path | 24 / 30 m | **not reached** - under 4 at the published injection angle |
-| drift reversal distance | 310-360 mm, mean 335 | reverses, but needs **57x** the published 200 µm convergence |
+| drift reversal distance | 310-360 mm, mean 335 | reverses, at **1.33x** the published spacer at the template's 1.28°, **~4x** at the paper's 2° (η = 0.578) |
 | resolving power | > 100,000 | **6.56** - dominated by thermal drift spread that nothing refocuses |
 | energy acceptance | flat T over 4000 ± 100 V | mirrors **do** energy-focus: R = 2,600 on energy spread alone |
 | `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **not attempted, and the best next test** |
