@@ -68,13 +68,23 @@ that could not tell reversal from striking an electrode) and the 1.33× reconcil
 
 ### The resolving power, in two parts
 
-Measured on the reproducing configuration, 8 ions out and back:
+**Every R below is this model's, not the instrument's.** The Astral reaches about 100,000
+at m/z 200 and the papers report >100,000; that is the target, and the numbers here are how
+far short the model falls. Measured on the reproducing configuration, 8 ions of m/z 500 out
+and back:
 
-| | arrival width | R |
+| | arrival width | model R |
 | --- | --- | --- |
-| 300 K thermal | 355 µs | 1.31 |
-| **0 K — energy spread alone** | **19.2 µs** | **20.4** |
-| published | under 3.9 ns at this flight time | **>100,000** |
+| 300 K thermal, 0.4 mm spatial, ±2.5% energy | 355 µs | 1.31 |
+| ±2.5% energy alone | 565 ns | 760 |
+| ±0.1% energy alone | 19.9 ns | 21,566 |
+| **the instrument**, ~m/z 200 | — | **~100,000** |
+
+**`R × spread` is 21.5 and constant over a 25-fold range**, so the mirrors do *no* energy
+focusing — the first-order term is uncancelled. That is the figure of merit a `d1..d4` fit
+should move, and it should move by orders. Note also that ±2.5% is the mirrors' stated
+*acceptance window*, not a beam's spread, so using it as a cloud width flies the worst case
+the design tolerates.
 
 **Neither limit is a tuning failure** (§16). The thermal one needs the drift *period* constant
 to **5e-6**, which needs the foil's well harmonic to ~1e-4 of its depth; the best profile
@@ -109,9 +119,11 @@ depth fit well-posed at last.
 3. **Optimise the foil's 16-slice profile for drift isochronicity**, if (2) does not simply
    give the answer. 16 parameters, and the first thing here that genuinely wants
    `Einzel.Sweeps`.
-4. **Fit `d1..d4` against the energy focus** — minimise the arrival width of an
-   energy-spread cloud at zero temperature, where 19.2 µs is the number to beat. §13 forbids
-   fitting them against the reversal; this is the target they control.
+4. **Fit `d1..d4` against the energy focus.** The figure of merit is **`R × spread`**,
+   measured at 21.5 and constant across a 25-fold range of spread, which says the
+   first-order energy term is uncancelled. §13 forbids fitting the depths against the
+   reversal; this is the target they do control, and cancelling first order should move
+   `R × spread` by orders rather than per cents.
 5. **Table 1's `C⁽¹⁾` perturbation**, ~2.5 ppm/V per unit `TE1` — differential, so it
    does not wait on (4).
 6. **A corpus example pinning the reversal**, once (1) is settled.
@@ -2253,8 +2265,9 @@ jobs, two features of the same electrode.
 Reversal is reproduced (\u00a715). The resolving power is not, and measuring it on the
 reproducing configuration decomposes it into two independent problems with different owners.
 
-A thermal cloud of 8 ions launched at the injection end, flown out and back to a detector
-there, arrival spread read off the ensemble:
+A thermal cloud of 8 ions of m/z 500 launched at the injection end, flown out and back to a
+detector there, arrival spread read off the ensemble. **These are the model's figures; the
+instrument's is about 100,000 at m/z 200:**
 
 | case | arrival width | R |
 | --- | --- | --- |
@@ -2284,6 +2297,46 @@ And it is expressible inside the published bias range. Biasing the foil as
 while every plate stays between 0 and -20 V - the same trick as the linear grade of \u00a715,
 one power up. **That is the natural reading of why the published contour is not a simple
 taper.**
+
+### Measured: the mirrors do no energy focusing at all
+
+The energy limit above was quoted from a cloud carrying 0.4 mm of spatial spread as well,
+which conflated two things. Energy spread alone, 9 ions, 0 K, no spatial extent, foil at
+0 V:
+
+| energy spread | arrival width | model R | **R x spread** |
+| --- | --- | --- | --- |
+| ±2.50% | 564.8 ns | 760 | **19.0** |
+| ±0.50% | 96.2 ns | 4,463 | **22.3** |
+| ±0.10% | 19.9 ns | 21,566 | **21.6** |
+
+**`R x spread` is constant over a 25-fold range**, so `R` goes exactly as one over the
+spread and the flight time is **first-order** limited in energy. The mirrors are doing no
+focusing whatever - which is what applying Thermo's optimised `C(0)` coefficients to guessed
+electrode depths should be expected to give, and it makes the diagnostic sharp: the figure
+of merit for a depth fit is **`R x spread`**, currently 21.5, and cancelling the first-order
+term should move it by orders rather than per cents.
+
+**And the earlier ±2.5% figure was pessimistic in two ways worth naming.** That is the
+mirrors' *acceptance window* - the interval `C(0)` was optimised to keep the oscillation
+time flat across, per \u00a71 - not a beam's actual energy spread, and using it as a cloud width
+asks the model to fly the worst case the design tolerates. Pure energy spread at that width
+gives R = 760, not the 20 first reported; the 20 came from adding 0.4 mm of spatial spread
+on top. Both are the model's numbers, not the instrument's.
+
+**A consistency check that the published figure is the first-order-cancelled one.** With the
+first-order term uncancelled this model gives `R = 21.5 / spread`. A first-order focus
+replaces that with `R = k / spread^2`, and reaching about 100,000 across the stated ±2.5%
+acceptance needs `k` near 0.06 - a small second-order coefficient, i.e. some second-order
+correction as well, which is exactly what \u00a71's `TE2` parameter tunes and what [B] means by
+"the third-order temporal focus". So the published resolving power is consistent with a
+mirror focused to second order over its acceptance, and this model is consistent with one
+focused to none.
+
+**Mass.** Everything here is m/z 500. The instrument's figure is usually quoted at m/z 200,
+which is the demanding end - turn-around time goes as the square root of mass, so a light
+ion is harder. Any comparison of these numbers against the published one should say which
+mass it means.
 
 ### The isochronicity requirement is 5e-6, and it is an optimisation not a guess
 

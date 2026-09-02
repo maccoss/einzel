@@ -2395,7 +2395,8 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     mirror over a ~250 mm baseline it gives the table above. The template declares the two
     apart so the uncertainty sits where it belongs.
 
-    **What is left is the resolving power, and it is 1.31.** Two limits, both structural and
+    **What is left is the resolving power. This model gives 1.31; the instrument reaches
+    about 100,000 at m/z 200.** Two limits, both structural and
     neither a tuning failure. The drift is not **isochronous**: a tilted pair applies a
     *constant* force, so the return time is linear in the drift velocity and a 300 K thermal
     spread gives 355 microseconds of arrival width. The requirement is that the drift period
@@ -2406,9 +2407,13 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     elongated ion mirrors*, Int. J. Mass Spectrom. 2024, 1060, 169017 first** - the detector
     paper cites it and it is a whole paper on this problem. The second limit is that these
     mirrors have no time-energy focus and cannot have one, since Thermo's optimised potential
-    coefficients are applied here to guessed depths; that caps R at 20 by itself, and **it is
-    the target `d1..d4` actually control**, which is the well-posed version of the plan
-    Amendment 36's closed form voids.
+    coefficients are applied here to guessed depths; and it is **first-order** limited, measured:
+    `R x spread` is 21.5 and constant over a 25-fold range of energy spread, so the mirrors
+    focus not at all. `R x spread` is therefore the figure of merit a depth fit should move,
+    and **it is the target `d1..d4` actually control** - the well-posed version of the plan
+    Amendment 36's closed form voids. Note that the ±2.5% used above is the mirrors' stated
+    acceptance window rather than a beam's spread; pure energy spread at that width gives
+    R = 760, and the earlier 20 came from adding 0.4 mm of spatial spread to it.
 
 ## Open decisions
 
