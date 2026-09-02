@@ -33,6 +33,10 @@ namespace Einzel.Library.Tests;
 /// </remarks>
 public sealed class AstralTiltAxisTests(ITestOutputHelper output)
 {
+    /// <summary>The four foil plates: two either side of the mid-plane, each doubled in y.</summary>
+    private static readonly string[] ExpectedFoilPlates =
+        ["foilFarAbove", "foilFarBelow", "foilNearAbove", "foilNearBelow"];
+
     private static IReadOnlyList<Electrode3DDocument> Electrodes()
     {
         var document = ModelJson.Parse(DeviceTemplates.Read("astral-3d"));
@@ -136,13 +140,18 @@ public sealed class AstralTiltAxisTests(ITestOutputHelper output)
             + "cannot reverse");
     }
 
-    /// <summary>The ion foil is present, and is deliberately not a tilted mirror.</summary>
+    /// <summary>The ion foil is four plates, contoured along the drift, and untilted.</summary>
     /// <remarks>
     /// <para>
-    /// The complement of the two assertions above, and the reason they had to be scoped. The
-    /// foil's shape varies in the plane of the drift — its width, not its gap — because a
-    /// gap taper inside a channel that long produced an on-axis swing of 0.0003 V against a
-    /// requirement of 2.9 to 3.7 V.
+    /// Four because the published schematic shows two plates straddling the analyser
+    /// mid-plane in the mirror-oscillation direction, and the ions oscillate straight
+    /// through those positions — so each must be duplicated above and below the ion plane
+    /// in the board gap for the packet to pass between them.
+    /// </para>
+    /// <para>
+    /// Untilted because the foil is shaped by where its inner edge sits along the drift,
+    /// not by a gap taper: a taper inside a channel this long swings the on-axis potential
+    /// by 0.0003 V against a requirement of 2.9 to 3.7 V.
     /// </para>
     /// <para>
     /// Asserted so that scoping the mirror tests by name cannot become a way of quietly
@@ -156,15 +165,20 @@ public sealed class AstralTiltAxisTests(ITestOutputHelper output)
             .Where(e => e.Name!.StartsWith("foil", StringComparison.Ordinal))
             .ToList();
 
-        Assert.Equal(2, foils.Count);
+        Assert.Equal(4, foils.Count);
+
+        // Two either side of the mid-plane in x, each duplicated above and below in y.
+        Assert.Equal(
+            ExpectedFoilPlates,
+            foils.Select(f => f.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray());
 
         foreach (var foil in foils)
         {
             Assert.True(
                 string.IsNullOrEmpty(foil.TiltAxis),
                 $"{foil.Name} declares a tilt about '{foil.TiltAxis}'. The foil is shaped by "
-                + "width along the drift, not by a gap taper - a taper inside a channel this "
-                + "long swings the on-axis potential by 0.0003 V");
+                + "where its inner edge sits along the drift, not by a gap taper - a taper "
+                + "inside a channel this long swings the on-axis potential by 0.0003 V");
 
             Assert.NotNull(foil.Repeat);
         }

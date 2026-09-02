@@ -160,45 +160,76 @@
       "maximum": 6.0,
       "description": "how thick the foil electrodes are."
     },
-    "foilInset": {
-      "value": 10.0,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 60.0,
-      "description": "how far the foil stops short of each mirror mouth, so it sits in the field-free region between the mirrors rather than reaching into a retarding field."
-    },
     "foilGap": {
-      "value": 8.0,
+      "value": 20.0,
       "unit": "mm",
       "minimum": 2.0,
-      "maximum": 18.0,
-      "description": "half-gap from the ion path to each foil electrode. Penetration is governed by width measured in units of THIS, so it sets the scale the widths are read against."
+      "maximum": 30.0,
+      "description": "Half-gap between the foil plates in the board-gap direction. Defaults to halfGap, so the foil is a shaped conductive region on the inner face of each board rather than a separate aperture in the flight path - which is both the plausible construction for a printed-circuit analyser and what the published schematic projects to. Mounting the plates flush costs 15% of the well depth (7.31 V against 8.58 V at foilGap 8 mm) and leaves the well shape unchanged, shallowest at 41% of the drift and deepest at 67%."
     },
     "foilSlices": {
       "value": 16.0,
       "unit": "1",
       "minimum": 4.0,
       "maximum": 64.0,
-      "description": "how many steps approximate the graded width. A convergence parameter, not a design one: the shape is a wedge and this is how finely it is cut. The box primitive has parallel faces, so a varying width is a staircase."
+      "description": "Number of constant-width boxes the contoured foil plate is built from. The contour runs along the drift, so each slice spans a range of drift and holds one inner-edge position."
     },
-    "foilSliceLength": {
-      "expression": "driftLength / foilSlices",
-      "unit": "mm",
-      "description": "axial length of one step."
+    "foilOuterFrac": {
+      "value": 0.8,
+      "unit": "1",
+      "minimum": 0.1,
+      "maximum": 0.98,
+      "description": "Foil plate outer edge, as a fraction of the mid-plane to mirror-mouth distance. Measured from the published schematic at 146 mm of 182 mm; the outer edge is straight to within one pixel over the whole drift."
     },
-    "foilMidHalfWidth": {
-      "value": 16.0,
-      "unit": "mm",
-      "minimum": 1.0,
-      "maximum": 60.0,
-      "description": "half-width of the foil at mid-drift, where it is widest. Published figures show the foil as leaf shapes - broad in the middle of the drift and tapering to points at both ends - and that shape is why it does two jobs at once."
+    "foilInnerMid": {
+      "value": 0.578,
+      "unit": "1",
+      "minimum": 0.1,
+      "maximum": 0.95,
+      "description": "Mean position of the foil plate inner edge, as a fraction of the mid-plane to mirror-mouth distance. The inner edge is contoured along the drift; this is the midpoint of that contour."
     },
-    "foilEndHalfWidth": {
-      "value": 3.0,
+    "foilInnerAmplitude": {
+      "value": 0.063,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 0.4,
+      "description": "Half the peak-to-peak excursion of the foil inner edge along the drift. The published schematic gives 0.641 of the reach at the plate thinnest and 0.515 at its thickest."
+    },
+    "foilThinAt": {
+      "value": 0.41,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Drift fraction at which the foil plate is thinnest, so its inner edge lies furthest from the axis and the gap between the two plates is widest."
+    },
+    "foilThickAt": {
+      "value": 0.67,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Drift fraction at which the foil plate is thickest, so its inner edge lies closest to the axis and the gap between the two plates is narrowest. Half a contour wavelength past foilThinAt."
+    },
+    "foilStartFrac": {
+      "value": 0.25,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 0.9,
+      "description": "Drift fraction at which the foil begins. The published schematic shows the plates starting about a quarter of the way along, downstream of the injection optics."
+    },
+    "foilReach": {
+      "expression": "midPlane - mouth",
       "unit": "mm",
-      "minimum": 0.5,
-      "maximum": 60.0,
-      "description": "half-width at each end of the drift. Wider means more negative on axis, so a leaf that is broad in the middle puts an on-axis potential WELL at mid-drift. A positive ion displaced either way along the drift is pulled back toward the centre - which focuses the drift, and also returns it. A monotonic wedge gives a constant force and no well, which is what this template carried before the published shape was looked at."
+      "description": "Distance from the analyser mid-plane to a mirror mouth, the scale the foil plate positions are expressed as fractions of."
+    },
+    "foilOuter": {
+      "expression": "foilOuterFrac * foilReach",
+      "unit": "mm",
+      "description": "Foil plate outer edge, measured from the mid-plane."
+    },
+    "foilDriftSpan": {
+      "expression": "1 - foilStartFrac",
+      "unit": "1",
+      "description": "Fraction of the drift the foil covers."
     }
   },
   "ion": {
@@ -857,7 +888,7 @@
             }
           },
           {
-            "name": "foilTop",
+            "name": "foilNearAbove",
             "shape": "box",
             "repeat": {
               "count": {
@@ -866,11 +897,11 @@
               "index": "slice"
             },
             "minX": {
-              "expression": "midPlane - (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - foilOuter",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
               "unit": "mm"
             },
             "minY": {
@@ -882,11 +913,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "foilSliceLength * slice",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "foilSliceLength * slice + foilSliceLength",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
               "unit": "mm"
             },
             "potential": {
@@ -895,7 +926,7 @@
             }
           },
           {
-            "name": "foilBottom",
+            "name": "foilNearBelow",
             "shape": "box",
             "repeat": {
               "count": {
@@ -904,11 +935,11 @@
               "index": "slice"
             },
             "minX": {
-              "expression": "midPlane - (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - foilOuter",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
               "unit": "mm"
             },
             "minY": {
@@ -920,11 +951,87 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "foilSliceLength * slice",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "foilSliceLength * slice + foilSliceLength",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "foilVolts",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "foilFarAbove",
+            "shape": "box",
+            "repeat": {
+              "count": {
+                "expression": "foilSlices"
+              },
+              "index": "slice"
+            },
+            "minX": {
+              "expression": "midPlane + (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + foilOuter",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "foilGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "foilGap + foilThickness",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "foilVolts",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "foilFarBelow",
+            "shape": "box",
+            "repeat": {
+              "count": {
+                "expression": "foilSlices"
+              },
+              "index": "slice"
+            },
+            "minX": {
+              "expression": "midPlane + (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + foilOuter",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-foilGap - foilThickness",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-foilGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
               "unit": "mm"
             },
             "potential": {

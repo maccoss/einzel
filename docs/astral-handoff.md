@@ -930,6 +930,11 @@ Named so nobody rediscovers them as bugs:
   | in the ideal specular limit, η = 1 | **0.489 mm** |
   | **published spacer** | **0.200 mm** |
 
+> **Superseded** — the foil shape here was inferred from a low-resolution figure and is
+> wrong in four ways, and the conclusion that the foil supplies most of the returning
+> impulse does not survive measuring the well it produces. See *The foil shape, measured
+> off the published schematic* at the end of this document.
+
   **Even the specular upper bound is 2.4× short**, so mirror tilt alone provably cannot
   reverse this drift at the published parameters and the foil is doing the majority of the
   work: between about **59% and 76%** of the returning impulse, with the tilt supplying the
@@ -1120,3 +1125,113 @@ d["flightTime"]["warnings"]        # do not drop these
 The warnings are the point. The 4 mm run carries a non-suppressible
 `ENERGY_DRIFT_EXCEEDS_BUDGET`, and a script that reads only `["value"]` would report a
 flight time the engine itself has qualified.
+
+## The foil shape, measured off the published schematic
+
+The shape carried above — two leaves centred on the axis, a parabola in width peaking at
+mid-drift — was inferred from a low-resolution figure and is wrong in four separate ways.
+The figure is drawn to scale and the shape can be *measured* from it rather than guessed.
+
+**Source:** Anal. Chem. 2023;95(42):15656–15664, figure 1, Astral analyser panel
+(<https://doi.org/10.1021/acs.analchem.3c02856>), image `ac3c02856_0001.jpg`, 666 × 358.
+Pixel classification of the pale-blue foil regions against the white gaps.
+
+**The scale is 1.92 mm/px, established three independent ways** and not assumed:
+
+| feature | pixels | implied | template says |
+| --- | --- | --- | --- |
+| panel height | 323 | 620 mm | `capToCap` 625 mm |
+| mirror mouth to mirror mouth | 190 | 365 mm | 365 mm |
+| mirror stack depth | 60 | 115 mm | `d4` 130 mm |
+| panel width | 173 | 332 mm | paper's mean drift 335 mm |
+
+The mid-plane-to-mouth distance measures **182 mm** and the template computes
+`midPlane - mouth` = **182.5 mm**, from geometry that was never fitted to this figure. That
+agreement is what licenses placing the foil in absolute millimetres.
+
+**What the figure shows.** Each plate has a **straight outer edge** — flat to within one
+pixel over the whole drift, at 146 mm from the mid-plane — and a **contoured inner edge**
+running between 117 mm and 94 mm. The contour is **non-monotone**, which no parabola is:
+
+| drift fraction | inner edge, of the 182 mm reach | plate radial extent |
+| --- | --- | --- |
+| 0.245 | 0.579 | 30 mm |
+| **0.41** | **0.641** — furthest out, gap widest | 27 mm |
+| **0.67** | **0.516** — closest in, gap narrowest | 50 mm |
+| 0.99 | 0.621 | 31 mm |
+
+A single cosine of wavelength `2 × (0.67 − 0.41)` = 0.52 of the drift fits all four points
+to ±0.02, which is why the template carries `foilInnerMid`, `foilInnerAmplitude`,
+`foilThinAt` and `foilThickAt` rather than a table.
+
+**Four plates, and the count is derivable rather than counted off the picture.** The two
+plates straddle the mid-plane in the mirror-oscillation direction, and the ions oscillate
+straight through those *x* positions — so each must be duplicated above and below the ion
+plane for the packet to pass between them. Two × two.
+
+**The dark teal shape between them is not an electrode.** It is the ion envelope: it is
+pointed at the left where the injector prism is, which no electrode would be, and the
+`Ion Foil` leader line in the figure lands on the pale-blue band and not on it. Reading it
+as a third and fourth electrode is what produced the axis-centred leaf shape.
+
+**Mounted flush with the boards.** `foilGap` defaults to `halfGap`, making the foil a
+shaped conductive region on the inner face of each board rather than a separate aperture in
+the flight path — the plausible construction for a printed-circuit analyser, and what the
+projection would look like either way. Measured cost of moving it there from an 8 mm
+half-gap: 15% of the well depth and **no change in the well's shape**.
+
+### What the shape does, by differencing two solves
+
+`foilVolts` at −20 V minus `foilVolts` at 0, so the mirror field cancels and what is left is
+the foil's own contribution. Between the plates it reaches **−19.9 V of −20 applied** —
+essentially complete penetration, as the plate extent over the gap predicts.
+
+Averaged across the free-flight gap at each drift position (a crude stand-in for the
+cycle average, which would weight by 1/v and so weight the slow turning region more):
+
+| z, mm | 20 | 80 | **140** | 200 | **240** | 300 | 340 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| flush, V | −0.13 | −3.04 | **−5.29** | −6.73 | **−7.31** | −5.69 | −3.97 |
+
+**The well's shallow point is at 140 mm and its deep point at 240 mm — 41% and 67% of the
+drift, exactly where the measured contour puts them.** That correspondence is the check
+that the geometry is producing the field the figure describes rather than something
+incidental to having put metal in the box.
+
+### A premise this corrects
+
+The section above concludes that mirror tilt alone cannot reverse the drift at the
+published spacer, and that *the foil supplies 59–76% of the returning impulse*. The first
+half stands. **The second half is wrong, and measuring the well is what shows it.**
+
+A potential that reverses a drift must *rise monotonically* over the region where the
+reversal happens, by more than the 4.872 eV of drift energy. The measured contour produces
+no such ramp in either sign of bias:
+
+- **Negative bias** (a well): the ion is accelerated outward over the first 240 mm and
+  decelerated only over the last 100, arriving at 340 mm with 3.97 eV *more* drift energy
+  than it started with. Net anti-reversal.
+- **Positive bias** (a hill peaking at 240 mm): the ion does reverse, but on the rising
+  flank — at φ = 4.872 V, which the table puts at **z ≈ 105 mm**, against a published
+  310–360 mm. And a hill is a *defocusing* lens in z, an unstable equilibrium at its top.
+
+**A well centred at two-thirds of the drift is a lens, not a decelerator**, and that is what
+the paper describes: the convergence "reduced the drift rate of each ion, and its drift was
+eventually stopped at a distance L", while "the optimized convergence of the mirrors **and**
+a set of specially shaped electrodes, referred to as ion foil, cause the drift **spread** to
+reduce on the way back from the drift reversal point" (J. Mass Spectrom. 2024;59(4):e5006,
+<https://doi.org/10.1002/jms.5006>). Two mechanisms, two jobs: convergence stops the drift,
+the foil focuses it. The 2.9–3.7 V "required swing" derived above is the answer to a
+question the foil does not turn out to be answering.
+
+**So the reversal deficit is now unexplained, and that is the finding to carry forward.**
+Mirror tilt at the published 200 µm spacer is 2.4× short even in the specular limit, and the
+foil cannot make it up. What remains are the free parameters: `d1..d4` are guesses, the
+board gap is assumed, and the injection angle in the template (1.28°) came from a ballistic
+oscillation count while the paper states about 2°. Fitting those against the measured
+reversal distance is the next study, and it is now a well-posed one because the foil's
+geometry is no longer among the unknowns.
+
+**Not yet measured:** that the well actually focuses a z-spread packet, and with what focal
+length. The restoring force has the right sign by inspection of the table; its strength
+against a 50 mm spread over the return leg is a flight, not a solve.
