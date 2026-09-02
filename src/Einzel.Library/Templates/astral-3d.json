@@ -32,11 +32,11 @@
       "description": "Extent along the drift. Published 310-360 mm."
     },
     "capToCap": {
-      "value": 625.0,
+      "value": 716.6,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 3000.0,
-      "description": "Derived from published figures: 30 m over 24 oscillations, out and back."
+      "description": "Cap plate to cap plate. Derived, not published, and derived a second time on 2026-09-01 because the first derivation was wrong. Stewart et al. give 24 to 26 oscillations over a flight path exceeding 30 m, so one oscillation is 1.154 to 1.250 m. An oscillation is out and back between the two turning points, so their separation is 577 to 625 mm - and that is NOT the cap-to-cap distance, because the ion turns short of the cap. Measured here, the turning point sits 84.2 mm past the mirror mouth and that offset is independent of capToCap, as it must be: the turning depth is fixed by the potentials and d1..d4. So separation = capToCap - 2 (mouth - 84.2) = capToCap - 91.6 mm, and 24 oscillations over 30 m needs capToCap = 716.6. The original 625 mm was the separation mistaken for the cap-to-cap distance, and it made the analyser 15% short in path and so 15% short in drift per reflection."
     },
     "boardGap": {
       "value": 40.0,

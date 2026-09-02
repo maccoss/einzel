@@ -14,20 +14,25 @@ Read `SPEC.md` first, as always. This page is scoped to the Astral work.
 
 ## Where this stands
 
-**The mechanism is verified; the instrument is not reproduced.** Every physical effect the
-analyser depends on is present and behaves correctly under controls. Two numbers are badly
-wrong, and they are probably one problem rather than two.
+**The mirrors are now exact, and what is missing has a name and a number.** The drift
+impulse of one reflection has a closed form that no electrode design can change, the model
+reproduces it, and inverting the published figures against it says that **58 to 69 per cent
+of the returning impulse comes from the ion foil** rather than from mirror tilt. [A] says
+the same in words. So the remaining work is the foil, and it is the same answer for the
+resolving power: [A] and [B] both give the foil the spatial refocusing this model also does
+not do.
 
 ### Verified, with controls
 
 | | | where |
 | --- | --- | --- |
-| the ion flies the analyser | 120.058 µs against a predicted 120.1 | §3 |
+| the ion flies the analyser | 120.058 µs against a predicted 120.1 — *on the earlier 3-D skeleton* | §3 |
 | drift rate | 1374 m/s against `v·sinθ` = 1374 | §3 |
-| parallel mirrors exert no axial force | 1374.34 m/s in **every** 40 mm segment, to the last digit | §3 |
-| ~~converging mirrors decelerate the drift~~ | ~~monotone to 1174 m/s at 800 µm~~ — produced by the §12 artefact, not by the declared tilt | §12 |
-| ~~and reverse it~~ | ~~out to z = 321 mm, stops, returns~~ — same | §12 |
-| ~~reversal threshold against injection angle~~ | ~~fourth-power law~~ — an artefact of an unresolved, wrong-signed tilt, see §12 | §12 |
+| a z-invariant geometry exerts no axial force | v_z held at 1371.2 m/s over 20 reflections and 411 mm of drift, **exactly** | §13 |
+| drift impulse per reflection | **V·sin(2α) exactly** — ratio 1.000000000 at three tilts, and unchanged by an eightfold change of mirror gradient | §13 |
+| the anisotropy a tilt creates | exact to **5.4e-20** in the field, 1.7e-18 through a document | §12 |
+| reversal against the closed form | 618.31 mm measured against 618.0 predicted; 61 reflections against 61.1 | §14 |
+| the injection angle, inverted from published D and N | **2.04° to 2.56°**, against [A]'s "about two degrees" | §14 |
 | the foil produces a drift well | −19.9 V of −20 applied; shallow at 41% of the drift and deep at 67%, matching its own measured contour | §11 |
 | a volume solve contributes nothing outside its box | mirrored half reproduces the full solve to 0.00000 V of 100 applied | §7a |
 
@@ -37,30 +42,17 @@ and not a numerical artefact; the tilted case is meaningless without it.
 
 ### The two numbers that are wrong
 
-**Reversal at the published spacer is unmeasured, because every convergence result so far
-was computed on a mirror tilted by about 8% of what was declared, in the wrong direction —
-see §12.** The tilt of abutting strips moves only metal-to-metal edges, which cut cells do
-not represent, so the solver saw a mesh-dependent fraction of it; and the template's tilt
-sign made the mirrors diverge along the drift. The 57× figure that circulated earlier is
-doubly superseded. The numbers below are what the document *had* reconciled to, kept for
-the record and **withdrawn**:
+**Reversal needs 2.4 to 3.3 times the deceleration the mirror tilt provides, and the
+mirrors provably cannot supply it.** The drift impulse of one reflection is
+`V·sin(2α)` exactly, from three conservation facts and with no reference to the electrode
+design (§13). At the published 200 µm spacer that is 22.4519 m/s, the reversal reproduces
+the closed form to 0.05%, and the published drift distance and oscillation count together
+need 2.4 to 3.3 times it. So **58 to 69 per cent of the returning impulse comes from
+something other than mirror tilt**, and [A] names the ion foil (§14).
 
-| | model reverses at | published spacer | gap |
-| --- | --- | --- | --- |
-| template's 1.28° (a ballistic count, and wrong) | **0.267 mm** | 0.200 mm | **1.33×** |
-| paper's 2°, at the measured impulse efficiency η = 0.578 | ~0.85 mm | 0.200 mm | **~4×** |
-| paper's 2°, a perfectly specular mirror (η = 1) | ~0.49 mm | 0.200 mm | **~2.5×** |
-
-**η = 0.578 was the discretisation, not the mirror.** A single reflection off the solved
-mirror delivers 0.447 of the specular kick at a 4 mm cell; with one resolvable vacuum gap
-between the strips it delivers 1.045; an analytic tilted mirror delivers 1.0025 (§12). What
-survives is arithmetic that uses no solve: **a specular mirror with the published 200 µm
-spacer reverses a 335 mm drift only if that drift is about 1.47°**, against [A]'s "about two
-degrees" — so at a strict 2° something beyond mirror tilt must supply a returning potential,
-and [A] names the ion foil for that role while §11 finds the measured foil contour cannot
-do it at a single bias. **That contradiction is real and still open, but it cannot be
-attacked until the tilt is solved correctly.** The fix is §12's sheared-field wrapper, which
-also turns each mirror into a 2-D solve.
+Two earlier accounts of this gap are **withdrawn**: the 57× figure (a bisection predicate
+that could not tell reversal from striking an electrode) and the 1.33× reconciliation
+(measured on a tilt the solver could not see, with the sign inverted — §12).
 
 **Resolving power is 6.56 against a published >100,000.** Decomposed on the energised
 template, each spread on its own with the others at zero:
@@ -77,16 +69,16 @@ template, each spread on its own with the others at zero:
 an MR-TOF is for. What destroys the resolving power is thermal spread in the *drift*
 direction, which nothing in this model ever undoes.
 
-### They are probably one problem
+### It is one problem, and it is the foil
 
-The crowd-control paper says the packet is **deliberately** allowed to spread to 50 mm, to
-minimise Coulomb repulsion in the bunch, and is then refocused on the return leg by the
-mirror convergence and the ion foil *together*. So the real instrument carries a strong
-drift-direction restoring force that both stops the drift at 200 µm of convergence and
-pulls the spread back in. This model has neither.
+[B] says the packet is **deliberately** allowed to spread to 50 mm, to minimise Coulomb
+repulsion, and is then refocused on the return leg by the mirror convergence and the ion
+foil *together*. [A] says the drift is reversed "by mirror tilt **as well as** refraction on
+the ion foil". So the foil is named for both jobs, and this model does neither: it is 2.4 to
+3.3 times short of the deceleration, and its packet expands to 20 mm and arrives that way.
 
-**One missing mechanism would account for both numbers.** Hunting two separate explanations
-is the likely way to waste a week here.
+**One missing element accounts for both numbers**, which is why the next-steps list leads
+with getting the foil right rather than with either symptom.
 
 ### What is assumed rather than derived
 
@@ -103,21 +95,21 @@ is the likely way to waste a week here.
 
 ### Next, in order
 
-0. **Make the tilt real** — §12. Done in the template as a stopgap: sign corrected, 3 mm
-   vacuum gaps between the strips. Proper fix: solve each mirror untilted as a 2-D
-   cross-section and query it through a shear, `φ₀(x − α(z − z_c), y)`. **Then re-measure
-   every convergence result in §3**, since all of them are withdrawn.
-1. **Fit `d1..d4` against the measured reversal distance**, potentials held at the published
-   ratios. Well-posed once the tilt is real.
-2. **Correct the injection angle to 2°.** Cheap, and it removes a contradiction with a
-   published value.
-3. **Measure whether the foil well focuses a z-spread packet, and with what focal length.**
-   The restoring force has the right sign by inspection of the well; its strength against a
-   50 mm spread is a flight, not a solve.
-4. **Table 1's perturbation vectors** (C⁽¹⁾, C⁽²⁾, ~2.5 ppm/V per unit `TE1`) give a
-   *differential* test of the mirrors that does not require the absolute focus to be right
-   first — the sharpest literature regression available here. J. Mass Spectrom.
-   2024;59(4):e5006, <https://doi.org/10.1002/jms.5006>.
+1. **Can four independently biased foil plates make a monotone 4 V on-axis rise?** §14
+   shows a single bias cannot, in either sign, and that this is now the whole of the
+   remaining gap. The foil needs wiring in as a third element (3-D, mirrors grounded) and
+   then it is a four-parameter search inside 0 to −20 V. **This is the live question.**
+2. **Re-derive the foil's drift-fraction calibration**, or bound it. §11 carries ±5% from
+   locating the panel's right border; if the true figure is larger the contour's turning
+   points move and the monotonicity argument changes.
+3. **Fit `d1..d4`** — but against the *turning depth*, not the reversal. §13 forbids the
+   depths from touching the drift deceleration, and §14's `capToCap` derivation depends on
+   the 84.2 mm penetration, which the depths do set. That is the well-posed version of a
+   plan this document had wrong.
+4. **The resolving power**, which is a separate problem: thermal spread in the drift
+   direction, and the refocusing the paper describes and this model does not do.
+5. **Table 1's perturbation vectors** (C⁽¹⁾, C⁽²⁾, ~2.5 ppm/V per unit `TE1`) — still the
+   sharpest available literature regression, and still independent of everything above.
 
 ### Reading the rest of this page
 
@@ -1935,3 +1927,82 @@ Two hypotheses were checked and rejected on the way, both recorded because they 
 plausible: the local potential at the mid-plane (0.0024 V, and using the trajectory's own
 speed does not move the ratio) and mesh convergence (the ratio does not move between 0.25
 and 1.0 mm cells).
+
+## 14. What the published numbers imply, now that the mirror is exact
+
+With the mirror law exact and the analyser length re-derived, the published figures can be
+inverted rather than merely compared against. Three published quantities, one exact law,
+and the arithmetic closes.
+
+### The reversal reproduces the closed form
+
+At 2 degrees, launched at z = 0, cross-sections infinite along z so nothing bounds the
+drift:
+
+| convergence | predicted N | measured reflections | predicted D | measured max z |
+| --- | --- | --- | --- | --- |
+| **0.200 mm, published** | 61.1 | **61** | 618.0 mm | **618.31 mm** |
+| 0.400 mm | 30.6 | **31** | 309.0 mm | **309.27 mm** |
+| 0.800 mm | 15.3 | **15** | 154.5 mm | **154.77 mm** |
+
+0.05% on the drift distance and exact on the count. **The mirror is no longer a suspect in
+anything.** (Predictions use the pre-correction `t_r`; with `capToCap` at 716.6 mm the
+0.200 mm case measures 714.81 mm and the count is unchanged at 61, which is itself a check
+- N depends on the angle and the tilt and not at all on how long the analyser is.)
+
+### The published drift distance and oscillation count fix the injection angle
+
+`D / N = t_r \u00b7 V \u00b7 tan(theta) / 2` **contains no convergence term**, so those two published
+numbers determine the injection angle on their own, whatever supplies the deceleration:
+
+| published D | N | D/N | implied theta | total k needed | **not from mirror tilt** |
+| --- | --- | --- | --- | --- | --- |
+| 310 mm | 26 | 11.92 mm | 2.037 deg | 2.394 | **58.2%** |
+| 335 mm | 25 | 13.40 mm | **2.290 deg** | **2.799** | **64.3%** |
+| 360 mm | 24 | 15.00 mm | 2.563 deg | 3.263 | **69.4%** |
+
+Every implied angle is "about two degrees", which is what [A] states. And **at exactly 2
+degrees the two published numbers cannot both be met** - the count needs k = 2.44 and the
+distance needs k = 2.14 - so 2 degrees is a rounded figure and `D/N` recovers the
+unrounded one.
+
+### So the ion foil supplies 58 to 69 per cent of the returning impulse
+
+The mirror tilt delivers `V sin(2 alpha)` = 22.4519 m/s per reflection at the published
+spacer, exactly and unimprovably. The published reversal needs 2.4 to 3.3 times that.
+**The remainder cannot come from the mirrors** - the closed form has no free parameter -
+and [A] names what it does come from: "a returning electrostatic potential formed by mirror
+tilt **as well as refraction on the ion foil**".
+
+In energy terms the whole returning job is `(v_z0/V)^2 \u00b7 4000 eV` = **6.4 eV**, of which
+the foil must supply about **4.1 eV** as a rise in the on-axis potential along the drift.
+Against a foil biased between 0 and -20 V that is a penetration of about 20 per cent, which
+is entirely ordinary - and the well measured in section 11 swings 2.19 V at -20 V, the same
+order.
+
+**An earlier estimate in section 3 put the foil's share at "between 59% and 76%".** That
+number was reached through the impulse efficiency eta, which section 13 shows was the
+discretisation rather than the mirror, so the reasoning was void. The conclusion happens to
+have been right, and is now derived from an exact law instead.
+
+### But the measured foil contour cannot do it at a single bias
+
+This is the open problem, and it is much sharper than "the reversal deficit is unexplained".
+
+The foil must produce a **monotone rise** of about 4 V in the on-axis potential from
+injection to the reversal point. The contour measured off the published figure (section 11)
+produces a well that is **not monotone** - deepest at 67% of the drift - and at either sign
+of bias it fails:
+
+- **negative bias**, a well: the potential *falls* 0 to 240 mm and rises only over the last
+  100, so the net change from injection to 335 mm is about -4 V. The foil would *accelerate*
+  the drift.
+- **positive bias**, a hill: the ion does lose drift energy, but it has given up all 6.4 eV
+  by about z = 185 mm and reverses there, well short of the published 310 to 360.
+
+So one of three things is true, and none is established: the four plates are **biased
+independently** rather than at one potential, which would let a non-monotone geometry make a
+monotone on-axis profile; the contour's **drift-fraction calibration** is wrong by more than
+its stated 5 per cent; or the reversal is shaped by something not yet in this model at all.
+**Independent biases are the cheapest to test and the most likely** - [A] describes the foil
+as "electrodes", plural, and four of them were counted.
