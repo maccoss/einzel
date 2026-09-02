@@ -2069,3 +2069,82 @@ monotone on-axis profile; the contour's **drift-fraction calibration** is wrong 
 its stated 5 per cent; or the reversal is shaped by something not yet in this model at all.
 **Independent biases are the cheapest to test and the most likely** - [A] describes the foil
 as "electrodes", plural, and four of them were counted.
+
+## 15. The foil closes the gap, graded and spanning the whole drift
+
+Section 14 established that the ion foil must supply 11.0 to 13.8 V/m of axial field, a
+3.9 to 4.3 V rise across the drift, and that a **uniform** bias on the measured contour
+delivers a quarter of that. This section finds the configuration that delivers it, and
+every plate potential stays inside the published 0 to -20 V.
+
+### Why a uniform bias cannot, and why a grade alone cannot either
+
+**A uniform bias makes the on-axis potential nearly flat along the middle of the drift.**
+The plates are identical everywhere, so there is no axial gradient except near their two
+z-ends. Measured, a uniform -20 V foil starting at 25% of the drift gives a well 7 V deep
+whose *net* rise from injection to 340 mm is -4.9 V - the wrong sign, because the ion falls
+into the well and climbs out again.
+
+**And grading the bias, on its own, does nothing at all.** That was a hypothesis of mine,
+refuted by its own control: a grade from -20 V at entry to 0 at the far end gave 0.130 of
+the mirror tilt's impulse and the *reversed* grade gave 0.139, both matching a uniform bias
+at their mean of 0.142. A gradient-driven mechanism would have made those two differ
+strongly and oppositely.
+
+**The reason is the more useful half.** The net work a conservative axial field does over
+the drift is `q(phi_start - phi_end)`, and in that test the ion drifted to about 550 mm,
+past the foil's 350 mm end. It crossed the whole potential bump and netted nothing. **So
+the drift reversal has to happen inside the foil's z-extent, on the rising flank** - which
+is a constraint on the device, not on the measurement, and it means the observable is the
+potential profile rather than a flight that runs past it.
+
+### The configuration that works
+
+The cycle-averaged on-axis potential from the foil, averaged across the free-flight gap,
+with the foil starting at the injection point rather than a quarter of the way along:
+
+| z, mm | start 25%, graded | **start 0%, graded** | start 0%, uniform |
+| --- | --- | --- | --- |
+| 0 | -0.047 | **-3.919** | -4.011 |
+| 40 | -0.411 | **-6.185** | -6.850 |
+| 119 | -4.759 | -3.855 | -5.681 |
+| 200 | -3.719 | -2.730 | -6.566 |
+| 279 | -1.678 | -1.207 | -6.220 |
+| 340 | -0.203 | **-0.131** | -3.964 |
+| **net rise, 0 to 340** | **-0.40 V** | **+5.37 V** | +1.12 V |
+
+**Two changes together**, and neither works without the other: the bias graded from -20 V
+at the injection end to 0 at the far end, *and* the foil spanning the whole drift rather
+than starting at a quarter of it. The profile dips 2.3 V over the leading 40 mm - the
+foil's own entrance fringe, unavoidable - and then rises **6.05 V monotonically** from
+z = 40 to 340.
+
+### The energy budget closes
+
+| | |
+| --- | --- |
+| drift energy to remove, at 2.29 degrees | **6.40 eV** |
+| removed by the graded foil, z = 0 to 340 | 3.79 eV |
+| removed by the mirror tilt at the published 200 micron spacer | 2.28 eV |
+| **total** | **6.07 eV** |
+
+**This is arithmetic on the measured potential profile, not yet a flight.** It implies
+reversal a little past 340 mm against a published 310 to 360, with the foil supplying 62%
+against the 58 to 69% section 14 requires - and a bias nearer 14 to 16 V than 20,
+comfortably inside the paper stated range. The direct confirmation is a flight in this
+configuration and is the first thing to run.
+
+### What this does and does not claim
+
+**It does not claim the Astral's foil is graded this way.** What it claims is narrower and
+checkable: given the published convergence, injection angle, drift distance and oscillation
+count, and given an exact mirror law, *a foil biased within the published range and graded
+monotonically along the drift closes the energy budget to 5%*, while a uniformly biased one
+cannot close it at all. That is a structural conclusion about what the device must do,
+derived from published numbers.
+
+**It also does not conflict with the measured contour** (section 11). The contour sets how
+much of the plate bias reaches the axis at each z; the grade sets the profile. A wavy
+contour modulates the penetration - a second-order effect on the deceleration, and the
+natural candidate for the *spatial* focusing [A] and [B] both credit the foil with. Two
+jobs, two features of the same electrode.
