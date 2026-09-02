@@ -35,3 +35,8 @@ Thumbs.db
 
 # night-session scratch (budget logs, agent status); not project content
 ai/
+
+## Reference paper full texts. Copyrighted; kept locally so a session need not
+## ask for them again. The tracked record of what they say is the published
+## register in docs/astral-handoff.md.
+papers/
