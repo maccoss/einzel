@@ -25,13 +25,12 @@ and the whole factor is in what "a 200 µm thick spacer" tilts over: 200 µm clo
 across the 350 mm drift, or 200 µm per mirror over a ~250 mm baseline. None of the four
 papers says. It is now the most consequential unpublished number here.
 
-**The resolving power now has a measured route.** Cancelling the first-order time-energy
-coefficient with one electrode depth takes the mirror from `R = 21.5/s` to `R = 1.2/s²`,
-confirmed by `R·s²` holding constant to 12% over a 25-fold range of spread — which puts
-**R > 100,000 at an energy spread of ±0.35%**, and 1,138,010 at ±0.1%. Reaching the
-published figure across the published ±2.5% *acceptance* needs three orders cancelled, which
-is exactly the "third-order temporal focus" [B] describes and why the calibration carries two
-correction vectors on top of the geometry (§18).
+**The mirrors can be made to focus, and R > 100,000 is reached.** `einzel optimise` over
+three electrode depths, maximising resolving power at the published ±2.5% acceptance, takes
+the model from **R = 1,086 to 47,657** at that acceptance and to **150,036 at ±0.5%** and
+**317,944 at ±0.25%** — 44× the shipped design, from a three-minute search (§18). The
+published potentials were always compatible with the published resolving power; what was
+missing was a geometry fitted to them, and the seam to fit it through.
 
 **What remains beyond that** is the drift, and the fourth paper names the mechanism. A tilted mirror pair applies a *constant* force, so the drift period depends on
 amplitude; the published requirement is that it be constant to **5e-6**, and the ion foil's
@@ -84,14 +83,18 @@ m/z 200; these are m/z 500.
 | `d2` = 36 mm, `c1` cancelled | 2,044 at ±2.5%; **1,138,010 at ±0.1%** | **`1.2/s²`** — second-order limited |
 | with a 300 K thermal cloud on top | 1.31 | the drift, not the mirror (§16) |
 
-**`R·s` and `R·s²` each hold constant to about 12% across a 25-fold range of spread**, which
-is what identifies the binding order without appealing to a fit. One electrode depth moved
-the mirror from the first row to the second, and R crosses 100,000 at ±0.35%.
+| **optimised over `d1`, `d2`, `d3`** | **47,657 at ±2.5%; 317,944 at ±0.25%** | `~800/s` — first-order limited with `c1` 27× smaller |
 
-Two things that follow. **Optimising at the acceptance picks the wrong geometry** — at ±2.5%
-a scan prefers `d2` = 44 mm, and by ±0.1% that choice is six-fold worse than `d2` = 36. And
-**the published figure across the published acceptance needs three orders cancelled**, one
-per degree of freedom, which is what [B]'s "third-order temporal focus" means (§18).
+**The scaling is what identifies the binding order**, and `R·s` or `R·s²` holding constant
+across a 25-fold range of spread is how each row above was established rather than asserted.
+
+Three things follow, all of which cost a wrong turn to learn. **`|c1|` is the wrong thing to
+minimise** — R does not peak where `c1` is cancelled, because `c2` binds at the acceptance.
+**The spread you optimise at picks the geometry** — at ±2.5% a scan prefers `d2` = 44 mm and
+by ±0.1% that choice is six-fold worse than `d2` = 36. And **maximising R balances the orders
+rather than cancelling one**, so it buys a resolving power at an operating point but not a
+change of scaling; changing the scaling is what [B]'s "third-order temporal focus" and its
+two `TE` correction vectors are for (§18).
 
 ### What is assumed rather than derived
 
@@ -2627,7 +2630,7 @@ buys one power of the energy spread:
 | --- | --- | --- | --- |
 | none | - | `1/s` | 760, measured |
 | `c1` | 1 | `1/s^2` | 2,044, measured |
-| `c1`, `c2` | 2 | `1/s^3` | order 3e4, not yet measured |
+| `c1`, `c2` | 2 | `1/s^3` | **not what an R-maximising search produces** — it balances the two instead; see below |
 | **`c1`, `c2`, `c3`** | **3** | **`1/s^4`** | **>1e5** |
 
 So reaching the published resolving power *across the published ±2.5% acceptance* needs
@@ -2641,6 +2644,76 @@ freedom and the two parameters trim the orders the geometry cannot hold exactly.
 simultaneously over two depths and check that `R x s^3` goes constant. Two parameters, one
 objective each, and the prediction is a scaling law rather than a number - which is the kind
 of target that cannot be hit by accident.
+
+### The optimiser, run over three depths
+
+`einzel optimise` over `d1`, `d2` and `d3`, maximising `resolvingPower` at the published
+±2.5% acceptance, Nelder-Mead, 120 evaluations, 3 minutes. The acceptance is the right
+place to optimise *because it is the design condition* - the mirrors are specified flat
+across it - and optimising at a narrower spread would prefer a `c1`-only cancellation, which
+the section above shows is the wrong geometry.
+
+| design | `d1` | `d2` | `d3` | R at ±2.5% |
+| --- | --- | --- | --- | --- |
+| shipped | 20 | 50 | 90 | 1,096 |
+| best one-parameter scan | 20 | 44 | 90 | 9,552 |
+| **optimiser, three parameters** | **19.596** | **43.073** | **89.862** | **48,311** |
+
+**Forty-four times the shipped design and five times what one parameter reached**, and
+within a factor of two of the published >100,000 at the same acceptance.
+
+**Two qualifications the run reported itself, neither suppressible.**
+`optimiser.budget-exhausted`: the search stopped at its 120-evaluation ceiling with a final
+simplex spread of 0.0102 of the box against a `parameterTolerance` of 1e-4, so **this is the
+best design found and not an optimum** - the number should be expected to improve. And
+`ENSEMBLE_SMALL`: at R = 48,311 the arrival peak is 8 ns wide and fifteen ions is a thin
+basis for a half-maximum, so the figure carries real sampling error.
+
+**What the design is not.** It is *a* geometry consistent with the published potentials, not
+Thermo's. Four depths against three cancellation conditions leaves a one-parameter family
+even before `d4`, `mouth` and the two `TE` vectors are counted, and nothing here pins the
+turning depth that \u00a714's `capToCap` derivation rests on. What it establishes is that the
+published resolving power is reachable from the published potentials by fitting the geometry,
+which was the open question - not what the geometry is.
+
+### Confirmed with 41 ions, and the design balances orders rather than cancelling one
+
+| design | spread | R | `\|c1\|` | `\|c2\|` | **R x s** |
+| --- | --- | --- | --- | --- | --- |
+| optimised | ±2.50% | **47,657** | 0.00069 | 0.0447 | 1191 |
+| optimised | ±1.00% | **86,419** | 0.00069 | 0.0493 | 864 |
+| optimised | ±0.50% | **150,036** | 0.00067 | 0.0509 | 750 |
+| optimised | ±0.25% | **317,944** | 0.00063 | 0.0409 | 795 |
+| shipped | ±2.50% | 1,086 | 0.0189 | 0.4465 | 27 |
+
+**R exceeds 100,000** at ±0.5% and below, and 47,657 at the acceptance with 41 ions confirms
+the 48,311 measured with 15, so the thin-ensemble warning did not bite.
+
+**But `R x s` is roughly constant at about 800 across the three narrower spreads**, so the
+optimised design is *still first-order limited* - `c1` is merely 27 times smaller than
+shipped, not cancelled, and `R x s` went from 27 to 800 by exactly that. The table above in
+this section predicted a two-order cancellation would give `1/s^3`; that is **not** what
+maximising R at a fixed spread produces.
+
+**Why, and it is the more useful statement.** At ±2.5% the two terms are comparable:
+`c1 s` = 1.7e-5 against `c2 s^2` = 2.8e-5. An optimiser maximising R at one spread will
+**balance** the orders there rather than cancel either, because cancelling `c1` alone costs
+more in `c2` than it gains - which is exactly what the `d2` = 36 against `d2` = 44
+comparison showed with one parameter. So:
+
+- **to reach a given R at a given spread**, maximise R at that spread and accept a balance;
+- **to change the scaling**, cancel orders explicitly - minimise `\|c1\|`, then `\|c2\|` on the
+  locus where `c1` stays cancelled, which needs a constrained search or a Python objective
+  combining them, and is what [B]'s two `TE` correction vectors do on top of the geometry.
+
+The second is what the published instrument does, and it is why "third-order temporal focus"
+is a statement about *scaling* rather than about a resolving power at one operating point.
+
+**One caveat on the narrow-spread rows.** At ±0.25% and R = 317,944 the arrival spread is
+23 ps on a 14.7 microsecond single-reflection flight, 1.6e-6 relative. That it agrees with
+`1/(2 c1 s)` = 317,460 from an independently fitted `c1` is reassuring, but it is close
+enough to the solved field's own accuracy that the number should be re-established on a
+refined mesh before being quoted as an optical limit rather than a numerical one.
 
 **Two things not to read into the numbers yet.** This is **one reflection**, so it measures
 a mirror in isolation rather than twenty-five of them compounding. And `d1..d4` are four
