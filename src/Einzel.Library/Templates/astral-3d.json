@@ -15,7 +15,7 @@
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 40.0,
-      "description": "how much closer the two mirrors are at the far end of the drift than the near end - the spacer that sets the mirror tilt. THE PUBLISHED FIGURE IS 200 um AND THIS SHIPS AT 300, which is not a disagreement with the paper but a placeholder for the ion foil. The paper says the drift is reversed by the mirror tilt AS WELL AS refraction on the foil; this model has only the tilt, so it needs more of it. Mirror tilt alone reverses the drift at 0.267 mm here, so 200 um does not come back at all. Fitting the foil should bring this down toward the published value, and how far is the measurement that would confirm the foil model."
+      "description": "Cap-to-cap gap narrowing over the drift length, so the mirrors CONVERGE toward +z, the direction the ion drifts. Each mirror tilts about y by half the angle: the near (low-x) stack by +mirrorTilt, the far by -mirrorTilt. In Electrode3D.ToLocal a box tilted by +t about y has its faces at x = x0 - (z - zc) tan(pi t), i.e. moving toward -x as z increases, so +t on the near mirror and -t on the far one bring both mouths toward the mid-plane along the drift. The signs were the other way round until 2026-09-01, and the geometry diverged; see handoff section 12."
     },
     "injectionAngle": {
       "value": 0.022343931724278912,
@@ -230,6 +230,13 @@
       "expression": "1 - foilStartFrac",
       "unit": "1",
       "description": "Fraction of the drift the foil covers."
+    },
+    "stripGap": {
+      "value": 3.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 10.0,
+      "description": "Vacuum gap between adjacent mirror strips on each board. A printed board has one anyway, but here it is load-bearing: the convergence tilts the strips about y, which moves only the edges BETWEEN strips, and an edge with metal on both sides has no cut-cell representation - the solver rasterises it at node resolution and cannot see a tilt smaller than a cell. With a gap of at least one cell each edge is metal-to-vacuum and the tilt is resolved: single-reflection kick 1.045 of specular against 0.447 abutting. At 4 mm cells this is only just resolved (efficiency drifts to 1.85 at 1.0 mm of convergence); a sheared 2-D solve is the proper fix. Handoff section 12."
     }
   },
   "ion": {
@@ -298,7 +305,7 @@
           {
             "name": "near1top",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "mouth - d1 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
@@ -324,7 +331,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -339,7 +346,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "capToCap - mouth + d1 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -361,7 +368,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -372,7 +379,7 @@
           {
             "name": "near1bot",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "mouth - d1 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
@@ -398,7 +405,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -413,7 +420,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "capToCap - mouth + d1 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -435,7 +442,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -446,11 +453,11 @@
           {
             "name": "near2top",
             "minX": {
-              "expression": "mouth - d2",
+              "expression": "mouth - d2 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d1",
+              "expression": "mouth - d1 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -472,7 +479,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -483,11 +490,11 @@
           {
             "name": "far2top",
             "minX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "capToCap - mouth + d1 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "capToCap - mouth + d2 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -509,7 +516,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -520,11 +527,11 @@
           {
             "name": "near2bot",
             "minX": {
-              "expression": "mouth - d2",
+              "expression": "mouth - d2 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d1",
+              "expression": "mouth - d1 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -546,7 +553,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -557,11 +564,11 @@
           {
             "name": "far2bot",
             "minX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "capToCap - mouth + d1 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "capToCap - mouth + d2 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -583,7 +590,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -594,11 +601,11 @@
           {
             "name": "near3top",
             "minX": {
-              "expression": "mouth - d3",
+              "expression": "mouth - d3 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d2",
+              "expression": "mouth - d2 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -620,7 +627,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -631,11 +638,11 @@
           {
             "name": "far3top",
             "minX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "capToCap - mouth + d2 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "capToCap - mouth + d3 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -657,7 +664,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -668,11 +675,48 @@
           {
             "name": "near3bot",
             "minX": {
-              "expression": "mouth - d3",
+              "expression": "mouth - d3 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d2",
+              "expression": "mouth - d2 - stripGap / 2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "tiltAxis": "y",
+            "tiltHalfTurns": {
+              "expression": "mirrorTilt",
+              "unit": "1"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3bot",
+            "minX": {
+              "expression": "capToCap - mouth + d2 + stripGap / 2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -695,43 +739,6 @@
             "tiltAxis": "y",
             "tiltHalfTurns": {
               "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "0.916 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far3bot",
-            "minX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -746,7 +753,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d3",
+              "expression": "mouth - d3 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -768,7 +775,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -779,7 +786,7 @@
           {
             "name": "far4top",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "capToCap - mouth + d3 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
@@ -805,7 +812,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -820,7 +827,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d3",
+              "expression": "mouth - d3 - stripGap / 2",
               "unit": "mm"
             },
             "shape": "box",
@@ -842,7 +849,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
+              "expression": "mirrorTilt",
               "unit": "1"
             },
             "potential": {
@@ -853,7 +860,7 @@
           {
             "name": "far4bot",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "capToCap - mouth + d3 + stripGap / 2",
               "unit": "mm"
             },
             "maxX": {
@@ -879,7 +886,7 @@
             },
             "tiltAxis": "y",
             "tiltHalfTurns": {
-              "expression": "mirrorTilt",
+              "expression": "-mirrorTilt",
               "unit": "1"
             },
             "potential": {

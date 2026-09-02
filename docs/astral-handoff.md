@@ -25,9 +25,9 @@ wrong, and they are probably one problem rather than two.
 | the ion flies the analyser | 120.058 µs against a predicted 120.1 | §3 |
 | drift rate | 1374 m/s against `v·sinθ` = 1374 | §3 |
 | parallel mirrors exert no axial force | 1374.34 m/s in **every** 40 mm segment, to the last digit | §3 |
-| converging mirrors decelerate the drift | monotone to 1174 m/s at 800 µm | §3 |
-| and reverse it | out to z = 321 mm, stops, returns | §3 |
-| reversal threshold against injection angle | fourth-power law, bisected | §3 |
+| ~~converging mirrors decelerate the drift~~ | ~~monotone to 1174 m/s at 800 µm~~ — produced by the §12 artefact, not by the declared tilt | §12 |
+| ~~and reverse it~~ | ~~out to z = 321 mm, stops, returns~~ — same | §12 |
+| ~~reversal threshold against injection angle~~ | ~~fourth-power law~~ — an artefact of an unresolved, wrong-signed tilt, see §12 | §12 |
 | the foil produces a drift well | −19.9 V of −20 applied; shallow at 41% of the drift and deep at 67%, matching its own measured contour | §11 |
 | a volume solve contributes nothing outside its box | mirrored half reproduces the full solve to 0.00000 V of 100 applied | §7a |
 
@@ -37,10 +37,13 @@ and not a numerical artefact; the tilted case is meaningless without it.
 
 ### The two numbers that are wrong
 
-**Reversal needs 1.3× to 4× too much convergence, depending on the injection angle.**
-The 57× figure that circulated earlier in this document is **superseded** — it came from a
-bisection on a predicate that could not tell reversal from striking an electrode (§3, *What
-was wrong with all three measurements below*). The reconciled numbers:
+**Reversal at the published spacer is unmeasured, because every convergence result so far
+was computed on a mirror tilted by about 8% of what was declared, in the wrong direction —
+see §12.** The tilt of abutting strips moves only metal-to-metal edges, which cut cells do
+not represent, so the solver saw a mesh-dependent fraction of it; and the template's tilt
+sign made the mirrors diverge along the drift. The 57× figure that circulated earlier is
+doubly superseded. The numbers below are what the document *had* reconciled to, kept for
+the record and **withdrawn**:
 
 | | model reverses at | published spacer | gap |
 | --- | --- | --- | --- |
@@ -48,14 +51,16 @@ was wrong with all three measurements below*). The reconciled numbers:
 | paper's 2°, at the measured impulse efficiency η = 0.578 | ~0.85 mm | 0.200 mm | **~4×** |
 | paper's 2°, a perfectly specular mirror (η = 1) | ~0.49 mm | 0.200 mm | **~2.5×** |
 
-Two things follow. **The mirror is not far from specular** — η = 0.578 is the remaining
-factor the electrode depths could move, and it is measured from a single reflection rather
-than inferred (§3). And **a specular mirror with the published 200 µm spacer reverses a
-drift at 335 mm only if that drift is about 1.47°** (1.12° at η = 0.578) — against [A]'s
-"about two degrees". So either the effective drift angle is lower than [A]'s round number,
-or something beyond mirror tilt supplies a returning potential. [A] names the ion foil for
-that role; §11 finds the measured foil contour cannot do it in a single-bias configuration.
-**That is the open contradiction at the centre of this model.**
+**η = 0.578 was the discretisation, not the mirror.** A single reflection off the solved
+mirror delivers 0.447 of the specular kick at a 4 mm cell; with one resolvable vacuum gap
+between the strips it delivers 1.045; an analytic tilted mirror delivers 1.0025 (§12). What
+survives is arithmetic that uses no solve: **a specular mirror with the published 200 µm
+spacer reverses a 335 mm drift only if that drift is about 1.47°**, against [A]'s "about two
+degrees" — so at a strict 2° something beyond mirror tilt must supply a returning potential,
+and [A] names the ion foil for that role while §11 finds the measured foil contour cannot
+do it at a single bias. **That contradiction is real and still open, but it cannot be
+attacked until the tilt is solved correctly.** The fix is §12's sheared-field wrapper, which
+also turns each mirror into a 2-D solve.
 
 **Resolving power is 6.56 against a published >100,000.** Decomposed on the energised
 template, each spread on its own with the others at zero:
@@ -98,8 +103,12 @@ is the likely way to waste a week here.
 
 ### Next, in order
 
+0. **Make the tilt real** — §12. Done in the template as a stopgap: sign corrected, 3 mm
+   vacuum gaps between the strips. Proper fix: solve each mirror untilted as a 2-D
+   cross-section and query it through a shear, `φ₀(x − α(z − z_c), y)`. **Then re-measure
+   every convergence result in §3**, since all of them are withdrawn.
 1. **Fit `d1..d4` against the measured reversal distance**, potentials held at the published
-   ratios. Well-posed for the first time now that the foil geometry has left the unknowns.
+   ratios. Well-posed once the tilt is real.
 2. **Correct the injection angle to 2°.** Cheap, and it removes a contradiction with a
    published value.
 3. **Measure whether the foil well focuses a z-spread packet, and with what focal length.**
@@ -1600,3 +1609,128 @@ A cosine `mid + amp * cos(pi * (s - thinAt) / (thickAt - thinAt))` with `mid = 0
 `foilThinAt` and `foilThickAt`. Its wavelength, `2 * (0.67 - 0.41)` = **0.52 of the drift**,
 is a physical statement rather than a fitting artefact and is the number to challenge first
 if the shape turns out wrong.
+
+## 12. The tilt was invisible to the solver, and its sign was backwards
+
+**Every convergence-dependent number in this document was measured on a mirror tilted by
+about eight per cent of what was declared, in the wrong direction.** Found on 2026-09-01 by
+asking the simplest question not yet asked: what z-kick does one reflection off the tilted
+mirror deliver, against the specular `2·α·v`?
+
+### The measurement
+
+An ion launched with zero injection angle, one reflection, and the drift displacement read
+at a detector behind the launch point. For any rigidly tilted 1-D mirror `v_z(t) = α(V −
+v_x(t))` pointwise, so integrating over the flight gives **`Δz = α·V·T` exactly** — no
+velocity needed, and an analytic control has to return 1.
+
+| mirror | conv | cell | efficiency |
+| --- | --- | --- | --- |
+| analytic tilted half-space | 3.0 / 30 mm | — | **1.0025 / 1.0025** (the ¼% is the 1 mm launch offset) |
+| solved Astral, strips abutting | 0.3 / 1.0 / 3.0 mm | 4 mm | **0.447 / 0.447 / 0.447** |
+| solved Astral, strips abutting | 0.3 mm | 2 mm | 0.303 |
+| solved Astral, strips abutting | 3.0 mm | 2 mm | **−2.82** — wrong sign |
+| **solved Astral, 3 mm gaps between strips** | 0.3 mm | 4 mm | **1.045** |
+
+Linear in the tilt at fixed mesh, so it is a property of the *solve* and not a nonlinearity;
+scrambled rather than improved by refinement, so it is not a resolution trend either. The
+grounded foil alone kicks the ion −0.082 mm (4 mm) / −0.065 mm (2 mm) and is subtracted as
+the control.
+
+### The field itself, with no ion
+
+`E_z/E_x` inside the far mirror at the strips' rotation centre, where a rigid tilt gives
+exactly α:
+
+| x | strip | fraction of α, 4 mm | fraction, 2 mm |
+| --- | --- | --- | --- |
+| 529 | U2 | **0.109** (0.3 mm) / 0.084 (3.0 mm) | −0.650 |
+| 559 | U3 | **0.014** / 0.009 | −1.420 |
+
+And at the U2/U3 edge 1.25 mm below the board surface, where a 1.5 mm slide of the edge
+across the drift would move the potential by ~1600 V: it moves **0.57 V**. The boundary is
+not moving.
+
+**Not the Neumann z-faces.** Moving them four times further away (`zPad` 150 → 600) gives
+0.111 / 0.014 against 0.109 / 0.014. The template's "known wrong" label on those faces is
+not where this lives.
+
+### The mechanism
+
+`Electrode3D.ToLocal` is correct, and both solver paths — the `Contains` mask and the
+`FirstEntry` cut links — go through it. What a tilt about y *moves* is the problem. The
+mirror strips abut on a flat board: rotating them about y leaves the board surface at
+y = 20 exactly where it was and slides only the **metal-to-metal edges** between strips.
+Cut cells resolve a metal-to-vacuum surface to a thousandth of a cell; an edge with
+Dirichlet nodes on both sides has **no cut-cell representation at all** and is rasterised at
+node resolution. At 0.3 mm of convergence the edges move 0.075 mm — 3% of a cell — and the
+solver cannot see it. The ~8% that leaks through is the one metal-to-vacuum face that does
+tilt: the mouth. At a 2 mm cell the 0.75 mm displacement (3.0 mm conv) crosses nodes at
+arbitrary z, and the field is a staircase with the wrong sign.
+
+**This is FLD-1's staircase in a new guise.** The Stage 3 fix — Shortley–Weller cut cells —
+covered the metal-to-vacuum boundary, which is the only kind a rasterised electrode has.
+Abutting electrodes have a second kind, and the tilt ladder that reported "proportional to a
+thousandth of a cell" was run on parallel plates, whose tilted faces are metal-to-vacuum.
+
+**Established by the discriminating test**, two strips at ±1000 V on a board, tilted by the
+same α, sampled 10 mm off the board:
+
+| | E_z/E_x over α |
+| --- | --- |
+| abutting | 0.093 / 0.055 / 0.079 |
+| **one vacuum cell between them** | **−1.104 / −1.093 / −1.109** |
+| gapped, untilted | 0.000 / 0.000 / 0.000 |
+
+### And the sign
+
+Once the tilt is visible, the kick is **positive** — toward +z, *accelerating* a drift that
+goes +z. The analytic control with its face tilted toward the mid-plane gives a negative
+kick. Working `ToLocal` through for the template's `near = −mirrorTilt, far = +mirrorTilt`:
+the near mouth face sits at `x = maxX − (z − z_c)·α` and the far at `x = minX + (z − z_c)·α`,
+so **both mouths recede from the mid-plane as z increases**. The declared geometry
+*diverges* along the drift. The 8% artefact happened to carry the decelerating sign, which
+is what made every "convergence works" demonstration look like convergence.
+
+**Confirmed by swapping the sign on the gapped geometry: efficiency −1.045**, the exact mirror
+of +1.045, and the sign the analytic control had. **And on the shipped template as corrected
+(sign swapped, 3 mm gaps, foil flush with the boards): −0.983** — the mechanism is real in
+the file that ships.
+
+**A side finding from that last run.** Its zero-tilt control kicked the ion **−0.537 mm** per
+reflection, against −0.082 with the foil at an 8 mm half-gap. Nothing was tilted and the
+foil was at 0 V: this is a *grounded* conductor, flush with the board and spanning z from
+87 to 350 mm, pulling the mirror's fringe field asymmetrically about the launch point at
+z = 175. It is worth about **0.6 mm of convergence** on its own. That is a real effect of a
+real conductor — and it is plausibly what [A] means by "refraction on the ion foil"
+contributing to the returning potential (§1). It is not yet separated from the tilt in any
+measurement above, and every earlier probe's control subtracted a foil in a different
+position; the drift-direction force the foil exerts by its *presence* deserves its own
+measurement before the bias-dependent well of §11 is interpreted further.
+
+### What it takes down
+
+- **η = 0.578 was never a property of the mirror.** It is the fraction of the declared tilt
+  the discretisation let through, with the wrong sign, plus a mesh-dependent staircase.
+- The deceleration and reversal demonstrations in §3 were produced by that artefact. Every
+  convergence quoted there (0.267 mm, 0.5397 mm, the 1.33×, the fourth-power law,
+  `N = α·L/(η·c)`) is withdrawn. **The true gap to the published spacer is unmeasured.**
+- The "specular mirror needs ~0.49 mm at 2°" arithmetic stands, since it uses no solve.
+
+### The fix, three ways
+
+1. **Vacuum gaps between strips, at least one cell wide, and the tilt sign corrected** — a
+   stopgap that needs no code, and is physically honest: a printed board has gaps between
+   its traces. At 4 mm cells and 1.0 mm convergence the efficiency drifts to 1.85, so the
+   gap is itself only marginally resolved at that cell; a stopgap, not an answer.
+2. **Solve the mirror untilted and query it through a shear.** The exact field of a rigidly
+   rotated z-invariant structure is the rotated field, so `φ(x, y, z) = φ₀(x − α(z − z_c), y)`
+   is right to O(α²) ≈ 2e-7. Same pattern as `AxisymmetricField`, `TimeShiftedField` and
+   `ReflectedField`. **And it makes each mirror a 2-D solve** — the solver that carries every
+   validated number here — leaving only the foil genuinely three-dimensional. This is the
+   right fix.
+3. Refine until an edge displacement exceeds a cell: 0.075 mm cells. Not available.
+
+The lesson, recorded in `docs/lessons.md`: **a geometric perturbation that moves only
+metal-to-metal boundaries is invisible to cut cells**, and a discretisation check on one
+boundary type says nothing about the other.

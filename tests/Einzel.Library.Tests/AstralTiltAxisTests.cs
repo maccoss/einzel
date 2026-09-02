@@ -132,12 +132,42 @@ public sealed class AstralTiltAxisTests(ITestOutputHelper output)
         Assert.NotNull(a);
         Assert.NotNull(b);
 
-        // Opposite signs of the same parameter: "-mirrorTilt" against "mirrorTilt".
-        Assert.True(
-            a!.TrimStart('-') == b!.TrimStart('-') && a.StartsWith('-') != b.StartsWith('-'),
-            $"the near stack is tilted by '{a}' and the far by '{b}'. They must be opposite "
-            + "signs of one parameter, or the two mirrors do not converge and the drift "
-            + "cannot reverse");
+        // Not merely opposite: the direction matters, and "opposite" is exactly the assertion a
+        // global sign flip passes. In Electrode3D.ToLocal a box tilted by +t about y has its faces
+        // at x = x0 - (z - zc) tan(pi t) - moving toward -x as z increases - so the near (low-x)
+        // stack must carry +mirrorTilt and the far -mirrorTilt for both mouths to approach the
+        // mid-plane along the drift. The signs were the other way round until 2026-09-01 and the
+        // mirrors diverged; the artefact of section 12 hid it. Handoff section 12.
+        Assert.Equal("mirrorTilt", a);
+        Assert.Equal("-mirrorTilt", b);
+    }
+
+    /// <summary>Adjacent mirror strips are separated by a vacuum gap, and the outer faces are not.</summary>
+    /// <remarks>
+    /// Load-bearing rather than cosmetic: a tilt about y moves only the edges between strips, and
+    /// an edge with metal on both sides has no cut-cell representation, so without a gap of at
+    /// least one cell the solver cannot see the convergence at all - measured at 0.447 of the
+    /// specular kick abutting against 1.045 gapped. The mouth and cap faces are metal-to-vacuum
+    /// already and must not be moved, or the mirror depth changes. Handoff section 12.
+    /// </remarks>
+    [Fact]
+    public void AdjacentStripsAreSeparatedByAGapAndTheOuterFacesAreNot()
+    {
+        foreach (var e in Mirrors())
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(e.Name!, "^(near|far)([1-4])");
+            var near = m.Groups[1].Value == "near";
+            var k = int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+            var minX = e.MinX!.Expression!;
+            var maxX = e.MaxX!.Expression!;
+
+            // interior faces carry the gap; the mouth (near k=1 max, far k=1 min) and the cap
+            // (near k=4 min, far k=4 max) do not.
+            var minIsInterior = near ? k <= 3 : k >= 2;
+            var maxIsInterior = near ? k >= 2 : k <= 3;
+            Assert.Equal(minIsInterior, minX.Contains("stripGap", StringComparison.Ordinal));
+            Assert.Equal(maxIsInterior, maxX.Contains("stripGap", StringComparison.Ordinal));
+        }
     }
 
     /// <summary>The ion foil is four plates, contoured along the drift, and untilted.</summary>

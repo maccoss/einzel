@@ -2509,3 +2509,39 @@ a density and produces no trajectories, and a space-charge run advances its pack
 so its members are not independent flights. In both, the model's own cost already is the whole
 run, and multiplying double-counts. That logic existed, correct, one method away, and had to
 be repeated rather than shared, which is its own small warning.
+
+## A tilt that moved only metal-to-metal edges was invisible to the cut cells
+
+**Symptom.** An asymmetric-track analyser's mirrors were declared converging by 0.3 mm and
+the drift decelerated and reversed, so the mechanism "worked" and produced a deceleration
+curve, a reversal threshold and a scaling law right to 12 per cent. The efficiency of a
+single reflection against the specular `2·α·v` was 0.447 at a 4 mm cell, 0.303 at 2 mm for
+the same tilt, and **−2.82** at 2 mm for a ten-times larger tilt. An analytic tilted mirror
+gave 1.0025.
+
+**Cause.** The strips abut on a flat board. Rotating them about the axis in the board plane
+slides only the edges *between* strips, and both nodes across such an edge are Dirichlet.
+Cut cells store, per node, how far a conductor surface is — meaningful only for a node in
+vacuum. A metal-to-metal edge therefore has no sub-cell representation and is rasterised at
+node resolution: invisible below one cell of displacement, a staircase above it. The one
+metal-to-vacuum face that did tilt (the mirror mouth) supplied the ~8% that leaked through,
+and it happened to carry the decelerating sign — so the artefact impersonated the mechanism.
+
+**And the sign was backwards.** Once the tilt was made visible, the kick pointed the other
+way: the declared geometry diverged along the drift. Two independent errors whose product
+looked like the right answer, for weeks.
+
+**Why it survived.** The tilt was verified "proportional to a thousandth of a cell" — on
+parallel plates, whose tilted faces are metal-to-vacuum. That test was correct and did not
+generalise. The mechanism's *efficiency* came out as an unexplained constant, 0.578, and was
+given a name and a physical interpretation instead of being measured against the field.
+
+**Discriminating test.** Two strips on a board, tilted identically: abutting gives 0.09 of
+the tilt in the field, one vacuum cell between them gives 1.10, untilted gives 0.000.
+
+**Rules.** A discretisation check on one boundary type says nothing about the other; any
+geometric perturbation — tilt, offset, taper — must be tested on the boundary type it will
+actually move. When a mechanism's efficiency is an unexplained constant between 0 and 1,
+measure the field directly before naming the constant after the physics. And a sign should
+be checked against an analytic control *before* the first result that depends on it is
+written down, because a wrong sign combined with a wrong magnitude can look exactly right.
