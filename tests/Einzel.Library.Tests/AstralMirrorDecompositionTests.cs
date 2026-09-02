@@ -47,9 +47,9 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     public void TheMirrorsAreTwoCrossSectionsAndNotAVolumeSolve()
     {
         var elements = Elements();
-        Assert.Equal(2, elements.Count);
+        Assert.Equal(3, elements.Count);   // two mirror cross-sections plus the foil
 
-        foreach (var f in elements)
+        foreach (var f in elements.Take(2))
         {
             Assert.Null(f.Solve3d);
             var solve = Solve(f);
@@ -133,24 +133,71 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// The ion foil is deliberately absent, and so is the strip gap it needed.
+    /// The ion foil is present as a third element, graded along the drift, with every
+    /// mirror strip grounded.
     /// </summary>
     /// <remarks>
-    /// The foil is not invariant along the drift, so a cross-section cannot hold it, and a
-    /// grounded foil's shadowing of the mirror field is therefore missing from this model.
-    /// That effect measured -185 m/s per reflection, 5.7 times too strong to be the
-    /// published mechanism, so its absence is a stated limitation rather than a regression.
-    /// Asserted so that its return is a deliberate act: the foil belongs back as a third,
-    /// three-dimensional element, not as more rectangles in these cross-sections.
+    /// <para>
+    /// The foil supplies most of the drift reversal - mirror tilt alone is 31 to 38 per
+    /// cent of what the published reversal needs, and the exact impulse law forbids any
+    /// electrode design from changing that. Flown, this configuration reverses at 342.7 mm
+    /// after 13.5 oscillations against a published 310 to 360 mm after 12 to 13.
+    /// </para>
+    /// <para>
+    /// Three properties are asserted because each was got wrong on the way. The mirror
+    /// strips must be present and <b>grounded</b>, or the element is not the basis field
+    /// <c>psi_foil</c> and superposing it double-counts nothing while omitting the foil's
+    /// own boundary. The foil must <b>span the whole drift</b> - a foil starting a quarter
+    /// of the way along cannot reverse the drift at all, because the net work of a
+    /// conservative axial field is <c>q(phi_start - phi_end)</c> and an ion that crosses
+    /// the whole bump nets nothing. And the bias must be <b>graded</b>: uniform also
+    /// reverses, but with a third too few oscillations.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void TheFoilAndTheStripGapAreBothGone()
+    public void TheFoilIsAThirdElementGradedAlongTheDriftWithTheMirrorsGrounded()
     {
         var document = ModelJson.Parse(DeviceTemplates.Read("astral-3d"));
+        var elements = document.Fields!;
+        Assert.Equal(3, elements.Count);
 
+        var foilElement = elements[2];
+        Assert.Equal("solved3d", foilElement.Type);
+        var solve = foilElement.Solve3d;
+        Assert.NotNull(solve);
+
+        var plates = solve!.Electrodes!
+            .Where(e => e.Name!.StartsWith("foil", StringComparison.Ordinal)).ToList();
+        var grounded = solve!.Electrodes!
+            .Where(e => !e.Name!.StartsWith("foil", StringComparison.Ordinal)).ToList();
+
+        Assert.Equal(4, plates.Count);
+        Assert.Equal(16, grounded.Count);
+        Assert.All(grounded, e => Assert.Equal(0.0, e.Potential?.Value));
+        Assert.All(plates, e => Assert.Contains("foilGrade", e.Potential!.Expression!, StringComparison.Ordinal));
+
+        // Spanning the drift, not starting part way along it.
+        Assert.Equal(0.0, document.Parameters!["foilStartFrac"].Value);
+
+        // Graded, not uniform. Both reverse; only graded gets D/N right.
+        Assert.Equal(1.0, document.Parameters!["foilGrade"].Value);
+
+        output.WriteLine($"foil: {plates.Count} plates graded, {grounded.Count} mirror strips grounded");
+    }
+
+    /// <summary>The strip gap the tilted geometry needed is gone.</summary>
+    /// <remarks>
+    /// Nothing is rotated in the geometry any more - the tilt is a property of the field -
+    /// so abutting strips cost nothing and the gap that once had to be at least a cell wide
+    /// is not a parameter of this device.
+    /// </remarks>
+    [Fact]
+    public void TheStripGapIsGone()
+    {
+        var document = ModelJson.Parse(DeviceTemplates.Read("astral-3d"));
         Assert.DoesNotContain("stripGap", document.Parameters!.Keys);
         Assert.All(
-            Elements(),
+            Elements().Take(2),
             f => Assert.DoesNotContain(
                 Solve(f).Electrodes!,
                 e => e.Name!.StartsWith("foil", StringComparison.Ordinal)));

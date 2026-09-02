@@ -14,13 +14,15 @@ Read `SPEC.md` first, as always. This page is scoped to the Astral work.
 
 ## Where this stands
 
-**The mirrors are now exact, and what is missing has a name and a number.** The drift
-impulse of one reflection has a closed form that no electrode design can change, the model
-reproduces it, and inverting the published figures against it says that **58 to 69 per cent
-of the returning impulse comes from the ion foil** rather than from mirror tilt. [A] says
-the same in words. So the remaining work is the foil, and it is the same answer for the
-resolving power: [A] and [B] both give the foil the spatial refocusing this model also does
-not do.
+**The drift reversal is reproduced.** With an exact mirror law and an ion foil biased
+inside the published 0 to −20 V and graded along the drift, the model reverses the drift at
+**342.7 mm after 13.5 oscillations**, against a published **310 to 360 mm after 12 to 13**.
+The no-foil control does not reverse at all. That was the first of the two things wrong with
+this model and it is now right (§§13–15).
+
+**What remains is the resolving power**, which is a different problem: thermal spread in the
+drift direction, R = 6.56 against a published >100,000, and the *spatial* refocusing [A] and
+[B] both credit the foil with and this model does not yet do.
 
 ### Verified, with controls
 
@@ -32,6 +34,8 @@ not do.
 | drift impulse per reflection | **V·sin(2α) exactly** — ratio 1.000000000 at three tilts, and unchanged by an eightfold change of mirror gradient | §13 |
 | the anisotropy a tilt creates | exact to **5.4e-20** in the field, 1.7e-18 through a document | §12 |
 | reversal against the closed form | 618.31 mm measured against 618.0 predicted; 61 reflections against 61.1 | §14 |
+| **the drift reversal, against the published instrument** | **342.7 mm and 13.5 oscillations against a published 310–360 mm and 12–13** — the no-foil control does not reverse at all | §15 |
+| drift per reflection, the injection-angle proxy | 12.70 mm against a published 13.40 | §15 |
 | the injection angle, inverted from published D and N | **2.04° to 2.56°**, against [A]'s "about two degrees" | §14 |
 | the foil produces a drift well | −19.9 V of −20 applied; shallow at 41% of the drift and deep at 67%, matching its own measured contour | §11 |
 | a volume solve contributes nothing outside its box | mirrored half reproduces the full solve to 0.00000 V of 100 applied | §7a |
@@ -40,36 +44,19 @@ The controls carry more weight than the values. A parallel pair reporting the sa
 rate in every segment *to the last digit* is what says the deceleration is the convergence
 and not a numerical artefact; the tilted case is meaningless without it.
 
-### The two numbers that are wrong
+### Where the two numbers stand
 
-**Reversal needs 2.4 to 3.3 times the deceleration the mirror tilt provides, and the
-mirrors provably cannot supply it.** The drift impulse of one reflection is
-`V·sin(2α)` exactly, from three conservation facts and with no reference to the electrode
-design (§13). At the published 200 µm spacer that is 22.4519 m/s, the reversal reproduces
-the closed form to 0.05%, and the published drift distance and oscillation count together
-need 2.4 to 3.3 times it. So **58 to 69 per cent of the returning impulse comes from
-something other than mirror tilt**, and [A] names the ion foil (§14).
+**Reversal: reproduced.** The drift impulse of one reflection is `V·sin(2α)` exactly, from
+three conservation facts and with no reference to the electrode design (§13) — 22.4519 m/s
+at the published spacer, confirmed to 0.05% on the drift distance. That is 31 to 38 per cent
+of what the published reversal needs, and the ion foil supplies the rest: measured, a graded
+foil closes it (§15).
 
 Two earlier accounts of this gap are **withdrawn**: the 57× figure (a bisection predicate
 that could not tell reversal from striking an electrode) and the 1.33× reconciliation
 (measured on a tilt the solver could not see, with the sign inverted — §12).
 
-**Resolving power is 6.56 against a published >100,000.** Decomposed on the energised
-template, each spread on its own with the others at zero:
-
-| spread | R | packet radius |
-| --- | --- | --- |
-| energy ±2.5% | 2,600 | 0.70 mm |
-| longitudinal 0.5 mm | 1,750 | 0.02 mm |
-| transverse 0.5 mm | 628 | 1.61 mm |
-| **300 K thermal** | **11.5** | **25.8 mm** |
-| all together | 6.56 | 19.9 mm |
-
-**The mirrors do energy-focus** — R = 2,600 on energy alone says so, and that is the thing
-an MR-TOF is for. What destroys the resolving power is thermal spread in the *drift*
-direction, which nothing in this model ever undoes.
-
-### It is one problem, and it is the foil
+### The resolving power is the foil's other job
 
 [B] says the packet is **deliberately** allowed to spread to 50 mm, to minimise Coulomb
 repulsion, and is then refocused on the return leg by the mirror convergence and the ion
@@ -95,21 +82,21 @@ with getting the foil right rather than with either symptom.
 
 ### Next, in order
 
-1. **Can four independently biased foil plates make a monotone 4 V on-axis rise?** §14
-   shows a single bias cannot, in either sign, and that this is now the whole of the
-   remaining gap. The foil needs wiring in as a third element (3-D, mirrors grounded) and
-   then it is a four-parameter search inside 0 to −20 V. **This is the live question.**
-2. **Re-derive the foil's drift-fraction calibration**, or bound it. §11 carries ±5% from
-   locating the panel's right border; if the true figure is larger the contour's turning
-   points move and the monotonicity argument changes.
-3. **Fit `d1..d4`** — but against the *turning depth*, not the reversal. §13 forbids the
-   depths from touching the drift deceleration, and §14's `capToCap` derivation depends on
-   the 84.2 mm penetration, which the depths do set. That is the well-posed version of a
-   plan this document had wrong.
-4. **The resolving power**, which is a separate problem: thermal spread in the drift
-   direction, and the refocusing the paper describes and this model does not do.
-5. **Table 1's perturbation vectors** (C⁽¹⁾, C⁽²⁾, ~2.5 ppm/V per unit `TE1`) — still the
-   sharpest available literature regression, and still independent of everything above.
+1. **A corpus example pinning 342.74 mm**, so the reproduction cannot silently regress. The
+   template now carries the graded foil and its structure is asserted, but the reversal
+   itself is a study: the flight is 468 µs and the volume solve 25 s, which would roughly
+   double the release gate.
+2. **The resolving power**, which is now the whole of the remaining gap. R = 6.56 against
+   >100,000, dominated by thermal spread in the drift direction. [A] and [B] both credit the
+   foil with the *spatial* refocusing, and §11's wavy contour is the natural candidate —
+   the grade does the deceleration, the contour would do the focusing.
+3. **Fit `d1..d4` against the turning depth**, not the reversal. §13 forbids the depths from
+   touching the drift deceleration; what they do set is the 84.2 mm penetration that §14's
+   `capToCap` derivation rests on.
+4. **Table 1's perturbation vectors** (C⁽¹⁾, C⁽²⁾, ~2.5 ppm/V per unit `TE1`) — the sharpest
+   available literature regression, and independent of everything above.
+5. Re-derive §11's drift-fraction calibration, or bound it. It carries ±5% and the contour's
+   turning points depend on it.
 
 ### Reading the rest of this page
 
@@ -149,6 +136,24 @@ sources carry almost all of it:
 A third, the ion processor, is the source of the injected packet and is registered
 separately in `docs/literature-targets.md`: Stewart, Grinfeld et al., *J. Am. Soc. Mass
 Spectrom.* 2023, [PMC10767742](https://pmc.ncbi.nlm.nih.gov/articles/PMC10767742/).
+
+#### A counting trap in the published figures
+
+Three quantities in these papers are easy to conflate, and two of them are numerically
+identical, so this is written out once and referred to throughout.
+
+| | |
+| --- | --- |
+| flight path | **>30 m** — metres, and the commonest thing to misremember as an oscillation count |
+| **total** oscillations, whole flight | **24 to 26** |
+| oscillations **outbound**, to the drift reversal | **12 to 13** ([A]: "the first 12–13 oscillations", then "the following 12–13") |
+| reflections per oscillation | **2** — 30 m / 24 = 1.25 m, and the turning points are 625 mm apart, so a round trip is 1.25 m |
+| so **reflections outbound** | **24 to 26** |
+
+**The last row and the second are the same numbers and different quantities.** Every
+comparison in §§13 to 15 is against *reflections outbound*, and the drift-per-reflection
+figure the published set implies is 335 / 25 = **13.40 mm**. A measurement reported in
+oscillations must be halved before it is compared with anything here.
 
 #### The analyser
 
@@ -315,7 +320,7 @@ wearing the right dimensions.
 
 ## 2. What exists now
 
-### Committed and green (1,085 tests)
+### Committed and green (1,101 tests)
 
 - **`astral-mirror.json`** — the 2-D five-electrode mirror at published potentials, with
   `d1..d4` as free lengths. `AstralMirrorStudy` drives the shipped optimiser over them.
@@ -2134,14 +2139,80 @@ against the 58 to 69% section 14 requires - and a bias nearer 14 to 16 V than 20
 comfortably inside the paper stated range. The direct confirmation is a flight in this
 configuration and is the first thing to run.
 
+### The flight, and a correction
+
+The arithmetic above is confirmed by flying it, and the flight corrects one claim made from
+the profile alone.
+
+| configuration | max z | reflections | oscillations | reversed |
+| --- | --- | --- | --- | --- |
+| **no foil**, 2.00 deg | 701.5 mm | 53 | 26.5 | **no** - still climbing at the 900 us ceiling |
+| **graded -20 to 0**, 2.00 deg | **342.7 mm** | 27 | **13.5** | **yes** |
+| uniform -20 V, 2.00 deg | 384.3 mm | 21 | 10.5 | yes |
+| graded -14 to 0, 2.00 deg | 446.4 mm | 43 | 21.5 | yes |
+| graded -20 to 0, 2.29 deg | 551.8 mm | 49 | 24.5 | yes |
+
+**Published: 310 to 360 mm after 12 to 13 oscillations.** The graded case gives 342.7 mm
+and 13.5 oscillations - both reproduced, from published inputs, with an exact mirror law and
+a foil inside the published bias range. The no-foil control does not reverse at all inside
+900 microseconds, so the foil is unambiguously doing the work.
+
+**The correction.** This section previously said a uniformly biased foil "cannot close it at
+all". That is wrong once the foil spans the whole drift: a uniform -20 V reverses too, at
+384.3 mm. What distinguishes them is not whether they reverse but **`D/N`, the drift per
+reflection**, which section 14 shows depends on the injection angle and *not* on whatever
+supplies the deceleration:
+
+| | drift per reflection | against the published 13.40 mm |
+| --- | --- | --- |
+| **graded -20 to 0** | **12.70 mm** | **5% low** |
+| uniform -20 V | 18.30 mm | 37% high |
+
+So the grade is what makes the *shape* of the deceleration right, and a uniform bias
+reverses the drift at roughly the right place for the wrong reason - by decelerating too
+hard too early, which costs it a third of its oscillations.
+
+**And that revises section 14's inverted injection angle.** The 2.29 degrees derived there
+assumed a uniform deceleration, which a real foil profile is not: flown at 2.29 degrees this
+configuration overshoots to 551.8 mm. At the paper's stated 2.00 degrees it lands at 342.7.
+**So `D/N` inverts to about 2 degrees once the deceleration profile is the measured one**,
+and the paper's round figure needs no correction after all - section 14's inversion should be
+read as what a *uniform* deceleration would imply, which is a bound rather than a value.
+
+### Shipped, and reproduced from the template itself
+
+The configuration is now part of `astral-3d.json` as a third element: a volume solve
+carrying the four shaped plates at their graded bias with every mirror strip **grounded**,
+which is what makes it the basis field `psi_foil` rather than an approximation. `foilGrade`
+is the knob - 0 biases every slice alike, 1 grades linearly from `foilVolts` at the
+injection end to zero at the far end, which is a resistor chain.
+
+`einzel run` on the shipped template, with no scratch scaffolding:
+
+| `foilGrade` | max z | reflections | oscillations | drift per reflection |
+| --- | --- | --- | --- | --- |
+| **1.0, shipped** | **342.74 mm** | 27 | **13.5** | **12.69 mm** |
+| 0.0, uniform control | 384.26 mm | 21 | 10.5 | 18.30 mm |
+| **published** | **310 to 360 mm** | 24 to 26 | **12 to 13** | **13.40 mm** |
+
+Three properties of that element are asserted in `AstralMirrorDecompositionTests`, because
+each was got wrong on the way there: the mirror strips must be present **and grounded**, the
+foil must **span the whole drift**, and the bias must be **graded**. None of the three
+announces itself when wrong - each produces a plausible converging analyser.
+
+**Not done:** a corpus example pinning 342.74 mm. The flight is 468 microseconds and the
+volume solve another 25 seconds, which would roughly double the release gate that currently
+does thirty-odd examples in forty seconds. The template structure is asserted cheaply
+instead, and the reversal itself is a study rather than a test.
+
 ### What this does and does not claim
 
 **It does not claim the Astral's foil is graded this way.** What it claims is narrower and
-checkable: given the published convergence, injection angle, drift distance and oscillation
-count, and given an exact mirror law, *a foil biased within the published range and graded
-monotonically along the drift closes the energy budget to 5%*, while a uniformly biased one
-cannot close it at all. That is a structural conclusion about what the device must do,
-derived from published numbers.
+checkable: given the published convergence, drift distance and oscillation count, and given
+an exact mirror law, *a foil biased within the published range and graded monotonically
+along the drift reproduces both published figures*, while a uniformly biased one reverses
+the drift at roughly the right place with a third too few oscillations. That is a structural
+conclusion about what the device must do, derived from published numbers.
 
 **It also does not conflict with the measured contour** (section 11). The contour sets how
 much of the plate bias reaches the axis at each z; the grade sets the profile. A wavy
