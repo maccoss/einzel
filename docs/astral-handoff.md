@@ -3095,7 +3095,8 @@ is `a_z = 2 |v| sin 2\u03b1 / \u03c4_x`; for a focused mirror `\u03c4_x` is ener
 scales as `|v|`, while the foil's force is a fixed field and scales as nothing. Their balance
 therefore shifts with energy and the return time inherits a first-order energy dependence the
 mirrors' x-focusing cannot reach. The magnitude and sign are the measurement's: -0.27 at -4 V,
-and about -0.2 at the shipped -3 V by scaling. An earlier paragraph in this section argued the
+and **-0.243 at the shipped -3 V, measured** (805.03 / 802.77 / 800.35 / 797.87 / 795.31 µs across ±2.5%), so the
+template as shipped sits near R ≈ 80 at the acceptance on the full track. An earlier paragraph in this section argued the
 tilt force scales as `v\u00b2`; that was wrong - the `1/\u03c4_x` is constant for a focused mirror - and
 the naive fixed-well argument predicts the wrong sign, so the sign is not understood.
 
