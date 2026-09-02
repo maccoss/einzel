@@ -1,10 +1,113 @@
 # Astral 3-D modelling: handoff to a dedicated machine
 
-**Written 2026-08-31.** For moving the Astral analyser work onto a faster machine and
-running it unattended. It says what exists, what is measured, what is broken, and — most
-importantly — what will waste your time if you do not know it in advance.
+**Written 2026-08-31, status current to 2026-09-01.** For moving the Astral analyser work
+onto a faster machine and running it unattended. It says what exists, what is measured,
+what is broken, and — most importantly — what will waste your time if you do not know it
+in advance.
+
+**Start with *Where this stands*, immediately below.** The rest of the page accreted
+chronologically and five of its sections are marked superseded in place.
 
 Read `SPEC.md` first, as always. This page is scoped to the Astral work.
+
+---
+
+## Where this stands
+
+**The mechanism is verified; the instrument is not reproduced.** Every physical effect the
+analyser depends on is present and behaves correctly under controls. Two numbers are badly
+wrong, and they are probably one problem rather than two.
+
+### Verified, with controls
+
+| | | where |
+| --- | --- | --- |
+| the ion flies the analyser | 120.058 µs against a predicted 120.1 | §3 |
+| drift rate | 1374 m/s against `v·sinθ` = 1374 | §3 |
+| parallel mirrors exert no axial force | 1374.34 m/s in **every** 40 mm segment, to the last digit | §3 |
+| converging mirrors decelerate the drift | monotone to 1174 m/s at 800 µm | §3 |
+| and reverse it | out to z = 321 mm, stops, returns | §3 |
+| reversal threshold against injection angle | fourth-power law, bisected | §3 |
+| the foil produces a drift well | −19.9 V of −20 applied; shallow at 41% of the drift and deep at 67%, matching its own measured contour | §11 |
+| a volume solve contributes nothing outside its box | mirrored half reproduces the full solve to 0.00000 V of 100 applied | §7a |
+
+The controls carry more weight than the values. A parallel pair reporting the same drift
+rate in every segment *to the last digit* is what says the deceleration is the convergence
+and not a numerical artefact; the tilted case is meaningless without it.
+
+### The two numbers that are wrong
+
+**Reversal needs 57× too much convergence.** At 2° injection this model reverses at
+**11.4 mm** of mirror convergence. The published spacer is **200 µm**. Even the specular
+upper bound is 2.4× short, and the ion foil cannot make up the difference — see §11,
+*A premise this corrects*.
+
+**Resolving power is 6.56 against a published >100,000.** Decomposed on the energised
+template, each spread on its own with the others at zero:
+
+| spread | R | packet radius |
+| --- | --- | --- |
+| energy ±2.5% | 2,600 | 0.70 mm |
+| longitudinal 0.5 mm | 1,750 | 0.02 mm |
+| transverse 0.5 mm | 628 | 1.61 mm |
+| **300 K thermal** | **11.5** | **25.8 mm** |
+| all together | 6.56 | 19.9 mm |
+
+**The mirrors do energy-focus** — R = 2,600 on energy alone says so, and that is the thing
+an MR-TOF is for. What destroys the resolving power is thermal spread in the *drift*
+direction, which nothing in this model ever undoes.
+
+### They are probably one problem
+
+The crowd-control paper says the packet is **deliberately** allowed to spread to 50 mm, to
+minimise Coulomb repulsion in the bunch, and is then refocused on the return leg by the
+mirror convergence and the ion foil *together*. So the real instrument carries a strong
+drift-direction restoring force that both stops the drift at 200 µm of convergence and
+pulls the spread back in. This model has neither.
+
+**One missing mechanism would account for both numbers.** Hunting two separate explanations
+is the likely way to waste a week here.
+
+### What is assumed rather than derived
+
+- **`d1..d4`** (20 / 50 / 90 / 130 mm) — guesses. The mirror field shape follows from them,
+  and so does how strongly the tilt acts on the drift. **Never fitted.**
+- **Board gap** 40 mm — assumed.
+- **Injection angle** 1.28° in the template — from a ballistic oscillation count made here.
+  The paper states **about 2°**, so the template currently contradicts a published number.
+- **Drift z-faces are Neumann**, which asserts the structure repeats along z. True while the
+  boards are parallel, false the moment they converge. Known wrong, stated on the template,
+  and the alternative is far worse — see §4.
+- **No injection optics at all** — no einzel lenses, no prism deflectors, no pulsed packet
+  from the ion processor. See §7.
+
+### Next, in order
+
+1. **Fit `d1..d4` against the measured reversal distance**, potentials held at the published
+   ratios. Well-posed for the first time now that the foil geometry has left the unknowns.
+2. **Correct the injection angle to 2°.** Cheap, and it removes a contradiction with a
+   published value.
+3. **Measure whether the foil well focuses a z-spread packet, and with what focal length.**
+   The restoring force has the right sign by inspection of the well; its strength against a
+   50 mm spread is a flight, not a solve.
+4. **Table 1's perturbation vectors** (C⁽¹⁾, C⁽²⁾, ~2.5 ppm/V per unit `TE1`) give a
+   *differential* test of the mirrors that does not require the absolute focus to be right
+   first — the sharpest literature regression available here. J. Mass Spectrom.
+   2024;59(4):e5006, <https://doi.org/10.1002/jms.5006>.
+
+### Reading the rest of this page
+
+It accreted chronologically and **five sections are marked superseded in place** — read the
+marker before trusting any number in them. The three corrections that matter most:
+
+- **The tilt axis was rotating the boards, not the mirrors** (§3, *The tilt axis was
+  rotating the wrong thing*) — so the model contained none of the mechanism it exists to
+  demonstrate. Fixing it took the gap to the published spacer from 6.3× to 1.33×.
+- **Three reversal measurements used a predicate that cannot tell reversal from striking an
+  electrode** (§3, *What was wrong with all three measurements below*).
+- **The foil shape and its role were both wrong** (§11) — the shape is measurable off the
+  published figure, and measuring the well it produces shows it is a lens rather than a
+  decelerator.
 
 ---
 
@@ -39,7 +142,7 @@ wearing the right dimensions.
 
 ## 2. What exists now
 
-### Committed and green (1,047 tests)
+### Committed and green (1,085 tests)
 
 - **`astral-mirror.json`** — the 2-D five-electrode mirror at published potentials, with
   `d1..d4` as free lengths. `AstralMirrorStudy` drives the shipped optimiser over them.
@@ -49,10 +152,13 @@ wearing the right dimensions.
 - **Neumann faces on `solve3d`** (`lowerZEdge` … ) — see §4, this was the blocker.
 - **`einzel estimate` costs a study**, calibrated on the machine that will run it. Use it.
 
-### Scratch, not committed
+### The skeleton is a shipped template now
 
-The skeleton itself is throwaway JSON. **Do not copy it — regenerate it** from the script
-in §3, which is the corrected version and is the only copy that matters.
+`src/Einzel.Library/Templates/astral-3d.json` — 20 electrodes (16 mirror boards, 4 foil
+plates), schema 0.7, 4 mm cell, about 5 s to solve in Release. It was throwaway JSON when
+this page was written; §3's generator script is kept below as the record of how it was
+derived, but **the template is the copy that matters** and the script no longer carries
+the foil.
 
 ---
 
@@ -932,8 +1038,7 @@ Named so nobody rediscovers them as bugs:
 
 > **Superseded** — the foil shape here was inferred from a low-resolution figure and is
 > wrong in four ways, and the conclusion that the foil supplies most of the returning
-> impulse does not survive measuring the well it produces. See *The foil shape, measured
-> off the published schematic* at the end of this document.
+> impulse does not survive measuring the well it produces. See §11.
 
   **Even the specular upper bound is 2.4× short**, so mirror tilt alone provably cannot
   reverse this drift at the published parameters and the foil is doing the majority of the
@@ -1088,21 +1193,34 @@ when this was fixed, so no published number depended on it.
 
 ## 9. Suggested order of work
 
+**The live list is in *Where this stands* at the top of this page.** What follows is the
+original plan with its outcomes, kept because two of its items were completed in a way that
+changed the plan and one of them is written here incorrectly.
+
 1. ~~**Make one ion complete one flight**~~ — done, §3. 120.058 µs against a predicted
    120.1, drift exact, 16,012 steps.
-2. **Refine the mesh and watch the energy drift.** At a 4 mm cell it is 2.16e-6, just over
-   ACC-4's 1e-6 budget. It should fall with refinement; if it does not, that is a finding
-   rather than a nuisance. Sit at the cheap side of the mesh cliff (§5) and confirm the
-   flight time is unchanged.
-3. **Add the convergence** (`tiltHalfTurns` on the mirror boards, tilted about x) and show
-   **the drift decelerates and reverses**. This is the first result that is about *this*
-   instrument rather than a generic MR-TOF, and it is what should raise the oscillation
-   count from 3.77 toward 24 (§3, last subsection).
-4. **Then** the inverse problem: shard a scan over `d1..d4` (§6) against the published
-   4000 ± 100 V window, using the 2-D `AstralMirrorStudy` result as a starting point.
-5. Ion foil and prisms, if 1–4 hold up.
+2. **Refine the mesh and watch the energy drift.** Still open. At a 4 mm cell it is 2.16e-6,
+   just over ACC-4's 1e-6 budget. It should fall with refinement; if it does not, that is a
+   finding rather than a nuisance. Sit at the cheap side of the mesh cliff (§5) and confirm
+   the flight time is unchanged.
+3. ~~**Add the convergence and show the drift decelerates and reverses**~~ — done, §3.
+   **Note the error preserved in the original wording: it said "tilted about x".** That is
+   exactly the bug that made the model converge the boards rather than the mirrors, so the
+   plan itself carried it. Tilt is about **y**.
 
-Estimate before each of 2, 3 and 4, and read the basis line rather than only the number.
+   It did *not* raise the oscillation count toward 24. At 2° the ion still crosses the drift
+   in under four oscillations, because reversal at the published 200 µm spacer needs a
+   restoring force this model does not have — the first of the two open numbers at the top
+   of this page.
+4. **The inverse problem: fit `d1..d4`.** Still the next substantial piece, and now better
+   posed — fit against the *measured reversal distance* rather than only the 4000 ± 100 V
+   window, since reversal is where the model is 57× out and the energy window is already
+   reproduced (R = 2,600 on energy spread alone).
+5. ~~**Ion foil**~~ — built, and then rebuilt from a pixel measurement of the published
+   figure. Its shape is no longer a free parameter. **Prisms and the rest of the injection
+   optics are still not modelled** (§7).
+
+Estimate before each of 2 and 4, and read the basis line rather than only the number.
 
 ---
 
@@ -1126,7 +1244,7 @@ The warnings are the point. The 4 mm run carries a non-suppressible
 `ENERGY_DRIFT_EXCEEDS_BUDGET`, and a script that reads only `["value"]` would report a
 flight time the engine itself has qualified.
 
-## The foil shape, measured off the published schematic
+## 11. The foil shape, measured off the published schematic
 
 The shape carried above — two leaves centred on the axis, a parabola in width peaking at
 mid-drift — was inferred from a low-resolution figure and is wrong in four separate ways.
