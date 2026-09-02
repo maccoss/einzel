@@ -2545,3 +2545,35 @@ actually move. When a mechanism's efficiency is an unexplained constant between 
 measure the field directly before naming the constant after the physics. And a sign should
 be checked against an analytic control *before* the first result that depends on it is
 written down, because a wrong sign combined with a wrong magnitude can look exactly right.
+
+## A signal below the discretisation floor cannot be resolved, only constructed
+
+**Symptom.** An asymmetric-track analyser's mirrors converge by 200 microns over 350 mm.
+Declaring that tilt on the electrodes and solving the geometry in three dimensions gave a
+drift deceleration of 3.54, 0.011 and -0.57 times the closed-form answer depending only on
+how wide the vacuum gaps between mirror strips were, and 1.52 at half the cell size. No
+mesh refinement was converging it.
+
+**Cause.** The entire signal is the field anisotropy `Ez/Ex = tan(alpha)`, which is 2.9e-4
+here. A second-order solve on a 2.5 mm cell across a 40 mm gap carries about 0.4% of field
+error - fourteen times the signal. The answer was not badly meshed; it was below the floor.
+No affordable mesh would have fixed it, because reaching 2.9e-4 of field accuracy needs
+h/L near 1e-2 in every direction at once.
+
+**Fix.** Stop differencing for it and construct it. Solve the two-dimensional cross-section,
+which is exact in the plane, and *rotate the solved field*: rotations commute with the
+Laplacian, so the rotated field is the exact solution for the rotated geometry, and
+`Ez = tan(alpha) Ex` comes out of the coordinate transform rather than out of the grid. The
+anisotropy went from wrong by factors of several to exact at 5.4e-20.
+
+**A shear is not a substitute**, and it is the obvious thing to reach for. Laplace is not
+shear-invariant, so the sheared field is not a solution of anything; and a shear of a mirror
+pair translates both mirrors the same way, which is a rigid translation of the instrument
+rather than a convergence.
+
+**Rules.** Before meshing for a small effect, compare its size against the discretisation
+error of the solve that will report it - the ratio, not either number alone. Where a
+geometric perturbation is a rigid motion, apply it as a coordinate transform on the solved
+field rather than as a change to the geometry being solved. And a quantity that swings in
+sign under an irrelevant modelling choice is not a bad measurement of the right thing, it is
+a measurement of the modelling choice.

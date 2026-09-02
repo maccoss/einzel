@@ -1985,6 +1985,69 @@ number was reached through the impulse efficiency eta, which section 13 shows wa
 discretisation rather than the mirror, so the reasoning was void. The conclusion happens to
 have been right, and is now derived from an exact law instead.
 
+### The requirement, as one number
+
+The two mechanisms can be put in the same units, which makes the requirement a single
+field strength rather than a ratio.
+
+Per reflection the tilt delivers a fixed `V sin(2 alpha)`, and the ion advances `v_z t_r`
+along the drift, so
+
+> `d(mv_z^2/2)/dz = m V sin(2 alpha) / t_r`
+
+which **does not contain `v_z`**. The mirror tilt is therefore exactly a *constant force*
+along the drift - equivalently a uniform axial field - which is why the drift motion is
+exactly parabolic and why `D = t_r N v_z0 / 2` came out right to 0.05%:
+
+| | equivalent uniform axial field | rise over the drift |
+| --- | --- | --- |
+| **mirror tilt at the published spacer** | **6.820 V/m** | 2.28 V |
+| total needed to reverse at 310 mm | 20.63 V/m | 6.40 V |
+| total needed to reverse at 335 mm | 19.09 V/m | 6.40 V |
+| total needed to reverse at 360 mm | 17.77 V/m | 6.40 V |
+| **so the ion foil must supply** | **11.0 to 13.8 V/m** | **3.94 to 4.28 V** |
+
+So the whole of the remaining question is: **can the ion foil, biased somewhere between 0
+and -20 V, raise the cycle-averaged on-axis potential by about 4 V monotonically across the
+drift?** Four volts from a 20 V electrode is a penetration near 20 per cent, which is
+unremarkable - the well measured in section 11 already swings 2.19 V at -20 V. What is not
+unremarkable is the *monotonicity*, and that is where the measured contour fails.
+
+### Measured: a uniform foil bias is 4 to 6 times too weak
+
+The foil wired back as a third element - a three-dimensional solve carrying the four plate
+groups at their bias with all sixteen mirror strips grounded, which is the correct basis
+field `psi_foil`. At 0 V it contributes exactly nothing, so that is the control and the
+mirrors alone.
+
+| foil bias | the foil's part of the impulse | of the mirror tilt | per volt |
+| --- | --- | --- | --- |
+| -2 V | -0.827 m/s | +0.037 **decelerating** | 0.413 |
+| -5 V | -1.827 | +0.081 | 0.366 |
+| **+2 V** | **+0.885** | **-0.039 accelerating** | 0.442 |
+| **+5 V** | **+2.412** | **-0.107** | 0.482 |
+| -20 V | -5.197 | +0.231 | 0.260 |
+
+**The published polarity is the decelerating one**, which is a real check on the model
+rather than an assumption: nothing in the geometry was chosen to make that come out.
+
+**And a first version of this measurement got it wrong**, which is worth recording. Run at
++/-20 and +/-60 V, *both* signs appeared to decelerate - 0.231 at -20 V and 2.457 at +20 V.
+That reads as a mechanism quadratic in the bias, which for a DC field would be strange. It
+is trajectory feedback: a bias large enough to change the drift changes how much foil the
+ion samples, and the response stops being linear. **The small-bias scan is the one that
+measures the mechanism**, and it shows a clean linear response that flips sign, at 0.41 +/-
+0.05 m/s per volt.
+
+**At that rate the required 31 to 52 m/s needs 77 to 126 V of foil bias**, against a
+published range of 0 to -20 V. So a **uniform** bias on the measured geometry is short by a
+factor of 4 to 6.
+
+The reason is structural rather than a matter of size. A uniformly biased foil makes the
+on-axis potential nearly *flat* along the middle of the drift - the plates are the same
+everywhere, so there is no axial gradient except near their two z-ends. Almost all of a
+uniform foil's 20 V does no work on the drift at all.
+
 ### But the measured foil contour cannot do it at a single bias
 
 This is the open problem, and it is much sharper than "the reversal deficit is unexplained".
