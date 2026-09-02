@@ -2395,25 +2395,37 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     mirror over a ~250 mm baseline it gives the table above. The template declares the two
     apart so the uncertainty sits where it belongs.
 
-    **What is left is the resolving power. This model gives 1.31; the instrument reaches
-    about 100,000 at m/z 200.** Two limits, both structural and
-    neither a tuning failure. The drift is not **isochronous**: a tilted pair applies a
-    *constant* force, so the return time is linear in the drift velocity and a 300 K thermal
-    spread gives 355 microseconds of arrival width. The requirement is that the drift period
-    be constant to **5e-6**, which needs the foil's well harmonic to about 1e-4 of its depth
-    against 15 per cent for the best profile chosen by hand - a 16-parameter shape
-    optimisation, and the first thing in this work that genuinely wants `Einzel.Sweeps`.
-    **Read Grinfeld, Stewart, Makarov, *Multi-reflection TOF with isochronous drift in
-    elongated ion mirrors*, Int. J. Mass Spectrom. 2024, 1060, 169017 first** - the detector
-    paper cites it and it is a whole paper on this problem. The second limit is that these
-    mirrors have no time-energy focus and cannot have one, since Thermo's optimised potential
-    coefficients are applied here to guessed depths; and it is **first-order** limited, measured:
-    `R x spread` is 21.5 and constant over a 25-fold range of energy spread, so the mirrors
-    focus not at all. `R x spread` is therefore the figure of merit a depth fit should move,
-    and **it is the target `d1..d4` actually control** - the well-posed version of the plan
-    Amendment 36's closed form voids. Note that the ±2.5% used above is the mirrors' stated
-    acceptance window rather than a beam's spread; pure energy spread at that width gives
-    R = 760, and the earlier 20 came from adding 0.4 mm of spatial spread to it.
+    **The full track now flies end to end, and the resolving power has been located to one
+    term.** One ion at the shipped injection angle goes out to a 334.6 mm reversal and back in
+    25 oscillations, 31.27 m, 853.7 µs bare and 800.4 µs with the foil, against a published
+    24-26, 310-360 mm, ~30 m and ~779 µs - every geometric register number on one flight.
+    Two mechanisms were then measured separately on that track and both do what the papers say.
+    **The tilt** gives a return time exactly proportional to sideways speed (ratio +0.99), a
+    constant force and not an isochronous well. **The published foil** - the contoured plate at
+    a *uniform* voltage, not the graded ramp this model first tried - cancels that first-order
+    dependence 22-fold at -3 V inside the published 0 to -20 V window, overshoots at -20 V, and
+    breaks the instrument sign-reversed; the flight time there lands on the published value to
+    3%. The template ships that arrangement. What the foil leaves is second order (-6.5), which
+    is the well's shape not being harmonic - the subject of Grinfeld, Stewart, Makarov,
+    *Int. J. Mass Spectrom.* 2024, 1060, 169017, still the paper to read first.
+
+    **The mirrors are measured and understood, and were not the instrument's limit.** The
+    focusing coefficients `c1..c3` are figures of merit now, and the scaling law is the check:
+    `R x s` constant means first-order limited (shipped depths, 21.5), `R x s^2` constant means
+    second-order (one depth moved, 1.2), each cancelled order buying one power of spread. Two
+    optimisers over three depths and `TE1` reach R ≈ 36,500 at the acceptance from designs
+    12 mm apart - one balancing condition against four parameters. **A mirror is focused *for*
+    a drift length** (`c1` grows 7.7-fold with the free path), so it must be measured on the
+    instrument's own per-oscillation path - and it carries to the full track exactly, `c1` =
+    -0.012 there against 0.012 on a half oscillation. **The foil adds `c1` ≈ -0.27 on its own**
+    and is the entire gap between 36,500 and the full track's 60-70: the device that makes the
+    drift isochronous in speed makes it non-isochronous in energy. Either the real mirrors are
+    over-focused to cancel it, which is what a first-order correction vector is for, or the real
+    foil contour has no such term. A foil-shape optimisation against both conditions on the full
+    track discriminates them, and is the next thing. Two floors are stated rather than hidden:
+    `c1` has a mesh floor of ±0.0015 from how the strips sit on the lattice, which refinement
+    does not move; and the one unfitted published check, `C(1)`'s sensitivity, comes out 2.0
+    against 1.0 - plausibly a definitional half in `(t|e)`, unresolved. Handoff §18-§23.
 
 ## Open decisions
 
