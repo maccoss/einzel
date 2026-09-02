@@ -2904,3 +2904,94 @@ The FLD-1 floor of Amendment 36, met in a new place: a first-order time-energy c
 a small difference of large flight times, and the strips' cut cells set how small a difference
 survives. Refining the mesh did not move it, so it is not simple discretisation of the
 Laplacian; the fit's sensitivity to the scan endpoints is the next suspect.
+
+## 22. The published foil does the published job
+
+\u00a721 quantified the foil's task: the bare tilt gives a return time exactly proportional to
+`v_z0` (ratio +0.99), and isochronicity needs that ratio driven to zero. The test was the
+foil **as published** - the contoured plate whose inner edge follows the pixel-measured
+cosine of \u00a711, at a **uniform** voltage in the published 0 to -20 V range. Full track, three
+injection angles per case:
+
+| foil, uniform | T(0.95) | T(1.00) | T(1.05) | **(dT/T)/(dv/v)** | |
+| --- | --- | --- | --- | --- | --- |
+| 0 V | 811.29 \u00b5s | 853.69 | 896.22 | **+0.995** | bare tilt, constant force |
+| -10 V | 723.52 | 709.87 | 674.46 | **-0.691** | |
+| **-20 V** | 652.16 | 626.72 | 594.20 | **-0.925** | published maximum |
+| +20 V | 553.13 | 619.11 | never returned | broken | sign-reversed control |
+
+**The ratio crosses zero between 0 and -10 V** - about -6 V by interpolation, inside the
+published range - and the sign-reversed control breaks the instrument (the fast ion is pushed
+out and never comes back), so the published polarity is the right one. This is the mechanism
+[C] describes, reproduced with the published shape at a uniform bias: **the contoured foil
+controls the drift's isochronicity, and a voltage inside the published window makes the return
+time independent of `v_z0`.** \u00a715's graded-voltage ramp was never the published mechanism, and
+the user's objection to its shape was right.
+
+**A second published number converges on the same voltage.** The flight time falls from 854 \u00b5s
+at 0 V to 710 at -10 V, because the attractive well pulls the reversal inward; interpolated to
+-6 V that is about **768 \u00b5s against the published ~779**. Two register numbers - the
+isochronous condition and the flight time - pointing at one foil setting, neither fitted. The
+bracket at -4, -6, -8 V is being run to pin it rather than interpolate, and to read the
+reversal point there, which the pull-in must have moved from 335 mm.
+
+**What "isochronous" buys, and its limit.** At ratio 0 the first-order dependence of return
+time on `v_z0` is gone, and the thermal cap of R \u2248 11 from \u00a721 lifts; what is left is the
+second-order term, which a three-point scan cannot see and a five-point one at the pinned
+voltage will. That is the same structure as the mirrors' `c1`/`c2` story, in the drift.
+
+### Pinned: -4 V nearly cancels first order, and the flight time lands on the published value
+
+| foil, uniform | T(0.95) | T(1.00) | T(1.05) | ratio |
+| --- | --- | --- | --- | --- |
+| **-4 V** | 774.02 | **784.85** | 765.54 | **-0.108** |
+| -6 V | 756.35 | 756.82 | 727.44 | -0.382 |
+| -8 V | 739.56 | 731.97 | 698.14 | -0.566 |
+
+**At -4 V the return time is peaked at the nominal angle** - both neighbours are shorter - so
+the first-order dependence on `v_z0` is nearly gone (slope a tenth of ballistic) and what shows
+is the *second-order* term. The zero of the first-order slope is near -3.6 V by interpolation
+against the 0 V row. **And the flight time at -4 V is 784.85 \u00b5s against the published ~779**,
+0.75%: the register's flight time and its isochronous condition both point at one foil voltage
+inside the published window, and neither was fitted. A five-point scan at -3 and -4 V is
+running to fit the first- and second-order coefficients properly and read the reversal point,
+which the attractive well must have pulled in from 335 mm.
+
+**Why the foil dominates although the mid-plane axis barely feels it.** Sampled *on the
+mid-plane axis* the foil at -20 V contributes only -0.03 to -0.05 V, which cannot move a
+6.4 eV axial motion. But the mid-plane is the *gap between the two foil plates* - they sit at
+x \u2208 [176, 240] and [477, 541] mm, |y| \u2208 [20, 22] - and the ion zigzags across the whole free
+gap at 39 km/s, so the slow z-motion feels the potential **averaged over x**. That average is
+-4.0 V at injection, -7.0 V at its deepest (z = 233 mm, the thick part of the contour), -4.3 V
+at the 335 mm reversal: a well about **3 V deep against 6.4 eV of axial energy**, which is
+why -20 V overshoots and a fifth of it is about right. The well has the foil's shape - two
+lobes at 63 and 233 mm with a saddle at 155, the cosine's thick-thin-thick - and is not
+harmonic, which is what will set the second-order term.
+
+### The two fits on the true path agree in R and disagree in geometry
+
+`einzel optimise` over `d1`, `d2`, `d3` and `te1`, maximising R at ±2.5% on the true
+per-oscillation path, 300 evaluations each:
+
+| | `d1` | `d2` | `d3` | `te1` | R at ±2.5% | |
+| --- | --- | --- | --- | --- | --- | --- |
+| shipped | 20 | 50 | 90 | 0 | ~1,100 | |
+| Nelder-Mead | 22.47 | 42.53 | 89.53 | -0.0027 | **36,707** | 2 of 15 ions lost |
+| CMA-ES | 10.47 | 34.68 | 83.99 | +0.0290 | **36,532** | |
+
+**Same objective to half a per cent, designs 12 mm apart in `d1`** - the degenerate family
+\u00a718 predicted, one balancing condition against four parameters. Neither converged at 300
+evaluations. The Nelder-Mead design loses the two extreme-energy ions on one reflection, which
+on fifty is a transmission problem, so the CMA design is the one to carry forward. Both are now
+being confirmed on the full track with the foil at -4 V, which is the measurement \u00a719 said was
+missing.
+
+### The `c1` floor is in the field, not the fit
+
+At a 0.5 mm cell, `|c1|` = 0.01241 to five digits whatever the fit sees - scan half-width
+2.5%, 1.25% or 0.63%; 11, 21 or 41 ions - and only the mesh moves it, non-monotonically
+(0.0107, 0.0124, 0.0108 at 1.0, 0.5, 0.25 mm). So the fit is exact given the field, and the
+floor is how the strips' cut cells sit on the lattice at each spacing - the same mechanism as
+Amendment 34's plate faces landing on nodes. Refinement alone will not remove it; moving the
+strip faces off the cell boundaries, or a mesh whose spacing is not a power-of-two multiple of
+the strip pitch, is what to try.
