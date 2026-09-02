@@ -152,7 +152,7 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     /// </para>
     /// </remarks>
     [Fact]
-    public void TheFoilIsAThirdElementGradedAlongTheDriftWithTheMirrorsGrounded()
+    public void TheFoilIsAThirdElementAtAUniformBiasWithTheMirrorsGrounded()
     {
         var document = ModelJson.Parse(DeviceTemplates.Read("astral-3d"));
         var elements = document.Fields!;
@@ -173,14 +173,18 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
         Assert.All(grounded, e => Assert.Equal(0.0, e.Potential?.Value));
         Assert.All(plates, e => Assert.Contains("foilGrade", e.Potential!.Expression!, StringComparison.Ordinal));
 
-        // Shipped at zero bias, so the foil contributes exactly nothing and the drift
-        // reversal is the mirror tilt alone - which is what the detector paper says does
-        // it. Zero is inside the published 0 to -20 V range. The geometry is kept because
-        // countering the mirrors' time-of-flight aberration is the foil's published job and
-        // the profile that does it is an unrun optimisation.
-        Assert.Equal(0.0, document.Parameters!["foilVolts"].Value);
+        // Shipped at -3 V, UNIFORM (foilGrade 0), which is the published arrangement: one
+        // voltage across a contoured plate, the axial potential varying through the shape.
+        // -3 V is where the drift becomes first-order isochronous on the full track - the
+        // return time's dependence on v_z0 falls from the bare tilt's +1.00 to +0.046 -
+        // and the flight time lands at 800 us against a published ~779. It is inside the
+        // published 0 to -20 V range, and -20 V overshoots to -0.93. The reversal point
+        // does not move with the bias, so the foil is a pure timing correction and the
+        // drift reversal remains the mirror tilt alone, as the detector paper says.
+        Assert.Equal(-3.0, document.Parameters!["foilVolts"].Value);
+        Assert.Equal(0.0, document.Parameters!["foilGrade"].Value);
 
-        output.WriteLine($"foil: {plates.Count} plates graded, {grounded.Count} mirror strips grounded");
+        output.WriteLine($"foil: {plates.Count} plates at a uniform bias, {grounded.Count} mirror strips grounded");
     }
 
     /// <summary>The strip gap the tilted geometry needed is gone.</summary>

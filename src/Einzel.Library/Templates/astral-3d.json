@@ -156,11 +156,11 @@
       "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
     },
     "foilVolts": {
-      "value": 0.0,
+      "value": -3.0,
       "unit": "V",
       "minimum": -40.0,
       "maximum": 40.0,
-      "description": "Foil bias at the injection end. PUBLISHED range 0 to -20 V. Shipped at 0, so the foil element contributes exactly nothing and the reversal is the mirror tilt alone, which is what the detector paper says does it. The foil geometry is kept because its published job - countering the time-of-flight aberration the converging mirrors induce - is the open problem, and the profile that does it is an optimisation this model has not run. Handoff sections 16 and 17."
+      "description": "Foil bias, uniform across the contoured plate. PUBLISHED range 0 to -20 V. Shipped at -3 V as of 2026-09-02, which is where the drift becomes first-order isochronous on the full track: the return time's dependence on v_z0 falls from the bare tilt's (dT/T)/(dv/v) = +1.00 to +0.046, zero near -3.2 V, and the flight time lands at 800 us against a published ~779 (784.85 at -4 V). The reversal point does not move with the bias (335.6 mm against 334.6 without it) because the x-averaged well is nearly equal at injection and reversal, so the foil is a pure timing correction. At -20 V it overshoots to -0.93. What remains is second order, about -6.5, which is the well not being harmonic. Handoff section 22."
     },
     "foilThickness": {
       "value": 2.0,
@@ -241,11 +241,11 @@
       "description": "Fraction of the drift the foil covers."
     },
     "foilGrade": {
-      "value": 1.0,
+      "value": 0.0,
       "unit": "1",
       "minimum": 0.0,
       "maximum": 1.0,
-      "description": "How far the foil bias is graded along the drift. 0 biases every slice at foilVolts; 1 grades linearly from foilVolts at the injection end to zero at the far end, which is a resistor chain. The grade is what makes the deceleration the right SHAPE: both settings reverse the drift once the foil spans it, but graded gives 12.70 mm of drift per reflection against a published 13.40 and uniform gives 18.30."
+      "description": "How far the foil bias is graded along the drift: 0 biases every slice at foilVolts, which is the PUBLISHED arrangement - the plate is at one voltage and the axial potential varies through its contoured SHAPE. Shipped at 0 as of 2026-09-02. A graded bias (1 ramps to zero at the far end) was an earlier mechanism of this model's own and is not what the instrument does; kept so the two can be compared."
     },
     "convergence": {
       "expression": "2 * driftLength * sinPi(mirrorTilt) / cosPi(mirrorTilt)",

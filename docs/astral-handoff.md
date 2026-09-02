@@ -29,7 +29,11 @@ papers says. It is now the most consequential unpublished number here.
 31.27 m in 853.7 µs against a published ~30 m in ~779, with every geometric register number
 reproduced on one flight (§20). The 10% in flight time is the guessed mirror depths.
 
-**The mirrors can be made to focus, and R > 100,000 is reached.** `einzel optimise` over
+**The mirrors can be made to focus on a half oscillation, and R > 100,000 is reached there - but
+not on the full track**, where the same designs give R = 60-70 at the acceptance with a first-order
+coefficient 25x the half-oscillation one (§23). The mirrors carry to the full track exactly (c1 = -0.012
+with the foil off, against the half-oscillation's 0.012); **the foil adds c1 ≈ -0.27 on its own** and is
+the whole gap. Either the real mirrors cancel it or the real foil shape lacks it (§23). `einzel optimise` over
 three electrode depths, maximising resolving power at the published ±2.5% acceptance, takes
 the model from **R = 1,086 to 47,657** at that acceptance and to **150,036 at ±0.5%** and
 **317,944 at ±0.25%** — 44× the shipped design, from a three-minute search (§18). The
@@ -2968,6 +2972,38 @@ why -20 V overshoots and a fifth of it is about right. The well has the foil's s
 lobes at 63 and 233 mm with a saddle at 155, the cosine's thick-thin-thick - and is not
 harmonic, which is what will set the second-order term.
 
+### Five points at -3 and -4 V: first order cancelled 22-fold, second order is what remains
+
+Fitting `T/T0 = 1 + a(f-1) + b(f-1)^2` over five injection angles on the full track:
+
+| foil | T0 | reversal | **a** (first order) | **b** (second order) |
+| --- | --- | --- | --- | --- |
+| bare tilt | 853.7 \u00b5s | 334.6 mm | **+1.000** | - |
+| **-3 V** | **800.4 \u00b5s** | 335.6 mm | **+0.046** | -6.2 |
+| -4 V | 784.9 \u00b5s | 335.8 mm | -0.149 | -7.0 |
+
+**At -3 V the first-order dependence on `v_z0` is cancelled 22-fold**, with the zero near
+-3.2 V. Two things about it matter more than the number.
+
+**The reversal point does not move.** 335.6 mm with the foil against 334.6 without, at either
+voltage. The x-averaged well is nearly the same depth at injection (-4.0 V of -20) and at the
+reversal (-4.3 V), so the ion is accelerated into the well and decelerated out of it and arrives
+at the turning point with the axial energy the tilt alone would give it. **The foil is a pure
+timing correction that leaves the track where the tilt put it** - which is why [C] can say the
+tilt reverses the drift and the foil corrects the aberration, as two separate statements.
+
+**What remains is second order, and it is the shape.** `b` \u2248 -6.5 at either voltage, so at a
+4.5% thermal spread in `v_z` the drift is limited to about R \u2248 35 by curvature alone - up from
+11, but far from the instrument. A harmonic well has `b` = 0 by construction; the well the
+cosine contour makes is two-lobed with a saddle and is not harmonic, and that is the cost. So
+the foil's *voltage* is settled inside the published window by two register numbers, and the
+foil's *shape* is the next inverse problem: which contour makes `b` vanish. That is the subject
+of the isochronous-drift paper, and the pixel measurement of \u00a711 is its starting point rather
+than its answer.
+
+**Shipped.** The template now carries `foilVolts` = -3 V and `foilGrade` = 0 - the published
+arrangement - and the test that pinned the foil at zero now pins it here, with the reason.
+
 ### The two fits on the true path agree in R and disagree in geometry
 
 `einzel optimise` over `d1`, `d2`, `d3` and `te1`, maximising R at ±2.5% on the true
@@ -2995,3 +3031,84 @@ floor is how the strips' cut cells sit on the lattice at each spacing - the same
 Amendment 34's plate faces landing on nodes. Refinement alone will not remove it; moving the
 strip faces off the cell boundaries, or a mesh whose spacing is not a power-of-two multiple of
 the strip pitch, is what to try.
+
+## 23. Resolving power on the full track, and the number that undoes the half-oscillation work
+
+\u00a719 and \u00a720 said the focusing had to be confirmed on the real track. It has been, and the
+confirmation failed in the most informative way.
+
+Energy-spread resolving power, 25 oscillations, foil at -4 V, 11 ions, three mirror designs:
+
+| design | `d1` / `d2` / `d3` / `te1` | R at ±2.5% | `\|c1\|` | R at ±0.5% |
+| --- | --- | --- | --- | --- |
+| shipped | 20 / 50 / 90 / 0 | **70** | **0.285** | 359 |
+| Nelder-Mead fit | 22.47 / 42.53 / 89.53 / -0.003 | 60 | 0.338 | 296 |
+| CMA-ES fit | 10.47 / 34.68 / 83.99 / +0.029 | 59 | 0.342 | 286 |
+
+**The half-oscillation measured `c1` = 0.012 at the shipped depths. The full track measures
+0.29.** Twenty-five times larger, and the two fitted designs - each at R \u2248 36,500 on the half
+oscillation - are *no better than shipped* here. So something on the full track adds a
+first-order time-energy dependence of order 0.3 that the mirrors' x-focusing does not touch,
+and the mirror fit was optimising a quantity the instrument's resolving power does not depend
+on. **The fitted depths therefore stay out of the template.** The shipped 20/50/90 is kept, as
+a guess that is not worse than the fits.
+
+**The suspect is the foil, by an argument about scaling.** For the bare tilt, the round-trip
+drift time is `T_z = 2 v_z0 / a_z` with `a_z = 2 |v| sin(2\u03b1) / \u03c4_x` - each reflection delivers
+`|v| sin 2\u03b1` and there are two per x-period. That gives `T_z = (sin \u03b8 / sin 2\u03b1) \u03c4_x`: **the
+flight time is the x-period times a purely geometric factor**, so the whole track inherits the
+mirrors' `c1` and nothing else, and the number of oscillations is fixed by geometry. That is
+why a half-oscillation measurement was supposed to suffice. **But the foil's force does not
+scale with energy while the tilt's scales as `v\u00b2`** (`|v|` per reflection, `|v|/L` reflections
+per second), so the balance between them shifts with energy and the drift return time acquires
+a `c1` of its own that no mirror can cancel. The discriminating measurement - the same
+`T(E)` scan with the foil at 0 V - is running: if `c1` collapses toward 0.01 there, the foil
+is the whole story and the mirror fit stands; if it stays at 0.3, something in the track itself
+is responsible.
+
+**Either way the lesson is the one \u00a719 drew and \u00a720 under-weighted.** The resolving power of
+this instrument is a property of the drift and the mirrors *together*, and a figure measured on
+either alone is a figure about a different instrument. The half-oscillation `c1`, the
+isochronicity ratio and the full-track R are three different quantities, and only the last is
+the one in the register.
+
+### Settled: the foil is the whole gap, and the mirrors carry to the full track exactly
+
+The discriminating scan - `T(E)` on the full track at fixed injection angle, shipped mirrors,
+foil off and on:
+
+| foil | T(-2.5%) | T(0) | T(+2.5%) | **c1** |
+| --- | --- | --- | --- | --- |
+| 0 V | 854.179 | 853.689 | 853.674 | **-0.0118** |
+| -4 V | 790.222 | 784.852 | 779.172 | **-0.2816** |
+
+**With the foil off, the full track gives `c1` = -0.012 - the half-oscillation's 0.0124 to the
+third digit.** So the mirrors' focusing carries to the whole instrument exactly as
+`T_z = (sin \u03b8 / sin 2\u03b1) \u03c4_x` says it must, the half-oscillation is the right place to measure
+a mirror, and the fits of \u00a722 stand as measurements of the mirrors. **The foil adds `c1` \u2248
+-0.27 on its own**, and that single term is the entire gap between R = 36,500 on the half
+oscillation and R = 60-70 on the full track. The device that makes the drift isochronous in
+sideways *speed* (\u00a722) makes it non-isochronous in *energy*.
+
+**The mechanism's shape, without a derivation of its sign.** The tilt's sideways deceleration
+is `a_z = 2 |v| sin 2\u03b1 / \u03c4_x`; for a focused mirror `\u03c4_x` is energy-independent, so `a_z`
+scales as `|v|`, while the foil's force is a fixed field and scales as nothing. Their balance
+therefore shifts with energy and the return time inherits a first-order energy dependence the
+mirrors' x-focusing cannot reach. The magnitude and sign are the measurement's: -0.27 at -4 V,
+and about -0.2 at the shipped -3 V by scaling. An earlier paragraph in this section argued the
+tilt force scales as `v\u00b2`; that was wrong - the `1/\u03c4_x` is constant for a focused mirror - and
+the naive fixed-well argument predicts the wrong sign, so the sign is not understood.
+
+**What this leaves, and it is a fork with two prongs that can be told apart.** The instrument
+reaches 100,000 with a foil, so one of two things is true. **Either the mirrors are deliberately
+over-focused** to `c1_x` \u2248 +0.27, cancelling the foil's term - which is precisely what a
+first-order correction vector like `TE1` exists to do, though the paper's `TE1` = 0.01 example
+moves `c1` by only 0.01-0.02 and the depths would have to carry most of it; **or the real foil
+shape has no energy term**, the drift being made isochronous in speed and energy at once by a
+contour this model's pixel measurement does not reproduce - which is what a paper called
+"isochronous drift" would be about. The discriminating experiment is a foil-shape optimisation
+against *both* conditions on the full track; the discriminating reading is reference [D].
+
+**So the mirror fit was not wasted, and it was not the instrument.** \u00a718 and \u00a722 measure the
+mirrors correctly; the instrument's resolving power is the mirrors and the foil together, and
+the foil's energy term is now the one number between this model and the register's >100,000.
