@@ -710,6 +710,57 @@ a default that makes a device worse would be worse than shipping none. What the 
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
 
+### 36 - A geometric perturbation can sit below the discretisation floor, and then it must be constructed rather than solved
+
+Amendment 5 records that FLD-1's linearity spike failed because a sub-cell perturbation
+was *invisible* to a rasterised boundary, and that cut cells fixed it. **The Astral's
+mirror convergence is the same subject one level deeper, and cut cells do not fix it.**
+
+Two mirrors converging by a 200 micron spacer tilt by `alpha` = 2.9e-4. The entire physical
+effect is the field anisotropy `Ez/Ex = tan(alpha)`, so the quantity to be resolved is 2.9e-4
+of the main field. A second-order solve on a 2.5 mm cell across a 40 mm gap carries roughly
+`(h/L)^2` = 0.4% of field error - **fourteen times the signal**. Measured against the closed
+form, the solved tilted geometry returned **3.54, 0.011 and -0.57** of the true drift
+deceleration depending only on how wide the vacuum gaps between mirror strips were, and 1.52
+at half the cell size. Nothing was converging.
+
+**Two distinct failures, and only the first is Amendment 5's.** Abutting electrodes have a
+boundary kind cut cells cannot represent at all: a metal-to-metal edge has Dirichlet nodes on
+both sides, so there is no vacuum node to store a sub-cell crossing on, and the edge is
+rasterised at node resolution. Putting a vacuum gap between the strips makes every face
+metal-to-vacuum and restores the cut cell - and the answer is *still* wrong, because of the
+floor above. The tilt ladder that verified proportionality "down to a thousandth of a cell"
+was run on parallel plates, whose tilted faces are metal-to-vacuum, and was correct about
+them.
+
+**The fix is not a finer mesh, and no affordable mesh would do.** Reaching 2.9e-4 of field
+accuracy needs `h/L` near 1e-2 in three directions at once. What works is to stop
+differencing for the effect and construct it: solve the two-dimensional cross-section, which
+is exact in its plane, and **rotate the solved field**. Rotations commute with the Laplacian,
+so the rotated field is the exact solution for the rotated geometry, and the anisotropy comes
+out of the coordinate transform. Measured at **5.4e-20** in the field and 1.7e-18 through a
+model document, against factors of several before. A converging pair is then two
+cross-sections rotated oppositely, each carrying one mirror at potential with the other
+grounded, which is the ordinary basis decomposition and therefore exact rather than
+approximate.
+
+**A shear is the obvious spelling and is wrong twice over.** Laplace is not shear-invariant,
+so a sheared field solves nothing; and a shear of a mirror pair translates both mirrors the
+same way, which is a rigid translation of the instrument rather than a convergence.
+
+**Recommend section 10 state the corollary to Amendment 5's requirement.** Sensitivity
+fields need a boundary representation that varies continuously with the parameter - and
+separately, **the perturbation's own signal must exceed the discretisation error of the solve
+that will report it.** Where the perturbation is a rigid motion, applying it as a coordinate
+transform on the solved field satisfies both conditions exactly and costs one wrapper class.
+The general rule, in `docs/lessons.md`: compare the size of a small effect against the
+solve's error as a *ratio* before reaching for a finer mesh, and treat a quantity that
+changes sign under an irrelevant modelling choice as a measurement of that choice.
+
+A28-style corollary for the record: this also makes each Astral mirror a **two-dimensional**
+solve, so the device that motivated the volume solver no longer needs it for its mirrors, and
+a solve plus a 15 microsecond flight went from about 26 seconds to 1.4.
+
 ### 35 - A volume solve could not declare a face a mirror, and the solver always could
 
 **r06 §9's boundary conditions** are stated for a solve without distinguishing the plane and
@@ -1383,7 +1434,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `FLD-1` | For each perturbation channel p , cache ∂Φ/∂p by finite difference over a full re-solve. | **Met** | Cached shape derivatives, validated to 6.5e-6 of the closed form at a 0.11-cell step. **Only after cut cells**: the first spike failed, see Amendments. |
+| `FLD-1` | For each perturbation channel p , cache ∂Φ/∂p by finite difference over a full re-solve. | **Met, with a stated floor** | Cached shape derivatives, validated to 6.5e-6 of the closed form at a 0.11-cell step. **Only after cut cells**: the first spike failed, see Amendment 5. **And cut cells are necessary rather than sufficient.** A perturbation whose own signal is below the solve's field error cannot be differenced for at all - the Astral's 200 micron mirror convergence is an anisotropy of 2.9e-4 against roughly 0.4% of second-order field error, and the solved answer ranged over 3.54, 0.011 and -0.57 of the closed form on gap width alone. Where the perturbation is a **rigid motion** it can be applied as a coordinate transform on the solved field instead, which is exact: 5.4e-20. Two boundary kinds also matter and only one has cut cells - a metal-to-metal edge has Dirichlet nodes both sides and no vacuum node to carry a sub-cell crossing. See Amendment 36. |
 | `FLD-2` | Every sweep runs a stratified validation subset; if the maximum residual exceeds | **Met** | The residual is an ordinary Taylor remainder, quadratic in the perturbation to three figures. The limit is (delta/L)^2, so 1 ppm holds to delta/L about 1e-3. |
 | `FLD-3` | Field caches are keyed by content hash over geometry, mesh, symmetry declaration, boundary conditions, and the solver-behaviour version — the last term is ... | **Met** | Caches keyed by content hash including the solver-behaviour version. |
 
@@ -1547,6 +1598,14 @@ in a table.
 
 ---
 
+## Completed in an earlier round of the list
+
+These four were items 10 to 13 of the previous revision of *What to do next* and were
+left standing when that list was replaced, with no heading of their own and no items 1
+to 9 - so they read as the live list and their item 13 still called itself "the top of
+the list". They are kept, and headed, because the reasoning in a completed item is worth
+more than the fact of it; the live list is *What to do next*, below.
+
 10. ~~**`render animation` (RND-7)**~~ — **done, and the requirement enforces itself
    through the interface.** An animation is asked for through a render spec and there is
    no `--rate` flag, so there is no command line that produces one without a declared
@@ -1635,7 +1694,7 @@ in a table.
    the same spec gives `penetration 50 mm` then `penetration 80 mm` with no edit in
    between; the test asserts exactly that — one spec, two models, two measurements.
 
-13. **A sequenced example, and the defect that blocks it.** The corpus does not
+13. ~~**A sequenced example, and the defect that blocks it.**~~ - **done.** `sequenced-extraction` ships, at 1.0e-7 of its closed form, and the defect that blocked it was `FlightTimeStudy` refining an absolute velocity floor to 1e-11 m/s, unsatisfiable for an ion starting from rest. The claim below that this is "the top of the list" is therefore stale, and was the clearest symptom of this block having been orphaned. The corpus does not
    exercise the sequencer, which is the one Phase 4 capability it misses. Writing the
    example found two defects, both fixed — `CanDoWork` reading the base potentials and
    not the stages (the fourth sighting of one pattern, the third in that function), and a
@@ -1669,26 +1728,6 @@ in a table.
    **This is the top of the list**: it is a defect rather than a gap, it blocks a Phase 4
    deliverable from being demonstrated, and the machinery it blocks (traps, pulsed
    extraction) is what the memo's §6 item 5 is a choice between.
-
-## Open decisions
-
-§23's list, with what has been settled since.
-
-| Decision | State |
-| --- | --- |
-| Availability on NuGet, GitHub, and as a mark | Open |
-| Spike the FLD-1 linearity assumption before Phase 2 | **Closed.** Run, failed, fixed by cut cells. The two-week estimate was right and the spike returned a negative result first, which is what a spike is for |
-| Whether hidden-line 3D vector output is worth building | Open, and cheaper to leave open than it looks: there is no raster path either |
-| Whether the provenance stamp on figures is default-on | **Closed in practice** — default-on, with the taint on the page |
-| Whether to write the VTU writer or take a dependency | **Closed.** Written. Under a week, and it now writes fields, trajectories, 3D volumes and densities |
-| What triggers revisiting code signing | Open |
-| What the defect-floor policy file contains | Open, and untestable until there are releases |
-| What the agent acceptance suite measures and what gates a release | **Closed.** See Amendment 11 |
-| Whether the in-process extension runner is worth shipping at all | Open. Nothing has yet needed a faster round trip, so sandboxed-only remains sufficient - but Amendment 27 measures what it costs: the round trip is process start almost entirely, ~50 ms of it, and **the in-process runner is the only thing that could meet PERF-7 as written** |
-| Whether the funnel benchmark uses a published geometry or one of ours | **Open, and now blocking.** It gates a Phase 3 acceptance criterion, and the study should not be built before it is settled |
-| Governance if this becomes a collaboration | Open |
-
----
 
 ## What to do next
 
@@ -2305,72 +2344,71 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
 
-13. **The Astral inverse problem, restated after a wrong turn.** The gap between this
-    model and the published 200 µm spacer was recorded as **6.3×** and attributed to the
-    four unknown electrode depths. Both halves were wrong.
+13. **The Astral inverse problem, and the drift reversal is now reproduced.** This item has
+    been rewritten twice. Both earlier versions attributed the gap between this model and the
+    published instrument to the four unknown electrode depths, and both were wrong; the
+    reasoning is kept in the handoff because the wrong turns are instructive, and the
+    superseded parts are marked there.
 
-    **The depth scan was measuring three different things.** Its predicate was "does a
-    flight time exist", which is false for a reversed ion, a struck ion and a timed-out
-    ion alike; two of its four points were the *arrives → strikes metal* crossing, one
-    was a bisection over a bracket the others did not share, and `mouth = d4` meant
-    scaling the depths walked the mirrors together and shrank the field-free gap from
-    365 mm to 53 — which is physically right for a fixed envelope, where depth and
-    field-free length are one degree of freedom rather than two, but makes it a scan along
-    a trade written up as a scan in one variable. **The engine said so and was
-    not read** — `BoundarySearch` raises `boundary.multiple-crossings` for exactly this,
-    and the analysis script read `boundary.value` and dropped `warnings`. That is the
-    *shortest spelling discards the evidence* failure this project has fixed four times
-    inside the engine, committed once outside it, where results are actually read.
+    **Reproduced, from the shipped template, with no ion foil contribution:**
 
-    **The cause was the tilt axis.** `tiltAxis: "x"` mixes y and z, so it converged the
-    two **boards**; the mirror surfaces have their normals along x and a rotation about x
-    leaves them where they were. The model contained no mirror-tilt impulse at all, and
-    what decelerated its drift was the transverse confinement stiffening — real, and
-    about three times weaker. Caught by an analytic model disagreeing by a **constant
-    factor**: a tilted mirror gives `Δv_z = −2·v_x·θ` per reflection whatever its depth,
-    and inverting the measured deceleration through that gave an effective oscillation
-    period of 151 µs where the ion's is at most ~32 — a bound on the shortfall, not a
-    measurement of it, which is why the mechanism was then compared directly.
-
-    | | reversal convergence | against 200 µm |
+    | | published | measured |
     | --- | --- | --- |
-    | boards (axis x), converged domain | 1.5778 mm | 7.9× |
-    | mirrors (axis y), launch mid-drift | 0.5397 mm | 2.70× |
-    | **mirrors, launch at the drift start** | **0.267 mm**, bracketed [0.26, 0.28] | **1.33×** |
+    | drift distance | 310 to 360 mm | **334.61 mm** |
+    | reflections outbound | 24 to 26 | **25** |
+    | drift per reflection | 13.40 mm | **13.38 mm** |
 
-    The last is a *tested prediction*: a two-run fit gave 0.267 and two runs that took no
-    part in it bracket it (0.26 arrives, 0.28 reverses). **A flight-time ceiling
-    impersonated physics on the way** — at 450 µs, c = 0.20 read as reversed at z = 312.1;
-    at 2000 µs the same model arrives, at 478.47 µs, still moving forward and 13 mm short.
+    **It is not a fit with spare parameters.** `D/N = t_r V tan(theta) / 2` contains no
+    convergence term, so the published drift distance and oscillation count fix the injection
+    angle on their own; the convergence then follows from either one alone, and the third
+    number checks. Two unknowns, two equations, one prediction.
 
-    **What came out of it that is worth more than the number:** `N = α·L/(η·c)`. Out-and-back
-    time is `2·v_z0/(k·c)`, and the specular argument says `k·T = 2·v_x/L`, which would cancel
-    the period and leave `α·L/c`. **Measured, it does not cancel to one**: N is 45.94 against
-    24.95, a factor 1.84, and `η = k·T·L/(2·v_x)` — the fraction of the ideal specular impulse
-    the mirror actually delivers — is **0.578**. The functional form is exact and the
-    coefficient belongs to the mirror.
+    **What had been wrong, in order, and each caught by its own control.**
 
-    Both scalings were checked: `1/c` to within 4 per cent over a threefold range, and the
-    sharper `α/c` **invariance** — vary both, predict no change — to **0.5 per cent**, while
-    the turning point moves as `α²/c` and so is a genuinely different trajectory each time.
-    The period is now measured from a trajectory rather than estimated: **29.54 µs**, and
-    identical to 0.03 per cent whichever axis is tilted, which is what makes the two
-    efficiencies comparable — **0.195 for boards against 0.578 for mirrors**.
+    The tilt was invisible to the solver *and* its sign was inverted, two errors whose product
+    looked like the mechanism for weeks. See Amendment 36: the anisotropy `Ez/Ex` = 2.9e-4 is
+    fourteen times below the field error of any affordable mesh, so the solved answer ranged
+    over 3.54, 0.011 and -0.57 of the closed form on gap width alone. Rotating a
+    two-dimensional cross-section instead is exact at 5.4e-20, and makes each mirror a 2-D
+    solve.
 
-    **And η reopens the electrode depths as a well-posed question.** The specular impulse
-    `2·m·v_x·θ` is depth-independent, which is why the depth scan was unlikely to constrain
-    anything; `η` is not, since it is set by how the equipotentials lie along the part of the
-    mirror the ion traverses. It is measurable from two runs and a trajectory.
+    **`N = alpha L / (eta c)` and `eta = 0.578` are withdrawn.** The drift impulse of one
+    reflection has a closed form - `Delta v_z = V sin(2 alpha)` exactly, from three
+    conservation facts - and it is **independent of the electrode design**, so eta is
+    identically 1 and there was never anything for the depths to move. Confirmed against the
+    integrator at 1.000000000 across three tilts and unchanged by an eightfold change of
+    mirror gradient. **That forbids the whole plan of fitting `d1..d4` against the reversal.**
 
-    **What is left.** The depths are still unmeasured, and the analytic model says why the
-    scan was unlikely to constrain them: a tilted mirror's impulse is depth-independent,
-    so they need a figure of merit that moves with them — the mirror's own energy-focusing
-    order, which `astral-mirror` already measures in two dimensions. Two smaller things:
-    `tiltAxis` accepts only a coordinate axis, so a device converging its boards **and**
-    tilting its mirrors cannot be written, though by Euler's theorem it is a single
-    rotation about a tilted one; and the template models the outbound drift, since placing
-    the return detector needs the offset a real asymmetric track uses and this model has
-    none.
+    **`capToCap` = 625 mm was derived wrongly** - the turning-point separation mistaken for
+    the cap-to-cap distance. The ion turns 84.2 mm past the mirror mouth and that offset is
+    independent of `capToCap`, so the published 24 oscillations over 30 m gives 716.6 mm.
+
+    **And the foil does not reverse the drift.** An interim conclusion had it supplying 58 to
+    69 per cent of the returning impulse; the detector paper (J. Am. Soc. Mass Spectrom.
+    2024;35:2390) says the tilt does it alone and the foil "counter[s] ToF aberrations
+    induced by the converging ion mirrors". The apparent deficit was a convergence too small
+    by 2.8x.
+
+    **The one number to question now is `tiltBaseline`.** The published quantity is a 200
+    micron spacer; what it tilts *over* is not published. Read as the gap closing across the
+    350 mm drift it gives 714.81 mm of drift and 61 reflections; read as 200 microns per
+    mirror over a ~250 mm baseline it gives the table above. The template declares the two
+    apart so the uncertainty sits where it belongs.
+
+    **What is left is the resolving power, and it is 1.31.** Two limits, both structural and
+    neither a tuning failure. The drift is not **isochronous**: a tilted pair applies a
+    *constant* force, so the return time is linear in the drift velocity and a 300 K thermal
+    spread gives 355 microseconds of arrival width. The requirement is that the drift period
+    be constant to **5e-6**, which needs the foil's well harmonic to about 1e-4 of its depth
+    against 15 per cent for the best profile chosen by hand - a 16-parameter shape
+    optimisation, and the first thing in this work that genuinely wants `Einzel.Sweeps`.
+    **Read Grinfeld, Stewart, Makarov, *Multi-reflection TOF with isochronous drift in
+    elongated ion mirrors*, Int. J. Mass Spectrom. 2024, 1060, 169017 first** - the detector
+    paper cites it and it is a whole paper on this problem. The second limit is that these
+    mirrors have no time-energy focus and cannot have one, since Thermo's optimised potential
+    coefficients are applied here to guessed depths; that caps R at 20 by itself, and **it is
+    the target `d1..d4` actually control**, which is the well-posed version of the plan
+    Amendment 36's closed form voids.
 
 ## Open decisions
 
