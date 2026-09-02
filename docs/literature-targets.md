@@ -426,6 +426,53 @@ than as an argument.
 
 ---
 
+---
+
+## 4. The Astral analyser — asymmetric-track MR-TOF
+
+> Stewart, Grinfeld et al., *Parallelized Acquisition of Orbitrap and Astral Analyzers
+> Enables High-Throughput Quantitative Analysis*, Anal. Chem. 2023;95(42):15656-15664.
+> <https://doi.org/10.1021/acs.analchem.3c02856>  **[A]**
+>
+> Stewart et al., *Crowd control of ions in the Astral analyzer*, J. Mass Spectrom.
+> 2024;59(4):e5006. <https://doi.org/10.1002/jms.5006>  **[B]**
+
+**The full published register, the pixel measurement of the ion foil, and the current
+state of the model are in `docs/astral-handoff.md`** - §1 and §11 respectively. This entry
+records only what is a *regression target* and its status, so the two do not drift.
+
+The device the whole 3-D path exists for, and the only target here that is not yet
+reproduced in any respect. It is also the first target whose geometry had to be
+**measured out of a published figure** rather than read off a table.
+
+| target | published | status |
+| --- | --- | --- |
+| oscillations / flight path | 24 / 30 m | **not reached** - under 4 at the published injection angle |
+| drift reversal distance | 310-360 mm, mean 335 | reverses, but needs **57x** the published 200 µm convergence |
+| resolving power | > 100,000 | **6.56** - dominated by thermal drift spread that nothing refocuses |
+| energy acceptance | flat T over 4000 ± 100 V | mirrors **do** energy-focus: R = 2,600 on energy spread alone |
+| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **not attempted, and the best next test** |
+| ion foil geometry | not stated in text | **measured off [A] figure 1** at 1.92 mm/px; shipped in `astral-3d.json` |
+
+**The C(1) row is the one to run next, and it is different in kind from the others.**
+Every other row needs the absolute geometry to be right first, because it compares a
+number this model produces against a number the instrument produces. C(1) and C(2) are
+*differential*: apply the published perturbation to the published potentials, measure how
+much the time-energy coefficient moves, and compare to a published sensitivity. A model
+whose focus is in the wrong place can still get that right or wrong informatively. It is
+the only Astral regression currently available that does not wait on fitting `d1..d4`.
+
+**Two cautions carried from [B] for anyone comparing numbers.** Their own simulations ran
+**22 oscillations rather than 24**. And the design condition is a **third-order** temporal
+focus - the optimum is where the locus of best resolution has zero inclination at its point
+of inflection - so a model reproducing first-order focusing has not reproduced the tuning.
+
+**What is deliberately absent.** No number in this entry or in the handoff came from
+conversation with anyone at the vendor. That is the point of the exercise: a geometry
+derived from public information is a result, and one obtained privately is not.
+
+---
+
 ## Candidates not yet worked up
 
 - **Reflectron and MR-TOF geometries** with published resolving powers, to check

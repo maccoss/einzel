@@ -116,17 +116,126 @@ marker before trusting any number in them. The three corrections that matter mos
 A three-dimensional model of the **Thermo Astral** analyser: an asymmetric-track
 multi-reflection time-of-flight instrument. Published, and used here:
 
+### The published register
+
+Everything below is from the open literature. **Nothing here came from conversation with
+anyone at the vendor**, which is deliberate: the value of this model is that it is derived
+from public information, and a number obtained privately would contaminate that. Two
+sources carry almost all of it:
+
+- **[A]** Stewart, Grinfeld et al., *Anal. Chem.* **2023**;95(42):15656-15664 -
+  <https://doi.org/10.1021/acs.analchem.3c02856>. The instrument paper. Its figure 1 is
+  drawn to scale and is measured in §11.
+- **[B]** Stewart et al., *J. Mass Spectrom.* **2024**;59(4):e5006 -
+  <https://doi.org/10.1002/jms.5006>. "Crowd control of ions in the Astral analyzer." Space
+  charge, and by far the most detailed published account of how the analyser is *operated*.
+
+A third, the ion processor, is the source of the injected packet and is registered
+separately in `docs/literature-targets.md`: Stewart, Grinfeld et al., *J. Am. Soc. Mass
+Spectrom.* 2023, [PMC10767742](https://pmc.ncbi.nlm.nih.gov/articles/PMC10767742/).
+
+#### The analyser
+
+| | | |
+| --- | --- | --- |
+| Beam energy | 4 keV | A, B |
+| Mirror electrodes | five per mirror - one grounded `U0`, one strongly accelerating `U1` *which provides the spatial focusing*, three reflecting `U2..U4` | B |
+| Oscillations / flight path | **24 / 30 m**, giving 625 mm cap-to-cap (cap-to-cap is derived here, not stated) | A, B |
+| Drift distance | **310-360 mm, mean 335**, varying with injection angle | B |
+| Mirror convergence | **200 µm spacer** | B |
+| Resolving power | > 100,000 | A |
+| Detector | HDR | A |
+
+#### The mirror calibration - the most directly usable thing in either paper
+
+Mirror potentials are not four numbers but a **two-parameter family**, and [B] gives it in
+closed form:
+
+> `U_k = e0 * ( Ck(0) + TE1 * Ck(1) + TE2 * Ck(2) )`
+
+where `e0` is the nominal ion energy. Table 1 of [B]:
+
+| | C(0) | C(1) | C(2) |
+| --- | --- | --- | --- |
+| U1 | -1.840 | 5.67 | -0.256 |
+| U2 | -1.158 | -1.616 | -0.654 |
+| U3 | 0.916 | -0.715 | 0.032 |
+| U4 | 1.503 | -2.963 | -0.361 |
+
+- **C(0)** was optimised for flat oscillation time versus energy over **4000 ± 100 V**. This
+  is the set the template carries.
+- **TE1 = 0.01 shifts the `(t|e)` dependence by a constant ~2.5 ppm/V** across the populated
+  energy range, "correspondingly sparing the spatial focusing of the mirrors".
+- **TE2 = 0.1** adds a *linear* trend to `(t|e)`, hence a quadratic ToF-versus-energy term.
+- Calibration in practice: inject isolated MRFA, scan TE1 and ion energy, record the loci of
+  best resolution. Those loci form a wavy line approximately cubic in shape; **the optimum
+  is zero inclination at its point of inflection, which generates the third-order temporal
+  focus and the best achievable resolving power.**
+
+**Why this matters more than it looks.** C(1) and C(2) are *differential* statements about
+the mirrors, with a published sensitivity attached. They can be tested against a model whose
+absolute focus is still wrong: apply the perturbation, measure the change in `(t|e)`,
+compare against 2.5 ppm/V. That is the sharpest literature regression available here and it
+does not wait on fitting `d1..d4`. It is item 4 of *Next, in order*.
+
+Note also that the design condition is a **third-order** temporal focus, not first-order.
+
+#### The injection chain [B]
+
+Ions arrive already bunched. None of this is modelled yet (§7).
+
 | | |
 | --- | --- |
-| Beam energy | 4 keV |
-| Mirror electrodes | five per mirror — one grounded, one strongly accelerating, three reflecting |
-| Table 1 coefficients (× ion energy) | U1 −1.840, U2 −1.158, U3 +0.916, U4 +1.503 |
-| Optimised for | flat time-of-flight over **4000 V ± 100 V** |
-| Oscillations / flight path | **24 / 30 m** → 625 mm cap-to-cap (derived, not stated) |
-| Drift distance | 310–360 mm |
-| Mirror convergence | **200 µm spacer**, drift decelerates over the first 12–13 oscillations |
-| Resolving power | > 100,000 |
-| Ion foil | electrodes above and below the path, biased 0 to −20 V |
+| Extraction from the ion processor | **±900 V pulsed "push and pull"** on opposing halves of the trapping structure, through an extraction slot |
+| Trap axial confinement | auxiliary DC electrodes, **wedged**, **4 mm long**, biased **-5 V**, hosted in the equatorial splits of the RF electrodes |
+| Trap RF | **4.5 MHz**; amplitudes used 1000 Vp-p and 1400 V, **1800 V maximum** |
+| On entry to the analyser | accelerated to **4 keV**, shaped by **a pair of rectangular einzel lenses** (Lens 1, Lens 2) |
+| Injection angle set by | **a pair of prism-shaped deflectors** - plate electrodes above and below the beam, where the angle of the plate against the trajectory induces the deflection |
+
+#### What happens to the packet in the drift [B]
+
+This is the passage that most directly indicts the current model, so it is quoted rather
+than paraphrased:
+
+> The ions drifted down the gap between the mirrors and **dispersed under their thermal
+> velocity spread.** ... During the drift expansion, **the size of the ion bunch
+> substantially exceeds the distance between the trajectories on different oscillations**
+> ... Therefore, the ion populations on different oscillations overlap in space.
+> Nevertheless, **the optimized convergence of the mirrors and a set of specially shaped
+> electrodes, referred to as ion foil, cause the drift spread to reduce on the way back from
+> the drift reversal point** so that the ions arrive at the detector as a single bunch
+> focused both spatially and temporally.
+
+And elsewhere in [B], that the expansion reaching **up to 50 mm** is deliberate - "a key
+point of minimization of the Coulomb repulsion forces in the ion bunch".
+
+Three things follow that the model must eventually satisfy and does not:
+
+1. Thermal spread in the drift direction is **the** dominant term. Confirmed here
+   independently: it alone gives R = 11.5 and a 25.8 mm packet.
+2. The spread is allowed to reach 50 mm and is then **refocused on the return leg**, by the
+   convergence **and** the foil together. Two mechanisms, and [B] names both.
+3. Because the bunch is wider than the oscillation pitch, **populations from different
+   oscillations overlap in space**. A model that tracks one ion cannot see this at all, and
+   it is a real constraint on any detector or aperture reasoning.
+
+#### Space charge [B]
+
+Not modelled here, and it is not an excuse for the resolving-power gap - space charge only
+degrades, and this model has none. Recorded because it bounds what "good" means.
+
+| | |
+| --- | --- |
+| Resonant (in-peak, similar m/z) effects become strong | **~1e3 ions in peak** |
+| Self-bunching and coalescence | **~1e4 charges in peak** |
+| 50 k resolving power crossing, isolated MRFA | **2500 ions in peak** |
+| the same, with the trapped cloud broadened by other calibrants | **5000** - broadening the *trap* population makes the analyser more tolerant |
+| Trapped charges within the device's linear capacity | 30 k yes; **100 k and 300 k beyond it** |
+| Primary effect of a space charge load | **shifts the focal plane**, roughly correctable by adjusting a single potential (TE1) |
+| m/z dependence | low m/z loses the most resolution (deeper RF well, higher charge density); high m/z shows a positive m/z shift |
+
+**Their own simulation used 22 oscillations rather than the usual 24**, which is worth
+knowing before comparing any simulated number against a measured one.
 
 **Not published: the electrode lengths and apertures.** They are what the published
 coefficients were optimised against, so they are the free parameters of an inverse problem
@@ -384,7 +493,7 @@ the 64 mm ballistic figure, so the mirrors here focus, weakly.
 
 The run raises `spacecharge.ignored` as a non-suppressible violation, and the effect is real:
 "Crowd control of ions in the Astral analyzer" (Stewart et al., *J. Mass Spectrom.* 2024;
-59(4):e5006, doi:10.1002/jms.5006 — abstract via PubMed; the full text is not in PMC) calls
+59(4):e5006, doi:10.1002/jms.5006 — full text now extracted and registered in §1) calls
 space charge "the Achilles' heel of all high-resolution ion optical devices" and identifies
 two mechanisms for this analyser: a **resonant effect between ions of similar m/z in flight**,
 and **expansion of trapped packets prior to extraction**. The remedies described are
@@ -1353,3 +1462,72 @@ geometry is no longer among the unknowns.
 **Not yet measured:** that the well actually focuses a z-spread packet, and with what focal
 length. The restoring force has the right sign by inspection of the table; its strength
 against a 50 mm spread over the return leg is a flight, not a solve.
+
+### The raw measurement, so it need not be repeated
+
+Everything above is derived from these numbers. Recorded in full because the figure is
+low-resolution and someone should be able to disagree with the reading without re-doing it.
+
+**Image.** `ac3c02856_0001.jpg`, 666 × 358, the single figure asset of the PMC record for
+[A]. The Astral panel occupies roughly x 463-622, y 12-330.
+
+**Classifier.** A pixel is foil if `b>222 && g>200 && r>145 && r<228 && b>=g && g>=r` -
+the pale blue fill, distinguished from the white gaps, the dark blue mirror stripes, the
+grey housings and the teal ion envelope. The dashed red trajectory crosses both bands and
+punches holes in the runs; columns where it did are dropped rather than interpolated, which
+is why the sampling below is uneven.
+
+**Vertical structure**, median colour over drift columns x 540-600:
+
+| feature | y |
+| --- | --- |
+| upper mirror stack | 29-89 |
+| white gap | 90-105 |
+| **upper foil band** | **108-135** |
+| white gap | 137-154 |
+| ion envelope (teal and grey) | 155-198 |
+| white gap | 199-226 |
+| **lower foil band** | **229-254** |
+| white gap | 257-277 |
+| lower mirror stack | 279-325 |
+
+So the mirror mouths are at y 89 and 279, the mid-plane at **y = 184**, and the free-flight
+gap is **190 px**. Against a template `capToCap - 2 * mouth` of 365 mm that is
+**1.92 mm/px**, which the panel height (323 px, 620 mm against `capToCap` 625) and the panel
+width (173 px, 332 mm against the paper's mean drift of 335) both corroborate.
+
+**The contour.** Outer edges are flat: upper 108-109, lower 253-255, across every column.
+Inner edges, by drift column x:
+
+| x | 502 | 510 | 514 | 518 | 522 | 526 | 534 | 538 | 542 | 546 | 550 | 554 | 562 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| upper | 129 | 126 | 125 | 124 | **123** | **123** | **123** | 125 | 126 | 128 | 130 | 132 | 134 |
+| lower | 234 | - | - | 238 | **239** | **239** | **242** | 235 | 236 | 234 | - | 231 | 229 |
+
+| x | 566 | 574 | 578 | 582 | 586 | 590 | 594 | 598 | 602 | 606 | 610 | 618 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| upper | **135** | **135** | 134 | 134 | 133 | 132 | 131 | 130 | 129 | 128 | 127 | 125 |
+| lower | **228** | **228** | 229 | 229 | 230 | 231 | - | 233 | - | - | 236 | 239 |
+
+The two bands are mirror images about y = 184 to within a pixel throughout, which is the
+internal check that the classifier is finding electrode edges and not trajectory artefacts.
+
+**Reduction.** Distance from the mid-plane, in units of the 95 px mid-plane-to-mouth reach,
+at the four turning points of the contour:
+
+| x | drift fraction | upper band | fraction of reach |
+| --- | --- | --- | --- |
+| 502 | 0.245 | 55 px | 0.579 |
+| 528 | **0.41** | 61 px | **0.641** - furthest out, gap widest |
+| 570 | **0.67** | 49 px | **0.516** - closest in, gap narrowest |
+| 618 | 0.99 | 59 px | 0.621 |
+
+Drift fractions are `(x - 463) / 159` and carry about ±5%, because the panel's right border
+did not threshold cleanly and was taken as x = 622 from the rendered view.
+
+A cosine `mid + amp * cos(pi * (s - thinAt) / (thickAt - thinAt))` with `mid = 0.578`,
+`amp = 0.063`, `thinAt = 0.41`, `thickAt = 0.67` reproduces all four to ±0.024, worst at the
+0.245 end. Those are exactly the template's `foilInnerMid`, `foilInnerAmplitude`,
+`foilThinAt` and `foilThickAt`. Its wavelength, `2 * (0.67 - 0.41)` = **0.52 of the drift**,
+is a physical statement rather than a fitting artefact and is the number to challenge first
+if the shape turns out wrong.
