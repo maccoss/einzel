@@ -20,9 +20,13 @@ inside the published 0 to −20 V and graded along the drift, the model reverses
 The no-foil control does not reverse at all. That was the first of the two things wrong with
 this model and it is now right (§§13–15).
 
-**What remains is the resolving power**, which is a different problem: thermal spread in the
-drift direction, R = 6.56 against a published >100,000, and the *spatial* refocusing [A] and
-[B] both credit the foil with and this model does not yet do.
+**What remains is the resolving power, and it splits into two problems with different
+owners** (§16). The drift is not *isochronous* — a constant force gives a return time linear
+in the drift velocity, so a 300 µs arrival spread is structural rather than a tuning failure,
+and the fix is a harmonic drift potential the foil can supply inside its published bias
+range. And these mirrors have no time-energy focus and cannot have one, because the published
+potential coefficients were optimised against Thermo's electrode depths and `d1..d4` here are
+guesses. That second one is what finally makes the depth fit well-posed.
 
 ### Verified, with controls
 
@@ -56,16 +60,21 @@ Two earlier accounts of this gap are **withdrawn**: the 57× figure (a bisection
 that could not tell reversal from striking an electrode) and the 1.33× reconciliation
 (measured on a tilt the solver could not see, with the sign inverted — §12).
 
-### The resolving power is the foil's other job
+### The resolving power, in two parts
 
-[B] says the packet is **deliberately** allowed to spread to 50 mm, to minimise Coulomb
-repulsion, and is then refocused on the return leg by the mirror convergence and the ion
-foil *together*. [A] says the drift is reversed "by mirror tilt **as well as** refraction on
-the ion foil". So the foil is named for both jobs, and this model does neither: it is 2.4 to
-3.3 times short of the deceleration, and its packet expands to 20 mm and arrives that way.
+Measured on the reproducing configuration, 8 ions out and back:
 
-**One missing element accounts for both numbers**, which is why the next-steps list leads
-with getting the foil right rather than with either symptom.
+| | arrival width | R |
+| --- | --- | --- |
+| 300 K thermal | 355 µs | 1.31 |
+| **0 K — energy spread alone** | **19.2 µs** | **20.4** |
+| published | under 3.9 ns at this flight time | **>100,000** |
+
+**Neither limit is a tuning failure and both have known fixes** (§16). The thermal one is
+structural: a constant force gives a drift period linear in `v_z0`, and only a *harmonic*
+drift potential is isochronous. The energy one is expected: applying Thermo's optimised
+potential coefficients to guessed electrode depths gives a mirror that is not at its own
+focus.
 
 ### What is assumed rather than derived
 
@@ -82,21 +91,17 @@ with getting the foil right rather than with either symptom.
 
 ### Next, in order
 
-1. **A corpus example pinning 342.74 mm**, so the reproduction cannot silently regress. The
-   template now carries the graded foil and its structure is asserted, but the reversal
-   itself is a study: the flight is 468 µs and the volume solve 25 s, which would roughly
-   double the release gate.
-2. **The resolving power**, which is now the whole of the remaining gap. R = 6.56 against
-   >100,000, dominated by thermal spread in the drift direction. [A] and [B] both credit the
-   foil with the *spatial* refocusing, and §11's wavy contour is the natural candidate —
-   the grade does the deceleration, the contour would do the focusing.
-3. **Fit `d1..d4` against the turning depth**, not the reversal. §13 forbids the depths from
-   touching the drift deceleration; what they do set is the 84.2 mm penetration that §14's
-   `capToCap` derivation rests on.
-4. **Table 1's perturbation vectors** (C⁽¹⁾, C⁽²⁾, ~2.5 ppm/V per unit `TE1`) — the sharpest
-   available literature regression, and independent of everything above.
-5. Re-derive §11's drift-fraction calibration, or bound it. It carries ±5% and the contour's
-   turning points depend on it.
+1. **A quadratic foil grade**, `foilVolts (1 - u^2)`, and measure whether the arrival width
+   collapses. §16's argument says it should, by orders of magnitude, and the profile stays
+   inside the published 0 to −20 V. Cheapest decisive experiment available.
+2. **Fit `d1..d4` against the energy focus** — minimise the arrival width of an
+   energy-spread cloud at zero temperature. §13 forbids fitting them against the reversal;
+   this is the target they actually control, and 19.2 µs is the number to beat.
+3. **Table 1's `C⁽¹⁾` perturbation**, ~2.5 ppm/V per unit `TE1` — tests the mirrors'
+   energy response *differentially*, so it does not wait on (2) succeeding.
+4. **A corpus example pinning 342.74 mm**, so the reversal cannot silently regress. Costs a
+   468 µs flight and a 25 s volume solve, which would roughly double the release gate.
+5. Re-derive §11's drift-fraction calibration, or bound it.
 
 ### Reading the rest of this page
 
@@ -2219,3 +2224,63 @@ much of the plate bias reaches the axis at each z; the grade sets the profile. A
 contour modulates the penetration - a second-order effect on the deceleration, and the
 natural candidate for the *spatial* focusing [A] and [B] both credit the foil with. Two
 jobs, two features of the same electrode.
+
+## 16. The resolving power, and why it has two separate limits
+
+Reversal is reproduced (\u00a715). The resolving power is not, and measuring it on the
+reproducing configuration decomposes it into two independent problems with different owners.
+
+A thermal cloud of 8 ions launched at the injection end, flown out and back to a detector
+there, arrival spread read off the ensemble:
+
+| case | arrival width | R |
+| --- | --- | --- |
+| graded foil, 300 K | **355 \u00b5s** | 1.31 |
+| graded foil, **0 K** \u2014 energy spread only | **19.2 \u00b5s** | 20.4 |
+| uniform foil, 300 K | 84.9 \u00b5s | 4.20 |
+
+Published R exceeds 100,000, and at this 779 \u00b5s flight that needs an arrival width under
+**3.9 ns**. So both rows above are limits, and neither is close.
+
+### Limit one: the drift is not isochronous, and a constant force cannot be
+
+**This is a structural result, not a tuning failure.** \u00a714 shows the mirror tilt is exactly
+a *constant* force along the drift, and a linearly graded foil adds another constant one. Under
+a constant force the time to reverse and return is `2 v_z0 / a` \u2014 **linear in the initial
+drift velocity**. A 300 K thermal spread gives `sqrt(kT/m)` = 70.6 m/s on a `v_z0` of 1372,
+so \u00b15%, and 5% of 779 \u00b5s is \u00b139 \u00b5s. That is the scale observed, and no amount of tuning a
+constant force removes it.
+
+**What does remove it is a harmonic drift potential.** A quadratic well is isochronous: its
+period is `2 pi sqrt(m / q phi'')`, which contains neither `v_z0` nor the ion energy. Every
+ion returns to the injection plane at the same instant whatever its drift velocity, and an
+energy spread does not change the period either.
+
+And it is expressible inside the published bias range. Biasing the foil as
+`foilVolts (1 - u^2)` with `u` the drift fraction gives an on-axis potential rising as `z^2`
+while every plate stays between 0 and -20 V - the same trick as the linear grade of \u00a715,
+one power up. **That is the natural reading of why the published contour is not a simple
+taper.**
+
+### Limit two: these mirrors have no time-energy focus, and cannot have one
+
+Even at 0 K the arrival width is 19.2 \u00b5s, which caps R at 20 by itself. That is the energy
+spread, and removing it is what the mirrors' `(t|e)` tuning exists for.
+
+**But this model cannot be energy-focused as it stands, for a reason worth stating plainly.**
+The published `C(0)` coefficients (\u00a71) were optimised against Thermo's electrode geometry.
+`d1..d4` here are guesses. Applying their potentials to different depths gives a mirror that
+is *not* at its own focus - there is no reason it should be. So the 19.2 \u00b5s is the expected
+consequence of an unfitted geometry rather than a defect.
+
+**This is what makes `d1..d4` a well-posed fit at last.** \u00a713 forbids fitting them against the
+drift reversal, because the impulse law has no free parameter there. The energy focus is the
+opposite case: it depends on the mirror's field shape and on nothing else, so the depths are
+exactly what moves it. Fit them by minimising the arrival width of an energy-spread cloud at
+zero temperature, and the target is a number the mirrors alone control.
+
+**And it makes Table 1's perturbation vectors the right check.** `C(1)` shifts `(t|e)` by a
+published ~2.5 ppm/V per unit `TE1`; comparing this model's response to that perturbation
+tests the mirrors' energy behaviour *differentially*, without needing the absolute focus to
+be right first. It was already the sharpest available literature regression; it is now also
+the natural companion to the depth fit.
