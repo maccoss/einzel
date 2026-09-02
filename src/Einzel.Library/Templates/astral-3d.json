@@ -78,28 +78,28 @@
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d2": {
       "value": 50.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U2 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U2 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d3": {
       "value": 90.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U3 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U3 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d4": {
       "value": 130.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U4 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U4 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "halfGap": {
       "expression": "boardGap / 2",
@@ -107,9 +107,11 @@
       "description": ""
     },
     "mouth": {
-      "expression": "d4",
+      "value": 130.0,
       "unit": "mm",
-      "description": "Where each mirror opens toward the beam."
+      "minimum": 20.0,
+      "maximum": 400.0,
+      "description": "Distance from the cap plate to the mirror mouth, so the mirror occupies x from mouth - d4 to mouth and the field-free gap is what is left. INDEPENDENT of d4 as of 2026-09-02; it used to be defined as d4, which meant varying the electrode depths walked the two mirror mouths together and shrank the field-free gap - physically right for a fixed envelope, where depth and drift length are one degree of freedom rather than two, but it makes a scan over the depths a scan along a trade. Separating them is what makes fitting d1..d4 against the energy focus well posed. Handoff section 16."
     },
     "boardOuter": {
       "expression": "halfGap + boardThickness",

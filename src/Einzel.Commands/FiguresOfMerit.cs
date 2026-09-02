@@ -153,6 +153,8 @@ public static class FiguresOfMerit
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical),
         new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical),
         new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
+        new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory),
+        new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory),
         new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary),
         new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
         new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
@@ -244,6 +246,13 @@ public static class FiguresOfMerit
             "resolvingPower" => OverArrivals(
                 model, energySpread, ions, report,
                 peak => peak.Arrived >= 3 ? Resolving(peak) : null, "1"),
+
+            // The fit's own residual is the uncertainty, divided by the span it was fitted
+            // over: a coefficient multiplies d, so a relative flight-time residual of r across a
+            // scan of half-width s constrains the coefficient to about r/s. GRD-1 wants an
+            // envelope and this is the one the fit actually produces.
+            "focusingC1" => FocusingMeasured(model, energySpread, ions, 0, report),
+            "focusingC2" => FocusingMeasured(model, energySpread, ions, 1, report),
 
             "turnAroundTime" => TurnAroundMeasured(model, report),
 
@@ -417,6 +426,8 @@ public static class FiguresOfMerit
             "arrivalSpread" => model => Ensemble(model, energySpread, ions, report) is { Arrived: >= 3 } peak
                 ? peak.GaussianEquivalentFwhmSeconds
                 : null,
+            "focusingC1" => model => Focusing(model, energySpread, ions, 0, report),
+            "focusingC2" => model => Focusing(model, energySpread, ions, 1, report),
             "turnAroundTime" => model => TurnAround(model, report),
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
@@ -532,6 +543,124 @@ public static class FiguresOfMerit
     /// call it physics.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The energy scan the focusing fit needs: fractional offset paired with flight time.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Deliberately ignores a declared cloud.</b> Every other ensemble figure here flies
+    /// the cloud when there is one, because those figures are properties of a packet. A
+    /// focusing coefficient is a property of the <i>optics</i>: it is the derivative of
+    /// flight time with respect to energy, and measuring it needs ions placed at known
+    /// offsets, not drawn from a distribution. Flying a cloud would give a scatter to fit
+    /// through instead of a curve, which is the same confusion
+    /// <see cref="DefaultEnergySpread"/>'s remarks exist to prevent for the bootstrap.
+    /// </para>
+    /// <para>
+    /// One solve for the whole scan, since an energy offset changes how fast the ion is
+    /// launched and nothing about the field.
+    /// </para>
+    /// </remarks>
+    private static List<(double EnergyFraction, double FlightTime)> EnergyScan(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
+    {
+        var samples = new List<(double, double)>(ions);
+        var members = Math.Max(3, ions);
+        var (_, species, field, settings, detector, collisions) = Setup(model, report: report);
+
+        for (var k = 0; k < members; k++)
+        {
+            var fraction = (2.0 * k / (members - 1.0)) - 1.0;
+            var offset = spread * fraction;
+
+            var result = TrajectoryIntegrator.Integrate(
+                LaunchAt(model, offset), species, field, settings, detector,
+                collisions: collisions?.Invoke());
+
+            if (result.Outcome == TrajectoryOutcome.StopConditionMet)
+            {
+                samples.Add((offset, result.FlightTimeSeconds));
+            }
+        }
+
+        return samples;
+    }
+
+    /// <summary>Fits the energy scan and returns one coefficient's magnitude.</summary>
+    private static double? Focusing(
+        CompiledModel model, double spread, int ions, int index,
+        Action<Core.Results.ValidityWarning>? report)
+    {
+        if (spread <= 0.0)
+        {
+            return null;
+        }
+
+        var samples = EnergyScan(model, spread, ions, report);
+
+        // A fit needs both signs and more points than coefficients. Fewer means ions were
+        // lost across the scan, which is a transmission finding rather than a focusing one.
+        if (samples.Count < 5 || samples[0].EnergyFraction >= 0.0 || samples[^1].EnergyFraction <= 0.0)
+        {
+            return null;
+        }
+
+        var fit = FocusingAnalysis.Fit(samples);
+        return index < fit.Coefficients.Count ? Math.Abs(fit.Coefficients[index]) : null;
+    }
+
+    /// <summary>The same with the fit's residual carried as the GRD-1 envelope.</summary>
+    private static Core.Results.Measured? FocusingMeasured(
+        CompiledModel model, double spread, int ions, int index,
+        Action<Core.Results.ValidityWarning>? report)
+    {
+        if (spread <= 0.0)
+        {
+            return null;
+        }
+
+        var samples = EnergyScan(model, spread, ions, report);
+
+        if (samples.Count < 5 || samples[0].EnergyFraction >= 0.0 || samples[^1].EnergyFraction <= 0.0)
+        {
+            return null;
+        }
+
+        var fit = FocusingAnalysis.Fit(samples);
+
+        if (index >= fit.Coefficients.Count)
+        {
+            return null;
+        }
+
+        var value = Math.Abs(fit.Coefficients[index]);
+        var quantity = Core.Units.Quantity.Number(value);
+        var warnings = new List<Core.Results.ValidityWarning>();
+
+        // A residual comparable to the coefficient means the cubic did not capture the
+        // behaviour, so the order reported is not the order binding. Said rather than
+        // hidden: this is the one way a focusing fit misleads.
+        if (fit.ResidualOfFit > 0.1 * spread * Math.Max(value, 1e-12))
+        {
+            warnings.Add(new Core.Results.ValidityWarning(
+                "focusing.fit-residual",
+                $"the energy scan fits T/T0 = 1 + c1 d + ... to an RMS residual of "
+                + $"{fit.ResidualOfFit:E3}, which is not small against the coefficient being "
+                + "reported - the expansion may not have captured the behaviour, and the "
+                + "binding order should not be believed",
+                Core.Results.WarningSeverity.Qualified));
+        }
+
+        return new Core.Results.Measured(
+            quantity,
+            Core.Results.UncertaintyInterval.Symmetric(
+                quantity,
+                Core.Units.Quantity.Number(fit.ResidualOfFit / spread),
+                confidenceLevel: 0.68),
+            new Core.Results.Evidence.Ensemble(samples.Count, Converged: fit.ResidualOfFit < 1e-6),
+            warnings);
+    }
+
     private static ArrivalTimePeak? Ensemble(
         CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report = null)
     {

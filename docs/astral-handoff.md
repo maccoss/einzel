@@ -2516,3 +2516,76 @@ and Grinfeld et al. 2024 is a whole paper about it.
 **The one thing to fix first is the convergence**, since every reversal number in this
 document depends on it and the model now reproduces the published instrument when it is
 right.
+
+## 18. How to make the mirrors focus, and why c1 is not the objective
+
+\u00a716 measured that this model's mirrors do no energy focusing: `R x spread` is constant at
+21.5 over a 25-fold range, so the flight time is first-order limited. This section is the
+route out, and it corrects the obvious first answer.
+
+### What was missing was a seam, not a capability
+
+A mirror focuses when the first-order time-energy coefficient is cancelled - `c1` in
+`T/T0 = 1 + c1 d + c2 d^2 + ...`, with `d` the fractional energy offset.
+`FocusingAnalysis.Fit` has computed those coefficients since Stage 4 and \u00a712 asks for them
+by name. **They were not exposed as figures of merit**, so no study or optimiser could name
+one - the same "exists only in an assembly description" state `ITransportMode` and the
+journal were once in.
+
+`focusingC1` and `focusingC2` are now in the registry, taking it from 18 nameable figures to
+20. Three decisions in them:
+
+- **Reported as magnitudes.** The target is zero from either side, and an optimiser
+  minimising a *signed* coefficient would drive it to minus infinity.
+- **The fit's own residual is the GRD-1 uncertainty**, divided by the scan's half-width: a
+  coefficient multiplies `d`, so a relative flight-time residual of `r` across a scan of
+  half-width `s` constrains it to about `r/s`. A residual not small against the coefficient
+  raises `focusing.fit-residual`, because a cubic that did not capture the behaviour reports
+  a binding order that should not be believed.
+- **A declared cloud is deliberately ignored.** Every other ensemble figure flies the cloud
+  when there is one, because those are properties of a packet. A focusing coefficient is a
+  property of the *optics*: measuring a derivative needs ions at known offsets, not drawn
+  from a distribution. Flying a cloud gives a scatter to fit through instead of a curve.
+
+**And one template defect had to go first.** `mouth` was defined as `d4`, so varying the
+electrode depths walked both mirror mouths inward and shrank the field-free gap - physically
+right for a fixed envelope, where depth and drift length are one degree of freedom rather
+than two, but it makes a depth scan a scan along a trade. SPEC.md's item 13 records that
+trap being fallen into once already. `mouth` is now independent.
+
+### The lever is strong, and the fit is deterministic
+
+Scanning `d2` on one reflection, mirrors only, +/-2.5% energy:
+
+| `d2`, mm | 22 | 30 | 34 | **36** | 38 | **40** |
+| --- | --- | --- | --- | --- | --- | --- |
+| `\|c1\|` | 0.127 | 0.0275 | 0.0054 | **0.000102** | 0.0030 | 0.0030 |
+| `\|c2\|` | 2.31 | 1.44 | 0.96 | 0.75 | 0.52 | **0.30** |
+| **R** | 162 | 849 | 1506 | **2044** | 3268 | **5674** |
+
+`|c1|` falls **210-fold** below its nominal 0.0189, and the minimum is identical at 11 and
+21 ions per point, so it is deterministic rather than fit noise.
+
+### But R does not peak where c1 is cancelled
+
+**This is the finding, and it corrects the obvious plan.** `|c1|` bottoms at `d2` = 36 mm
+with R = 2044, and R goes on climbing to **5674 at 40 mm** where `c1` is thirty times
+larger. The reason is that `c2` falls monotonically across the whole scan and **`c2` is what
+binds at this acceptance**: at `d2` = 36 the second-order term is
+`0.75 x 0.025^2` = 4.7e-4 against the first-order term's 2.6e-6, so `c2` dominates by 180.
+Cancelling `c1` there buys almost nothing.
+
+**So `resolvingPower` is the objective and the coefficients are diagnostics.** That is what
+`FocusingOrder`'s own remarks say - "the coefficients say which term is responsible, and
+therefore whether the fix is a longer flight path, a different mirror, or a narrower energy
+acceptance" - and it is worth stating because minimising `|c1|` is the plan anybody would
+reach for first, including this document an hour before it was measured. The coefficients
+earn their place by saying *which* term to attack; they are the wrong thing to attack
+directly.
+
+**Two things not to read into the numbers yet.** This is **one reflection**, so it measures
+a mirror in isolation rather than twenty-five of them compounding. And `d1..d4` are four
+parameters against one condition, so cancelling anything leaves a three-parameter family -
+`c2`, the spatial focus, and the turning depth that \u00a714's `capToCap` derivation rests on are
+what pick a point in it. R was still rising at the edge of the scan above; where it turns
+over, and what it reaches, is the next measurement.
