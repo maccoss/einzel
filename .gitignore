@@ -32,3 +32,6 @@ compact-mrtof-stellar-memo.html
 ## OS
 Thumbs.db
 .DS_Store
+
+# night-session scratch (budget logs, agent status); not project content
+ai/

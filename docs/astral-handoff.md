@@ -1717,20 +1717,221 @@ measurement before the bias-dependent well of §11 is interpreted further.
   `N = α·L/(η·c)`) is withdrawn. **The true gap to the published spacer is unmeasured.**
 - The "specular mirror needs ~0.49 mm at 2°" arithmetic stands, since it uses no solve.
 
-### The fix, three ways
+### How good the stopgap is, measured
 
-1. **Vacuum gaps between strips, at least one cell wide, and the tilt sign corrected** — a
-   stopgap that needs no code, and is physically honest: a printed board has gaps between
-   its traces. At 4 mm cells and 1.0 mm convergence the efficiency drifts to 1.85, so the
-   gap is itself only marginally resolved at that cell; a stopgap, not an answer.
-2. **Solve the mirror untilted and query it through a shear.** The exact field of a rigidly
-   rotated z-invariant structure is the rotated field, so `φ(x, y, z) = φ₀(x − α(z − z_c), y)`
-   is right to O(α²) ≈ 2e-7. Same pattern as `AxisymmetricField`, `TimeShiftedField` and
-   `ReflectedField`. **And it makes each mirror a 2-D solve** — the solver that carries every
-   validated number here — leaving only the foil genuinely three-dimensional. This is the
-   right fix.
-3. Refine until an edge displacement exceeds a cell: 0.075 mm cells. Not available.
+Single-reflection efficiency against the specular `Δz = α·V·T`, on the corrected template
+(sign fixed, 3 mm strip gaps), at a 4 mm cell. Zero injection angle, so the ion sits at the
+strips' rotation centre and samples only the tilt's gradient. The foil at 0 V is subtracted
+as a control (it kicks −0.537 mm on its own, of which more below).
 
-The lesson, recorded in `docs/lessons.md`: **a geometric perturbation that moves only
-metal-to-metal boundaries is invisible to cut cells**, and a discretisation check on one
-boundary type says nothing about the other.
+| convergence | mirrors only | with the foil |
+| --- | --- | --- |
+| 0.10 mm | −0.900 | −0.957 |
+| **0.20 mm — the published spacer** | **−0.903** | **−0.958** |
+| 0.30 mm | −0.933 | −0.983 |
+| 0.50 mm | −1.110 | −1.154 |
+| 1.00 mm | −1.762 | −1.807 |
+| 2.00 mm | −2.800 | −2.840 |
+
+**Two separate things are visible, and only one of them matters at the operating point.**
+
+**Flat and linear below ~0.3 mm, at 0.90 of specular.** Efficiency changes by 0.3% between
+0.1 and 0.2 mm, so in the region the instrument actually uses the tilt is resolved and
+under-delivers by a constant 10%. That is a systematic deficit, not staircase noise.
+
+**Above 0.3 mm a spurious quadratic takes over.** Fitting the raw displacement gives
+`Δz ≈ 0.747·c + 0.72·c²` mm, so the quadratic term equals the linear one at c = 1 mm. It
+cannot be physics: a genuine second-order geometric term goes as α², and α at c = 1 mm is
+1.4e-3, so matching the linear term would need a coefficient near 700. It is the
+discretisation again, and it is **outside the operating point** — which is why the physics
+below is worth doing on this build.
+
+**The likely cause of both, not yet confirmed.** The gap is 3 mm against `hx` = 2.488 mm,
+so 1.2 cells, and whether a *node* falls inside the gap depends on where the gap has slid
+to — which under a tilt depends on z. A gap of at least two cells would always contain a
+node. Against that, the gap itself removes 3 mm from each of three internal boundaries per
+mirror, about 7% of the mirror's depth, which is a plausible source of a systematic ~10%
+in its own right and would get **worse** with a wider gap. The two candidates therefore
+predict opposite things about gap width, which makes it a clean experiment: sweep the gap
+at a fixed convergence, and refine the cell at a fixed gap.
+
+**Either way the shear is still the right destination**, because both candidates are
+artefacts of representing a rigid rotation on a fixed grid, and a sheared 2-D solve has
+neither.
+
+### The fix, and what shipped
+
+Three routes were possible. **The second was built.**
+
+1. Vacuum gaps between strips, wide enough to resolve. Tried, and it is what produced the
+   -0.57 to +3.54 spread above. Rejected.
+2. **Solve each mirror as a two-dimensional cross-section and rotate the solved field.**
+   Exact, because rotations commute with the Laplacian: if the inner field solves Laplace
+   for some geometry, the rotated field solves it exactly for the rotated geometry. The
+   anisotropy is *constructed* from the geometry rather than resolved by differencing, so
+   it carries no discretisation error at all. **A shear would not do** - Laplace is not
+   shear-invariant, and a shear of a mirror pair translates both mirrors the same way,
+   which is no convergence.
+3. Refine to 0.075 mm cells. Not available.
+
+**Shipped as `RotatedField` plus a `tiltHalfTurns` on a `solved2d` element** (schema 0.8,
+with `tiltCentreX` and `tiltCentreZ`). Measured:
+
+| | Ez/Ex against tan(alpha) |
+| --- | --- |
+| rotated half-space vs one declared tilted | **0.000E+000** - bit-identical |
+| anisotropy at the Astral's own tilt | worst error **5.4e-20** |
+| the same, declared through a model document | worst error **1.7e-18** |
+
+**A converging pair is two elements rotated oppositely**, each carrying one mirror at
+potential with the other grounded - the ordinary basis decomposition
+`phi = sum_k V_k psi_k`, and therefore exact rather than an approximation.
+`astral-3d.json` is now exactly that: two `solved2d` cross-sections, 16 rectangles each,
+no tilted geometry anywhere.
+
+**Three things it bought beyond correctness.** The strip gaps are gone, because nothing is
+rotated in the geometry and abutting strips cost nothing. `zPad` is gone for the mirrors,
+because a cross-section is infinite along z by construction - so the template's "known
+wrong: the drift faces are Neumann" caveat no longer applies to them. And a solve plus a
+15 microsecond flight went from about **26 seconds to 1.4**.
+
+**What it gives up, stated:** the ion foil cannot be in the mirrors' solve, because the
+foil is not z-invariant and a cross-section cannot hold it. So a grounded foil's shadowing
+of the mirror field - measured at -185 m/s per reflection, and 5.7x too strong to be the
+published mechanism - is absent from this model. The foil's own field can still be
+superposed as a third, three-dimensional element.
+
+## 13. The drift deceleration has a closed form, and it forbids most of §3
+
+Three facts fix the drift impulse of one reflection with nothing left over:
+
+- the **speed** is conserved, because the ion returns to the potential it left;
+- the component along **n̂ = (sin α, 0, cos α)** is conserved, because an electrostatic
+  structure invariant under translation along n̂ conserves `v·n̂`, and a mirror rotated about
+  y is invariant along exactly that;
+- the component along the **mirror normal** reverses.
+
+Solving those three gives `v_x = −V·cos 2α` and
+
+> **Δv_z = V·sin(2α) per reflection, exactly.**
+
+Both mirrors contribute the same sign — their tilts are opposite *and* the sense of their
+`v_x` reversals is opposite, so the two minus signs cancel. **Nothing in the derivation
+refers to the electrode potentials, depths, apertures or shapes.**
+
+The familiar `2V·tan α` is the small-angle form and is short by `cos²α`. That was found by
+the test rather than assumed: written against `2V·tan α` it failed at 0.999013 for
+α = 0.0314 rad, which is `cos²α` to six figures. For the Astral's own tilt the two forms
+differ by 8e-8.
+
+**Measured against the integrator, in `RotatedMirrorDriftTests`:**
+
+| tilt, half turns | V sin 2α | measured Δv_z | ratio |
+| --- | --- | --- | --- |
+| 9.0929e-5 — the Astral's 200 µm spacer | 22.447754 m/s | 22.447754 | **1.000000000** |
+| 1.0e-3 | 246.869621 | 246.869621 | **1.000000000** |
+| 1.0e-2 | 2467.088424 | 2467.088424 | **1.000000000** |
+
+And the sharper half, since a magnitude right at one operating point proves little: an
+**eightfold change in the mirror's field gradient**, from 20 to 160 kV/m, moves the turning
+depth and the flight time by that factor and leaves the impulse at **22.447754 m/s in both
+cases**. The impulse is a property of the tilt alone.
+
+### Three consequences
+
+**`d1..d4` cannot affect the drift deceleration, at all.** §3 reasons at length that the
+electrode depths set an "impulse efficiency" η, that η = 0.578 is a property of the mirror,
+and that η "is the figure of merit the depths move". **That is wrong in principle**, not
+merely unmeasured: η is identically 1 for any rigidly tilted mirror. The plan to fit the
+depths against the reversal distance is therefore void, and the *Next, in order* list has
+been corrected.
+
+**The 2.4× gap to the published instrument is not in the mirror geometry.** At the published
+c = 0.2 mm and θ = 2°, the exact law gives 61 reflections to stop the drift and 618 mm of
+drift distance, against a published 24–26 and 310–360 mm — the same factor 2.4 in both. No
+choice of electrode design changes either number. Whatever supplies the missing
+deceleration, it is not the mirrors, and [A] names the candidate: "mirror tilt **as well as
+refraction on the ion foil**".
+
+**And it gives a test with no free parameters**, which is what exposed the next finding.
+
+### The solved 3-D mirror fails it by 3.5×
+
+A 2×2 factorial at the template's own `zPad`, 2° injection, 300 µs, 4 mm cell, measuring
+Δv_z per reflection directly from the trajectory:
+
+| | Δv_z per reflection | of the invariant |
+| --- | --- | --- |
+| **c = 0, no foil — control** | **−0.00 m/s** | **0.000** |
+| c = 0.2, no foil | −79.55 | **3.543** |
+| c = 0, foil grounded | −185.27 | 8.252 |
+| c = 0.2, foil grounded | −194.62 | 8.669 |
+
+**The control is exactly zero** — v_z holds at 1371.2 m/s over 20 reflections and 411 mm of
+drift, because that geometry really is z-invariant. So the integrator, the trajectory
+export, the reflection counting and the launch are all sound, and the tilted rows are
+measuring the solve.
+
+**3.543 against a law that admits no free parameters**, on the same geometry whose
+*single-reflection* efficiency measured 0.903. Two measurements of one quantity disagreeing
+by 4× is the signature of a field that is not the field of a rigidly tilted structure. The
+geometry itself is rigid — every strip's z-dependent face displacement is `(z − z_c)·tan α`
+independent of its own centre, and the `1/cos α` stretch is 2e-6 mm — so this is entirely
+discretisation.
+
+**The two cases differ in whether the ion drifts.** The single-reflection probe sat at the
+rotation centre with no drift and sampled one z; this one travels 91 mm in z while
+reflecting, and samples the staircase the tilted boundary makes as it slides across nodes.
+
+### What the foil would have to be, and what it is
+
+The same factorial measures the foil, and at c = 0 nothing is tilted, so that row carries no
+tilt artefact:
+
+| per reflection, at θ = 2° | Δv_z | of the invariant |
+| --- | --- | --- |
+| reversal in 25 reflections requires | −54.8 m/s | 2.44 |
+| mirror tilt, exact | −22.45 | 1.00 |
+| **so the foil must supply** | **−32.4** | **1.44** |
+| **foil as modelled, measured** | **−185.3** | **8.25** |
+
+**The modelled foil is 5.7× too strong** — while grounded, so this is pure geometric
+asymmetry rather than anything about its bias. It reverses the drift in 7 reflections
+against a published 24–26.
+
+**The likeliest cause is `zPad`, which was never a physical parameter.** The template pads
+the mirrors 150 mm beyond the drift at each end so the ion does not see their ends, and the
+foil spans only z = 87.5 to 350 mm. That leaves a 650 mm mirror with a 262 mm grounded patch
+in the middle of it, and the patch's two edges are strong z-asymmetries. The real analyser
+has no such padding. Raising `zPad` to 550 mm for one experiment made the foil force worse
+(−185 → −247 m/s per reflection equivalent), which is the direction that hypothesis
+predicts. **`zPad` must be treated as a modelling parameter with a measured effect, not as
+numerical headroom.**
+
+### On the shipped template, measured
+
+| convergence | cell | V sin 2a | measured | ratio |
+| --- | --- | --- | --- | --- |
+| 0.2 mm | 0.5 mm | -22.45187 | -22.44928 | **0.999884** |
+| 0.2 mm | 1.0 mm | -22.45187 | -22.44930 | **0.999885** |
+| 0.2 mm | 0.25 mm | -22.45187 | -22.44928 | **0.999885** |
+| 1.0 mm | 0.5 mm | -112.25925 | -112.24629 | **0.999884** |
+| 3.0 mm | 0.5 mm | -336.77501 | -336.73614 | **0.999885** |
+
+Against 3.543 and 0.903 for the same geometry solved with the tilt in three dimensions.
+
+**Constant to six figures across a fourfold range of cell size and a fifteenfold range of
+convergence**, which is the signature of an anisotropy that is constructed rather than
+resolved - and which also says the residual 1.15e-4 is not discretisation.
+
+**The residual is the superposition, and it is measured rather than guessed at.** Flying
+the same ion through the far mirror's solve *alone* gives **0.9999983**. The two elements
+each ground the other mirror at their own rotation, so the composite field is invariant
+along neither n direction exactly. At 1.15e-4 of the deceleration it is far below the
+uncertainty in `d1..d4`, and removing it would need a solve whose grounded set is rotated
+one way and whose live set the other - which is not a thing a single cross-section can be.
+
+Two hypotheses were checked and rejected on the way, both recorded because they were
+plausible: the local potential at the mid-plane (0.0024 V, and using the trajectory's own
+speed does not move the ratio) and mesh convergence (the ratio does not move between 0.25
+and 1.0 mm cells).

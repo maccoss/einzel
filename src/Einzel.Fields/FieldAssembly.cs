@@ -335,7 +335,18 @@ public static class FieldAssembly
                     // The solve happens here, once per build. Nothing about what
                     // the electrodes add up to is known at this level.
                     var (plane, report2d) = Solved.GeometryBuilder.Build(element.Solve!);
-                    elements.Add(plane);
+
+                    // A tilted extrusion axis is applied here rather than baked into the
+                    // geometry, because a rotation of a solved field is exact while a
+                    // solve of a rotated geometry is not: the anisotropy the tilt exists
+                    // to create is far below the field error of any affordable mesh.
+                    elements.Add(element.Solve!.TiltHalfTurns == 0.0
+                        ? plane
+                        : new RotatedField(
+                            plane,
+                            element.Solve!.TiltHalfTurns,
+                            element.Solve!.TiltCentreX,
+                            element.Solve!.TiltCentreZ));
                     Note(warnings, report2d, index, "solved2d");
                     break;
                 }

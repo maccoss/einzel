@@ -2212,6 +2212,30 @@ public static class ModelValidator
 
         var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
 
+        // Reported here, before the electrodes are compiled, so that a geometry which is
+        // also invalid for some other reason cannot hide it. Burying a refusal behind an
+        // unrelated one makes a document take two rounds to fix and gives no reason for
+        // the second - the same mistake the region check made on a solved element.
+        if (solve.TiltHalfTurns is not null && symmetry == SolveSymmetry.Cylindrical)
+        {
+            var declared = TryQuantity(
+                solve.TiltHalfTurns, $"{path}/tiltHalfTurns", Dimension.Dimensionless, p, errors);
+            if (declared is not null && declared.Value.SiValue != 0.0)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = "TILT_NOT_AVAILABLE",
+                    Path = $"{path}/tiltHalfTurns",
+                    Constraint = "an axisymmetric solve may not tilt its extrusion axis - it "
+                        + "stands for a body of revolution about x, and tilting the half-plane "
+                        + "about y does not rotate that body",
+                    Observed = new ObservedValue(declared.Value.SiValue, "1"),
+                    Suggestion = "use a translational cross-section, or tilt the electrodes",
+                    Severity = ErrorSeverity.Error,
+                });
+            }
+        }
+
         // The axis is at y = 0 and a radius cannot be negative. Refused rather
         // than folded, because a domain drawn across the axis is a different
         // intent from one drawn beside it and guessing which would be worse than
@@ -2259,11 +2283,37 @@ public static class ModelValidator
             return null;
         }
 
+        // The extrusion-axis tilt. Refused on a cylindrical solve rather than ignored:
+        // rotating a half-plane about y is not a rotation of the body it stands for, so a
+        // document asking for it is asking for something that does not exist.
+        var tilt = solve.TiltHalfTurns is null
+            ? Quantity.Si(0.0, Dimension.Dimensionless)
+            : TryQuantity(solve.TiltHalfTurns, $"{path}/tiltHalfTurns", Dimension.Dimensionless, p, errors);
+        var tiltCentreX = solve.TiltCentreX is null
+            ? Quantity.Si(0.5 * (minX.Value.SiValue + maxX.Value.SiValue), Dimension.LengthDimension)
+            : TryQuantity(solve.TiltCentreX, $"{path}/tiltCentreX", Dimension.LengthDimension, p, errors);
+        var tiltCentreZ = solve.TiltCentreZ is null
+            ? Quantity.Si(0.0, Dimension.LengthDimension)
+            : TryQuantity(solve.TiltCentreZ, $"{path}/tiltCentreZ", Dimension.LengthDimension, p, errors);
+
+        if (tilt is null || tiltCentreX is null || tiltCentreZ is null)
+        {
+            return null;
+        }
+
+        if (errors.Count > 0)
+        {
+            return null;
+        }
+
         return new CompiledField
         {
             Kind = CompiledFieldKind.Solved2D,
             Solve = new CompiledSolvedField
             {
+                TiltHalfTurns = tilt.Value.SiValue,
+                TiltCentreX = tiltCentreX.Value.SiValue,
+                TiltCentreZ = tiltCentreZ.Value.SiValue,
                 MinX = minX.Value.SiValue,
                 MinY = minY.Value.SiValue,
                 MaxX = maxX.Value.SiValue,
