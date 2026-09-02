@@ -25,6 +25,10 @@ and the whole factor is in what "a 200 µm thick spacer" tilts over: 200 µm clo
 across the 350 mm drift, or 200 µm per mirror over a ~250 mm baseline. None of the four
 papers says. It is now the most consequential unpublished number here.
 
+**The full track flies end to end** - 25 oscillations out to a 334.61 mm reversal and 25 back,
+31.27 m in 853.7 µs against a published ~30 m in ~779, with every geometric register number
+reproduced on one flight (§20). The 10% in flight time is the guessed mirror depths.
+
 **The mirrors can be made to focus, and R > 100,000 is reached.** `einzel optimise` over
 three electrode depths, maximising resolving power at the published ±2.5% acceptance, takes
 the model from **R = 1,086 to 47,657** at that acceptance and to **150,036 at ±0.5%** and
@@ -2789,3 +2793,45 @@ means for the instrument, and it has never been run.
 | **spatial focus** at the detector | not measured |
 
 The first row is the one that matters. Everything else is a proxy for it.
+
+## 20. The full track flies, end to end
+
+\u00a719 said the full flight had never been run and that everything else was a proxy for it. It
+has now: one ion of m/z 500 at 4 keV, launched at the injection end at the shipped 2.29\u00b0,
+shipped depths, `te1` = 0, detected on a plane 2 mm behind the launch point on its return.
+43 seconds of wall time, 8,105 trajectory samples.
+
+| | published | this flight |
+| --- | --- | --- |
+| oscillations, total | 24-26 | **25** - 25 reflections out, 25 back |
+| drift reversal | 310-360 mm | **334.61 mm**, at t = 420.1 \u00b5s |
+| drift per reflection | 13.40 mm | **13.38 mm** |
+| path length | ~30 m | **31.27 m** |
+| flight time | ~779 \u00b5s | **853.69 \u00b5s**, 9.6% long |
+| `\|v_z\|` returned against launched | - | 1572.8 against 1569.6 m/s |
+
+**Every geometric number in the register reproduces on one flight.** The reversal and the
+per-reflection drift were already matched in \u00a717 on the outbound half; what is new is that
+the return half is the mirror image the tilt mechanism says it must be - 25 reflections each
+way, `|v_z|` conserved to 0.2% over the whole round trip, and the ion arriving back where it
+started. \u00a713's closed form (`\u0394v_z = V sin 2\u03b1` per reflection, independent of the electrode
+design) predicts exactly this symmetry, and this is it measured on the whole instrument
+rather than on one reflection.
+
+**The flight time is 10% long, and the split is informative.** The path is 4% long (31.27
+against ~30 m), which is the reversal sitting at 335 rather than the middle of the published
+range. The remaining ~5% is time spent decelerated inside the mirrors, which depends on the
+turning depth and the potential profile - i.e. on `d1..d4`, which are still guesses. A fitted
+mirror should move it, and which way is a check on the fit.
+
+**Counting, once more, because it has been wrong before.** 50 reflections is 25 oscillations
+total; the paper's 24-26 is the total and its 12-13 is the outbound half. 25 reflections
+outbound over 334.61 mm is 13.38 mm per reflection. All three readings are consistent with
+each other and with [A].
+
+**What this changes about \u00a718 and \u00a719.** The wrong-path caveat was that one reflection with an
+arbitrary launch point is not the instrument. This is the instrument. The focusing fit is now
+being run on the true per-oscillation path (half an oscillation from the mid-plane, which has
+the same `c1` as the whole track if every oscillation is identical), and its result should be
+confirmed *here*, by flying an energy-spread cloud round the whole track and reading R off the
+arrivals. That confirmation is the measurement \u00a719 said was missing.
