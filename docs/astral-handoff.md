@@ -243,6 +243,58 @@ The ceiling is now 2.5x each angle's own ballistic transit.
 where ACC-6 asks for 1/500), `TRAJECTORY_INCOMPLETE` on the reversed side, which is what a
 reversed ion *is*, and `ENERGY_DRIFT_EXCEEDS_BUDGET` at this 4 mm cell.
 
+### The injection conditions are published, and they do not rescue the resolving power
+
+The packet had been invented — 0.5 mm spreads chosen for roundness. The Ion Processor paper
+(Stewart et al., *J. Am. Soc. Mass Spectrom.* 2023, doi:10.1021/jasms.3c00311, retrieved
+from PubMed Central) measures it:
+
+| | |
+| --- | --- |
+| beam spatial profile | Gaussian, **6σ = 2.4 mm**, so **σ = 0.4 mm** |
+| and it matches | the 2.5 mm length of the negative auxiliary DC trapping electrodes |
+| temperature | the room temperature of the buffer gas it thermalised in |
+| extraction | orthogonal, after a 4 kV lift, RF quenched at a zero crossing, ±900 V push/pull |
+| slot | 8 mm long × 0.8 mm wide |
+| tuning | acceleration voltages set to the **first time-focus** |
+
+**Substituting the measured packet changes nothing**, and the arithmetic said so first: a
+20 per cent change in a term worth 742 ns cannot move a total dominated by 41,423 ns of
+thermal spread. R went 6.56 → 6.51.
+
+| | invented 0.5 mm | measured 0.4 mm |
+| --- | --- | --- |
+| arrival width | 73,876 ns | 74,440 ns |
+| resolving power | 6.56 | 6.51 |
+
+So the packet's **size** was never the problem. Its **velocity** spread is, and no upstream
+conditioning removes it: 300 K on m/z 524 is 69 m/s in one dimension, which over a 934 µs
+flight is 64 mm of transverse travel if the ion travels ballistically. What bounds it is
+periodic focusing — every reflection in a gridless mirror is a lens — so the transverse
+motion should be oscillatory rather than straight. This model's 17 mm packet is less than
+the 64 mm ballistic figure, so the mirrors here focus, weakly.
+
+### Space charge is a published problem, and it is not this model's excuse
+
+The run raises `spacecharge.ignored` as a non-suppressible violation, and the effect is real:
+"Crowd control of ions in the Astral analyzer" (Stewart et al., *J. Mass Spectrom.* 2024;
+59(4):e5006, doi:10.1002/jms.5006 — abstract via PubMed; the full text is not in PMC) calls
+space charge "the Achilles' heel of all high-resolution ion optical devices" and identifies
+two mechanisms for this analyser: a **resonant effect between ions of similar m/z in flight**,
+and **expansion of trapped packets prior to extraction**. The remedies described are
+operational — optimum operating points and compensated ion mirror calibration.
+
+**But it cannot explain the gap here, and the direction is the reason.** Space charge only
+degrades resolving power. This model does not include it, so **R = 6.5 is an upper bound on
+what this geometry can do** — while the instrument reaches beyond 100,000 *with* space charge
+present. The optics modelled here are therefore wrong by more than four orders, not fewer.
+
+**And one phrase in that abstract is independent confirmation of where the focusing lives:**
+it describes the analyser as "incorporating ion focusing via a pair of converging ion
+mirrors". The convergence is not only the drift-reversal mechanism measured above — it is the
+focusing element. That is the same conclusion the acceptance decomposition reached from the
+other direction, and it puts `d1..d4` at the centre of both.
+
 ### What was wrong with all three measurements below
 
 Three faults, found by re-measuring with the outcome **reported** rather than inferred.
