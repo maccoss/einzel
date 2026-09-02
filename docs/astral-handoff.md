@@ -70,11 +70,12 @@ Measured on the reproducing configuration, 8 ions out and back:
 | **0 K — energy spread alone** | **19.2 µs** | **20.4** |
 | published | under 3.9 ns at this flight time | **>100,000** |
 
-**Neither limit is a tuning failure and both have known fixes** (§16). The thermal one is
-structural: a constant force gives a drift period linear in `v_z0`, and only a *harmonic*
-drift potential is isochronous. The energy one is expected: applying Thermo's optimised
-potential coefficients to guessed electrode depths gives a mirror that is not at its own
-focus.
+**Neither limit is a tuning failure** (§16). The thermal one needs the drift *period* constant
+to **5e-6**, which needs the foil's well harmonic to ~1e-4 of its depth; the best profile
+chosen by hand is 15%, and closing that is a 16-parameter optimisation rather than a
+derivation. The energy one is expected: applying Thermo's optimised potential coefficients to
+guessed electrode depths gives a mirror that is not at its own focus, which is what makes the
+depth fit well-posed at last.
 
 ### What is assumed rather than derived
 
@@ -91,16 +92,18 @@ focus.
 
 ### Next, in order
 
-1. **A quadratic foil grade**, `foilVolts (1 - u^2)`, and measure whether the arrival width
-   collapses. §16's argument says it should, by orders of magnitude, and the profile stays
-   inside the published 0 to −20 V. Cheapest decisive experiment available.
+1. **Optimise the foil's 16-slice profile for drift isochronicity.** §16 puts the
+   requirement at 5e-6 in the drift period, needs the well harmonic to ~1e-4 of its depth,
+   and measures the best hand-chosen profile at 15%. A bias grade will not reach it; this is
+   a 16-parameter objective and the first thing in this work that genuinely wants
+   `Einzel.Sweeps`. It is also the likeliest reason the published contour is "specially
+   shaped" rather than a simple taper.
 2. **Fit `d1..d4` against the energy focus** — minimise the arrival width of an
-   energy-spread cloud at zero temperature. §13 forbids fitting them against the reversal;
-   this is the target they actually control, and 19.2 µs is the number to beat.
-3. **Table 1's `C⁽¹⁾` perturbation**, ~2.5 ppm/V per unit `TE1` — tests the mirrors'
-   energy response *differentially*, so it does not wait on (2) succeeding.
-4. **A corpus example pinning 342.74 mm**, so the reversal cannot silently regress. Costs a
-   468 µs flight and a 25 s volume solve, which would roughly double the release gate.
+   energy-spread cloud at zero temperature, where 19.2 µs is the number to beat. §13 forbids
+   fitting them against the reversal; this is the target they actually control.
+3. **Table 1's `C⁽¹⁾` perturbation**, ~2.5 ppm/V per unit `TE1` — tests the mirrors' energy
+   response *differentially*, so it does not wait on (2).
+4. **A corpus example pinning 342.74 mm**, so the reversal cannot silently regress.
 5. Re-derive §11's drift-fraction calibration, or bound it.
 
 ### Reading the rest of this page
@@ -2261,6 +2264,59 @@ And it is expressible inside the published bias range. Biasing the foil as
 while every plate stays between 0 and -20 V - the same trick as the linear grade of \u00a715,
 one power up. **That is the natural reading of why the published contour is not a simple
 taper.**
+
+### The isochronicity requirement is 5e-6, and it is an optimisation not a guess
+
+**The prediction above was tested and failed.** Biasing the foil as `foilVolts (1 - u^2)`
+to make the on-axis potential quadratic gave an arrival width of 258 microseconds against
+the linear grade's 355 - a 27 per cent improvement where the argument predicted orders of
+magnitude. And the *uniform* bias was the best of the three at 84.9 microseconds.
+
+**Two things were wrong with the reasoning, and both are worth keeping.**
+
+**The constant-force estimate was 4.4 times low.** A constant force gives a return time
+linear in `v_z0`, so a plus or minus 5.1 per cent thermal spread should give plus or minus
+39 microseconds - about 80 wide, not 355. The period is therefore not merely linear in
+`v_z0`, it is strongly *amplitude*-dependent, which means the well is far from harmonic.
+
+**Measured, it is.** Fitting the on-axis profile to a pure `c z^2` about the launch point
+and reporting the worst residual as a fraction of the swing:
+
+| foil bias | rise, 0 to 340 mm | deviation from a pure quadratic |
+| --- | --- | --- |
+| linear `1 - u` | +5.37 V | **25%** |
+| quadratic `1 - u^2` | +5.31 V | **15%** |
+| uniform | +1.12 V | 53% |
+
+**And the well's centre is not the launch point.** All three profiles dip to a minimum
+around z = 40 to 61 mm and rise after it. That dip is the foil's own leading-edge fringe,
+which reaches about 40 mm inward - the board gap - and is unavoidable at any bias. The ion
+is launched on the inner flank of a well whose centre is 60 mm downstream of it, so the
+motion is not a harmonic oscillation about the launch point even where the potential is
+locally quadratic.
+
+**What the requirement actually is.** For `R` to reach the published figure the arrival
+width must be a fixed fraction of the flight:
+
+| R | arrival width at a 779 us flight | as a fraction |
+| --- | --- | --- |
+| 10,000 | 38.9 ns | 5.0e-5 |
+| 50,000 | 7.8 ns | 1.0e-5 |
+| **100,000** | **3.9 ns** | **5.0e-6** |
+
+So **the drift period must be constant to about 5e-6 across a plus or minus 5.1 per cent
+spread in `v_z0`**, which needs the well harmonic to roughly 1e-4 of its depth. The best of
+the three profiles above is 15 per cent - five orders short.
+
+**That is not something a bias grade will reach, and it is the right shape of problem for
+the machinery this project already has.** The foil is built from 16 slices along the drift,
+each with its own potential expression, so the profile is a 16-parameter surface and making
+the drift period amplitude-independent is an objective over it. `Einzel.Sweeps` has both
+optimisers and \u00a713's figure-of-merit registry is where such an objective registers. **This
+is the first thing in the Astral work that genuinely wants the optimiser** rather than a
+derivation, and it is also the most likely reason the published contour is "specially
+shaped" rather than a simple taper: a shape optimised for high-order isochronicity is not a
+shape anybody would guess.
 
 ### Limit two: these mirrors have no time-energy focus, and cannot have one
 
