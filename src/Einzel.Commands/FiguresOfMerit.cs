@@ -155,6 +155,7 @@ public static class FiguresOfMerit
         new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
         new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory),
         new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory),
+        new("focusingC3", "1", "The same for the third-order coefficient c3. With c1 and c2 both cancelled this is what binds, and a mirror pair holding all three near zero is what the literature calls a third-order temporal focus - the regime the Astral's mirrors are published as operating in. The fit is cubic, so this is its highest coefficient and the one most exposed to the fit residual; read it with focusing.fit-residual in view.", false, AccuracyClass.Trajectory),
         new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary),
         new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
         new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
@@ -253,6 +254,7 @@ public static class FiguresOfMerit
             // envelope and this is the one the fit actually produces.
             "focusingC1" => FocusingMeasured(model, energySpread, ions, 0, report),
             "focusingC2" => FocusingMeasured(model, energySpread, ions, 1, report),
+            "focusingC3" => FocusingMeasured(model, energySpread, ions, 2, report),
 
             "turnAroundTime" => TurnAroundMeasured(model, report),
 
@@ -428,6 +430,7 @@ public static class FiguresOfMerit
                 : null,
             "focusingC1" => model => Focusing(model, energySpread, ions, 0, report),
             "focusingC2" => model => Focusing(model, energySpread, ions, 1, report),
+            "focusingC3" => model => Focusing(model, energySpread, ions, 2, report),
             "turnAroundTime" => model => TurnAround(model, report),
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
