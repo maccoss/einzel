@@ -3266,3 +3266,37 @@ number that no other part of this model has touched, and it constrains exactly t
 quantities that are guesses. That is the next fit, and it is better posed than anything
 tried so far: a published target, an unfitted residual, and the same parameters that must
 also carry `c2`.
+
+## 26. The published `C(1)` sensitivity picks a depth
+
+\u00a725 turned the one unfitted published number into a constraint. Measured against each of the
+four depths in turn, on the true per-oscillation path, with `dc1/dTE1` taken as
+`(|c1|(+0.03) + |c1|(-0.03)) / 0.06` - exact for `|c1| = |s(te1 - t0)|` whenever the vertex
+lies inside the window, which matters because `c1` changes sign within it and a naive
+difference would read the sign flip as signal:
+
+| knob | across its range | `dc1/dTE1` |
+| --- | --- | --- |
+| `d1` | 12 \u2192 20 \u2192 30 mm | 2.664 \u2192 2.670 \u2192 2.716 |
+| **`d2`** | 40 \u2192 50 \u2192 62 mm | **1.116** \u2192 2.670 \u2192 4.451 |
+| `d3` | 78 \u2192 90 \u2192 104 mm | 3.414 \u2192 2.670 \u2192 diverges (`\|c2\|` = 22.6) |
+| `d4` | 112 \u2192 130 \u2192 150 mm | 19.399 \u2192 2.670 \u2192 2.523 |
+
+**`d1` is inert** - three per cent across a 2.5-fold change - so it does not control this
+quantity at all. `d3` and `d4` move it but destructively, `d3` into a solve whose `c2` is
+22.6 and `d4` into 19.4 at 112 mm. **`d2` is the knob**, monotonic and steep, and it reaches
+the published 1.0 near **40 mm** against the guessed 50. `|c2|` there is 0.310, better than
+the shipped 0.448, so the constraint does not have to be bought with second order.
+
+This is the first quantity in the whole reconstruction that pins an unpublished dimension
+against a published number **without any fitting**: the sensitivity was measured before the
+depth was chosen, and the depth follows from it.
+
+**What it is worth depends on the next measurement.** The foil's energy term arises from how
+each oscillation divides between mirror and drift (\u00a725), and `d2` moves the penetration - so
+the geometry the published number selects may or may not also shrink the -0.24 that has to be
+cancelled. Those are logically independent, and measuring `c1_foil = c1(foil on) - c1(foil
+off)` at both depths on the full track settles it. If the term shrinks, the two published
+constraints agree with each other and the reconstruction closes; if it does not, `d2` = 40 mm
+is a correct depth in an instrument that still cannot reach its resolving power, and the
+remaining error is in `d3`, `d4`, the tilt baseline, or the foil's extent.
