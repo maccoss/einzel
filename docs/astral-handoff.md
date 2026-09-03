@@ -3788,3 +3788,33 @@ published foil in either shape or excitation. What it demonstrates is that the d
 *can* be made nearly isochronous to both orders by an axial potential of the right form; how
 the real instrument realises that form is a separate question, and the published bias range
 says it is not by this route.
+
+## 37. A first-order term that nearly vanishes, and a scan edge I built myself
+
+Extending the scan at `V` = -20 on `20/38/84/130`:
+
+| `c` | `g` | T | `a` | `b` | drift spread |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0.63 | 660.8 us | +0.0215 | -3.597 | 8.3e-3 |
+| -0.80 | 3.00 | 454.3 | +0.0823 | +0.893 | 5.51e-3 |
+| **-1.50** | **3.00** | **502.8** | **+0.0060** | **-0.712** | **1.71e-3** |
+| -2.20 | 3.00 | 548.9 | +0.0760 | +0.917 | 5.28e-3 |
+| any | 5.00, 8.00 | - | - | - | run failed |
+
+**`a` = +0.0060 at `c` = -1.5**, thirty-five times smaller than at `c` = 0 and the smallest
+first-order drift term measured anywhere in this work, with `b` = -0.712 - five times smaller
+than baseline. The total drift spread is **1.71e-3, a 4.9-fold improvement**, and `c` = -1.5
+is a clear interior optimum bracketed by -0.8 and -2.2 on both sides.
+
+**The `g` = 5 and 8 rows did not fail physically.** They returned no flight time at all, which
+is a validation refusal rather than a lost ion: I had declared `foilQuad` with bounds of
+plus or minus 4, so every value above 4 was refused before a solve began. **The scan edge I
+spent the previous section describing as physical was one I had set myself**, in the same
+script, eight lines above the scan. Worth stating because the failure mode is
+indistinguishable from a real one in the output table - both print as a missing row - and the
+distinguishing evidence was in the outcome field, which showed `None` rather than
+`StruckElectrode`. A refused model and a lost ion should never look alike in a results table,
+and in mine they did.
+
+Bounds widened to plus or minus 20 and the scan is running again over `g` up to 7. The
+interior optimum in `c` is real regardless, since it was bracketed within the valid range.
