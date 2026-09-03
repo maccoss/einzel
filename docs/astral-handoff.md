@@ -4172,3 +4172,44 @@ two are proxies, and their job is ranking.
 The nominee is now being flown on the full track against the hand-tuned law, both measured by
 the same three-sigma width the screen used, plus a direct cloud on each. If the flights
 reproduce the 3.69 times, the screen-then-confirm loop is established end to end.
+
+## 45. The nominee flies, and the objective is still the wrong statistic
+
+The screen's nominee flown on the full track against the best hand-tuned law, both measured
+by the same three-sigma width the screen optimised, plus a direct thermal cloud on each:
+
+| law | T | ±3 sigma width | spread | R from that | **cloud R, 16 ions** |
+| --- | --- | --- | --- | --- | --- |
+| hand-tuned (`c` -1.5, `g` 3.0) | 502.83 us | 4.522 us | 8.99e-3 | 56 | **206.2** |
+| **screen's nominee** | 504.42 | **1.721** | 3.41e-3 | 147 | **224.3** |
+
+**The screen-then-confirm loop works.** It predicted 3.69 times and the flights give **2.63
+times** - right direction, right order, forty per cent optimistic. A screen that ranks
+correctly and is optimistic by a known factor is a usable instrument, and this is the first
+time in this work that a foil law has been designed rather than guessed.
+
+**But the resolving power barely moved: 206.2 to 224.3, a factor of 1.09.** Converting both to
+a half maximum, the cloud's FWHM went 1.22 to 1.13 us while the three-sigma peak-to-peak fell
+4.52 to 1.72. **The optimisation flattened the tails and left the core alone.**
+
+That is a defect in the objective, not in the optimiser or the foil. `R` is set by the
+**full width at half maximum**, which the core of the thermal distribution determines; a
+peak-to-peak width over plus or minus three sigma is dominated by the tails, where almost no
+ions are. Minimising it is minimising a statistic the instrument does not report.
+
+**Three objectives, three failures, and the sequence is the lesson.**
+
+1. `|a| x 0.045 + |b| x 0.045^2` - a **truncated fit**, satisfiable by cancelling two
+   coefficients with sixteen parameters. Caught by a 3.3e9-fold improvement from a one per
+   cent nudge (section 44).
+2. **Peak-to-peak over plus or minus three sigma** - unfittable, verified against refinement,
+   and it genuinely improved 2.63 times when flown. But it weights the tails, so the
+   improvement did not reach the reported figure.
+3. **Density-weighted standard deviation**, scaled by 2.3548 to be an FWHM - the statistic a
+   cloud actually measures. Now running.
+
+Each objective was more robust than the last and each was still wrong, in a different way:
+the first could be gamed, the second was honest about the wrong quantity. **The check that
+would have caught the second earlier is the one that did catch it - carry a direct cloud
+measurement alongside the proxy from the start**, because a proxy that improves while the real
+figure does not is otherwise indistinguishable from progress.
