@@ -2412,20 +2412,39 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     **The mirrors are measured and understood, and were not the instrument's limit.** The
     focusing coefficients `c1..c3` are figures of merit now, and the scaling law is the check:
     `R x s` constant means first-order limited (shipped depths, 21.5), `R x s^2` constant means
-    second-order (one depth moved, 1.2), each cancelled order buying one power of spread. Two
-    optimisers over three depths and `TE1` reach R ≈ 36,500 at the acceptance from designs
-    12 mm apart - one balancing condition against four parameters. **A mirror is focused *for*
-    a drift length** (`c1` grows 7.7-fold with the free path), so it must be measured on the
-    instrument's own per-oscillation path - and it carries to the full track exactly, `c1` =
-    -0.012 there against 0.012 on a half oscillation. **The foil adds `c1` ≈ -0.27 on its own**
-    and is the entire gap between 36,500 and the full track's 60-70: the device that makes the
-    drift isochronous in speed makes it non-isochronous in energy. Either the real mirrors are
-    over-focused to cancel it, which is what a first-order correction vector is for, or the real
-    foil contour has no such term. A foil-shape optimisation against both conditions on the full
-    track discriminates them, and is the next thing. Two floors are stated rather than hidden:
-    `c1` has a mesh floor of ±0.0015 from how the strips sit on the lattice, which refinement
-    does not move; and the one unfitted published check, `C(1)`'s sensitivity, comes out 2.0
-    against 1.0 - plausibly a definitional half in `(t|e)`, unresolved. Handoff §18-§23.
+    second-order (one depth moved, 1.2), each cancelled order buying one power of spread. **A
+    mirror is focused *for* a drift length** (`c1` grows 7.7-fold with the free path), so it
+    must be measured on the instrument's own per-oscillation path - and it carries to the full
+    track exactly, `c1` = -0.012 there against 0.012 on a half oscillation. **The foil adds
+    `c1` = -0.231 on its own** and is the entire gap between the half-oscillation R of 36,500
+    and the full track's 60-70.
+
+    **Both ways out of that were measured and both fail as parameterised.** A 2x2 Jacobian on
+    the full track puts the foil's two shape knobs **9.6 degrees from exactly opposed**, so the
+    device's speed-isochronising benefit and its energy defect are very nearly the same
+    quantity and shrinking one surrenders the other; the simultaneous zero asks for a plate
+    extending past the mirror mouth. And the mirrors cannot supply the cancellation: `|c1|`
+    ranges only 0.003 to 0.087 across `d2`, a third of what is needed, with `TE1` making up the
+    rest only at a `c2` cost that climbs monotonically.
+
+    **The one unfitted published number became a constraint on the geometry.** The
+    crowd-control paper defines `(t|e) = T^-1 dT/d(epsilon)` outright and states the 4 keV
+    beam, so the measured `dc1/dTE1` = 2.2 against a published 1.0 is neither a units error nor
+    a definitional half - it says the depths are wrong, and `d2` is the only depth that
+    controls it (`d1` is inert, `d3` and `d4` move it destructively). `d2` = 38.0 mm reproduces
+    it to 2 per cent against a guess of 50.
+
+    **And then the constraint no half-oscillation measurement can see.** At `d2` = 38 the ion
+    **strikes the board at y = -20 mm after 24 of 50 reflections** - the mirror does not confine
+    transversely over the track. Every coefficient above was measured on one reflection, where
+    an ion has no time to walk off axis; each is correct for what it measures and none can say
+    whether a geometry is flyable. That invalidated an earlier `c1_foil` comparison which had
+    been timing an ion hitting a rod, and whose tell was a bare-tilt speed ratio of 1.95 where
+    the closed form requires exactly 1.0. `d3` = 84 mm is the only rescue found: **20/38/84/130
+    flies the full 50 reflections**, and whether it still meets the published sensitivity and
+    what it does to `c1_foil` is the measurement in flight. Two floors stated rather than
+    hidden: `c1` has a mesh floor of +/-0.0015 from how the strips sit on the lattice, and the
+    `d2` constraint carries the paper's own "about" at +2.5/-3 mm. Handoff sections 18-28.
 
 ## Open decisions
 
