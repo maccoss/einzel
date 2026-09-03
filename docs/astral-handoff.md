@@ -4487,3 +4487,15 @@ the design wants zero. But `eta_D` goes as `sin^2(theta)`, so the published plat
 `tau` rising steeply away from its flat region. Re-measuring inside it is the test that means
 something, and the arithmetic relating the two ranges is one line that should have been done
 before the first scan rather than after it.
+
+**And the re-measurement itself failed first, in a way this repository already documents.** The
+new angle list was patched into the script by string replacement and applied; the *reporting*
+block's replacement matched nothing, did nothing silently, and the old reporting code then
+crashed looking for the old keys - after the flights had run. CLAUDE.md records exactly this
+failure from the corpus work ("three tests edited the scaffolded model by string replacement
+against a JSON layout the corpus reformatted, so the edit matched nothing, the model was
+unchanged, and each reported the feature it was checking as broken"), and its fix is an edit
+helper that **asserts the replacement happened**. I made the same mistake in a scratch script
+with no assertion. The rewrite is a separate module that *imports* the builder from the first
+script rather than duplicating it, so the geometry cannot drift between the two - which is the
+same argument, applied to code rather than to text.
