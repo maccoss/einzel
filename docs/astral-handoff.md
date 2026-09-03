@@ -3523,3 +3523,26 @@ two quantities very differently: uniform to quadratic swings `c1_foil` by 0.445 
 ratio swings 1.16, in the same direction but at a ratio of 2.6 rather than the near-collinear
 1.05 of the shape knobs. A two-parameter search over bias and quadratic fraction is now
 running, and unlike section 25's it has room to converge.
+
+### The inverse problem is exactly determined
+
+Four published quantities against four free parameters, and the pairs separate:
+
+| condition | published | knob |
+| --- | --- | --- |
+| `c1_foil` = 0 | implied by R > 100,000 | foil voltage law `V`, `g` |
+| speed ratio = 0 | implied by the same | foil voltage law `V`, `g` |
+| `T` = 779 us | stated | injection angle and tilt |
+| `z_rev` = 335 mm | stated (310-360) | injection angle and tilt |
+
+The geometry pair separates cleanly. For a constant axial force `T ~ sin(theta)/sin(2 alpha)`
+and `z_rev ~ sin^2(theta)/sin(2 alpha)`, so their ratio is `sin(theta)` alone: the injection
+angle is fixed by the two published numbers, foil or no foil, and the tilt follows. Checked
+against the flight - `v_z0 = 4 z_rev / T` gives **1567.8 m/s against the trajectory's
+1569.6**, 0.11%, and `theta` = 2.287 degrees against the template's 2.29.
+
+**That matters because the foil law costs flight time.** Deepening the bias shortens `T`
+sharply - 794 us at -4 V, 718 at -12, and further still beyond - so a foil law chosen for the
+two isochronicity conditions will not leave `T` at 779. The geometry knobs absorb that at
+fixed drift distance, which is why the problem is determined rather than over-determined, and
+why `T` should not be used to reject a foil law.
