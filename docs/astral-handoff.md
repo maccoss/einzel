@@ -4136,3 +4136,39 @@ points in pure Python. Screening does not need that resolution: the rerun uses 4
 and checks the winner at 30,000. The screen's whole value is that it is cheap, and spending it
 on integration accuracy that the adiabatic approximation's own 2.5 per cent bias makes
 irrelevant is the wrong trade.
+
+### The robust objective, and an error it exposes in every R quoted above
+
+Rerun with the full width of `T` across plus or minus three sigma of the thermal `v_z`
+distribution, seventeen samples, no expansion:
+
+| | spread | drift-limited R |
+| --- | --- | --- |
+| best hand-tuned law (`c` -1.5, `g` 3.0) | 6.3624e-3 | 79 |
+| **sixteen-parameter optimised** | **1.7244e-3** | **290** |
+
+**3.69-fold, and identical at 4,000 and 30,000 integration points** - so it is not quadrature
+noise, which is what verifying the winner at a finer integration than the search used is for.
+The potentials move only about two per cent, which is credible here where the previous 3.3e9
+was not: the width is a near-cancellation, so a small change to the well can flatten it, and
+the check is that the improvement survives refinement.
+
+**And it corrects a number used throughout sections 33 to 40.** The drift spread was computed
+as `|a| x 0.045 + |b| x 0.045^2` - the truncated expansion evaluated at one sigma. For this
+same law the full width over three sigma is **6.36e-3 against that expression's 1.71e-3**, so
+**every drift-limited R quoted from the expansion is optimistic by about 3.7 times**. The
+coefficients were fitted over plus or minus five per cent and the thermal distribution reaches
+13.5, where the higher orders the fit discards are no longer small.
+
+That does not change any ranking - the correction is a near-common factor - but it does mean
+the absolute figures in those sections should be read as expansion values rather than as
+arrival spreads. The three measures now in play differ by an order of magnitude and it is
+worth naming which is which: the **expansion at one sigma** (optimistic, 1.71e-3 for the hand
+law), the **full width over three sigma** (pessimistic, being peak-to-peak rather than a half
+maximum, 6.36e-3), and a **direct thermal cloud** (the only one that is an arrival spread, and
+which gave 29.5 for a related configuration). Only the third is a resolving power; the first
+two are proxies, and their job is ranking.
+
+The nominee is now being flown on the full track against the hand-tuned law, both measured by
+the same three-sigma width the screen used, plus a direct cloud on each. If the flights
+reproduce the 3.69 times, the screen-then-confirm loop is established end to end.
