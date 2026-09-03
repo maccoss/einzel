@@ -3189,3 +3189,80 @@ extent in `x` against the mirrors' penetration depth.
 `x`-extent and its `z`-contour are separate knobs, so if they move the two isochronicity
 conditions in different directions, both can be zeroed at once and \u00a723's second prong stands.
 That is a 2x2 Jacobian, and it is measurable directly.
+
+## 25. Both prongs fail, and the reason is structural
+
+\u00a723 offered two ways the instrument might reach its resolving power. Both were measured
+tonight, and both fail in the shipped parameterisation - which is the useful outcome, because
+the reason they fail is the same reason and it is forced.
+
+### The two conditions are nearly collinear in the foil's knobs
+
+The 2x2 Jacobian on the full track, five flights per configuration, foil at the shipped -3 V:
+
+| configuration | T | `c1` | ratio |
+| --- | --- | --- | --- |
+| nominal | 800.35 \u00b5s | -0.2428 | +0.0831 |
+| `foilOuterFrac` +0.12 | 791.14 | -0.3321 | -0.2073 |
+| `foilInnerAmplitude` +0.025 | 793.64 | -0.1559 | +0.2558 |
+| `foilVolts` -1 V | 784.85 | -0.2816 | -0.1080 |
+
+| knob | d(`c1`) | d(ratio) | direction |
+| --- | --- | --- | --- |
+| `foilOuterFrac` | -0.0893 | -0.2904 | -107.1\u00b0 |
+| `foilInnerAmplitude` | +0.0869 | +0.1728 | +63.3\u00b0 |
+| `foilVolts` | -0.0388 | -0.1910 | -101.5\u00b0 |
+
+The determinant is +0.0098, non-zero, so the conditions are *formally* independent. But the
+two shape vectors are **9.6\u00b0 from exactly opposed** and the voltage knob is 5.6\u00b0 from the
+first, so all three are very nearly one effective knob. Solving the linear system for the
+simultaneous zero asks for `foilOuterFrac` = **1.40** - a plate extending past the mirror
+mouth - and an inner-edge amplitude 4.6 times the measured one. Neither is the published
+geometry, and a linear extrapolation that far is not to be believed anyway.
+
+### And the mirrors cannot supply what the foil needs cancelled
+
+Walking `d2` from 30 to 74 mm at the published voltages, on the true per-oscillation path:
+
+| `d2` | 30 | 36 | 44 | 50 | 56 | 62 | 68 | 74 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `\|c1\|` | 0.0218 | 0.0062 | 0.0038 | 0.0124 | 0.0265 | 0.0278 | 0.0026 | 0.0871 |
+| `\|c2\|` | 1.459 | 0.769 | 0.040 | 0.448 | 0.742 | 0.988 | 1.353 | 2.279 |
+
+**The mirrors' whole range along this axis is ±0.09 and the foil needs +0.24 cancelled** -
+a third of the way. `TE1` can supply the rest arithmetically (at the measured sensitivity,
+`TE1` \u2248 0.11), but the `te1` scan of \u00a721 shows `c2` climbing monotonically as it does, reaching
+0.83 by `te1` = 0.02, so the cancellation is bought at a second-order cost that is worse than
+the first-order gain.
+
+### Why they fail together: the foil's benefit and its defect are the same quantity
+
+Both failures have one cause. **The fraction of each oscillation the ion spends inside the
+mirrors grows with energy** - a faster ion penetrates further (47.2, 45.9, 44.5 mm at
+-2.5%, 0, +2.5%) and dwells longer there, while the free-flight time falls as one over the
+speed. That is true *even for a perfectly focused mirror*, because focusing fixes the total
+period `\u03c4_x` and says nothing about how it divides between mirror and drift.
+
+The foil acts only during the free-flight part. So the foil's coupling to the ion falls as
+energy rises, whatever the foil's shape - and that **is** the energy term. It scales with how
+much foil the ion sees, which is the same quantity that produces the speed-isochronising
+action the foil exists for. That is why the Jacobian's two columns are 9.6\u00b0 apart rather than
+orthogonal: within this geometry the benefit and the defect are very nearly proportional, and
+shrinking the foil buys the second only by giving up the first.
+
+**So the energy term is structural, not a defect of the measured contour**, and the model as
+it stands cannot reach the published resolving power by either route. Something in the real
+instrument breaks the proportionality, and the guessed geometry is where to look.
+
+### The published `C(1)` sensitivity is a constraint on the depths, not a check
+
+The one unfitted published number now earns a second job. The crowd-control paper's Figure 2
+defines the quantity outright - `(t|e) = T\u207b\u00b9 \u2202T/\u2202\u03b5` - and the text states that `TE1` = 0.01
+shifts it by about 2.5 ppm/V; the beam is stated as 4 keV. So `dc1/dTE1` = 1.0, and the
+measured 2.2 is neither a units error nor a definitional half. **It is a statement that the
+mirror geometry is wrong**, because how much timing a given voltage perturbation buys depends
+on where the electrodes are. Fitting `d1..d4` to reproduce `dc1/dTE1` = 1.0 uses a published
+number that no other part of this model has touched, and it constrains exactly the four
+quantities that are guesses. That is the next fit, and it is better posed than anything
+tried so far: a published target, an unfitted residual, and the same parameters that must
+also carry `c2`.
