@@ -2407,7 +2407,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     breaks the instrument sign-reversed; the flight time there lands on the published value to
     3%. The template ships that arrangement. What the foil leaves is second order (-6.5), which
     is the well's shape not being harmonic - the subject of Grinfeld, Stewart, Makarov,
-    *Int. J. Mass Spectrom.* 2024, 1060, 169017, still the paper to read first.
+    *Nucl. Instrum. Methods Phys. Res. A* 1060 (2024) 169017, still the paper to read first.
 
     **The mirrors are measured and understood, and were not the instrument's limit.** The
     focusing coefficients `c1..c3` are figures of merit now, and the scaling law is the check:

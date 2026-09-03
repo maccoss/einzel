@@ -43,8 +43,7 @@ missing was a geometry fitted to them, and the seam to fit it through.
 **What remains beyond that** is the drift, and the fourth paper names the mechanism. A tilted mirror pair applies a *constant* force, so the drift period depends on
 amplitude; the published requirement is that it be constant to **5e-6**, and the ion foil's
 stated job is to "counter ToF aberrations induced by the converging ion mirrors" — exactly
-that. There is a dedicated paper on it (Grinfeld et al., Int. J. Mass Spectrom. 2024, 1060,
-169017), which is the one to get next. The other half is that these mirrors have no
+that. There is a dedicated paper on it (Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017), which is the one to get next. The other half is that these mirrors have no
 time-energy focus and cannot have one, because Thermo's optimised potential coefficients are
 applied here to guessed electrode depths — which is what finally makes the depth fit
 well-posed (§16).
@@ -123,7 +122,7 @@ two `TE` correction vectors are for (§18).
    nothing at 0.20 mm, and the whole 2.8× is in what a 200 µm spacer tilts over. Look for a
    mirror-assembly length or a mounting baseline in the patent literature or the detector
    paper's figures. **Every reversal number in this document depends on it.**
-2. **Get Grinfeld, Stewart, Makarov, Int. J. Mass Spectrom. 2024, 1060, 169017** —
+2. **Get Grinfeld, Stewart, Makarov, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** —
    *isochronous drift in elongated ion mirrors*. §16 derives the requirement (drift period
    constant to 5e-6) and §17 confirms the foil's published job is exactly to meet it. There
    is a whole paper on how; read it before optimising blind.
@@ -2448,8 +2447,7 @@ because it contradicts what this document previously concluded:
 So the **tilt does the reversal on its own**, and the foil's job is to counter the *time-of-flight
 aberration* the converging mirrors induce - which is precisely the amplitude-dependent drift
 period §16 measured. [C] also cites a dedicated paper on it: **Grinfeld, Stewart, Makarov,
-*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Int. J. Mass
-Spectrom. 2024, 1060, 169017** - which is the paper to get next.
+*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** - which is the paper to get next.
 
 ### Measured: mirrors only, no foil
 
@@ -4343,3 +4341,88 @@ sitting at the mesh error floor; section 45 found the objective measuring the wr
 this is the same failure in the *sample size*. Each time the arithmetic that would have caught
 it in advance - error propagation through the statistic actually being compared - is two lines
 long and was not done first.
+
+## 47. The Grinfeld paper, and the reconstruction closes
+
+Mike obtained the isochronous-drift paper by interlibrary loan. **It is the design document**,
+and it settles most of what sections 24 to 46 were inferring. Two corrections to how this
+project has cited it: it is **Nuclear Instruments and Methods in Physics Research A** 1060
+(2024) 169017, not Nucl. Instrum. Methods Phys. Res. A as recorded everywhere above; and the drift-control
+electrode is called a **stripe** here, with "ion foil" being other papers' name for it, while
+"prism" in this paper means the *steering deflector* - a pair of 90-degree wedges that set the
+injection angle. Two different devices.
+
+### What it confirms
+
+- **Section 3 is titled "Adiabatic drift"** and derives exactly the separation this work
+  arrived at independently: the action on an x-oscillation is an adiabatic invariant, and with
+  energy conservation it gives a drift equation in an **effective pseudopotential**. The
+  paper's treatment is the more correct one - the invariant is the **action** `J(y, eps)`,
+  where section 24 used the time-averaged potential, which is why that quadrature carried a
+  2.5 per cent systematic.
+- **The tilt's effect**: "a decrease of the drift angle by 2 alpha on every two subsequent
+  reflections in converging mirrors" - the same closed form as section 13's
+  `dv_z = V sin 2 alpha`, with `alpha` there being the angle *between* the mirrors where
+  section 13's is per mirror.
+- **Both drift-control methods** are the two this work used: a biased stripe whose shape
+  function sets its extent, and mirror convergence.
+
+### Table 1, against this model
+
+| | published | this model | |
+| --- | --- | --- | --- |
+| nominal drift length `y0` | **335 mm** | 334.61 mm | 1.001 |
+| oscillations | **25** | 25 | exact |
+| flight path | **~32 m** | 31.27 m | 0.977 |
+| acceleration | **4000 V** | 4000 V | exact |
+| nominal injection angle | **1.78 deg** | 2.29 deg | 1.29 |
+| mirror convergence angle | **0.045 deg** | 0.0458 per mirror | see below |
+| stripe bias | **-13.8 V** | -3.0 V | 4.6x low |
+| effective mirror separation | **641 mm** | (cap-to-cap 716.6) | - |
+
+**Three independent readings agree that the tilt was twice too large**, which resolves the
+most consequential guess in this reconstruction. The published 0.045 degrees is the angle
+between the mirrors - the paper says the convergence is "only a few hundred micrometers on the
+entire drift length", and 0.045 total gives 263 microns where a per-mirror 0.0458 gives 536.
+Independently, the tilt must supply only `a0` = 0.84 of the pseudopotential, so the tilt alone
+must reverse at 335/0.84 = 399 mm, which at the published 1.78 degrees needs 0.0232 per
+mirror. And `tiltBaseline` = 494 mm follows, against the 250 mm guessed. The guess was wrong
+by exactly a factor of two, and section 17's warning that it carried a 2.8-fold ambiguity was
+the right warning.
+
+### The stripe shape, published
+
+The optimised drift pseudopotential is given outright:
+
+    psi_m(eta) = a0 eta                                    a0 = 0.83999
+    psi_s(eta) = c1 eta + c2 eta^2 + ... + c5 eta^5
+    c = [0.75160, -7.52535, 14.0242, -9.17661, 2.08613]
+
+normalised so `psi_m(1) + psi_s(1) = 1`. **Summing the published coefficients gives 0.99996**,
+which confirms both the values and the reading of the parameterisation. Evaluated against
+Fig. 4's plotted curves it agrees again: `psi_s(0.5)` = **-0.2608** against a plotted dip near
+-0.27, and `psi_s(1)` = **+0.15997** against a plotted +0.16.
+
+**That answers section 46's open question and explains why nothing tried tonight got close.**
+`psi_s` **dips negative** to -0.26 at mid-drift before rising - the stripe *accelerates* the
+drift over the first half and retards it over the second - and it is fifth order. Every law
+tried in sections 30 to 45 was monotonic and second order at best: two terms of five, and the
+wrong sign over half the range. The published isochronicity is **2.1e-6 over plus or minus 10
+per cent of drift length** (Fig. 4, right), which is R = 238,000; the best this work reached
+was 1.2e-3, **580 times worse**.
+
+### And the design is now directly implementable
+
+The sixteen per-slice basis wells of section 42 make "produce this pseudopotential" a **linear
+least-squares problem** rather than an optimisation: find `V_k` minimising
+`|| sum_k V_k W_k(z) - eps_y0 psi_s(z/L) ||`, with `eps_y0 = 4000 sin^2(1.78 deg)` = 3.859 V.
+Solved with a small ridge term (the wells overlap five deep, so the normal matrix is
+ill-conditioned), it fits the published pseudopotential to **0.37 per cent rms on a 1.64 V
+span**, with smooth slice potentials from +0.17 V rising to -5.30 V at mid-drift and +5.77 V
+at the far end.
+
+So the night's screen and basis - built to make a blind search affordable - turn out to be
+exactly the machinery needed to *implement a published design* instead. That is a better use
+of them, and it needs no pixel measurement of a perspective drawing: the shape is analytic,
+and only the two scaling lengths `w0` and `w1` are unpublished, which the fit bypasses
+entirely by solving for potentials rather than for a plate outline.
