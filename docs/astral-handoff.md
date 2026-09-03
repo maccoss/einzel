@@ -3620,3 +3620,50 @@ argument says the injection angle and tilt should absorb at fixed drift distance
 1.3e-2, which caps R near 38 - fifteen times below the first-order estimate. Either this foil
 law has a much smaller `b`, or the 570 is meaningless. A five-point expansion in each
 direction plus a direct thermal-cloud flight settles it, and is running.
+
+## 33. First-order closure buys nothing: the second-order drift term binds
+
+The full expansion at section 32's best point, five samples in each direction rather than
+three:
+
+| term | value | contribution to arrival spread |
+| --- | --- | --- |
+| `c1` energy, first order | +0.0197 | 4.93e-4 |
+| `c2` energy, second order | -0.169 | 1.05e-4 |
+| `a` speed, first order | +0.0215 | 9.68e-4 |
+| **`b` speed, second order** | **-3.597** | **7.28e-3** |
+
+**R from the full expansion is 56, not the 570 the first-order figure implied**, and a direct
+thermal cloud gives **29.5**. So closing both first-order conditions bought nothing: the
+second-order drift term is now 15 times the first-order one, and it was always going to be -
+section 22 measured `b` = -6.5 for the contoured foil and the consequence was written down
+there and then not carried forward.
+
+**The comparison is worse than a null result and I cannot yet call it either way.** The
+shipped configuration measured R = 70.3 on 24 ions; this one gives 29.5 on 12. Different ion
+counts, both below the hundred that `ENSEMBLE_SMALL` warns at, and my practice of summing the
+absolute terms disagrees with the cloud in **both directions** - it predicted 22 for the
+shipped case that measured 70, and 56 for this one that measured 30. So the estimator is not
+calibrated and a twelve-ion peak cannot separate 30 from 70. An equal-ion-count comparison is
+the only honest way to say whether the optimised law is better or worse, and it has not been
+run.
+
+**Why `b` is hard to remove, and it is structural.** A purely harmonic well has `b` = 0
+exactly, because a harmonic oscillator's period is amplitude-independent. But the drift's
+total potential is the tilt's *linear* term plus the foil's, and linear-plus-quadratic is
+simple harmonic motion about a **shifted** centre - the ion starts away from that centre, and
+its return time to the starting plane then does depend on amplitude. `b` vanishes only if the
+foil dominates the reversal outright, and section 22 established it does not: the reversal
+point is 335 mm with the foil and without it, so the tilt sets the turning point and the foil
+only reshapes the timing.
+
+**The requirement, stated so it can be aimed at.** For R = 100,000 the total arrival spread
+must be below 5e-6. With a 4.5% thermal spread in `v_z` that needs `b` below **2.5e-3**,
+against the -3.597 measured - a factor of 1400. Two things could supply it and both are now
+worth testing rather than arguing: a foil coupling strong enough to dominate the reversal
+(the plates sit at the boards, 20 mm from the beam, and moving them closer raises the well per
+volt without exceeding the published bias), or a `v_z` spread far below thermal, which is
+exactly what the "pair of rectangular einzel lenses" in the published beam line would do -
+trading angular spread for beam width at constant emittance, with room for about a tenfold
+reduction inside the 40 mm board gap. The first is a scan now running; the second is a
+statement about the injection optics that this model does not contain.
