@@ -3980,3 +3980,46 @@ it: the drift spread fell from 8.3e-3 to the measurement floor of about 2e-3, th
 (centring the well on the injection plane) is confirmed by two independent observables, and
 no finer ranking than that is available from full-track flights at any mesh this machine can
 afford.
+
+## 41. A fast evaluator for foil laws, and the assumption that had to be dropped
+
+Section 40 concluded that foil optimisation should run against the section 24 quadrature
+rather than against full-track flights, because flight-time differencing is floored at about
+plus or minus 0.02 in `a` by mesh error at any cell size. Building that evaluator took three
+attempts and the failures are the useful part.
+
+**The architecture.** The foil is sixteen slices, the field is linear in their potentials, and
+the adiabatic well is a linear functional of the field, so
+
+    W(z) = sum_k  V_k  W_k(z)
+
+and any voltage law costs no solve at all once the sixteen basis wells `W_k` are known. The
+drift's coefficients then come from quadrature of the drift equation against `W`, which is
+what section 24 validated to 0.05 per cent on flight time.
+
+**First attempt: one kernel, translated.** If the slices are identical and the ion's x-motion
+is barely perturbed by the foil, one slice's well serves for all sixteen by translation - one
+solve instead of sixteen. Validated against a directly measured flat-plate well at -20 V
+uniform, it reproduces the **depth to 5.1 per cent** and the quantity the drift actually feels,
+`phi(z) - phi(0)`, to only **43 per cent of its span**, with the error concentrated at the ends:
++0.49 V at `z` = 26 mm and +0.26 V at 334 mm against +0.04 V in the middle. The kernel's
+support is 112 mm against a 21.9 mm slice pitch, so a slice's well overlaps five neighbours
+and the end slices are genuinely not translates of the middle one. **Rejected**: the drift
+coefficients depend on exactly the shape it got wrong.
+
+**Two weighting errors found on the way, both already documented one section earlier and both
+made again.** The first kernel was averaged **uniformly over x**, which section 24 established
+overstates the well 4.9-fold; weighting it over a full x-period along the real trajectory
+instead took the peak from 0.1313 V to 0.0725 V. And the first validation compared a
+flat-plate convolution against a **contoured-plate** measurement - two different geometries -
+which showed up as a flat model against a two-lobed measurement and looked like a modelling
+failure rather than a mismatched control.
+
+**What the geometry check bought.** With the trajectory weighting, slice 8's well peaks at
+187.6 mm against a slice centre of 185.9 mm - a 1.7 mm agreement that confirms the basis is
+indexed correctly. That check is cheap, independent of the physics, and would have caught an
+off-by-one in the slice indexing immediately; it is worth doing before any use of a basis.
+
+Sixteen separate solves are now running, each processed to its profile and its 30 MB volume
+deleted before the next. That removes the translation assumption entirely: superposition over
+true per-slice wells is exact up to interpolation.
