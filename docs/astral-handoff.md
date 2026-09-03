@@ -3818,3 +3818,33 @@ and in mine they did.
 
 Bounds widened to plus or minus 20 and the scan is running again over `g` up to 7. The
 interior optimum in `c` is real regardless, since it was bracketed within the valid range.
+
+## 38. Both drift orders cross zero at the same place
+
+Rescanned with the bounds fixed, at `V` = -20 on `20/38/84/130`:
+
+| `c` | `g` = 3.0 | `g` = 4.5 | `g` = 7.0 |
+| --- | --- | --- | --- |
+| -1.20 | `a` +0.0509, `b` -0.381, **3.06e-3** | +0.0509/-0.550, 3.19e-3 | -0.0905/+0.560, 5.21e-3 |
+| -1.50 | `a` +0.0060, `b` -0.712, **1.71e-3** | -0.0544/+0.389, 3.24e-3 | -0.0740/+0.249, 3.83e-3 |
+| -1.90 | `a` -0.0039, `b` +0.826, **1.85e-3** | -0.0371/+0.929, 3.55e-3 | -0.0956/+0.247, 4.80e-3 |
+
+**Both terms change sign between `c` = -1.5 and -1.9**: `a` from +0.0060 to -0.0039, `b` from
+-0.712 to +0.826. Interpolating, `a` = 0 at **`c` = -1.74** and `b` = 0 at **`c` = -1.68**.
+
+**They are the same condition, to four per cent in `c`.** That is section 34's argument
+confirmed quantitatively rather than in sign only: when the ion sits at the well's centre the
+return is half a period, a half period is amplitude-independent, and both orders of the
+amplitude expansion vanish together. Every earlier attempt traded them because the well's
+centre was elsewhere; here there is a single value of one parameter at which both go to zero.
+
+**Also, `g` = 3.0 is best at every `c`, so the optimum in `g` is at or below 3.** The previous
+section's claim that it lay beyond the scan edge was wrong twice over - wrong because the edge
+was my own parameter bound rather than physics, and wrong because larger `g` is worse anyway.
+The bounds bug cost nothing except a paragraph of mistaken reasoning.
+
+A fine scan of `c` from -1.62 to -1.78 against `g` from 2.2 to 3.0 is running. The expectation
+is a drift spread well below the present 1.71e-3, limited by whatever the *third* order does -
+and if the well is genuinely harmonic about the injection plane there is no third order in the
+amplitude either, so the limit should be the well's departure from quadratic rather than the
+expansion itself.
