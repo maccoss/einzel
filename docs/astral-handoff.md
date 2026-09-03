@@ -4480,11 +4480,14 @@ published 641 mm is an *effective* distance ("the ion's nominal velocity times h
 period"), not a physical cap-to-cap, so it is not a drop-in replacement for `capToCap`; the
 ratio is what the measurement pins.
 
-**The isochronicity was measured outside the plateau.** A first reading gave `a` = +5.20 where
-the design wants zero. But `eta_D` goes as `sin^2(theta)`, so the published plateau of
-`eta_D` = 1 ± 0.1 is only **± 5 per cent in angle**, and that scan used ± 6.75 per cent -
-± 13.5 per cent in drift length, outside the plateau, exactly where Fig. 4's right panel shows
-`tau` rising steeply away from its flat region. Re-measuring inside it is the test that means
+**A first isochronicity reading gave `a` = +5.20 where the design wants zero, and the
+explanation offered here was wrong.** It claimed the scan had strayed outside the published
+plateau, reasoning that `eta_D` goes as `sin^2(theta)` so `eta_D` = 1 ± 0.1 is only ± 5 per
+cent in angle. **That scaling holds for a constant-force drift and not for this one**: the
+designed `psi_total` rises steeply and nonlinearly, so an energy ratio of 1.232 moves the
+turning point only to `eta` = 1.099 - meaning ± 10 per cent in `eta_D` is ± 11.7 per cent in
+angle, and the ± 6.75 per cent scan was comfortably *inside* the plateau. The real cause was
+a crest in the fitted potential at the foil's far edge, section 48. Re-measuring inside it is the test that means
 something, and the arithmetic relating the two ranges is one line that should have been done
 before the first scan rather than after it.
 
