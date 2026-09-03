@@ -4578,3 +4578,35 @@ was constrained over `0 <= z <= L` because that is where the published `psi_s` i
 not what the design needs there. **A fit over the range the observable occupies is not enough
 when the dynamics can leave that range** - and a drift whose whole purpose is to reverse near
 the edge of the fitted domain will leave it whenever it is perturbed.
+
+### The design reproduces, and the precision limit is the discretisation
+
+With the stripe extended and the fit run past the plateau:
+
+| angle | ×0.955 | ×0.978 | ×0.989 | **×1.000** | ×1.011 | ×1.022 | ×1.045 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `t_turn`, us | 413.547 | 408.255 | 406.980 | **406.592** | **406.371** | 406.471 | 410.674 |
+| `z_turn`, mm | 324.62 | 331.13 | 334.16 | 337.23 | 340.27 | 343.36 | 350.17 |
+
+**The turning-point time is flat to 0.6 us over 3.3 per cent of injection angle, with an
+interior minimum near ×1.011 and rising at both ends** - which is the shape of Fig. 4's
+`tau(eta_D)`. `z_turn` is monotonic throughout, so the discontinuity is gone. The drift now
+behaves as the design says it should.
+
+Quantitatively it is **1.5e-3 against the published 2.1e-6**, and the factor of 700 has an
+arithmetic explanation rather than a mysterious one. **The isochronicity is a cancellation to
+2.1e-6, so the drift pseudopotential has to be right to about that same relative precision** -
+roughly **4 microvolts on a 3.9 V well**. The sixteen-slice fit achieves 7 millivolts rms,
+0.18 per cent, which is a thousand times too coarse and predicts a residual of order 1e-3.
+That is what was measured.
+
+**Which says something about the instrument rather than about this model.** A *segmented*
+stripe cannot meet this specification: sixteen independently biased slices reproduce the
+required shape to 0.2 per cent where six orders are needed. The paper shapes a **continuous**
+electrode instead - its shape function `w(y)` - and its literature review notes as a drawback
+that an earlier scheme "had to split all mirror electrodes into multiple segments with
+individual voltages". The discretisation limit found here is a measurement of why that choice
+was made.
+
+So the model reproduces the design's mechanism and geometry faithfully, and its precision
+ceiling is the way this template approximates the stripe, not the physics.
