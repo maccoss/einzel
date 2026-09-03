@@ -4313,3 +4313,33 @@ reduce `c2`. Three conditions, four parameters, all three published or physicall
 and none of them fitted to a number this model produced. The foil work of sections 30 to 45
 can then be redone on that geometry - it is cheap now, via the screen - and the resolving
 power read off with the drift no longer binding.
+
+### The foil confirmation is inconclusive, not negative
+
+The FWHM-optimised law flown against the hand-tuned one:
+
+| law | ±3 sigma width | **cloud R, 16 ions** |
+| --- | --- | --- |
+| hand-tuned | 4.522 us | 206.2 |
+| FWHM-optimised | 4.889 us | **220.1** |
+
+Predicted 1.60 times, delivered **1.07**. The earlier peak-to-peak-optimised law delivered
+1.09. So neither objective moved the reported resolving power, and it would be easy to write
+the foil optimisation off.
+
+**But sixteen ions cannot see the difference.** A FWHM from `N` ions carries about
+`1/sqrt(2N)`, which is 18 per cent here, so the two measurements are 206 plus or minus 37 and
+220 plus or minus 40. The predicted value - 273, from taking the screen's drift spread and
+adding the measured energy terms - sits **inside** those error bars. The experiment cannot
+distinguish "no improvement" from "exactly the predicted improvement", and reporting either
+would be reporting the sampling error.
+
+A 72-ion comparison is running, which brings the FWHM uncertainty to about 8 per cent and
+makes a 1.4-fold change decisive either way.
+
+**The methodological point is the one that keeps recurring tonight**: the confirmation must be
+able to resolve the effect it is confirming. Sections 39 and 40 found the drift coefficients
+sitting at the mesh error floor; section 45 found the objective measuring the wrong statistic;
+this is the same failure in the *sample size*. Each time the arithmetic that would have caught
+it in advance - error propagation through the statistic actually being compared - is two lines
+long and was not done first.
