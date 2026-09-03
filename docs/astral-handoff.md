@@ -4426,3 +4426,29 @@ exactly the machinery needed to *implement a published design* instead. That is 
 of them, and it needs no pixel measurement of a perspective drawing: the shape is analytic,
 and only the two scaling lengths `w0` and `w1` are unpublished, which the fit bypasses
 entirely by solving for potentials rather than for a plate outline.
+
+### Flying it: a units error of mine, and what the diagnosis cost
+
+The first attempt at the published design put the tilt-only reversal at **40.6 mm** where
+399 was predicted. The ratio is 9.83, which is 3.14 squared - and `z_rev` goes as the square
+of the injection angle, so the angle was pi times too small.
+
+`injectionAngle` is the **tangent** of the angle, which its own description in the template
+says outright ("Tangent of the angle between the trajectory and the mirror axis, setting the
+drift rate as V tan(theta)"). I passed `degrees/180` as though it were half turns - the
+convention used for `mirrorTilt` and every other angle in this template - giving 0.009889
+where `tan(1.78 deg)` = 0.031077. Correcting it predicts 40.6 x 9.88 = **401 mm** against the
+399 expected, to half a per cent, so the model was right and the conversion was not.
+
+**Worth recording because the diagnosis was free and the error was avoidable.** The factor was
+identifiable from a single ratio - 9.83 is conspicuously pi squared, and only one quantity in
+the drift enters squared - and the correct convention was written in the parameter I was
+setting. Two habits would each have caught it: reading the description of a parameter before
+overriding it, and checking the tilt-only reversal against its closed form *before* adding the
+stripe on top. The second is the general one: **when implementing a two-part design, verify
+each part alone against its own prediction before combining them**, because the combined
+result has no unique diagnosis.
+
+This is the sixth convention or harness error of the night, and they all share a shape: a
+quantity read under the wrong convention, producing a plausible number rather than a failure.
+The others are collected in the harness note above.
