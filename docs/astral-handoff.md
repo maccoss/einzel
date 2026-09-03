@@ -3483,3 +3483,43 @@ that well is buildable directly: a flat plate at `foilVolts (1 - f^2)`, rising f
 at injection to zero at the far end. Testing it against uniform and linear controls is the
 measurement in flight, and it is a sharp one - the prediction is not a smaller `c1` but a
 collapse.
+
+## 30. The energy term changes sign, so a zero exists
+
+Section 24's scaling argument named the one foil profile with no energy term: a potential
+rising as `z^2` from the injection point. The foil's sixteen slices can carry any voltage
+law, so it is buildable directly - a flat plate (contour removed, so the law *is* the well) at
+`phi = V (1 - f^2)`, `f = slice/(slices-1)`. Flown on `20/38/84/130`, against uniform and
+linear controls:
+
+| profile | V | T | **`c1_foil`** | speed ratio |
+| --- | --- | --- | --- | --- |
+| off | 0 | 855.03 us | - | +0.9949 |
+| uniform | -3 | 807.32 | **-0.3659** | -0.3393 |
+| linear | -6 | 747.30 | **+0.1092** | +1.0190 |
+| quadratic | -6 | 725.23 | **+0.0793** | +0.8209 |
+| quadratic | -12 | 645.12 | **+0.0683** | +0.4791 |
+
+**The energy term changes sign with the voltage law**, from -0.366 uniform to +0.109 linear.
+That is the finding: a zero lies between them, so a foil with no energy term exists inside
+this parameterisation and does not need a plate past the mirror mouth or an inner edge 4.6
+times the measured one. The speed ratio changes sign over the same span, from -0.339 to
++1.019.
+
+Two things are worth noting before the search. **The measured contour was helping**: a flat
+uniform plate gives -0.366 where the pixel-measured contour at the same bias gives -0.224, so
+the published shape is already doing part of this job - which is a point in favour of the
+contour being the real instrument's answer rather than an artefact of my pixel reading. And a
+*quadratic* law does not by itself zero the term - it overshoots to +0.079 - which is the
+expected consequence of section 27's correction: the harmonic well kills the dominant term and
+leaves the smaller, opposite-signed time-split residue, so the profile that zeroes the total
+is quadratic **detuned**, exactly as predicted there.
+
+**This reopens what section 25 closed.** That section concluded both routes fail because the
+foil's benefit and defect are 9.6 degrees from proportional. That Jacobian was measured over
+the *shape* knobs - `foilOuterFrac`, `foilInnerAmplitude`, `foilVolts` - and remains true of
+them. The **voltage law along the drift** is a knob section 25 never tested, and it moves the
+two quantities very differently: uniform to quadratic swings `c1_foil` by 0.445 while the
+ratio swings 1.16, in the same direction but at a ratio of 2.6 rather than the near-collinear
+1.05 of the shape knobs. A two-parameter search over bias and quadratic fraction is now
+running, and unlike section 25's it has room to converge.
