@@ -3716,3 +3716,36 @@ from the tilt's measured deceleration of 3.68e6 m/s^2 and the fivefold reduction
 imposes (section 24), `c` should be of order one. That scan is running, and unlike the three
 before it the two conditions are not expected to trade, because they are the same condition
 seen twice.
+
+## 35. The sign of the linear term, got wrong and then measured
+
+Section 34 predicted that a linear term in the foil law would cancel the tilt at the injection
+plane and make `a` and `b` vanish together. Scanned at `V` = -20:
+
+| `c` | `g` | T | `a` | `b` | drift spread |
+| --- | --- | --- | --- | --- | --- |
+| **0** | 0.63 | 660.8 us | **+0.0215** | -3.597 | **8.3e-3** |
+| 0.40 | 2.00 | 440.2 | +0.2162 | -0.916 | 1.16e-2 |
+| 0.90 | 1.20 | 458.3 | +0.3667 | -0.795 | 1.81e-2 |
+| 1.60 | 1.20 | 397.8 | +0.4023 | +0.165 | 1.84e-2 |
+
+**Every point is worse than `c` = 0, and `a` grew tenfold instead of vanishing.** The flight
+time is the tell: 661 us at `c` = 0 falling to 398 as `c` rises, so the added term is
+*decelerating* the ion further rather than cancelling anything. With `phi = V (1 - c f)` and
+`V` negative, `phi` **rises** along the drift for positive `c`, and a rising potential
+decelerates a positive ion - the same direction the tilt already pushes. **The linear term
+needs the opposite sign.**
+
+The magnitude follows from quantities already measured rather than being scanned for. The
+tilt's deceleration is 3.68e6 m/s^2 (section 24, from the bare-tilt reversal and flight time),
+so as a potential gradient it is `a0/(q/m)` = 3.68e6 / 1.93e5 = **19.1 V/m**. The foil must
+supply that with the opposite sign at `z` = 0, and the x-average costs a factor of about five
+(section 24), so `c` should be of order **-1.6 to -2.5** on the plate. That scan is running.
+
+**Two things worth keeping from getting it wrong.** The physical argument in section 34 is
+untouched - injecting at the well's centre still makes `a` and `b` the same condition, and the
+scan did not test that claim, it tested a law that moved the centre *further away*. And the
+diagnostic that caught it was the flight time, not the coefficients: a term meant to cancel a
+decelerating force should lengthen the flight, and this one shortened it by 40 per cent. **When
+a knob is supposed to oppose something, check the sign of its first-order effect on the
+simplest observable before reading its second-order effect on the interesting one.**
