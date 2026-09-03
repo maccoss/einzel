@@ -2003,7 +2003,7 @@ anything.** (Predictions use the pre-correction `t_r`; with `capToCap` at 716.6 
 
 ### The published drift distance and oscillation count fix the injection angle
 
-`D / N = t_r \u00b7 V \u00b7 tan(theta) / 2` **contains no convergence term**, so those two published
+`D / N = t_r · V · tan(theta) / 2` **contains no convergence term**, so those two published
 numbers determine the injection angle on their own, whatever supplies the deceleration:
 
 | published D | N | D/N | implied theta | total k needed | **not from mirror tilt** |
@@ -2025,7 +2025,7 @@ spacer, exactly and unimprovably. The published reversal needs 2.4 to 3.3 times 
 and [A] names what it does come from: "a returning electrostatic potential formed by mirror
 tilt **as well as refraction on the ion foil**".
 
-In energy terms the whole returning job is `(v_z0/V)^2 \u00b7 4000 eV` = **6.4 eV**, of which
+In energy terms the whole returning job is `(v_z0/V)^2 · 4000 eV` = **6.4 eV**, of which
 the foil must supply about **4.1 eV** as a rise in the on-axis potential along the drift.
 Against a foil biased between 0 and -20 V that is a penetration of about 20 per cent, which
 is entirely ordinary - and the well measured in section 11 swings 2.19 V at -20 V, the same
@@ -2273,7 +2273,7 @@ jobs, two features of the same electrode.
 
 ## 16. The resolving power, and why it has two separate limits
 
-Reversal is reproduced (\u00a715). The resolving power is not, and measuring it on the
+Reversal is reproduced (§15). The resolving power is not, and measuring it on the
 reproducing configuration decomposes it into two independent problems with different owners.
 
 A thermal cloud of 8 ions of m/z 500 launched at the injection end, flown out and back to a
@@ -2282,20 +2282,20 @@ instrument's is about 100,000 at m/z 200:**
 
 | case | arrival width | R |
 | --- | --- | --- |
-| graded foil, 300 K | **355 \u00b5s** | 1.31 |
-| graded foil, **0 K** \u2014 energy spread only | **19.2 \u00b5s** | 20.4 |
-| uniform foil, 300 K | 84.9 \u00b5s | 4.20 |
+| graded foil, 300 K | **355 µs** | 1.31 |
+| graded foil, **0 K** — energy spread only | **19.2 µs** | 20.4 |
+| uniform foil, 300 K | 84.9 µs | 4.20 |
 
-Published R exceeds 100,000, and at this 779 \u00b5s flight that needs an arrival width under
+Published R exceeds 100,000, and at this 779 µs flight that needs an arrival width under
 **3.9 ns**. So both rows above are limits, and neither is close.
 
 ### Limit one: the drift is not isochronous, and a constant force cannot be
 
-**This is a structural result, not a tuning failure.** \u00a714 shows the mirror tilt is exactly
+**This is a structural result, not a tuning failure.** §14 shows the mirror tilt is exactly
 a *constant* force along the drift, and a linearly graded foil adds another constant one. Under
-a constant force the time to reverse and return is `2 v_z0 / a` \u2014 **linear in the initial
+a constant force the time to reverse and return is `2 v_z0 / a` — **linear in the initial
 drift velocity**. A 300 K thermal spread gives `sqrt(kT/m)` = 70.6 m/s on a `v_z0` of 1372,
-so \u00b15%, and 5% of 779 \u00b5s is \u00b139 \u00b5s. That is the scale observed, and no amount of tuning a
+so ±5%, and 5% of 779 µs is ±39 µs. That is the scale observed, and no amount of tuning a
 constant force removes it.
 
 **What does remove it is a harmonic drift potential.** A quadratic well is isochronous: its
@@ -2305,7 +2305,7 @@ energy spread does not change the period either.
 
 And it is expressible inside the published bias range. Biasing the foil as
 `foilVolts (1 - u^2)` with `u` the drift fraction gives an on-axis potential rising as `z^2`
-while every plate stays between 0 and -20 V - the same trick as the linear grade of \u00a715,
+while every plate stays between 0 and -20 V - the same trick as the linear grade of §15,
 one power up. **That is the natural reading of why the published contour is not a simple
 taper.**
 
@@ -2330,7 +2330,7 @@ term should move it by orders rather than per cents.
 
 **And the earlier ±2.5% figure was pessimistic in two ways worth naming.** That is the
 mirrors' *acceptance window* - the interval `C(0)` was optimised to keep the oscillation
-time flat across, per \u00a71 - not a beam's actual energy spread, and using it as a cloud width
+time flat across, per §1 - not a beam's actual energy spread, and using it as a cloud width
 asks the model to fly the worst case the design tolerates. Pure energy spread at that width
 gives R = 760, not the 20 first reported; the 20 came from adding 0.4 mm of spatial spread
 on top. Both are the model's numbers, not the instrument's.
@@ -2339,7 +2339,7 @@ on top. Both are the model's numbers, not the instrument's.
 first-order term uncancelled this model gives `R = 21.5 / spread`. A first-order focus
 replaces that with `R = k / spread^2`, and reaching about 100,000 across the stated ±2.5%
 acceptance needs `k` near 0.06 - a small second-order coefficient, i.e. some second-order
-correction as well, which is exactly what \u00a71's `TE2` parameter tunes and what [B] means by
+correction as well, which is exactly what §1's `TE2` parameter tunes and what [B] means by
 "the third-order temporal focus". So the published resolving power is consistent with a
 mirror focused to second order over its acceptance, and this model is consistent with one
 focused to none.
@@ -2396,7 +2396,7 @@ the three profiles above is 15 per cent - five orders short.
 the machinery this project already has.** The foil is built from 16 slices along the drift,
 each with its own potential expression, so the profile is a 16-parameter surface and making
 the drift period amplitude-independent is an objective over it. `Einzel.Sweeps` has both
-optimisers and \u00a713's figure-of-merit registry is where such an objective registers. **This
+optimisers and §13's figure-of-merit registry is where such an objective registers. **This
 is the first thing in the Astral work that genuinely wants the optimiser** rather than a
 derivation, and it is also the most likely reason the published contour is "specially
 shaped" rather than a simple taper: a shape optimised for high-order isochronicity is not a
@@ -2404,16 +2404,16 @@ shape anybody would guess.
 
 ### Limit two: these mirrors have no time-energy focus, and cannot have one
 
-Even at 0 K the arrival width is 19.2 \u00b5s, which caps R at 20 by itself. That is the energy
+Even at 0 K the arrival width is 19.2 µs, which caps R at 20 by itself. That is the energy
 spread, and removing it is what the mirrors' `(t|e)` tuning exists for.
 
 **But this model cannot be energy-focused as it stands, for a reason worth stating plainly.**
-The published `C(0)` coefficients (\u00a71) were optimised against Thermo's electrode geometry.
+The published `C(0)` coefficients (§1) were optimised against Thermo's electrode geometry.
 `d1..d4` here are guesses. Applying their potentials to different depths gives a mirror that
-is *not* at its own focus - there is no reason it should be. So the 19.2 \u00b5s is the expected
+is *not* at its own focus - there is no reason it should be. So the 19.2 µs is the expected
 consequence of an unfitted geometry rather than a defect.
 
-**This is what makes `d1..d4` a well-posed fit at last.** \u00a713 forbids fitting them against the
+**This is what makes `d1..d4` a well-posed fit at last.** §13 forbids fitting them against the
 drift reversal, because the impulse law has no free parameter there. The energy focus is the
 opposite case: it depends on the mirror's field shape and on nothing else, so the depths are
 exactly what moves it. Fit them by minimising the arrival width of an energy-spread cloud at
@@ -2427,11 +2427,11 @@ the natural companion to the depth fit.
 
 ## 17. The tilt alone reverses the drift. Sections 14 and 15 are superseded.
 
-A fourth paper settles this, and it arrived after \u00a7\u00a714 and 15 were written.
+A fourth paper settles this, and it arrived after §§14 and 15 were written.
 
 > **[C]** Stewart, Petzoldt, Shanley, Grinfeld, Denisov et al., *A High Dynamic Range Ion
 > Detector for Multireflection Time-of-Flight Analyzers*, J. Am. Soc. Mass Spectrom.
-> **2024**;35:2390\u20132399. Reports >1e4 single-shot dynamic range and **>100k resolving
+> **2024**;35:2390–2399. Reports >1e4 single-shot dynamic range and **>100k resolving
 > power** with 10 keV postacceleration, focal-plane correction and an integrated tilt
 > corrector.
 
@@ -2447,7 +2447,7 @@ because it contradicts what this document previously concluded:
 
 So the **tilt does the reversal on its own**, and the foil's job is to counter the *time-of-flight
 aberration* the converging mirrors induce - which is precisely the amplitude-dependent drift
-period \u00a716 measured. [C] also cites a dedicated paper on it: **Grinfeld, Stewart, Makarov,
+period §16 measured. [C] also cites a dedicated paper on it: **Grinfeld, Stewart, Makarov,
 *Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Int. J. Mass
 Spectrom. 2024, 1060, 169017** - which is the paper to get next.
 
@@ -2455,36 +2455,36 @@ Spectrom. 2024, 1060, 169017** - which is the paper to get next.
 
 | convergence, injection angle | max z | reflections | drift per reflection |
 | --- | --- | --- | --- |
-| 0.20 mm, 2.00\u00b0 \u2014 this document's earlier reading | 714.81 mm | 61 | 11.72 mm |
-| 0.40 mm, 2.00\u00b0 | 357.53 mm | 31 | 11.53 mm |
-| **0.56 mm, 2.29\u00b0** | **334.76 mm** | **25** | **13.39 mm** |
+| 0.20 mm, 2.00° — this document's earlier reading | 714.81 mm | 61 | 11.72 mm |
+| 0.40 mm, 2.00° | 357.53 mm | 31 | 11.53 mm |
+| **0.56 mm, 2.29°** | **334.76 mm** | **25** | **13.39 mm** |
 | **published** | **310 to 360 mm** | **24 to 26** | **13.40 mm** |
 
 **All three published figures, exactly, with no foil in the model.** And it is not a fit with
 spare parameters: `D/N` fixes the injection angle without reference to the convergence
-(\u00a714), and the convergence then follows from either `N` or `D` alone. Two published numbers,
+(§14), and the convergence then follows from either `N` or `D` alone. Two published numbers,
 two unknowns, and the third number checks.
 
 ### What was wrong, and it was one thing
 
-`\u03b1 = 8.0e-4` is needed; this document used `2.857e-4`. The factor of 2.8 is entirely in what
-"a 200-\u00b5m thick spacer" is taken to tilt over. The template computed
-`asin(convergence / 2 / driftLength)` - reading the *gap* as closing by 200 \u00b5m across the
-*drift length*. The value that works corresponds to a 200 \u00b5m spacer acting over a **~250 mm
-baseline**, tilting each mirror by 200 \u00b5m rather than closing the gap by it. Which of those
+`α = 8.0e-4` is needed; this document used `2.857e-4`. The factor of 2.8 is entirely in what
+"a 200-µm thick spacer" is taken to tilt over. The template computed
+`asin(convergence / 2 / driftLength)` - reading the *gap* as closing by 200 µm across the
+*drift length*. The value that works corresponds to a 200 µm spacer acting over a **~250 mm
+baseline**, tilting each mirror by 200 µm rather than closing the gap by it. Which of those
 the hardware means is not stated in any of the three papers, and it is now the single most
 consequential unpublished number in this model.
 
-**So \u00a714's conclusion that the foil supplies 58 to 69 per cent of the returning impulse is
-withdrawn**, along with \u00a715's search for a foil configuration to deliver it. Both were built
+**So §14's conclusion that the foil supplies 58 to 69 per cent of the returning impulse is
+withdrawn**, along with §15's search for a foil configuration to deliver it. Both were built
 on a convergence too small by 2.8x, and the deficit they attributed to a missing mechanism
-was the geometry. \u00a715's graded-foil result stands as a measurement - a graded foil *does*
+was the geometry. §15's graded-foil result stands as a measurement - a graded foil *does*
 decelerate the drift, and the numbers in it are correct - but it is not what the instrument
 does.
 
-**And \u00a714's inverted injection angle of 2.29\u00b0 was right.** It was withdrawn in \u00a715 because the
+**And §14's inverted injection angle of 2.29° was right.** It was withdrawn in §15 because the
 graded-foil configuration overshot at that angle; the overshoot was the foil contribution
-that should not have been there. `D/N` inverts to 2.29\u00b0 and the tilt-only model reproduces
+that should not have been there. `D/N` inverts to 2.29° and the tilt-only model reproduces
 everything at it.
 
 ### Shipped, and the published input separated from the guess
@@ -2495,11 +2495,11 @@ whole uncertainty in the drift reversal sits in one of them:
 | parameter | value | status |
 | --- | --- | --- |
 | `spacerThickness` | 0.200 mm | **published** |
-| `tiltBaseline` | 250 mm | **guessed** \u2014 the length the spacer tilts each mirror over |
+| `tiltBaseline` | 250 mm | **guessed** — the length the spacer tilts each mirror over |
 | `mirrorTilt` | `asinPi(spacerThickness / tiltBaseline)` | derived |
 | `convergence` | 0.56 mm | derived, and reported because earlier revisions declared it directly |
-| `injectionAngle` | 0.03998, i.e. 2.29\u00b0 | from `D/N`, which contains no convergence term |
-| `foilVolts` | **0 V** | inside the published 0 to \u221220 V, so the foil contributes nothing |
+| `injectionAngle` | 0.03998, i.e. 2.29° | from `D/N`, which contains no convergence term |
+| `foilVolts` | **0 V** | inside the published 0 to −20 V, so the foil contributes nothing |
 
 `einzel run` on the shipped file, unmodified except for a detector at the injection end:
 
@@ -2511,14 +2511,14 @@ whole uncertainty in the drift reversal sits in one of them:
 **The foil ships at zero bias on purpose.** It contributes exactly nothing there, so the
 reversal this template reproduces is unambiguously the tilt's and not a foil contribution
 standing in for a geometry error - which is precisely the mistake that produced the
-superseded \u00a7\u00a714 and 15. The geometry is kept because countering the mirrors' time-of-flight
+superseded §§14 and 15. The geometry is kept because countering the mirrors' time-of-flight
 aberration is the foil's published job and the profile that does it is an unrun
 optimisation.
 
 ### What this does to the resolving power
 
-It makes \u00a716 sharper rather than obsolete. The foil's published job is exactly the problem
-\u00a716 identified and quantified: the drift period must be constant to **5e-6** across the
+It makes §16 sharper rather than obsolete. The foil's published job is exactly the problem
+§16 identified and quantified: the drift period must be constant to **5e-6** across the
 thermal spread in `v_z0`, the constant force of a tilted mirror pair makes it
 amplitude-dependent instead, and closing that is a shape optimisation over the foil's
 profile. [C] calls that "countering ToF aberrations induced by the converging ion mirrors",
@@ -2530,7 +2530,7 @@ right.
 
 ## 18. How to make the mirrors focus, and why c1 is not the objective
 
-\u00a716 measured that this model's mirrors do no energy focusing: `R x spread` is constant at
+§16 measured that this model's mirrors do no energy focusing: `R x spread` is constant at
 21.5 over a 25-fold range, so the flight time is first-order limited. This section is the
 route out, and it corrects the obvious first answer.
 
@@ -2538,7 +2538,7 @@ route out, and it corrects the obvious first answer.
 
 A mirror focuses when the first-order time-energy coefficient is cancelled - `c1` in
 `T/T0 = 1 + c1 d + c2 d^2 + ...`, with `d` the fractional energy offset.
-`FocusingAnalysis.Fit` has computed those coefficients since Stage 4 and \u00a712 asks for them
+`FocusingAnalysis.Fit` has computed those coefficients since Stage 4 and §12 asks for them
 by name. **They were not exposed as figures of merit**, so no study or optimiser could name
 one - the same "exists only in an assembly description" state `ITransportMode` and the
 journal were once in.
@@ -2624,7 +2624,7 @@ still first-order limited with a `c1` merely 6.8 times smaller than nominal - an
 ±2.5% the scan picks 44 mm, 9,552 against 2,044. At ±0.1% the ordering reverses six-fold,
 1,138,010 against 175,552, because `1/s^2` overtakes `1/s`. **Optimising at the acceptance
 window rather than at the beam's actual spread selects the wrong geometry** - and ±2.5% is
-the acceptance, per \u00a71.
+the acceptance, per §1.
 
 **One parameter reaches the published figure.** With `c1` cancelled, `R x s^2` = 1.2, so
 R = 100,000 at an energy spread of **±0.35%**, and better than that below it.
@@ -2680,7 +2680,7 @@ basis for a half-maximum, so the figure carries real sampling error.
 **What the design is not.** It is *a* geometry consistent with the published potentials, not
 Thermo's. Four depths against three cancellation conditions leaves a one-parameter family
 even before `d4`, `mouth` and the two `TE` vectors are counted, and nothing here pins the
-turning depth that \u00a714's `capToCap` derivation rests on. What it establishes is that the
+turning depth that §14's `capToCap` derivation rests on. What it establishes is that the
 published resolving power is reachable from the published potentials by fitting the geometry,
 which was the open question - not what the geometry is.
 
@@ -2726,14 +2726,14 @@ refined mesh before being quoted as an optical limit rather than a numerical one
 **Two things not to read into the numbers yet.** This is **one reflection**, so it measures
 a mirror in isolation rather than twenty-five of them compounding. And `d1..d4` are four
 parameters against one condition, so cancelling anything leaves a three-parameter family -
-`c2`, the spatial focus, and the turning depth that \u00a714's `capToCap` derivation rests on are
+`c2`, the spatial focus, and the turning depth that §14's `capToCap` derivation rests on are
 what pick a point in it. R was still rising at the edge of the scan above; where it turns
 over, and what it reaches, is the next measurement.
 
 ## 19. Two checks that moved the goalposts
 
 Both were run to answer "what would convince us the model is right", and both came back
-saying the focusing work in \u00a718 is narrower than it read.
+saying the focusing work in §18 is narrower than it read.
 
 ### The `C(1)` test: the one unfitted published check, and it is a factor of two out
 
@@ -2757,29 +2757,29 @@ it. Recorded as a discrepancy to settle against the paper's definition, not as a
 
 ### `c1` depends on the field-free path, so a mirror is focused FOR a drift length
 
-The `te1` = 0 row gives `|c1|` = 0.0043 at the shipped depths, where \u00a718 measured 0.0189 -
+The `te1` = 0 row gives `|c1|` = 0.0043 at the shipped depths, where §18 measured 0.0189 -
 same mirror, different launch and detector offsets. Isolated directly, same depths, one
 reflection, only the free path changing:
 
 | launch offset | flight | `\|c1\|` |
 | --- | --- | --- |
-| 5 mm | 17.449 \u00b5s | **0.0224** |
-| 20 mm | 18.595 \u00b5s | **0.0518** |
-| 60 mm | 21.648 \u00b5s | **0.1151** |
-| 120 mm | 25.904 \u00b5s | **0.1730** |
+| 5 mm | 17.449 µs | **0.0224** |
+| 20 mm | 18.595 µs | **0.0518** |
+| 60 mm | 21.648 µs | **0.1151** |
+| 120 mm | 25.904 µs | **0.1730** |
 
 **`c1` grows 7.7-fold with the free path.** It is not a property of the mirror; it is a
 property of the mirror *and* the drift together - which is physically right, since first-order
 focus is the condition that the mirror's positive `dT/dE` cancels the free flight's negative
 one. A mirror is focused *for* a given path.
 
-**So \u00a718's optimised depths are the right answer to the wrong question.** They focus a free
+**So §18's optimised depths are the right answer to the wrong question.** They focus a free
 path of about 530 mm - one reflection with a 10 mm offset - where the Astral's is about
 1.08 m per oscillation. The scaling laws stand (they are about which order binds); the
 particular depths, and every R quoted from them, are for a measurement geometry rather than
 for the instrument.
 
-**The consequence is the same one \u00a718 already listed and under-weighted: the focusing has to
+**The consequence is the same one §18 already listed and under-weighted: the focusing has to
 be measured on the real track.** One reflection with an arbitrary launch point is not the
 experiment. The full flight - 24 to 26 oscillations, the real drift per oscillation, a thermal
 cloud, a detector - is the only configuration in which "the mirror is focused" means what it
@@ -2800,25 +2800,25 @@ The first row is the one that matters. Everything else is a proxy for it.
 
 ## 20. The full track flies, end to end
 
-\u00a719 said the full flight had never been run and that everything else was a proxy for it. It
-has now: one ion of m/z 500 at 4 keV, launched at the injection end at the shipped 2.29\u00b0,
+§19 said the full flight had never been run and that everything else was a proxy for it. It
+has now: one ion of m/z 500 at 4 keV, launched at the injection end at the shipped 2.29°,
 shipped depths, `te1` = 0, detected on a plane 2 mm behind the launch point on its return.
 43 seconds of wall time, 8,105 trajectory samples.
 
 | | published | this flight |
 | --- | --- | --- |
 | oscillations, total | 24-26 | **25** - 25 reflections out, 25 back |
-| drift reversal | 310-360 mm | **334.61 mm**, at t = 420.1 \u00b5s |
+| drift reversal | 310-360 mm | **334.61 mm**, at t = 420.1 µs |
 | drift per reflection | 13.40 mm | **13.38 mm** |
 | path length | ~30 m | **31.27 m** |
-| flight time | ~779 \u00b5s | **853.69 \u00b5s**, 9.6% long |
+| flight time | ~779 µs | **853.69 µs**, 9.6% long |
 | `\|v_z\|` returned against launched | - | 1572.8 against 1569.6 m/s |
 
 **Every geometric number in the register reproduces on one flight.** The reversal and the
-per-reflection drift were already matched in \u00a717 on the outbound half; what is new is that
+per-reflection drift were already matched in §17 on the outbound half; what is new is that
 the return half is the mirror image the tilt mechanism says it must be - 25 reflections each
 way, `|v_z|` conserved to 0.2% over the whole round trip, and the ion arriving back where it
-started. \u00a713's closed form (`\u0394v_z = V sin 2\u03b1` per reflection, independent of the electrode
+started. §13's closed form (`Δv_z = V sin 2α` per reflection, independent of the electrode
 design) predicts exactly this symmetry, and this is it measured on the whole instrument
 rather than on one reflection.
 
@@ -2833,12 +2833,12 @@ total; the paper's 24-26 is the total and its 12-13 is the outbound half. 25 ref
 outbound over 334.61 mm is 13.38 mm per reflection. All three readings are consistent with
 each other and with [A].
 
-**What this changes about \u00a718 and \u00a719.** The wrong-path caveat was that one reflection with an
+**What this changes about §18 and §19.** The wrong-path caveat was that one reflection with an
 arbitrary launch point is not the instrument. This is the instrument. The focusing fit is now
 being run on the true per-oscillation path (half an oscillation from the mid-plane, which has
 the same `c1` as the whole track if every oscillation is identical), and its result should be
 confirmed *here*, by flying an energy-spread cloud round the whole track and reading R off the
-arrivals. That confirmation is the measurement \u00a719 said was missing.
+arrivals. That confirmation is the measurement §19 said was missing.
 
 ## 21. Three measurements on the true path
 
@@ -2859,15 +2859,15 @@ the shipped depths, trimming `c1` to zero leaves `c2` = 0.52 and caps R near 1,5
 acceptance. `te1` is the instrument's own `c1` knob and it cannot reach the higher orders; that
 is why the paper has a second vector, and why **the depths must carry `c2` and `c3`**. The fit is
 now well-posed for the first time: depths for the higher orders, `te1` for the first. The
-slope `dc1/dte1` is 2.2 here against the published 1.0 - the same factor of two as \u00a719.
+slope `dc1/dte1` is 2.2 here against the published 1.0 - the same factor of two as §19.
 
 ### The drift is a constant-force motion, measured
 
-Same full track as \u00a720, injection angle scaled ±5% so `v_z0` varies at fixed `|v|`:
+Same full track as §20, injection angle scaled ±5% so `v_z0` varies at fixed `|v|`:
 
 | angle / a0 | flight | dT/T | dv/v | **(dT/T)/(dv/v)** |
 | --- | --- | --- | --- | --- |
-| 0.950 | 811.29 \u00b5s | -4.97% | -5.0% | 0.993 |
+| 0.950 | 811.29 µs | -4.97% | -5.0% | 0.993 |
 | 0.975 | 832.47 | -2.49% | -2.5% | 0.994 |
 | 1.025 | 874.95 | +2.49% | +2.5% | 0.996 |
 | 1.050 | 896.22 | +4.98% | +5.0% | 0.996 |
@@ -2877,13 +2877,13 @@ axial force gives (round trip `2 v_z0 / a`, with the reversal point scaling as `
 isochronous. At 300 K the thermal `v_z` spread is about 4.5%, so **the drift alone caps R near
 11** with the mirrors perfect. That is the foil's published job, now quantified: make the return
 time independent of `v_z0`. A harmonic axial well *centred at the injection point* does exactly
-that, since its period is amplitude-independent; \u00a715's quadratic attempt reached 27% rather than
-orders because its well centre landed at z \u2248 61 mm.
+that, since its period is amplitude-independent; §15's quadratic attempt reached 27% rather than
+orders because its well centre landed at z ≈ 61 mm.
 
 **And the published foil is a contoured plate at a uniform voltage, not a graded one.** Its inner
-edge follows the cosine measured from the pixels in \u00a711 - thin at 41% of the drift, thick at 67% -
+edge follows the cosine measured from the pixels in §11 - thin at 41% of the drift, thick at 67% -
 and the on-axis potential varies along z because the *shape* brings metal nearer or further,
-with the whole plate at one voltage in the published 0 to -20 V range. \u00a715's graded-voltage
+with the whole plate at one voltage in the published 0 to -20 V range. §15's graded-voltage
 ramp was a different mechanism. The test being run is the published one: uniform -20 V,
 contoured, does it move the ratio.
 
@@ -2893,7 +2893,7 @@ Shipped depths, `te1` = 0, true path, 21 ions:
 
 | cell | `\|c1\|` | `\|c2\|` | `\|c3\|` | flight |
 | --- | --- | --- | --- | --- |
-| 1.00 mm | 0.01074 | 0.4568 | 2.132 | 17.1083 \u00b5s |
+| 1.00 mm | 0.01074 | 0.4568 | 2.132 | 17.1083 µs |
 | 0.50 mm | 0.01241 | 0.4477 | 2.032 | 17.0931 |
 | 0.25 mm | 0.01082 | 0.4440 | 2.044 | 17.1084 |
 
@@ -2901,7 +2901,7 @@ Shipped depths, `te1` = 0, true path, 21 ions:
 not converge - it wanders by ±0.0015 across three meshes**, so this solve has a noise floor on
 the first-order coefficient of about that size, and `|c1|` below ~0.002 is unresolved. Two
 consequences. Any depth fit here cannot demonstrate a first-order focus sharper than the floor,
-which alone caps R near 13,000 at ±2.5% (`1/(2 x 0.0015 x 0.025)`). And \u00a718's `|c1|` = 0.000102
+which alone caps R near 13,000 at ±2.5% (`1/(2 x 0.0015 x 0.025)`). And §18's `|c1|` = 0.000102
 at `d2` = 36 was inside the floor - the scaling law there still holds, since `c2 s` dominates
 `c1` for spreads above 0.003 either way, but the cancellation was not resolved to that figure.
 The FLD-1 floor of Amendment 36, met in a new place: a first-order time-energy coefficient is
@@ -2911,15 +2911,15 @@ Laplacian; the fit's sensitivity to the scan endpoints is the next suspect.
 
 ## 22. The published foil does the published job
 
-\u00a721 quantified the foil's task: the bare tilt gives a return time exactly proportional to
+§21 quantified the foil's task: the bare tilt gives a return time exactly proportional to
 `v_z0` (ratio +0.99), and isochronicity needs that ratio driven to zero. The test was the
 foil **as published** - the contoured plate whose inner edge follows the pixel-measured
-cosine of \u00a711, at a **uniform** voltage in the published 0 to -20 V range. Full track, three
+cosine of §11, at a **uniform** voltage in the published 0 to -20 V range. Full track, three
 injection angles per case:
 
 | foil, uniform | T(0.95) | T(1.00) | T(1.05) | **(dT/T)/(dv/v)** | |
 | --- | --- | --- | --- | --- | --- |
-| 0 V | 811.29 \u00b5s | 853.69 | 896.22 | **+0.995** | bare tilt, constant force |
+| 0 V | 811.29 µs | 853.69 | 896.22 | **+0.995** | bare tilt, constant force |
 | -10 V | 723.52 | 709.87 | 674.46 | **-0.691** | |
 | **-20 V** | 652.16 | 626.72 | 594.20 | **-0.925** | published maximum |
 | +20 V | 553.13 | 619.11 | never returned | broken | sign-reversed control |
@@ -2929,18 +2929,18 @@ published range - and the sign-reversed control breaks the instrument (the fast 
 out and never comes back), so the published polarity is the right one. This is the mechanism
 [C] describes, reproduced with the published shape at a uniform bias: **the contoured foil
 controls the drift's isochronicity, and a voltage inside the published window makes the return
-time independent of `v_z0`.** \u00a715's graded-voltage ramp was never the published mechanism, and
+time independent of `v_z0`.** §15's graded-voltage ramp was never the published mechanism, and
 the user's objection to its shape was right.
 
-**A second published number converges on the same voltage.** The flight time falls from 854 \u00b5s
+**A second published number converges on the same voltage.** The flight time falls from 854 µs
 at 0 V to 710 at -10 V, because the attractive well pulls the reversal inward; interpolated to
--6 V that is about **768 \u00b5s against the published ~779**. Two register numbers - the
+-6 V that is about **768 µs against the published ~779**. Two register numbers - the
 isochronous condition and the flight time - pointing at one foil setting, neither fitted. The
 bracket at -4, -6, -8 V is being run to pin it rather than interpolate, and to read the
 reversal point there, which the pull-in must have moved from 335 mm.
 
 **What "isochronous" buys, and its limit.** At ratio 0 the first-order dependence of return
-time on `v_z0` is gone, and the thermal cap of R \u2248 11 from \u00a721 lifts; what is left is the
+time on `v_z0` is gone, and the thermal cap of R ≈ 11 from §21 lifts; what is left is the
 second-order term, which a three-point scan cannot see and a five-point one at the pinned
 voltage will. That is the same structure as the mirrors' `c1`/`c2` story, in the drift.
 
@@ -2955,7 +2955,7 @@ voltage will. That is the same structure as the mirrors' `c1`/`c2` story, in the
 **At -4 V the return time is peaked at the nominal angle** - both neighbours are shorter - so
 the first-order dependence on `v_z0` is nearly gone (slope a tenth of ballistic) and what shows
 is the *second-order* term. The zero of the first-order slope is near -3.6 V by interpolation
-against the 0 V row. **And the flight time at -4 V is 784.85 \u00b5s against the published ~779**,
+against the 0 V row. **And the flight time at -4 V is 784.85 µs against the published ~779**,
 0.75%: the register's flight time and its isochronous condition both point at one foil voltage
 inside the published window, and neither was fitted. A five-point scan at -3 and -4 V is
 running to fit the first- and second-order coefficients properly and read the reversal point,
@@ -2964,7 +2964,7 @@ which the attractive well must have pulled in from 335 mm.
 **Why the foil dominates although the mid-plane axis barely feels it.** Sampled *on the
 mid-plane axis* the foil at -20 V contributes only -0.03 to -0.05 V, which cannot move a
 6.4 eV axial motion. But the mid-plane is the *gap between the two foil plates* - they sit at
-x \u2208 [176, 240] and [477, 541] mm, |y| \u2208 [20, 22] - and the ion zigzags across the whole free
+x ∈ [176, 240] and [477, 541] mm, |y| ∈ [20, 22] - and the ion zigzags across the whole free
 gap at 39 km/s, so the slow z-motion feels the potential **averaged over x**. That average is
 -4.0 V at injection, -7.0 V at its deepest (z = 233 mm, the thick part of the contour), -4.3 V
 at the 335 mm reversal: a well about **3 V deep against 6.4 eV of axial energy**, which is
@@ -2978,9 +2978,9 @@ Fitting `T/T0 = 1 + a(f-1) + b(f-1)^2` over five injection angles on the full tr
 
 | foil | T0 | reversal | **a** (first order) | **b** (second order) |
 | --- | --- | --- | --- | --- |
-| bare tilt | 853.7 \u00b5s | 334.6 mm | **+1.000** | - |
-| **-3 V** | **800.4 \u00b5s** | 335.6 mm | **+0.046** | -6.2 |
-| -4 V | 784.9 \u00b5s | 335.8 mm | -0.149 | -7.0 |
+| bare tilt | 853.7 µs | 334.6 mm | **+1.000** | - |
+| **-3 V** | **800.4 µs** | 335.6 mm | **+0.046** | -6.2 |
+| -4 V | 784.9 µs | 335.8 mm | -0.149 | -7.0 |
 
 **At -3 V the first-order dependence on `v_z0` is cancelled 22-fold**, with the zero near
 -3.2 V. Two things about it matter more than the number.
@@ -2992,13 +2992,13 @@ at the turning point with the axial energy the tilt alone would give it. **The f
 timing correction that leaves the track where the tilt put it** - which is why [C] can say the
 tilt reverses the drift and the foil corrects the aberration, as two separate statements.
 
-**What remains is second order, and it is the shape.** `b` \u2248 -6.5 at either voltage, so at a
-4.5% thermal spread in `v_z` the drift is limited to about R \u2248 35 by curvature alone - up from
+**What remains is second order, and it is the shape.** `b` ≈ -6.5 at either voltage, so at a
+4.5% thermal spread in `v_z` the drift is limited to about R ≈ 35 by curvature alone - up from
 11, but far from the instrument. A harmonic well has `b` = 0 by construction; the well the
 cosine contour makes is two-lobed with a saddle and is not harmonic, and that is the cost. So
 the foil's *voltage* is settled inside the published window by two register numbers, and the
 foil's *shape* is the next inverse problem: which contour makes `b` vanish. That is the subject
-of the isochronous-drift paper, and the pixel measurement of \u00a711 is its starting point rather
+of the isochronous-drift paper, and the pixel measurement of §11 is its starting point rather
 than its answer.
 
 **Shipped.** The template now carries `foilVolts` = -3 V and `foilGrade` = 0 - the published
@@ -3016,10 +3016,10 @@ per-oscillation path, 300 evaluations each:
 | CMA-ES | 10.47 | 34.68 | 83.99 | +0.0290 | **36,532** | |
 
 **Same objective to half a per cent, designs 12 mm apart in `d1`** - the degenerate family
-\u00a718 predicted, one balancing condition against four parameters. Neither converged at 300
+§18 predicted, one balancing condition against four parameters. Neither converged at 300
 evaluations. The Nelder-Mead design loses the two extreme-energy ions on one reflection, which
 on fifty is a transmission problem, so the CMA design is the one to carry forward. Both are now
-being confirmed on the full track with the foil at -4 V, which is the measurement \u00a719 said was
+being confirmed on the full track with the foil at -4 V, which is the measurement §19 said was
 missing.
 
 ### The `c1` floor is in the field, not the fit
@@ -3034,7 +3034,7 @@ the strip pitch, is what to try.
 
 ## 23. Resolving power on the full track, and the number that undoes the half-oscillation work
 
-\u00a719 and \u00a720 said the focusing had to be confirmed on the real track. It has been, and the
+§19 and §20 said the focusing had to be confirmed on the real track. It has been, and the
 confirmation failed in the most informative way.
 
 Energy-spread resolving power, 25 oscillations, foil at -4 V, 11 ions, three mirror designs:
@@ -3046,7 +3046,7 @@ Energy-spread resolving power, 25 oscillations, foil at -4 V, 11 ions, three mir
 | CMA-ES fit | 10.47 / 34.68 / 83.99 / +0.029 | 59 | 0.342 | 286 |
 
 **The half-oscillation measured `c1` = 0.012 at the shipped depths. The full track measures
-0.29.** Twenty-five times larger, and the two fitted designs - each at R \u2248 36,500 on the half
+0.29.** Twenty-five times larger, and the two fitted designs - each at R ≈ 36,500 on the half
 oscillation - are *no better than shipped* here. So something on the full track adds a
 first-order time-energy dependence of order 0.3 that the mirrors' x-focusing does not touch,
 and the mirror fit was optimising a quantity the instrument's resolving power does not depend
@@ -3054,19 +3054,19 @@ on. **The fitted depths therefore stay out of the template.** The shipped 20/50/
 a guess that is not worse than the fits.
 
 **The suspect is the foil, by an argument about scaling.** For the bare tilt, the round-trip
-drift time is `T_z = 2 v_z0 / a_z` with `a_z = 2 |v| sin(2\u03b1) / \u03c4_x` - each reflection delivers
-`|v| sin 2\u03b1` and there are two per x-period. That gives `T_z = (sin \u03b8 / sin 2\u03b1) \u03c4_x`: **the
+drift time is `T_z = 2 v_z0 / a_z` with `a_z = 2 |v| sin(2α) / τ_x` - each reflection delivers
+`|v| sin 2α` and there are two per x-period. That gives `T_z = (sin θ / sin 2α) τ_x`: **the
 flight time is the x-period times a purely geometric factor**, so the whole track inherits the
 mirrors' `c1` and nothing else, and the number of oscillations is fixed by geometry. That is
 why a half-oscillation measurement was supposed to suffice. **But the foil's force does not
-scale with energy while the tilt's scales as `v\u00b2`** (`|v|` per reflection, `|v|/L` reflections
+scale with energy while the tilt's scales as `v²`** (`|v|` per reflection, `|v|/L` reflections
 per second), so the balance between them shifts with energy and the drift return time acquires
 a `c1` of its own that no mirror can cancel. The discriminating measurement - the same
 `T(E)` scan with the foil at 0 V - is running: if `c1` collapses toward 0.01 there, the foil
 is the whole story and the mirror fit stands; if it stays at 0.3, something in the track itself
 is responsible.
 
-**Either way the lesson is the one \u00a719 drew and \u00a720 under-weighted.** The resolving power of
+**Either way the lesson is the one §19 drew and §20 under-weighted.** The resolving power of
 this instrument is a property of the drift and the mirrors *together*, and a figure measured on
 either alone is a figure about a different instrument. The half-oscillation `c1`, the
 isochronicity ratio and the full-track R are three different quantities, and only the last is
@@ -3084,25 +3084,25 @@ foil off and on:
 
 **With the foil off, the full track gives `c1` = -0.012 - the half-oscillation's 0.0124 to the
 third digit.** So the mirrors' focusing carries to the whole instrument exactly as
-`T_z = (sin \u03b8 / sin 2\u03b1) \u03c4_x` says it must, the half-oscillation is the right place to measure
-a mirror, and the fits of \u00a722 stand as measurements of the mirrors. **The foil adds `c1` \u2248
+`T_z = (sin θ / sin 2α) τ_x` says it must, the half-oscillation is the right place to measure
+a mirror, and the fits of §22 stand as measurements of the mirrors. **The foil adds `c1` ≈
 -0.27 on its own**, and that single term is the entire gap between R = 36,500 on the half
 oscillation and R = 60-70 on the full track. The device that makes the drift isochronous in
-sideways *speed* (\u00a722) makes it non-isochronous in *energy*.
+sideways *speed* (§22) makes it non-isochronous in *energy*.
 
 **The mechanism's shape, without a derivation of its sign.** The tilt's sideways deceleration
-is `a_z = 2 |v| sin 2\u03b1 / \u03c4_x`; for a focused mirror `\u03c4_x` is energy-independent, so `a_z`
+is `a_z = 2 |v| sin 2α / τ_x`; for a focused mirror `τ_x` is energy-independent, so `a_z`
 scales as `|v|`, while the foil's force is a fixed field and scales as nothing. Their balance
 therefore shifts with energy and the return time inherits a first-order energy dependence the
 mirrors' x-focusing cannot reach. The magnitude and sign are the measurement's: -0.27 at -4 V,
 and **-0.243 at the shipped -3 V, measured** (805.03 / 802.77 / 800.35 / 797.87 / 795.31 µs across ±2.5%), so the
 template as shipped sits near R ≈ 80 at the acceptance on the full track. An earlier paragraph in this section argued the
-tilt force scales as `v\u00b2`; that was wrong - the `1/\u03c4_x` is constant for a focused mirror - and
+tilt force scales as `v²`; that was wrong - the `1/τ_x` is constant for a focused mirror - and
 the naive fixed-well argument predicts the wrong sign, so the sign is not understood.
 
 **What this leaves, and it is a fork with two prongs that can be told apart.** The instrument
 reaches 100,000 with a foil, so one of two things is true. **Either the mirrors are deliberately
-over-focused** to `c1_x` \u2248 +0.27, cancelling the foil's term - which is precisely what a
+over-focused** to `c1_x` ≈ +0.27, cancelling the foil's term - which is precisely what a
 first-order correction vector like `TE1` exists to do, though the paper's `TE1` = 0.01 example
 moves `c1` by only 0.01-0.02 and the depths would have to carry most of it; **or the real foil
 shape has no energy term**, the drift being made isochronous in speed and energy at once by a
@@ -3110,41 +3110,41 @@ contour this model's pixel measurement does not reproduce - which is what a pape
 "isochronous drift" would be about. The discriminating experiment is a foil-shape optimisation
 against *both* conditions on the full track; the discriminating reading is reference [D].
 
-**So the mirror fit was not wasted, and it was not the instrument.** \u00a718 and \u00a722 measure the
+**So the mirror fit was not wasted, and it was not the instrument.** §18 and §22 measure the
 mirrors correctly; the instrument's resolving power is the mirrors and the foil together, and
 the foil's energy term is now the one number between this model and the register's >100,000.
 
 ## 24. The drift's effective potential, derived and then corrected
 
-The two prongs of \u00a723 were to be discriminated by a foil-shape optimisation on the full track.
+The two prongs of §23 were to be discriminated by a foil-shape optimisation on the full track.
 Before spending hours of flights on a blind search, the problem turned out to have a
 derivation - which then turned out to be wrong in an instructive way.
 
 ### The scaling argument, and what it predicts
 
-Write the slow drift motion with both mechanisms, at fractional energy `\u03b5`:
+Write the slow drift motion with both mechanisms, at fractional energy `ε`:
 
-- the tilt's deceleration is `a\u2080\u221a\u03b5` - the ion is reflected more often when faster, and `\u03c4_x` is
+- the tilt's deceleration is `a₀√ε` - the ion is reflected more often when faster, and `τ_x` is
   energy-independent for a focused mirror;
-- the injection speed is `v_z0\u221a\u03b5`;
-- **the foil's potential energy `U(z)` does not scale with `\u03b5` at all.**
+- the injection speed is `v_z0√ε`;
+- **the foil's potential energy `U(z)` does not scale with `ε` at all.**
 
-Substituting `z = \u221a\u03b5 \u03b6` makes the first two terms scale as `\u03b5` exactly, so the `\u03b6`-motion -
-and therefore the round-trip time - is energy-independent **if and only if `U(\u221a\u03b5 \u03b6) \u221d \u03b5`, that
-is `U \u221d z\u00b2`**. A harmonic well about the injection point, and nothing else. That is a strong
+Substituting `z = √ε ζ` makes the first two terms scale as `ε` exactly, so the `ζ`-motion -
+and therefore the round-trip time - is energy-independent **if and only if `U(√ε ζ) ∝ ε`, that
+is `U ∝ z²`**. A harmonic well about the injection point, and nothing else. That is a strong
 claim: energy-isochronicity would not be one option among many but a single computable shape.
 
 It also explains the bare-tilt result exactly. With `U = 0` the round trip is
-`T_z = \u03c4_x sin\u03b8 / sin 2\u03b1`, in which every energy has cancelled - which is why \u00a723 measured
+`T_z = τ_x sinθ / sin 2α`, in which every energy has cancelled - which is why §23 measured
 `c1` = -0.012 with the foil off, the mirrors' own value and nothing more.
 
 ### Tested by quadrature, and the averaging that had to be fixed
 
-`T(\u03b5)` computed by quadrature from the well shape alone, with no new flights:
+`T(ε)` computed by quadrature from the well shape alone, with no new flights:
 
 | foil | `T` predicted | `T` measured | `c1` predicted | `c1` measured |
 | --- | --- | --- | --- | --- |
-| 0 V | 852.73 \u00b5s | 853.69 | **-0.0000** | -0.0118 |
+| 0 V | 852.73 µs | 853.69 | **-0.0000** | -0.0118 |
 | -3 V, well averaged uniformly in `x` | 775.77 | 800.35 | -0.339 | -0.243 |
 | -3 V, well averaged over an **x-period** | **799.98** | **800.35** | -0.100 | -0.243 |
 
@@ -3156,7 +3156,7 @@ The averaging had to be right. A uniform average over `x` overweights the plates
 overstates the well 4.9-fold; binning the real trajectory by `z` **aliases**, because each
 `z`-bin is crossed during a fraction of one `x`-oscillation and therefore samples a nearly
 fixed `x`-phase, giving a profile that swings between -0.23 and -10.56 V. The drift
-potential exists only as an average over a **full x-period** - 34.13 \u00b5s and 26.8 mm of drift
+potential exists only as an average over a **full x-period** - 34.13 µs and 26.8 mm of drift
 here - and averaged that way it reproduces the flight time to **0.05%** at -3 V and 0.12% at
 -4 V.
 
@@ -3169,7 +3169,7 @@ Measured on unperturbed paths at three energies:
 
 | `dE/E` | x-period | penetration | net rise, injection to reversal |
 | --- | --- | --- | --- |
-| -2.5% | 34.15 \u00b5s | 47.2 mm | 1.0852 V |
+| -2.5% | 34.15 µs | 47.2 mm | 1.0852 V |
 | 0 | 34.13 | 45.9 | 1.1700 |
 | +2.5% | 34.13 | 44.5 | 1.2191 |
 
@@ -3180,19 +3180,19 @@ energy**. Feeding an energy- and speed-dependent well back into the quadrature g
 +0.046, with the -4 V row worse, as a perturbative treatment built on the unperturbed path
 should be.
 
-**So `U` depends on `\u03b5` and the scaling argument's premise fails.** A harmonic well in `z`
+**So `U` depends on `ε` and the scaling argument's premise fails.** A harmonic well in `z`
 does not buy energy-isochronicity, because the well's own depth moves with energy. The
 mechanism is not a property of the foil's profile along the drift at all; it is the foil's
 extent in `x` against the mirrors' penetration depth.
 
 **What that leaves is a question about independence rather than about shape**: the foil's
 `x`-extent and its `z`-contour are separate knobs, so if they move the two isochronicity
-conditions in different directions, both can be zeroed at once and \u00a723's second prong stands.
+conditions in different directions, both can be zeroed at once and §23's second prong stands.
 That is a 2x2 Jacobian, and it is measurable directly.
 
 ## 25. Both prongs fail, and the reason is structural
 
-\u00a723 offered two ways the instrument might reach its resolving power. Both were measured
+§23 offered two ways the instrument might reach its resolving power. Both were measured
 tonight, and both fail in the shipped parameterisation - which is the useful outcome, because
 the reason they fail is the same reason and it is forced.
 
@@ -3202,19 +3202,19 @@ The 2x2 Jacobian on the full track, five flights per configuration, foil at the 
 
 | configuration | T | `c1` | ratio |
 | --- | --- | --- | --- |
-| nominal | 800.35 \u00b5s | -0.2428 | +0.0831 |
+| nominal | 800.35 µs | -0.2428 | +0.0831 |
 | `foilOuterFrac` +0.12 | 791.14 | -0.3321 | -0.2073 |
 | `foilInnerAmplitude` +0.025 | 793.64 | -0.1559 | +0.2558 |
 | `foilVolts` -1 V | 784.85 | -0.2816 | -0.1080 |
 
 | knob | d(`c1`) | d(ratio) | direction |
 | --- | --- | --- | --- |
-| `foilOuterFrac` | -0.0893 | -0.2904 | -107.1\u00b0 |
-| `foilInnerAmplitude` | +0.0869 | +0.1728 | +63.3\u00b0 |
-| `foilVolts` | -0.0388 | -0.1910 | -101.5\u00b0 |
+| `foilOuterFrac` | -0.0893 | -0.2904 | -107.1° |
+| `foilInnerAmplitude` | +0.0869 | +0.1728 | +63.3° |
+| `foilVolts` | -0.0388 | -0.1910 | -101.5° |
 
 The determinant is +0.0098, non-zero, so the conditions are *formally* independent. But the
-two shape vectors are **9.6\u00b0 from exactly opposed** and the voltage knob is 5.6\u00b0 from the
+two shape vectors are **9.6° from exactly opposed** and the voltage knob is 5.6° from the
 first, so all three are very nearly one effective knob. Solving the linear system for the
 simultaneous zero asks for `foilOuterFrac` = **1.40** - a plate extending past the mirror
 mouth - and an inner-edge amplitude 4.6 times the measured one. Neither is the published
@@ -3231,23 +3231,28 @@ Walking `d2` from 30 to 74 mm at the published voltages, on the true per-oscilla
 
 **The mirrors' whole range along this axis is ±0.09 and the foil needs +0.24 cancelled** -
 a third of the way. `TE1` can supply the rest arithmetically (at the measured sensitivity,
-`TE1` \u2248 0.11), but the `te1` scan of \u00a721 shows `c2` climbing monotonically as it does, reaching
+`TE1` ≈ 0.11), but the `te1` scan of §21 shows `c2` climbing monotonically as it does, reaching
 0.83 by `te1` = 0.02, so the cancellation is bought at a second-order cost that is worse than
 the first-order gain.
 
 ### Why they fail together: the foil's benefit and its defect are the same quantity
 
-Both failures have one cause. **The fraction of each oscillation the ion spends inside the
-mirrors grows with energy** - a faster ion penetrates further (47.2, 45.9, 44.5 mm at
--2.5%, 0, +2.5%) and dwells longer there, while the free-flight time falls as one over the
-speed. That is true *even for a perfectly focused mirror*, because focusing fixes the total
-period `\u03c4_x` and says nothing about how it divides between mirror and drift.
+Both failures have one cause - though **the mechanism first written here had the sign
+backwards, and §27 corrects it**. What dominates is that a faster ion reaches further along
+the drift (`z_rev` goes as the square root of energy) and so climbs more of the foil's own
+rise, decelerating more and arriving sooner: a *negative* `c1`, which is what is measured.
 
-The foil acts only during the free-flight part. So the foil's coupling to the ion falls as
-energy rises, whatever the foil's shape - and that **is** the energy term. It scales with how
-much foil the ion sees, which is the same quantity that produces the speed-isochronising
-action the foil exists for. That is why the Jacobian's two columns are 9.6\u00b0 apart rather than
-orthogonal: within this geometry the benefit and the defect are very nearly proportional, and
+The time-split effect is real and was measured directly - **the fraction of each oscillation
+the ion spends inside the mirrors grows with energy**, 0.3406, 0.3489, 0.3556 across
+plus or minus 2.5%, or +88% per unit `dE/E`, with penetration 47.2, 45.9, 44.5 mm. That holds
+*even for a perfectly focused mirror*, because focusing fixes the total period and says
+nothing about how it divides between mirror and drift. But the foil acts only during free
+flight, so less free flight at higher energy means *less* foil action, a *longer* flight, and
+a **positive** `c1` - opposed to the dominant term, and smaller.
+
+What survives unchanged is the empirical part, because the Jacobian was measured rather than
+derived: the benefit and the defect scale together, since both are set by how much foil the
+ion sees, and that is why its two columns are 9.6 degrees apart rather than orthogonal -
 shrinking the foil buys the second only by giving up the first.
 
 **So the energy term is structural, not a defect of the measured contour**, and the model as
@@ -3257,7 +3262,7 @@ instrument breaks the proportionality, and the guessed geometry is where to look
 ### The published `C(1)` sensitivity is a constraint on the depths, not a check
 
 The one unfitted published number now earns a second job. The crowd-control paper's Figure 2
-defines the quantity outright - `(t|e) = T\u207b\u00b9 \u2202T/\u2202\u03b5` - and the text states that `TE1` = 0.01
+defines the quantity outright - `(t|e) = T⁻¹ ∂T/∂ε` - and the text states that `TE1` = 0.01
 shifts it by about 2.5 ppm/V; the beam is stated as 4 keV. So `dc1/dTE1` = 1.0, and the
 measured 2.2 is neither a units error nor a definitional half. **It is a statement that the
 mirror geometry is wrong**, because how much timing a given voltage perturbation buys depends
@@ -3269,7 +3274,7 @@ also carry `c2`.
 
 ## 26. The published `C(1)` sensitivity picks a depth
 
-\u00a725 turned the one unfitted published number into a constraint. Measured against each of the
+§25 turned the one unfitted published number into a constraint. Measured against each of the
 four depths in turn, on the true per-oscillation path, with `dc1/dTE1` taken as
 `(|c1|(+0.03) + |c1|(-0.03)) / 0.06` - exact for `|c1| = |s(te1 - t0)|` whenever the vertex
 lies inside the window, which matters because `c1` changes sign within it and a naive
@@ -3277,10 +3282,10 @@ difference would read the sign flip as signal:
 
 | knob | across its range | `dc1/dTE1` |
 | --- | --- | --- |
-| `d1` | 12 \u2192 20 \u2192 30 mm | 2.664 \u2192 2.670 \u2192 2.716 |
-| **`d2`** | 40 \u2192 50 \u2192 62 mm | **1.116** \u2192 2.670 \u2192 4.451 |
-| `d3` | 78 \u2192 90 \u2192 104 mm | 3.414 \u2192 2.670 \u2192 diverges (`\|c2\|` = 22.6) |
-| `d4` | 112 \u2192 130 \u2192 150 mm | 19.399 \u2192 2.670 \u2192 2.523 |
+| `d1` | 12 → 20 → 30 mm | 2.664 → 2.670 → 2.716 |
+| **`d2`** | 40 → 50 → 62 mm | **1.116** → 2.670 → 4.451 |
+| `d3` | 78 → 90 → 104 mm | 3.414 → 2.670 → diverges (`\|c2\|` = 22.6) |
+| `d4` | 112 → 130 → 150 mm | 19.399 → 2.670 → 2.523 |
 
 **`d1` is inert** - three per cent across a 2.5-fold change - so it does not control this
 quantity at all. `d3` and `d4` move it but destructively, `d3` into a solve whose `c2` is
@@ -3293,7 +3298,7 @@ against a published number **without any fitting**: the sensitivity was measured
 depth was chosen, and the depth follows from it.
 
 **What it is worth depends on the next measurement.** The foil's energy term arises from how
-each oscillation divides between mirror and drift (\u00a725), and `d2` moves the penetration - so
+each oscillation divides between mirror and drift (§25), and `d2` moves the penetration - so
 the geometry the published number selects may or may not also shrink the -0.24 that has to be
 cancelled. Those are logically independent, and measuring `c1_foil = c1(foil on) - c1(foil
 off)` at both depths on the full track settles it. If the term shrinks, the two published
@@ -3301,7 +3306,7 @@ constraints agree with each other and the reconstruction closes; if it does not,
 is a correct depth in an instrument that still cannot reach its resolving power, and the
 remaining error is in `d3`, `d4`, the tilt baseline, or the foil's extent.
 
-## 27. `d2` = 38.0 mm, and the sign that corrects \u00a725
+## 27. `d2` = 38.0 mm, and the sign that corrects §25
 
 ### The depth the published number picks
 
@@ -3320,12 +3325,12 @@ before the depth was chosen, and the depth follows.
 
 `|c2|` falls monotonically across the same range and bottoms at 42 mm, four millimetres away.
 That tension is not a problem but a use for the other three depths, which have so far been
-held at their guesses - `d1` is inert for this quantity (\u00a726), so `d3` and `d4` are where the
+held at their guesses - `d1` is inert for this quantity (§26), so `d3` and `d4` are where the
 second condition has to be met.
 
-### The mechanism in \u00a725 had the sign backwards
+### The mechanism in §25 had the sign backwards
 
-\u00a725 attributed the foil's energy term to the mirror/drift time split. That split is real and
+§25 attributed the foil's energy term to the mirror/drift time split. That split is real and
 was measured directly - `t_mirror/T` = 0.3406, 0.3489, 0.3556 across ±2.5% of energy, **+88%
 per unit `dE/E`**, and a first-order focused single-stage mirror satisfies `t_free = t_mirror`
 exactly, which is the four-penetration-depth rule this project already records from another
@@ -3333,23 +3338,74 @@ direction.
 
 But its **sign is wrong for the observation**. Less free flight at higher energy means *less*
 foil action, a *longer* flight, and a **positive** `c1`; the measurement is -0.23. So the
-dominant term is the other one, and it is \u00a724's original scaling argument after all: the
-reversal point goes as `\u221a\u03b5`, so a faster ion climbs further up the foil's own rise, decelerates
+dominant term is the other one, and it is §24's original scaling argument after all: the
+reversal point goes as `√ε`, so a faster ion climbs further up the foil's own rise, decelerates
 more, and arrives sooner. Negative, and larger.
 
 **So the two mechanisms oppose**, which is worth more than either alone:
 
-- it explains why the fixed-well quadrature of \u00a724 got -0.100 where the measurement is -0.231
+- it explains why the fixed-well quadrature of §24 got -0.100 where the measurement is -0.231
   and the energy-dependent well took it to -0.212 - the corrections are not independent
   contributions to be added but partly cancelling ones;
 - it means a **harmonic well would kill the dominant term and leave the secondary**, whose
-  sign is opposite - so the energy-isochronous foil is not simply `U \u221d z\u00b2` but `U \u221d z\u00b2`
+  sign is opposite - so the energy-isochronous foil is not simply `U ∝ z²` but `U ∝ z²`
   detuned enough to leave a small negative residue against the time-split's positive one;
-- and \u00a724's conclusion that "a harmonic well does not buy energy-isochronicity" is too strong.
+- and §24's conclusion that "a harmonic well does not buy energy-isochronicity" is too strong.
   It buys most of it. What remains is a second, smaller, opposite-signed term that a slight
   detuning can absorb.
 
-\u00a725's empirical finding is untouched by this: the Jacobian's 9.6\u00b0 was measured, not derived,
+§25's empirical finding is untouched by this: the Jacobian's 9.6° was measured, not derived,
 and the benefit and the defect still scale together because both are set by how much foil the
 ion sees. What changes is that the residual after a harmonic well is now expected to be small
-and of known sign, which makes the foil-shape problem better posed than \u00a725 concluded.
+and of known sign, which makes the foil-shape problem better posed than §25 concluded.
+
+## 28. The constraint a single reflection cannot see
+
+§26 and §27 picked `d2` = 38 mm from the published `C(1)` sensitivity, and §27 called it the
+first unpublished dimension fixed by a published number without fitting. Flown on the full
+track it is a mirror the ion does not survive.
+
+| `d2` | `dE` | T | reflections | outcome |
+| --- | --- | --- | --- | --- |
+| **38** | -2.5% / 0 / +2.5% | 457 / 439 / 475 µs | 25 / 24 / 26 | **StruckElectrode** |
+| **40** | -2.5% / 0 / +2.5% | 737 / 795 / 888 | 41 / 45 / 50 | **StruckElectrode** (two of three) |
+| 50 | -2.5% / 0 / +2.5% | 854.18 / 853.69 / 853.67 | 50 / 50 / 50 | arrives |
+
+**The ion is lost transversely.** At `d2` = 38 it ends at `y` = -20.0 mm - on the board -
+after 24 reflections, deep inside the far mirror at `x` = 642 mm. The mirror is not confining
+in `y` over the length of the track.
+
+**So §23's `c1_foil` comparison at `d2` = 40 was measuring the time to hit a rod.** It reported
+`c1` = +3.80 and `c1_foil` = +1.90; both are meaningless. The tell was in the same table and I
+should have read it first: the bare-tilt speed ratio came out **1.95** where §13's closed form
+requires exactly 1.0, and a ratio that is not 1.0 for a bare tilt says the flight is not the
+flight being modelled. `half.json` and `full.json` were checked afterwards and agree in every
+geometry parameter, so this is physics and not a script mismatch.
+
+### What it means for everything measured on a half oscillation
+
+**A single reflection cannot see transverse stability.** `c1`, `c2`, `c3`, the `C(1)`
+sensitivity, the whole depth scan of §26 and the refinement of §27 were all measured on one
+reflection, where an ion has no time to walk off axis. Every one of those numbers is correct
+for what it measures and none of them can tell whether the geometry is *flyable*. The
+half-oscillation proxy was justified in §23 by `c1` carrying to the full track exactly - and
+it does, but only among geometries that survive.
+
+That adds a third constraint on the four depths, and it is a hard one rather than a
+preference:
+
+1. `dc1/dTE1` = 1.0, published, and `d2` is the only depth that controls it (§26);
+2. `c2` small, a design requirement, minimised near `d2` = 42;
+3. **transverse confinement over 50 reflections**, physically necessary, and satisfied at
+   `d2` = 50 but not at 38 or 40 with the other three depths left at their guesses.
+
+Constraints 1 and 3 are in direct conflict along the `d2` axis alone. Since `d1` is inert for
+constraint 1, `d1`, `d3` and `d4` are free to buy constraint 3 back, and whether they can is
+the measurement now running - the survival of the full track at `d2` = 38 while each of the
+other three is moved in turn.
+
+**The methodological lesson generalises past this instrument.** A figure of merit measured on
+a fraction of the device is a statement about that fraction. Where the device's whole point is
+that a small per-pass effect accumulates - which is what a multi-reflection analyser is - the
+accumulated failure modes are invisible to the per-pass measurement, and they are not
+subtleties: here it is the difference between an instrument and a beam dump.
