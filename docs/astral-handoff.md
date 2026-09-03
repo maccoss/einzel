@@ -3404,6 +3404,35 @@ constraint 1, `d1`, `d3` and `d4` are free to buy constraint 3 back, and whether
 the measurement now running - the survival of the full track at `d2` = 38 while each of the
 other three is moved in turn.
 
+### d3 buys survival back, and it is the only depth that can
+
+Testing whether the other three depths can restore the full track at `d2` = 38 mm - one
+flight each, foil off:
+
+| geometry `d1/d2/d3/d4` | T | final `y` | outcome |
+| --- | --- | --- | --- |
+| 20/38/90/130 | 439.1 us | -20.0 mm | struck |
+| **20/38/84/130** | **855.0** | **-0.0** | **arrives, 50 reflections** |
+| 20/38/78/130 | 627.0 | +20.0 | struck |
+| 20/38/96/130 | - | -3362.6 | escaped the analyser |
+| 20/38/104/130 | 210.8 | -20.0 | struck |
+| 12 / 16 / 26 / 32 for `d1` | - | -20 / +20 / -7089 / -21.4 | struck, struck, escaped, struck |
+| 115 / 122 / 140 / 152 for `d4` | - | -2553 / -20 / +20 / +20 | escaped, struck, struck, struck |
+
+And the survival boundary along `d2` alone, with the others at their guesses: struck at 38,
+arriving at 42, 44, 46, 48 and 50.
+
+**`d3` is the only one of the three that rescues it**, and only in a narrow window - 84 mm
+works, 78 and 104 strike, 96 lets the ion out of the analyser entirely. `d1` fails at every
+value tried, which is consistent with §26 finding it inert for the timing sensitivity as well:
+`d1` is the shallowest strip and the ion barely reaches it.
+
+So **20/38/84/130 is a flyable geometry at the depth the published number selects**, which is
+the first candidate that satisfies the published constraint and the physical one together.
+Whether it still satisfies the published constraint after `d3` moved - the sensitivity depends
+on all four depths, and `d3` = 90 gave 2.67 at `d2` = 50 - is the measurement in flight, along
+with the `c1_foil` the whole fork turns on.
+
 **The methodological lesson generalises past this instrument.** A figure of merit measured on
 a fraction of the device is a statement about that fraction. Where the device's whole point is
 that a small per-pass effect accumulates - which is what a multi-reflection analyser is - the
