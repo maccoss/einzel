@@ -3300,3 +3300,56 @@ off)` at both depths on the full track settles it. If the term shrinks, the two 
 constraints agree with each other and the reconstruction closes; if it does not, `d2` = 40 mm
 is a correct depth in an instrument that still cannot reach its resolving power, and the
 remaining error is in `d3`, `d4`, the tilt baseline, or the foil's extent.
+
+## 27. `d2` = 38.0 mm, and the sign that corrects \u00a725
+
+### The depth the published number picks
+
+Refining `d2` against `dc1/dTE1` = 1.0, on the true per-oscillation path:
+
+| `d2`, mm | 34 | 36 | **38** | 40 | 42 | 46 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `dc1/dTE1` | 0.736 | 0.909 | **1.022** | 1.116 | 1.444 | 2.130 |
+| `\|c2\|` | 0.979 | 0.769 | 0.530 | 0.310 | **0.142** | 0.201 |
+
+**`d2` = 38.0 mm reproduces the published sensitivity to 2 per cent**, against a guess of
+50 mm. Taking the paper's "about 2.5 ppm/V" as good to a fifth puts the constraint at
+**38 +2.5 / -3 mm**. This is the only unpublished dimension in the whole reconstruction fixed
+by a published number with no fitting anywhere in the chain: the sensitivity was measured
+before the depth was chosen, and the depth follows.
+
+`|c2|` falls monotonically across the same range and bottoms at 42 mm, four millimetres away.
+That tension is not a problem but a use for the other three depths, which have so far been
+held at their guesses - `d1` is inert for this quantity (\u00a726), so `d3` and `d4` are where the
+second condition has to be met.
+
+### The mechanism in \u00a725 had the sign backwards
+
+\u00a725 attributed the foil's energy term to the mirror/drift time split. That split is real and
+was measured directly - `t_mirror/T` = 0.3406, 0.3489, 0.3556 across ±2.5% of energy, **+88%
+per unit `dE/E`**, and a first-order focused single-stage mirror satisfies `t_free = t_mirror`
+exactly, which is the four-penetration-depth rule this project already records from another
+direction.
+
+But its **sign is wrong for the observation**. Less free flight at higher energy means *less*
+foil action, a *longer* flight, and a **positive** `c1`; the measurement is -0.23. So the
+dominant term is the other one, and it is \u00a724's original scaling argument after all: the
+reversal point goes as `\u221a\u03b5`, so a faster ion climbs further up the foil's own rise, decelerates
+more, and arrives sooner. Negative, and larger.
+
+**So the two mechanisms oppose**, which is worth more than either alone:
+
+- it explains why the fixed-well quadrature of \u00a724 got -0.100 where the measurement is -0.231
+  and the energy-dependent well took it to -0.212 - the corrections are not independent
+  contributions to be added but partly cancelling ones;
+- it means a **harmonic well would kill the dominant term and leave the secondary**, whose
+  sign is opposite - so the energy-isochronous foil is not simply `U \u221d z\u00b2` but `U \u221d z\u00b2`
+  detuned enough to leave a small negative residue against the time-split's positive one;
+- and \u00a724's conclusion that "a harmonic well does not buy energy-isochronicity" is too strong.
+  It buys most of it. What remains is a second, smaller, opposite-signed term that a slight
+  detuning can absorb.
+
+\u00a725's empirical finding is untouched by this: the Jacobian's 9.6\u00b0 was measured, not derived,
+and the benefit and the defect still scale together because both are set by how much foil the
+ion sees. What changes is that the residual after a harmonic well is now expected to be small
+and of known sign, which makes the foil-shape problem better posed than \u00a725 concluded.
