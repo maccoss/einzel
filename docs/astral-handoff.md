@@ -3911,3 +3911,52 @@ anything**, so a presentation bug cannot destroy compute. The first two share a 
 *a study's own refusals must be visually distinct from its physical failures* - which is the
 same argument GRD-3 makes about warnings, applied to a scratch harness rather than to the
 engine.
+
+## 40. Refinement does not converge the drift coefficients, and the alternative is already validated
+
+Same configuration (`c` = -1.5, `g` = 3.0, `V` = -20), mesh and integrator varied:
+
+| case | T | `a` | `b` | drift spread |
+| --- | --- | --- | --- | --- |
+| 4 mm cell | 502.164 us | +0.0066 | -0.675 | 1.66e-3 |
+| 3 mm | 499.060 | +0.0094 | -0.257 | 9.46e-4 |
+| 2 mm | 498.196 | +0.0303 | -0.183 | 1.74e-3 |
+| 4 mm, tolerance 1e-12 | **502.164** | **+0.0066** | **-0.675** | 1.66e-3 |
+
+**The integrator is not the error source.** Tightening the relative tolerance to 1e-12 gives
+values identical to five decimals, so the trajectory is already far tighter than the field it
+flies through. Refining the *mesh* is the only lever.
+
+**The flight time converges and the coefficients do not.** T goes 502.16, 499.06, 498.20 -
+differences of 3.10 and 0.86 us, a ratio of 3.6, so roughly second order, extrapolating to
+about 497.8. But `a` **grows** under refinement, 0.0066 to 0.0303, while `b` shrinks, -0.675 to
+-0.183. Halving the cell moves `a` by 0.024, which is the same size as the scatter seen across
+`c` in section 39. So refinement does not rescue the measurement; it moves it by as much as
+the thing being measured.
+
+**The arithmetic explains it.** `a` is read from `T(+5%) - T(-5%)`, which at `a` = 0.0066 is
+**330 ns**, sitting on a mesh error in T of about **3000 ns**. It is measurable at all only
+because that error largely cancels between the two angles - but the cancellation is about 60
+per cent effective, and the residual pins `a` at plus or minus 0.02 whatever the cell size.
+**Every configuration called "best" in sections 36 to 38 - 1.66e-3, 9.46e-4, 1.74e-3 - sits at
+that floor**, and the reduction from 8.3e-3 is real only because it is four times above it.
+
+### What to use instead, and it is already tested
+
+The measurement is limited by *differencing large flight times*. The quadrature of section 24
+is not: it extracts the adiabatic well from one trajectory and integrates the drift equation
+directly, so its accuracy is set by the well's own sampling rather than by cancellation
+between two nearly equal microsecond quantities. It already reproduced the measured flight
+time to **0.05 per cent** and both derivatives to within 10 per cent at the shipped
+configuration, and it costs one flight per configuration instead of five.
+
+So the next round of foil optimisation should run **against the quadrature, not against
+full-track flights** - with full-track flights kept for confirmation at the handful of
+candidates the quadrature nominates. That is a thousandfold reduction in cost and an
+improvement in precision at the same time, which is unusual enough to be worth stating twice.
+
+**What this leaves standing from tonight**, stated so the morning does not have to reconstruct
+it: the drift spread fell from 8.3e-3 to the measurement floor of about 2e-3, the mechanism
+(centring the well on the injection plane) is confirmed by two independent observables, and
+no finer ranking than that is available from full-track flights at any mesh this machine can
+afford.
