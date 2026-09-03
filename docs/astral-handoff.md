@@ -3587,3 +3587,36 @@ pixel-measured contour removed, with the voltage law doing the work the shape di
 demonstration that a foil law exists which meets both conditions, not a claim about how the
 real instrument is built. Combining the measured contour with a graded law is the obvious next
 parameterisation and has not been tried.
+
+## 32. Both conditions nearly closed, at the published maximum bias
+
+Scanning the quadratic fraction and the mirror trim at `V` = -20 V, the published maximum,
+on `20/38/84/130`:
+
+| `g` | `te1` | T | `c1_total` | speed ratio | R, first order |
+| --- | --- | --- | --- | --- | --- |
+| 0.57 | 0 | 655.1 us | -0.0650 | -0.0202 | 197 |
+| 0.57 | 0.05 | 669.0 | -0.0982 | -0.2088 | 42 |
+| 0.60 | 0 | 649.6 | -0.0421 | +0.0715 | 117 |
+| 0.60 | 0.05 | 665.3 | -0.0336 | -0.0931 | 99 |
+| 0.63 | 0 | 643.9 | -0.0316 | +0.1500 | 66 |
+| **0.63** | **0.05** | **660.8** | **+0.0197** | **+0.0085** | **570** |
+| any | 0.10 | 304.3 | ion lost | ion lost | - |
+
+**`c1` = +0.020 and the speed ratio +0.0085**, both nearly closed, with every knob inside a
+published range: bias at the stated maximum, and a first correction vector at `TE1` = 0.05.
+Against the shipped configuration's ~77 that is 7.4 times better.
+
+Three things the table says beyond the best point. **`TE1` = 0.10 loses the ion at every `g`**,
+so the mirror trim has a usable range of roughly 0 to 0.08 and cannot be leaned on harder -
+which is consistent with section 25's finding that buying `c1` from `TE1` costs second order,
+now with a hard edge rather than a gradient. **The surface is not simple**: at `g` = 0.57 the
+same trim makes the ratio ten times worse, so the two knobs interact and a 3x3 grid is not a
+search. And **flight time has fallen to 661 us** against the published 779, which section 31's
+argument says the injection angle and tilt should absorb at fixed drift distance - untested.
+
+**570 is a first-order figure and is probably wrong.** The drift's second-order term was
+-6.5 for the contoured foil (section 22), and at a 4.5% thermal spread `b (dv/v)^2` alone is
+1.3e-2, which caps R near 38 - fifteen times below the first-order estimate. Either this foil
+law has a much smaller `b`, or the 570 is meaningless. A five-point expansion in each
+direction plus a direct thermal-cloud flight settles it, and is running.
