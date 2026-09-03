@@ -3667,3 +3667,52 @@ exactly what the "pair of rectangular einzel lenses" in the published beam line 
 trading angular spread for beam width at constant emittance, with room for about a tenfold
 reduction inside the 40 mm board gap. The first is a scan now running; the second is a
 statement about the injection optics that this model does not contain.
+
+## 34. The foil is one-dimensional for timing, and the reason names the fix
+
+Mapping the second-order drift term against the foil's remaining knobs, five-point angle
+scans on `20/38/84/130` with `te1` = 0.05:
+
+| case | `a` first order | `b` second order | `a` term | `b` term |
+| --- | --- | --- | --- | --- |
+| V -20, g 0.63, gap 20 mm | **+0.0215** | -3.597 | 9.7e-4 | 7.28e-3 |
+| V -20, g 0.90, gap 20 | +0.3066 | **+0.748** | 1.38e-2 | 1.51e-3 |
+| V -26, g 0.63, gap 20 | +0.0379 | -2.393 | 1.7e-3 | 4.85e-3 |
+| V -20, g 0.63, gap 12 | +0.3076 | **-0.640** | 1.39e-2 | 1.30e-3 |
+| V -20, g 0.63, gap 8 | +0.3487 | +6.881 | 1.57e-2 | 1.39e-2 |
+
+**`b` changes sign twice** - through `g` between 0.63 and 0.90, and through the plate gap
+between 12 and 8 mm - so `b` = 0 is reachable two independent ways. But **every route raises
+`a` fourteenfold**, and the three knobs move `(a, b)` within 5 degrees of a single direction:
+`g` at 86.2, the gap at 84.5, the bias at 89.2. The total drift spread is therefore
+*minimised near the starting point*, and neither extreme helps.
+
+**That is the third time a near-collinear Jacobian has appeared in the foil's parameters**
+(section 25 over the shape knobs, section 31 over bias against quadratic fraction, and now
+over bias, quadratic fraction and plate gap). The pattern is worth naming: **as far as the
+drift's timing is concerned the foil has one degree of freedom, its coupling strength**, and
+every geometric or electrical parameter merely scales it.
+
+### Why, and what the reason implies
+
+The law tested throughout was `phi = V (1 - g f^2)`, whose **force is zero at the injection
+plane** - the derivative of `f^2` vanishes at `f` = 0. So the tilt's constant force is
+uncancelled there, and the total potential is constant-plus-linear-force: simple harmonic
+motion about a centre **displaced to negative z**, with the ion starting away from that centre.
+The return time to the starting plane then depends on amplitude, which is exactly `b` not equal
+to zero, and pushing the quadratic term harder moves the centre without ever putting the ion
+at it.
+
+**Inject at the well's centre and both terms vanish together.** If the total axial force is
+zero at `z` = 0 and linear in `z`, the drift is simple harmonic *about the injection plane*,
+the return to `z` = 0 is exactly half a period, and a half period is amplitude-independent -
+so `a` = 0 and `b` = 0 are the same condition rather than a trade. The requirement is a
+**linear** term in the foil law large enough to cancel the tilt at injection:
+
+    phi = V (1 - c f - g f^2)
+
+with `c` setting the force at the injection plane and `g` the restoring curvature. Estimated
+from the tilt's measured deceleration of 3.68e6 m/s^2 and the fivefold reduction the x-average
+imposes (section 24), `c` should be of order one. That scan is running, and unlike the three
+before it the two conditions are not expected to trade, because they are the same condition
+seen twice.
