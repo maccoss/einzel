@@ -3438,3 +3438,48 @@ a fraction of the device is a statement about that fraction. Where the device's 
 that a small per-pass effect accumulates - which is what a multi-reflection analyser is - the
 accumulated failure modes are invisible to the per-pass measurement, and they are not
 subtleties: here it is the difference between an instrument and a beam dump.
+
+## 29. The flyable geometry, and the foil term that does not move
+
+`20/38/84/130` satisfies all three constraints at once - the first geometry in this
+reconstruction to do so:
+
+| | value | against |
+| --- | --- | --- |
+| survives 50 reflections | T = 855.03 us, all energies arrive | the constraint of section 28 |
+| `dc1/dTE1` | **1.071** | published 1.0, within 7% |
+| `\|c2\|` | **0.0939** | 0.448 at the shipped depths, 4.8x better |
+| bare-tilt speed ratio | **0.9949** | the closed form's exact 1.0 |
+
+That last row is the check section 28 added and it passes here, so unlike the `d2` = 40 flights
+this one is the flight being modelled. Moving `d3` from 90 to 84 mm did not cost the published
+sensitivity; it improved second order fivefold *and* restored the track.
+
+### But the foil's energy term is indifferent to the mirrors
+
+| geometry | `c1` mirrors alone | `c1` with foil | **`c1_foil`** |
+| --- | --- | --- | --- |
+| 20/50/90/130, shipped | -0.0118 | -0.2428 | **-0.2310** |
+| 20/38/84/130, flyable | -0.0322 | -0.2558 | **-0.2236** |
+
+**Unchanged to 3 per cent** across a geometry change that moved two depths by 12 and 6 mm,
+improved `c2` fivefold and halved the timing sensitivity. So the foil's energy term is a
+property of the foil and the drift, not of the mirror - which is the cleanest evidence yet
+that the mirrors are not where the resolving power is lost.
+
+**And it is the whole limit.** With `|c1|` = 0.256 the acceptance-wide resolving power is
+about 77 whatever `c2` does, since `c1 s` = 6.4e-3 against `c2 s^2` = 5.9e-5, a factor of 108.
+Reaching 100,000 across the published +/-2.5% needs `|c1| < 2e-4`: **the foil's term must be
+cancelled to one part in a thousand of itself.** Nothing measured tonight can do that - the
+mirrors' whole range is 0.09, the foil's own shape knobs are 9.6 degrees from opposed, and
+`TE1` buys `c1` only at a `c2` cost.
+
+So either the real foil's energy term is orders of magnitude smaller than this model's, or
+the real instrument cancels it by a mechanism not yet identified. The scaling argument of
+section 24 says which foil would have no term at all - one whose potential rises as `z^2` from
+the injection point, because that is the single profile making every term in the drift
+equation scale with energy together. The foil's sixteen slices can carry any voltage law, so
+that well is buildable directly: a flat plate at `foilVolts (1 - f^2)`, rising from the bias
+at injection to zero at the far end. Testing it against uniform and linear controls is the
+measurement in flight, and it is a sharp one - the prediction is not a smaller `c1` but a
+collapse.
