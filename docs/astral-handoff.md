@@ -3749,3 +3749,42 @@ diagnostic that caught it was the flight time, not the coefficients: a term mean
 decelerating force should lengthen the flight, and this one shortened it by 40 per cent. **When
 a knob is supposed to oppose something, check the sign of its first-order effect on the
 simplest observable before reading its second-order effect on the interesting one.**
+
+## 36. Centring the well works: the trade breaks
+
+With the linear term's sign corrected, at `V` = -20 on `20/38/84/130`:
+
+| `c` | `g` | T | `a` | `b` | `a` term | `b` term | drift spread |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **0** | 0.63 | 660.8 us | +0.0215 | -3.597 | 9.7e-4 | 7.28e-3 | **8.3e-3** |
+| -0.50 | 0.60 | 605.9 | -1.0038 | +3.510 | 4.52e-2 | 7.11e-3 | 5.23e-2 |
+| -0.50 | 1.50 | 577.0 | +0.1628 | +0.760 | 7.33e-3 | 1.54e-3 | 8.87e-3 |
+| -0.50 | 3.00 | 436.1 | +0.0583 | +0.351 | 2.62e-3 | 7.11e-4 | 3.34e-3 |
+| -1.20 | 3.00 | 482.2 | **+0.0509** | **-0.381** | 2.29e-3 | 7.72e-4 | **3.06e-3** |
+| -2.50 | 3.00 | 559.6 | -0.1953 | +0.249 | 8.79e-3 | 5.04e-4 | 9.29e-3 |
+
+**The trade is broken.** At `c` = -1.2, `g` = 3.0 the second-order term is **nine times
+smaller** than the baseline's -3.597 while the first-order term stays small - where every
+previous knob bought one only by surrendering the other. The total drift spread falls 2.7-fold,
+from 8.3e-3 to 3.06e-3, which is the first real improvement in the drift since the foil was
+introduced.
+
+That is section 34's argument confirmed with the sign fixed: putting the ion nearer the well's
+centre makes `a` and `b` stop opposing each other, because a half period is
+amplitude-independent whatever the amplitude is. It also confirms the argument was right about
+*mechanism* while wrong about *implementation*, which is worth separating - the physics was
+sound and the algebra was not.
+
+**Two limits are visible in the table and neither is yet reached.** `g` = 3.0 is the **edge of
+the scan** and is best at both values of `c` tried there, so the optimum lies outside; a scan
+to `g` = 8 is running. And the flight time has fallen to 436-482 us against the published 779,
+which section 31's separation says the injection angle and tilt should absorb at fixed drift
+distance - stated there, still untested, and now the largest untested assumption in the chain.
+
+**A caveat on the law's reach.** At `c` = -1.2, `g` = 3.0 the plate potential runs from -20 V
+at injection to `V (1 - c - g)` = **+64 V** at the far end. That is a graded electrode spanning
+84 V, not a plate at a bias inside the published 0 to -20 V window, so this is no longer the
+published foil in either shape or excitation. What it demonstrates is that the drift's timing
+*can* be made nearly isochronous to both orders by an axial potential of the right form; how
+the real instrument realises that form is a separate question, and the published bias range
+says it is not by this route.
