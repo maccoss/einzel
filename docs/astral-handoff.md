@@ -4213,3 +4213,64 @@ the first could be gamed, the second was honest about the wrong quantity. **The 
 would have caught the second earlier is the one that did catch it - carry a direct cloud
 measurement alongside the proxy from the start**, because a proxy that improves while the real
 figure does not is otherwise indistinguishable from progress.
+
+## 46. The drift stops binding, the mirrors take over, and the knob for that was in the paper
+
+With the density-weighted FWHM objective - the statistic a cloud actually reports - the
+sixteen-parameter optimisation gains **1.60 times**, not the 3.69 the peak-to-peak claimed:
+
+| | FWHM-equivalent spread | screen R | flown cloud R |
+| --- | --- | --- | --- |
+| hand-tuned (`c` -1.5, `g` 3.0) | 1.9706e-3 | 254 | **206** |
+| FWHM-optimised, sixteen free | **1.2335e-3** | **405** | flying |
+
+Identical at 4,000 and 30,000 integration points. And the screen's *absolute* value now agrees
+with reality - 254 predicted against 206 measured, **23 per cent optimistic** - where the
+previous objective disagreed by an order of magnitude. The third objective is both unfittable
+and calibrated.
+
+### The requirement, and it inverts the night's priority
+
+Taking the optimiser's own coefficients (`a` = +0.0097, `b` = +0.211 for the drift; `c1` =
++0.0197, `c2` = -0.169 for the energy) and asking what injected `v_z` spread the published
+resolving power would need:
+
+| sigma(`v_z`) | drift terms | energy terms | total | R |
+| --- | --- | --- | --- | --- |
+| 4.500% (thermal, 300 K) | 8.6e-4 | 5.98e-4 | 1.46e-3 | 342 |
+| 0.900% | 1.04e-4 | 5.98e-4 | 7.03e-4 | 712 |
+| 0.450% | 4.8e-5 | 5.98e-4 | 6.46e-4 | 774 |
+| 0.045% | 4.4e-6 | 5.98e-4 | 6.03e-4 | **830** |
+
+**The energy terms floor R at 836 whatever the drift does.** Below about one per cent of `v_z`
+spread the drift stops binding entirely and the mirrors are the whole limit. Every section
+from 22 onwards treated the drift as the problem; optimised, it is not.
+
+That is a better place to be than it sounds, because **the mirrors are the part with published
+constraints**. For R = 100,000 the energy terms need `c1` below 1e-4 and `c2` below 4e-3.
+Section 18 already measured **|c1| = 0.000102** on a half oscillation, so the first is
+demonstrably reachable; `|c2|` = 0.0939 at `20/38/84/130` and 0.0398 at another depth, so the
+second needs about ten times more.
+
+### And the knob for it has been in the archived paper all night
+
+Table 1 of the crowd-control paper gives **three** columns, not two:
+
+| electrode | `C(0)` | `C(1)` | **`C(2)`** |
+| --- | --- | --- | --- |
+| U1 | -1.840 | 5.67 | **-0.256** |
+| U2 | -1.158 | -1.616 | **-0.654** |
+| U3 | 0.916 | -0.715 | **0.032** |
+| U4 | 1.503 | -2.963 | **-0.361** |
+
+and states what each does: modifying the voltages along the two vectors "modifies the linear
+and quadratic time-energy coefficients `(t|e)` and `(t|ee)` correspondingly, sparing the
+spatial focusing of the mirrors", with `TE2` = 0.1 as its worked example. **`C(2)` is the
+published knob for exactly the coefficient that now floors the resolving power**, and nothing
+in this work has used it - every mirror run all night carried `te1` alone.
+
+A scan of `TE2` along `C(2)` is running. If `c2` responds the way `C(1)` moved `c1`, the
+energy floor lifts and the mirrors' three published vectors are doing the three jobs the paper
+says they do: `C(0)` sets the focus, `C(1)` trims first order, `C(2)` trims second - which is
+also what "third-order temporal focus" requires, since cancelling three orders needs three
+controls.
