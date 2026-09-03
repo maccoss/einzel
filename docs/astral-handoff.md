@@ -3848,3 +3848,46 @@ is a drift spread well below the present 1.71e-3, limited by whatever the *third
 and if the well is genuinely harmonic about the injection plane there is no third order in the
 amplitude either, so the limit should be the well's departure from quadratic rather than the
 expansion itself.
+
+## 39. The drift coefficients are at the solve's numerical floor
+
+The fine scan of section 38 does not confirm its own prediction, and the failure is
+informative. At `g` = 3.0:
+
+| `c` | -1.50 | -1.62 | -1.70 | -1.78 | -1.90 |
+| --- | --- | --- | --- | --- | --- |
+| `a` | +0.0060 | -0.0278 | -0.0412 | -0.0333 | -0.0039 |
+| `b` | -0.712 | -0.311 | +0.587 | +1.051 | +0.826 |
+
+`a` was interpolated in section 38 to cross zero near `c` = -1.74. It does not: across the
+whole interval it sits at -0.03 plus or minus 0.01 and is **non-monotonic**, and at `g` = 2.6
+`b` reads +1.36, +2.00, +1.46 at the three values of `c` - wandering by 0.3 between adjacent
+points where a smooth dependence would move steadily.
+
+**These coefficients are at the numerical floor of the solve.** A quadratic fitted over
+plus or minus 5 per cent of injection angle turns a flight-time error `d` into
+`a` about `d/(T x 0.05)` and `b` about `d/(T x 0.0025)`. The observed scatter needs only
+**1 ns on a 500 microsecond flight** - 2e-6 relative, which is exactly the energy drift this
+4 mm-cell Astral solve already reports. So section 38's coincident zeros were an
+interpolation through noise, and its claim that the two conditions meet "to four per cent in
+`c`" is withdrawn.
+
+**The solve is deterministic, so this is not randomness.** Repeating a configuration gives the
+same answer to the bit. What varies non-smoothly is the *error*, because moving a parameter
+moves the geometry against a fixed mesh - which is Amendment 36's finding met for the third
+time in this work, now in a quantity two derivatives removed from the field.
+
+**What survives, and what does not.** The reduction from the baseline's 8.3e-3 to about
+2e-3 is far above the floor and stands: the drift spread really did improve three- to
+fourfold, and the mechanism - centring the well on the injection plane - is real, since it was
+confirmed by the sign of `T`'s response as well as by the coefficients. What does **not**
+survive is any ranking among the configurations clustered at 1.7e-3 to 3.1e-3, or any claim
+that a particular `c` zeroes either order. The measurement cannot separate them.
+
+**The floor also caps what this model can ever say about resolving power.** An arrival spread
+of 2e-6 relative is `R` = 250,000 as a *ceiling on measurability*, and the drift spread must be
+read against it: at 2e-3 there are three orders of headroom, which is why the improvement was
+visible, but a foil law aiming at the published `R` would need coefficients ten times below the
+floor. **Refining the mesh and tightening the integrator is therefore a prerequisite for the
+next round of foil optimisation, not an afterthought** - and a test at 4, 3 and 2 mm cells plus
+a tighter tolerance is running to establish how much refinement buys.
