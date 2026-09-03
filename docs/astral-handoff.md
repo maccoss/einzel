@@ -4054,3 +4054,46 @@ That is also the more honest object. The previous basis silently mixed two thing
 field, which is geometry, and the bare-tilt trajectory's sampling, which is one flight of one
 ion. Only the first belongs in a reusable basis, and separating them is what makes the
 evaluator's answers independent of the flight that happened to build it.
+
+## 43. The evaluator is a screen, not a measurement - and it ranks correctly
+
+With the basis rebuilt on the geometry, the quadrature against four flown laws:
+
+| law | T quad / flown | `a` quad / flown | `b` quad / flown |
+| --- | --- | --- | --- |
+| bare tilt | 852.73 / 853.69 us | - | - |
+| V -20, g 0.63 | 642 / 661 | +0.163 / +0.022 | -1.83 / -3.60 |
+| V -20, c -1.5, g 3.0 | 490 / 503 | +0.024 / +0.007 | +0.13 / -0.68 |
+| V -20, c -1.2, g 3.0 | 470 / 482 | +0.067 / +0.051 | -0.64 / -0.38 |
+| V -20, c -1.9, g 3.0 | 516 / 528 | -0.042 / -0.004 | +0.82 / +0.83 |
+
+**Flight times are systematically 2.4 to 2.8 per cent low** and the bare tilt is exact to
+0.11 per cent, so the bias is in the averaging rather than in the calibration. The
+coefficients are good to a factor of one to ten and occasionally carry the wrong sign, which
+is **not good enough to be an objective**: `a` = 0.0215 means T moves 0.2 per cent across the
+angle scan, and a 2.5 per cent systematic that varies even slightly with angle swamps it.
+
+**That is the adiabatic approximation's own limit, not a bug.** The x-period is 34 us against a
+drift of 500, a separation of only 15 to 1, so the averaged potential carries percent-level
+error and any quantity built from small differences of it inherits that. Neither method can
+measure these coefficients well: flights are floored by mesh error at plus or minus 0.02 in
+`a` (section 40), the quadrature by adiabaticity at a comparable level. **The two failures are
+independent, which is why they agree on the ranking and not on the values.**
+
+**And the ranking is exactly right.** Drift spread, best to worst -
+
+| | flown | screen |
+| --- | --- | --- |
+| `c` -1.5, `g` 3.0 | 1.71e-3 | 1.35e-3 |
+| `c` -1.9, `g` 3.0 | 1.85e-3 | 3.55e-3 |
+| `c` -1.2, `g` 3.0 | 3.06e-3 | 4.31e-3 |
+| `g` 0.63 | 8.3e-3 | 11.0e-3 |
+
+- same order, all four, with one chance in twenty-four of that by accident. On four points
+that is suggestive rather than proven, but combined with correct signs on `a` throughout and
+`b` matching to one per cent in one case, the screen is fit for nominating candidates.
+
+**So the division of labour section 40 asked for now exists**: optimise against the screen at
+zero flight cost, confirm the nominees by flying them. A Nelder-Mead over all sixteen slice
+potentials - the shape optimisation section 16 called for and nothing could afford until now -
+is running against it.
