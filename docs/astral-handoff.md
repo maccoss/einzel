@@ -3113,3 +3113,79 @@ against *both* conditions on the full track; the discriminating reading is refer
 **So the mirror fit was not wasted, and it was not the instrument.** \u00a718 and \u00a722 measure the
 mirrors correctly; the instrument's resolving power is the mirrors and the foil together, and
 the foil's energy term is now the one number between this model and the register's >100,000.
+
+## 24. The drift's effective potential, derived and then corrected
+
+The two prongs of \u00a723 were to be discriminated by a foil-shape optimisation on the full track.
+Before spending hours of flights on a blind search, the problem turned out to have a
+derivation - which then turned out to be wrong in an instructive way.
+
+### The scaling argument, and what it predicts
+
+Write the slow drift motion with both mechanisms, at fractional energy `\u03b5`:
+
+- the tilt's deceleration is `a\u2080\u221a\u03b5` - the ion is reflected more often when faster, and `\u03c4_x` is
+  energy-independent for a focused mirror;
+- the injection speed is `v_z0\u221a\u03b5`;
+- **the foil's potential energy `U(z)` does not scale with `\u03b5` at all.**
+
+Substituting `z = \u221a\u03b5 \u03b6` makes the first two terms scale as `\u03b5` exactly, so the `\u03b6`-motion -
+and therefore the round-trip time - is energy-independent **if and only if `U(\u221a\u03b5 \u03b6) \u221d \u03b5`, that
+is `U \u221d z\u00b2`**. A harmonic well about the injection point, and nothing else. That is a strong
+claim: energy-isochronicity would not be one option among many but a single computable shape.
+
+It also explains the bare-tilt result exactly. With `U = 0` the round trip is
+`T_z = \u03c4_x sin\u03b8 / sin 2\u03b1`, in which every energy has cancelled - which is why \u00a723 measured
+`c1` = -0.012 with the foil off, the mirrors' own value and nothing more.
+
+### Tested by quadrature, and the averaging that had to be fixed
+
+`T(\u03b5)` computed by quadrature from the well shape alone, with no new flights:
+
+| foil | `T` predicted | `T` measured | `c1` predicted | `c1` measured |
+| --- | --- | --- | --- | --- |
+| 0 V | 852.73 \u00b5s | 853.69 | **-0.0000** | -0.0118 |
+| -3 V, well averaged uniformly in `x` | 775.77 | 800.35 | -0.339 | -0.243 |
+| -3 V, well averaged over an **x-period** | **799.98** | **800.35** | -0.100 | -0.243 |
+
+**The 0 V row is the sharp one**: the quadrature contains no mirror physics whatever and
+returns exactly zero, so the measured -0.0118 is the mirrors' own `c1` and the two
+contributions are separable and additive.
+
+The averaging had to be right. A uniform average over `x` overweights the plates and
+overstates the well 4.9-fold; binning the real trajectory by `z` **aliases**, because each
+`z`-bin is crossed during a fraction of one `x`-oscillation and therefore samples a nearly
+fixed `x`-phase, giving a profile that swings between -0.23 and -10.56 V. The drift
+potential exists only as an average over a **full x-period** - 34.13 \u00b5s and 26.8 mm of drift
+here - and averaged that way it reproduces the flight time to **0.05%** at -3 V and 0.12% at
+-4 V.
+
+### The argument is wrong, and the reason is geometric
+
+The quadrature got the *value* right and both *derivatives* wrong - `c1` = -0.100 against
+-0.243, and the speed ratio +1.18 against +0.046. That is diagnostic: the well's scale is
+right and its response to the varied parameter is not, because **the well is not fixed**.
+Measured on unperturbed paths at three energies:
+
+| `dE/E` | x-period | penetration | net rise, injection to reversal |
+| --- | --- | --- | --- |
+| -2.5% | 34.15 \u00b5s | 47.2 mm | 1.0852 V |
+| 0 | 34.13 | 45.9 | 1.1700 |
+| +2.5% | 34.13 | 44.5 | 1.2191 |
+
+**A faster ion penetrates deeper into the mirrors**, spends more of its time beyond the foil
+plates in `x`, and feels a different average - the rise growing about **2.3% per 1% of
+energy**. Feeding an energy- and speed-dependent well back into the quadrature gives `c1` =
+-0.212 against a measured -0.231 and the speed ratio's collapse from 1.00 to -0.024 against
++0.046, with the -4 V row worse, as a perturbative treatment built on the unperturbed path
+should be.
+
+**So `U` depends on `\u03b5` and the scaling argument's premise fails.** A harmonic well in `z`
+does not buy energy-isochronicity, because the well's own depth moves with energy. The
+mechanism is not a property of the foil's profile along the drift at all; it is the foil's
+extent in `x` against the mirrors' penetration depth.
+
+**What that leaves is a question about independence rather than about shape**: the foil's
+`x`-extent and its `z`-contour are separate knobs, so if they move the two isochronicity
+conditions in different directions, both can be zeroed at once and \u00a723's second prong stands.
+That is a 2x2 Jacobian, and it is measurable directly.
