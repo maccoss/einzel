@@ -4499,3 +4499,34 @@ helper that **asserts the replacement happened**. I made the same mistake in a s
 with no assertion. The rewrite is a separate module that *imports* the builder from the first
 script rather than duplicating it, so the geometry cannot drift between the two - which is the
 same argument, applied to code rather than to text.
+
+### The knife-edge detector, and a measurement that does not need one
+
+The in-plateau scan gave flight times that were not smooth at all: 815.7, 818.9, 831.4,
+**873.2**, then **1641.5**, 1502.8, 1439.0 microseconds across angle factors 0.955 to 1.045.
+A near-doubling between x1.000 and x1.011 is not a flight time varying.
+
+**The trajectories say why**: `v_z` changes sign **once** at x1.000 and **three times** at
+x1.011 and x1.045, with 51 reflections becoming 96 and 84. The ion returns toward the
+injection plane, **fails to cross the detector at z = -2 mm, turns round and drifts out
+again**, and is caught on a later pass. The number of drift excursions is what changed.
+
+**The first hypothesis was wrong and cheap to refute.** The fit was constrained only over
+z in [0, 335] mm, so the foil's potential outside that range is unconstrained and could in
+principle build a barrier behind the injection plane. Sampled, it does not: the total falls
+monotonically from 0.0334 V at z = 0 to -0.29 V at -30 mm, with no maximum anywhere in
+z <= 0. Nothing reflects the ion there.
+
+**What actually happens is that the drift does not close exactly.** The adiabatic invariant is
+approximate - which is the whole basis of the pseudopotential treatment, and the paper says as
+much - so a little energy passes between the x-oscillation and the drift over 25 oscillations,
+and the ion returns to a few tenths of a millimetre either side of where it started. A
+detector 2 mm behind the injection plane is then a **threshold**, and whether a given ion
+clears it on the first return is decided by that asymmetry rather than by anything being
+measured.
+
+**So the measurement was replaced rather than the model.** The time to the **drift turning
+point** needs no detector, is half the drift period by symmetry, is present in every
+trajectory however many excursions follow it, and is the quantity the paper's Eq. (7) is built
+from. That is what should have been measured from the start: **an observable that depends on a
+threshold being crossed is not a good place to look for a part-per-million effect.**
