@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.7",
+  "schemaVersion": "0.8",
   "name": "astral-3d",
-  "description": "The Thermo Astral analyser as a solved volume: five-electrode mirrors at the published potentials, TILTED ABOUT y so the two mirrors converge along the drift. THE CONVERGENCE IS THE MECHANISM rather than a tolerance - it breaks translational invariance, which is what makes the drift decelerate and reverse, and a multi-reflection analyser whose mirrors are parallel cannot do that however it is tuned. WHICH AXIS MATTERS: tilting the mirrors (about y) gives each reflection a z-impulse of theta times its fixed x-impulse; tilting the boards (about x, as this template did until measured) instead closes the gap the ion flies down, which decelerates the drift about three times more weakly and needed a 1.58 mm spacer where the mirrors need 0.27. MEASURED: the drift reverses at convergence 0.267 mm (bracketed 0.26 to 0.28) at the design condition, against a published 200 um - a tested prediction, bracketed by runs that took no part in the fit. The oscillation count is N = injectionAngle * driftLength / (eta * convergence), where eta is the fraction of the ideal specular impulse this mirror delivers - 0.578 measured here, not 1, so the period does not quite cancel. The form is exact (checked by the 1/c scaling and by the sharper alpha/c invariance, 0.5%); the coefficient belongs to the mirror, and is the figure of merit the electrode depths actually move. GUESSED: the electrode depths d1..d4, because no paper states them; the scan that appeared to constrain them was measuring ions striking metal, and a tilted mirror's impulse is independent of its depth, so they need a figure of merit that moves with them. KNOWN WRONG: the drift faces are declared neumann, which says the structure repeats along z - true while the boards are parallel, false the moment they converge. That is now bounded rather than feared: it is worth about 11 per cent and is converged at the zPad declared here, and grounding those faces instead pins the ion in z entirely. ALSO NOT MODELLED, and more consequential than the boundary: the ion foil - electrodes above and below the path at 0 to -20 V, described by Hamish Stewart as critical to controlling z-axis focusing. Every z-direction result from this template attributes the whole drift behaviour to the mirror convergence, because convergence is the only thing here that acts along z. If the real analyser focuses its drift with a foil, this model reverses a free drift where that one confines a focused drift, and the 1.33x agreement with the published spacer is between two different mechanisms. See docs/astral-handoff.md.",
+  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 40 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four shaped plates at their graded bias with every mirror strip grounded, which is the basis field psi_foil. It supplies most of the drift reversal - mirror tilt alone is 31 to 38 per cent of what the published reversal needs, and the exact impulse law forbids any electrode design from changing that.",
   "parameters": {
     "ionEnergy": {
       "value": 4000.0,
@@ -10,19 +10,26 @@
       "maximum": 20000.0,
       "description": "Nominal beam energy. Stewart et al.: 4 keV entering the analyser."
     },
-    "convergence": {
-      "value": 0.3,
+    "spacerThickness": {
+      "value": 0.2,
       "unit": "mm",
       "minimum": 0.0,
-      "maximum": 40.0,
-      "description": "how much closer the two mirrors are at the far end of the drift than the near end - the spacer that sets the mirror tilt. THE PUBLISHED FIGURE IS 200 um AND THIS SHIPS AT 300, which is not a disagreement with the paper but a placeholder for the ion foil. The paper says the drift is reversed by the mirror tilt AS WELL AS refraction on the foil; this model has only the tilt, so it needs more of it. Mirror tilt alone reverses the drift at 0.267 mm here, so 200 um does not come back at all. Fitting the foil should bring this down toward the published value, and how far is the measurement that would confirm the foil model."
+      "maximum": 5.0,
+      "description": "Thickness of the spacer that tilts the mirrors relative to one another. PUBLISHED: Stewart et al. give 200 microns. What it is not published over is the baseline - see tiltBaseline - and that is the whole of the uncertainty in the drift reversal."
+    },
+    "tiltBaseline": {
+      "value": 250.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 1000.0,
+      "description": "Length the spacer tilts each mirror over, so the tilt angle is asin(spacerThickness / tiltBaseline). GUESSED, and it is the most consequential unpublished number in this model: 250 mm reproduces every published reversal figure (334.76 mm of drift, 25 reflections, 13.39 mm per reflection against a published 310 to 360, 24 to 26, 13.40) while reading the 200 microns as closing the GAP across the 350 mm drift instead gives 714.81 mm and 61 reflections. The two readings differ by 2.8x in the tilt. Handoff section 17."
     },
     "injectionAngle": {
-      "value": 0.022343931724278912,
+      "value": 0.03998,
       "unit": "1",
-      "minimum": 0.0005,
-      "maximum": 0.2,
-      "description": "tangent of the injection angle to the mirror axis. 1.28 degrees is the design condition: oscillations = 2*drift/(2*capToCap*angle), and 24 of them out-and-back over a 335 mm drift needs this. A published prism angle of about 2 degrees would give 4, which is not a 30 m path."
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Tangent of the angle between the trajectory and the mirror axis, setting the drift rate as V tan(theta). 0.03998 is 2.29 degrees, which is what the published drift distance and oscillation count imply through D/N = t_r V tan(theta) / 2 - a relation containing no convergence term, so it fixes the angle independently of whatever decelerates the drift. Stewart et al. state \"about two degrees\". Handoff sections 14 and 17."
     },
     "driftLength": {
       "value": 350.0,
@@ -32,11 +39,11 @@
       "description": "Extent along the drift. Published 310-360 mm."
     },
     "capToCap": {
-      "value": 625.0,
+      "value": 716.6,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 3000.0,
-      "description": "Derived from published figures: 30 m over 24 oscillations, out and back."
+      "description": "Cap plate to cap plate. Derived, not published, and derived a second time on 2026-09-01 because the first derivation was wrong. Stewart et al. give 24 to 26 oscillations over a flight path exceeding 30 m, so one oscillation is 1.154 to 1.250 m. An oscillation is out and back between the two turning points, so their separation is 577 to 625 mm - and that is NOT the cap-to-cap distance, because the ion turns short of the cap. Measured here, the turning point sits 84.2 mm past the mirror mouth and that offset is independent of capToCap, as it must be: the turning depth is fixed by the potentials and d1..d4. So separation = capToCap - 2 (mouth - 84.2) = capToCap - 91.6 mm, and 24 oscillations over 30 m needs capToCap = 716.6. The original 625 mm was the separation mistaken for the cap-to-cap distance, and it made the analyser 15% short in path and so 15% short in drift per reflection."
     },
     "boardGap": {
       "value": 40.0,
@@ -71,28 +78,28 @@
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d2": {
       "value": 50.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U2 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U2 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d3": {
       "value": 90.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U3 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U3 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d4": {
       "value": 130.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U4 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against."
+      "description": "Depth at which U4 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "halfGap": {
       "expression": "boardGap / 2",
@@ -100,9 +107,11 @@
       "description": ""
     },
     "mouth": {
-      "expression": "d4",
+      "value": 130.0,
       "unit": "mm",
-      "description": "Where each mirror opens toward the beam."
+      "minimum": 20.0,
+      "maximum": 400.0,
+      "description": "Distance from the cap plate to the mirror mouth, so the mirror occupies x from mouth - d4 to mouth and the field-free gap is what is left. INDEPENDENT of d4 as of 2026-09-02; it used to be defined as d4, which meant varying the electrode depths walked the two mirror mouths together and shrank the field-free gap - physically right for a fixed envelope, where depth and drift length are one degree of freedom rather than two, but it makes a scan over the depths a scan along a trade. Separating them is what makes fitting d1..d4 against the energy focus well posed. Handoff section 16."
     },
     "boardOuter": {
       "expression": "halfGap + boardThickness",
@@ -135,9 +144,9 @@
       "description": "kept for reference: where a detector at the FAR end of the drift would sit. The shipped detector is behind the launch point instead, because an asymmetric-track analyser's ions drift out, reverse, and come back - catching them at the far end measures only the outbound half and hides the behaviour the device is named for."
     },
     "mirrorTilt": {
-      "expression": "asinPi(convergence / 2 / driftLength)",
+      "expression": "asinPi(spacerThickness / tiltBaseline)",
       "unit": "1",
-      "description": "half the angle between the two mirror assemblies. Tilting the MIRRORS (about y) is what reverses the drift: each reflection turns the velocity by twice this, so the drift decelerates by 2*v_x*theta per reflection whatever the mirror depth. Tilting the BOARDS (about x) instead closes the gap the ion flies down, which also decelerates the drift but about three times more weakly - see docs/astral-handoff.md."
+      "description": "Tilt of each mirror, in half turns. The near stack takes +mirrorTilt and the far -mirrorTilt, which brings both mouths toward the mid-plane as z increases."
     },
     "zPad": {
       "value": 150.0,
@@ -147,11 +156,11 @@
       "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
     },
     "foilVolts": {
-      "value": 0.0,
+      "value": -3.0,
       "unit": "V",
-      "minimum": -20.0,
-      "maximum": 0.0,
-      "description": "the ion foil bias. Published as tunable between 0 and -20 V. SHIPS AT ZERO, so the foil is present in the geometry and does nothing until it is fitted - a default that makes a device worse is worse than no default, and nothing yet establishes the value."
+      "minimum": -40.0,
+      "maximum": 40.0,
+      "description": "Foil bias, uniform across the contoured plate. PUBLISHED range 0 to -20 V. Shipped at -3 V as of 2026-09-02, which is where the drift becomes first-order isochronous on the full track: the return time's dependence on v_z0 falls from the bare tilt's (dT/T)/(dv/v) = +1.00 to +0.046, zero near -3.2 V, and the flight time lands at 800 us against a published ~779 (784.85 at -4 V). The reversal point does not move with the bias (335.6 mm against 334.6 without it) because the x-averaged well is nearly equal at injection and reversal, so the foil is a pure timing correction. At -20 V it overshoots to -0.93. What remains is second order, about -6.5, which is the well not being harmonic. Handoff section 22."
     },
     "foilThickness": {
       "value": 2.0,
@@ -160,45 +169,88 @@
       "maximum": 6.0,
       "description": "how thick the foil electrodes are."
     },
-    "foilInset": {
-      "value": 10.0,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 60.0,
-      "description": "how far the foil stops short of each mirror mouth, so it sits in the field-free region between the mirrors rather than reaching into a retarding field."
-    },
     "foilGap": {
-      "value": 8.0,
+      "value": 20.0,
       "unit": "mm",
       "minimum": 2.0,
-      "maximum": 18.0,
-      "description": "half-gap from the ion path to each foil electrode. Penetration is governed by width measured in units of THIS, so it sets the scale the widths are read against."
+      "maximum": 30.0,
+      "description": "Half-gap between the foil plates in the board-gap direction. Defaults to halfGap, so the foil is a shaped conductive region on the inner face of each board rather than a separate aperture in the flight path - which is both the plausible construction for a printed-circuit analyser and what the published schematic projects to. Mounting the plates flush costs 15% of the well depth (7.31 V against 8.58 V at foilGap 8 mm) and leaves the well shape unchanged, shallowest at 41% of the drift and deepest at 67%."
     },
     "foilSlices": {
       "value": 16.0,
       "unit": "1",
       "minimum": 4.0,
       "maximum": 64.0,
-      "description": "how many steps approximate the graded width. A convergence parameter, not a design one: the shape is a wedge and this is how finely it is cut. The box primitive has parallel faces, so a varying width is a staircase."
+      "description": "Number of constant-width boxes the contoured foil plate is built from. The contour runs along the drift, so each slice spans a range of drift and holds one inner-edge position."
     },
-    "foilSliceLength": {
-      "expression": "driftLength / foilSlices",
-      "unit": "mm",
-      "description": "axial length of one step."
+    "foilOuterFrac": {
+      "value": 0.8,
+      "unit": "1",
+      "minimum": 0.1,
+      "maximum": 0.98,
+      "description": "Foil plate outer edge, as a fraction of the mid-plane to mirror-mouth distance. Measured from the published schematic at 146 mm of 182 mm; the outer edge is straight to within one pixel over the whole drift."
     },
-    "foilMidHalfWidth": {
-      "value": 16.0,
-      "unit": "mm",
-      "minimum": 1.0,
-      "maximum": 60.0,
-      "description": "half-width of the foil at mid-drift, where it is widest. Published figures show the foil as leaf shapes - broad in the middle of the drift and tapering to points at both ends - and that shape is why it does two jobs at once."
+    "foilInnerMid": {
+      "value": 0.578,
+      "unit": "1",
+      "minimum": 0.1,
+      "maximum": 0.95,
+      "description": "Mean position of the foil plate inner edge, as a fraction of the mid-plane to mirror-mouth distance. The inner edge is contoured along the drift; this is the midpoint of that contour."
     },
-    "foilEndHalfWidth": {
-      "value": 3.0,
+    "foilInnerAmplitude": {
+      "value": 0.063,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 0.4,
+      "description": "Half the peak-to-peak excursion of the foil inner edge along the drift. The published schematic gives 0.641 of the reach at the plate thinnest and 0.515 at its thickest."
+    },
+    "foilThinAt": {
+      "value": 0.41,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Drift fraction at which the foil plate is thinnest, so its inner edge lies furthest from the axis and the gap between the two plates is widest."
+    },
+    "foilThickAt": {
+      "value": 0.67,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Drift fraction at which the foil plate is thickest, so its inner edge lies closest to the axis and the gap between the two plates is narrowest. Half a contour wavelength past foilThinAt."
+    },
+    "foilStartFrac": {
+      "value": 0.0,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 0.9,
+      "description": "Drift fraction at which the foil begins. The published figure shows the plates starting about a quarter of the way along, and that is what section 11 measured - but a foil that starts late cannot reverse the drift at all, because the net work a conservative axial field does is q(phi_start - phi_end) and an ion that crosses the whole potential bump nets nothing. Set to zero so the foil spans the drift and the ion begins inside it. Handoff section 15."
+    },
+    "foilReach": {
+      "expression": "midPlane - mouth",
       "unit": "mm",
-      "minimum": 0.5,
-      "maximum": 60.0,
-      "description": "half-width at each end of the drift. Wider means more negative on axis, so a leaf that is broad in the middle puts an on-axis potential WELL at mid-drift. A positive ion displaced either way along the drift is pulled back toward the centre - which focuses the drift, and also returns it. A monotonic wedge gives a constant force and no well, which is what this template carried before the published shape was looked at."
+      "description": "Distance from the analyser mid-plane to a mirror mouth, the scale the foil plate positions are expressed as fractions of."
+    },
+    "foilOuter": {
+      "expression": "foilOuterFrac * foilReach",
+      "unit": "mm",
+      "description": "Foil plate outer edge, measured from the mid-plane."
+    },
+    "foilDriftSpan": {
+      "expression": "1 - foilStartFrac",
+      "unit": "1",
+      "description": "Fraction of the drift the foil covers."
+    },
+    "foilGrade": {
+      "value": 0.0,
+      "unit": "1",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "How far the foil bias is graded along the drift: 0 biases every slice at foilVolts, which is the PUBLISHED arrangement - the plate is at one voltage and the axial potential varies through its contoured SHAPE. Shipped at 0 as of 2026-09-02. A graded bias (1 ramps to zero at the far end) was an earlier mechanism of this model's own and is not what the instrument does; kept so the two can be compared."
+    },
+    "convergence": {
+      "expression": "2 * driftLength * sinPi(mirrorTilt) / cosPi(mirrorTilt)",
+      "unit": "mm",
+      "description": "How much the cap-to-cap gap narrows across the drift length. DERIVED from the spacer and its baseline, and reported because it is the quantity the earlier revisions of this template declared directly. 0.56 mm at the shipped values."
     }
   },
   "ion": {
@@ -230,6 +282,852 @@
     }
   },
   "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": {
+          "expression": "domainMinX",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainMaxX",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainY",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainY",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "value": 0.5,
+          "unit": "mm"
+        },
+        "tiltHalfTurns": {
+          "expression": "mirrorTilt",
+          "unit": "1"
+        },
+        "tiltCentreX": {
+          "expression": "midPlane",
+          "unit": "mm"
+        },
+        "tiltCentreZ": {
+          "expression": "driftLength / 2",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "near1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.840 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.840 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "solved2d",
+      "solve": {
+        "minX": {
+          "expression": "domainMinX",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainMaxX",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainY",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainY",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "value": 0.5,
+          "unit": "mm"
+        },
+        "tiltHalfTurns": {
+          "expression": "-mirrorTilt",
+          "unit": "1"
+        },
+        "tiltCentreX": {
+          "expression": "midPlane",
+          "unit": "mm"
+        },
+        "tiltCentreZ": {
+          "expression": "driftLength / 2",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "near1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.840 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.840 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-1.158 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0.916 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    },
     {
       "type": "solved3d",
       "solve3d": {
@@ -265,599 +1163,7 @@
         "upperZEdge": "neumann",
         "electrodes": [
           {
-            "name": "near1top",
-            "minX": {
-              "expression": "mouth - d1",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.84 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far1top",
-            "minX": {
-              "expression": "capToCap - mouth",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.84 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near1bot",
-            "minX": {
-              "expression": "mouth - d1",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.84 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far1bot",
-            "minX": {
-              "expression": "capToCap - mouth",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.84 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near2top",
-            "minX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d1",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.158 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far2top",
-            "minX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.158 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near2bot",
-            "minX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d1",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.158 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far2bot",
-            "minX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "-1.158 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near3top",
-            "minX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "0.916 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far3top",
-            "minX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "0.916 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near3bot",
-            "minX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "0.916 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far3bot",
-            "minX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "0.916 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near4top",
-            "minX": {
-              "expression": "mouth - d4",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "1.503 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far4top",
-            "minX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d4",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "1.503 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near4bot",
-            "minX": {
-              "expression": "mouth - d4",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "-mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "1.503 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far4bot",
-            "minX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d4",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "tiltAxis": "y",
-            "tiltHalfTurns": {
-              "expression": "mirrorTilt",
-              "unit": "1"
-            },
-            "potential": {
-              "expression": "1.503 * ionEnergy",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "foilTop",
+            "name": "foilNearAbove",
             "shape": "box",
             "repeat": {
               "count": {
@@ -866,11 +1172,11 @@
               "index": "slice"
             },
             "minX": {
-              "expression": "midPlane - (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - foilOuter",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
               "unit": "mm"
             },
             "minY": {
@@ -882,20 +1188,20 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "foilSliceLength * slice",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "foilSliceLength * slice + foilSliceLength",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
               "unit": "mm"
             },
             "potential": {
-              "expression": "foilVolts",
+              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
               "unit": "V"
             }
           },
           {
-            "name": "foilBottom",
+            "name": "foilNearBelow",
             "shape": "box",
             "repeat": {
               "count": {
@@ -904,11 +1210,11 @@
               "index": "slice"
             },
             "minX": {
-              "expression": "midPlane - (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - foilOuter",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + (foilMidHalfWidth - foilMidHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) + foilEndHalfWidth * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength) * ((2 * (foilSliceLength * slice + foilSliceLength / 2) - driftLength) / driftLength))",
+              "expression": "midPlane - (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
               "unit": "mm"
             },
             "minY": {
@@ -920,15 +1226,603 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "foilSliceLength * slice",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "foilSliceLength * slice + foilSliceLength",
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
               "unit": "mm"
             },
             "potential": {
-              "expression": "foilVolts",
+              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "foilFarAbove",
+            "shape": "box",
+            "repeat": {
+              "count": {
+                "expression": "foilSlices"
+              },
+              "index": "slice"
+            },
+            "minX": {
+              "expression": "midPlane + (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + foilOuter",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "foilGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "foilGap + foilThickness",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "foilFarBelow",
+            "shape": "box",
+            "repeat": {
+              "count": {
+                "expression": "foilSlices"
+              },
+              "index": "slice"
+            },
+            "minX": {
+              "expression": "midPlane + (foilInnerMid + foilInnerAmplitude * cosPi(((foilStartFrac + foilDriftSpan * (slice + 0.5) / foilSlices) - foilThinAt) / (foilThickAt - foilThinAt))) * foilReach",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + foilOuter",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-foilGap - foilThickness",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-foilGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * slice / foilSlices)",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength * (foilStartFrac + foilDriftSpan * (slice + 1) / foilSlices)",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1topGround",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1topGround",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1botGround",
+            "minX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1botGround",
+            "minX": {
+              "expression": "capToCap - mouth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2topGround",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2topGround",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2botGround",
+            "minX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d1",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2botGround",
+            "minX": {
+              "expression": "capToCap - mouth + d1",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3topGround",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3topGround",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3botGround",
+            "minX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d2",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3botGround",
+            "minX": {
+              "expression": "capToCap - mouth + d2",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4topGround",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4topGround",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4botGround",
+            "minX": {
+              "expression": "mouth - d4",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "mouth - d3",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4botGround",
+            "minX": {
+              "expression": "capToCap - mouth + d3",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "capToCap - mouth + d4",
+              "unit": "mm"
+            },
+            "shape": "box",
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
               "unit": "V"
             }
           }

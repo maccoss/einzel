@@ -1402,6 +1402,14 @@ The two design documents remain the source of truth for *intent*. Tracked alongs
 - `einzel-software-spec-r06.html` — the software specification, rev 0.6. **The source of truth for every architectural decision below.** Tracked in git. Read the relevant `§` section before proposing or changing design.
 - `compact-mrtof-stellar-memo.html` — companion working memo, rev 0.7. The instrument the platform must model first; the spec's acceptance criteria reference it by section (e.g. "memo §6 item 5", "the memo's mirror pair tracked end to end"). Phase 1 is not done until that mirror pair runs at ACC-1. **Gitignored and not published** — it carries the patent and freedom-to-operate analysis and this remote is public, so it exists only in the local working tree. Do not add it to git, and do not quote its patent or competitive analysis into tracked files.
 
+- `papers/` — **full texts of the reference papers, gitignored and not published.** Kept so
+  that a session never has to ask for them again. It currently holds the crowd-control paper
+  (J. Mass Spectrom. 2024;59(4):e5006), which is behind Wiley and cannot be re-fetched; the
+  instrument paper is open access and `papers/README.md` records how to get it (the browser
+  tool, not curl — PMC blocks scripted fetches). **Read `papers/README.md` before asking for
+  a paper.** The tracked record of what the papers say is the published register in
+  `docs/astral-handoff.md` §1, which paraphrases and cites rather than reproducing.
+
 Both are hand-authored, self-contained HTML documents: inline `<style>` blocks over an IBM Plex / CSS-variable palette, figures as inline `<svg>`. Edit the HTML directly; there is no generator and no markdown source. Revisions are new files with a bumped suffix (`-r06` → `-r07`), not in-place overwrites, and the change line at the top of the document records what the revision added.
 
 **Detailed documentation lives in `docs/`** — architecture and the four invariants, the model format in full, device templates, numerics with every measured figure, the lessons from bugs that presented as physics, the CLI contract, validation coverage *and its gaps*, and findings against the specification. Read the relevant page before changing something in that area; it records why things are the way they are, and several of the decisions cost real time to reach.

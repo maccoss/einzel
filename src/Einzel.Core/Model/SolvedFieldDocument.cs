@@ -494,6 +494,38 @@ public sealed record CompiledElectrode
 /// </remarks>
 public sealed record SolvedFieldDocument
 {
+    /// <summary>
+    /// Tilts the whole cross-section's extrusion axis about y, in half turns, so that
+    /// 1.0 is 180 degrees. Absent or zero leaves it along z.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A cross-section solve is a two-dimensional geometry extruded along z. This tilts
+    /// the direction it is extruded along, which is how an asymmetric-track analyser's
+    /// converging mirrors are built: a pair of cross-sections tilted oppositely, each
+    /// carrying one mirror at potential with the other grounded.
+    /// </para>
+    /// <para>
+    /// It belongs here rather than on the electrodes, and that is a correctness matter
+    /// rather than a convenience. Tilting a three-dimensional geometry and solving it
+    /// cannot resolve the result: the entire signal is the field anisotropy
+    /// <c>Ez/Ex = tan(alpha)</c>, 2.9e-4 for a 200 micron convergence over 350 mm, which
+    /// is well below the field error of a second-order solve on any affordable mesh.
+    /// Rotating a solved cross-section instead is exact, because rotations commute with
+    /// the Laplacian.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? TiltHalfTurns { get; init; }
+
+    /// <summary>The x coordinate of the tilt axis. Defaults to the domain's centre.</summary>
+    public QuantityValue? TiltCentreX { get; init; }
+
+    /// <summary>
+    /// The z coordinate of the tilt axis. Defaults to zero, and matters because it sets
+    /// where along the drift the geometry sits at its declared position.
+    /// </summary>
+    public QuantityValue? TiltCentreZ { get; init; }
+
     /// <summary>Lower x bound of the solve domain.</summary>
     public QuantityValue? MinX { get; init; }
 
@@ -733,6 +765,15 @@ public sealed record CompiledStage(
 /// <summary>A two-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField
 {
+    /// <summary>The extrusion-axis tilt about y, in half turns. Zero leaves it along z.</summary>
+    public double TiltHalfTurns { get; init; }
+
+    /// <summary>The x coordinate of the tilt axis, in metres.</summary>
+    public double TiltCentreX { get; init; }
+
+    /// <summary>The z coordinate of the tilt axis, in metres.</summary>
+    public double TiltCentreZ { get; init; }
+
     /// <summary>Solve domain, in metres.</summary>
     public required double MinX { get; init; }
 
