@@ -4097,3 +4097,42 @@ that is suggestive rather than proven, but combined with correct signs on `a` th
 zero flight cost, confirm the nominees by flying them. A Nelder-Mead over all sixteen slice
 potentials - the shape optimisation section 16 called for and nothing could afford until now -
 is running against it.
+
+## 44. An objective that could be fitted rather than satisfied
+
+The screen made the sixteen-parameter shape optimisation affordable, so it was run:
+Nelder-Mead over all sixteen slice potentials, minimising the drift's contribution to arrival
+spread as `|a| x 0.045 + |b| x 0.045^2`. It reported the objective driven from 1.34e-3 to
+**4.1e-13** - an improvement of 3.3 billion - from potentials that barely moved:
+
+| slice | 0 | 1 | 2 | 8 | 15 |
+| --- | --- | --- | --- | --- | --- |
+| start V | -20.00 | -21.73 | -22.93 | -18.93 | +10.00 |
+| "optimised" V | -19.83 | -19.20 | -22.83 | -18.97 | +10.27 |
+
+**No physical quantity improves nine orders from a one per cent nudge**, and that mismatch is
+the whole diagnosis. `a` and `b` are coefficients of a **five-point quadratic fit** to the
+quadrature; with sixteen free parameters, driving two fitted coefficients to machine zero is
+trivial and constrains nothing about `T` between or beyond those five sample points. The
+optimiser found the objective's numerical structure, not the physics - the classic failure of
+an under-determined objective, met here with an eight-to-one ratio of parameters to
+constraints.
+
+**The general rule this belongs to**, and it is the same one this project already applies to
+warnings and to figures of merit: *an objective built from a truncated fit can be satisfied by
+cancelling the fit rather than by improving the thing fitted.* The defence is not more
+parameters or tighter tolerances but an objective that never forms the coefficients - here,
+the **full width of `T` sampled across plus or minus three sigma of the thermal `v_z`
+distribution**, seventeen points, no expansion. That cannot be gamed by cancellation because
+there is nothing to cancel.
+
+That rerun is in flight, with its result verified at a finer integration than it optimises
+against, so a spurious win from quadrature noise would show up as a disagreement between the
+two.
+
+**Cost note worth recording.** The first optimisation took 57 minutes for 600 Nelder-Mead
+iterations, because each objective evaluation ran eleven quadratures at 30,000 integration
+points in pure Python. Screening does not need that resolution: the rerun uses 4,000 points
+and checks the winner at 30,000. The screen's whole value is that it is cheap, and spending it
+on integration accuracy that the adiabatic approximation's own 2.5 per cent bias makes
+irrelevant is the wrong trade.
