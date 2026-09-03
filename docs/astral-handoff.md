@@ -4023,3 +4023,34 @@ off-by-one in the slice indexing immediately; it is worth doing before any use o
 Sixteen separate solves are now running, each processed to its profile and its 30 MB volume
 deleted before the next. That removes the translation assumption entirely: superposition over
 true per-slice wells is exact up to interpolation.
+
+## 42. The evaluator's range bug, and the basis rebuilt on the geometry
+
+The sixteen-well basis validated well against a directly measured flat-plate well - 0.51 per
+cent on depth, **3.1 per cent on the shape the drift feels**, against the translated kernel's
+43 per cent. Then the quadrature built on it disagreed with the flown coefficients by one to
+three orders: `a` = +3.18 against a flown +0.0215, `b` = +83 against -3.60.
+
+**The diagnosis was one number repeated.** Every law, however different, returned
+`z_rev` = **344.0 mm** and `phi(0)` = **0.000 V**. The basis wells span 26 to 334 mm, because
+they were extracted from the bare-tilt trajectory: the first full x-period average is centred
+at 26 mm and the last at the reversal. Outside that the interpolator returns zero. So the well
+at the injection plane was zero for every law, the well collapsed to zero just past 334 mm,
+and the resulting step invented an enormous force at exactly the place the quadrature looks for
+a turning point. Every coefficient came from that artefact rather than from the foil.
+
+**A constant appearing where a variable was expected is the cheapest diagnostic there is**, and
+it was in the first column of the first table. What made it visible was printing `z_rev` and
+`phi(0)` beside the coefficients rather than the coefficients alone - three extra numbers that
+identified the fault immediately, where the coefficients alone had only said "wrong".
+
+**The fix removes the drift from the construction.** The mirrors are invariant along z apart
+from the tilt, so the ion's x-orbit is the same orbit at every z: one x-period taken from the
+trajectory can weight a **uniform z-grid** of any extent. The basis then describes the geometry
+rather than a particular flight, and covers -10 to 900 mm - past any reversal the drift can
+reach - at 5 mm resolution.
+
+That is also the more honest object. The previous basis silently mixed two things: the foil's
+field, which is geometry, and the bare-tilt trajectory's sampling, which is one flight of one
+ion. Only the first belongs in a reusable basis, and separating them is what makes the
+evaluator's answers independent of the flight that happened to build it.
