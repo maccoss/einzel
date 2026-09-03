@@ -3546,3 +3546,44 @@ sharply - 794 us at -4 V, 718 at -12, and further still beyond - so a foil law c
 two isochronicity conditions will not leave `T` at 779. The geometry knobs absorb that at
 fixed drift distance, which is why the problem is determined rather than over-determined, and
 why `T` should not be used to reject a foil law.
+
+## 31. The gap closes with bias, and the published maximum is where it lands
+
+Scanning `phi = V (1 - g f^2)` on a flat plate over bias and quadratic fraction, on
+`20/38/84/130`, reading off where each condition is met:
+
+| `V` | `c1_foil` = 0 at | ratio = 0 at | **gap in `g`** |
+| --- | --- | --- | --- |
+| -4 | 0.751 | 0.377 | 0.374 |
+| -8 | 0.707 | 0.540 | 0.167 |
+| -12 | 0.710 | 0.585 | 0.125 |
+| -16 | 0.641 | 0.577 | 0.064 |
+| **-20** | 0.639 | 0.582 | **0.057** |
+| -26 | 0.616 | 0.587 | 0.029 |
+
+**The gap closes as the bias deepens**, roughly as `1/|V|`, so the two conditions become
+compatible in the same limit rather than at some isolated point. At the published maximum of
+**-20 V**, taking the quadratic fraction that zeroes the speed ratio leaves `c1_foil` = -0.034
+- a **sevenfold reduction** from the -0.231 the shipped foil carries, with the drift fully
+isochronous in speed.
+
+**And at that point the mirrors' own `c1` is no longer negligible**: -0.032 against the foil's
+-0.034. Which is exactly the situation `TE1` exists for, at the sensitivity this reconstruction
+already pinned to the published value (`dc1/dTE1` = 1.071, section 29). So the closing move is
+three knobs, all inside published ranges: the foil bias at its stated maximum, the quadratic
+fraction of its voltage law, and the first correction vector.
+
+**A caveat on the trend, stated because it is the weak point.** The gap goes as `1/|V|` and
+therefore approaches zero asymptotically rather than crossing it - at -26 V it is still 0.029
+and the extrapolation does not obviously reach zero at any finite bias. So the expected
+outcome is not both conditions exactly zero but both small, with `TE1` absorbing what is left
+of the first-order term. Whether "small" is small enough is a resolving-power measurement, not
+an argument, and that is what runs next.
+
+**What is given up to get here.** The plate is flat: `foilInnerAmplitude` = 0, the
+pixel-measured contour removed, with the voltage law doing the work the shape did. That is a
+*different foil* from the published one, and section 30 already noted the contour was helping
+- a flat uniform plate is worse than a contoured one at the same bias. So this is a
+demonstration that a foil law exists which meets both conditions, not a claim about how the
+real instrument is built. Combining the measured contour with a graded law is the obvious next
+parameterisation and has not been tried.
