@@ -2446,6 +2446,35 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     hidden: `c1` has a mesh floor of +/-0.0015 from how the strips sit on the lattice, and the
     `d2` constraint carries the paper's own "about" at +2.5/-3 mm. Handoff sections 18-28.
 
+    **The night of 2 September took this further, and the priority inverted.** Both prongs
+    above were measured and both fail as parameterised - but the **foil's voltage law along the
+    drift** is a knob neither tested, and it flips the sign of the energy term. Centring the
+    foil's well on the injection plane breaks the trade between the drift's first- and
+    second-order terms (they are the same condition there, since a half period is
+    amplitude-independent), and the drift spread falls from 8.3e-3 to about 2e-3. **Once the
+    drift is optimised it stops being the limit**: the mirrors' energy terms floor R at 836
+    whatever the drift does, so the mirrors are the whole remaining gap - and they are the part
+    with published constraints.
+
+    **And both published correction vectors fail to do their published jobs on this geometry**,
+    which is now the sharpest constraint in the reconstruction. `C(1)`'s sensitivity is 2.2
+    against a published 1.0 (met at `d2` = 38 mm to 2%), and `TE2` along `C(2)` *increases*
+    `c2` in both directions where its stated purpose is to reduce it - a **sign** condition,
+    so it cannot be satisfied by accident. A depth set where both hold is a geometry in which
+    the published calibration scheme works as published, which is a far stronger claim than
+    matching any single number. Three conditions on four depths, none fitted to a number this
+    model produced, and that is the next search.
+
+    Two measurement limits bound any further work and are worth knowing before repeating it.
+    **Flight-time differencing floors the drift coefficients at plus or minus 0.02 in `a`** at
+    any mesh - a 330 ns signal on a 3 microsecond error that only 60% cancels - and refining
+    4 to 2 mm moves `a` by as much as the scatter while the integrator at 1e-12 changes
+    nothing. A **quadrature screen** over sixteen per-slice basis wells avoids that and costs
+    no flights (it ranked four flown laws in exactly the flown order, 23% optimistic in
+    absolute R), but is itself floored by adiabaticity, the x-period being 34 microseconds
+    against a 500 microsecond drift. The two floors are independent, which is why the methods
+    agree on ranking and disagree on values. Handoff sections 24-46.
+
 ## Open decisions
 
 §23's list, with what has been settled since.
