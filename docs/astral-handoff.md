@@ -3891,3 +3891,23 @@ visible, but a foil law aiming at the published `R` would need coefficients ten 
 floor. **Refining the mesh and tightening the integrator is therefore a prerequisite for the
 next round of foil optimisation, not an afterthought** - and a test at 4, 3 and 2 mm cells plus
 a tighter tolerance is running to establish how much refinement buys.
+
+### A note on the harness rather than the physics
+
+Three scripting faults cost compute or reasoning tonight, all of one kind - a scan whose
+limits or output were wrong in a way that looked like a result:
+
+1. **`foilQuad` bounded at plus or minus 4** while the scan asked for 5 and 8, so the model was
+   refused before a solve began. The rows printed as missing and I read them as a physical
+   edge (section 37).
+2. **A results table that formats a refusal and a lost ion identically.** Both appear as a
+   blank row; only the outcome field distinguished `None` from `StruckElectrode`.
+3. **A print statement that crashed on an absent value** - `energyDrift` is correctly absent
+   for a field that does work, and formatting it as a float threw after all the flights had
+   run, discarding the whole measurement.
+
+The third has a general fix now applied: **write the raw results to disk before formatting
+anything**, so a presentation bug cannot destroy compute. The first two share a rule -
+*a study's own refusals must be visually distinct from its physical failures* - which is the
+same argument GRD-3 makes about warnings, applied to a scratch harness rather than to the
+engine.
