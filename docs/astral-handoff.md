@@ -4452,3 +4452,38 @@ result has no unique diagnosis.
 This is the sixth convention or harness error of the night, and they all share a shape: a
 quantity read under the wrong convention, producing a plausible number rather than a failure.
 The others are collected in the harness note above.
+
+### The published design flown: the geometry reproduces to one per cent
+
+With the injection angle corrected to a tangent, `theta0` = 1.78 degrees, `tiltBaseline` =
+494 mm and the sixteen slice potentials fitted to `psi_s`:
+
+| | published | this model | |
+| --- | --- | --- | --- |
+| tilt-only reversal (predicted 335/0.84 = 399) | - | **400.3 mm** | 1.003 |
+| reversal with the stripe | **335 mm** | **338.6 mm** | 1.011 |
+| reflections | **50** | **51** | +1 |
+| flight time | **~779 us** | 873.2 us | 1.121 |
+
+**The tilt-only reversal at 400.3 mm against a predicted 399 is the sharp one**, because it
+tests the tilt calibration alone with nothing else in play - and it confirms that `a0` = 0.84
+means what section 47 read it to mean. The reversal with the stripe then lands within 1.1 per
+cent of the published 335 mm at the right reflection count, which is the published drift
+design reproduced in an independently built model.
+
+**And the flight time's 12 per cent has a single-number explanation.** The paper's effective
+mirror separation is **641 mm** against this template's 716.6, and `T` is proportional to it:
+779 x 716.6/641 = **871 us** against the measured 873.2, agreeing to **0.26 per cent**. So the
+remaining flight-time error is the mirror separation and nothing else - a quantity this model
+guessed from the published flight path and can now take from Table 1 instead. Note the
+published 641 mm is an *effective* distance ("the ion's nominal velocity times half the
+period"), not a physical cap-to-cap, so it is not a drop-in replacement for `capToCap`; the
+ratio is what the measurement pins.
+
+**The isochronicity was measured outside the plateau.** A first reading gave `a` = +5.20 where
+the design wants zero. But `eta_D` goes as `sin^2(theta)`, so the published plateau of
+`eta_D` = 1 ± 0.1 is only **± 5 per cent in angle**, and that scan used ± 6.75 per cent -
+± 13.5 per cent in drift length, outside the plateau, exactly where Fig. 4's right panel shows
+`tau` rising steeply away from its flat region. Re-measuring inside it is the test that means
+something, and the arithmetic relating the two ranges is one line that should have been done
+before the first scan rather than after it.
