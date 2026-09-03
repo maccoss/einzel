@@ -4274,3 +4274,42 @@ energy floor lifts and the mirrors' three published vectors are doing the three 
 says they do: `C(0)` sets the focus, `C(1)` trims first order, `C(2)` trims second - which is
 also what "third-order temporal focus" requires, since cancelling three orders needs three
 controls.
+
+### `C(2)` makes `c2` worse, which is the sharpest constraint yet
+
+Scanning `TE2` along the published `C(2)`, at `20/38/84/130` with `te1` = 0:
+
+| `te2` | `\|c1\|` | `\|c2\|` | `\|c3\|` | energy term | R floor |
+| --- | --- | --- | --- | --- | --- |
+| -0.60 | 0.1437 | 0.2269 | 0.66 | 3.74e-3 | 134 |
+| -0.30 | 0.0993 | 0.1930 | 0.84 | 2.60e-3 | 192 |
+| **0.00** | **0.0330** | **0.0939** | 1.41 | **8.83e-4** | **566** |
+| +0.30 | 0.0820 | 0.2364 | 3.43 | 2.20e-3 | 228 |
+| +0.60 | 0.3417 | 1.7739 | 15.86 | 9.65e-3 | 52 |
+
+**Zero is optimal: the published vector makes `c2` worse in both directions**, where its stated
+purpose is to modify the quadratic time-energy coefficient. It also degrades `c1` and `c3`
+simultaneously, so it is not trading orders - it is simply detuning the mirror.
+
+**That is the same signature as `C(1)`**, whose sensitivity came out 2.2 against a published
+1.0 (section 26). Both published correction vectors were derived in the four-dimensional space
+of *Thermo's* mirror voltages at *Thermo's* electrode positions; applied to guessed depths they
+do not do their published jobs. Which is not a disappointment but the **sharpest constraint in
+this reconstruction so far**, because it is two independent, entirely unfitted published
+behaviours that the geometry must reproduce:
+
+1. `dc1/dTE1` = **1.0** - met at `d2` = 38 mm to two per cent, and 2.2 at the shipped 50;
+2. `TE2` along `C(2)` must **reduce** `c2` near zero - currently violated at every geometry
+   tried, since zero is a local minimum in `te2`.
+
+Constraint 2 is the more powerful of the two because it is a *sign* condition rather than a
+magnitude, so it cannot be met by accident and needs no assumption about how good "about
+2.5 ppm/V" is. A depth set where both hold is a geometry in which the published calibration
+scheme works as published, and that is a far stronger claim than matching any single number.
+
+**The morning task is therefore well posed for the first time**: search `d1..d4` for a
+geometry that simultaneously flies the full track, gives `dc1/dTE1` = 1.0, and makes `C(2)`
+reduce `c2`. Three conditions, four parameters, all three published or physically necessary,
+and none of them fitted to a number this model produced. The foil work of sections 30 to 45
+can then be redone on that geometry - it is cheap now, via the screen - and the resolving
+power read off with the drift no longer binding.
