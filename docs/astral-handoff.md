@@ -3902,15 +3902,35 @@ limits or output were wrong in a way that looked like a result:
    edge (section 37).
 2. **A results table that formats a refusal and a lost ion identically.** Both appear as a
    blank row; only the outcome field distinguished `None` from `StruckElectrode`.
-3. **A print statement that crashed on an absent value** - `energyDrift` is correctly absent
+3. **A basis expression that was wrong twice over.** Building a per-slice basis needs a
+   delta, and `1 - d^2` is neither dimensionless-safe (the engine correctly refused it: a
+   potential must be volts, and bare literals carry no unit) nor a delta - it goes *negative*
+   for `|d| > 1`, so slices two away would have carried -3 V. `floor(1 / (1 + d^2))` is the
+   indicator the grammar can express. The refusal was the engine doing its job; the negative
+   lobe it would not have caught.
+4. **A reader looking for the wrong key.** `einzel export` reports `artifacts`; the script
+   asked for `files`, got nothing, and printed "export failed" over a successful export. An
+   earlier script in the same directory checked both keys - so this was a regression against
+   my own prior fix, in a fresh copy of the same three lines.
+5. **A print statement that crashed on an absent value** - `energyDrift` is correctly absent
    for a field that does work, and formatting it as a float threw after all the flights had
    run, discarding the whole measurement.
 
-The third has a general fix now applied: **write the raw results to disk before formatting
-anything**, so a presentation bug cannot destroy compute. The first two share a rule -
+Item 5 has a general fix now applied: **write the raw results to disk before formatting
+anything**, so a presentation bug cannot destroy compute. Items 1 and 2 share a rule -
 *a study's own refusals must be visually distinct from its physical failures* - which is the
 same argument GRD-3 makes about warnings, applied to a scratch harness rather than to the
-engine.
+engine. Item 4 is the one worth dwelling on: **five scripts in this directory each reimplement
+the same read of the same CLI output**, and the copy that was right did not stop the copy that
+was wrong. That is the argument for the engine's own figures of merit over ad-hoc harness
+readers, made from the wrong side.
+
+**And the common thread across all five: every one of them produced a plausible-looking
+output rather than a crash.** A refused model printed as a missing row, a wrong basis printed
+as a field, a failed key printed as "export failed" over a success. In a night of scanning
+where the interesting answers are also the surprising ones, that is the failure mode that
+costs most - which is why the physics claims that survived tonight are the ones confirmed by
+two independent observables, and the ones withdrawn were single-observable interpolations.
 
 ## 40. Refinement does not converge the drift coefficients, and the alternative is already validated
 
