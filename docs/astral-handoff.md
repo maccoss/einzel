@@ -4530,3 +4530,48 @@ point** needs no detector, is half the drift period by symmetry, is present in e
 trajectory however many excursions follow it, and is the quantity the paper's Eq. (7) is built
 from. That is what should have been measured from the start: **an observable that depends on a
 threshold being crossed is not a good place to look for a part-per-million effect.**
+
+## 48. The stripe must outrun the drift, and a fit that stopped where the drift did
+
+The turning-point measurement removed the detector and the discontinuity survived: `z_turn`
+jumps from **338.65 mm to 409.05 mm** between angle factors 1.000 and 1.011, a 21 per cent
+change in reversal for a 1.1 per cent change in angle. And 409 is close to the **tilt-only**
+reversal of 400 mm, which is the clue.
+
+Sampling the fitted drift potential past the fitted range:
+
+| z, mm | 320 | 335 | **350** | 365 | **380** | 395 | 410 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| total, V | 3.460 | 3.847 | **3.947** | 3.855 | **3.832** | 3.893 | 3.999 |
+| intended, V | 3.459 | 3.859 | 4.265 | 4.673 | 5.080 | 5.484 | 5.884 |
+
+**The fitted potential has a local crest at 350 mm and then dips**, where the intended one
+rises monotonically, and the two diverge from exactly 335 mm - the edge of the fitted range.
+The cause is physical rather than numerical: **the foil ends at 350 mm in this template**, so
+past it the stripe's contribution decays away and cancels part of the tilt's rise.
+
+The drift energy at angle x1.011 is **3.9447 V against the 3.9471 V crest** - a margin of
+0.06 per cent. The ion clears it, coasts through the dip, and is finally stopped at 409 mm
+where the tilt's rise overtakes it, which is the measured number. At nominal energy
+(3.8594 V) it never reaches the crest and turns at 338 mm as designed.
+
+### The requirement this exposes
+
+**The stripe must extend far enough beyond the nominal drift length that its far-edge fringe
+forms no crest inside the operating range of drift lengths.** The published plateau spans
+`eta_D` = 1 ± 0.1, so drift lengths reach 368 mm, and the crest here sits at 350 - inside the
+range that must work. The margin between the nominal drift energy and the crest is 2.3 per
+cent while the plateau needs ±2.2 per cent, so they very nearly overlap, and that near-overlap
+is the whole instability.
+
+This is a design constraint the pseudopotential formalism does not state and the papers do not
+mention, because in a correctly built instrument it is satisfied comfortably: their stripe
+presumably runs well past 368 mm. In this template `driftLength` is 350 mm and the foil spans
+all of it, which puts the far edge 15 mm past the nominal reversal - far too close.
+
+**And it is a fitting error as much as a geometry one.** The least-squares fit of section 47
+was constrained over `0 <= z <= L` because that is where the published `psi_s` is defined. Past
+`L` the basis sum was free, and "free" meant "decays as the foil's fringe field does", which is
+not what the design needs there. **A fit over the range the observable occupies is not enough
+when the dynamics can leave that range** - and a drift whose whole purpose is to reverse near
+the edge of the fitted domain will leave it whenever it is perturbed.
