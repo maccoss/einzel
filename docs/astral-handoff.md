@@ -4706,3 +4706,52 @@ s^-3:
 and reaching the +/-3 to 5% a compact design would like needs `c3` cancelled by the geometry
 too. That is the number that decides whether a lower-resolution instrument needs the
 third-order focus, and it is now measured rather than assumed.
+
+## 50. Geometric scaling, and what a lower-resolution analyser would be
+
+The drift decrement per reflection is `dv_z = V sin 2a` exactly - it follows from conservation
+alone and is independent of the electrode design and of the mirror separation. So the number of
+reflections needed to reverse the drift is
+
+    N = sin(theta) / sin(2a),     sin(a) = spacer / baseline
+
+which contains **no length at all**. The prediction is that scaling every dimension by k at
+fixed voltages leaves `N` unchanged while the flight time, the effective separation, the drift
+length and the whole envelope all scale by k. Flown at four scales, with all sixteen length
+parameters and both mesh sizes scaled together:
+
+| k | cap to cap | N | T / kT0 | z_rev / k z0 | L_eff / k L0 |
+| --- | --- | --- | --- | --- | --- |
+| 1.00 | 685 mm | 40 | 1.0000 | 1.0000 | 1.0000 |
+| 0.70 | 480 mm | **40** | 1.0005 | 1.0000 | 0.9999 |
+| 0.50 | 343 mm | **40** | 1.0013 | 1.0000 | 1.0000 |
+| 0.30 | 206 mm | **40** | 1.0030 | 0.9994 | 0.9994 |
+
+**The oscillation count is untouched by a 3.3-fold change in size**, and the drift reversal
+divided by k is the same 393.9 mm at every scale. Applied to the published instrument, a
+one-fifth-scale similar analyser keeps all 25 oscillations at about 137 mm cap-to-cap, 67 mm of
+drift, 6.4 m of path and 156 microseconds of flight.
+
+**Two earlier attempts at this failed, both from an incomplete scaling rather than from the
+physics, and both looked like the prediction being wrong.** The first scaled the tilt baseline
+and left the 0.2 mm spacer alone - and the tilt is `asin(spacer / baseline)`, so the convergence
+angle went as 1/k and `N` came out 19 against 40 at k = 0.5. The second scaled the spacer too,
+fixing the angle, but left the mirror internals - `d1..d4`, the mouth, the board gap - at
+absolute millimetres; the geometry was still not similar, and at a 300 mm cap-to-cap with a
+130 mm mouth on each side the two mirrors nearly touch. `N` came out 19 again. **A similar
+analyser is similar in every length**, and a scaling test that scales a subset measures the
+subset.
+
+What the route costs is **acceptance**, and it is calculable rather than a worry. Scaling all
+lengths at fixed voltage scales the fields as 1/k, so trajectories are geometrically similar: an
+ion entering at the same *angle* follows the same relative path, the accepted angular range is
+preserved, and the accepted spatial extent scales with k. The accepted emittance therefore goes
+as k.
+
+### And opening the injection angle helps the drift aberration rather than costing it
+
+The thermal spread in sideways velocity is absolute - 70.6 m/s at 300 K for m/z 500 - while the
+sideways velocity itself is `V sin(theta)`. So the *relative* spread the drift electrode has to
+correct falls as `1 / sin(theta)`: 5.79 per cent at 1.78 degrees, 3.43 at 3 degrees, 1.72 at 6.
+A wider injection angle reduces the cancellation the stripe must supply by the same factor,
+which is the opposite of treating the aberration budget as the price of a wider angle.
