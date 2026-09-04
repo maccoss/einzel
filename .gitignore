@@ -22,7 +22,7 @@ packages/
 ## Internal working memo. Not published: it carries the patent and
 ## freedom-to-operate analysis, and this remote is public. The software
 ## specification alongside it IS tracked.
-compact-mrtof-stellar-memo.html
+compact-mrtof-stellar-memo*.html
 
 ## Einzel project scratch (spec section 3)
 ## Field caches, trajectories, frames. Large, binary, and regenerable from the
