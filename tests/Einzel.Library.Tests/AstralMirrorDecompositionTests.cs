@@ -193,6 +193,72 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     /// so abutting strips cost nothing and the gap that once had to be at least a cell wide
     /// is not a parameter of this device.
     /// </remarks>
+    /// <summary>
+    /// The shipped tilt and injection angle are the published ones, and they imply the
+    /// published share of the drift reversal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this test exists.</b> Every other test in this file is structural, and the
+    /// flight test in <c>AstralMirrorStudy</c> flies a different template. So when the tilt
+    /// baseline and the injection angle were both corrected on 2026-09-04 - the baseline by
+    /// almost exactly a factor of two - the whole suite passed before and after. The most
+    /// consequential number in this reconstruction had no test at all.
+    /// </para>
+    /// <para>
+    /// <b>What it asserts, and why it is arithmetic rather than a flight.</b> Three published
+    /// quantities constrain the geometry, and none of them is a number this engine produced:
+    /// Grinfeld et al. give the convergence as 0.045 deg <i>between</i> the mirrors, a nominal
+    /// injection angle of 1.78 deg, and a drift pseudopotential whose mirror part is
+    /// <c>psi_m = a0 eta</c> with <c>a0 = 0.83999</c>. The drift impulse per reflection is
+    /// <c>dv_z = V sin 2a</c> exactly, so the reflections to reverse are
+    /// <c>N = sin(theta) / sin(2a)</c> and the reversal is <c>N L_eff sin(theta) / 2</c>,
+    /// giving
+    /// </para>
+    /// <para><c>a0 = 2 y0 sin(2a) / (L_eff sin^2(theta))</c></para>
+    /// <para>
+    /// with <c>y0 = 335 mm</c> and <c>L_eff = 641 mm</c> both from the same Table 1. That is
+    /// a consistency check among four published numbers and the template's own declared
+    /// parameters, computable with no field solve and no ion. A flight measures 0.8504 by an
+    /// independent route (docs/astral-handoff.md section 47), which is the confirmation; this
+    /// is the guard.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheShippedTiltAndInjectionAngleAreThePublishedOnes()
+    {
+        var document = ModelJson.Parse(DeviceTemplates.Read("astral-3d"));
+        var p = document.Parameters!;
+
+        const double PublishedConvergenceDeg = 0.045;   // between the mirrors, Grinfeld Table 1
+        const double PublishedInjectionDeg = 1.78;      // nominal, Grinfeld Table 1
+        const double PublishedA0 = 0.83999;             // psi_m = a0 eta
+        const double PublishedDriftMm = 335.0;          // nominal drift length y0
+        const double PublishedLeffMm = 641.0;           // effective mirror separation
+
+        var spacer = p["spacerThickness"].Value!.Value;
+        var baseline = p["tiltBaseline"].Value!.Value;
+        var perMirrorRad = Math.Asin(spacer / baseline);
+        var convergenceDeg = 2.0 * perMirrorRad * 180.0 / Math.PI;
+
+        var injectionDeg = Math.Atan(p["injectionAngle"].Value!.Value) * 180.0 / Math.PI;
+
+        var sinTheta = Math.Sin(injectionDeg * Math.PI / 180.0);
+        var a0 = 2.0 * PublishedDriftMm * Math.Sin(2.0 * perMirrorRad)
+                 / (PublishedLeffMm * sinTheta * sinTheta);
+
+        output.WriteLine($"convergence between mirrors  {convergenceDeg:F4} deg  (published {PublishedConvergenceDeg})");
+        output.WriteLine($"injection angle              {injectionDeg:F4} deg  (published {PublishedInjectionDeg})");
+        output.WriteLine($"implied a0                   {a0:F4}        (published {PublishedA0})");
+
+        Assert.Equal(PublishedConvergenceDeg, convergenceDeg, 3);
+        Assert.Equal(PublishedInjectionDeg, injectionDeg, 2);
+
+        // 2% of the published a0. The residual is the reversal integral being taken as a
+        // clean parabola, which the fringe fields perturb; an independent flight gives 0.8504.
+        Assert.InRange(a0, PublishedA0 * 0.98, PublishedA0 * 1.02);
+    }
+
     [Fact]
     public void TheStripGapIsGone()
     {

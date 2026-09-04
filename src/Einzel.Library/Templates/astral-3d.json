@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.8",
   "name": "astral-3d",
-  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 40 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four shaped plates at their graded bias with every mirror strip grounded, which is the basis field psi_foil. It supplies most of the drift reversal - mirror tilt alone is 31 to 38 per cent of what the published reversal needs, and the exact impulse law forbids any electrode design from changing that.",
+  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 40 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four shaped plates at their graded bias with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999.",
   "parameters": {
     "ionEnergy": {
       "value": 4000.0,
@@ -18,32 +18,32 @@
       "description": "Thickness of the spacer that tilts the mirrors relative to one another. PUBLISHED: Stewart et al. give 200 microns. What it is not published over is the baseline - see tiltBaseline - and that is the whole of the uncertainty in the drift reversal."
     },
     "tiltBaseline": {
-      "value": 250.0,
+      "value": 509.3,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 1000.0,
-      "description": "Length the spacer tilts each mirror over, so the tilt angle is asin(spacerThickness / tiltBaseline). GUESSED, and it is the most consequential unpublished number in this model: 250 mm reproduces every published reversal figure (334.76 mm of drift, 25 reflections, 13.39 mm per reflection against a published 310 to 360, 24 to 26, 13.40) while reading the 200 microns as closing the GAP across the 350 mm drift instead gives 714.81 mm and 61 reflections. The two readings differ by 2.8x in the tilt. Handoff section 17."
+      "description": "Length the spacer tilts each mirror over, so the tilt angle is asin(spacerThickness / tiltBaseline). PUBLISHED as of 2026-09-04: Grinfeld et al. give the convergence as 0.045 deg BETWEEN the mirrors, which over a 0.2 mm spacer is a 509.3 mm baseline. Two independent routes agree - requiring the tilt to supply the published a0 = 0.83999 of the drift pseudopotential wants 515.9 mm, 1.3% away. This was 250 mm and flagged as the most consequential guess in the reconstruction, carrying a 2.8-fold ambiguity; it was wrong by almost exactly a factor of two."
     },
     "injectionAngle": {
-      "value": 0.03998,
+      "value": 0.0310766,
       "unit": "1",
       "minimum": 0.0,
       "maximum": 1.0,
-      "description": "Tangent of the angle between the trajectory and the mirror axis, setting the drift rate as V tan(theta). 0.03998 is 2.29 degrees, which is what the published drift distance and oscillation count imply through D/N = t_r V tan(theta) / 2 - a relation containing no convergence term, so it fixes the angle independently of whatever decelerates the drift. Stewart et al. state \"about two degrees\". Handoff sections 14 and 17."
+      "description": "Tangent of the angle between the trajectory and the mirror axis, setting the drift rate as V tan(theta). PUBLISHED as of 2026-09-04: Grinfeld et al. Table 1 gives a nominal 1.78 deg, and this is its tangent. Was 0.03998 (2.29 deg), inferred by requiring the reversal to land at 335 mm with the tilt baseline also wrong - the two errors compensated, which is why the geometric register reproduced anyway."
     },
     "driftLength": {
-      "value": 350.0,
+      "value": 450.0,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 800.0,
-      "description": "Extent along the drift. Published 310-360 mm."
+      "description": "Extent along the drift, and hence the extent of the foil. Published nominal drift is 335 mm, but this must be LONGER: where the stripe ends its contribution to the drift potential decays and partly cancels the tilt's continuing rise, leaving a crest an ion with slightly more sideways energy can clear. With the foil coextensive with a 350 mm drift that crest sat 2.3% above the nominal drift energy while the design's operating range is 2.2%, and the reversal jumped from 338.6 to 409.1 mm for a 1.1% change in injection angle. At 450 mm the crest moves to 435 mm and demands 6.3 V against the ion's 4.8. See docs/astral-handoff.md section 48."
     },
     "capToCap": {
-      "value": 716.6,
+      "value": 685.5,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 3000.0,
-      "description": "Cap plate to cap plate. Derived, not published, and derived a second time on 2026-09-01 because the first derivation was wrong. Stewart et al. give 24 to 26 oscillations over a flight path exceeding 30 m, so one oscillation is 1.154 to 1.250 m. An oscillation is out and back between the two turning points, so their separation is 577 to 625 mm - and that is NOT the cap-to-cap distance, because the ion turns short of the cap. Measured here, the turning point sits 84.2 mm past the mirror mouth and that offset is independent of capToCap, as it must be: the turning depth is fixed by the potentials and d1..d4. So separation = capToCap - 2 (mouth - 84.2) = capToCap - 91.6 mm, and 24 oscillations over 30 m needs capToCap = 716.6. The original 625 mm was the separation mistaken for the cap-to-cap distance, and it made the analyser 15% short in path and so 15% short in drift per reflection."
+      "description": "Cap plate to cap plate. Set so the EFFECTIVE mirror separation - the ion's nominal velocity times the half period, which is what Grinfeld et al. Table 1 states - comes out at the published 641 mm. Measured 641.1 mm at this value, and dL_eff/dcapToCap is 0.983, so the mirror dwell is essentially unchanged by the setting. The published 641 is an effective distance and NOT a physical cap-to-cap, so it cannot be used here directly."
     },
     "boardGap": {
       "value": 40.0,
@@ -81,18 +81,18 @@
       "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
     },
     "d2": {
-      "value": 50.0,
+      "value": 38.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U2 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
+      "description": "Depth at which U2 is reached, from the mirror mouth. STILL FREE - no paper states the electrode lengths - but no longer arbitrary: at 38 mm the sensitivity dc1/dTE1 comes out 0.987 against the 1.0 implied by the published C(1) vector, where the previous 50 mm gave 2.2. Measured at TE1 = 0, which is where the published statement applies."
     },
     "d3": {
-      "value": 90.0,
+      "value": 84.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 350.0,
-      "description": "Depth at which U3 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
+      "description": "Depth at which U3 is reached, from the mirror mouth. STILL FREE. At 84 mm the mirror reaches the best resolving power found so far once TE1 and TE2 are solved to cancel the first and second order time-energy coefficients: R = 4,466 at a +/-3% energy spread, against 1,335 at 90 mm and 626 at 96 mm. What remains is c3 = 2.07, and cancelling that is a condition on these depths - see docs/astral-handoff.md section 49."
     },
     "d4": {
       "value": 130.0,
