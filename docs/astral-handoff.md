@@ -4610,3 +4610,34 @@ was made.
 
 So the model reproduces the design's mechanism and geometry faithfully, and its precision
 ceiling is the way this template approximates the stripe, not the physics.
+
+### The fit is the floor, not the mesh - established by quadrature with no flight in it
+
+Two things could set the 1.5e-3 spread: the 0.18 per cent residual of the sixteen-slice fit,
+or the flights themselves (the 4 mm foil mesh, the integrator). A half period computed by
+quadrature over the fitted potential - `t = integral dz / v_z` with `v_z` from the
+pseudopotential, no mesh, no trajectory - separates them, and the published polynomial run
+through the same quadrature is the control:
+
+| angle | fitted, us | design, us | flown, us |
+| --- | --- | --- | --- |
+| ×0.989 | 408.888 | 408.815 | 406.980 |
+| ×1.000 | 408.001 | 408.778 | 406.592 |
+| ×1.011 | 407.522 | 408.816 | 406.371 |
+| ×1.022 | 407.686 | 408.928 | 406.471 |
+| spread ±1.1% | **3.35e-3** | **9.9e-7** | **1.50e-3** |
+| spread ±2.2% | 4.81e-3 | 1.6e-7 | 4.39e-3 |
+| spread ±4.5% | 3.08e-3 | 1.6e-5 | 7.07e-3 |
+
+**The fitted potential predicts the flown spread to within a factor of two, and the design
+polynomial predicts the published 2.1e-6.** So the 0.18 per cent residual is where the
+1.5e-3 comes from, the flights add little, and refining the mesh would buy nothing. The
+design column is worth a sentence of its own: it is the published `psi_m + psi_s` put through
+a quadrature this project wrote, giving 1e-6 over the inner plateau - the paper's own claim,
+reproduced independently of the paper, which is also a check on the quadrature.
+
+The absolute half period agrees across all three routes to 0.5 per cent (408.0 / 408.8 /
+406.6 us), so the quadrature is quantitatively right and not only right in shape. What that
+licenses is using it as the *objective* for the stripe design: any potential that the
+quadrature says is isochronous to 1e-6 will fly that way to within what the mesh adds,
+and the quadrature costs milliseconds where a flight costs a minute.
