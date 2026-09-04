@@ -960,24 +960,42 @@ chosen so the drift period is independent of drift amplitude, and it reports ach
 &plusmn;10% range of drift length. Fitting sixteen independently biased stripe segments to the
 published <span class="num">&psi;<sub>s</sub></span> and integrating the drift period by
 quadrature reproduces that:</p>
+<p><strong>What the published shape delivers is a stationary point</strong>, and that is the
+quantity to check rather than a spread. The drift period against drift energy has a minimum
+<em>exactly at the operating point</em>, so its dependence on energy is quadratic rather than
+linear:</p>
 <div class="tblwrap"><table>
-<thead><tr><th>drift period, &plusmn;1.1% of injection angle</th><th>spread</th><th>what it says</th></tr></thead>
+<thead><tr><th>drift potential</th><th>d(&tau;/&tau;) / d(E/E<sub>0</sub>) at nominal</th><th>what it says</th></tr></thead>
 <tbody>
-<tr><td class="k">the published polynomial, by quadrature</td><td class="num hi">9.9 &times; 10<sup>&minus;7</sup></td><td>the paper&rsquo;s own claim, reproduced by machinery that has never seen the paper&rsquo;s answer</td></tr>
-<tr><td class="k">sixteen segments fitted to it</td><td class="num">3.4 &times; 10<sup>&minus;3</sup></td><td>the fit&rsquo;s 0.18% residual, not the physics</td></tr>
-<tr><td class="k">the same segments, flown</td><td class="num">1.5 &times; 10<sup>&minus;3</sup></td><td>agrees with the fit, so the mesh and the integrator add nothing</td></tr>
+<tr><td class="k">bare mirror tilt &mdash; the uncorrected drift</td><td class="num">+0.500</td><td>a constant force, so the period goes as the square root of the drift energy</td></tr>
+<tr><td class="k hi">the published stripe shape, by quadrature</td><td class="num hi">&minus;0.00001</td><td>first-order isochronous, from the published coefficients alone</td></tr>
+<tr><td class="k">sixteen segments fitted to it at 0.26%</td><td class="num">&minus;0.079</td><td>the mechanism destroyed by a quarter of a per cent</td></tr>
 </tbody></table></div>
-<p>The first row is worth separating from the other two. It is the published potential put
-through a quadrature written here, giving a part per million where the paper claims two &mdash;
-which checks the quadrature as much as it checks the paper. The second and third rows then say
-where this model&rsquo;s remaining error lives: <strong>a sixteen-segment stripe cannot do this
-job.</strong> Reproducing a cancellation to 2 parts in 10<sup>6</sup> needs the drift potential
-right to about the same relative precision, roughly 4 microvolts on a 3.9 V well; sixteen
-segments fitted by least squares give 7 millivolts. The real device shapes a
-<em>continuous</em> electrode &mdash; a shape function, not a set of voltages &mdash; and the
-design paper&rsquo;s own literature review notes as a drawback that an earlier scheme
+<p>Five orders separate the first two rows, which is what makes the second a measurement
+rather than a small number. That the stationary point lands on the nominal to five figures is
+not something this code knows, so it says the formalism, the normalisation and the coefficients
+have all been read correctly.</p>
+<p>The third row is the sharper form of a claim this document made less well in an earlier
+revision. <strong>A sixteen-segment stripe does not deliver a slightly worse isochronous
+drift; it does not deliver one at all.</strong> The fit reproduces the potential to a quarter
+of a per cent and loses the stationary point by a factor of eight thousand, because a
+first-order cancellation is not robust to a quarter of a per cent of anything. The real device
+shapes a <em>continuous</em> electrode &mdash; a shape function, not a set of voltages &mdash;
+and the design paper&rsquo;s own literature review notes as a drawback that an earlier scheme
 &ldquo;had to split all mirror electrodes into multiple segments with individual
-voltages&rdquo;. The limit measured here is why that choice was made.</p>
+voltages&rdquo;.</p>
+<div class="callout"><p><strong>Not reproduced, and stated as such: the paper&rsquo;s
+2.1 &times; 10<sup>&minus;6</sup>.</strong> Over its own quoted range this formulation gives
+about 2 &times; 10<sup>&minus;3</sup>, three orders worse. It is not the printed coefficients:
+they sum with a<sub>0</sub> to 0.99996 rather than 1, which was the obvious suspect, and
+closing that sum exactly or perturbing a coefficient by a unit in its last printed digit
+changes the answer not at all. An earlier revision of this document claimed the
+2.1 &times; 10<sup>&minus;6</sup> <em>was</em> reproduced, at
+9.9 &times; 10<sup>&minus;7</sup>. That was wrong twice over &mdash; the spread was measured
+between the two ends of a range whose middle dips below both, so the difference was small by
+cancellation rather than by flatness, and the range sampled was a tenth of the published one.
+Settling the remaining three orders needs the paper&rsquo;s own definition of &tau; and of the
+range it is quoted over.</p></div>
 
 <h3>A design requirement neither paper states</h3>
 <p>Implementing the published stripe surfaced a constraint that does not appear in the design

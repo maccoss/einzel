@@ -4629,12 +4629,13 @@ through the same quadrature is the control:
 | spread ±2.2% | 4.81e-3 | 1.6e-7 | 4.39e-3 |
 | spread ±4.5% | 3.08e-3 | 1.6e-5 | 7.07e-3 |
 
-**The fitted potential predicts the flown spread to within a factor of two, and the design
-polynomial predicts the published 2.1e-6.** So the 0.18 per cent residual is where the
-1.5e-3 comes from, the flights add little, and refining the mesh would buy nothing. The
-design column is worth a sentence of its own: it is the published `psi_m + psi_s` put through
-a quadrature this project wrote, giving 1e-6 over the inner plateau - the paper's own claim,
-reproduced independently of the paper, which is also a check on the quadrature.
+**The fitted potential predicts the flown spread to within a factor of two**, so the flights
+add little and refining the mesh would buy nothing. That conclusion survives; the numbers in
+the table above do not, and **the design column is wrong** - see section 51. The spreads there
+were measured as the difference between the two *endpoints* of each range, which for a curve
+with an interior minimum is nearly zero by cancellation rather than by isochronicity. Measured
+honestly, as the maximum minus the minimum over the range, the design gives 9.24e-5 at
+±1.1 per cent of angle rather than 9.9e-7, and the published 2.1e-6 is **not** reproduced.
 
 The absolute half period agrees across all three routes to 0.5 per cent (408.0 / 408.8 /
 406.6 us), so the quadrature is quantitatively right and not only right in shape. What that
@@ -4755,3 +4756,137 @@ sideways velocity itself is `V sin(theta)`. So the *relative* spread the drift e
 correct falls as `1 / sin(theta)`: 5.79 per cent at 1.78 degrees, 3.43 at 3 degrees, 1.72 at 6.
 A wider injection angle reduces the cancellation the stripe must supply by the same factor,
 which is the opposite of treating the aberration budget as the price of a wider angle.
+
+## 51. The published isochronicity: what is reproduced, what is not, and a claim I had to withdraw
+
+Section 50's predecessor stated that the quadrature "reproduces the paper's 2.1e-6 at 9.9e-7"
+and that the sixteen-slice fit's residual is therefore the limit. **The first half was wrong
+and it reached three documents** - this file, `docs/astral-explainer.html` section 6, and the
+working memo - before a C# port of the same quadrature, written to a different specification,
+disagreed with the Python one and forced the check.
+
+**Two errors compounded.** The spread was measured as the difference between the two
+*endpoints* of the energy range, and the published shape's period has an interior *minimum*,
+so the two ends are nearly equal by symmetry and their difference is nearly zero by
+cancellation rather than by flatness. And the range sampled was ±1.1 per cent of angle, about
+a tenth of the published plateau. Measured as maximum minus minimum, over the published range:
+
+| angle range | eta_D range | endpoint difference | max minus min |
+| --- | --- | --- | --- |
+| ±1.10% | 0.991 to 1.009 | 9.92e-07 | **9.24e-05** |
+| ±2.20% | 0.981 to 1.019 | 1.59e-07 | **3.68e-04** |
+| ±4.50% | 0.962 to 1.039 | 1.59e-05 | **1.55e-03** |
+| ±11.70% | 0.904 to 1.105 | 4.14e-04 | **1.07e-02** |
+
+**It is not the printed coefficients.** They sum with `a0` to 0.99996 rather than 1, which is
+the six-figure truncation showing, and that was the obvious suspect. It is refuted: scaling the
+stripe polynomial to close the sum exactly, or adjusting `a0` to close it, or perturbing
+`c3 = 14.0242` by a unit in its last printed digit, all leave the spread at 1.07e-2 unchanged.
+
+### What the published shape does deliver, and it is the design property
+
+The period against drift energy has a **stationary point exactly at the nominal**:
+
+| E/E0 | 0.90 | 0.95 | **1.00** | 1.05 | 1.10 |
+| --- | --- | --- | --- | --- | --- |
+| dt/t | +2.02e-3 | +4.87e-4 | **0** | +4.63e-4 | +1.80e-3 |
+
+`d(t/t)/d(E/E0)` at nominal is **-0.00001**, and both neighbours are slower - a genuine
+minimum, so the residual is *quadratic* in the energy offset rather than linear. **The control
+is the bare tilt**: a linear effective potential gives a period going as the square root of
+the drift energy, so the same derivative is exactly +0.5. Five orders apart, which is what
+makes the 1e-5 a measurement rather than a small number.
+
+That the stationary point lands on the nominal to five figures is not a coincidence and is not
+something this code knows - it says the formalism, the normalisation and the coefficients have
+all been read correctly. **So the published design's mechanism is reproduced; its stated
+magnitude is not.** What would settle the remaining three orders is the paper's own definition
+of `tau` and of the range it is quoted over, which needs the equations read from the PDF rather
+than from the text extraction - the extraction loses sub- and superscripts.
+
+### And the sixteen-slice fit destroys the mechanism, which is a stronger statement
+
+The earlier claim was that the fit's 0.26 per cent residual adds an error comparable to the
+flown spread. True, and weak. What the fit actually does:
+
+| | `d(t/t)/d(E/E0)` at nominal |
+| --- | --- |
+| the published polynomial | **-0.00001** |
+| sixteen slices fitted to it at 0.26 per cent | **-0.07948** |
+
+**The fit reproduces the potential to a quarter of a per cent and loses the stationary point by
+a factor of eight thousand**, which is the whole design property. A first-order cancellation is
+not robust to a quarter of a per cent of anything. So a segmented stripe cannot deliver an
+isochronous drift at all, rather than delivering a slightly worse one - and the conclusion that
+a continuous shaped electrode is required is strengthened rather than weakened by the
+correction.
+
+**The lesson, which is not about this instrument.** A cancellation must be measured by the
+quantity being cancelled - here a derivative at a point - and not by a spread over a range,
+because a spread depends on the range, on the sampling, and on whether it is read end to end or
+as an extremum. Two of those three choices flattered the answer by three orders of magnitude at
+once. `AdiabaticDriftTests` now asserts the derivative and carries the bare tilt as its
+control, so the number that can be got right by accident is no longer the one being checked.
+
+## 52. Electrode depth is quantised by the mesh, and cut cells do not reach it
+
+E7 returned **bit-identical coefficients** for `d3` = 82.25 and 82.00 - the same `c1`, `c2`,
+`c3` and flight time to every printed digit. Two different geometries cannot do that, so the
+depth scan was measuring something other than the depth. Checked directly at a fixed operating
+point, `d3` = 84.00 differs and 82.25 and 82.00 do not.
+
+**The cause is that `d1..d4` are boundaries between abutting conductors.** Cut cells
+(Shortley-Weller) handle a conductor/vacuum surface, which is what FLD-1 needed and what this
+project built them for. A boundary between two *conductors* is not a field boundary at all: the
+field only sees the outer surface of the combined region, and internally the boundary is a
+**step in the potential along the mirror's inner face**. Whichever node that step lands on
+decides which potential the node holds, so moving it within a cell changes nothing.
+
+Measured by scanning `d3` in 0.1 mm steps at a fixed `(TE1, TE2)`:
+
+| `d3`, mm | 82.0-82.2 | 82.3-82.6 | 82.7-82.9 | 83.0 |
+| --- | --- | --- | --- | --- |
+| `c1` | -0.0041493 | **+0.0000184** | +0.0042519 | +0.0085362 |
+| `c2` | +0.0239755 | +0.0000702 | -0.0220373 | -0.0428147 |
+| `c3` | +0.42737 | +0.43522 | +0.44334 | +0.48475 |
+| half period, us | 16.687596 | 16.727282 | 16.767496 | 16.808250 |
+
+Identical within each block, and the blocks are **0.350 mm** wide against an actual cell of
+**0.35576 mm**. The quantum is the cell.
+
+**And the cell is not the one requested.** The template asks for 0.5 mm over an x domain of
+728.6 mm, which is 1457.2 intervals; `Grid2D.OverBox` rounds the interval count **up to a power
+of two**, so it solves 2048 intervals at 0.35576 mm. Finer than asked, never coarser - which is
+the documented and correct behaviour - but it means the depth quantum is not a number anyone
+would predict from the model file.
+
+### What this invalidates
+
+**"c3 = 0 at d3 = 82.28 mm" is not a result.** It came from a linear fit through points 0.25 mm
+apart, which is inside one quantum, so the fit was through three samples of at most two distinct
+geometries. The same applies to the earlier sweeps at 0.5 mm steps: they straddled cells
+unevenly, and the apparent smoothness of `c3` against `d3` across 84 / 83.5 / 83 was real only
+because those steps happen to exceed the quantum.
+
+**What survives** is that `c3` at the double zero falls as `d3` falls - 2.065 at 84, 1.424 at
+83, 0.434 at the 82.3-82.6 cell - and that the double zero itself is genuine, since `c1` and
+`c2` reach 1.8e-5 and 7.0e-5 at a fixed operating point on that cell. The resolving power of
+21,134 measured there stands. What cannot be claimed is the depth to better than a third of a
+millimetre.
+
+### The rule that generalises
+
+**A geometric parameter that positions a boundary between two conductors is quantised by the
+mesh, and no cut-cell scheme fixes it**, because there is no cut to make - the potential step
+is a labelling of nodes, not a surface. Two consequences for this platform:
+
+- An optimiser given such a parameter sees a **staircase**: the derivative is identically zero
+  almost everywhere and jumps at cell boundaries. That is precisely the FLD-1 failure mode
+  recorded in `SPEC.md`, met in a place the fix does not cover, and it means a study over
+  electrode *segment lengths* is not the same kind of study as one over electrode *positions*.
+- The quantum should be **reported**, since it is computable with no solve: it is the domain
+  extent divided by the power-of-two interval count. A study whose step is finer than the
+  quantum is measuring the mesh.
+
+Neither is fixed here. The workaround used for the rest of this section is to solve one point
+per cell and label the answer by the cell.
