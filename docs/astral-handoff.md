@@ -4890,3 +4890,32 @@ is a labelling of nodes, not a surface. Two consequences for this platform:
 
 Neither is fixed here. The workaround used for the rest of this section is to solve one point
 per cell and label the answer by the cell.
+
+### The double zero per mesh cell, and the third-order focus is not there
+
+Solved one point per cell of depth, since finer steps are not distinguishable:
+
+| `d3` cell | `TE1` | `TE2` | `c1` | `c2` | `c3` | R at ±3% |
+| --- | --- | --- | --- | --- | --- | --- |
+| 82.10 and below | - | - | -2.2e-3 | +2.0e-2 | - | **no double zero found** |
+| **82.45** | -0.0349 | +0.2975 | **+1.8e-5** | **+7.0e-5** | **+0.435** | **20,319** |
+| 82.80 | -0.0170 | +0.2072 | +2.8e-6 | +1.4e-4 | +1.032 | 8,948 |
+| 83.15 | -0.0074 | +0.1558 | -3.4e-6 | -9.1e-5 | +1.424 | 6,520 |
+
+**`c3` at the double zero rises monotonically with depth and does not cross zero**, so the
+third-order focus is not reached over this axis. The earlier claim that it crossed between 82.5
+and 82.0 came from points the solve had not converged, and section 52 explains why those depths
+were not distinct geometries anyway.
+
+**Below 82.10 the two-knob solve stops converging at all** - four restarts each, with `c2` stuck
+between 2e-2 and 6e-2, while the cell immediately above converges from the same seed in one.
+Whether that is the search failing or the double zero genuinely not existing there is **not
+established**, and it matters: with two knobs the reachable set of `(c1, c2)` is the image of a
+two-dimensional map, and there is no reason it must contain the origin at every geometry.
+
+**What stands is the resolving power.** R = 20,319 at a ±3 per cent energy spread, with `c1`
+and `c2` both at parts in 10^5, from the published calibration family on a geometry fitted to
+none of it. Anchored against the cubic residual alone (21,276) it agrees to 5 per cent, so the
+number is the aberration rather than a numerical artefact. In acceptance terms: **±3.06 per
+cent at R = 20,000**, and ±5 per cent gives 4,596 - so the lower end of a 20k instrument's
+usual acceptance target is met by calibration alone and the upper end is not.
