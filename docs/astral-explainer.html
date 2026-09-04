@@ -133,12 +133,12 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <header class="masthead">
   <div class="eyebrow">Einzel &middot; a model built from the published record only</div>
   <h1>How the Astral analyser works</h1>
-  <p class="dek">An asymmetric-track multi-reflection time-of-flight analyser, reconstructed from three papers and flown end to end. What the model reproduces, what it measures that the papers do not say, and what it still gets wrong.</p>
+  <p class="dek">An asymmetric-track multi-reflection time-of-flight analyser, reconstructed from four papers &mdash; including the design paper itself &mdash; and flown end to end. What the model reproduces, what it measures that the papers do not say, and what it still gets wrong.</p>
   <div class="provstrip">
     <span><b>engine</b> einzel 0.1.0, solver behaviour 1</span>
     <span><b>template</b> astral-3d.json, schema 0.8</span>
-    <span><b>sources</b> Stewart 2023 <span class="src">A</span> &middot; Stewart 2024 <span class="src">B</span> &middot; Stewart 2024 <span class="src">C</span></span>
-    <span><b>date</b> 2 September 2026</span>
+    <span><b>sources</b> Stewart 2023 <span class="src">A</span> &middot; Stewart 2024 <span class="src">B</span> &middot; Stewart 2024 <span class="src">C</span> &middot; <b>Grinfeld 2024</b> <span class="src">D</span></span>
+    <span><b>date</b> 4 September 2026</span>
   </div>
 </header>
 <div class="col">
@@ -272,6 +272,7 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <tr><td class="k">sideways speed, back vs out</td><td>&mdash;</td><td>1572.8 vs 1569.6 m/s</td></tr>
 </tbody></table></div>
 <p>The last row is the symmetry the mechanism demands: the ion returns with the sideways speed it left with, to 0.2%, after fifty reflections. The one number that misses is the flight time, and it is the foil that closes it &mdash; section 5.</p>
+<div class="callout"><p><strong>This flight predates the design paper</strong><span class="src">D</span> and is kept because everything in it still holds: the geometric register is reproduced by a model whose tilt and injection angle were <em>inferred</em>, and reproducing a register from the wrong pair of inputs is itself worth knowing about. The design paper then gives both directly, and they differ &mdash; the injection angle is 1.78&deg; rather than the 2.29&deg; used here, and the tilt is half as large. Section 6 reruns the whole thing on the published values, and the register comes out the same because the two errors compensated exactly: the product <span class="num">&alpha;&thinsp;/&thinsp;tan&thinsp;&theta;</span> is what sets the reversal, and both were wrong by the same factor.</p></div>
 </div>
 <h2><span class="n">3</span>The mirrors</h2>
 <figure class="fig-panel">
@@ -639,8 +640,9 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <tr><td class="num">1.050 &times;</td><td class="num">896.22</td><td class="num">+4.98%</td><td class="num">+5.0%</td><td class="num hi">0.996</td></tr>
 </tbody></table></div>
 <p>A ratio of one is the whole problem in a single number. Ions leave the source with a thermal spread of sideways speed of about 4.5% at room temperature, and a return time proportional to that speed spreads their arrivals by 4.5% too &mdash; a resolving power of about <strong>11</strong>. The mirrors cannot touch this; they correct the along-track time, not the sideways one. Something else has to.</p>
-<h3>What the model does not settle here</h3>
-<p>The tilt <em>angle</em> is not published &mdash; only the spacer thickness is &mdash; and the model's 250 mm baseline for it is a guess with a 2.8-fold range. Everything in section 2 that matches the papers matches because the baseline was chosen so the reversal lands at 335 mm; the drift-per-reflection and oscillation count then follow from geometry alone, which is the part that is not fitted.</p>
+<h3>What the model did not settle here, and now does</h3>
+<p>The tilt <em>angle</em> is not published in <span class="src">A</span>&ndash;<span class="src">C</span> &mdash; only the spacer thickness is &mdash; and the 250 mm baseline used above was a guess carrying a 2.8-fold range. Everything in section 2 that matches those papers matches because the baseline was chosen so the reversal lands at 335 mm; the drift-per-reflection and oscillation count then follow from geometry alone, which is the part that was not fitted.</p>
+<p><strong>The design paper settles it, and the guess was wrong by exactly a factor of two.</strong><span class="src">D</span> It gives the convergence as <span class="num">0.045&deg;</span> <em>between</em> the mirrors, which over a 0.2 mm spacer is a <span class="num">509 mm</span> baseline; and it requires the tilt alone to supply <span class="num">a<sub>0</sub> = 0.83999</span> of the drift pseudopotential, which independently wants 516 mm. Two routes, 1.3% apart, against 250 mm assumed. Section 17 of the working notes had flagged this as the most consequential unpublished number in the reconstruction, which is the warning working as intended.</p>
 </div>
 <h2><span class="n">5</span>The ion foil</h2>
 <figure class="fig-panel">
@@ -910,7 +912,90 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <p><strong>At &minus;3 V the first-order dependence on sideways speed is cancelled 22-fold</strong>, inside the published window; at &minus;20 V it overshoots and the sign-reversed control breaks the instrument, so the published polarity is the right one. And two published numbers converge on the same setting: the flight time at &minus;3 to &minus;4 V is 785&ndash;800 &micro;s against the published ~779, with neither fitted to the other.</p>
 <p>What remains is the second-order term, about &minus;6.5, which limits the drift to a resolving power near 35 at a 4.5% thermal spread. A perfectly harmonic well would have none; the two-lobed well the measured contour makes is not harmonic. So the foil's <em>voltage</em> is settled by the papers and the foil's <em>shape</em> is the next inverse problem &mdash; the subject of a paper of its own,<span class="src">D</span> and the pixel measurement is its starting point rather than its answer.</p>
 </div>
-<h2><span class="n">6</span>Resolving power, and where the model stands</h2>
+<hr class="sep">
+<h2><span class="n">6</span>The design paper, and what it settles</h2>
+<div class="col">
+<p>Sections 2 to 5 were written from three papers that describe the instrument. A fourth
+describes <em>how it was designed</em>,<span class="src">D</span> and it gives the thing the
+model had been trying to infer: the drift potential in closed form. The slow sideways motion
+feels an effective potential which the paper splits into the mirrors&rsquo; part and the
+stripe&rsquo;s, in units of the injected sideways energy and with
+<span class="num">&eta;</span> the drift coordinate over its nominal length:</p>
+<p class="num eq">&psi;<sub>m</sub>(&eta;) = a<sub>0</sub>&eta;,&emsp;a<sub>0</sub> = 0.83999
+&emsp;&emsp;&psi;<sub>s</sub>(&eta;) = c<sub>1</sub>&eta; + c<sub>2</sub>&eta;<sup>2</sup> +
+&hellip; + c<sub>5</sub>&eta;<sup>5</sup></p>
+<p>with <span class="num">c = [0.75160, &minus;7.52535, 14.0242, &minus;9.17661,
+2.08613]</span>. The two sum to exactly 1 at <span class="num">&eta; = 1</span>, which is what
+makes the ion turn round there &mdash; and the coefficients as published sum to 0.99996, so
+that identity is a check on having read them correctly rather than an assumption.
+<strong>The mirror tilt supplies 84% of the reversal and the stripe the remaining 16%</strong>,
+which is the quantitative form of the two papers&rsquo; separate statements that the tilt
+reverses the drift and the foil corrects its aberration.</p>
+<div class="tblwrap"><table>
+<thead><tr><th>design parameter<span class="src">D</span></th><th>published</th><th>this model</th><th></th></tr></thead>
+<tbody>
+<tr><td class="k">nominal drift length</td><td class="num">335 mm</td><td class="num">338.6 mm</td><td class="num">1.011</td></tr>
+<tr><td class="k">reflections</td><td class="num">50</td><td class="num">51</td><td class="num">+1</td></tr>
+<tr><td class="k">effective mirror separation</td><td class="num">641 mm</td><td class="num hi">641.1 mm</td><td class="num hi">1.0002</td></tr>
+<tr><td class="k">injection angle</td><td class="num">1.78&deg;</td><td class="num">1.78&deg;</td><td class="num">taken</td></tr>
+<tr><td class="k">mirror convergence</td><td class="num">0.045&deg;</td><td class="num">0.045&deg;</td><td class="num">taken</td></tr>
+<tr><td class="k">tilt&rsquo;s share of the reversal, a<sub>0</sub></td><td class="num">0.83999</td><td class="num hi">0.8504</td><td class="num hi">1.012</td></tr>
+</tbody></table></div>
+<p>The third and sixth rows are the ones that carry weight, because nothing was fitted to
+either. <strong>The effective separation lands on 641.1 mm against a published 641</strong>
+once the cap-to-cap distance is set from it, and the tilt then delivers
+<strong>a<sub>0</sub> = 0.8504 against a published 0.83999</strong> &mdash; so the published
+convergence angle and the published pseudopotential coefficient are mutually consistent inside
+this model to 1.2%, having been measured one from the geometry and the other from a flight.</p>
+
+<h3>The two-way question of section 7 is settled, and it is the stripe</h3>
+<p>The previous version of this document ended section 7 with two candidate explanations for a
+thousand-fold shortfall in resolving power: either the real mirrors are deliberately
+over-focused to cancel the drift&rsquo;s energy term, or the real stripe contour has no energy
+term to cancel. It noted that a paper called &ldquo;isochronous drift&rdquo; would be about the
+second, and that the discriminating experiment had not been run.</p>
+<p><strong>It is the second.</strong> The design paper&rsquo;s whole subject is a stripe shape
+chosen so the drift period is independent of drift amplitude, and it reports achieving
+<span class="num">2.1&thinsp;&times;&thinsp;10<sup>&minus;6</sup></span> over a
+&plusmn;10% range of drift length. Fitting sixteen independently biased stripe segments to the
+published <span class="num">&psi;<sub>s</sub></span> and integrating the drift period by
+quadrature reproduces that:</p>
+<div class="tblwrap"><table>
+<thead><tr><th>drift period, &plusmn;1.1% of injection angle</th><th>spread</th><th>what it says</th></tr></thead>
+<tbody>
+<tr><td class="k">the published polynomial, by quadrature</td><td class="num hi">9.9 &times; 10<sup>&minus;7</sup></td><td>the paper&rsquo;s own claim, reproduced by machinery that has never seen the paper&rsquo;s answer</td></tr>
+<tr><td class="k">sixteen segments fitted to it</td><td class="num">3.4 &times; 10<sup>&minus;3</sup></td><td>the fit&rsquo;s 0.18% residual, not the physics</td></tr>
+<tr><td class="k">the same segments, flown</td><td class="num">1.5 &times; 10<sup>&minus;3</sup></td><td>agrees with the fit, so the mesh and the integrator add nothing</td></tr>
+</tbody></table></div>
+<p>The first row is worth separating from the other two. It is the published potential put
+through a quadrature written here, giving a part per million where the paper claims two &mdash;
+which checks the quadrature as much as it checks the paper. The second and third rows then say
+where this model&rsquo;s remaining error lives: <strong>a sixteen-segment stripe cannot do this
+job.</strong> Reproducing a cancellation to 2 parts in 10<sup>6</sup> needs the drift potential
+right to about the same relative precision, roughly 4 microvolts on a 3.9 V well; sixteen
+segments fitted by least squares give 7 millivolts. The real device shapes a
+<em>continuous</em> electrode &mdash; a shape function, not a set of voltages &mdash; and the
+design paper&rsquo;s own literature review notes as a drawback that an earlier scheme
+&ldquo;had to split all mirror electrodes into multiple segments with individual
+voltages&rdquo;. The limit measured here is why that choice was made.</p>
+
+<h3>A design requirement neither paper states</h3>
+<p>Implementing the published stripe surfaced a constraint that does not appear in the design
+paper, presumably because a correctly built instrument satisfies it without comment.
+<strong>The stripe has to extend well past the drift length it is designed for.</strong> Where
+the stripe ends, its contribution to the drift potential decays, and that decay partly cancels
+the tilt&rsquo;s continuing rise &mdash; leaving a local crest followed by a dip. An ion with a
+little more sideways energy than nominal clears the crest, coasts through the dip and runs on
+to the tilt-only reversal far beyond.</p>
+<p>In a first attempt the stripe was coextensive with the 350 mm drift, its crest sat
+2.3% above the nominal drift energy, and the operating range the design requires is
+&plusmn;2.2%. Those margins nearly coincide, so the turning point jumped from 338.6 mm to
+409.1 mm for a 1.1% change in injection angle &mdash; a discontinuity that looks like a broken
+solver and is a real feature of an under-length stripe. Extending it to 450 mm moves the crest
+to 435 mm, where it demands 6.3 V against the ion&rsquo;s 4.8, and the drift period becomes
+smooth with the interior minimum the design paper&rsquo;s own figures show.</p>
+</div>
+<h2><span class="n">7</span>Resolving power, and where the model stands</h2>
 <div class="col"><p>The resolving power in the register is a property of the mirrors and the foil <em>together</em>, and this is the one place the model is a long way from the instrument. Flown as shipped &mdash; the published voltages on guessed depths, the published foil at &minus;3 V, an energy spread across the full &plusmn;2.5% acceptance, 25 oscillations &mdash; the arrival spread gives a resolving power of about <strong>80</strong>. The papers report more than 100,000.</p>
 <p>What makes that gap useful rather than merely large is that it has been located to a single term. The full-track first-order coefficient decomposes cleanly:</p>
 <div class="tblwrap"><table>
@@ -926,7 +1011,7 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <p>What the model can therefore claim, and no more: every mechanism the papers name is present and measured &mdash; the reversal, the constant sideways force, the foil's isochronising action, the mirrors' energy focusing and its scaling &mdash; and the remaining thousand-fold gap in resolving power is one number with two candidate explanations, not a collection of unknowns. The three quantities that are easy to confuse here are three different things: the mirrors' own first-order coefficient, the drift's isochronicity ratio, and the full-track resolving power. Only the last is what the register reports.</p>
 </div>
 <hr class="sep">
-<h2><span class="n">7</span>Established, assumed, open</h2>
+<h2><span class="n">8</span>Established, assumed, open</h2>
 <div class="ledger">
 <div><h3><span class="dot ok"></span>Established</h3><ul>
 <li><b>The drift reversal is the mirror tilt alone</b>, with an exact closed form and every geometric register number reproduced on one flight.</li>
@@ -950,14 +1035,14 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <li><b>Everything below m/z 500</b>: the published figure is quoted at m/z 200, the demanding end.</li>
 </ul></div>
 </div>
-<h2><span class="n">8</span>Sources and method</h2>
+<h2><span class="n">9</span>Sources and method</h2>
 <div class="col">
 <p>Everything here was derived from the open literature and the model's own flights. No proprietary drawings, no correspondence with the instrument's designers. The engine is <strong>Einzel</strong>, an open ion-optics platform; the mirrors are two-dimensional cross-section solves rotated by the tilt (exact, because rotations commute with the Laplacian), the foil is a three-dimensional volume solve, and every figure was rendered headlessly from a text specification beside the model, carrying its own provenance.</p>
 <ol class="refs">
 <li><span class="src">A</span> Stewart, H. I. <em>et al.</em> Parallelized acquisition of Orbitrap and Astral analyzers enables high-throughput quantitative analysis. <em>Anal. Chem.</em> 2023. <a href="https://doi.org/10.1021/acs.analchem.3c02856">doi:10.1021/acs.analchem.3c02856</a></li>
 <li><span class="src">B</span> Stewart, H. I. <em>et al.</em> Crowd control: influence of space charge in the Astral analyzer. <em>J. Mass Spectrom.</em> 2024, 59(4), e5006. <a href="https://doi.org/10.1002/jms.5006">doi:10.1002/jms.5006</a></li>
 <li><span class="src">C</span> Stewart, H. I. <em>et al.</em> The Astral analyser's detector. <em>J. Am. Soc. Mass Spectrom.</em> 2024, 35, 2390&ndash;2399. <a href="https://doi.org/10.1021/jasms.4c00183">doi:10.1021/jasms.4c00183</a></li>
-<li><span class="src">D</span> Grinfeld, D., Stewart, H., Makarov, A. Multi-reflection TOF with isochronous drift in elongated ion mirrors. <em>Int. J. Mass Spectrom.</em> 2024, 1060, 169017. Not yet read; cited by C as the source of the foil's design principle.</li>
+<li><span class="src">D</span> Grinfeld, D., Stewart, H. I., Balschun, W., Skoblin, M., Hock, C., Makarov, A. Multi-reflection time-of-flight analyser with isochronous drift in elongated ion mirrors. <em>Nucl. Instrum. Methods Phys. Res. A</em> 2024, <b>1060</b>, 169017. <a href="https://doi.org/10.1016/j.nima.2023.169017">doi:10.1016/j.nima.2023.169017</a> &mdash; <b>the design document.</b> Obtained by interlibrary loan; gives the drift pseudopotential in closed form, the design parameters in its Table 1, and the achieved isochronicity. Section 6 below is built on it.</li>
 </ol>
 </div>
 </div>
