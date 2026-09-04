@@ -4641,3 +4641,68 @@ The absolute half period agrees across all three routes to 0.5 per cent (408.0 /
 licenses is using it as the *objective* for the stripe design: any potential that the
 quadrature says is isochronous to 1e-6 will fly that way to within what the mesh adds,
 and the quadrature costs milliseconds where a flight costs a minute.
+
+## 49. The mirrors focus, and both published correction vectors do their published jobs
+
+Section 47 called `C(2)`'s apparent failure "the sharpest constraint in this reconstruction so
+far", on the strength of a table of `|c2|` against `te2` on a 0.3 grid, and concluded that the
+published vector makes the quadratic coefficient worse in both directions. **That was an
+artefact of the measurement.** Fitting the *signed* cubic through five energies at each `te2`:
+
+| `te2` | -0.20 | -0.15 | -0.10 | -0.05 | 0.00 | +0.05 | +0.10 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `c2` | -0.1684 | -0.1537 | -0.1363 | -0.1155 | -0.0901 | -0.0589 | -0.0210 |
+
+Monotonic, linear at slope +0.484, **crossing zero at `te2` = +0.169**. So `C(2)` reduces the
+quadratic coefficient exactly as published, and the old table's rise at `te2` = +0.30 is
+*overshoot past the zero* - which is what a working correction vector does when it is driven too
+far. **A magnitude cannot show a sign change**, and a 0.3 grid cannot bracket a zero at 0.169.
+The lesson generalises past this instrument: where a quantity is being *cancelled*, measure it
+signed, and put grid points close enough together to bracket the crossing.
+
+And `dc1/dTE1` = **+0.987 against the published 1.0** at these depths, measured at `te1` = 0.
+
+### Two knobs, two coefficients, solved simultaneously
+
+The published calibration is a two-parameter family, so the natural thing to ask is where both
+coefficients vanish at once. Newton on the 2x2 Jacobian, damped and seeded by continuation:
+
+| | `TE1` | `TE2` | `c1` | `c2` | `c3` | R at +/-3% |
+| --- | --- | --- | --- | --- | --- | --- |
+| uncorrected | 0 | 0 | -0.0330 | -0.0977 | +1.41 | 263 |
+| one linear solve | +0.0072 | +0.0923 | +0.0058 | +0.0292 | +2.28 | 1,066 |
+| **converged** | **+0.0050** | **+0.0860** | **+2e-5** | **+1e-4** | +2.07 | **4,424** |
+| the paper's own worked point | 0.01 | 0.10 | +0.0135 | +0.0695 | +2.56 | 528 |
+
+**A seventeen-fold gain, at a working point close to the paper's own worked examples** on a
+geometry fitted to neither. The control that matters is the row that is not in the table: `TE1`
+alone, driven to zero `c1`, gives `c2` = **+0.288**, three times worse than uncorrected. One
+knob cannot do this, which is presumably why the paper carries two.
+
+**The undamped Newton had to be fixed first, and the failure was instructive.** Away from focus
+the response curves hard, so an undamped step ran `TE2` out to 0.45 with `c2` still 0.36 - and
+`c3` read at an unconverged point says nothing at all, because `c3` depends on `TE1` and `TE2`
+as well as on the geometry. Damping to 0.6 with a 0.06 step limit and seeding each geometry from
+a converged neighbour puts the iterate inside the linear region from the start.
+
+### What is left is `c3`, and that is what the depths are for
+
+Two knobs can zero two coefficients; the third is a property of the geometry. The paper calls a
+**third-order** temporal focus the design condition, so **`c3` = 0 at the double zero is an
+unfitted condition on `d1..d4`** - and it comes from the published calibration scheme rather
+than from any number this model produced. That makes the depth search well posed for the first
+time: four parameters, one sharp condition, plus `dc1/dTE1` = 1 as an independent check.
+
+### And it sets the energy acceptance of a lower-resolution instrument
+
+With `c1` and `c2` cancelled the arrival spread goes as `c3` s^3, so resolving power goes as
+s^-3:
+
+| energy half-spread | +/-3.0% | +/-2.0% | +/-1.8% | +/-1.0% | +/-0.5% |
+| --- | --- | --- | --- | --- | --- |
+| R, mirror aberration alone | 4,482 | 15,126 | **20,749** | 121,007 | 968,054 |
+
+**So 20,000 comes with +/-1.82% of energy acceptance from the two-vector calibration alone**,
+and reaching the +/-3 to 5% a compact design would like needs `c3` cancelled by the geometry
+too. That is the number that decides whether a lower-resolution instrument needs the
+third-order focus, and it is now measured rather than assumed.
