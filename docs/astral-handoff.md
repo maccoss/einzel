@@ -5583,3 +5583,46 @@ of the fitted `T(delta)` is what the paper's plateau condition actually bounds, 
 E15 to E18 report; the two differ by a factor near 3.4 here. A figure of merit that returned
 the excursion directly would be the better thing to optimise, and it is a small addition to
 `FiguresOfMerit` - noted for the morning rather than done at midnight.
+
+## 69. The reflecting voltages are the lever the geometry was not
+
+E18, at the geometric optimum, one voltage at a time, five energies each:
+
+| point | U3 | U4 | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| table | 0.916 | 1.503 | +0.004 | +0.364 | +1.222 | +5.0 | 1,386 |
+| U3 −20% | 0.733 | 1.503 | −0.067 | +0.577 | +1.830 | +4.6 | 151 |
+| U3 +20% | 1.099 | 1.503 | +0.083 | +0.561 | **+0.100** | +2.1 | 121 |
+| U4 −15% | 0.916 | 1.278 | +0.532 | +3.922 | **+33.25** | +269 | 18 |
+| U4 +8% | 0.916 | 1.623 | −0.075 | +0.195 | +0.388 | +2.4 | 133 |
+| U4 +15% | 0.916 | 1.728 | −0.119 | **+0.142** | **+0.137** | +0.7 | 84 |
+
+**Both voltages move `c3` by order one.** Raising `U3` a fifth takes it from 1.22 to 0.10;
+raising `U4` by 15 per cent takes it to 0.14 and takes `c2` down with it, 0.36 to 0.14. So the
+third order is not structural - the reflecting stack as modelled *can* make it vanish - and the
+answer to section 68's question is that the six-knob search failed on its objective, not on the
+physics. Two reasons, both now visible: the box it was given contained a catastrophe (lowering
+`U4` by 15 per cent gives `c3` = 33 and `c4` = 269 - the ion is barely reflected), and every
+single-voltage move that fixes `c3` breaks `c1` (+0.083, −0.119). A nine-ion FWHM objective sees
+only the `c1` damage, so every trial came back worse than the start.
+
+**So it is a simultaneous solve, and the conditions are the paper's own.** Three stationary
+points of the period at 4000 and 4000 ± 100 V are exactly `c1 = 0`, `c3 = 0`,
+`c2 = −1.25e-3 c4`. Three knobs: `U3`, `U4`, board gap. Newton with a central-difference
+Jacobian - what worked for the two calibration vectors in section 49 - is E19, running.
+
+**The on-axis potential points the same way, independently.** E11 had the model's axis 1 to
+1.4 kV *below* the figure across 270 to 300 mm at every board gap tried, with the table's
+voltages. Raising `U3` raises exactly that stretch. A voltage the focusing wants raised and
+the axis potential wants raised is two measurements sharing nothing agreeing about the table -
+which already has one sign wrong (section 62).
+
+**Also from E18: the fit's voltages were not crazy.** The pair the on-axis fit returned at gap 40
+(`U3` 0.776, `U4` 1.724 - section 62 called them "nearly degenerate seen from the axis") gives
+`c3` = 0.42 against the table's 1.22. The fit was pulling toward a flatter third order without
+being asked to.
+
+**`energyPlateau` now exists as a figure of merit** - (max T − min T)/T₀ over the raw energy
+scan, no fit, with the largest adjacent step as its GRD-1 bound. It is the quantity the plateau
+condition bounds and what R over the window is one over twice, and it is what a study should
+minimise for a mirror instead of `resolvingPower`. Section 68's midnight note, done.

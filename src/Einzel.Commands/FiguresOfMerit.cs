@@ -156,6 +156,7 @@ public static class FiguresOfMerit
         new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory),
         new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory),
         new("focusingC3", "1", "The same for the third-order coefficient c3. With c1 and c2 both cancelled this is what binds, and a mirror pair holding all three near zero is what the literature calls a third-order temporal focus - the regime the Astral's mirrors are published as operating in. The fit is cubic, so this is its highest coefficient and the one most exposed to the fit residual; read it with focusing.fit-residual in view.", false, AccuracyClass.Trajectory),
+        new("energyPlateau", "1", "Peak-to-peak excursion of the flight time across the declared energy spread, as a fraction of the nominal flight time - the quantity a multi-reflection mirror's plateau condition bounds, and what resolving power over that window is one over twice. Read from the raw energy scan with no fit, so a plateau with a dip in the middle is measured as wide as it is. Prefer this to resolvingPower as an optimiser objective for a mirror: the half-maximum width of a parabolic peak is flat near its own optimum and a search collapses onto a point without settling. The uncertainty carried is the largest step between adjacent samples, a bound on what the grid could have missed.", false, AccuracyClass.Trajectory),
         new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary),
         new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
         new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
@@ -255,6 +256,7 @@ public static class FiguresOfMerit
             "focusingC1" => FocusingMeasured(model, energySpread, ions, 0, report),
             "focusingC2" => FocusingMeasured(model, energySpread, ions, 1, report),
             "focusingC3" => FocusingMeasured(model, energySpread, ions, 2, report),
+            "energyPlateau" => PlateauMeasured(model, energySpread, ions, report),
 
             "turnAroundTime" => TurnAroundMeasured(model, report),
 
@@ -431,6 +433,7 @@ public static class FiguresOfMerit
             "focusingC1" => model => Focusing(model, energySpread, ions, 0, report),
             "focusingC2" => model => Focusing(model, energySpread, ions, 1, report),
             "focusingC3" => model => Focusing(model, energySpread, ions, 2, report),
+            "energyPlateau" => model => Plateau(model, energySpread, ions, report),
             "turnAroundTime" => model => TurnAround(model, report),
             "emittance" => model => PacketEmittance(model, report)?.Wider.GeometricM,
             "normalisedEmittance" => model => PacketEmittance(model, report)?.Wider.NormalisedM,
@@ -610,6 +613,68 @@ public static class FiguresOfMerit
 
         var fit = FocusingAnalysis.Fit(samples);
         return index < fit.Coefficients.Count ? Math.Abs(fit.Coefficients[index]) : null;
+    }
+
+    /// <summary>
+    /// The plateau excursion: (max T - min T) / T0 over the raw energy scan, and the
+    /// largest adjacent step as a bound on what the grid missed.
+    /// </summary>
+    private static (double Excursion, double GridBound, int Count)? PlateauScan(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
+    {
+        if (spread <= 0.0)
+        {
+            return null;
+        }
+
+        var samples = EnergyScan(model, spread, ions, report);
+
+        // The whole scan has to have arrived, or the excursion is over a different population
+        // than the one asked about - the incomplete-arrival trap this project already records.
+        if (samples.Count < Math.Max(3, ions))
+        {
+            return null;
+        }
+
+        var nominal = samples.MinBy(sample => Math.Abs(sample.EnergyFraction)).FlightTime;
+        if (nominal <= 0.0)
+        {
+            return null;
+        }
+
+        var times = samples.Select(sample => sample.FlightTime).ToList();
+        var excursion = (times.Max() - times.Min()) / nominal;
+        var gridBound = 0.0;
+        for (var k = 1; k < times.Count; k++)
+        {
+            gridBound = Math.Max(gridBound, Math.Abs(times[k] - times[k - 1]) / nominal);
+        }
+
+        return (excursion, gridBound, samples.Count);
+    }
+
+    /// <summary>The plateau excursion as a bare ordering for the study drivers.</summary>
+    private static double? Plateau(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
+        => PlateauScan(model, spread, ions, report)?.Excursion;
+
+    /// <summary>The plateau excursion with the grid bound as its GRD-1 envelope.</summary>
+    private static Core.Results.Measured? PlateauMeasured(
+        CompiledModel model, double spread, int ions, Action<Core.Results.ValidityWarning>? report)
+    {
+        var scan = PlateauScan(model, spread, ions, report);
+        if (scan is null)
+        {
+            return null;
+        }
+
+        var (excursion, gridBound, count) = scan.Value;
+        var quantity = Core.Units.Quantity.Number(excursion);
+        return new Core.Results.Measured(
+            quantity,
+            Core.Results.UncertaintyInterval.Symmetric(
+                quantity, Core.Units.Quantity.Number(gridBound), confidenceLevel: 1.0),
+            new Core.Results.Evidence.Ensemble(count, Converged: count >= 9));
     }
 
     /// <summary>The same with the fit's residual carried as the GRD-1 envelope.</summary>
