@@ -1338,6 +1338,8 @@ public static class Program
             Console.Error.WriteLine("draws a plane through the instrument as line work");
             Console.Error.WriteLine(
                 "  --at-us  the instant to draw a driven field, or a diffusive density, at");
+            Console.Error.WriteLine(
+                "  --width-mm  the page width in millimetres of paper (160 is a page, 80 a column), not a window onto the model");
 
             return (int)ExitCode.ValidationFailure;
         }

@@ -1,3 +1,4 @@
+using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Core.Results;
@@ -267,6 +268,25 @@ public static class SectionRenderer
         }
 
         var drawWidth = spec.WidthMm - (2.0 * spec.MarginMm);
+
+        // A page narrower than its two margins has no drawing area, and everything
+        // downstream - the scale, the decimation tolerance - goes negative and fails
+        // deep inside as an internal error. It is the caller's number, so it is
+        // refused as one: "--width-mm" is the page, not a window onto the model.
+        if (!(drawWidth > 0.0))
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = "/widthMm",
+                Constraint = $"the page width must exceed twice the margin, {2.0 * spec.MarginMm:G3} mm, to leave any drawing area",
+                Observed = new ObservedValue(spec.WidthMm, "mm"),
+                Suggestion = "widthMm is the width of the page in millimetres of paper, not a window in the model; "
+                    + "160 mm is a full-page figure and 80 mm a column. To show part of a model, choose the "
+                    + "section plane and offset rather than a narrower page",
+            });
+        }
+
         var scale = drawWidth / spanU;
         var drawHeight = spanV * scale;
 
