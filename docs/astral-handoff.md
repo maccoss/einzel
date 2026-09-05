@@ -5276,3 +5276,27 @@ express electrodes by position rather than by abutting depth, which is the next 
 
 Then the check that matters: the published `(1/T) dT/de` curve from crowd-control Fig. 2, which
 this model has never been held against.
+
+## 60. The published mirror's own curve, read: R = 180,000 from the mirror alone
+
+The design paper's Fig. 1 lower right plots `(1/T) dT/de` in units of 1e-6 per eV against ion
+energy from 3700 to 4300 eV, for the nominal voltage set. Read pixel by pixel from a 500 dpi
+render, calibrated on the seven tick marks of each axis (found automatically, all fourteen):
+
+| eV | 3800 | 3850 | 3900 | 3950 | **4000** | 4050 | 4100 | 4150 | 4200 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| slope, 1e-6/eV | -0.259 | -0.050 | +0.035 | +0.016 | **-0.026** | -0.031 | +0.032 | +0.216 | +0.559 |
+
+**Over the design window 3900-4100 eV the slope stays within ±0.039 x 1e-6 per eV**, crossing
+zero three times as the paper says it was designed to. Integrating it gives the flight-time
+excursion over the window directly: **2.78e-6, so R about 180,000 from the mirror alone.**
+
+That is the published mirror's figure, taken from the published mirror's own curve rather than
+inferred. It is sharper than the ~100,000 estimated in section 54 by reading the plot's range by
+eye, and it is the number this model's mirror has to reach. The model's best converged mirror
+(section 55) is 36,700 over the same window - **a factor of five**, not the 2.2 inferred earlier
+by working back from the whole-instrument figure with an assumed drift.
+
+The curve is saved as `slope_published.json` in the scratch directory: 961 points, energy in eV
+against slope in 1e-6 per eV. A model that reproduces it point by point has the published mirror;
+one that reproduces only the excursion has a mirror as good as it.
