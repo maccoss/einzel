@@ -992,12 +992,24 @@ needs and thirty times what a lower-resolution one would. <strong>Segments are a
 continuous shape is better.</strong> What the segmented version does destroy is the stationary
 point of the <em>drift period</em>, which is a real design condition the paper states and which
 controls something else entirely.</p></div>
-<p><strong>What this model still cannot measure is the arrival time itself.</strong> Its
-detector is a plane the ion crosses at whatever point in its bounce cycle it happens to be in,
-where the instrument&rsquo;s detector requires a completed number of bounces. So every flight
-time quoted in this document is a drift period, and the quadrature above is the only route here
-to the quantity that sets resolving power. Closing that gap needs a detector condition that
-counts oscillations.</p>
+<p><strong>And the model measures it, in a flight.</strong> Its <em>detector</em> is still a
+plane the ion crosses at whatever point in its bounce cycle it happens to be in, which is why
+every flight time elsewhere in this document is a drift period. But the trajectory records
+every bounce, so the time at a fixed bounce count is the arrival time by construction &mdash; no
+new capability was needed, only knowing which quantity to read.</p>
+<div class="tblwrap"><table>
+<thead><tr><th>flown through the solved fields, injection angle &plusmn;4%</th><th>spread</th><th>resolving power it allows</th></tr></thead>
+<tbody>
+<tr><td class="k hi">arrival time, at a fixed bounce count</td><td class="num hi">1.47 &times; 10<sup>&minus;6</sup></td><td class="num hi">339,524</td></tr>
+<tr><td class="k">drift period, the same flights</td><td class="num">7.28 &times; 10<sup>&minus;3</sup></td><td class="num">69</td></tr>
+</tbody></table></div>
+<p>A ratio of nearly five thousand, measured in a flight rather than a calculation, and within
+a factor of two of what the idealised model above predicts. <strong>So the drift is not what
+limits this reconstruction</strong> &mdash; and the resolving power of 69 is the number that had
+this work believing for weeks that it was. It was always an artefact of where the detector sat.
+The total bounce count varies between 50 and 51 across that scan, which is exactly the
+condition the design paper places on the instrument: every ion must complete the same number of
+oscillations before it is detected.</p>
 
 <h3>A design requirement neither paper states</h3>
 <p>Implementing the published stripe surfaced a constraint that does not appear in the design
