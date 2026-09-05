@@ -5860,3 +5860,18 @@ whole page with headless Edge - the in-app browser could not screenshot a local 
 the first draft of every chart had text on top of something; the fixes were legends moved
 off the data, captions given their own rows, and the plateau curve taken from the converged
 solve rather than the early-stopped one.
+
+## 75. The compact-instrument memo, r08, brought up to the reproduced mirror
+
+`compact-mrtof-stellar-memo-r08.html` (local only, not tracked) had its section-1 model
+account rewritten from the layered "correction, later the same night" form into one statement
+of the current result, its scaling budget recomputed with the reproduced mirror (120,000 to
+220,000 in place of the earlier 78,000; the dimensionless cap is now 63,000 to 70,000 at any
+scale, and a one-fifth-scale analyser reaches about 32,000 with the published 1.9 ns detector,
+43,000 at 1 ns, 15,600 at 4.8 ns), and four figures added: the on-axis potential against the
+published points (Fig. 8), resolving power against scale term by term (Fig. 9), the full-size
+and one-fifth analysers to one scale with the same flight scaled into both (Fig. 10), and the
+instrument as a chain from the Stellar front end to the detector (Fig. 11). The section-6 first
+item now says the optics are done and the detector binds. The r07-to-r08 generator
+(`edit_memo.py`) is superseded by hand edits and parked as `edit_memo_r08_superseded.py`;
+`edit_memo_figs.py` in `einzel-figures/figs/` is the script that applied this pass.
