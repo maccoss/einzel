@@ -619,7 +619,7 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <tr><td class="k">published voltages on the guessed depths</td><td class="num">21.5 / s &nbsp;&mdash; first-order limited</td><td>760</td></tr>
 <tr><td class="k">one depth moved (d<sub>2</sub> 50 &rarr; 36 mm)</td><td class="num">1.2 / s<sup>2</sup> &nbsp;&mdash; second-order limited</td><td>2,044</td></tr>
 <tr><td class="k">three depths and TE1 fitted</td><td class="num">~800 / s &nbsp;&mdash; orders balanced, not cancelled</td><td class="hi">36,500 &ndash; 47,700</td></tr>
-<tr><td class="k">published layout, back wall, three unknowns solved</td><td class="num">quartic plateau, stationary at 3900 / 4000 / 4100&nbsp;eV</td><td class="hi">222,000</td></tr>
+<tr><td class="k">published layout, back wall, three unknowns solved</td><td class="num">quartic plateau, stationary at 3900 / 4000 / 4100&nbsp;eV</td><td class="hi">120,000 &ndash; 220,000</td></tr>
 <tr><td class="k">the instrument, per the papers</td><td class="num">third-order focus<span class="src">B</span></td><td>~180,000 (integrated slope)</td></tr>
 </tbody></table></div>
 <div class="callout"><p><strong>The first three rows were measured on a mirror with one electrode at the wrong
@@ -638,8 +638,8 @@ mirror&rsquo;s condition &mdash; the period stationary at 4000&nbsp;eV and at &p
 c<sub>1</sub>&nbsp;=&nbsp;0, c<sub>3</sub>&nbsp;=&nbsp;0 and c<sub>2</sub> balanced against c<sub>4</sub> &mdash; and a
 three-knob Newton solve on those three conditions converges in seven steps to a board gap of
 <strong>41.4&nbsp;mm</strong>, U<sub>3</sub>&nbsp;=&nbsp;0.974 (table 0.916) and U<sub>4</sub>&nbsp;=&nbsp;1.479
-(table 1.503). There the model gives <strong>R&nbsp;=&nbsp;222,000</strong> over &plusmn;2.5% against the
-published curve&rsquo;s ~180,000, the same &plusmn;0.034&nbsp;ppm/eV slope amplitude as the figure, an effective
+(table 1.503). There the model gives <strong>R between 120,000 and 220,000</strong> over &plusmn;2.5% against the
+published curve&rsquo;s ~180,000 &mdash; the range being a first-order residual at the 1e-4 level, which is the floor of what the solve, the mesh and a five-point fit can set, and which the published curve itself carries &mdash; the same &plusmn;0.034&nbsp;ppm/eV slope amplitude as the figure, an effective
 drift of 646.8&nbsp;mm against 641, and an on-axis potential within 0.16&nbsp;kV rms of the published one at
 sixteen points &mdash; the axis being a check the solve never saw. The published mirror is reproduced, from
 public information, to within the difference between its stated design condition and its drawn curve.</p></div>
@@ -1086,7 +1086,7 @@ smooth with the interior minimum the design paper&rsquo;s own figures show.</p>
 <li><b>The electrode layout is published</b> &mdash; in the design paper&rsquo;s Fig.&nbsp;1, as drawn blocks, read to half a millimetre with both mirrors agreeing.</li>
 <li><b>Electrode 2 is positive</b>, from the published on-axis potential; the crowd-control table&rsquo;s &minus;1.158 is a sign error.</li>
 <li><b>The published mirror alone gives about 180,000</b>, from integrating its own published period-slope curve across 3900&ndash;4100&nbsp;eV.</li>
-<li><b>The published mirror is reproduced</b>: on the drawn layout, with the back wall at U<sub>4</sub> and the sign corrected, the paper&rsquo;s three-point condition is met at a 41.4&nbsp;mm board gap with U<sub>3</sub>&nbsp;0.974 and U<sub>4</sub>&nbsp;1.479, giving R&nbsp;=&nbsp;222,000 over &plusmn;2.5%, the figure&rsquo;s slope amplitude, and its on-axis potential to 0.16&nbsp;kV rms.</li>
+<li><b>The published mirror is reproduced</b>: on the drawn layout, with the back wall at U<sub>4</sub> and the sign corrected, the paper&rsquo;s three-point condition is met at a 41.4&nbsp;mm board gap with U<sub>3</sub>&nbsp;0.974 and U<sub>4</sub>&nbsp;1.479, giving R of 120,000&ndash;220,000 over &plusmn;2.5% (a first-order residual at the 1e-4 level spans that range), the figure&rsquo;s slope amplitude, and its on-axis potential to 0.16&nbsp;kV rms.</li>
 <li><b>Electrode 4 wraps into the mirror&rsquo;s back wall</b>, so the end of the mirror is at U<sub>4</sub>; a grounded end moves the third-order coefficient by 0.17 and reads the axis 1.15&nbsp;kV low at 340&nbsp;mm.</li>
 </ul></div>
 <div><h3><span class="dot warn"></span>Assumed</h3><ul>

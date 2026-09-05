@@ -2475,8 +2475,9 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     constraint on a wrong geometry. The three numbers the papers do not give - the board gap,
     U3 and U4 - are then solved for the design paper's own three-point condition (the period
     stationary at 4000 and 4000 +/- 100 eV): a 41.4 mm gap, U3 0.974 against the table's
-    0.916, U4 1.479 against 1.503. There the model gives **R = 222,000 over +/-2.5 per cent
-    against the published curve's ~180,000**, the figure's slope amplitude, an effective
+    0.916, U4 1.479 against 1.503. There the model gives **R of 120,000 to 220,000 over +/-2.5 per
+    cent against the published curve's ~180,000** (the range is a first-order residual at
+    the 1e-4 level, the floor of the solve; handoff 73), the figure's slope amplitude, an effective
     drift of 646.8 against 641 mm, and the published on-axis potential to 0.16 kV rms at
     sixteen points - the axis being a check the solve never saw. The grounded domain edge
     behind a flat electrode 4 had moved c3 by 0.17 on its own; a grounded boundary is a third

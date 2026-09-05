@@ -5478,6 +5478,8 @@ the same reflecting-stack shape that sets `c2`, so the two discrepancies are pro
 
 ## 66. The template carries the published mirror layout - and its drift register is broken, and has been since section 47's tilt fix
 
+*(The register described as broken below is restored in section 72, after the mirror was reproduced in section 71.)*
+
 `astral-3d.json` now places the mirror electrodes by position rather than by abutting depth:
 five per mirror, electrode 0 grounded from the beam region out, electrodes 1-4 at the figure's
 extents with the gaps as bare board, `U2` positive, board gap 46.85 mm, cap at 360 mm. `mouth` is
@@ -5792,3 +5794,39 @@ oscillation count as well as the period: a stripe fitted to a stale mirror gave 
 tilt twice too steep 1292, and a phase-mismatched detector plane whatever the drift period
 happened to be, all far outside either band. It lives in a scratch project rather than the
 corpus because the flight takes two and a half minutes.
+
+## 73. The drawn edges are enough - the fitted geometry goes
+
+Sections 67 and 70-71 carried the electrode 3/4 edges at a *fitted* optimum (282.42 / 295.32 /
+306.37 mm) found by a Nelder-Mead on the earlier layout, whose back end the figure contradicts.
+With the back wall and the e0-e1 gap in place, E24 repeats the three-point Newton with those
+edges put back where the figure draws them (282.3 / 297.8 / 306.5) and only the gap, `U3` and
+`U4` free:
+
+| step | U3 | U4 | gap mm | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 (E23 endpoint, drawn edges) | 0.9736 | 1.4785 | 41.437 | +0.0019 | −0.0049 | +0.0145 | 5.2 | 5,151 |
+| 1 | 0.9740 | 1.4810 | 41.433 | +0.0004 | −0.0057 | +0.0019 | 5.0 | 24,819 |
+| 2 | **0.9740** | **1.4815** | **41.430** | +0.00008 | −0.00601 | +0.0003 | 4.9 | 119,169 |
+
+Same solution to three decimals in the voltages and to 7 µm in the gap; `L_eff` 646.2 mm;
+axis 0.159 kV rms, identical. The 2.5 mm the fit had moved electrode 3's outer edge bought
+nothing that the voltages do not also buy. **So the template now carries the drawn positions**,
+and the statement in section 71 - every dimension as published or as drawn, three numbers
+solved - holds without exception.
+
+**On the R figure.** 119,000 here against 222,000 in E23b is the residual `c1` (8e-5 against
+0.0), not the geometry: a first-order term of 1e-4 is a slope offset of 0.02 ppm/eV across the
+window and halves the peak-to-peak R. That is the level at which a four-decimal voltage moves
+`c1` (about 2e-5 per 5e-5 in `U3`), so it is the floor of what this solve, this mesh and this
+five-point fit can set, and the honest statement is **R between 120,000 and 220,000 over
+±2.5 per cent depending on a first-order residual at the 1e-4 level**, against a published
+curve that itself carries a −1e-4 first-order term (section 71). The published mirror and
+this one are the same mirror to within that.
+
+**Register on the drawn-edge template, stripe refit to it:** tilt-only `a0` 0.8299; sixteen
+slices fitted to 0.23 per cent; reversal **336.15 mm**, 24 oscillations outbound,
+half-oscillation 16.296 µs (`L_eff` 640.3 mm), flight time **786.44 µs** against 783.2 by
+arithmetic - 0.41 per cent, inside the register test's 2 per cent. Nothing about the register
+moved by more than a part in a thousand when the edges went back to where they are drawn,
+which is the other half of the statement that the fitted edges were doing nothing.

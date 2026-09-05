@@ -46,7 +46,7 @@
       "description": "Cap plate to cap plate. 720 puts the cap 360 mm from the mid-plane, 5 mm past electrode 4. The effective mirror separation the paper quotes (641 mm) is set by the electrode positions and voltages, not by the cap, and measures 656 at this geometry - 2.3 per cent long, section 65."
     },
     "boardGap": {
-      "value": 41.437,
+      "value": 41.43,
       "unit": "mm",
       "minimum": 5.0,
       "maximum": 120.0,
@@ -265,21 +265,21 @@
       "description": "Outer edge of electrode 2. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e3In": {
-      "value": 282.424,
+      "value": 282.3,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
       "description": "Inner edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e3Out": {
-      "value": 295.323,
+      "value": 297.8,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
       "description": "Outer edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e4In": {
-      "value": 306.37,
+      "value": 306.5,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
@@ -300,112 +300,112 @@
       "description": "Thickness of the back wall electrode 4 wraps into. A guess; the wall screens the domain edge behind it, and the axis potential does not distinguish 360 from 395 mm."
     },
     "v0": {
-      "value": 0.7083,
+      "value": 0.7089,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 0 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v1": {
-      "value": 0.7612,
+      "value": 0.7565,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 1 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v2": {
-      "value": -1.8616,
+      "value": -1.87,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 2 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v3": {
-      "value": -4.0462,
+      "value": -4.0603,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 3 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v4": {
-      "value": -6.2061,
+      "value": -6.2244,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 4 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v5": {
-      "value": -7.5908,
+      "value": -7.6135,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 5 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v6": {
-      "value": -8.0121,
+      "value": -8.0377,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 6 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v7": {
-      "value": -7.3225,
+      "value": -7.3507,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 7 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v8": {
-      "value": -5.7665,
+      "value": -5.7957,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 8 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v9": {
-      "value": -3.2361,
+      "value": -3.2656,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 9 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v10": {
-      "value": -0.1065,
+      "value": -0.1358,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 10 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v11": {
-      "value": 3.3725,
+      "value": 3.3439,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 11 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v12": {
-      "value": 7.5042,
+      "value": 7.4765,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 12 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v13": {
-      "value": 11.2945,
+      "value": 11.2679,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 13 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v14": {
-      "value": 14.8851,
+      "value": 14.8609,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
       "description": "Stripe slice 14 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     },
     "v15": {
-      "value": 21.6782,
+      "value": 21.639,
       "unit": "V",
       "minimum": -200.0,
       "maximum": 200.0,
@@ -641,7 +641,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.9736 * ionEnergy",
+              "expression": "0.9740 * ionEnergy",
               "unit": "V"
             }
           },
@@ -665,7 +665,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.9736 * ionEnergy",
+              "expression": "0.9740 * ionEnergy",
               "unit": "V"
             }
           },
@@ -689,7 +689,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.4785 * ionEnergy",
+              "expression": "1.4815 * ionEnergy",
               "unit": "V"
             }
           },
@@ -713,7 +713,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.4785 * ionEnergy",
+              "expression": "1.4815 * ionEnergy",
               "unit": "V"
             }
           },
@@ -977,7 +977,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.4785 * ionEnergy",
+              "expression": "1.4815 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1208,7 +1208,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.9736 * ionEnergy",
+              "expression": "0.9740 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1232,7 +1232,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.9736 * ionEnergy",
+              "expression": "0.9740 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1256,7 +1256,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.4785 * ionEnergy",
+              "expression": "1.4815 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1280,7 +1280,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.4785 * ionEnergy",
+              "expression": "1.4815 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1568,7 +1568,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.4785 * ionEnergy",
+              "expression": "1.4815 * ionEnergy",
               "unit": "V"
             }
           }

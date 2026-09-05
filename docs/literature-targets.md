@@ -438,7 +438,7 @@ than as an argument.
 > 2024;59(4):e5006. <https://doi.org/10.1002/jms.5006>  **[B]**
 
 **The full published register, the pixel measurement of the ion foil, and the current
-state of the model are in `docs/astral-handoff.md`** - §1 and §11 respectively. This entry
+state of the model are in `docs/astral-handoff.md`** - §1, §11 and §§70-72 respectively. This entry
 records only what is a *regression target* and its status, so the two do not drift.
 
 The device the whole 3-D path exists for. It is also the first target whose geometry had
@@ -451,7 +451,7 @@ now reproduced against the same figure's on-axis potential and period-slope curv
 | --- | --- | --- |
 | oscillations / flight path | 24 / 30 m | **25 outbound** from the tilt alone, `D/N` = 13.38 against 13.40 mm; handoff §47 |
 | drift reversal distance | 310-360 mm, mean 335 | **334.61 mm** from the tilt alone (handoff §47); with the stripe in the model the register is being refit to the reproduced mirror (§66, §71) |
-| resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **222,000** on the drawn layout at the paper's three-point condition, slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; handoff §71 |
+| resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **120,000-220,000** on the drawn layout at the paper's three-point condition (the range is a first-order residual at the 1e-4 level, the floor of the solve; handoff §73), slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; handoff §71 |
 | resolving power, drift alone | - | **73,500** over the full ±11 per cent angular acceptance, from the published stripe shape (handoff §55-56) |
 | energy acceptance | period stationary at 4000 and 4000 ± 100 V | **met by construction** at the solved gap, U3 and U4: c1 = 0.00000, c3 at the fit's noise floor, c2 on the balance point; handoff §71 |
 | `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **0.987 of published** - dc1/dTE1 measured at four depths, and C(2) reduces c2 as published; handoff §49 |
