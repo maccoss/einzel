@@ -5086,3 +5086,55 @@ the drift period.
 | mirror, over the paper's ±2.5% window | **36,700** | ~100,000 | **the limit** |
 
 One factor of three, in one place, with the mechanism named. That is the whole remaining gap.
+
+## 56. The drift-limited R was measured over a third of the real range
+
+Mike asked how a small analyser could out-resolve the full-size one. It cannot and never did -
+the figure quoted was the drift's contribution alone, not an instrument resolving power - but
+the question exposed a real error underneath the confusion.
+
+**Section 55's `R = 339,524` was measured over ±4 per cent of injection angle, and the real
+range is much wider.** Room-temperature thermal motion alone spreads the sideways velocity by
+**±5.8 per cent** at m/z 500, and the design paper's own accepted range is `eta_D` = 1 ± 0.1,
+about **±11 per cent in angle**. The arrival-time error grows faster than linearly, so a third
+of the range flatters the result badly.
+
+| angle range | drift-limited R | how obtained |
+| --- | --- | --- |
+| ±4.0% | 339,524 | flown - section 55, **too narrow** |
+| ±5.8% | 252,848 | quartic extrapolation |
+| ±11.0% | 113,466 | quartic extrapolation |
+| **±11.0%** | **73,527** | **flown** |
+
+**The extrapolation was itself 1.5 times optimistic.** A quartic fitted over ±4 per cent and
+evaluated at ±11 is outside its data; it was labelled as such before being used, and the flight
+is what settled it.
+
+### What this changes
+
+**The drift is not negligible.** At 73,527 it is the same order as the mirror, and for the
+full-scale instrument the two are comparable contributors. Every statement in sections 53 to 55
+that the drift "is not the limit" was measured too narrowly.
+
+**The 20k conclusion survives with a smaller margin** - 3.7 times rather than thirty. A
+segmented stripe remains adequate at that design point and the memo's recommendation stands,
+but the headroom is a factor of four, which matters once other terms are added.
+
+| | R | evaluated over |
+| --- | --- | --- |
+| drift, flown | 73,527 | the paper's ±11% acceptance |
+| mirror, three-point condition | ~78,000 | the paper's ±2.5% energy window |
+| both, added in quadrature | **~53,500** | |
+| published | >100,000 | at m/z 200 |
+
+About a factor of two short, the two contributions roughly equal, no single dominant gap. A
+worse headline than section 55's and a much more defensible one.
+
+### The pattern worth naming
+
+This is the **third** time here that a resolving power has been quoted over a range narrower
+than the physics uses - the energy scans of sections 30 to 45, the ±1.1 per cent isochronicity
+of section 51, and now this. **The range a figure of merit is evaluated over is part of the
+figure.** For an ion-optical aberration it should be the acceptance the instrument actually
+has, taken from the thermal spread and the published acceptance, not from whatever was
+convenient to compute.

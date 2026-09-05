@@ -985,31 +985,40 @@ claims for itself.</p>
 <div class="callout"><p><strong>An earlier revision of this document said the opposite, and it
 was measuring the drift period.</strong> It reported that the published precision was not
 reproduced, and that a drift electrode split into separately biased segments could not deliver
-an isochronous drift at all. Both are withdrawn. The segmented version is 119 times worse than
-the ideal continuous shape and still supports a resolving power near
-<span class="num">634,000</span> from the drift alone &mdash; six times what this instrument
-needs and thirty times what a lower-resolution one would. <strong>Segments are adequate; the
-continuous shape is better.</strong> What the segmented version does destroy is the stationary
-point of the <em>drift period</em>, which is a real design condition the paper states and which
-controls something else entirely.</p></div>
+an isochronous drift at all. Both are withdrawn. The segmented version is over a
+hundred times worse than the ideal continuous shape and still supports a resolving power of
+<span class="num">73,500</span> from the drift alone when flown across the instrument&rsquo;s
+real acceptance &mdash; comparable to what the mirrors give, and 3.7 times what a
+lower-resolution instrument would need. <strong>Segments are adequate for a 20k design, with
+about a factor of four in hand; at full scale the drift and the mirrors are co-limiters.</strong>
+What the segmented version does destroy is the stationary point of the <em>drift period</em>,
+which is a real design condition the paper states and which controls something else
+entirely.</p></div>
 <p><strong>And the model measures it, in a flight.</strong> Its <em>detector</em> is still a
 plane the ion crosses at whatever point in its bounce cycle it happens to be in, which is why
 every flight time elsewhere in this document is a drift period. But the trajectory records
 every bounce, so the time at a fixed bounce count is the arrival time by construction &mdash; no
 new capability was needed, only knowing which quantity to read.</p>
 <div class="tblwrap"><table>
-<thead><tr><th>flown through the solved fields, injection angle &plusmn;4%</th><th>spread</th><th>resolving power it allows</th></tr></thead>
+<thead><tr><th>flown, over the design&rsquo;s full &plusmn;11% acceptance</th><th>spread</th><th>resolving power it allows</th></tr></thead>
 <tbody>
-<tr><td class="k hi">arrival time, at a fixed bounce count</td><td class="num hi">1.47 &times; 10<sup>&minus;6</sup></td><td class="num hi">339,524</td></tr>
-<tr><td class="k">drift period, the same flights</td><td class="num">7.28 &times; 10<sup>&minus;3</sup></td><td class="num">69</td></tr>
+<tr><td class="k hi">arrival time, at a fixed bounce count</td><td class="num hi">6.80 &times; 10<sup>&minus;6</sup></td><td class="num hi">73,527</td></tr>
+<tr><td class="k">drift period, the same flights</td><td class="num">1.07 &times; 10<sup>&minus;2</sup></td><td class="num">47</td></tr>
 </tbody></table></div>
-<p>A ratio of nearly five thousand, measured in a flight rather than a calculation, and within
-a factor of two of what the idealised model above predicts. <strong>So the drift is not what
-limits this reconstruction</strong> &mdash; and the resolving power of 69 is the number that had
-this work believing for weeks that it was. It was always an artefact of where the detector sat.
-The total bounce count varies between 50 and 51 across that scan, which is exactly the
-condition the design paper places on the instrument: every ion must complete the same number of
-oscillations before it is detected.</p>
+<p>A ratio of more than fifteen hundred, measured in a flight rather than a calculation. The
+resolving power of 47 is the number that had this work believing for weeks that the drift was
+hopeless; it was always an artefact of where the detector sat. The bounce count varies between
+50 and 51 across that scan, which is exactly the condition the design paper places on the
+instrument: every ion must complete the same number of oscillations before detection.</p>
+<div class="callout"><p><strong>The range a figure is measured over is part of the figure, and
+an earlier revision of this document got that wrong.</strong> It quoted 339,524, measured
+across &plusmn;4% of injection angle. The beam&rsquo;s real spread is wider &mdash;
+room-temperature thermal motion alone gives &plusmn;5.8% at m/z 500, and the design paper
+accepts about &plusmn;11% &mdash; and because the timing error grows faster than linearly, the
+narrow scan flattered the answer by a factor of 4.6. <strong>So the drift is not negligible: at
+73,500 it is comparable to the mirrors, and the two together put this model near 53,500 against
+a published figure above 100,000.</strong> A factor of two, split roughly evenly, with no single
+dominant term.</p></div>
 
 <h3>A design requirement neither paper states</h3>
 <p>Implementing the published stripe surfaced a constraint that does not appear in the design
