@@ -5178,3 +5178,50 @@ this scale, because nothing the optics contribute scales with the flight.
 should be settled before the envelope rather than after. The memo's existing statement that the
 timing chain offers no saving is right; this is its quantitative form, and it is stronger than
 stated - the timing chain does not merely stay the same, it becomes the binding constraint.
+
+## 58. The electrode geometry is published - in a figure - and the template's is wrong
+
+Mike asked whether the ion optics in this reconstruction are borrowed from the published record
+or guessed. **The voltages are published and used; the electrode lengths were guessed, and they
+are published too**, in Fig. 1 of the design paper, as grey blocks under the on-axis potential
+plot. Nobody had read them.
+
+Measured pixel by pixel from a 500 dpi render (`pdftoppm -r 500 -x 680 -y 1180 -W 1400 -H 900`,
+PPM parsed in pure Python since PIL is not installed here), calibrated on the plot frame and
+checked against the tick marks. Right and left mirrors agree to half a millimetre, which is the
+check that the measurement is of the drawing rather than of noise. Distances from the mid-plane:
+
+| electrode | published, mm | length | template, mm | length |
+| --- | --- | --- | --- | --- |
+| 1, the accelerating lens | 204.3 - 249.5 | **45.2** | 212.8 - 232.8 | **20.0** |
+| 2 | 258.1 - 267.7 | 9.7 | 232.8 - 250.8 | 18.0 |
+| 3 | 282.3 - 297.8 | 15.6 | 250.8 - 296.8 | 46.0 |
+| 4, the reflector | 306.5 - 347+ | 41+ | 296.8 - 342.8 | 46.0 |
+
+**Electrode 1 is 2.3 times too short in the template and electrode 3 is 3 times too long.** The
+published design also has gaps of 9 to 15 mm between electrodes; the template's abut. Whether
+the grey blocks are to scale is a fair question - the top panel of the same figure says "not in
+scale" - but the bottom panel carries an axis, both mirrors agree, and the potential curve's
+features land where the blocks say they should.
+
+The on-axis potential is readable from the same panel and is a direct target for the solver:
+
+| z, mm | 200 | 225 | 250 | 260 | 270 | 280 | 290 | 293 | 300 | 340 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| phi, kV | -3.59 | **-5.56** | -2.42 | -0.02 | +1.78 | +3.03 | +3.78 | **4.00** | +4.49 | +5.90 |
+
+The dip at 225 mm is electrode 1's lens; the ion turns where the potential reaches its 4 kV at
+**293 mm**, so the turning-point separation is 586 mm against the 641 mm *effective* separation -
+the difference being the time the ion spends slowed inside the mirror, which is why the two
+numbers were never the same quantity.
+
+**So the answer to the question is: the optics are limiting, and they were never the published
+optics.** Every mirror result in sections 26 to 57 - the double zero, the three-point condition,
+the 36,700, the 78,000 - was measured on a guessed geometry. E10 flies the published one with
+the published voltages and nothing tuned, and asks whether it is at a first-order focus. If it
+is, the 2.2-fold optics gap closes at the source rather than by search.
+
+**Mapped onto the template**, splitting each gap at its midpoint since the template's electrodes
+abut: `mouth` = 138.45 mm from the cap, `d1..d4` = 49.7 / 70.7 / 97.7 / 138.45. The gaps are a
+real difference the template cannot yet express, and are the next thing to add if the abutting
+approximation falls short.
