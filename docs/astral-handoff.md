@@ -5747,3 +5747,48 @@ shipped template was made against a mirror that has since moved three times, so 
 point is wrong (section 66) and the full-track flight time is not yet a check. The refit runs
 next, on whatever the template now carries, which is why it reads the template rather than
 constants.
+
+## 72. The register restored on the reproduced mirror - and the stripe now carries part of the reversal
+
+The stripe fit in the shipped template had been made against a mirror that has since moved
+three times (section 66), so the shipped register was wrong: tilt-only reversal 409.7 mm where
+the design puts the total at 335. `refit_stripe.py` reads whatever the template carries, flies
+it with the stripe off, solves the sixteen slice bases, and fits the stripe to the published
+total minus what the tilt measurably gives:
+
+| | |
+| --- | --- |
+| tilt alone, on the reproduced mirror | reversal **404.2 mm**, `a0` = 0.8288 (published 0.84), x-period 33.30 µs |
+| fit of the sixteen slices to `0.84η + ψ_s` over 0-400 mm | residual 0.23 per cent |
+| first fall in the total effective potential | 430 mm (has to be well past the 368 mm operating limit) |
+| slice voltages, entrance to exit | +0.7, +0.8, −1.9, −4.1, −6.2, −7.6, −8.0, −7.3, −5.8, −3.2, −0.1, +3.4, +7.5, +11.3, +14.9, +21.7 V |
+
+**Flown end to end on the shipped template, one ion at the published injection angle:**
+
+| | model | published |
+| --- | --- | --- |
+| drift reversal | **336.2 mm** | 310-360, mean 335 |
+| oscillations outbound | **24** | 24-26 (25 at the design paper's tuning optimum) |
+| half-oscillation | 16.300 µs → `L_eff` 640.4 mm | 641 mm |
+| flight time | **786.8 µs** | 783.2 µs by `2 K L_eff / v` at K = 24; ~779 in the crowd-control paper; 815.8 at K = 25 |
+
+**Every geometric register number is back on one flight**, on a mirror that is now the
+published one rather than a stand-in. The flight time is 0.5 per cent above the K = 24
+arithmetic, and the difference between 24 and 25 oscillations is what the stripe amplitude
+tunes (section 55), not a discrepancy.
+
+**One statement in the explainer's ledger is now wrong and is corrected.** "The drift reversal
+is the mirror tilt alone" was measured on the earlier mirror, where the tilt alone reversed at
+334.6 mm; on the reproduced mirror the tilt alone reverses at 404 mm and the published stripe
+shape brings it to 336. That is what the design paper says the total is - `0.84η + ψ_s`, tilt
+plus stripe - so the model has moved *toward* the paper's account of the mechanism, not away
+from it. The reversal is set by the tilt with the stripe's shaping on top.
+
+**The register test is tightened, and the tightening is not a fit.** It had expected 815.8 µs
+(K = 25) at 4 per cent, which the model passed at 3.5 - close, and for the wrong K. It now
+expects 783.2 µs (K = 24, the instrument paper's own count over 641 mm) at 2 per cent, which
+the model meets at 0.5 and which *excludes* K = 25 (4.2 per cent off). So the test pins the
+oscillation count as well as the period: a stripe fitted to a stale mirror gave 1242 µs, a
+tilt twice too steep 1292, and a phase-mismatched detector plane whatever the drift period
+happened to be, all far outside either band. It lives in a scratch project rather than the
+corpus because the flight takes two and a half minutes.

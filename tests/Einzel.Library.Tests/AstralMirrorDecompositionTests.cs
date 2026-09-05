@@ -145,26 +145,28 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// The ion foil is present as a third element, graded along the drift, with every
-    /// mirror strip grounded.
+    /// The ion foil is present as a third element carrying the published stripe as sixteen
+    /// slice voltages, with every mirror strip grounded.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The foil does NOT supply the drift reversal - the mirror tilt alone does, which this
-    /// document once concluded otherwise and the detector paper settles. What the foil is
-    /// for is countering the time-of-flight aberration the converging mirrors induce, and
-    /// the profile that does that is not known here. It ships at zero bias.
+    /// The stripe is the design paper's <c>psi_s</c> - the shaped drift pseudopotential that
+    /// makes the drift isochronous - expressed here as sixteen independently biased slices of
+    /// a flat plate, fitted to the published shape minus what the mirror tilt measurably
+    /// supplies (handoff sections 53-56, 72). The fit is made on whatever mirror the template
+    /// carries, because the tilt's share depends on the mirror: on the reproduced mirror the
+    /// tilt alone reverses the drift at 404 mm and the stripe brings it to the published 335.
+    /// So the stripe is not a pure timing correction, and the reversal is the tilt's with
+    /// the stripe's shaping on top - which is the design paper's own account of the total.
     /// </para>
     /// <para>
     /// The mirror strips must be present and <b>grounded</b>, or the element is not the
-    /// basis field <c>psi_foil</c> at all. And the bias must ship at <b>zero</b>, so that
-    /// the reversal this template reproduces is unambiguously the tilt's and not a foil
-    /// contribution standing in for a geometry error - which is exactly the mistake that
-    /// produced the superseded sections 14 and 15 of the handoff.
+    /// basis field <c>psi_foil</c> at all. And the plate must be <b>flat</b>: with the shape
+    /// in the voltages, a contoured edge would be saying the same thing twice.
     /// </para>
     /// </remarks>
     [Fact]
-    public void TheFoilIsAThirdElementAtAUniformBiasWithTheMirrorsGrounded()
+    public void TheFoilIsAThirdElementCarryingTheStripeWithTheMirrorsGrounded()
     {
         var document = ModelJson.Parse(DeviceTemplates.Read("astral-3d"));
         var elements = document.Fields!;
@@ -183,20 +185,28 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
         Assert.Equal(4, plates.Count);
         Assert.Equal(22, grounded.Count);   // five per mirror, two boards, two mirrors, plus a back wall each
         Assert.All(grounded, e => Assert.Equal(0.0, e.Potential?.Value));
-        Assert.All(plates, e => Assert.Contains("foilGrade", e.Potential!.Expression!, StringComparison.Ordinal));
+        // Every plate's potential is the slice law over all sixteen voltages: v_k where the
+        // repeat index equals k, zero elsewhere. A plate that named fewer would be a stripe
+        // with a hole in it.
+        for (var k = 0; k < 16; k++)
+        {
+            Assert.All(plates, e => Assert.Contains($"v{k} * floor", e.Potential!.Expression!, StringComparison.Ordinal));
+            Assert.True(document.Parameters!.ContainsKey($"v{k}"), $"v{k} is declared");
+        }
 
-        // Shipped at -3 V, UNIFORM (foilGrade 0), which is the published arrangement: one
-        // voltage across a contoured plate, the axial potential varying through the shape.
-        // -3 V is where the drift becomes first-order isochronous on the full track - the
-        // return time's dependence on v_z0 falls from the bare tilt's +1.00 to +0.046 -
-        // and the flight time lands at 800 us against a published ~779. It is inside the
-        // published 0 to -20 V range, and -20 V overshoots to -0.93. The reversal point
-        // does not move with the bias, so the foil is a pure timing correction and the
-        // drift reversal remains the mirror tilt alone, as the detector paper says.
-        Assert.Equal(-3.0, document.Parameters!["foilVolts"].Value);
-        Assert.Equal(0.0, document.Parameters!["foilGrade"].Value);
+        // Flat: the shape is in the voltages, so the contoured edge that once carried it
+        // is switched off rather than saying the same thing twice.
+        Assert.Equal(0.0, document.Parameters!["foilInnerAmplitude"].Value);
 
-        output.WriteLine($"foil: {plates.Count} plates at a uniform bias, {grounded.Count} mirror strips grounded");
+        // The published shape is retarding through the middle of the drift and rises toward
+        // the exit (Grinfeld et al. 2024, Fig. 4): the fitted slices must dip below zero in
+        // the middle and end positive. A fit with the sign wrong would fail both.
+        var volts = Enumerable.Range(0, 16).Select(k => document.Parameters![$"v{k}"].Value).ToList();
+        Assert.True(volts.Skip(3).Take(6).All(v => v < 0.0), "the middle slices retard");
+        Assert.True(volts[^1] > volts[0], "the exit end is higher than the entrance");
+
+        output.WriteLine($"foil: {plates.Count} plates carrying sixteen slice voltages "
+                         + $"({volts.Min():+0.0} to {volts.Max():+0.0} V), {grounded.Count} mirror strips grounded");
     }
 
     /// <summary>The strip gap the tilted geometry needed is gone.</summary>

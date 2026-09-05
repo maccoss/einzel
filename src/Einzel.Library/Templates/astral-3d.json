@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.8",
   "name": "astral-3d",
-  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 46.85 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four shaped plates at their graded bias with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999. The mirror electrodes are placed from the design paper's Fig. 1 (five per mirror, with gaps, electrode 0 grounded) and carry the crowd-control paper's Table 1 voltages with the sign of U2 corrected to positive; the board gap is set where the first-order time-energy coefficient vanishes. At this state the mirror is at a first-order focus and not yet at the published three-point one: c2 = +0.345 and c3 = +1.22 remain. See docs/astral-handoff.md sections 58-65.",
+  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 46.85 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four plates carrying sixteen slice biases fitted to the published drift pseudopotential with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999. The mirror electrodes are placed from the design paper's Fig. 1 (five per mirror, with gaps, electrode 0 grounded) and carry the crowd-control paper's Table 1 voltages with the sign of U2 corrected to positive; the board gap is set where the first-order time-energy coefficient vanishes. At this state the mirror is at a first-order focus and not yet at the published three-point one: c2 = +0.345 and c3 = +1.22 remain. See docs/astral-handoff.md sections 58-65.",
   "parameters": {
     "ionEnergy": {
       "value": 4000.0,
@@ -130,7 +130,7 @@
       "unit": "V",
       "minimum": -40.0,
       "maximum": 40.0,
-      "description": "Foil bias, uniform across the contoured plate. PUBLISHED range 0 to -20 V. Shipped at -3 V as of 2026-09-02, which is where the drift becomes first-order isochronous on the full track: the return time's dependence on v_z0 falls from the bare tilt's (dT/T)/(dv/v) = +1.00 to +0.046, zero near -3.2 V, and the flight time lands at 800 us against a published ~779 (784.85 at -4 V). The reversal point does not move with the bias (335.6 mm against 334.6 without it) because the x-averaged well is nearly equal at injection and reversal, so the foil is a pure timing correction. At -20 V it overshoots to -0.93. What remains is second order, about -6.5, which is the well not being harmonic. Handoff section 22."
+      "description": "Superseded by v0..v15; retained so older documents parse. Not referenced by any electrode."
     },
     "foilThickness": {
       "value": 2.0,
@@ -168,11 +168,11 @@
       "description": "Mean position of the foil plate inner edge, as a fraction of the mid-plane to mirror-mouth distance. The inner edge is contoured along the drift; this is the midpoint of that contour."
     },
     "foilInnerAmplitude": {
-      "value": 0.063,
+      "value": 0.0,
       "unit": "1",
       "minimum": 0.0,
       "maximum": 0.4,
-      "description": "Half the peak-to-peak excursion of the foil inner edge along the drift. The published schematic gives 0.641 of the reach at the plate thinnest and 0.515 at its thickest."
+      "description": "Contour amplitude of the plate edge. Zero: the stripe shape is carried by the sixteen slice biases v0..v15 rather than by the plate outline, and both at once would say the same thing twice."
     },
     "foilThinAt": {
       "value": 0.41,
@@ -215,7 +215,7 @@
       "unit": "1",
       "minimum": 0.0,
       "maximum": 1.0,
-      "description": "How far the foil bias is graded along the drift: 0 biases every slice at foilVolts, which is the PUBLISHED arrangement - the plate is at one voltage and the axial potential varies through its contoured SHAPE. Shipped at 0 as of 2026-09-02. A graded bias (1 ramps to zero at the far end) was an earlier mechanism of this model's own and is not what the instrument does; kept so the two can be compared."
+      "description": "Superseded by v0..v15; retained so older documents parse. Not referenced by any electrode."
     },
     "convergence": {
       "expression": "2 * driftLength * sinPi(mirrorTilt) / cosPi(mirrorTilt)",
@@ -298,6 +298,118 @@
       "minimum": 0.1,
       "maximum": 50.0,
       "description": "Thickness of the back wall electrode 4 wraps into. A guess; the wall screens the domain edge behind it, and the axis potential does not distinguish 360 from 395 mm."
+    },
+    "v0": {
+      "value": 0.7083,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 0 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v1": {
+      "value": 0.7612,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 1 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v2": {
+      "value": -1.8616,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 2 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v3": {
+      "value": -4.0462,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 3 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v4": {
+      "value": -6.2061,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 4 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v5": {
+      "value": -7.5908,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 5 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v6": {
+      "value": -8.0121,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 6 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v7": {
+      "value": -7.3225,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 7 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v8": {
+      "value": -5.7665,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 8 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v9": {
+      "value": -3.2361,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 9 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v10": {
+      "value": -0.1065,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 10 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v11": {
+      "value": 3.3725,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 11 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v12": {
+      "value": 7.5042,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 12 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v13": {
+      "value": 11.2945,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 13 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v14": {
+      "value": 14.8851,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 14 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
+    },
+    "v15": {
+      "value": 21.6782,
+      "unit": "V",
+      "minimum": -200.0,
+      "maximum": 200.0,
+      "description": "Stripe slice 15 of 16, its bias. The sixteen together approximate the published drift pseudopotential psi_s (Grinfeld et al. 2024, Fig. 4 and Eq. 15) as the stripe must supply it on top of what the mirror tilt gives: fitted by least squares over 0 to 400 mm on the shipped geometry, 0.24 per cent rms. A shape function would do better; sixteen segments hold the arrival time to R ~ 73,000 over the full acceptance (handoff section 56), which is adequate for the register and not for the instrument."
     }
   },
   "ion": {
@@ -1531,7 +1643,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "expression": "v0 * floor(1 / (1 + (slice - 0) * (slice - 0))) + v1 * floor(1 / (1 + (slice - 1) * (slice - 1))) + v2 * floor(1 / (1 + (slice - 2) * (slice - 2))) + v3 * floor(1 / (1 + (slice - 3) * (slice - 3))) + v4 * floor(1 / (1 + (slice - 4) * (slice - 4))) + v5 * floor(1 / (1 + (slice - 5) * (slice - 5))) + v6 * floor(1 / (1 + (slice - 6) * (slice - 6))) + v7 * floor(1 / (1 + (slice - 7) * (slice - 7))) + v8 * floor(1 / (1 + (slice - 8) * (slice - 8))) + v9 * floor(1 / (1 + (slice - 9) * (slice - 9))) + v10 * floor(1 / (1 + (slice - 10) * (slice - 10))) + v11 * floor(1 / (1 + (slice - 11) * (slice - 11))) + v12 * floor(1 / (1 + (slice - 12) * (slice - 12))) + v13 * floor(1 / (1 + (slice - 13) * (slice - 13))) + v14 * floor(1 / (1 + (slice - 14) * (slice - 14))) + v15 * floor(1 / (1 + (slice - 15) * (slice - 15)))",
               "unit": "V"
             }
           },
@@ -1569,7 +1681,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "expression": "v0 * floor(1 / (1 + (slice - 0) * (slice - 0))) + v1 * floor(1 / (1 + (slice - 1) * (slice - 1))) + v2 * floor(1 / (1 + (slice - 2) * (slice - 2))) + v3 * floor(1 / (1 + (slice - 3) * (slice - 3))) + v4 * floor(1 / (1 + (slice - 4) * (slice - 4))) + v5 * floor(1 / (1 + (slice - 5) * (slice - 5))) + v6 * floor(1 / (1 + (slice - 6) * (slice - 6))) + v7 * floor(1 / (1 + (slice - 7) * (slice - 7))) + v8 * floor(1 / (1 + (slice - 8) * (slice - 8))) + v9 * floor(1 / (1 + (slice - 9) * (slice - 9))) + v10 * floor(1 / (1 + (slice - 10) * (slice - 10))) + v11 * floor(1 / (1 + (slice - 11) * (slice - 11))) + v12 * floor(1 / (1 + (slice - 12) * (slice - 12))) + v13 * floor(1 / (1 + (slice - 13) * (slice - 13))) + v14 * floor(1 / (1 + (slice - 14) * (slice - 14))) + v15 * floor(1 / (1 + (slice - 15) * (slice - 15)))",
               "unit": "V"
             }
           },
@@ -1607,7 +1719,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "expression": "v0 * floor(1 / (1 + (slice - 0) * (slice - 0))) + v1 * floor(1 / (1 + (slice - 1) * (slice - 1))) + v2 * floor(1 / (1 + (slice - 2) * (slice - 2))) + v3 * floor(1 / (1 + (slice - 3) * (slice - 3))) + v4 * floor(1 / (1 + (slice - 4) * (slice - 4))) + v5 * floor(1 / (1 + (slice - 5) * (slice - 5))) + v6 * floor(1 / (1 + (slice - 6) * (slice - 6))) + v7 * floor(1 / (1 + (slice - 7) * (slice - 7))) + v8 * floor(1 / (1 + (slice - 8) * (slice - 8))) + v9 * floor(1 / (1 + (slice - 9) * (slice - 9))) + v10 * floor(1 / (1 + (slice - 10) * (slice - 10))) + v11 * floor(1 / (1 + (slice - 11) * (slice - 11))) + v12 * floor(1 / (1 + (slice - 12) * (slice - 12))) + v13 * floor(1 / (1 + (slice - 13) * (slice - 13))) + v14 * floor(1 / (1 + (slice - 14) * (slice - 14))) + v15 * floor(1 / (1 + (slice - 15) * (slice - 15)))",
               "unit": "V"
             }
           },
@@ -1645,7 +1757,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "foilVolts * (1 - foilGrade * (slice / (foilSlices - 1)))",
+              "expression": "v0 * floor(1 / (1 + (slice - 0) * (slice - 0))) + v1 * floor(1 / (1 + (slice - 1) * (slice - 1))) + v2 * floor(1 / (1 + (slice - 2) * (slice - 2))) + v3 * floor(1 / (1 + (slice - 3) * (slice - 3))) + v4 * floor(1 / (1 + (slice - 4) * (slice - 4))) + v5 * floor(1 / (1 + (slice - 5) * (slice - 5))) + v6 * floor(1 / (1 + (slice - 6) * (slice - 6))) + v7 * floor(1 / (1 + (slice - 7) * (slice - 7))) + v8 * floor(1 / (1 + (slice - 8) * (slice - 8))) + v9 * floor(1 / (1 + (slice - 9) * (slice - 9))) + v10 * floor(1 / (1 + (slice - 10) * (slice - 10))) + v11 * floor(1 / (1 + (slice - 11) * (slice - 11))) + v12 * floor(1 / (1 + (slice - 12) * (slice - 12))) + v13 * floor(1 / (1 + (slice - 13) * (slice - 13))) + v14 * floor(1 / (1 + (slice - 14) * (slice - 14))) + v15 * floor(1 / (1 + (slice - 15) * (slice - 15)))",
               "unit": "V"
             }
           },
