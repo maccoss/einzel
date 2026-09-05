@@ -621,6 +621,20 @@ hr.sep{border:0;border-top:1px solid var(--rule);margin:52px 0 0}
 <tr><td class="k">three depths and TE1 fitted</td><td class="num">~800 / s &nbsp;&mdash; orders balanced, not cancelled</td><td class="hi">36,500 &ndash; 47,700</td></tr>
 <tr><td class="k">the instrument, per the papers</td><td class="num">third-order focus<span class="src">B</span></td><td>&gt; 100,000</td></tr>
 </tbody></table></div>
+<div class="callout"><p><strong>Every number in that table was measured on a mirror with one electrode at the
+wrong polarity, and on guessed electrode positions.</strong> Reading the design paper&rsquo;s
+Fig.&nbsp;1 as a rendered page rather than as extracted text showed two things this model had
+never used. The grey blocks under its on-axis potential plot <em>are</em> the electrode
+positions &mdash; five per mirror with gaps between them, the lens electrode 45&nbsp;mm long where
+the template had 20 &mdash; and the on-axis potential itself crosses zero directly beneath
+electrode&nbsp;2, which a &minus;4.6&nbsp;kV electrode there cannot do. Fitting the four voltages
+to that curve (the field is linear in them, so the fit is exact) gives electrode&nbsp;2
+<em>positive</em> at every board gap tried while reproducing electrode&nbsp;1&rsquo;s voltage to
+one per cent. Both papers say in prose that electrodes 2 to 4 are positive; the published
+table has the sign wrong. The template now carries the published layout and the corrected
+sign, and its mirror is being re-optimised. The published mirror&rsquo;s own curve, read off the
+same figure, integrates to a resolving power near <strong>180,000</strong> from the mirror
+alone; that is the target.</p></div>
 <p>Three things came out of that which reasoning alone would have got wrong. <strong>Minimising c<sub>1</sub> is the wrong target</strong>: R does not peak where c<sub>1</sub> vanishes, because c<sub>2</sub> binds at this acceptance. <strong>The spread you optimise at picks the geometry</strong>: a design that wins at &plusmn;2.5% is six times worse than another by &plusmn;0.1%. And <strong>maximising R at one spread balances the orders rather than cancelling any</strong> &mdash; which is why the papers describe a &ldquo;third-order temporal focus&rdquo; and carry two correction vectors on top of the geometry: the instrument changes the scaling, not just the number.</p>
 <div class="callout"><p><strong>A mirror is focused <em>for</em> a drift length.</strong> The first-order coefficient depends on how much field-free path the measurement includes &mdash; it grows 7.7-fold as the launch point is moved 115 mm &mdash; because the focus is the condition that the mirror's correction cancels the drift's error, and the drift is part of the sum. A half oscillation from the mid-plane has the instrument's true per-oscillation path, and the coefficient measured there carries to the whole track exactly: &minus;0.012 on 25 oscillations with the foil off, against 0.012 on one. So the table above is about the right path. Whether it is about the right <em>instrument</em> is section 6.</p></div>
 </div>
@@ -1061,17 +1075,21 @@ smooth with the interior minimum the design paper&rsquo;s own figures show.</p>
 <li><b>The flight time and the isochronous condition</b> point at one foil voltage, neither fitted.</li>
 <li><b>Each cancelled focusing order buys one power of energy spread</b>, measured as constant R&middot;s and R&middot;s&sup2; over 25-fold ranges.</li>
 <li><b>The mirrors' focusing carries to the full track exactly</b>: &minus;0.012 on 25 oscillations against 0.012 on one.</li>
+<li><b>The electrode layout is published</b> &mdash; in the design paper&rsquo;s Fig.&nbsp;1, as drawn blocks, read to half a millimetre with both mirrors agreeing.</li>
+<li><b>Electrode 2 is positive</b>, from the published on-axis potential; the crowd-control table&rsquo;s &minus;1.158 is a sign error.</li>
+<li><b>The published mirror alone gives about 180,000</b>, from integrating its own published period-slope curve across 3900&ndash;4100&nbsp;eV.</li>
 </ul></div>
 <div><h3><span class="dot warn"></span>Assumed</h3><ul>
 <li><b>The tilt baseline</b>: 250 mm, a 2.8-fold range, the most consequential unpublished number.</li>
-<li><b>The strip depths</b>: 20 / 50 / 90 / 130 mm. Published voltages on guessed depths is why the mirrors do not focus as shipped.</li>
-<li><b>Mirror separation</b>: 716.6 mm, derived from the published flight path, and the 84 mm turning depth it rests on.</li>
+<li><b>The board gap</b>: about 47 mm, the one mirror dimension in neither paper. Set where the first-order energy coefficient vanishes with the published positions and voltages; also where the on-axis dip depth matches the figure.</li>
+<li><b>The reflecting voltages U3 and U4</b>: the published table&rsquo;s, but the same table has U2&rsquo;s sign wrong, the on-axis fit cannot separate them, and the geometry alone cannot reach the published plateau &mdash; so they are under search.</li>
 <li><b>The foil contour</b>: measured from pixels of a published figure, to about a per cent of the drift.</li>
 </ul></div>
 <div><h3><span class="dot open"></span>Open</h3><ul>
 <li><b>The foil's energy term</b> &mdash; section 6. The one number between this model and the published resolving power.</li>
 <li><b>The foil shape that makes the drift harmonic</b>: second-order isochronicity is the binding limit once first order is cancelled.</li>
-<li><b>The C<sup>(1)</sup> sensitivity</b> comes out 2.0 against a published 1.0 &mdash; plausibly a definitional half, not resolved.</li>
+<li><b>The mirror&rsquo;s second and third orders.</b> With the published layout, corrected polarity, and the board gap tuned, the first-order term vanishes and the second and third do not move; four geometric knobs bought nothing on them. The reflecting voltages are the remaining candidate, then the fringe-field correctors the paper mentions and this model omits.</li>
+<li><b>The drift register is broken as shipped.</b> The stripe was fitted for a tilt twice too steep; corrected, the template reverses at 410&nbsp;mm not 335. The stripe has to be refitted on the settled mirror, and the register needs a flight-based test rather than the arithmetic one it has.</li>
 <li><b>A floor on c<sub>1</sub> of &plusmn;0.0015</b> from how the strips sit on the mesh, which refinement does not move.</li>
 <li><b>Everything below m/z 500</b>: the published figure is quoted at m/z 200, the demanding end.</li>
 </ul></div>
