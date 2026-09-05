@@ -211,6 +211,117 @@ public sealed class AdiabaticDriftTests(ITestOutputHelper output)
         }
     }
 
+    /// <summary>
+    /// The published Astral drift shape is isochronous in ARRIVAL TIME, which is a
+    /// different quantity from the drift period and flatter by six orders.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The design paper gives two integrals that differ only in their numerator. The drift
+    /// period is driven by the sum of the stripe and mirror-tilt pseudopotentials; the
+    /// arrival time by their difference, because a retarding stripe lengthens each
+    /// oscillation while converging mirrors shorten the path and so shorten it. The flight
+    /// time is a whole number of oscillations times the nominal period plus the accumulated
+    /// difference, and the paper requires that oscillation count to be the same 25 for every
+    /// ion in the range.
+    /// </para>
+    /// <para>
+    /// So the discriminating assertion is not that the arrival time is flat - it is that the
+    /// arrival time is flat <b>while the drift period is not</b>. Both are computed here from
+    /// the same published coefficients and the ratio between them is the test; a routine that
+    /// silently used the sum in both places would make them equal.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ThePublishedShapeIsIsochronousInArrivalTimeButNotInDriftPeriod()
+    {
+        const double A0 = 0.83999;
+        double[] c = [0.75160, -7.52535, 14.0242, -9.17661, 2.08613];
+        const double L = 0.335;
+        var driftEnergy = 4000.0 * Math.Pow(Math.Sin(1.78 * Math.PI / 180.0), 2.0);
+
+        // the stripe retards; the mirror convergence hastens
+        double Stripe(double z)
+        {
+            var eta = z / L;
+            var psi = 0.0;
+            var power = eta;
+            foreach (var ck in c)
+            {
+                psi += ck * power;
+                power *= eta;
+            }
+
+            return driftEnergy * psi;
+        }
+
+        double Tilt(double z) => driftEnergy * A0 * (z / L);
+
+        // the flight time is K oscillations of 2W/v each, W the effective mirror separation
+        const double W = 0.641;
+        const int K = 25;
+        var speed = Math.Sqrt(2.0 * 4000.0 * ChargeToMass);
+        var flightTime = K * 2.0 * W / speed;
+
+        var arrivalSeconds = AdiabaticDrift.ArrivalSpread(
+            Stripe, Tilt, driftEnergy, ChargeToMass, accelerationVolts: 4000.0,
+            searchTo: 0.6, energyFraction: 0.20);
+        var arrival = arrivalSeconds / flightTime;
+
+        var period = AdiabaticDrift.Isochronicity(
+            z => Stripe(z) + Tilt(z), driftEnergy, ChargeToMass, searchTo: 0.6,
+            energyFraction: 0.20, samples: 9);
+
+        Assert.NotNull(arrival);
+        Assert.NotNull(period);
+        var (periodValue, periodInterval, _, _) = period!;
+        var periodSpread = periodInterval.WidthSi / periodValue.SiValue;
+
+        output.WriteLine(
+            $"flight time {flightTime * 1e6:F1} us; arrival-time spread {arrivalSeconds!.Value * 1e12:F3} ps "
+            + $"= {arrival!.Value:E3} of it; drift period spread {periodSpread:E3}; "
+            + $"ratio {periodSpread / arrival.Value:N0}x");
+
+        // the arrival time is flat to parts per billion OF THE FLIGHT TIME
+        Assert.InRange(arrival.Value, 0.0, 1e-7);
+
+        // and the drift period is NOT - that contrast is the point
+        Assert.InRange(periodSpread, 1e-3, 1.0);
+        Assert.True(
+            periodSpread / arrival.Value > 1e4,
+            "the drift period and the arrival time should differ by orders; if they are "
+            + "close the timing integrand is probably using the sum instead of the difference");
+    }
+
+    /// <summary>
+    /// Passing the same component as both contributions gives an integrand of zero, which
+    /// is the mistake this signature exists to make visible.
+    /// </summary>
+    /// <remarks>
+    /// A caller who does not know that the timing integrand is a difference would naturally
+    /// pass the whole effective potential twice, or pass the sum for the retarding part and
+    /// nothing for the other. The first gives exactly zero and the second gives the drift
+    /// period's shape back. Neither throws, so this records what they produce.
+    /// </remarks>
+    [Fact]
+    public void PassingOneComponentTwiceGivesExactlyZero()
+    {
+        double Phi(double z) => 3.86 * (z / 0.335) + 20.0 * Math.Pow(z / 0.335, 2.0);
+
+        var both = AdiabaticDrift.ArrivalTimeError(
+            Phi, Phi, 3.86, ChargeToMass, accelerationVolts: 4000.0, searchTo: 0.6);
+        Assert.NotNull(both);
+        Assert.Equal(0.0, both!.Value, 15);
+
+        // and the honest split is not zero
+        var split = AdiabaticDrift.ArrivalTimeError(
+            z => 20.0 * Math.Pow(z / 0.335, 2.0), z => 3.86 * (z / 0.335),
+            3.86, ChargeToMass, accelerationVolts: 4000.0, searchTo: 0.6);
+        Assert.NotNull(split);
+        Assert.True(Math.Abs(split!.Value) > 1e-15);
+        output.WriteLine($"same component twice: {both.Value:E1} s; a real split: {split.Value:E3} s");
+    }
+
     /// <summary>An escaping slow motion is reported, not extrapolated.</summary>
     /// <remarks>
     /// A slow energy above the effective potential everywhere in the range has no
