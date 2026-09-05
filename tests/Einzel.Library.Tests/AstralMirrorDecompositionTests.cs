@@ -57,7 +57,7 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
             // grounded one the design paper's schematic shows running from the beam
             // region out to electrode 1, and the four biased ones sit outward of it
             // with gaps between - Fig. 1 of Grinfeld et al. 2024, section 58 of the handoff.
-            Assert.Equal(20, solve.Electrodes!.Count);
+            Assert.Equal(22, solve.Electrodes!.Count);   // five strips per mirror, two boards, two mirrors, plus a back wall each
 
             // The tilt belongs to the extrusion axis, not to the electrodes. An electrode
             // tilt here would mean the geometry is being rotated again, which is the thing
@@ -140,7 +140,7 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
             }
 
             output.WriteLine($"element {index}: {liveCount} of {solve.Electrodes!.Count} live ({live})");
-            Assert.Equal(8, liveCount);   // four stages, two boards
+            Assert.Equal(9, liveCount);   // four stages, two boards, and the back wall
         }
     }
 
@@ -181,7 +181,7 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
             .Where(e => !e.Name!.StartsWith("foil", StringComparison.Ordinal)).ToList();
 
         Assert.Equal(4, plates.Count);
-        Assert.Equal(20, grounded.Count);   // five per mirror, two boards, two mirrors
+        Assert.Equal(22, grounded.Count);   // five per mirror, two boards, two mirrors, plus a back wall each
         Assert.All(grounded, e => Assert.Equal(0.0, e.Potential?.Value));
         Assert.All(plates, e => Assert.Contains("foilGrade", e.Potential!.Expression!, StringComparison.Ordinal));
 

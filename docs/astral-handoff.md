@@ -5626,3 +5626,124 @@ being asked to.
 scan, no fit, with the largest adjacent step as its GRD-1 bound. It is the quantity the plateau
 condition bounds and what R over the window is one over twice, and it is what a study should
 minimise for a mirror instead of `resolvingPower`. Section 68's midnight note, done.
+
+## 70. The three-point solve converges - and finds the back of the mirror was wrong
+
+E19: Newton on (`U3`, `U4`, board gap) to `c1 = 0`, `c3 = 0`, `c2 = −1.25e-3 c4`, from the
+geometric optimum with the table's voltages, central-difference Jacobian, damped and capped.
+
+| step | U3 | U4 | gap mm | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0.9160 | 1.5030 | 47.22 | +0.0040 | +0.3643 | +1.222 | 5.0 | 1,386 |
+| 2 | 0.9748 | 1.4949 | 41.80 | +0.0084 | +0.0619 | +0.166 | 5.1 | 1,175 |
+| 4 | 0.9766 | 1.5029 | 40.84 | +0.0023 | −0.0076 | +0.011 | 5.0 | 4,425 |
+| 6 | 0.9768 | 1.5061 | 40.88 | +0.0002 | −0.0067 | +0.0009 | 5.2 | 43,723 |
+| 7 | **0.9768** | **1.5064** | **40.88** | +0.00007 | −0.00657 | +0.0001 | 5.2 | **121,299** |
+
+Monotone, a factor of four a step, and it lands where the paper says: `c2` on the balance
+point (−0.0066 against −1.25e-3 × 5.2 = −0.0065), `c3` gone, `L_eff` 644.8 mm against 641.
+**`U3` is 6.6 per cent above the table, `U4` is the table's, and the board gap is 40.9 mm** -
+the gap at which the on-axis fit in section 62 reproduced `U1` to 1 per cent, so two routes
+now agree on it. The model's slope curve across 3900-4100 eV varies by 0.062 ppm/eV
+peak-to-peak; the published one by 0.066. The remaining offset is a constant 0.018, which is
+the not-quite-zero `c1`. R over ±2.5 per cent is **121,000 against the published ~180,000**.
+
+**E20, the independent check, was null.** The on-axis potential at the solution departs from
+the figure by 0.400 kV rms; with the table's voltages at the same gap, 0.404. Raising `U3` by
+6.6 per cent moves the axis by 0.1 kV where the figure is quoted to about that. The axis
+cannot see this solution, and section 69's claim that it would is withdrawn.
+
+**What the axis did see was the ends.** Across 280-300 mm the solution matches the figure to
+0.04 kV. At 340 mm it is 1.15 kV low (4.75 against 5.90), and from 150 to 210 mm it is too
+shallow by up to 0.76 kV. The first is the back of the mirror: electrode 4 ended at 355 mm
+with the grounded domain edge 11 mm behind it, and **the figure shows electrode 4 wrapping
+round into the mirror's back wall** - the end of the mirror is at `U4`, not at earth. The
+second is a gap between electrodes 0 and 1 that the figure shows and the model does not have.
+
+**E21 asked whether the back end matters for the focusing, and it does.** At the E19 solution:
+
+| back end | c1 | c2 | c3 | c4 | axis 320 | axis 340 |
+| --- | --- | --- | --- | --- | --- | --- |
+| e4 to 355, earth at 366 (E19) | +0.0001 | −0.0066 | +0.0001 | 5.2 | 5.34 | 4.75 |
+| e4 to 355, earth at 406 | −0.0115 | −0.0315 | −0.096 | 4.5 | 5.45 | 5.25 |
+| e4 to 395, earth at 406 | −0.0243 | −0.0559 | −0.171 | 3.9 | **5.59** | **5.88** |
+| figure | | | | | 5.52 | 5.90 |
+
+A long electrode 4 reproduces the figure's back end to 0.07 kV - and moves `c3` by 0.17 and
+`c1` by 0.024, both far outside the condition. So the E19 solution is a solution for a layout
+whose back end the figure contradicts, and the solve has to be redone on the corrected one.
+E22 first chooses the back end on the axis alone (a wall at `U4` at three depths, against the
+long-plate variant), then re-runs the Newton on it. The e0-e1 gap goes in at the same time.
+
+## 71. The published mirror, reproduced on a layout read off the figure
+
+Two corrections to the layout, both from the figure and both chosen on the axis alone before
+any flight (E22a, E23a):
+
+| | axis 320 / 340 mm | axis 150-230 rms | rms, all 16 points |
+| --- | --- | --- | --- |
+| E19 layout: flat electrode 4 to 355, earth at 366 | 5.34 / 4.75 | 0.421 kV | 0.400 kV |
+| electrode 4 wraps into a back wall at `U4` | 5.60 / 5.93 | 0.421 | 0.295 |
+| + electrode 0 stops 8.6 mm short of electrode 1 | 5.60 / 5.93 | **0.228** | **0.184** |
+| figure | 5.52 / 5.90 | | |
+
+The back wall is what the upper panel of the figure shows; *where* it is does not matter (a
+wall at 360, 380 or 395 mm, or a long flat plate with earth behind, all give the axis to 0.05
+kV), so 360 mm is a convention. The e0-e1 gap is not published (the lower panel draws only the
+live electrodes) and 8.6 mm - the width of the figure's other small gaps - is what the axis
+across 150-230 mm chooses over 5.3 (0.248) and 12.3 (0.263). Both are recorded as read off a
+figure rather than as dimensions.
+
+**E23b, the three-point Newton on that layout**, from the E19 endpoint (which E21 had shown to
+be off by `c1` = −0.016, `c3` = −0.16 there):
+
+| step | U3 | U4 | gap mm | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0.9768 | 1.5064 | 40.88 | −0.0160 | −0.0412 | −0.161 | 5.1 | 622 |
+| 1 | 0.9726 | 1.4812 | 41.45 | −0.0029 | −0.0083 | +0.015 | 5.6 | 3,477 |
+| 3 | 0.9738 | 1.4789 | 41.44 | −0.0001 | −0.0071 | −0.0017 | 5.7 | 89,130 |
+| 5 | 0.9737 | 1.4786 | 41.44 | 0.0000 | −0.0071 | −0.0006 | 5.8 | 213,201 |
+| 7 | **0.9736** | **1.4785** | **41.44** | **0.00000** | **−0.00712** | **+0.0002** | 5.7 | **222,289** |
+
+`c3` from step 3 on wanders between −0.0017 and +0.0002 without trend: that is the noise floor
+of a five-point quartic fit on flight times known to parts in 1e9, and the Newton is done.
+
+**So the published mirror is reproduced.** Against the published record:
+
+| | model | published |
+| --- | --- | --- |
+| R over ±2.5 per cent, peak-to-peak | **222,000** | ~180,000 (integrated slope) |
+| slope amplitude, 3900-4100 eV | ±0.034 ppm/eV | ±0.035 ppm/eV |
+| effective drift `L_eff` | 646.8 mm | 641 mm |
+| on-axis potential, 16 points | 0.159 kV rms | - |
+| board gap | 41.4 mm | not published |
+| U3 | 0.974 | table 0.916 (+6.3 per cent) |
+| U4 | 1.479 | table 1.503 (−1.6 per cent) |
+| U1, U2 | table's, U2 with the sign corrected (section 62) | |
+
+Two things about that comparison. **The shapes are the same and the tuning is not quite.** The
+model's slope is zero at 3900, 4000 and 4100 eV by construction - the paper's stated
+condition - while the digitised published curve crosses zero near 3958 and 4092 and reads
+−0.026 at 4000. That is a first-order term of about −1e-4 in the published tuning, which costs
+it a little against the model (the model's 222,000 to the curve's 150,000-180,000 depending
+on how the integral is taken). Either the built instrument is tuned a shade off the stated
+condition or the digitisation carries a 0.02 ppm/eV offset; the plot is not read finely
+enough to say which, and the difference is inside what the stripe and the detector set anyway.
+
+**And the three solved numbers are the three the papers do not give.** Every dimension that is
+published - the electrode positions, the U1 and U2 coefficients, the drift length, the tilt,
+the injection angle - is used as published. The gap is not published; U3 and U4 are, and the
+solve moves them 6 and 2 per cent, in a table that already has one sign wrong. An on-axis fit
+cannot distinguish them (section 62) but the focusing can, and the axis at the solution is the
+best of the night (0.159 kV rms against 0.400 at the start of it).
+
+**Shipped.** `astral-3d.json` now carries the wall (`near4wall`, `far4wall`, and grounded
+copies in the foil field), `e0Out` and `wallThickness` as parameters, the solved gap and
+voltages, and the geometric optimum for the electrode 3/4 edges. 22 electrodes per
+cross-section, 9 live; the decomposition tests count them.
+
+**What this does not settle** is anything about the drift register: the stripe fit in the
+shipped template was made against a mirror that has since moved three times, so the reversal
+point is wrong (section 66) and the full-track flight time is not yet a check. The refit runs
+next, on whatever the template now carries, which is why it reads the template rather than
+constants.

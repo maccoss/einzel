@@ -39,18 +39,18 @@
       "description": "Extent along the drift, and hence the extent of the foil. Published nominal drift is 335 mm, but this must be LONGER: where the stripe ends its contribution to the drift potential decays and partly cancels the tilt's continuing rise, leaving a crest an ion with slightly more sideways energy can clear. With the foil coextensive with a 350 mm drift that crest sat 2.3% above the nominal drift energy while the design's operating range is 2.2%, and the reversal jumped from 338.6 to 409.1 mm for a 1.1% change in injection angle. At 450 mm the crest moves to 435 mm and demands 6.3 V against the ion's 4.8. See docs/astral-handoff.md section 48."
     },
     "capToCap": {
-      "value": 720.0,
+      "value": 740.0,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 3000.0,
       "description": "Cap plate to cap plate. 720 puts the cap 360 mm from the mid-plane, 5 mm past electrode 4. The effective mirror separation the paper quotes (641 mm) is set by the electrode positions and voltages, not by the cap, and measures 656 at this geometry - 2.3 per cent long, section 65."
     },
     "boardGap": {
-      "value": 46.85,
+      "value": 41.437,
       "unit": "mm",
       "minimum": 5.0,
       "maximum": 120.0,
-      "description": "Distance between the two mirror boards across the beam. Published in neither paper. Set where the first-order time-energy coefficient crosses zero with the published positions and voltages (section 65: c1 = -0.062 at 40 mm, +0.002 at 47, crossing at 46.85), which is also where the on-axis dip depth matches the figure (section 61) and between the two gaps a voltage fit favoured (section 62). Three readings of the one unpublished dimension. What it does NOT fix: c2 = +0.345 and c3 = +1.22 remain at this gap, so the reflecting stack is not yet the published one."
+      "description": "Distance between the two mirror boards across the beam. Published in neither paper. One of the three unknowns solved for the published three-point focusing condition (c1 = 0, c3 = 0, c2 = -1.25e-3 c4; handoff sections 70-71) together with U3 and U4, on a layout whose back wall and electrode-0 gap are read off the figure. It is also the gap at which a voltage fit to the published on-axis potential reproduced U1 to 1 per cent (section 62). Two routes, one number."
     },
     "boardThickness": {
       "value": 4.0,
@@ -229,6 +229,13 @@
       "maximum": 400.0,
       "description": "Inner edge of the grounded electrode 0, from the mid-plane. The schematic shows it running from the beam region out to electrode 1; 1 mm leaves the source at the mid-plane clear of it. Section 64 measured its extent as irrelevant to the focus."
     },
+    "e0Out": {
+      "value": 195.7,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Outer edge of the grounded electrode 0, from the mid-plane. The figure shows a gap between electrodes 0 and 1; its lower panel draws only the live electrodes, so the width is not published. 8.6 mm - the width of the other small gaps - is what the on-axis potential across 150-230 mm chooses (section 71: rms 0.421 kV abutting, 0.228 at 8.6 mm, 0.263 at 12.3)."
+    },
     "e1In": {
       "value": 204.3,
       "unit": "mm",
@@ -258,32 +265,39 @@
       "description": "Outer edge of electrode 2. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e3In": {
-      "value": 282.3,
+      "value": 282.424,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
       "description": "Inner edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e3Out": {
-      "value": 297.8,
+      "value": 295.323,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
       "description": "Outer edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e4In": {
-      "value": 306.5,
+      "value": 306.37,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
       "description": "Inner edge of electrode 4, the reflector. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
     },
     "e4Out": {
-      "value": 355.0,
+      "value": 360.0,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 400.0,
-      "description": "Outer edge of electrode 4. The figure shows it running past 347 mm off the plot edge; 355 leaves 5 mm to the cap plate at 360. The ion turns at 293 and never approaches it."
+      "description": "Outer edge of electrode 4, where it wraps round into the back wall of the mirror. The figure shows electrode 4 running past 347 mm off the plot edge and its upper panel shows the plate turning down into a wall, so the end of the mirror is at U4 rather than at earth. Where the earth was 11 mm behind a flat plate ending at 355, the axis at 340 mm read 4.75 kV against the figure 5.90 and the third-order coefficient was off by 0.17 (sections 70-71)."
+    },
+    "wallThickness": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0.1,
+      "maximum": 50.0,
+      "description": "Thickness of the back wall electrode 4 wraps into. A guess; the wall screens the domain edge behind it, and the axis potential does not distinguish 360 from 395 mm."
     }
   },
   "ion": {
@@ -355,7 +369,7 @@
             "name": "near0top",
             "shape": "rectangle",
             "minX": {
-              "expression": "midPlane - e1In",
+              "expression": "midPlane - e0Out",
               "unit": "mm"
             },
             "maxX": {
@@ -379,7 +393,7 @@
             "name": "near0bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "midPlane - e1In",
+              "expression": "midPlane - e0Out",
               "unit": "mm"
             },
             "maxX": {
@@ -515,7 +529,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.916 * ionEnergy",
+              "expression": "0.9736 * ionEnergy",
               "unit": "V"
             }
           },
@@ -539,7 +553,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.916 * ionEnergy",
+              "expression": "0.9736 * ionEnergy",
               "unit": "V"
             }
           },
@@ -563,7 +577,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.503 * ionEnergy",
+              "expression": "1.4785 * ionEnergy",
               "unit": "V"
             }
           },
@@ -587,7 +601,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.503 * ionEnergy",
+              "expression": "1.4785 * ionEnergy",
               "unit": "V"
             }
           },
@@ -599,7 +613,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + e1In",
+              "expression": "midPlane + e0Out",
               "unit": "mm"
             },
             "minY": {
@@ -623,7 +637,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + e1In",
+              "expression": "midPlane + e0Out",
               "unit": "mm"
             },
             "minY": {
@@ -824,6 +838,54 @@
             },
             "maxY": {
               "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4wall",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - (e4Out + wallThickness)",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e4Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "1.4785 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4wall",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane + e4Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + (e4Out + wallThickness)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
               "unit": "mm"
             },
             "potential": {
@@ -878,7 +940,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + e1In",
+              "expression": "midPlane + e0Out",
               "unit": "mm"
             },
             "minY": {
@@ -902,7 +964,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + e1In",
+              "expression": "midPlane + e0Out",
               "unit": "mm"
             },
             "minY": {
@@ -1034,7 +1096,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.916 * ionEnergy",
+              "expression": "0.9736 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1058,7 +1120,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "0.916 * ionEnergy",
+              "expression": "0.9736 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1082,7 +1144,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.503 * ionEnergy",
+              "expression": "1.4785 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1106,7 +1168,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "1.503 * ionEnergy",
+              "expression": "1.4785 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1114,7 +1176,7 @@
             "name": "near0top",
             "shape": "rectangle",
             "minX": {
-              "expression": "midPlane - e1In",
+              "expression": "midPlane - e0Out",
               "unit": "mm"
             },
             "maxX": {
@@ -1138,7 +1200,7 @@
             "name": "near0bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "midPlane - e1In",
+              "expression": "midPlane - e0Out",
               "unit": "mm"
             },
             "maxX": {
@@ -1347,6 +1409,54 @@
             },
             "potential": {
               "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4wall",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - (e4Out + wallThickness)",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e4Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4wall",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane + e4Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + (e4Out + wallThickness)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "1.4785 * ionEnergy",
               "unit": "V"
             }
           }
@@ -1543,7 +1653,7 @@
             "name": "near0topGround",
             "shape": "box",
             "minX": {
-              "expression": "midPlane - e1In",
+              "expression": "midPlane - e0Out",
               "unit": "mm"
             },
             "maxX": {
@@ -1575,7 +1685,7 @@
             "name": "near0botGround",
             "shape": "box",
             "minX": {
-              "expression": "midPlane - e1In",
+              "expression": "midPlane - e0Out",
               "unit": "mm"
             },
             "maxX": {
@@ -1867,7 +1977,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + e1In",
+              "expression": "midPlane + e0Out",
               "unit": "mm"
             },
             "minY": {
@@ -1899,7 +2009,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "midPlane + e1In",
+              "expression": "midPlane + e0Out",
               "unit": "mm"
             },
             "minY": {
@@ -2164,6 +2274,70 @@
             },
             "maxY": {
               "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4wallGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane - (e4Out + wallThickness)",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e4Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4wallGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e4Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + (e4Out + wallThickness)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "halfGap",
               "unit": "mm"
             },
             "minZ": {
