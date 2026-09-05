@@ -1420,10 +1420,19 @@ public static class RunCommand
         {
             var recorder = new TrajectoryRecorder(model.SampleIntervalSi);
 
+            // The drawn flight has to be the flown flight. This integration once omitted the
+            // collision sampler, so a --vtu of any collisional run was a vacuum flight - an
+            // ion crossing a 2.5 mbar funnel in 10 us on the axis, beside a result that said
+            // 589 us and a strike on the exit plate. Same gas, same seed: the same scheduled
+            // collision instants and the same velocity draws as the reported flight.
             TrajectoryIntegrator.Integrate(
                 launch, species, field,
                 settings with { RelativeTolerance = model.RelativeTolerance },
-                detector, recorder);
+                detector, recorder,
+                collisions: gas.IsPresent
+                    ? new Transport.Collisions.CollisionSampler(
+                        gas, species.MassSi, species.ChargeSi, model.Gas.Seed)
+                    : null);
 
             if (recorder.Samples.Count >= 2)
             {

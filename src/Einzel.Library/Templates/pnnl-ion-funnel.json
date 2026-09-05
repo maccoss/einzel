@@ -1,0 +1,405 @@
+{
+  "schemaVersion": "0.8",
+  "name": "pnnl-ion-funnel",
+  "description": "The Pacific Northwest National Laboratory 100-electrode electrodynamic ion funnel, as published: Kim, Tolmachev, Harkewicz, Prior, Anderson, Udseth, Smith, Anal. Chem. 2000, 72, 2247 (design and the transmission-against-RF measurement, with Tolmachev et al. 2000 IJMS 203:31 simulated alongside) and Page, Tolmachev, Tang, Smith, J. Am. Soc. Mass Spectrom. 2006, 17, 586 (the low-m/z cutoff against RF frequency and DC gradient, with a closed form). One hundred ring electrodes of 0.5 mm brass on 0.5 mm spacers, the first 58 at 25.4 mm inner diameter and the last 42 tapering linearly to 2.5 mm, followed by a DC-only conductance limit of 2.0 mm, solved axisymmetrically, with an extraction electrode behind it standing in for the next stage's optics (see exitDrop). Adjacent rings carry opposite RF phases; a resistor chain puts a uniform DC gradient along the stack, falling from the entrance to the exit. Shipped at the Kim 2000 operating point: 1 Torr of nitrogen, 0.7 MHz, 16 V/cm, gramicidin S doubly charged at m/z 571, in the diffusive transport mode with the RF entering as its collisional cycle average. The Page 2006 point (1.9 Torr, 80 V peak-to-peak, 100 to 700 kHz, 9.0 to 29.1 V/cm, singly charged tuning-mix ions from m/z 118 to 2122) is the same document with those parameters overridden and the transport mode switched to trajectory. Read off the papers: every dimension above, the operating conditions, the ion. Guessed, and said so: the plates' outer radius (irrelevant to the field inside), where along the funnel the ions are released (20 mm in, past where the jet disrupter sits, with a 3 mm spread), and nothing about the gas jet from the inlet capillary or the 5 nA of space charge the transmission measurement carried, neither of which this document models. The register of published numbers is docs/literature-targets.md section 5.",
+  "parameters": {
+    "constantRings": {
+      "value": 58,
+      "unit": "1",
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Rings at the entrance with the full 25.4 mm inner diameter. Page 2006 says about 58; Kim 2000 says 55 of a hundred. The difference is three rings of constant section and does not move anything measured here."
+    },
+    "taperRings": {
+      "value": 42,
+      "unit": "1",
+      "minimum": 1,
+      "maximum": 200,
+      "description": "Rings over which the inner diameter falls linearly from the entrance value to the exit value. Page 2006: 42 electrodes from 25.4 mm to 2.5 mm."
+    },
+    "pitch": {
+      "value": 1.0,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 10,
+      "description": "Ring-to-ring spacing: a 0.5 mm brass plate on a 0.5 mm Teflon spacer. The characteristic length of the published cutoff theory is this over pi."
+    },
+    "plateThickness": {
+      "value": 0.5,
+      "unit": "mm",
+      "minimum": 0.1,
+      "maximum": 5,
+      "description": "Thickness of each ring electrode. Published as 0.5 mm brass."
+    },
+    "entranceRadius": {
+      "value": 12.7,
+      "unit": "mm",
+      "minimum": 1,
+      "maximum": 50,
+      "description": "Inner radius of the constant section: 25.4 mm inner diameter, published."
+    },
+    "exitRadius": {
+      "value": 1.25,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 20,
+      "description": "Inner radius of the last tapered ring: 2.5 mm inner diameter, published (Page 2006). Kim 2000 gives 1.5 mm for the earlier build of the same design."
+    },
+    "outerRadius": {
+      "value": 25.0,
+      "unit": "mm",
+      "minimum": 13,
+      "maximum": 100,
+      "description": "Outer radius of the ring plates. Not published and irrelevant to the field inside the stack; the solve domain ends here."
+    },
+    "clRadius": {
+      "value": 1.0,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 20,
+      "description": "Inner radius of the DC-only conductance limit that follows the last ring: 2.0 mm inner diameter, published."
+    },
+    "clDrop": {
+      "value": 5.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 200,
+      "description": "How far below the last ring the conductance limit sits. Page 2006: 5 V."
+    },
+    "exitDrop": {
+      "value": 40.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 500.0,
+      "description": "How far below the conductance limit the first electrode of the next stage sits. Not published in either paper (Kim 2000 feeds an octopole, Page 2006 a quadrupole); without it the region behind the conductance limit is field-free, an ion stalls inside the 0.5 mm hole with no axial pull, and the last ring's RF fringe shakes it into the hole wall within ten cycles - which is what the first version of this model did to every ion. Forty volts over five millimetres is a guess for what the real optics and the gas jet through the hole together provide; the transmission's sensitivity to it is the thing to scan."
+    },
+    "exitGap": {
+      "value": 5.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 50.0,
+      "description": "Distance from the back of the conductance limit to the extraction electrode."
+    },
+    "exitAperture": {
+      "value": 3.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 20.0,
+      "description": "Inner radius of the extraction electrode, wider than the conductance limit so it collects nothing an ion could have reached."
+    },
+    "rfPeakToPeak": {
+      "value": 40.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 400,
+      "description": "RF amplitude between adjacent rings, peak to peak, as the papers quote it. Kim 2000 scanned 0 to 100 V and the transmission saturated by about 25; Page 2006 ran 60 to 120 V. The drive amplitude on each ring is half of this."
+    },
+    "driveFrequency": {
+      "value": 0.7,
+      "unit": "MHz",
+      "minimum": 0.05,
+      "maximum": 5,
+      "description": "RF frequency. Kim 2000: 0.7 MHz. Page 2006 scanned 0.1 to 0.7 MHz to find the low-m/z cutoff."
+    },
+    "dcGradient": {
+      "value": 1600.0,
+      "unit": "V/m",
+      "minimum": 0,
+      "maximum": 10000,
+      "description": "Axial DC gradient along the stack, from a resistor chain: the ring potential falls by this times the pitch from one ring to the next. Kim 2000 measured at 16 V/cm; Page 2006 at 9.0, 19.1 and 29.1 V/cm. The entrance ring is at zero and the stack goes negative, so a grounded entrance is consistent with the field."
+    },
+    "launchX": {
+      "value": 20.0,
+      "unit": "mm",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Where along the stack the ions are released. Not published: the ions arrive in a gas jet from an inlet capillary with a 6.5 mm jet disrupter about 20 mm in; neither is modelled, so the packet starts where the disrupter ends."
+    },
+    "launchSpread": {
+      "value": 3.0,
+      "unit": "mm",
+      "minimum": 0,
+      "maximum": 12,
+      "description": "Transverse spread of the released packet. A guess for the width of the ion cloud past the jet disrupter."
+    },
+    "cellSize": {
+      "value": 0.25,
+      "unit": "mm",
+      "minimum": 0.05,
+      "maximum": 1,
+      "description": "Requested cell size for the field solve. Four cells per pitch; the cut-cell boundaries carry the half-millimetre plates."
+    },
+    "ringCount": {
+      "expression": "constantRings + taperRings",
+      "unit": "1",
+      "description": "All rings."
+    },
+    "stackLength": {
+      "expression": "(ringCount - 1) * pitch",
+      "unit": "mm",
+      "description": "First ring face to last ring face."
+    },
+    "taperPerRing": {
+      "expression": "(entranceRadius - exitRadius) / taperRings",
+      "unit": "mm",
+      "description": "Radius lost per ring through the taper. Page 2006 states the inner-diameter step as 0.5 mm, which is a 0.25 mm radius step; the stated end points give 0.273."
+    },
+    "clX": {
+      "expression": "ringCount * pitch",
+      "unit": "mm",
+      "description": "Upstream face of the conductance limit, one pitch after the last ring."
+    },
+    "detectorX": {
+      "expression": "clX + plateThickness + pitch",
+      "unit": "mm",
+      "description": "A plane one pitch (a millimetre) behind the conductance limit, in the extraction field. Whatever crosses it was transmitted; whatever hit the conductance limit or a ring was not, and the loss is itemised by the electrode's name."
+    },
+    "domainMinX": {
+      "expression": "-2 * pitch",
+      "unit": "mm",
+      "description": "Two pitches before the first ring."
+    },
+    "domainMaxX": {
+      "expression": "clX + plateThickness + exitGap + plateThickness + 6 * pitch",
+      "unit": "mm",
+      "description": "Six pitches past the extraction electrode, so the open right edge sits well behind everything live."
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 571,
+      "unit": "Da"
+    },
+    "chargeNumber": 2
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "launchX",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0.01,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "population": 10000,
+      "transverseSpread": {
+        "expression": "launchSpread",
+        "unit": "mm"
+      },
+      "longitudinalSpread": {
+        "value": 2.0,
+        "unit": "mm"
+      }
+    }
+  },
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "detectorX",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "diffusion",
+    "maximumFlightTime": {
+      "value": 3,
+      "unit": "ms"
+    },
+    "mobility": {
+      "zeroField": {
+        "value": 0.1336,
+        "unit": "m^2/(V s)"
+      },
+      "alpha": 0.0,
+      "validToTownsend": 100.0
+    },
+    "densityGrid": {
+      "minX": {
+        "value": -2,
+        "unit": "mm"
+      },
+      "maxX": {
+        "value": 102,
+        "unit": "mm"
+      },
+      "minY": {
+        "value": 0,
+        "unit": "mm"
+      },
+      "maxY": {
+        "value": 13,
+        "unit": "mm"
+      },
+      "intervalsX": 512,
+      "intervalsY": 64
+    },
+    "densityStep": {
+      "scheme": "implicit",
+      "gain": 64
+    },
+    "gas": {
+      "model": "hardSphere",
+      "pressure": {
+        "value": 1.3332,
+        "unit": "mbar"
+      },
+      "temperature": {
+        "value": 300,
+        "unit": "K"
+      },
+      "mass": {
+        "value": 28.0134,
+        "unit": "Da"
+      },
+      "crossSection": {
+        "value": 300,
+        "unit": "angstrom^2"
+      }
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "symmetry": "cylindrical",
+        "drive": {
+          "frequency": {
+            "expression": "driveFrequency",
+            "unit": "MHz"
+          },
+          "waveform": "sinusoid"
+        },
+        "minX": {
+          "expression": "domainMinX",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainMaxX",
+          "unit": "mm"
+        },
+        "minY": {
+          "value": 0,
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "outerRadius",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "leftEdge": "neumann",
+        "rightEdge": "neumann",
+        "boundaryIsDiscontinuous": false,
+        "electrodes": [
+          {
+            "name": "ring",
+            "shape": "rectangle",
+            "repeat": {
+              "count": {
+                "expression": "ringCount"
+              },
+              "index": "ring"
+            },
+            "minX": {
+              "expression": "ring * pitch",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "ring * pitch + plateThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "entranceRadius - max(0, ring - (constantRings - 1)) * taperPerRing",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "outerRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-dcGradient * ring * pitch",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "0.5 * rfPeakToPeak * (1 - 2 * mod(ring, 2))",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "conductanceLimit",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "clX",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "clX + plateThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "clRadius",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "outerRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-dcGradient * stackLength - clDrop",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "exitPlate",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "clX + plateThickness + exitGap",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "clX + plateThickness + exitGap + plateThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "exitAperture",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "outerRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "-dcGradient * stackLength - clDrop - exitDrop",
+              "unit": "V"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

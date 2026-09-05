@@ -2510,7 +2510,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
 | What the defect-floor policy file contains | Open, and untestable until there are releases |
 | What the agent acceptance suite measures and what gates a release | **Closed.** See Amendment 11 |
 | Whether the in-process extension runner is worth shipping at all | Open, and the evidence so far says sandboxed-only is sufficient: nothing has hit the 49 ms granularity floor |
-| Whether the funnel benchmark uses a published geometry or one of ours | **Open, and now blocking.** It gates a Phase 3 acceptance criterion, and the study should not be built before it is settled |
+| Whether the funnel benchmark uses a published geometry or one of ours | **Closed: published.** The PNNL 100-electrode funnel of Kim et al. 2000 and Page et al. 2006 - dimensions fully in print, two measured curves (transmission against RF amplitude; low-m/z cutoff against frequency and DC gradient), a closed form for the second, and a SIMION comparison on the same family (Lynn et al. 2000) for the cross-code check §19 wanted. Shipped as `pnnl-ion-funnel.json`; the register is `docs/literature-targets.md` §5. First results pending. |
 | Governance if this becomes a collaboration | Open |
 
 ---

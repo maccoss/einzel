@@ -497,3 +497,55 @@ tell you the model is of the wrong thing — that the geometry was misread, a
 symmetry misapplied, or an effect left out that matters. Only agreement with a
 real instrument does that, and short of building one, a published instrument is
 the closest available.
+
+## 5. The PNNL electrodynamic ion funnel — the funnel benchmark
+
+> Kim, Tolmachev, Harkewicz, Prior, Anderson, Udseth, Smith, *Design and implementation
+> of a new electrodynamic ion funnel*, Anal. Chem. 2000, 72, 2247.
+> <https://doi.org/10.1021/ac991412x>  **[K]** — with the simulation of Tolmachev, Kim,
+> Udseth, Smith, Bailey, Futrell, Int. J. Mass Spectrom. 2000, 203, 31, reproduced as
+> Figure 6 of the open-access review Kelly, Tolmachev, Page, Tang, Smith, Mass Spectrom.
+> Rev. 2010, 29, 294 (PMC2824015).
+>
+> Page, Tolmachev, Tang, Smith, *Theoretical and experimental evaluation of the low m/z
+> transmission of an electrodynamic ion funnel*, J. Am. Soc. Mass Spectrom. 2006, 17, 586.
+> <https://doi.org/10.1016/j.jasms.2005.12.013>  **[P]** — open access, PMC1829303.
+>
+> Lynn, Chung, Han, *Characterizing the transmission properties of an ion funnel*, Rapid
+> Commun. Mass Spectrom. 2000, 14, 2129 — SIMION with a collisional drag model on the
+> earlier 28-electrode funnel, against the measured m/z transmission window. **[L]**
+
+**Why this device, and why these papers.** The §23 open decision — a published funnel
+geometry or one of ours — is settled here in favour of published, and this is the one:
+one device whose dimensions are fully in print, two independent measured curves, a closed
+form for one of them, and a SIMION comparison on the same family for the cross-code check
+§19 asked for and could never have. Digitised curves and the theory's definitions are in
+`papers/funnel/` (gitignored, like the rest of that directory).
+
+**The geometry, as published in [P] and [K]:** 100 ring electrodes of 0.5 mm brass on
+0.5 mm Teflon spacers (pitch 1.0 mm), holes cut by wire EDM; the first ~58 at 25.4 mm
+inner diameter, the last 42 tapering linearly to 2.5 mm ([K]'s earlier build: 55 and 45,
+to 1.5 mm); a DC-only conductance limit of 2.0 mm inner diameter after the last ring; a
+6.5 mm jet disrupter about 20 mm in from the inlet capillary. RF of opposite phase on
+adjacent rings through 10 nF; a 500 kΩ resistor chain for the DC gradient. Shipped as
+`pnnl-ion-funnel.json`.
+
+| target | published | conditions | status |
+| --- | --- | --- | --- |
+| transmission against RF amplitude [K] | threshold: 3% at 10 Vpp, 40% at 15, 85% at 20, plateau from 25; plateau 3.3 nA of 5 nA in (65%) | 1 Torr N₂, 0.7 MHz, 16 V/cm, gramicidin, 5 nA | **not yet met** — first run: RF confines (no ring losses) but the whole density is absorbed on the conductance-limit face rather than passing its 2 mm hole; the run flags the RF quiver exceeding the mesh, and a refined mesh is being run |
+| the same, Tolmachev's simulation [K] | same threshold, plateau 3.3 nA | same, with space charge | comparison partner, not a target |
+| low-m/z cutoff against RF frequency, m/z 118.2 [P] Fig. 3 | 50% at 425 / 485 / 565 kHz for 9.0 / 19.1 / 29.1 V/cm | 1.9 Torr, 80 Vpp, singly charged betaine | **not yet attempted** — needs the trajectory mode with collisions at 1.9 Torr, outside its stated band |
+| cutoff frequency against m/z, six ions [P] Fig. 4 | at 19.1 V/cm: 485, 290, 195, 170, 140, 130 kHz for m/z 118, 322, 622, 922, 1522, 2122 | 1.9 Torr, 80 Vpp | not yet attempted |
+| cutoff independent of RF amplitude [P] Fig. 5 | the same curve at 60, 80, 100, 120 Vpp | 19.1 V/cm | not yet attempted |
+| the closed form [P] eq. 7 | (m/z)ₗₒw = 8 e E_DC sin A / (m_u ω² δ), δ = pitch/π = 0.318 mm, tan A = 0.25 | predicts 511 kHz for m/z 118 at 19.1 V/cm against a measured 485; 351 against 425 at 9.0; 631 against 565 at 29.1 | the analytic partner |
+| m/z transmission window, SIMION with drag [L] | "compares favourably" with the measured window of the 28-electrode funnel | 1–10 Torr | the cross-code partner; the paper is behind Wiley and only its abstract has been read |
+
+**Three caveats that travel with every comparison here.** The transmission measurement
+carried 5 nA of ion current, so space charge is in it and Tolmachev's simulation included
+it; this model does not, and should match the threshold and the shape rather than the
+plateau. Both measurements sit behind a gas jet from the inlet capillary that neither paper
+characterises and this model omits, releasing the ions 20 mm in where the jet disrupter
+ends. And the cutoff is a breakdown of the averaged-field picture — a low-mass ion is pulled
+into a ring within one RF cycle — so the diffusive mode cannot see it by construction, and
+the measurement is a test of the collision-by-collision mode at a pressure above the band
+it claims, which is REG-3's overlap-band comparison made on a published instrument.

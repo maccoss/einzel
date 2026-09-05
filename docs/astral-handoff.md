@@ -5875,3 +5875,47 @@ instrument as a chain from the Stellar front end to the detector (Fig. 11). The 
 item now says the optics are done and the detector binds. The r07-to-r08 generator
 (`edit_memo.py`) is superseded by hand edits and parked as `edit_memo_r08_superseded.py`;
 `edit_memo_figs.py` in `einzel-figures/figs/` is the script that applied this pass.
+
+## 76. The funnel benchmark: the PNNL 100-electrode funnel, first flights
+
+The §23 decision is closed in favour of a published geometry (`docs/literature-targets.md` §5):
+Kim et al. 2000's 100-electrode funnel, whose dimensions are in print, with two measured curves
+(transmission against RF amplitude at 1 Torr; the low-m/z cutoff against RF frequency and DC
+gradient at 1.9 Torr, Page et al. 2006, open access), a closed form for the second, and a
+SIMION-with-drag comparison on the earlier 28-electrode funnel (Lynn et al. 2000). The
+published figures are digitised in `papers/funnel/` from the PMC CDN images. Shipped as
+`pnnl-ion-funnel.json`: 100 rings and a conductance limit reduce to **two basis solves** (RF
+alternating pattern, DC chain), 24 and 29 cycles.
+
+**Both transport modes reproduce the frequency dependence and both lost every ion at the
+exit.** In the trajectory mode with collisions at 1.9 Torr (m/z 118, 80 Vpp, 19.1 V/cm, ten
+ions), at 300 kHz eight of ten are lost on rings 80-98 in the taper and two on the conductance
+limit - the cutoff mechanism the paper describes - while at 700 kHz none touches a ring and all
+ten reach the conductance limit. The diffusive mode at the Kim point (1 Torr, 40 Vpp, 0.7 MHz)
+likewise holds the density off every ring with the RF on (spread over rings 88-94 with it off)
+and absorbs all of it on the conductance limit. Refining the mesh from 0.25 to 0.1 mm changed
+nothing; a gentler gradient (9 V/cm) and a heavier ion (m/z 622) changed nothing; removing the
+conductance limit moved the loss to the last ring's own inner surface.
+
+**A first reading - the ions ride the taper wall - was wrong, and the trajectory file showed
+it.** A single ion's collisional path (25,704 samples) goes through the taper 1 to 2 mm off
+the wall, which is the paper's field-balance stand-off, reaches the exit **on the axis at
+r = 0.13 mm**, and then, inside the 0.5 mm-thick hole, drifts to r = 1.0 mm in fifteen
+microseconds and strikes the hole's wall. Behind the conductance limit the model had a
+field-free region (an open edge), so an ion in the hole has no axial pull, advances at 30 m/s
+instead of 160, and sits in the last ring's RF fringe for ten cycles. The real instrument has
+the next stage's optics at a lower potential behind that plate, and a gas jet through it;
+neither paper gives the voltage. `exitDrop` (40 V over 5 mm, a stated guess) adds an
+extraction electrode; the frequency probes are being re-run with it.
+
+**The trajectory file of a collisional run was a vacuum flight.** `--vtu` integrated a second
+time without the collision sampler the reported flight had: an ion crossing the funnel in
+10 µs on the axis, beside a result of 589 µs and a strike. Fixed by handing the same sampler,
+same seed, to the recorded flight; `TrajectoryFileGasTests` asserts the drawn flight is the
+reported one (drift tube in 1 mbar: vacuum would be 14 µs, the gas flight some 200). Third
+member of the family after the figure-of-merit path and the regime inspector: a shared entry
+point is not a shared computation.
+
+**Also seen, not yet fixed:** `render section` of a *diffusive* model stamps the figure
+`QUALIFIED` with `regime.trajectory-above-validity` - the renderer checks the trajectory
+regime on a density run, which is the mode question asked of the pressure instead of the mode.
