@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,021 tests across twelve assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 37 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,125 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 37 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -47,6 +47,7 @@ from the register means nothing.
 ```
 Einzel.Core  Fields  Transport  Analysis  Library  Sweeps
 Einzel.Io  Project  Extensions  Render  Commands  Cli
+Einzel.Mcp  Wpf
 ```
 
 ### What does not
@@ -54,13 +55,14 @@ Einzel.Io  Project  Extensions  Render  Commands  Cli
 ```
 Einzel.Compute      the SIMD and ILGPU dispatch layer (CMP-1, PERF-5)
 Einzel.Update       release check, staging, version policy (all of UPD, DST)
-Einzel.Wpf          the shell (§16, UI-1) - all eleven required views
 ```
 
-Two of those four are load-bearing for requirements that are otherwise met on
-paper. Without a shell, AGT-2 ("nothing exists only in the window") cannot be
-violated *or* confirmed; without `Einzel.Update`, GRD-11's defect taint has no
-published floor to compare a version against.
+The second is load-bearing for requirements that are otherwise met on paper:
+without `Einzel.Update`, GRD-11's defect taint has no published floor to compare a
+version against, and none of §18 can be exercised. The shell exists with nine of
+§16's eleven views (see [the shell section](#the-shell-and-the-rest-of-16)); its
+two missing views are the extension manager pane and the update notice, the latter
+waiting on `Einzel.Update`.
 
 `Einzel.Wpf` is a **deliverable rather than a permission**, and the Windows GUI
 capability was part of why the toolchain is C# - a rationale r06 never records. See
@@ -90,12 +92,15 @@ several were only reachable because an earlier increment removed an artefact
 (§19's coaxial check needed cut cells; a multipole measurement needed cut-cell rod
 surfaces; a turn-around time needed a source that can start at rest).
 
-**What it has cost is the agent thesis.** §21's own sequencing principle is that
-"the schema and the CLI are Phase 1 deliverables… which de-risks the thesis early",
-and the corpus EX-1 asks for is the other half of that: an agent has no Einzel
-forum posts or example files in its training data, and shipping models it can pull
-into context is the counter. **One model of thirty exists.** That is now the single
-largest gap in the project, and it is not a physics gap.
+**What it cost for a long while was the agent thesis.** §21's own sequencing
+principle is that "the schema and the CLI are Phase 1 deliverables… which de-risks
+the thesis early", and the corpus EX-1 asks for is the other half of that: an agent
+has no Einzel forum posts or example files in its training data, and shipping
+models it can pull into context is the counter. For most of the project one model
+of thirty existed; the corpus now holds thirty-seven, gated on every change (item 4
+of *What to do next*). **What remains is distribution**: eighteen of the
+thirty-one unbuilt requirements are the update mechanism and the release artifacts,
+and nobody can install this.
 
 ### Phase acceptance, checked
 

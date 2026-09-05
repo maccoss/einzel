@@ -2577,3 +2577,36 @@ geometric perturbation is a rigid motion, apply it as a coordinate transform on 
 field rather than as a change to the geometry being solved. And a quantity that swings in
 sign under an irrelevant modelling choice is not a bad measurement of the right thing, it is
 a measurement of the modelling choice.
+
+## The drawn flight was not the flown flight
+
+`einzel run --vtu` on a collisional model wrote a trajectory that crossed a 2.5 mbar funnel in
+ten microseconds on the axis, beside a result that said 589 µs and a strike on the exit plate.
+The reportable flight time comes from a convergence study that flies the declared gas; the
+trajectory file came from a second integration in the same method, written to sample at the
+model's cadence, that was never handed the collision sampler. Both were "the run". Nothing
+checked that the two agreed, because the drawing was never compared with a number - it is the
+one artifact people look at with the numbers out of sight, which is exactly why it must not be
+the one that lies.
+
+The general form has now been met three times in three seams: the figure-of-merit path
+(`einzel test` flew in vacuum), the regime inspector (the path flown in vacuum and the gas
+numbers reported along it), and the trajectory file. **A shared entry point is not a shared
+computation.** Every integration that claims to be the run has to be handed everything the
+run was, and a test that reads the artifact back against the reported number is the only
+thing that catches the next one - `TrajectoryFileGasTests` asserts the file's last instant is
+the reported flight time on a model where vacuum and gas differ fifteen-fold, and fails with
+the sampler removed.
+
+## Asking the pressure a question that belongs to the mode, in the renderer
+
+`render section` of a *diffusive* model stamped the figure `QUALIFIED` with
+`regime.trajectory-above-validity` - "trajectory integration is not the description of this
+physics" - for a mode it was not using. The renderer computed the trajectory mode's regime
+warnings from the gas alone. RND-8 had already been fixed by asking `ProducesTrajectories`
+of the mode rather than inferring from the pressure; the regime stamp two functions away was
+still inferring. Seventh appearance of the pattern this file records under "a time-varying
+quantity reached through a time-free interface" and its cousins: a property of the *run*
+(its mode, its drive) asked of a proxy (the pressure, the DC) that stops being equivalent the
+moment a second mode exists. The fix is one condition; the lesson is to grep for every place
+a gas is present and check what each one asks.
