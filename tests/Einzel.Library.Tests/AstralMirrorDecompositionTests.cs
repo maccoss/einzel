@@ -53,7 +53,11 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
         {
             Assert.Null(f.Solve3d);
             var solve = Solve(f);
-            Assert.Equal(16, solve.Electrodes!.Count);
+            // five electrodes per mirror, two boards, two mirrors: electrode 0 is the
+            // grounded one the design paper's schematic shows running from the beam
+            // region out to electrode 1, and the four biased ones sit outward of it
+            // with gaps between - Fig. 1 of Grinfeld et al. 2024, section 58 of the handoff.
+            Assert.Equal(20, solve.Electrodes!.Count);
 
             // The tilt belongs to the extrusion axis, not to the electrodes. An electrode
             // tilt here would mean the geometry is being rotated again, which is the thing
@@ -115,6 +119,14 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
                 var expression = e.Potential?.Expression;
                 Assert.NotNull(expression);
 
+                // electrode 0 is grounded on BOTH mirrors, whichever is live - it is the
+                // field-free region's own conductor and belongs to neither basis pattern.
+                if (e.Name!.Contains('0', StringComparison.Ordinal))
+                {
+                    Assert.Equal("0", expression);
+                    continue;
+                }
+
                 if (e.Name!.StartsWith(live, StringComparison.Ordinal))
                 {
                     liveCount++;
@@ -169,7 +181,7 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
             .Where(e => !e.Name!.StartsWith("foil", StringComparison.Ordinal)).ToList();
 
         Assert.Equal(4, plates.Count);
-        Assert.Equal(16, grounded.Count);
+        Assert.Equal(20, grounded.Count);   // five per mirror, two boards, two mirrors
         Assert.All(grounded, e => Assert.Equal(0.0, e.Potential?.Value));
         Assert.All(plates, e => Assert.Contains("foilGrade", e.Potential!.Expression!, StringComparison.Ordinal));
 

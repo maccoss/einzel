@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.8",
   "name": "astral-3d",
-  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 40 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four shaped plates at their graded bias with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999.",
+  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 46.85 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-handoff.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four shaped plates at their graded bias with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999. The mirror electrodes are placed from the design paper's Fig. 1 (five per mirror, with gaps, electrode 0 grounded) and carry the crowd-control paper's Table 1 voltages with the sign of U2 corrected to positive; the board gap is set where the first-order time-energy coefficient vanishes. At this state the mirror is at a first-order focus and not yet at the published three-point one: c2 = +0.345 and c3 = +1.22 remain. See docs/astral-handoff.md sections 58-65.",
   "parameters": {
     "ionEnergy": {
       "value": 4000.0,
@@ -39,18 +39,18 @@
       "description": "Extent along the drift, and hence the extent of the foil. Published nominal drift is 335 mm, but this must be LONGER: where the stripe ends its contribution to the drift potential decays and partly cancels the tilt's continuing rise, leaving a crest an ion with slightly more sideways energy can clear. With the foil coextensive with a 350 mm drift that crest sat 2.3% above the nominal drift energy while the design's operating range is 2.2%, and the reversal jumped from 338.6 to 409.1 mm for a 1.1% change in injection angle. At 450 mm the crest moves to 435 mm and demands 6.3 V against the ion's 4.8. See docs/astral-handoff.md section 48."
     },
     "capToCap": {
-      "value": 685.5,
+      "value": 720.0,
       "unit": "mm",
       "minimum": 50.0,
       "maximum": 3000.0,
-      "description": "Cap plate to cap plate. Set so the EFFECTIVE mirror separation - the ion's nominal velocity times the half period, which is what Grinfeld et al. Table 1 states - comes out at the published 641 mm. Measured 641.1 mm at this value, and dL_eff/dcapToCap is 0.983, so the mirror dwell is essentially unchanged by the setting. The published 641 is an effective distance and NOT a physical cap-to-cap, so it cannot be used here directly."
+      "description": "Cap plate to cap plate. 720 puts the cap 360 mm from the mid-plane, 5 mm past electrode 4. The effective mirror separation the paper quotes (641 mm) is set by the electrode positions and voltages, not by the cap, and measures 656 at this geometry - 2.3 per cent long, section 65."
     },
     "boardGap": {
-      "value": 40.0,
+      "value": 46.85,
       "unit": "mm",
       "minimum": 5.0,
       "maximum": 120.0,
-      "description": "Board-to-board separation at the drift mid-point."
+      "description": "Distance between the two mirror boards across the beam. Published in neither paper. Set where the first-order time-energy coefficient crosses zero with the published positions and voltages (section 65: c1 = -0.062 at 40 mm, +0.002 at 47, crossing at 46.85), which is also where the on-axis dip depth matches the figure (section 61) and between the two gaps a voltage fit favoured (section 62). Three readings of the one unpublished dimension. What it does NOT fix: c2 = +0.345 and c3 = +1.22 remain at this gap, so the reflecting stack is not yet the published one."
     },
     "boardThickness": {
       "value": 4.0,
@@ -73,45 +73,15 @@
       "maximum": 100.0,
       "description": "How far inside the far end the collecting plane sits."
     },
-    "d1": {
-      "value": 20.0,
-      "unit": "mm",
-      "minimum": 2.0,
-      "maximum": 350.0,
-      "description": "Depth at which U1 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
-    },
-    "d2": {
-      "value": 38.0,
-      "unit": "mm",
-      "minimum": 2.0,
-      "maximum": 350.0,
-      "description": "Depth at which U2 is reached, from the mirror mouth. STILL FREE - no paper states the electrode lengths - but no longer arbitrary: at 38 mm the sensitivity dc1/dTE1 comes out 0.987 against the 1.0 implied by the published C(1) vector, where the previous 50 mm gave 2.2. Measured at TE1 = 0, which is where the published statement applies."
-    },
-    "d3": {
-      "value": 84.0,
-      "unit": "mm",
-      "minimum": 2.0,
-      "maximum": 350.0,
-      "description": "Depth at which U3 is reached, from the mirror mouth. STILL FREE. At 84 mm the mirror reaches the best resolving power found so far once TE1 and TE2 are solved to cancel the first and second order time-energy coefficients: R = 4,466 at a +/-3% energy spread, against 1,335 at 90 mm and 626 at 96 mm. What remains is c3 = 2.07, and cancelling that is a condition on these depths - see docs/astral-handoff.md section 49."
-    },
-    "d4": {
-      "value": 130.0,
-      "unit": "mm",
-      "minimum": 2.0,
-      "maximum": 350.0,
-      "description": "Depth at which U4 is reached, from the mirror mouth. FREE: no paper states the electrode lengths, and they are what the published coefficients were optimised against. Free parameter of the inverse problem: the published potential coefficients were optimised against Thermo geometry, so applying them to these depths gives a mirror that is not at its own focus. Fit against focusingC1, whose magnitude is 21.5 times the reciprocal energy spread here and should fall by orders when first order cancels."
-    },
     "halfGap": {
       "expression": "boardGap / 2",
       "unit": "mm",
       "description": ""
     },
     "mouth": {
-      "value": 130.0,
+      "expression": "midPlane - e1In",
       "unit": "mm",
-      "minimum": 20.0,
-      "maximum": 400.0,
-      "description": "Distance from the cap plate to the mirror mouth, so the mirror occupies x from mouth - d4 to mouth and the field-free gap is what is left. INDEPENDENT of d4 as of 2026-09-02; it used to be defined as d4, which meant varying the electrode depths walked the two mirror mouths together and shrank the field-free gap - physically right for a fixed envelope, where depth and drift length are one degree of freedom rather than two, but it makes a scan over the depths a scan along a trade. Separating them is what makes fitting d1..d4 against the energy focus well posed. Handoff section 16."
+      "description": "Distance from the cap plate to the inner edge of electrode 1 - the mirror mouth. Derived from e1In so the foil expressions that reach the mirror keep meaning what they meant."
     },
     "boardOuter": {
       "expression": "halfGap + boardThickness",
@@ -251,6 +221,69 @@
       "expression": "2 * driftLength * sinPi(mirrorTilt) / cosPi(mirrorTilt)",
       "unit": "mm",
       "description": "How much the cap-to-cap gap narrows across the drift length. DERIVED from the spacer and its baseline, and reported because it is the quantity the earlier revisions of this template declared directly. 0.56 mm at the shipped values."
+    },
+    "e0In": {
+      "value": 1.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Inner edge of the grounded electrode 0, from the mid-plane. The schematic shows it running from the beam region out to electrode 1; 1 mm leaves the source at the mid-plane clear of it. Section 64 measured its extent as irrelevant to the focus."
+    },
+    "e1In": {
+      "value": 204.3,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Inner edge of electrode 1, the accelerating lens. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e1Out": {
+      "value": 249.5,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Outer edge of electrode 1. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e2In": {
+      "value": 258.1,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Inner edge of electrode 2. The 8.6 mm gap before it is bare board. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e2Out": {
+      "value": 267.7,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Outer edge of electrode 2. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e3In": {
+      "value": 282.3,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Inner edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e3Out": {
+      "value": 297.8,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Outer edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e4In": {
+      "value": 306.5,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Inner edge of electrode 4, the reflector. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-handoff.md section 58."
+    },
+    "e4Out": {
+      "value": 355.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "Outer edge of electrode 4. The figure shows it running past 347 mm off the plot edge; 355 leaves 5 mm to the cap plate at 360. The ion turns at 293 and never approaches it."
     }
   },
   "ion": {
@@ -319,14 +352,62 @@
         },
         "electrodes": [
           {
-            "name": "near1top",
+            "name": "near0top",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e1In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth",
+              "expression": "midPlane - e0In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near0bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e1In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e0In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e1Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e1In",
               "unit": "mm"
             },
             "minY": {
@@ -346,11 +427,11 @@
             "name": "near1bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e1Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth",
+              "expression": "midPlane - e1In",
               "unit": "mm"
             },
             "minY": {
@@ -370,11 +451,11 @@
             "name": "near2top",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e2Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e2In",
               "unit": "mm"
             },
             "minY": {
@@ -386,7 +467,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "-1.158 * ionEnergy",
+              "expression": "1.158 * ionEnergy",
               "unit": "V"
             }
           },
@@ -394,11 +475,11 @@
             "name": "near2bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e2Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e2In",
               "unit": "mm"
             },
             "minY": {
@@ -410,7 +491,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "-1.158 * ionEnergy",
+              "expression": "1.158 * ionEnergy",
               "unit": "V"
             }
           },
@@ -418,11 +499,11 @@
             "name": "near3top",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e3Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e3In",
               "unit": "mm"
             },
             "minY": {
@@ -442,11 +523,11 @@
             "name": "near3bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e3Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e3In",
               "unit": "mm"
             },
             "minY": {
@@ -466,11 +547,11 @@
             "name": "near4top",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d4",
+              "expression": "midPlane - e4Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e4In",
               "unit": "mm"
             },
             "minY": {
@@ -490,11 +571,11 @@
             "name": "near4bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d4",
+              "expression": "midPlane - e4Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e4In",
               "unit": "mm"
             },
             "minY": {
@@ -511,14 +592,62 @@
             }
           },
           {
-            "name": "far1top",
+            "name": "far0top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth",
+              "expression": "midPlane + e0In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far0bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane + e0In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e1Out",
               "unit": "mm"
             },
             "minY": {
@@ -538,11 +667,11 @@
             "name": "far1bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth",
+              "expression": "midPlane + e1In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e1Out",
               "unit": "mm"
             },
             "minY": {
@@ -562,11 +691,11 @@
             "name": "far2top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e2In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e2Out",
               "unit": "mm"
             },
             "minY": {
@@ -586,11 +715,11 @@
             "name": "far2bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e2In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e2Out",
               "unit": "mm"
             },
             "minY": {
@@ -610,11 +739,11 @@
             "name": "far3top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e3In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e3Out",
               "unit": "mm"
             },
             "minY": {
@@ -634,11 +763,11 @@
             "name": "far3bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e3In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e3Out",
               "unit": "mm"
             },
             "minY": {
@@ -658,11 +787,11 @@
             "name": "far4top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e4In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d4",
+              "expression": "midPlane + e4Out",
               "unit": "mm"
             },
             "minY": {
@@ -682,11 +811,11 @@
             "name": "far4bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e4In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d4",
+              "expression": "midPlane + e4Out",
               "unit": "mm"
             },
             "minY": {
@@ -742,14 +871,14 @@
         },
         "electrodes": [
           {
-            "name": "near1top",
+            "name": "far0top",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane + e0In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth",
+              "expression": "midPlane + e1In",
               "unit": "mm"
             },
             "minY": {
@@ -766,158 +895,14 @@
             }
           },
           {
-            "name": "near1bot",
+            "name": "far0bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane + e0In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "0",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near2top",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d1",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "0",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near2bot",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d1",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "0",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near3top",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "0",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near3bot",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d2",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "0",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near4top",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "mouth - d4",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d3",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "0",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "near4bot",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "mouth - d4",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane + e1In",
               "unit": "mm"
             },
             "minY": {
@@ -937,11 +922,11 @@
             "name": "far1top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth",
+              "expression": "midPlane + e1In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e1Out",
               "unit": "mm"
             },
             "minY": {
@@ -961,11 +946,11 @@
             "name": "far1bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth",
+              "expression": "midPlane + e1In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e1Out",
               "unit": "mm"
             },
             "minY": {
@@ -985,11 +970,11 @@
             "name": "far2top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e2In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e2Out",
               "unit": "mm"
             },
             "minY": {
@@ -1001,7 +986,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "-1.158 * ionEnergy",
+              "expression": "1.158 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1009,11 +994,11 @@
             "name": "far2bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane + e2In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e2Out",
               "unit": "mm"
             },
             "minY": {
@@ -1025,7 +1010,7 @@
               "unit": "mm"
             },
             "potential": {
-              "expression": "-1.158 * ionEnergy",
+              "expression": "1.158 * ionEnergy",
               "unit": "V"
             }
           },
@@ -1033,11 +1018,11 @@
             "name": "far3top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e3In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e3Out",
               "unit": "mm"
             },
             "minY": {
@@ -1057,11 +1042,11 @@
             "name": "far3bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d2",
+              "expression": "midPlane + e3In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e3Out",
               "unit": "mm"
             },
             "minY": {
@@ -1081,11 +1066,11 @@
             "name": "far4top",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e4In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d4",
+              "expression": "midPlane + e4Out",
               "unit": "mm"
             },
             "minY": {
@@ -1105,11 +1090,11 @@
             "name": "far4bot",
             "shape": "rectangle",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e4In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d4",
+              "expression": "midPlane + e4Out",
               "unit": "mm"
             },
             "minY": {
@@ -1122,6 +1107,246 @@
             },
             "potential": {
               "expression": "1.503 * ionEnergy",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near0top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e1In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e0In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near0bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e1In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e0In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e1Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e1In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e1Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e1In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e2Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e2In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near2bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e2Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e2In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e3Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e3In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near3bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e3Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e3In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4top",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e4Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e4In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near4bot",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "midPlane - e4Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e4In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "0",
               "unit": "V"
             }
           }
@@ -1315,16 +1540,16 @@
             }
           },
           {
-            "name": "near1topGround",
+            "name": "near0topGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e1In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth",
+              "expression": "midPlane - e0In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "halfGap",
               "unit": "mm"
@@ -1342,21 +1567,53 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
-            "name": "far1topGround",
+            "name": "near0botGround",
+            "shape": "box",
             "minX": {
-              "expression": "capToCap - mouth",
+              "expression": "midPlane - e1In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d1",
+              "expression": "midPlane - e0In",
               "unit": "mm"
             },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "near1topGround",
             "shape": "box",
+            "minX": {
+              "expression": "midPlane - e1Out",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane - e1In",
+              "unit": "mm"
+            },
             "minY": {
               "expression": "halfGap",
               "unit": "mm"
@@ -1374,21 +1631,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near1botGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e1Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth",
+              "expression": "midPlane - e1In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "-boardOuter",
               "unit": "mm"
@@ -1406,53 +1663,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far1botGround",
-            "minX": {
-              "expression": "capToCap - mouth",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near2topGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e2Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e2In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "halfGap",
               "unit": "mm"
@@ -1470,53 +1695,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far2topGround",
-            "minX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near2botGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e2Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d1",
+              "expression": "midPlane - e2In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "-boardOuter",
               "unit": "mm"
@@ -1534,53 +1727,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far2botGround",
-            "minX": {
-              "expression": "capToCap - mouth + d1",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near3topGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e3Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e3In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "halfGap",
               "unit": "mm"
@@ -1598,53 +1759,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far3topGround",
-            "minX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near3botGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e3Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d2",
+              "expression": "midPlane - e3In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "-boardOuter",
               "unit": "mm"
@@ -1662,53 +1791,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far3botGround",
-            "minX": {
-              "expression": "capToCap - mouth + d2",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "-boardOuter",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "-halfGap",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near4topGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d4",
+              "expression": "midPlane - e4Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e4In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "halfGap",
               "unit": "mm"
@@ -1726,53 +1823,21 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
-              "unit": "V"
-            }
-          },
-          {
-            "name": "far4topGround",
-            "minX": {
-              "expression": "capToCap - mouth + d3",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "capToCap - mouth + d4",
-              "unit": "mm"
-            },
-            "shape": "box",
-            "minY": {
-              "expression": "halfGap",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "boardOuter",
-              "unit": "mm"
-            },
-            "minZ": {
-              "expression": "-zPad",
-              "unit": "mm"
-            },
-            "maxZ": {
-              "expression": "driftLength + zPad",
-              "unit": "mm"
-            },
-            "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "near4botGround",
+            "shape": "box",
             "minX": {
-              "expression": "mouth - d4",
+              "expression": "midPlane - e4Out",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "mouth - d3",
+              "expression": "midPlane - e4In",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "-boardOuter",
               "unit": "mm"
@@ -1790,21 +1855,309 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far0topGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e0In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far0botGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e0In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1topGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e1Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far1botGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e1In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e1Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2topGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e2In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e2Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far2botGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e2In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e2Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3topGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e3In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e3Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far3botGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e3In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e3Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-boardOuter",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-halfGap",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "far4topGround",
+            "shape": "box",
+            "minX": {
+              "expression": "midPlane + e4In",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "midPlane + e4Out",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "halfGap",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "boardOuter",
+              "unit": "mm"
+            },
+            "minZ": {
+              "expression": "-zPad",
+              "unit": "mm"
+            },
+            "maxZ": {
+              "expression": "driftLength + zPad",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0.0,
               "unit": "V"
             }
           },
           {
             "name": "far4botGround",
+            "shape": "box",
             "minX": {
-              "expression": "capToCap - mouth + d3",
+              "expression": "midPlane + e4In",
               "unit": "mm"
             },
             "maxX": {
-              "expression": "capToCap - mouth + d4",
+              "expression": "midPlane + e4Out",
               "unit": "mm"
             },
-            "shape": "box",
             "minY": {
               "expression": "-boardOuter",
               "unit": "mm"
@@ -1822,7 +2175,7 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0,
+              "value": 0.0,
               "unit": "V"
             }
           }
