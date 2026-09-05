@@ -4919,3 +4919,79 @@ none of it. Anchored against the cubic residual alone (21,276) it agrees to 5 pe
 number is the aberration rather than a numerical artefact. In acceptance terms: **±3.06 per
 cent at R = 20,000**, and ±5 per cent gives 4,596 - so the lower end of a 20k instrument's
 usual acceptance target is met by calibration alone and the upper end is not.
+
+## 53. Reading the paper's equations: the drift period is not the arrival time
+
+Sections 47 to 52 measured the wrong quantity. The design paper's equations, read from the
+rendered PDF pages rather than from the text extraction (which drops sub- and superscripts),
+give two integrals that look almost identical and mean entirely different things.
+
+    psi   = psi_s + psi_m                                                    the drift pseudopotential
+    T_D / T0   = (L / (W sin th0)) * kappa,   kappa = INT dn / sqrt(psi(nD) - psi(n))      Eq 13
+    dT_K / T0  = (L sin th0 / 2W)   * tau,    tau   = INT [psi_s(n) - psi_m(n)] / sqrt(psi(nD) - psi(n)) dn   Eq 14
+
+**`kappa` carries the sum; `tau` carries the difference.** The paper states the reason
+outright: "Though the components `Phi_s` and `Phi_m` sum up, the integral in Eq. (11) contains
+their difference. Indeed, a positive retarding voltage `v_s` decelerates an ion when crossing
+the stripe, while a reduced distance between the mirror makes the oscillations faster." Both
+mechanisms push the drift the same way and push the *timing* in opposite directions, which is
+what makes a cancellation possible at all.
+
+And the flight time is **`K T0 + dT_K` with `K` an integer** - the paper requires
+`T_D / T0` to stay inside `K +/- 1/2` across the whole range of injection angles, so every ion
+makes the same 25 oscillations. `T_D` decides *how many* oscillations happen. `dT_K` decides
+*when* the ion lands.
+
+| over `eta_D` = 1 ± 0.1 | spread |
+| --- | --- |
+| drift period `T_D`, the quantity sections 47-52 measured | **1.16e-2** |
+| arrival time `K T0 + dT_K`, the quantity that sets resolving power | **6.8e-9** |
+
+A factor of **1.7 million**. Both numbers are right; they are answers to different questions.
+The published design is isochronous in arrival time to parts per billion in this idealised
+calculation, which is beyond the "ppm-level plateau" it claims for itself.
+
+### The design conditions, as stated
+
+- `tau'` vanishes at **four** points inside `eta_D` = 1 ± 0.1 - the timing plateau. (This work
+  resolves two of the four; `tau` varies only in its sixth decimal there, so the quadrature
+  noise floor is comparable to the effect.)
+- `kappa'(1) = 0` - the drift period is stationary at nominal, "to minimize the spread of
+  `T_D`". **This work measured exactly that at -1e-5** in section 51, and correctly - it was
+  simply the wrong condition to be reading a resolving power from.
+- `psi(1) = c0 + ... + c5 = 1` - normalisation, confirmed at 0.99996.
+
+### Two claims withdrawn
+
+**"The published 2.1e-6 is not reproduced."** It is reproduced, and bettered - the arrival time
+is flat to 6.8e-9 in exact arithmetic. The figure came from Fig. 4's right panel and is a
+statement about `tau`, not about the drift period.
+
+**"A segmented stripe cannot deliver an isochronous drift at all."** Wrong, and the reversal is
+large:
+
+| stripe | arrival-time spread, `eta_D` = 1 ± 0.1 | R from the drift alone |
+| --- | --- | --- |
+| published continuous shape | 6.62e-9 | 75,500,000 |
+| **sixteen fitted segments** | 7.88e-7 | **634,000** |
+
+119 times worse, and **still thirty times more than a 20k instrument needs**. The earlier
+verdict came from watching sixteen segments destroy the stationary point of `kappa`, which is
+real and does not matter: `kappa'(1) = 0` controls the spread of the drift period, and the
+drift period is not the arrival time. The design guidance in the memo said a compact instrument
+must have a continuously shaped drift electrode. **It does not.**
+
+### The modelling gap this exposes, which is not yet closed
+
+The flown flight times in this work vary by about 1.5e-3 across the injection-angle range, and
+that is a real measurement of this model - but of `T_D`, because **the detector here is a plane
+the ion crosses at whatever phase it happens to be in**, while the instrument's detector
+requires a completed oscillation count. The flown number is therefore not comparable to
+`K T0 + dT_K` and never was. Closing this needs a detector condition that counts oscillations,
+or a flight long enough to compare the accumulated per-oscillation perturbation directly.
+Until then the quadrature is the only route here to the quantity that sets resolving power.
+
+**The rule that generalises**: when a published design states two similar integrals, the one
+whose value you can reproduce is not necessarily the one whose flatness it is claiming. Read
+which quantity the optimisation targets before matching a number to it - and read it from the
+equations, not from the prose around them.
