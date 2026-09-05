@@ -5138,3 +5138,43 @@ of section 51, and now this. **The range a figure of merit is evaluated over is 
 figure.** For an ion-optical aberration it should be the acceptance the instrument actually
 has, taken from the thermal spread and the published acceptance, not from whatever was
 convenient to compute.
+
+## 57. What shrinking costs: the aberrations do not scale, the timing chain does
+
+Mike confirmed that the rectilinear pulsed-extraction trap is part of the compact design
+regardless of the analyser's size - it was always the plan alongside the Stellar linear trap -
+so the 1.044 ns turn-around measured on that template is directly applicable rather than a
+stand-in. That settles one of the two absolute-time terms and makes the budget computable.
+
+**The terms split into two families that behave oppositely under a change of scale.**
+
+*Dimensionless, and therefore untouched by scaling*: the mirror's energy aberration and the
+drift's timing error are properties of the shape of the field, not its size. Scale every length
+at fixed voltages and they do not move - which section 50 established for the geometry and which
+follows for the aberrations because both are ratios. Measured here at 78,000 and 73,527, they
+cap the analyser at **53,500 at any scale**.
+
+*Fixed in nanoseconds, and therefore fivefold more important in a fivefold shorter flight*: the
+trap's turn-around, the detector response and the digitiser. **The trap does not shrink with the
+analyser**, so its 1.044 ns stays put while the flight time falls.
+
+| detector response | full size, 816 us | one-fifth scale, 163 us | what binds the small one |
+| --- | --- | --- | --- |
+| 0.5 ns | 52,900 | 42,600 | the drift |
+| 1.0 ns | 52,600 | **38,800** | the drift |
+| 2.0 ns | 51,300 | 30,000 | the detector |
+| 4.8 ns | 45,000 | **15,900** | the detector |
+
+**A fifth-scale analyser loses about a quarter of its resolving power, not four fifths** - and
+only if the detector is fast. That is a far better bargain than the envelope argument alone
+suggests, and it is the strongest quantitative case yet for the compact instrument.
+
+**And it holds with perfect optics, which is what makes it the design decision.** With
+Thermo-quality aberrations near 150,000 each, a fifth-scale instrument reaches 49,800 at a 1 ns
+detector and **16,400 at 4.8 ns**. Improving the ion optics cannot rescue a slow detector at
+this scale, because nothing the optics contribute scales with the flight.
+
+**So the detector and digitiser specification sets a compact instrument's resolving power**, and
+should be settled before the envelope rather than after. The memo's existing statement that the
+timing chain offers no saving is right; this is its quantitative form, and it is stronger than
+stated - the timing chain does not merely stay the same, it becomes the binding constraint.
