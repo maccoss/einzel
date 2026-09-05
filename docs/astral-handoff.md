@@ -5408,3 +5408,39 @@ electrode 0's extent, board thickness) and reads `dc1`, to say which.
 effective mirror separation is 652 mm against the published 641 - 1.7 per cent - with the
 turning point and field-free length both taken from the figure and nothing adjusted. The
 geometry is roughly right; the focus is a finer thing than roughly.
+
+## 64. The residual is the board gap, and almost nothing else
+
+E14 perturbed each dimension the figure does not pin, at candidate A (figure positions, table
+voltages with U2's sign corrected, board gap 40), and read the change in `c1`:
+
+| perturbation | `dc1` | as `TE1` |
+| --- | --- | --- |
+| **board gap 40 -> 44 mm** | **+0.034** | **+0.034** |
+| board gap 40 -> 36 mm | -0.036 | -0.036 |
+| electrode 3 moved out 2 mm | -0.023 | -0.023 |
+| electrode 4 inner edge out 2 mm | +0.012 | +0.012 |
+| board 4 -> 2 mm thick | -0.009 | -0.009 |
+| electrode 1 inner edge in 2 mm | +0.003 | +0.003 |
+| electrode 1 outer edge out 2 mm | -0.001 | -0.001 |
+| electrode 0 stops at 180 mm | +0.002 | +0.002 |
+| electrode 0 stops at 100 mm | 0.000 | 0.000 |
+
+**The board gap dominates by a factor of ten over any position the figure gives to a millimetre**,
+and `dc1/dgap` is about +0.0085 per mm, so the residual of -0.062 extrapolates to a crossing near
+**47 mm**. That is also where E11 put the depth of the on-axis dip (matched at 50) and between the
+two board gaps E12 favoured (40 by `U1`, 50 by fit quality). Three independent readings of the one
+unpublished dimension, converging.
+
+**Electrode 1 barely matters for the time-of-flight focus.** Its edges move `c1` by a thousandth
+per two millimetres, which is right: the lens sets the transverse focusing and the depth of the
+on-axis dip, not the energy dependence of the period. That is set by the reflecting stack -
+electrodes 3 and 4 - and by how far the axis is from all of it, which is the board gap. It also
+means the -5.56 kV dip E11 matched so well was matching the wrong thing for the wrong reason.
+
+**Electrode 0's extent is irrelevant** to the focus at any length tried, so the field-free
+region needs no more thought than "grounded".
+
+E15 brackets the gap from 45 to 50 mm. The check that it is the geometry and not a coincidence
+is the paper's own condition: three stationary points, so `c3` must come to zero with `c1` on the
+same knob. If it does not, one knob has been tuned and the layout is still wrong somewhere.
