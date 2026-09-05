@@ -5333,3 +5333,42 @@ The field is linear in the voltages, so E12 settles it by fitting them: four bas
 electrode at a time, against the sixteen published points. A fit returning the table's
 coefficients would mean the geometry is at fault; one returning a positive U2 near the prose
 would mean the two papers describe different voltage sets, and the figure's is the one to model.
+
+## 62. Fitting the voltages to the published curve: U2 is positive, and the table has one sign wrong
+
+The field is linear in the electrode voltages, so with four basis solves - one electrode at a
+time at 4000 V on the published layout - the sixteen published on-axis points determine the four
+coefficients by least squares. Done at three board gaps:
+
+| | U1 | U2 | U3 | U4 | rms vs figure |
+| --- | --- | --- | --- | --- | --- |
+| crowd-control table | -1.840 | **-1.158** | +0.916 | +1.503 | 1.69 kV |
+| fitted, gap 40 mm | **-1.855** | **+1.237** | +0.776 | +1.724 | 0.322 kV |
+| fitted, gap 50 mm | -2.159 | +1.762 | +0.593 | +1.944 | **0.226 kV** |
+| fitted, gap 60 mm | -2.513 | +2.380 | +0.350 | +2.232 | 0.234 kV |
+
+**U2 is positive in every fit**, as both papers say in prose, and the fitted curve tracks the
+figure point by point - the dip at 225 (-5.67 against -5.56), the zero crossing at 260 (+0.07
+against -0.02), the rise to 4 kV at 293. The fit is seven times better than the table's voltages
+on the same geometry.
+
+**And at a 40 mm board gap the fitted U1 is -1.855 against the table's -1.840, within one per
+cent.** That is the tell. The table is right about U1 and, within the partial degeneracy of two
+adjacent electrodes seen from the axis, plausibly right about U3 and U4; **it is wrong about the
+sign of U2**, and that one sign is what made electrode 2 drag the potential negative to 278 mm in
+E11 at every board gap. It also fits a detail from E10: the gap-40 fit is the one whose U1 the
+table reproduces, so 40 mm - the original guess - is probably the board gap after all.
+
+**So the mirror this project has been flying for weeks had one electrode at the wrong polarity.**
+Every mirror figure from section 26 onward - the double zero, the three-point condition, the
+36,700 and the 78,000, the depth searches - was measured with electrode 2 at -4632 V where the
+instrument has it near +4632. The correction vectors C(1) and C(2) were applied to that mirror
+too, and the fact that they still did roughly their published jobs says something about how
+forgiving the calibration scheme is, not about the geometry having been right.
+
+**What is not settled by the fit alone** is whether the table's other three values or the free
+fit's are the design paper's, since the axis potential cannot fully separate U3 from U4. E13
+flies three candidates and reads each one's period slope against the published curve, which is
+the discriminating measurement: the published mirror holds `(1/T) dT/de` within ±0.039 x 1e-6
+per eV across 3900-4100 with three zero crossings, and only the right voltages on the right
+geometry will do that untuned.
