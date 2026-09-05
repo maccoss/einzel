@@ -960,42 +960,44 @@ chosen so the drift period is independent of drift amplitude, and it reports ach
 &plusmn;10% range of drift length. Fitting sixteen independently biased stripe segments to the
 published <span class="num">&psi;<sub>s</sub></span> and integrating the drift period by
 quadrature reproduces that:</p>
-<p><strong>What the published shape delivers is a stationary point</strong>, and that is the
-quantity to check rather than a spread. The drift period against drift energy has a minimum
-<em>exactly at the operating point</em>, so its dependence on energy is quadratic rather than
-linear:</p>
+<p><strong>The drift period and the arrival time are two different quantities</strong>, and
+telling them apart is the whole of this section. The design paper gives an integral for each,
+and they differ in one place: the drift period is driven by the <em>sum</em> of what the shaped
+electrode and the mirror tilt each contribute, and the arrival time by their
+<em>difference</em>. The paper says why in a sentence &mdash; a retarding electrode slows each
+bounce, while converging mirrors shorten the path and speed it up &mdash; so the two mechanisms
+push the drift the same way and push the timing in opposite directions. That opposition is what
+makes a cancellation possible at all.</p>
+<p>And the flight time is <strong>a whole number of bounces times the bounce period, plus a
+small accumulated correction</strong>. The paper requires every ion to make the same 25
+oscillations across the whole range of injection angles. So the drift decides <em>how many</em>
+bounces happen; it does not decide <em>when</em> the ion lands.</p>
 <div class="tblwrap"><table>
-<thead><tr><th>drift potential</th><th>d(&tau;/&tau;) / d(E/E<sub>0</sub>) at nominal</th><th>what it says</th></tr></thead>
+<thead><tr><th>over the design&rsquo;s &plusmn;10% range of drift length</th><th>spread</th><th></th></tr></thead>
 <tbody>
-<tr><td class="k">bare mirror tilt &mdash; the uncorrected drift</td><td class="num">+0.500</td><td>a constant force, so the period goes as the square root of the drift energy</td></tr>
-<tr><td class="k hi">the published stripe shape, by quadrature</td><td class="num hi">&minus;0.00001</td><td>first-order isochronous, from the published coefficients alone</td></tr>
-<tr><td class="k">sixteen segments fitted to it at 0.26%</td><td class="num">&minus;0.079</td><td>the mechanism destroyed by a quarter of a per cent</td></tr>
+<tr><td class="k">drift period</td><td class="num">1.16 &times; 10<sup>&minus;2</sup></td><td>varies by a full per cent, as designed</td></tr>
+<tr><td class="k hi">arrival time</td><td class="num hi">6.8 &times; 10<sup>&minus;9</sup></td><td>flat to parts per billion</td></tr>
 </tbody></table></div>
-<p>Five orders separate the first two rows, which is what makes the second a measurement
-rather than a small number. That the stationary point lands on the nominal to five figures is
-not something this code knows, so it says the formalism, the normalisation and the coefficients
-have all been read correctly.</p>
-<p>The third row is the sharper form of a claim this document made less well in an earlier
-revision. <strong>A sixteen-segment stripe does not deliver a slightly worse isochronous
-drift; it does not deliver one at all.</strong> The fit reproduces the potential to a quarter
-of a per cent and loses the stationary point by a factor of eight thousand, because a
-first-order cancellation is not robust to a quarter of a per cent of anything. The real device
-shapes a <em>continuous</em> electrode &mdash; a shape function, not a set of voltages &mdash;
-and the design paper&rsquo;s own literature review notes as a drawback that an earlier scheme
-&ldquo;had to split all mirror electrodes into multiple segments with individual
-voltages&rdquo;.</p>
-<div class="callout"><p><strong>Not reproduced, and stated as such: the paper&rsquo;s
-2.1 &times; 10<sup>&minus;6</sup>.</strong> Over its own quoted range this formulation gives
-about 2 &times; 10<sup>&minus;3</sup>, three orders worse. It is not the printed coefficients:
-they sum with a<sub>0</sub> to 0.99996 rather than 1, which was the obvious suspect, and
-closing that sum exactly or perturbing a coefficient by a unit in its last printed digit
-changes the answer not at all. An earlier revision of this document claimed the
-2.1 &times; 10<sup>&minus;6</sup> <em>was</em> reproduced, at
-9.9 &times; 10<sup>&minus;7</sup>. That was wrong twice over &mdash; the spread was measured
-between the two ends of a range whose middle dips below both, so the difference was small by
-cancellation rather than by flatness, and the range sampled was a tenth of the published one.
-Settling the remaining three orders needs the paper&rsquo;s own definition of &tau; and of the
-range it is quoted over.</p></div>
+<p>A factor of <strong>1.7 million</strong> between them, and both numbers are right. Computing
+the published shape&rsquo;s arrival time from its published coefficients reproduces the
+isochronous drift the paper is named for, and betters the &ldquo;ppm-level plateau&rdquo; it
+claims for itself.</p>
+<div class="callout"><p><strong>An earlier revision of this document said the opposite, and it
+was measuring the drift period.</strong> It reported that the published precision was not
+reproduced, and that a drift electrode split into separately biased segments could not deliver
+an isochronous drift at all. Both are withdrawn. The segmented version is 119 times worse than
+the ideal continuous shape and still supports a resolving power near
+<span class="num">634,000</span> from the drift alone &mdash; six times what this instrument
+needs and thirty times what a lower-resolution one would. <strong>Segments are adequate; the
+continuous shape is better.</strong> What the segmented version does destroy is the stationary
+point of the <em>drift period</em>, which is a real design condition the paper states and which
+controls something else entirely.</p></div>
+<p><strong>What this model still cannot measure is the arrival time itself.</strong> Its
+detector is a plane the ion crosses at whatever point in its bounce cycle it happens to be in,
+where the instrument&rsquo;s detector requires a completed number of bounces. So every flight
+time quoted in this document is a drift period, and the quadrature above is the only route here
+to the quantity that sets resolving power. Closing that gap needs a detector condition that
+counts oscillations.</p>
 
 <h3>A design requirement neither paper states</h3>
 <p>Implementing the published stripe surfaced a constraint that does not appear in the design
