@@ -5919,3 +5919,56 @@ point is not a shared computation.
 **Also seen, not yet fixed:** `render section` of a *diffusive* model stamps the figure
 `QUALIFIED` with `regime.trajectory-above-validity` - the renderer checks the trajectory
 regime on a density run, which is the mode question asked of the pressure instead of the mode.
+
+## 77. The low-m/z cutoff, flown: right mechanism, right scaling, twenty per cent low
+
+With the extraction electrode behind the conductance limit, m/z 118.2 at 80 Vpp and 1.9 Torr,
+twenty ions per point in the trajectory mode with hard-sphere collisions (125 Å²), the fraction
+arriving against RF frequency, beside Page et al. 2006 Fig. 3 read off the plot:
+
+| kHz | 9.0 V/cm model | measured | 19.1 V/cm model | measured | 29.1 V/cm model | measured |
+| --- | --- | --- | --- | --- | --- | --- |
+| 300 | 0.45 | 0.07 | 0.00 | 0.00 | 0.10 | 0.00 |
+| 350 | 0.55 | 0.15 | 0.20 | 0.05 | 0.20 | 0.00 |
+| 400 | 0.90 | 0.35 | 0.70 | 0.13 | 0.25 | 0.00 |
+| 450 | 0.90 | 0.63 | 0.60 | 0.31 | 0.40 | 0.06 |
+| 500 | 0.90 | 0.78 | 0.90 | 0.60 | 0.60 | 0.20 |
+| 550 | 1.00 | 0.94 | 0.95 | 0.81 | 1.00 | 0.44 |
+| 600 | 1.00 | 0.98 | 1.00 | 0.97 | 0.85 | 0.63 |
+| **50 % point** | **~320** | **425** | **~380** | **485** | **~470** | **565** |
+| eq. 7, α = 1 | 351 | | 511 | | 631 | |
+
+Every loss below the cutoff is on a tapered ring (79 to 98), none on the conductance limit;
+above it none is lost anywhere. **The mechanism, the gradual shape (a 200 kHz rise, as
+measured) and the ordering with DC gradient are the paper's.** The spacing with gradient is
+close: measured 425 → 485 → 565 (×1.14, ×1.16), model 320 → 380 → 470 (×1.19, ×1.24), the
+paper's square-root law ×1.46 and ×1.23 - the model tracks the measurement about as well as
+the paper's own formula does. And the model is **17 to 22 per cent low in frequency at every
+gradient**, which in m/z is a factor of about 1.6: at 485 kHz it would pass an ion of m/z 72
+where the instrument stops at 118. Twenty ions put ±0.1 on each point, so the offset is real.
+
+**What moves it, from one-parameter probes at 19.1 V/cm and 450 kHz** (hard sphere, 125 Å²:
+12 of 20):
+
+| change | arrived of 20 |
+| --- | --- |
+| cross section 100 Å² (mobility up 25 %) | 17 |
+| cross section 150 Å² (mobility down 17 %) | 13 |
+| **Langevin (polarization capture) instead of hard sphere** | **7** - the measured 0.31 |
+
+The cross section barely moves it inside the statistics. **The collision model moves it by a
+factor of two in transmission at the cutoff**, in the direction of the measurement. The two
+models have nearly the same rate at thermal speed (6.6 against 6.5 × 10⁻¹⁰ cm³/s for this ion
+in nitrogen) and differ in how the rate goes with speed: a hard sphere collides more often the
+faster the RF drives the ion, so it damps the quiver harder near a ring and survives; Langevin
+capture is speed-independent and does not. A real ion-neutral potential at these energies lies
+between, and the measurement sits on the Langevin side. A full Langevin scan is running; if it
+lands on the measured curve the benchmark has discriminated the collision models, which is
+REG-3's purpose stated on a published instrument rather than on ourselves.
+
+**Everything guessed, and its likely sign.** The gas is taken at 300 K; the inlet capillary is
+heated, and a warmer, thinner gas raises the mobility and the cutoff frequency - toward the
+measurement. The jet through the exit is not modelled; it would carry ions through the last
+rings faster and lower the cutoff - away from it. Space charge in the measurement is unknown.
+And the extraction electrode's 40 V is a stated guess that sets nothing here, since below the
+cutoff every loss is on a ring and above it there is none.
