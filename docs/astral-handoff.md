@@ -5551,3 +5551,35 @@ peak-to-peak excursion of a quartic fit. A curve dominated by `c2` is a parabola
 width is well inside its extremes, so FWHM reads about 3.4 times higher than peak-to-peak. Both
 are legitimate; the published 180,000 was derived from the integrated slope, which is
 peak-to-peak. Comparisons in this document should use peak-to-peak unless they say otherwise.
+
+## 68. Freeing the reflecting voltages found nothing - and that is a statement about the search, not the voltages
+
+Six knobs - board gap, three electrode edges, `U3`, `U4` - under CMA-ES from the geometric
+optimum, 320 evaluations, maximising the nine-ion FWHM resolving power over ±2.5 per cent.
+**It returned its starting point to thirteen digits**: R = 4,753.515, `U3` = 0.916,
+`U4` = 1.503, geometry unchanged.
+
+The history explains it without flattering it. The optimiser records only improvements and
+recorded one - the start. Four trials failed outright (an ion lost across the energy scan, so no
+peak, so a penalised design), and the other 315 came back worse. So the start is a genuine
+local maximum of *that objective* in six dimensions. It is also the converged output of a
+Nelder-Mead in four of those dimensions, so this is unsurprising for the four; what it says
+about `U3` and `U4` is only that moving either from the table makes a nine-ion FWHM figure
+worse near this point.
+
+**That is not the question.** The question is whether the reflecting voltages move `c2` and
+`c3` - the two coefficients the geometry could not touch - and a maximisation of a coarse
+objective around a sharp local maximum cannot answer it. E18 asks directly: `U3` and `U4`
+perturbed by 8 to 20 per cent one at a time, five energies each, the three coefficients read
+off the fit. A knob that moves `c3` by order one over that range is a lever the optimiser
+could not see; one that moves it by a hundredth is not a lever at all, and the remaining
+candidate is the fringe-field correctors the paper mentions and this model omits.
+
+**A note on the objective.** `resolvingPower` over nine ions reads the arrival-time peak's
+half-maximum width, which for a curve dominated by the quadratic term is a parabola's waist -
+a coarse and rather flat thing to optimise near its own maximum, and probably why the simplex
+collapsed to a point in section 67 without the objective settling. The peak-to-peak excursion
+of the fitted `T(delta)` is what the paper's plateau condition actually bounds, and it is what
+E15 to E18 report; the two differ by a factor near 3.4 here. A figure of merit that returned
+the excursion directly would be the better thing to optimise, and it is a small addition to
+`FiguresOfMerit` - noted for the morning rather than done at midnight.
