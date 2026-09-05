@@ -5509,3 +5509,45 @@ The mirror optimisation (`mirror-optimise.json`, in scratch) searches board gap 
 edges of electrodes 3 and 4 that E14 found sensitive, maximising resolving power over the paper's
 own ±100 V window on the half-oscillation model, 200 Nelder-Mead evaluations. The published
 target is 180,000.
+
+## 67. The geometry cannot reach the plateau: four knobs zero `c1` and leave `c2`, `c3` where they were
+
+`einzel optimise` over the four dimensions the figure does not pin - board gap and the three
+edges of electrodes 3 and 4 that E14 found sensitive - maximising resolving power over the
+paper's own ±100 V window on the half-oscillation model, 200 Nelder-Mead evaluations, four in
+parallel:
+
+| | board gap | `e3In` | `e3Out` | `e4In` | R (FWHM, 9 ions) |
+| --- | --- | --- | --- | --- | --- |
+| start: figure positions, gap at the `c1` crossing | 46.85 | 282.3 | 297.8 | 306.5 | ~1,800 |
+| **optimum found** | 47.22 | 282.42 | **295.32** | 306.37 | **4,753** |
+| published | ? | | | | **~180,000** |
+
+A 2.6-fold gain, from shortening electrode 3 by 2.5 mm and nothing else the figure would
+notice - and **38 times short**. The simplex collapsed to a point (parameter spread 6e-8 of the
+box) while the objective never settled, which is a local optimum, and `optimiser.budget-exhausted`
+says so. Flown at the optimum with a five-point fit:
+
+    c1 = +0.004    c2 = +0.364    c3 = +1.22    c4 = +4.96
+
+**`c1` is zeroed and `c2`, `c3` are exactly where the board gap alone left them.** The paper's
+condition needs `c3` = 0 and `c2` about -0.006; the model has +1.22 and +0.364. Three electrode
+edges bought nothing on either. So **the reflecting stack's geometry, within the freedom the
+figure leaves, is not the lever for the second and third orders** - the same conclusion E15
+reached with one knob, now with four.
+
+What is left is the voltages. The crowd-control table's `U3` and `U4` were used throughout; the
+on-axis fit could not separate them (it returned 0.776 and 1.724 against 0.916 and 1.503, and
+the two are nearly degenerate seen from the axis) but the focusing can, because it is the shape
+of the reflecting field at the turning point that sets `c2` and `c3`. A six-knob search with `U3`
+and `U4` freed within ±35 per cent of the table, started from this geometric optimum, is
+running under CMA-ES. If it reaches the plateau the table is wrong about two more values; if it
+does not, the fringe-field correctors the paper mentions and this model omits are the remaining
+candidate.
+
+**A note on the two resolving powers quoted.** The optimiser's 4,753 is from the arrival-time
+peak's full width at half maximum over nine ions; the 1,386 flown at the same point is from the
+peak-to-peak excursion of a quartic fit. A curve dominated by `c2` is a parabola, whose half-max
+width is well inside its extremes, so FWHM reads about 3.4 times higher than peak-to-peak. Both
+are legitimate; the published 180,000 was derived from the integrated slope, which is
+peak-to-peak. Comparisons in this document should use peak-to-peak unless they say otherwise.
