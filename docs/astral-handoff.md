@@ -5372,3 +5372,39 @@ flies three candidates and reads each one's period slope against the published c
 the discriminating measurement: the published mirror holds `(1/T) dT/de` within ±0.039 x 1e-6
 per eV across 3900-4100 with three zero crossings, and only the right voltages on the right
 geometry will do that untuned.
+
+## 63. Reproducing the on-axis potential does not reproduce the focus
+
+E13 put three candidate voltage sets on the figure's electrode layout and flew a half
+oscillation at each, reading the period slope against the published curve:
+
+| candidate | axis rms vs figure | `c1` | period slope at 4000 eV, 1e-6/eV |
+| --- | --- | --- | --- |
+| table as printed (U2 negative) | 1.76 kV | - | - |
+| **A: table with U2's sign corrected**, gap 40 | 0.400 kV | **-0.062** | **-15.5** |
+| B: free fit at gap 40 | 0.322 kV | -0.238 | -59.4 |
+| C: free fit at gap 50 | 0.226 kV | -0.224 | -56.1 |
+| **published** | 0 | ~0 | **within ±0.039** |
+
+**Two things, both worth keeping.**
+
+**The free fits match the axis potential best and are the worst mirrors.** B and C reproduce the
+published curve to 0.2-0.3 kV and have first-order coefficients four times larger than
+candidate A, which fits the curve worse. So the sixteen points read off a figure at ±0.1 kV are
+*not* a sufficient target for the focusing: the period's energy derivative is set by the potential
+near the turning point to a precision of parts in 10^4 or better, and a 0.2 kV rms fit is parts in
+10^2. **A curve read from a plot constrains the shape of the field to a per cent; a first-order
+focus is a cancellation to a hundredth of that.** Fitting the voltages to the axis potential was
+the right way to settle the sign of U2 and the wrong way to settle the values.
+
+**The table with one sign corrected is the closest to a focus**, and that supports the reading
+of section 62: U1, U3, U4 as printed, U2 with its sign flipped. It is still 400 times off the
+published slope. The residual, `c1` = -0.062, is equivalent to `TE1` = +0.06 in the paper's own
+knob - six times its worked example of 0.01 - so the geometry is off by an amount the figure's
+±1 mm may or may not cover. E14 perturbs each unpinned dimension (board gap, each electrode edge,
+electrode 0's extent, board thickness) and reads `dc1`, to say which.
+
+**And a check on the whole construction**: candidate A's half period is 16.594 us, so its
+effective mirror separation is 652 mm against the published 641 - 1.7 per cent - with the
+turning point and field-free length both taken from the figure and nothing adjusted. The
+geometry is roughly right; the focus is a finer thing than roughly.
