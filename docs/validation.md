@@ -626,3 +626,35 @@ low-frequency comb at once, on different electrodes. That is the same limitation
 already recorded for the travelling-wave guide, which needs a fast confining RF
 superposed on a slow travelling wave. The mechanism is built and validated; what is
 missing is a way to *say* it in a document.
+
+## The ion funnel against a published instrument
+
+The first literature regression on a device the trajectory and diffusive modes both claim a
+share of: the PNNL 100-electrode funnel (`pnnl-ion-funnel.json`; register in
+`docs/literature-targets.md` §5; flights in the working notes, sections 76 and 77). What is
+compared is Page et al. 2006's measured low-m/z cutoff - the RF frequency at which half of an
+m/z 118 ion population still passes, at 80 Vpp and 1.9 Torr, for three DC gradients - and the
+paper's own closed form for it.
+
+| DC gradient | measured 50 % point | model, hard-sphere collisions | model, Langevin | eq. 7 |
+| --- | --- | --- | --- | --- |
+| 9.0 V/cm | 425 kHz | ~320 | | 351 |
+| 19.1 V/cm | 485 kHz | ~380 | ~500 | 511 |
+| 29.1 V/cm | 565 kHz | ~470 | | 631 |
+
+Twenty ions a point, so ±0.1 in transmission. Below the cutoff every loss is on a tapered ring
+and above it there is none, which is the paper's account of the mechanism; the rise is 200 kHz
+wide against a measured 250; the ordering and spacing with gradient are the measurement's to a
+few per cent. The two limiting collision models bracket the measured curve at every frequency:
+hard spheres rise as sharply as the instrument and a hundred kilohertz early, polarization
+capture puts the cutoff where the instrument has it and rises too slowly. **That is REG-3's
+cross-mode comparison made against a published instrument rather than against ourselves**, and
+it resolves the two collision models where the engine's own checks (each against its own closed
+form) could not.
+
+What the comparison rests on that is not published, stated: where the ions are released, the
+extraction potential behind the conductance limit (without one every ion stalled in the exit
+hole - section 76 - and it sets nothing in the cutoff, which is decided on the rings), a gas at
+300 K, no gas jet, no space charge. What it exercises that nothing else here does: the
+collision-by-collision mode at 1.9 Torr, above the band it claims, over hundreds of thousands of
+collisions per point.

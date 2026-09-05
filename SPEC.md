@@ -117,7 +117,7 @@ and nobody can install this.
 | 2 | An update offered, deferred, later accepted | **Not met** — no update mechanism |
 | 3 | Mathieu diagram reproduced | Met twice — ideal field q = 0.90684, solved round rods q = 0.90525 |
 | 3 | Quadrupole transmission against resolution | **Met** — the band closes onto the tabulated apex q = 0.70600, R rising 1.6 to 15.6, both edges bisected to ACC-6 |
-| 3 | Funnel transmission against a published benchmark | **Not met** — gas flow now exists, so what remains is the §23 decision on whose geometry, and a driven diffusive run being affordable |
+| 3 | Funnel transmission against a published benchmark | **In progress, on the PNNL 100-electrode funnel.** The low-m/z cutoff of Page et al. 2006 is reproduced in mechanism (losses on the tapered rings), shape (a 200 kHz rise) and ordering with DC gradient, and sits 17–22 % low in frequency with hard-sphere collisions and on the measurement with Langevin ones - the two limiting collision models bracket the measured curve. The transmission-against-RF-amplitude curve of Kim et al. 2000 is being run in the diffusive mode. `docs/literature-targets.md` §5. |
 | 3 | Cross-mode agreement in the overlap band | Met — 0.43 standard errors |
 
 ---
