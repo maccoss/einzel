@@ -1322,6 +1322,46 @@ rises in 4 µs steps of 0.03 to 0.2 u - a hundredth of the peak width - and the 
 carries a few thousand phases without re-solving anything. A `ramp` inside a phase would
 be the honest spelling and is not built.
 
+### The dual-pressure question, asked of the pressure alone
+
+The Velos design (Second et al. 2009) holds its analyser cell near 5.3e-4 mbar, an
+order of magnitude below the LTQ's 4e-3, and the paper's claim is that the lower pressure
+"allows attainment of higher mass resolution for a given scan rate", traded for "a
+two-fold increase in scan rate ... while achieving the same, or superior, resolution".
+The same scan as above, twelve ions per species, changing only the helium pressure and
+the rate, with the excitation and everything else as the 2002 paper set them:
+
+| pressure | rate | m/z 524 FWHM | m/z 1522 FWHM |
+| --- | --- | --- | --- |
+| 4.0e-3 mbar (LTQ) | 5,555 u/s | **0.62 u** | **0.54 u** |
+| 5.3e-4 mbar (Velos analyser cell) | 5,555 u/s | 1.44 u | 0.90 u |
+| 5.3e-4 mbar | 11,111 u/s | 1.25 u | 1.20 u |
+| 4.0e-3 mbar | 11,111 u/s | 0.90 u | 0.63 u |
+
+**The pressure change alone goes the other way.** Less helium broadens every peak in this
+model, by a factor of two at m/z 524, and doubling the rate at the LTQ pressure costs less
+than removing the gas does. The mechanism is the classical one: the buffer gas damps each
+ion's own thermal motion, so the excitation grows every ion from the same starting point
+and the ejection instant is a function of detuning alone; with the momentum-transfer time
+near 20 ms at 5.3e-4 mbar the ions are effectively undamped over a hundred-microsecond
+ejection and each carries its own phase into it. Twelve ions per peak leaves each width
+good to a quarter of itself, which is not enough to rank the two low-pressure rows against
+each other but is enough for the factor of two.
+
+**This is not a refutation of the Velos paper, and the reason is worth stating.** That
+paper compares two tuned instruments - the Velos also changed the trap (slots in all four
+rods, a symmetric RF), its RF electronics and its ejection settings - whereas this table
+changes one number and leaves the LTQ's excitation amplitude, ejection q and scan law in
+place. A resonance ejection tuned for a thinner gas uses a different amplitude and a
+different approach, and finding the working point at 5.3e-4 mbar that beats 3 mTorr, if
+it exists in this model, is a two-dimensional study in excitation amplitude and ejection q
+that has not been run. What the table does establish is that the pressure is not a free
+improvement: at the 2002 settings the gas is doing work, and the Velos's gain came with
+retuning. One more thing the gas costs, visible in the same runs: at 4e-3 mbar about half
+the ions ejected toward the slot pass it, at 5.3e-4 mbar about two thirds, because a
+collision during the last few microseconds of ejection is a kick in y that a 0.25 mm slot
+does not forgive.
+
 ### Through the slot, or into it
 
 Only 1 of the 45 ions ejected toward the slotted rod in the scan reached the detector.

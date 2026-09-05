@@ -1218,6 +1218,16 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   slot's profile; the template carries a channel depth and a relief as named guesses (0.5 mm,
   then eightfold), which passes 9 of 20 against 0. **A sensitivity, not a prediction.**
 
+  **And the dual-pressure question, asked of the pressure alone, goes the other way.** The
+  Velos analyser cell runs near 5.3e-4 mbar and its paper credits the lower pressure with
+  higher resolution at a given rate. Changing only the helium at the 2002 settings broadens
+  m/z 524 from **0.62 to 1.44 u** and 1522 from 0.54 to 0.90; doubling the rate at 3 mTorr
+  costs less (0.62 to 0.90). The gas damps each ion's own phase before the excitation grows
+  it, so at 5.3e-4 mbar, where the momentum-transfer time is ~20 ms, every ion carries its
+  own phase into a hundred-microsecond ejection. The Velos compared two retuned instruments;
+  this compares one number, and whether a retuned working point at the lower pressure wins
+  in this model is a two-parameter study not yet run. Recorded as open, not as a refutation.
+
   Two corpus examples at the paper's working point (held with the excitation off, ejected
   with it on: same RF, same ion, same gas), 39 in all. Not built: a `ramp` inside a phase (the
   scan is a 4 µs staircase), an extruded polygon in three dimensions, the axial sections and

@@ -682,8 +682,15 @@ Twelve ions per peak, so each width is good to about a quarter of itself; the cl
 survives is under one u everywhere, which is the paper's. Ions leave at an effective q of
 0.862 to 0.869 rather than the nominal 0.88 - captured from below, as a positive octupole
 allows - which a mass calibration absorbs as every instrument's does. Ejection *through*
-the slot is not reproduced with a straight channel and is the open item; see the
-literature register.
+the slot depends on a slot profile the paper does not give and is recorded as a
+sensitivity.
+
+**And the pressure, changed alone, goes the other way from the Velos paper.** At the 2002
+settings, dropping the helium from 4.0e-3 to 5.3e-4 mbar broadens m/z 524 from 0.62 to
+1.44 u and m/z 1522 from 0.54 to 0.90; doubling the rate at 4.0e-3 costs 0.62 to 0.90 and
+0.54 to 0.63. The gas damps each ion's own phase before the excitation grows it. The Velos
+compared two retuned instruments; this compares one number. Open, and said so in the
+register.
 
 
 ## The ion funnel against a published instrument

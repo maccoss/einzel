@@ -407,6 +407,26 @@ is in practice; the drift of the ejection q with mass (0.8625 to 0.8687) is what
 multi-point calibration curve is for. The figure is
 [`docs/figures/linear-ion-trap-spectrum.svg`](figures/linear-ion-trap-spectrum.svg).
 
+**The Velos claim, asked of the pressure alone, is not reproduced.** Second et al.
+attribute the Velos's higher resolution at a given scan rate to its analyser cell's lower
+pressure (~4e-4 Torr, 5.3e-4 mbar). The same scan with only the helium pressure and the
+rate changed, twelve ions per species:
+
+| pressure | rate | m/z 524 FWHM | m/z 1522 FWHM |
+| --- | --- | --- | --- |
+| 4.0e-3 mbar | 5,555 u/s | 0.62 u | 0.54 u |
+| 5.3e-4 mbar | 5,555 u/s | 1.44 u | 0.90 u |
+| 5.3e-4 mbar | 11,111 u/s | 1.25 u | 1.20 u |
+| 4.0e-3 mbar | 11,111 u/s | 0.90 u | 0.63 u |
+
+Less gas broadens every peak here, because the gas is what damps each ion's own thermal
+phase before the excitation grows it. The Velos paper compares two tuned instruments -
+a different trap, different electronics, a resonance ejection set for its own pressure -
+and this table changes one number at the 2002 settings, so it is a disagreement about
+what the pressure does *alone*, not about the instrument. Whether a working point at
+5.3e-4 mbar beats 3 mTorr in this model is a study in excitation amplitude and ejection q
+that has not been run. Recorded as an open comparison rather than a failure of either.
+
 **What the model does not reproduce: ejection through the slot.** With the slot cut as a
 0.25 mm channel straight through the rod, three quarters of the ions ejected toward it
 strike the channel's walls within a few millimetres of the mouth - the slot mouth is a

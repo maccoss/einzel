@@ -2552,10 +2552,13 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     In the order they are worth doing: **a `ramp` inside a phase**, because the scan is a
     4 µs staircase of thousands of phases and a linear amplitude within a phase is what the
     instrument does and what a document should be able to say; **the dual-pressure
-    comparison proper** - the same scan at the Velos cell pressures (5.3e-4 mbar for the
-    analyser, 6.7e-3 for the trap) and at twice the rate, since the 2009 paper's claim is
-    "a two-fold increase in scan rate at the same or superior resolution", and every piece
-    of that is a parameter; **the axial structure** - three DC sections and end lenses, a
+    comparison retuned** - the same scan at the Velos analyser pressure (5.3e-4 mbar) and
+    at twice the rate has been run with the 2002 settings held, and the pressure change
+    alone *broadens* the peaks (m/z 524 from 0.62 to 1.44 u), because the gas is what
+    damps each ion's phase before the excitation grows it; the 2009 paper's "two-fold
+    increase in scan rate at the same or superior resolution" is a claim about a retuned
+    instrument, so the study that would test it is two-dimensional in excitation amplitude
+    and ejection q at the lower pressure, and it has not been run; **the axial structure** - three DC sections and end lenses, a
     `solved3d` with the segmented quadrupole's pattern, which is where the paper's figure 2
     (the dipole excitation field's uniformity along the centre section) and its mechanical
     tolerance argument live; and **the slot's exit optics**, which the cross-section cannot
