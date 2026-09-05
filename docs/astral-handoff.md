@@ -6008,6 +6008,7 @@ charged m/z 571, the extraction electrode behind the conductance limit, 10,000 i
 | 25 | 0.97 | 0.97 | 0.97 |
 | 30 | 0.99 | 1.00 | 1.00 |
 | 40 | 1.00 | 0.97 | 1.00 |
+| 60 | 1.00 | 0.97 | 1.00 |
 | **50 % point** | **~14 Vpp** | **~16 Vpp** | ~15 Vpp |
 
 **Nothing was tuned.** The threshold is where the RF's cycle-averaged well first overcomes the
