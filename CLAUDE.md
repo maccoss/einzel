@@ -1174,6 +1174,57 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **Known wrong and stated on the template**: the drift faces are Neumann, which says the structure repeats along z — true while the boards are parallel, false the moment they converge.
 
+- **The linear ion trap, and the polygon it forced.** The radial-ejection trap of Schwartz,
+  Senko and Syka (JASMS 2002) - the ancestor of the Velos dual-pressure design and the Stellar
+  front end - has hyperbolic rods with a 0.25 mm slot cut through one and the x pair moved out
+  0.75 mm. Not awkward to write in rectangle and disc: **not expressible at all**. LIB-1's
+  signal fired for the sixth time, and for the first time asked for a shape: `polygon`, any
+  closed outline at one potential, with a closed-form signed distance and first crossing so
+  its faces are cut cells like a disc's. A square as four vertices solves to the rectangle's
+  field to 1e-13; a rod as two halves meeting on a line solves to the whole rod to the bit,
+  which is how a slotted rod is written so that a slot of zero height is a rod. Schema 0.9.
+
+  **The first template was 116 KB and correct, and that was the wrong spelling.** Twenty-five
+  vertices a face, two expressions a vertex, eight half-rods: parametric in the letter and
+  unreadable in fact. A vertex entry may now carry `count` and `index` and stand for a **run**
+  - `repeat`'s mechanism inside one outline - and the hyperbola is written once: 24 KB. When a
+  generator script is needed to write a document, the format is missing what the script
+  supplies.
+
+  **Flown at a nominal q of 0.92 the ion stayed confined, and the engine was right.** The same
+  document with round rods loses it in 3 µs. The 0.75 mm stretch weakens the quadrupole term
+  to **0.822 of the ideal formula's** (multipoles: A2 20.55 against 24.98 V per 100 V applied),
+  so "0.92" was 0.757. The paper's own q scale is the effective one - it quotes 368 kHz at
+  q = 0.83, the ideal beta to a tenth of a per cent - as every trap's is, since q is inferred
+  from frequency and not from metal. The slot's fault is a **dipole** (9.6e-4 of A2) the
+  symmetric stretch cannot touch; the stretch's answer is an **octupole** (1.7e-3), the
+  3-D "stretch" term, as the paper says.
+
+  **Resonance ejection, then the scan.** With the paper's dipole excitation (3 V + 20 mV per
+  m/z at 421.3 kHz) the ion leaves from effective q 0.870 up, along x onto the x rods; with it
+  off, only past the edge between 0.890 and 0.900. A twelve-ion cloud ramped at the paper's
+  5,555 u/s gives **FWHM 0.75 / 0.62 / 0.64 / 0.54 u at m/z 195 / 524 / 1422 / 1522** -
+  "unit resolution up to m/z 2000", which is the paper's claim, with nothing tuned. Ions leave
+  at effective q 0.862 to 0.869 rather than 0.88, captured from below as a positive octupole
+  allows; a mass calibration absorbs that as every instrument's does. `einzel run` now writes
+  a **per-ion event ledger** (outcome, surface, time, end position), because a spectrum is a
+  histogram of ejection instants and cannot be recovered from a peak width.
+
+  **What it does not reproduce: passage through the slot.** With a 0.25 mm channel straight
+  through the rod, 1 of 45 ions ejected toward it reached the detector; the rest struck the
+  channel walls one to four millimetres in, at |y| = 0.125 exactly. The slot mouth is a
+  diverging aperture lens for an ion leaving a 5e5 V/m field into a field-free channel, and
+  the channel tolerates 0.02 rad against a beam of 0.05 to 0.15. The paper does not give the
+  slot's profile; the template carries a channel depth and a relief as named guesses (0.5 mm,
+  then eightfold), which passes 9 of 20 against 0. **A sensitivity, not a prediction.**
+
+  Two corpus examples at the paper's working point (held with the excitation off, ejected
+  with it on: same RF, same ion, same gas), 39 in all. Not built: a `ramp` inside a phase (the
+  scan is a 4 µs staircase), an extruded polygon in three dimensions, the axial sections and
+  end lenses, space charge in the scan. The Stellar's own trap differs from this lineage and
+  its paper is not in hand. Details in `docs/device-templates.md`, `docs/literature-targets.md`
+  section 2, `docs/validation.md`, SPEC.md Amendment 37.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

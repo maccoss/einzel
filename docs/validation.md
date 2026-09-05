@@ -627,6 +627,65 @@ already recorded for the travelling-wave guide, which needs a fast confining RF
 superposed on a slow travelling wave. The mechanism is built and validated; what is
 missing is a way to *say* it in a document.
 
+## The linear ion trap against its paper
+
+The `linear-ion-trap` template is the two-dimensional quadrupole ion trap of Schwartz,
+Senko and Syka (J. Am. Soc. Mass Spectrom. 2002, 13, 659) in cross-section - the
+ancestor of the dual-pressure Velos design and of the Stellar front end - and it is the
+first device built on the polygon electrode. What the paper gives, what the model
+reproduces, and what it corrects about the naive reading of the paper:
+
+| Check | Result |
+| --- | --- |
+| The paper's calibration point, 600 V rod-to-ground at m/z 587 | q = 0.6245 from the ideal formula against the paper's 0.623 |
+| The paper's isolation frequency at q = 0.83 | beta(0.83) = 0.7362 gives **368.1 kHz** against the paper's 368 |
+| Quadrupole term of truncated hyperbolic rods, unstretched | 0.9994 of ideal at a 6 mm half-width, 0.9976 at 12 mm; 12-pole a few parts per million |
+| The same with the x pair stretched 0.75 mm as published | **0.8223 of ideal**, and 0.8195 from the on-axis gradient at 0.5 mm (the octupole's share) |
+| Slot's field fault | dipole 9.6e-4, hexapole 1.9e-4 of the quadrupole - odd orders |
+| Stretch's contribution | octupole 1.7e-3 of the quadrupole - the 3-D "stretch" term |
+| Two generators, eight electrodes | 2 basis solves with the excitation on, 1 with it off |
+| Resonance ejection, 13.5 V at 421.3 kHz, one ion | ejected from effective q = 0.870 up (30.6 µs) to 0.95 (3.2 µs); confined through 0.86 |
+| Stability edge with the excitation off | between q = 0.890 and 0.900, all four hundred cycles below it confined |
+| Direction of ejection | onto the x rods alternately, none onto y |
+| Field at a quarter cycle | 3e-13 V/m of a 5e3 V/m peak |
+
+**The calibration row is the one that matters.** The ideal formula q = 4eV/(m r0² Ω²)
+puts every rod's vertex at r0, and the paper's x pair is at 4.75 mm; the quadrupole term of
+the solved field is 0.822 of the ideal, so a voltage chosen from the formula puts the ion
+at a q 18 per cent lower than intended. The paper's own q scale is the effective one -
+its "q of 0.83" is quoted at the ideal secular frequency to a tenth of a per cent, which
+is what a q inferred from a measured frequency looks like - so the comparison is made at
+effective q and the voltages in this model are the formula's divided by 0.822. Found by
+flying at a nominal 0.92 and watching the ion stay; the same document with round rods and
+no stretch loses it in 3.3 µs, which is the control that separates the geometry from the
+engine.
+
+**The excitation-on column against the excitation-off column is the whole of resonance
+ejection.** Without it the ion leaves only at the stability edge, in three to five
+microseconds, onto whichever rod the instability's phase points it at; with it the edge
+moves down 0.02 in q and the ion leaves along the excitation's axis, which is the axis the
+slot is on. The edge with the excitation off sits 1 to 2 per cent below the tabulated
+0.908, which is the octupole the stretch adds moving the linear boundary as it does in a
+stretched 3-D trap; it has not been bisected and is quoted as a bracket.
+
+**And the mass scan itself.** A cooled cloud ramped through resonance at the paper's
+5,555 u/s with its excitation law, the ejection instants read as masses:
+
+| m/z | FWHM | m/Δm | paper |
+| --- | --- | --- | --- |
+| 195 | 0.75 u | 254 | "unit resolution up to m/z 2000 at 5555 Da/sec" |
+| 524 | 0.62 u | 830 | |
+| 1422 | 0.64 u | 2206 | |
+| 1522 | 0.54 u | 2791 | |
+
+Twelve ions per peak, so each width is good to about a quarter of itself; the claim that
+survives is under one u everywhere, which is the paper's. Ions leave at an effective q of
+0.862 to 0.869 rather than the nominal 0.88 - captured from below, as a positive octupole
+allows - which a mass calibration absorbs as every instrument's does. Ejection *through*
+the slot is not reproduced with a straight channel and is the open item; see the
+literature register.
+
+
 ## The ion funnel against a published instrument
 
 The first literature regression on a device the trajectory and diffusive modes both claim a

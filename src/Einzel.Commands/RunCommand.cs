@@ -40,6 +40,17 @@ public sealed record ValidateOutcome
             : ExitCode.ValidationFailure;
 }
 
+
+/// <summary>One ion's outcome and end time, as written to the result document.</summary>
+/// <param name="Ion">The ion's index in the cloud, from zero.</param>
+/// <param name="Outcome">The integrator's outcome name.</param>
+/// <param name="Surface">The electrode struck, by name, or null.</param>
+/// <param name="TimeUs">When the flight ended, in microseconds from launch.</param>
+/// <param name="XMm">Where the flight ended, x in millimetres: the impact point for a strike, the crossing for an arrival.</param>
+/// <param name="YMm">Where the flight ended, y in millimetres.</param>
+/// <param name="ZMm">Where the flight ended, z in millimetres.</param>
+public sealed record IonEventJson(int Ion, string Outcome, string? Surface, double TimeUs, double XMm, double YMm, double ZMm);
+
 /// <summary>What a cloud of ions did, when a model launches one.</summary>
 /// <remarks>
 /// The Class S half of a result: transmission, acceptance, efficiency, each with a
@@ -101,6 +112,13 @@ public sealed record EnsembleOutcome
     /// rather than an omission.
     /// </remarks>
     public required IReadOnlyList<LossChannel> Losses { get; init; }
+
+    /// <summary>
+    /// Every launched ion's outcome and end time, in launch order - the raw ledger
+    /// the counts above are computed from. A mass scan is read off this list: each
+    /// ion's ejection instant is its position on the scan's mass axis.
+    /// </summary>
+    public IReadOnlyList<IonEventJson> Events { get; init; } = [];
 
     /// <summary>
     /// The width enclosing the central half of the arrivals, in nanoseconds.
@@ -557,6 +575,7 @@ public static class RunCommand
                 Carry(peak is null ? transmission : peak.Transmission(), warnings), "1"),
 
             Losses = flight.Losses,
+            Events = [.. flight.Events.Select(e => new IonEventJson(e.Ion, e.Outcome, e.Surface, e.TimeSeconds * 1e6, e.Position.X * 1e3, e.Position.Y * 1e3, e.Position.Z * 1e3))],
 
             // Absent rather than zero where there is no peak to measure. Zero is a
             // real width and a reader cannot tell the two apart if both print as

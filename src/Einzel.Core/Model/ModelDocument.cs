@@ -172,7 +172,8 @@ public static class ModelSchema
     /// <summary>The schema version this build writes.</summary>
     /// <remarks>
     /// 0.3 adds the source cloud, 0.5 the mutual Coulomb force, 0.6 the model-level
-    /// sequence, 0.8 a tilt on a cross-section's extrusion axis. All additive, so every
+    /// sequence, 0.8 a tilt on a cross-section's extrusion axis, 0.9 the polygon
+    /// electrode. All additive, so every
     /// earlier document still reads - but a document whose ions push on each other
     /// genuinely is not a 0.4 document, and saying so is cheaper than an older build
     /// reading it, ignoring the field it does not know, and reporting a different flight
@@ -180,11 +181,11 @@ public static class ModelSchema
     /// case in a sharper form: an older build would solve the untilted cross-section and
     /// report a converging analyser as a parallel one.
     /// </remarks>
-    public const string CurrentVersion = "0.8";
+    public const string CurrentVersion = "0.9";
 
     /// <summary>Versions this build can read.</summary>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"];
 }
 
 /// <summary>The ion being tracked.</summary>

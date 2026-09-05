@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,125 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 37 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,146 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -97,7 +97,7 @@ principle is that "the schema and the CLI are Phase 1 deliverables… which de-r
 the thesis early", and the corpus EX-1 asks for is the other half of that: an agent
 has no Einzel forum posts or example files in its training data, and shipping
 models it can pull into context is the counter. For most of the project one model
-of thirty existed; the corpus now holds thirty-seven, gated on every change (item 4
+of thirty existed; the corpus now holds thirty-nine, gated on every change (item 4
 of *What to do next*). **What remains is distribution**: eighteen of the
 thirty-one unbuilt requirements are the update mechanism and the release artifacts,
 and nobody can install this.
@@ -119,6 +119,7 @@ and nobody can install this.
 | 3 | Quadrupole transmission against resolution | **Met** — the band closes onto the tabulated apex q = 0.70600, R rising 1.6 to 15.6, both edges bisected to ACC-6 |
 | 3 | Funnel transmission against a published benchmark | **Met, with stated caveats, on the PNNL 100-electrode funnel.** Both published curves on one template, one per transport mode: Kim et al. 2000's transmission against RF amplitude in the diffusive mode (threshold ~14 Vpp against a measured 16, nothing tuned; the plateau's absolute 65 % is not compared, since space charge and the inlet are not modelled), and Page et al. 2006's low-m/z cutoff in the collision-by-collision mode (mechanism, shape and gradient ordering reproduced; hard spheres 17–22 % low in frequency, Langevin on the measurement, the two bracketing the curve). `docs/literature-targets.md` §5; handoff 76–78. |
 | 3 | Cross-mode agreement in the overlap band | Met — 0.43 standard errors |
+| 4 | Trap sequences (§21 lists them under Phase 4) | **Partly met on a published trap.** The 2002 LTQ cross-section as `linear-ion-trap`: resonance ejection at the paper's working point, and a mass-selective-instability scan at its 5,555 u/s giving unit resolution from m/z 195 to 1522 as the paper claims; the ramp is a phase staircase, the axial sections are not modelled, and passage through the ejection slot depends on a slot profile the paper does not give. Amendment 37; `docs/literature-targets.md` §2. |
 
 ---
 
@@ -714,6 +715,50 @@ against a 60 V wave. The template ships with the confinement at zero, because sh
 a default that makes a device worse would be worse than shipping none. What the tests
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
+
+### 37 - The cross-section vocabulary had no general outline, and the first real trap needed one
+
+§9 and §10 describe electrodes as primitives with closed-form signed distance so the
+cut-cell discretisation can place a surface between nodes, and the 2-D primitives were a
+rectangle, a disc and an edge profile. Every shipped device fitted them - round rods, flat
+plates, tubes, rings - until the radial-ejection linear ion trap of Schwartz, Senko and
+Syka (2002): hyperbolic rods, one with a 0.25 mm slot cut through it, the pair moved out
+0.75 mm. Not awkward to write; **not expressible at all**. That is LIB-1's signal, and it
+fired for the sixth time (after `log`, trigonometry, `asinPi`, a parametric drive phase and
+a tilted box), and for the first time it asked for a shape rather than a function.
+
+**What was added.** A `polygon`: any closed outline, convex or not, at one potential, with a
+closed-form signed distance (nearest edge, signed by the even-odd rule) and a closed-form
+first crossing of a grid link, so its faces are cut cells exactly as a disc's are. A square
+written as four vertices solves to the rectangle's field to 1e-13 of the applied potential;
+a rod written as two halves meeting on a line solves to the whole rod to the bit, which is
+how a slotted rod is written so that a slot of zero height is a rod. Refused rather than
+solved: fewer than three vertices, a repeated vertex, zero area, a self-crossing outline.
+Schema 0.9.
+
+**And what the first version got wrong, which is the more general finding.** A hyperbolic
+face needs about twenty-five vertices, each two expressions over the parameter surface, and
+eight half-rods: the first template was 116 KB of generated JSON that validated, solved and
+flew correctly and that nobody could read. §9's "every placement is a parametric
+expression" was satisfied in the letter and defeated in spirit - the thing a reader needs
+to see, that the face is one hyperbola from the slot edge to the half-width, was buried in
+two hundred copies of itself. A vertex entry may now carry a `count` and an `index` and
+stand for a **run** of vertices, the same mechanism `repeat` uses for electrodes applied
+inside one outline. 24 KB, three entries per half-rod, the hyperbola written once. **When a
+generator script is needed to write a document, the format is missing the abstraction the
+script supplies**, and the script's size is a measurement of the gap.
+
+**What the device then taught about calibration.** Flown at a nominal Mathieu q of 0.92
+from the ideal formula, the ion stayed confined; the same document with round rods lost it
+in 3 µs. The paper's 0.75 mm stretch of the x pair weakens the quadrupole term to 0.822 of
+the ideal - measured from the solved field's multipoles, and again from the on-axis
+gradient - so the ion at "0.92" was at 0.757. The paper's own q scale is the effective one
+(its "q of 0.83" is quoted at 368 kHz, the ideal secular frequency to a tenth of a per
+cent), as every trap's is, since q is inferred from frequency rather than computed from
+metal. §12's Class B figures are stated in q, and this is the first device where the q
+per volt had to be measured before any of them could be compared with a paper. It costs
+one multipole projection and no ion. Details in `docs/device-templates.md` and
+`docs/lessons.md`.
 
 ### 36 - A geometric perturbation can sit below the discretisation floor, and then it must be constructed rather than solved
 
@@ -2499,6 +2544,26 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     absolute R), but is itself floored by adiabaticity, the x-period being 34 microseconds
     against a 500 microsecond drift. The two floors are independent, which is why the methods
     agree on ranking and disagree on values. Handoff sections 24-46.
+
+14. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
+    cross-section reproduces the paper's resonance ejection and its unit resolution at
+    5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
+    that stand between that and the dual-pressure device the Stellar front end actually is.
+    In the order they are worth doing: **a `ramp` inside a phase**, because the scan is a
+    4 µs staircase of thousands of phases and a linear amplitude within a phase is what the
+    instrument does and what a document should be able to say; **the dual-pressure
+    comparison proper** - the same scan at the Velos cell pressures (5.3e-4 mbar for the
+    analyser, 6.7e-3 for the trap) and at twice the rate, since the 2009 paper's claim is
+    "a two-fold increase in scan rate at the same or superior resolution", and every piece
+    of that is a parameter; **the axial structure** - three DC sections and end lenses, a
+    `solved3d` with the segmented quadrupole's pattern, which is where the paper's figure 2
+    (the dipole excitation field's uniformity along the centre section) and its mechanical
+    tolerance argument live; and **the slot's exit optics**, which the cross-section cannot
+    settle because the paper does not give the slot's profile and the real detector sits
+    behind an extraction field this model ends in a grounded wall. Space charge in the scan
+    (the paper's 15x capacity claim against a 3-D trap) is a fifth, and the direct-sum
+    method exists for it. The Stellar's own trap differs from this lineage; its paper is
+    not in hand, and the register says so.
 
 ## Open decisions
 

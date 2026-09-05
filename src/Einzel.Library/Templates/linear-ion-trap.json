@@ -1,0 +1,918 @@
+{
+  "schemaVersion": "0.9",
+  "name": "linear-ion-trap",
+  "description": "A radial-ejection linear ion trap in cross-section, after the two-dimensional quadrupole ion trap of Schwartz, Senko and Syka (JASMS 2002, 13, 659): four hyperbolic rods at an inscribed radius of 4 mm, the x pair moved out 0.75 mm to compensate the field fault of a 0.25 mm ejection slot cut through the +x rod, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation across the x rods for resonance ejection through the slot. Helium at three millitorr damps the ion. Each rod is two polygons meeting at the slot, so a slot of zero height is a whole rod and a slot in every rod - the symmetric dual-pressure design - is four numbers. The default holds one ion at a Mathieu q near 0.3 with the excitation off; a study raises the RF into the excitation's resonance and asks what leaves through the slot, and when. What this cross-section cannot express is the axial structure - three DC sections and the end lenses - which belongs to a volume solve.",
+  "parameters": {
+    "inscribedRadius": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 20.0,
+      "description": "Axis to the vertex of each hyperbolic rod face, r0. Published: 4 mm."
+    },
+    "rodHalfWidth": {
+      "value": 6.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 30.0,
+      "description": "Half the width of a rod across the face, where the hyperbola is truncated. Not published; a truncation at one and a half inscribed radii is typical of machined hyperbolic rods."
+    },
+    "rodDepth": {
+      "value": 12.0,
+      "unit": "mm",
+      "minimum": 4.0,
+      "maximum": 60.0,
+      "description": "Axis to the flat back of an unstretched rod. Must exceed the face's height at the truncation, sqrt(r0^2 + halfWidth^2)."
+    },
+    "xStretch": {
+      "value": 0.75,
+      "unit": "mm",
+      "minimum": -2.0,
+      "maximum": 5.0,
+      "description": "How far the x rod pair is moved outward from the ideal position. The published trap moves the slotted rod and the rod opposite out 0.75 mm to compensate the slot's field fault, the analogue of the stretched 3-D trap. It costs a sixth of the quadrupole strength (q per volt 0.823 of ideal) and adds an octupole of 1.7e-3 of the quadrupole; zero is the ideal quadrupole."
+    },
+    "slotXPlus": {
+      "value": 0.125,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "description": "Half the height of the ejection slot through the +x rod. Published slot: 0.25 mm high. Zero closes it and the rod is whole."
+    },
+    "slotDepth": {
+      "value": 0.5,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 20.0,
+      "description": "How far behind the face a slot keeps its face height before opening into the relief. Not published. Measured here: a 0.25 mm channel run straight through 7 mm of rod catches three quarters of the ions ejected toward it on its own walls, because the slot mouth is a diverging aperture lens for an ion leaving the RF field; half a millimetre lets most of them through."
+    },
+    "reliefRatio": {
+      "value": 8.0,
+      "unit": "1",
+      "minimum": 1.0,
+      "maximum": 40.0,
+      "description": "The slot opens behind its channel to this multiple of its half-height; one is no relief, the channel running through to the back at the face's height. Not published. Measured at effective q 0.875 with twenty ions: the straight channel passes none or one of the ions ejected toward it and puts the rest on its walls, an eightfold relief half a millimetre behind the face passes four to nine, and the rest strike the relief's walls or the face beside the slot. Scales with the slot, so a closed slot has no relief and the rod is solid."
+    },
+    "slotXMinus": {
+      "value": 0.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "description": "Half-height of a slot through the -x rod. Zero in the 2002 trap, which ejects one way; 0.125 for the symmetric design with slots in all four rods."
+    },
+    "slotYPlus": {
+      "value": 0.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "description": "Half-height of a slot through the +y rod. Zero in the 2002 trap."
+    },
+    "slotYMinus": {
+      "value": 0.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "description": "Half-height of a slot through the -y rod. Zero in the 2002 trap."
+    },
+    "rfAmplitude": {
+      "value": 257.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 5000.0,
+      "description": "Main RF, zero to peak, applied to the y pair with the x pair at its negative. The ideal formula q = 4 z e V / (m omega^2 r0^2) gives m/z 524 a q of V / 858 V at 1 MHz and r0 = 4 mm - but the stretched x pair weakens the quadrupole term to 0.823 of that (measured from the solved field), so the real q is V / 1043 V: 257 V is q = 0.25, and the q = 0.88 the published scan ejects at needs 918 V. The paper's q scale is the effective one, since it quotes the ideal secular frequency for its q = 0.83."
+    },
+    "dcOffset": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": -500.0,
+      "maximum": 500.0,
+      "description": "Steady offset on the x pair, its negative on the y pair. Sets Mathieu a; zero is the a = 0 line every published working point sits on."
+    },
+    "driveFrequency": {
+      "value": 1.0,
+      "unit": "MHz",
+      "minimum": 0.1,
+      "maximum": 10.0,
+      "description": "Main RF frequency. Published: 1 MHz."
+    },
+    "exciteFrequency": {
+      "value": 0.4213,
+      "unit": "MHz",
+      "minimum": 0.001,
+      "maximum": 5.0,
+      "description": "Supplementary dipole excitation across the x rods. Resonance ejection at q = 0.88 needs the secular frequency there, beta(0.88) = 0.8427 of half the drive: 421.3 kHz at 1 MHz. The paper isolates at q = 0.83, which is 368 kHz by the same arithmetic and is the number it quotes."
+    },
+    "exciteAmplitude": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": 0.0,
+      "maximum": 200.0,
+      "description": "Zero to peak, as the potential difference between the x rods; each rod carries half. Zero is off. The published scan uses 3 V plus 20 mV per m/z, 13.5 V at m/z 524."
+    },
+    "heliumPressure": {
+      "value": 0.004,
+      "unit": "mbar",
+      "minimum": 1e-06,
+      "maximum": 0.02,
+      "description": "Helium bath. Published: about three millitorr, which is 4.0e-3 mbar. The dual-pressure design holds its first cell near 6.7e-3 mbar and its second near 5.3e-4."
+    },
+    "collisionCrossSection": {
+      "value": 150.0,
+      "unit": "angstrom^2",
+      "minimum": 10.0,
+      "maximum": 2000.0,
+      "description": "Hard-sphere ion-helium cross-section. 150 square angstroms is a tetrapeptide's helium collision cross-section; what it sets is how fast the ion cools, not where it ejects."
+    },
+    "launchOffset": {
+      "value": 0.3,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 3.0,
+      "description": "Where the ion starts, off axis in both transverse directions, at rest. A thermal cloud in this well at 300 K has a width of about a tenth of a millimetre."
+    },
+    "holdTime": {
+      "value": 200.0,
+      "unit": "us",
+      "minimum": 1.0,
+      "maximum": 100000.0,
+      "description": "How long the flight runs. With the excitation off an ion is still inside at the end; a scan study sets this to the length of its ramp."
+    },
+    "housingClearance": {
+      "value": 1.5,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 20.0,
+      "description": "From the deepest rod back to the grounded domain edge. The real rods sit in a grounded chamber further away; this is where the solve stops."
+    },
+    "cellsPerRadius": {
+      "value": 32.0,
+      "unit": "1",
+      "minimum": 4.0,
+      "maximum": 128.0,
+      "description": "Grid cells across the inscribed radius. 32 is a 0.125 mm cell, which puts two cells across the slot; the faces are cut cells either way."
+    },
+    "rodBackX": {
+      "expression": "xStretch + rodDepth",
+      "unit": "mm"
+    },
+    "domainHalfWidth": {
+      "expression": "rodBackX + housingClearance",
+      "unit": "mm"
+    },
+    "detectorX": {
+      "expression": "rodBackX + 0.5 * housingClearance",
+      "unit": "mm"
+    },
+    "cellSize": {
+      "expression": "inscribedRadius / cellsPerRadius",
+      "unit": "mm"
+    }
+  },
+  "ion": {
+    "massToCharge": {
+      "value": 524.3,
+      "unit": "Da"
+    },
+    "chargeNumber": 1
+  },
+  "source": {
+    "position": {
+      "expression": [
+        "launchOffset",
+        "launchOffset",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "direction": {
+      "value": [
+        1,
+        0,
+        0
+      ]
+    },
+    "accelerationPotential": {
+      "value": 0,
+      "unit": "V"
+    },
+    "cloud": {
+      "ions": 1,
+      "temperature": {
+        "value": 300,
+        "unit": "K"
+      },
+      "seed": 20260905
+    }
+  },
+  "fields": [
+    {
+      "type": "solved2d",
+      "solve": {
+        "drives": [
+          {
+            "name": "rf",
+            "frequency": {
+              "expression": "driveFrequency",
+              "unit": "MHz"
+            },
+            "waveform": "sinusoid"
+          },
+          {
+            "name": "excite",
+            "frequency": {
+              "expression": "exciteFrequency",
+              "unit": "MHz"
+            },
+            "waveform": "sinusoid"
+          }
+        ],
+        "minX": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "domainHalfWidth",
+          "unit": "mm"
+        },
+        "cellSize": {
+          "expression": "cellSize",
+          "unit": "mm"
+        },
+        "electrodes": [
+          {
+            "name": "rodXPlusUpper",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "(xStretch + inscribedRadius * sqrt(1 + ((slotXPlus + (rodHalfWidth - slotXPlus) * k / 24) / inscribedRadius) * ((slotXPlus + (rodHalfWidth - slotXPlus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(slotXPlus + (rodHalfWidth - slotXPlus) * k / 24)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "rodHalfWidth",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(reliefRatio * slotXPlus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + inscribedRadius * sqrt(1 + (slotXPlus / inscribedRadius) * (slotXPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(reliefRatio * slotXPlus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + inscribedRadius * sqrt(1 + (slotXPlus / inscribedRadius) * (slotXPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "slotXPlus",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "-rfAmplitude",
+                  "unit": "V"
+                }
+              },
+              {
+                "drive": "excite",
+                "amplitude": {
+                  "expression": "0.5 * exciteAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodXPlusLower",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "(xStretch + inscribedRadius * sqrt(1 + ((slotXPlus + (rodHalfWidth - slotXPlus) * k / 24) / inscribedRadius) * ((slotXPlus + (rodHalfWidth - slotXPlus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(slotXPlus + (rodHalfWidth - slotXPlus) * k / 24)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-rodHalfWidth",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(reliefRatio * slotXPlus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + inscribedRadius * sqrt(1 + (slotXPlus / inscribedRadius) * (slotXPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(reliefRatio * slotXPlus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(xStretch + inscribedRadius * sqrt(1 + (slotXPlus / inscribedRadius) * (slotXPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-slotXPlus",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "-rfAmplitude",
+                  "unit": "V"
+                }
+              },
+              {
+                "drive": "excite",
+                "amplitude": {
+                  "expression": "0.5 * exciteAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodXMinusUpper",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius) * ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(slotXMinus + (rodHalfWidth - slotXMinus) * k / 24)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "rodHalfWidth",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(reliefRatio * slotXMinus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(reliefRatio * slotXMinus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "slotXMinus",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "-rfAmplitude",
+                  "unit": "V"
+                }
+              },
+              {
+                "drive": "excite",
+                "amplitude": {
+                  "expression": "-0.5 * exciteAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodXMinusLower",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius) * ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(slotXMinus + (rodHalfWidth - slotXMinus) * k / 24)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-rodHalfWidth",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + rodDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(reliefRatio * slotXMinus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(reliefRatio * slotXMinus)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-slotXMinus",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "-rfAmplitude",
+                  "unit": "V"
+                }
+              },
+              {
+                "drive": "excite",
+                "amplitude": {
+                  "expression": "-0.5 * exciteAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodYPlusRight",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "(slotYPlus + (rodHalfWidth - slotYPlus) * k / 24)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(inscribedRadius * sqrt(1 + ((slotYPlus + (rodHalfWidth - slotYPlus) * k / 24) / inscribedRadius) * ((slotYPlus + (rodHalfWidth - slotYPlus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "rodHalfWidth",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(reliefRatio * slotYPlus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(reliefRatio * slotYPlus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(inscribedRadius * sqrt(1 + (slotYPlus / inscribedRadius) * (slotYPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "slotYPlus",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(inscribedRadius * sqrt(1 + (slotYPlus / inscribedRadius) * (slotYPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "-dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "rfAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodYPlusLeft",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "-(slotYPlus + (rodHalfWidth - slotYPlus) * k / 24)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(inscribedRadius * sqrt(1 + ((slotYPlus + (rodHalfWidth - slotYPlus) * k / 24) / inscribedRadius) * ((slotYPlus + (rodHalfWidth - slotYPlus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-rodHalfWidth",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(reliefRatio * slotYPlus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(reliefRatio * slotYPlus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(inscribedRadius * sqrt(1 + (slotYPlus / inscribedRadius) * (slotYPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-slotYPlus",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "(inscribedRadius * sqrt(1 + (slotYPlus / inscribedRadius) * (slotYPlus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "-dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "rfAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodYMinusRight",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "(slotYMinus + (rodHalfWidth - slotYMinus) * k / 24)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(inscribedRadius * sqrt(1 + ((slotYMinus + (rodHalfWidth - slotYMinus) * k / 24) / inscribedRadius) * ((slotYMinus + (rodHalfWidth - slotYMinus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "rodHalfWidth",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(reliefRatio * slotYMinus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "(reliefRatio * slotYMinus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(inscribedRadius * sqrt(1 + (slotYMinus / inscribedRadius) * (slotYMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "slotYMinus",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(inscribedRadius * sqrt(1 + (slotYMinus / inscribedRadius) * (slotYMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "-dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "rfAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          },
+          {
+            "name": "rodYMinusLeft",
+            "shape": "polygon",
+            "vertices": [
+              {
+                "count": {
+                  "value": 25,
+                  "unit": "1"
+                },
+                "index": "k",
+                "x": {
+                  "expression": "-(slotYMinus + (rodHalfWidth - slotYMinus) * k / 24)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(inscribedRadius * sqrt(1 + ((slotYMinus + (rodHalfWidth - slotYMinus) * k / 24) / inscribedRadius) * ((slotYMinus + (rodHalfWidth - slotYMinus) * k / 24) / inscribedRadius)))",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-rodHalfWidth",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(reliefRatio * slotYMinus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(rodDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-(reliefRatio * slotYMinus)",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(inscribedRadius * sqrt(1 + (slotYMinus / inscribedRadius) * (slotYMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              },
+              {
+                "x": {
+                  "expression": "-slotYMinus",
+                  "unit": "mm"
+                },
+                "y": {
+                  "expression": "-(inscribedRadius * sqrt(1 + (slotYMinus / inscribedRadius) * (slotYMinus / inscribedRadius)) + slotDepth)",
+                  "unit": "mm"
+                }
+              }
+            ],
+            "potential": {
+              "expression": "-dcOffset",
+              "unit": "V"
+            },
+            "taps": [
+              {
+                "drive": "rf",
+                "amplitude": {
+                  "expression": "rfAmplitude",
+                  "unit": "V"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "detector": {
+    "planePoint": {
+      "expression": [
+        "detectorX",
+        "0",
+        "0"
+      ],
+      "unit": "mm"
+    },
+    "normal": {
+      "value": [
+        -1,
+        0,
+        0
+      ]
+    }
+  },
+  "transport": {
+    "mode": "trajectory",
+    "relativeTolerance": 1e-09,
+    "maximumFlightTime": {
+      "expression": "holdTime",
+      "unit": "us"
+    },
+    "gas": {
+      "model": "hardSphere",
+      "pressure": {
+        "expression": "heliumPressure",
+        "unit": "mbar"
+      },
+      "temperature": {
+        "value": 300,
+        "unit": "K"
+      },
+      "mass": {
+        "value": 4.002602,
+        "unit": "Da"
+      },
+      "crossSection": {
+        "expression": "collisionCrossSection",
+        "unit": "angstrom^2"
+      },
+      "seed": 20260905
+    }
+  }
+}

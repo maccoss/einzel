@@ -348,12 +348,72 @@ So the 84% extraction efficiency and the ion-capacity figure are Phase 3 targets
 
 ## 2. The Stellar dual-pressure linear ion trap
 
-Not yet worked up, and deliberately listed separately from target 1 rather than
-folded into it. A radial-ejection linear ion trap is a different optical problem
-from a rectilinear transversal-extraction trap: the ejection is through slots in
-the rods rather than orthogonal to the axis, the electrode cross-section is round
-or hyperbolic rather than flat, and the figure of merit is a mass scan rather than
-a turn-around time.
+**Worked up as of 2026-09-05 through its ancestor**, the 2002 LTQ cross-section, as the
+shipped `linear-ion-trap` template; the dual-pressure operating points are its
+parameters. Deliberately listed separately from target 1 rather than folded into it.
+A radial-ejection linear ion trap is a different optical problem from a rectilinear
+transversal-extraction trap: the ejection is through slots in the rods rather than
+orthogonal to the axis, the electrode cross-section is round or hyperbolic rather than
+flat, and the figure of merit is a mass scan rather than a turn-around time. **The
+Stellar's own trap differs from the Velos design** (its paper is not in hand), so what
+follows is the LTQ lineage and says so.
+
+### What is reproduced from the 2002 paper, and how
+
+| Quantity | Paper | This model | Note |
+| --- | --- | --- | --- |
+| q per volt, m/z 587 at 600 V | q = 0.623 | 0.6245 from the ideal formula | the paper's calibration point, arithmetic |
+| Secular frequency at q = 0.83 | 368 kHz | 368.1 kHz, beta(0.83) = 0.7362 | so the paper's q scale is the **effective** q |
+| Quadrupole strength with the x pair stretched 0.75 mm | not stated | **0.822 of ideal** | measured from the solved field; the ideal formula's voltages are 22% low for this geometry |
+| Field fault of the 0.25 mm slot | "detrimental field effects" | dipole 9.6e-4, hexapole 1.9e-4 of A2 | odd orders, which the symmetric stretch cannot cancel |
+| What the stretch adds | "analogous to the stretch in 3D traps" | octupole **1.7e-3** of A2 | the same term a stretched 3-D trap adds on purpose |
+| Resonance ejection, 13.5 V at 421 kHz, m/z 524 | ejects at q = 0.88 | ejects from q = 0.870 up, 30 to 5 µs; confined to 0.86 | excitation-off edge between 0.890 and 0.900 (tabulated 0.908, moved by the octupole) |
+| Ejection direction | through the x slot | onto the x rods, none on y | the dipole is along x |
+
+The template's parameters carry the published geometry and operating point (r0 4 mm,
+1 MHz, slot 0.25 mm, stretch 0.75 mm, He 3 mTorr, excitation 3 V + 20 mV per m/z) and
+name what is guessed: the rods' truncation and back, the slot's depth and relief behind
+the face, and the hard-sphere cross-section.
+
+### The mass scan, against "unit resolution up to m/z 2000 at 5555 Da/sec"
+
+The paper's figure 8 is a full scan of the calibration mixture (caffeine 195, MRFA 524,
+Ultramark 1022 to 1822) at 5,555 u/s, and the text says the 20 µm mechanical tolerance
+"was found to be sufficient to obtain unit resolution up to m/z 2000" at that rate. The
+model's version: a cloud of twelve ions per species, thermal at 300 K and 0.05 mm wide,
+cooled three hundred microseconds in helium, then the RF ramped as a staircase (4 µs
+steps) at the rate a 5,555 u/s scan implies for that mass, with the paper's excitation
+law (3 V + 20 mV per m/z) at 421.3 kHz. Each ion's ejection instant is read as a mass on
+the scan law; the species are flown separately, so there is no space charge.
+
+| m/z | ions ejected | FWHM (u, from the central half) | m/Δm | ejected at effective q |
+| --- | --- | --- | --- | --- |
+| 195.09 | 12 | 0.75 | 254 | 0.8625 |
+| 524.26 | 12 | 0.62 | 830 | 0.8674 |
+| 1421.98 | 12 | 0.64 | 2206 | 0.8685 |
+| 1521.97 | 12 | 0.54 | 2791 | 0.8687 |
+
+**Unit resolution across the range at the paper's rate, with nothing tuned** - the widths
+sit between 0.5 and 0.75 u from m/z 195 to 1522, which is what the paper claims and what
+its figure 8 shows. Twelve ions per peak makes each width good to perhaps a quarter of
+itself; the statement that survives that is "under one u everywhere". Two things about
+the mass axis. Ions leave at an effective q of 0.862 to 0.869 rather than at the
+excitation's nominal 0.88 - the excitation captures them from below and pulls them out
+early, and a positive octupole (which the stretch supplies) is what lets an ion driven
+below its small-amplitude frequency stay in resonance as its amplitude grows - so a scan
+calibrated by the ideal formula would read 1.5 per cent low. Every instrument calibrates
+its mass axis against known ions rather than from metal, so this is absorbed exactly as it
+is in practice; the drift of the ejection q with mass (0.8625 to 0.8687) is what a
+multi-point calibration curve is for. The figure is
+[`docs/figures/linear-ion-trap-spectrum.svg`](figures/linear-ion-trap-spectrum.svg).
+
+**What the model does not reproduce: ejection through the slot.** With the slot cut as a
+0.25 mm channel straight through the rod, three quarters of the ions ejected toward it
+strike the channel's walls within a few millimetres of the mouth - the slot mouth is a
+diverging aperture lens for an ion leaving a 5e5 V/m RF field into a field-free channel -
+and almost none reach the detector. The paper does not give the slot's profile behind the
+face; the template now carries a channel depth and a relief behind it as named guesses,
+and `docs/device-templates.md` records what each does to the count.
 
 Before working this up, confirm the published geometry and operating point from
 the Stellar and Tribrid literature rather than assuming it matches the Astral

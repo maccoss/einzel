@@ -105,6 +105,10 @@ public static class GeometryBuilder
                     RasteriseDisc(mask, grid, electrode, potential);
                     break;
 
+                case ElectrodeShape.Polygon:
+                    RasterisePolygon(mask, grid, electrode, potential);
+                    break;
+
                 case ElectrodeShape.EdgeProfile:
                     RasteriseEdgeProfile(mask, grid, electrode, potentialOf is null ? 1.0 : potential);
                     break;
@@ -314,6 +318,34 @@ public static class GeometryBuilder
                 var dx = grid.X(i) - electrode.CentreX;
 
                 if ((dx * dx) + (dy * dy) <= radiusSquared)
+                {
+                    mask.Fix(i, j, potential);
+                }
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// Fixes every node inside a polygon electrode. Nodes are classified by the
+    /// polygon's own signed distance, so the raster and the cut links that follow it
+    /// agree about where the surface is.
+    /// </summary>
+    private static void RasterisePolygon(
+        DirichletMask mask, Grid2D grid, CompiledElectrode electrode, double potential)
+    {
+        var i0 = Math.Max(0, (int)Math.Floor((electrode.MinX - grid.OriginX) / grid.SpacingX));
+        var i1 = Math.Min(grid.CountX - 1, (int)Math.Ceiling((electrode.MaxX - grid.OriginX) / grid.SpacingX));
+        var j0 = Math.Max(0, (int)Math.Floor((electrode.MinY - grid.OriginY) / grid.SpacingY));
+        var j1 = Math.Min(grid.CountY - 1, (int)Math.Ceiling((electrode.MaxY - grid.OriginY) / grid.SpacingY));
+
+        for (var j = j0; j <= j1; j++)
+        {
+            var y = grid.Y(j);
+
+            for (var i = i0; i <= i1; i++)
+            {
+                if (electrode.Contains(grid.X(i), y))
                 {
                     mask.Fix(i, j, potential);
                 }

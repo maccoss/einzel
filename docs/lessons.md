@@ -2610,3 +2610,48 @@ quantity reached through a time-free interface" and its cousins: a property of t
 (its mode, its drive) asked of a proxy (the pressure, the DC) that stops being equivalent the
 moment a second mode exists. The fix is one condition; the lesson is to grep for every place
 a gas is present and check what each one asks.
+
+## A confined ion at a nominal q of 0.92 was the geometry telling the truth
+
+The linear ion trap template, on its first flight, held an ion at a nominal Mathieu q
+of 0.92 for four hundred RF cycles with the excitation off - past the tabulated
+stability edge of 0.908, where it should have struck a rod within a few microseconds.
+The same document with its hyperbolic polygons swapped for round rods lost the ion in
+3.3 µs. The run-path field was checked over a cycle and was exactly a cosine; the
+snapshot field's quadrupole term was 0.9994 of the ideal. Everything pointed at the
+polygon shape being wrong in the run and right in the snapshot, which is not a thing
+that can happen, since they are one object.
+
+The snapshot had been measured on the **unstretched** geometry. The paper moves the x
+rod pair out 0.75 mm to compensate the slot, and the ideal formula
+q = 4eV/(m r0² Ω²) puts every vertex at r0. With the x pair at 4.75 mm the quadrupole
+term is 0.822 of the ideal, so the ion at "0.92" was at 0.757 and confined for a good
+reason. Nothing in the engine was wrong; the number being compared against was
+computed from a geometry the document did not describe.
+
+Three things generalise. **A stretched trap's nominal q is not its q**, and every
+commercial trap is stretched - the paper's own q scale is the effective one, inferred
+from a measured secular frequency (its 368 kHz at "q = 0.83" is the ideal beta to a
+tenth of a per cent), which is how every trap user calibrates and is why the
+discrepancy never shows up in the literature. **Measure the coefficient from the solved
+field before calibrating anything against a formula**: the multipole projection at half
+the inscribed radius gives it in a second, with no ion involved. And **swap the shape,
+not the physics, to isolate a shape**: the round-rod control settled in one run what the
+field-over-a-cycle check and the multipole check together could not, because both of
+those were asked of the wrong geometry.
+
+## A polygon that costs one hundred and sixteen kilobytes is the wrong spelling
+
+The first linear-ion-trap template wrote each hyperbolic face as twenty-five vertices,
+each vertex two expressions over the parameter surface, eight half-rods: 116 KB of
+generated JSON that validated, solved and flew correctly and that no person or agent
+could read, edit or diff. The document was parametric in the letter - every vertex
+moved with `inscribedRadius` - and not in spirit, because the thing a reader needs to
+see, "the face is this hyperbola from the slot edge to the half-width", was buried in
+two hundred copies of itself.
+
+The fix was a *run*: one vertex entry with a `count` and an `index`, evaluated that many
+times - `repeat`'s mechanism applied inside one electrode. Twenty-four kilobytes, three
+entries per half-rod, and the hyperbola written once. The rule: when a generator script
+is needed to write a document, the format is missing the abstraction the script
+supplies, and the script is a measurement of how big the gap is.

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "linear-ion-trap-ejected",
+  "description": "Published: the paper's ejection working point, q = 0.88 with the dipole excitation at the secular frequency 421.3 kHz and the paper's amplitude law, 13.5 V at m/z 524. Nothing is left inside.",
+  "model": "../models/linear-ion-trap-ejected.json",
+  "expect": [
+    {
+      "figureOfMerit": "confined",
+      "value": 0.0,
+      "unit": "1",
+      "tolerance": 1e-09
+    }
+  ]
+}

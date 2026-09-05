@@ -823,6 +823,7 @@ public static class FiguresOfMerit
         var collisions = 0;
         var scattered = 0;
         var remaining = new List<PhaseState>();
+        var events = new List<IonEvent>(cloud.Length);
 
         for (var index = 0; index < cloud.Length; index++)
         {
@@ -839,6 +840,7 @@ public static class FiguresOfMerit
 
             var result = TrajectoryIntegrator.Integrate(
                 start, species, field, settings, detector, collisions: sampler);
+            events.Add(new IonEvent(index, result.Outcome.ToString(), result.StruckSurface, result.FlightTimeSeconds) { Position = result.FinalState.Position });
 
             if (sampler is not null)
             {
@@ -896,6 +898,7 @@ public static class FiguresOfMerit
             scattered)
         {
             Remaining = [.. remaining],
+            Events = events,
         };
     }
 
@@ -962,9 +965,12 @@ public static class FiguresOfMerit
         var arrivals = new List<double>(cloud.Length);
         var arrived = new List<PhaseState>(cloud.Length);
         var losses = new Dictionary<string, int>(StringComparer.Ordinal);
+        var events = new List<IonEvent>(cloud.Length);
 
         foreach (var member in result.Members)
         {
+            events.Add(new IonEvent(events.Count, member.Outcome.ToString(), member.StruckSurface, member.FlightTimeSeconds) { Position = member.FinalState.Position });
+
             if (member.Outcome == TrajectoryOutcome.StopConditionMet)
             {
                 arrivals.Add(member.FlightTimeSeconds);
@@ -994,7 +1000,10 @@ public static class FiguresOfMerit
                 .ThenBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new LossChannel(pair.Key, pair.Value))],
             Collisions: 0,
-            ScatteredIons: 0);
+            ScatteredIons: 0)
+        {
+            Events = events,
+        };
     }
 
     /// <summary>The radius of the uniform sphere a drawn cloud actually fills.</summary>
