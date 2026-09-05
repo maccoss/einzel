@@ -5972,3 +5972,23 @@ measurement. The jet through the exit is not modelled; it would carry ions throu
 rings faster and lower the cutoff - away from it. Space charge in the measurement is unknown.
 And the extraction electrode's 40 V is a stated guess that sets nothing here, since below the
 cutoff every loss is on a ring and above it there is none.
+
+**The Langevin scan brackets the measurement from the other side.** Same ions, same conditions,
+polarization capture instead of hard spheres (m/z 118, 19.1 V/cm, 80 Vpp, twenty a point):
+
+| kHz | 300 | 350 | 400 | 450 | 500 | 550 | 600 | 50 % point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hard sphere, 125 Å² | 0.00 | 0.20 | 0.70 | 0.60 | 0.90 | 0.95 | 1.00 | **~380** |
+| Langevin, α = 1.74 Å³ | 0.05 | 0.20 | 0.25 | 0.35 | 0.50 | 0.65 | 0.75 | **~500** |
+| measured | 0.00 | 0.05 | 0.13 | 0.31 | 0.60 | 0.81 | 0.97 | **485** |
+
+Langevin puts the cutoff where the instrument has it, to within the ±25 kHz the statistics
+allow, and rises too slowly above it - still losing a quarter of the ions at 600 kHz where the
+instrument loses three per cent. Hard spheres rise as sharply as the instrument and a hundred
+kilohertz early. A real ion-nitrogen interaction at these collision energies is polarization
+capture at low speed and a hard core at high, so the truth lies between the two limiting
+models this engine offers, and the measurement sits between their two curves at every
+frequency. **That is REG-3's comparison made against a published instrument rather than
+against ourselves**: the benchmark resolves the difference between the collision models, and
+says which way a hybrid potential would have to lean. A speed-dependent cross section - hard
+core plus polarization - is the next physics this device asks for, and it is one function.
