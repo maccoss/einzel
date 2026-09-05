@@ -24,6 +24,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `kingdon-trap` | A wire on the axis of a cylinder: the electrostatic orbital trap, and the ancestor of the Orbitrap |
 | `orbital-trap` | A quadro-logarithmic field: ions circle a spindle while oscillating along it, and the axial frequency is the measurement |
 | `c-trap` | Four rods bent around an arc: the curved RF trap that injects an orbital analyser |
+| `pnnl-ion-funnel` | The published PNNL 100-electrode funnel, as built to a literature benchmark: Kim 2000's transmission against RF amplitude and Page 2006's low-m/z cutoff |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -1199,3 +1200,54 @@ it the spread in extraction depth — but that is an energy spread, and refocusi
 spread is what mirrors are for. Turn-around is the 1.8% of it that survives. Using the
 241 ns would understate the reachable resolving power by two orders of magnitude.
 
+
+## `pnnl-ion-funnel` — a published funnel, built to be compared
+
+The first template written against a literature benchmark rather than as a demonstration: the
+Pacific Northwest National Laboratory 100-electrode electrodynamic ion funnel, whose dimensions
+are in print (Kim et al. 2000; Page et al. 2006, open access) with two measured curves and a
+closed form. The register is `docs/literature-targets.md` §5 and the flights are in the
+working notes, sections 76 and 77. One hundred rings of 0.5 mm brass on 0.5 mm spacers, 58 at
+25.4 mm inner diameter and 42 tapering linearly to 2.5 mm, a DC-only 2.0 mm conductance limit,
+and an extraction electrode behind it, solved axisymmetrically.
+
+**A hundred and two electrodes are two basis solves** - the RF alternating pattern and the DC
+chain - so an amplitude scan or a frequency scan re-solves nothing. The ring stack is one
+`repeat` electrode whose inner radius is `entranceRadius - max(0, ring - 57) * taperPerRing`,
+which is the whole geometry in one expression.
+
+### The exit had to have something behind it
+
+The first version lost every ion, in both transport modes, on the conductance limit - and not
+because the funnel failed to focus them. A single ion's collisional trajectory showed it
+riding the taper 1 to 2 mm off the wall (the paper's field-balance stand-off), reaching the
+exit on the axis at r = 0.13 mm, and then stalling inside the 0.5 mm-thick hole: with a
+field-free region behind the plate there was nothing to pull it through, and the last ring's
+RF fringe shook it into the hole wall within ten cycles. The real instrument has the next
+stage's optics at a lower potential behind that plate, and a gas jet through it; neither paper
+gives the voltage. `exitDrop` is that electrode, at a stated guess of 40 V, and it sets nothing
+in the cutoff comparison - below the cutoff every loss is on a ring, above it there is none.
+
+### What it reproduces, and by how much it misses
+
+| | model | measured (Page 2006) |
+| --- | --- | --- |
+| loss mechanism below the cutoff | tapered rings 79–98, never the exit | the paper's account |
+| width of the rise | ~200 kHz | ~250 kHz |
+| 50 % point, m/z 118 at 9.0 / 19.1 / 29.1 V/cm, hard spheres | ~320 / ~380 / ~470 kHz | 425 / 485 / 565 |
+| the same, Langevin collisions, 19.1 V/cm | ~500 kHz, rising too slowly above it | 485 |
+| spacing with DC gradient | ×1.19, ×1.24 | ×1.14, ×1.16 (eq. 7 says ×1.46, ×1.23) |
+
+The two limiting collision models bracket the measured curve at every frequency - hard spheres
+rise as sharply as the instrument and a hundred kilohertz early, polarization capture puts the
+cutoff where the instrument has it and rises too slowly. That is the REG-3 comparison made
+against a published instrument, and it says what the next piece of physics is: a
+speed-dependent cross section with a hard core and a polarization tail, which is one function.
+
+### Guessed, and said so
+
+The plates' outer radius (irrelevant to the field inside), where the ions are released (20 mm
+in, past the jet disrupter, with a 3 mm spread), the extraction electrode's potential, the gas
+at 300 K (the inlet capillary is heated), no gas jet, no space charge. The template's own
+description lists them, and the trajectory-file fix that this device found - `--vtu` of a
+collisional run was a vacuum flight - is in the working notes, section 76.
