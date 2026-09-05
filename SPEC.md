@@ -2465,6 +2465,25 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     matching any single number. Three conditions on four depths, none fitted to a number this
     model produced, and that is the next search.
 
+    **Superseded by the following night (handoff sections 47-71): the mirror is reproduced.**
+    The paragraph above was written on guessed electrode positions with one electrode at the
+    wrong polarity. The design paper's figure 1, read as a rendered page, gives the electrode
+    positions as drawn blocks, shows electrode 4 wrapping into the mirror's back wall, and has
+    an on-axis potential that fixes U2's sign as positive where the crowd-control table prints
+    it negative. On that layout both published correction vectors do their published jobs
+    (dc1/dTE1 = 0.987 of published; C(2) reduces c2), so the "sharpest constraint" above was a
+    constraint on a wrong geometry. The three numbers the papers do not give - the board gap,
+    U3 and U4 - are then solved for the design paper's own three-point condition (the period
+    stationary at 4000 and 4000 +/- 100 eV): a 41.4 mm gap, U3 0.974 against the table's
+    0.916, U4 1.479 against 1.503. There the model gives **R = 222,000 over +/-2.5 per cent
+    against the published curve's ~180,000**, the figure's slope amplitude, an effective
+    drift of 646.8 against 641 mm, and the published on-axis potential to 0.16 kV rms at
+    sixteen points - the axis being a check the solve never saw. The grounded domain edge
+    behind a flat electrode 4 had moved c3 by 0.17 on its own; a grounded boundary is a third
+    electrode, met again. What remains open for this device is the drift register with the
+    stripe in the model, being refit to the reproduced mirror, and the reconciliation of the
+    published 25 oscillations with the 4-in-11 mm reversal the bare tilt gives.
+
     Two measurement limits bound any further work and are worth knowing before repeating it.
     **Flight-time differencing floors the drift coefficients at plus or minus 0.02 in `a`** at
     any mesh - a 330 ns signal on a 3 microsecond error that only 60% cancels - and refining

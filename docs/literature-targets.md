@@ -441,26 +441,31 @@ than as an argument.
 state of the model are in `docs/astral-handoff.md`** - §1 and §11 respectively. This entry
 records only what is a *regression target* and its status, so the two do not drift.
 
-The device the whole 3-D path exists for, and the only target here that is not yet
-reproduced in any respect. It is also the first target whose geometry had to be
-**measured out of a published figure** rather than read off a table.
+The device the whole 3-D path exists for. It is also the first target whose geometry had
+to be **measured out of a published figure** rather than read off a table - the electrode
+positions, the back wall and the e0-e1 gap are all read off [A] figure 1, and the mirror is
+now reproduced against the same figure's on-axis potential and period-slope curve (handoff
+§§58-71). What is not yet reproduced is the drift register with the stripe in the model.
 
 | target | published | status |
 | --- | --- | --- |
-| oscillations / flight path | 24 / 30 m | **not reached** - and not yet measured with a real tilt; handoff §12 |
-| drift reversal distance | 310-360 mm, mean 335 | **unmeasured** - every prior figure was an artefact of a tilt the solver could not see, with the wrong sign; handoff §12 |
-| resolving power | > 100,000 | **6.56** - dominated by thermal drift spread that nothing refocuses |
-| energy acceptance | flat T over 4000 ± 100 V | mirrors **do** energy-focus: R = 2,600 on energy spread alone |
-| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **not attempted, and the best next test** |
+| oscillations / flight path | 24 / 30 m | **25 outbound** from the tilt alone, `D/N` = 13.38 against 13.40 mm; handoff §47 |
+| drift reversal distance | 310-360 mm, mean 335 | **334.61 mm** from the tilt alone (handoff §47); with the stripe in the model the register is being refit to the reproduced mirror (§66, §71) |
+| resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **222,000** on the drawn layout at the paper's three-point condition, slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; handoff §71 |
+| resolving power, drift alone | - | **73,500** over the full ±11 per cent angular acceptance, from the published stripe shape (handoff §55-56) |
+| energy acceptance | period stationary at 4000 and 4000 ± 100 V | **met by construction** at the solved gap, U3 and U4: c1 = 0.00000, c3 at the fit's noise floor, c2 on the balance point; handoff §71 |
+| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **0.987 of published** - dc1/dTE1 measured at four depths, and C(2) reduces c2 as published; handoff §49 |
 | ion foil geometry | not stated in text | **measured off [A] figure 1** at 1.92 mm/px; shipped in `astral-3d.json` |
 
-**The C(1) row is the one to run next, and it is different in kind from the others.**
-Every other row needs the absolute geometry to be right first, because it compares a
-number this model produces against a number the instrument produces. C(1) and C(2) are
-*differential*: apply the published perturbation to the published potentials, measure how
-much the time-energy coefficient moves, and compare to a published sensitivity. A model
-whose focus is in the wrong place can still get that right or wrong informatively. It is
-the only Astral regression currently available that does not wait on fitting `d1..d4`.
+**The C(1) row was run first because it is different in kind from the others.** Every
+other row needs the absolute geometry to be right, because it compares a number this model
+produces against a number the instrument produces. C(1) and C(2) are *differential*: apply
+the published perturbation to the published potentials and measure how much the coefficient
+moves. It came out at 0.987 of published on a mirror that was then still wrong in polarity
+and position - which is what a differential check is for. **Three numbers are solved rather
+than read** and are the ones the papers do not give: the board gap (41.4 mm), U3 (0.974
+against the table's 0.916) and U4 (1.479 against 1.503), in a table that has U2's sign
+wrong. Everything else in the mirror is as published or as drawn.
 
 **Two cautions carried from [B] for anyone comparing numbers.** Their own simulations ran
 **22 oscillations rather than 24**. And the design condition is a **third-order** temporal
