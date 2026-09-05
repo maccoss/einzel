@@ -4995,3 +4995,42 @@ Until then the quadrature is the only route here to the quantity that sets resol
 whose value you can reproduce is not necessarily the one whose flatness it is claiming. Read
 which quantity the optimisation targets before matching a number to it - and read it from the
 equations, not from the prose around them.
+
+## 54. The mirror condition is three stationary points, not two vanishing coefficients
+
+Section 2 of the design paper, read from the rendered page: *"we claim that the slope
+`T'(eps) = J_0''` vanishes for three values of energy, namely `eps_0/q = 4000 V` and
+`eps_0/q +/- 100 V`. Under these conditions the oscillation period has a ppm-level plateau
+sufficiently wide to accommodate for the intrinsic energy spread."*
+
+**That is not the condition sections 49 to 52 solved for.** Those drove the first and second
+time-energy coefficients to zero with the two published voltage knobs. Three stationary points
+across ±100 V means `T'(u)` is proportional to `u(u^2 - 100^2)`, so in fractional-offset
+coefficients
+
+    c1 = 0,    c3 = 0,    c2 = -1.25e-3 * c4
+
+- the **second** coefficient is deliberately non-zero, held against the quartic, and the
+**third** is the one cancelled. Setting `c2 = 0` instead leaves the cubic uncancelled, and over
+the paper's own ±2.5 per cent window the cubic is the larger term. The double zero is a
+plausible-looking target that is not the design's.
+
+### Where the model actually stands, with the quantities finally sorted out
+
+| | this model | published | |
+| --- | --- | --- | --- |
+| drift contribution to R | **634,000** | not stated as a number | not the limit |
+| mirror, over ±2.5% (the paper's window) | **36,700** | ~100,000 | **the limit** |
+
+The published figure is read off Fig. 1's right panel, which plots `(1/T) dT/d(eps)` in units of
+1e-6 per eV and stays within about ±0.05 of those units across 3900-4100 eV - an excursion near
+5e-6, so R near 100,000. **So the gap is a factor of about three, in one place.** Every earlier
+statement of this gap in this document - three orders, a thousand-fold, "the drift is the
+binding constraint" - was an artefact of comparing quantities that are not the same quantity.
+
+Also worth recording plainly, because four sections of this file argued the opposite: **the
+drift electrode is not where the difficulty is.** Sixteen separately biased segments give a
+drift-limited resolving power six times what the full-scale instrument needs. The mirror is
+where the remaining factor of three sits, and the depth search should now target the
+peak-to-peak excursion of the oscillation period over ±2.5 per cent - or equivalently the
+three-point stationary condition - rather than the double zero.
