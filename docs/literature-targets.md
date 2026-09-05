@@ -360,6 +360,48 @@ the Stellar and Tribrid literature rather than assuming it matches the Astral
 lineage — the two share an architecture at the block-diagram level and not much
 below it.
 
+### Published geometry and operating point, from the LTQ and Velos papers
+
+The Stellar trap is the dual-pressure linear trap of the LTQ Velos lineage. Its
+own paper is not in `papers/` (as of 2026-09-05); what is there, and what this
+table paraphrases, are the two papers it descends from — Schwartz, Senko and
+Syka, *A two-dimensional quadrupole ion trap mass spectrometer*, JASMS 2002,
+13, 659, and Second et al., *Dual-pressure linear ion trap mass spectrometer
+improving the analysis of complex protein mixtures*, Anal. Chem. 2009, 81, 7757.
+The Stellar-specific numbers are still to be confirmed against its own paper.
+
+| | LTQ (2002) | Velos dual-pressure (2009) |
+| --- | --- | --- |
+| Rods | hyperbolic, r0 = 4 mm | as LTQ, slots in all four rods (fully symmetric) |
+| Axial sections | 12 / 37 / 12 mm, DC-offset for axial trapping | two cells, one aperture lens between them |
+| Ejection slot | 0.25 mm high, 30 mm long, one X rod | all four rods |
+| Slot compensation | slotted rod pair moved out 0.75 mm | — |
+| Main RF | 1 MHz, up to 5 kV peak rod-to-ground | — |
+| Resonance ejection | dipole across X rods, q = 0.88 | — |
+| Isolation | multi-frequency waveform 5–500 kHz, 0.5 kHz spacing, precursor at q = 0.83 | as LTQ, 4 ms instead of 16 ms |
+| Activation | q = 0.25–0.35 | as LTQ, activation time cut 67 % |
+| Bath gas | He, ~3 mTorr (4e-3 mbar) | HP cell ~5e-3 Torr (6.7e-3 mbar); LP cell ~4e-4 Torr (5.3e-4 mbar) |
+| Scan rate / resolution | 16,000 u/s (LTQ XL) | 33,000 u/s at equal or better resolution; >25,000 FWHM in ultra-zoom |
+| Ion cloud | ~1.0 mm radius, ~30 mm long | — |
+
+**What is measurable in this build already.** The 2002 paper's Fig. 2 is a
+SIMION field plot: three DC-offset sections against one, showing how the
+end-section offsets distort the dipole excitation field. That is a DC solve of
+round-or-hyperbolic rods with an axial break — a `solved3d` template with three
+segments, nothing new — and the paper's own claim (distortion confined to the
+end sections) is checkable. The mass-selective-instability scan (ramp the RF,
+eject at q = 0.88 through the slot, count arrivals against m/z) is a `scan`
+study over the shipped RF path, and the LP-cell pressure is inside the
+event-driven collision models' range. The 15× ion-capacity ratio against a 3-D
+trap is a space-charge claim the direct-sum method can be pointed at.
+
+**What is not.** Both the HP cell's 5e-3 Torr and the LTQ's 3 mTorr are above
+the event-driven mode's stated validity and below where the diffusive mode's
+drift-diffusion description holds, so isolation and activation efficiency —
+the two things the dual-pressure design buys — sit in the band neither mode
+owns cleanly. That is the same band the funnel benchmark sat in, and the same
+hard-sphere-against-Langevin bracket applies.
+
 What it would need: time-domain RF, collisional damping at high-pressure-cell
 conditions, and Class B analysis for the secular frequency spectrum and ejection
 efficiency. All Phase 3 or later. The DC-only fraction is much smaller than for
