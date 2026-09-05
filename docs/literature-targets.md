@@ -348,15 +348,52 @@ So the 84% extraction efficiency and the ion-capacity figure are Phase 3 targets
 
 ## 2. The Stellar dual-pressure linear ion trap
 
-**Worked up as of 2026-09-05 through its ancestor**, the 2002 LTQ cross-section, as the
-shipped `linear-ion-trap` template; the dual-pressure operating points are its
-parameters. Deliberately listed separately from target 1 rather than folded into it.
-A radial-ejection linear ion trap is a different optical problem from a rectilinear
-transversal-extraction trap: the ejection is through slots in the rods rather than
-orthogonal to the axis, the electrode cross-section is round or hyperbolic rather than
-flat, and the figure of merit is a mass scan rather than a turn-around time. **The
-Stellar's own trap differs from the Velos design** (its paper is not in hand), so what
-follows is the LTQ lineage and says so.
+**Worked up as of 2026-09-05**, first through its ancestor - the 2002 LTQ cross-section,
+the shipped `linear-ion-trap` template - and then as the Stellar's own trap from its paper,
+the shipped `stellar-ion-trap` template. Deliberately listed separately from target 1
+rather than folded into it. A radial-ejection linear ion trap is a different optical
+problem from a rectilinear transversal-extraction trap: the ejection is through slots in
+the rods rather than orthogonal to the axis, the electrode cross-section is round or
+hyperbolic rather than flat, and the figure of merit is a mass scan rather than a
+turn-around time.
+
+### The Stellar's trap, from its paper
+
+> Remes, Jacob, Heil, Shulman, MacLean, MacCoss, *Hybrid Quadrupole Mass Filter - Radial
+> Ejection Linear Ion Trap and Intelligent Data Acquisition Enable Highly Multiplex
+> Targeted Proteomics*, J. Proteome Res. 2024, 23, 5476. PMC11956834.
+
+The paper gives the trap in one paragraph, and it is enough to draw it:
+
+| | Stellar (Remes 2024) | 2002 LTQ, for comparison |
+| --- | --- | --- |
+| Structure | the Velos Pro LIT | the original two-dimensional trap |
+| Field radius | 4.0 mm | 4 mm |
+| Stretch | **four-fold, 0.76 mm** - both rod pairs out | two-fold, 0.75 mm - the x pair out |
+| Slots | all four rods (the Velos design) | one x rod |
+| Helium | ~6 mTorr high-pressure cell, **0.5 mTorr** analysing cell | ~3 mTorr |
+| Analysis scan rates | 33, 67, 125, 200 kDa/s | 5,555 Da/s |
+| Peak widths at m/z 622 | **~0.35, 0.5, 0.7, 1.0 Th** at those rates | unit resolution |
+| RF frequency, ejection q, excitation | not given | 1 MHz, 0.88, 3 V + 20 mV per m/z |
+
+**What the geometry alone says, before any ion is flown.** With both pairs out the
+cross-section is four-fold symmetric again, and the field shows it: the dipole and the
+hexapole that the 2002 trap's single slot leaves (1.5e-3 and 2.1e-4 of the quadrupole)
+are gone to rounding (1e-15), and so is the octupole the two-fold stretch added - the
+four-fold stretch is not an aberration, it is a change of scale. The quadrupole term is
+**0.6966 of the ideal formula's** at r0 = 4 mm, against (4.0 / 4.76)² = 0.7062 for an ideal
+trap of the stretched radius; the truncated hyperbolae and the four slots account for the
+rest. So the Stellar's q per volt is 0.70 of the textbook value for its field radius, and
+its 12-pole is 2.7e-4 of the quadrupole. The paper's own reason for the four-fold stretch -
+that the two-fold one "introduced an axial barrier to ion injection ... and reduced the
+effectiveness of ion isolation during injection" - is an axial statement this
+cross-section cannot check.
+
+**The scan, at the paper's four rates.** The RF frequency, the ejection q and the
+excitation are not published, so the 2002 trap's are carried over (1 MHz, q = 0.88, and
+the excitation law at half its amplitude, which the low-pressure retuning above found to
+be the working point). The table is filled in below once the runs complete.
+
 
 ### What is reproduced from the 2002 paper, and how
 
@@ -419,13 +456,13 @@ rate changed, twelve ions per species:
 | 5.3e-4 mbar | 11,111 u/s | 1.25 u | 1.20 u |
 | 4.0e-3 mbar | 11,111 u/s | 0.90 u | 0.63 u |
 
-Less gas broadens every peak here, because the gas is what damps each ion's own thermal
-phase before the excitation grows it. The Velos paper compares two tuned instruments -
-a different trap, different electronics, a resonance ejection set for its own pressure -
-and this table changes one number at the 2002 settings, so it is a disagreement about
-what the pressure does *alone*, not about the instrument. Whether a working point at
-5.3e-4 mbar beats 3 mTorr in this model is a study in excitation amplitude and ejection q
-that has not been run. Recorded as an open comparison rather than a failure of either.
+Less gas broadens every peak here at the 2002 excitation, because the gas is what damps
+each ion's own thermal phase before the excitation grows it. **Retuning closes the gap**:
+at 5.3e-4 mbar, half the paper's excitation amplitude (6.7 V) gives 0.62 u at m/z 524 -
+the 3 mTorr width exactly - while the paper's 13.5 V gives 1.44 and twice it 1.46. The
+Velos paper compares two tuned instruments and does not itemise the retuning; this
+model says a gentler excitation is the part of it that matters for the width. Resolved
+as a working-point difference rather than a disagreement about the instrument.
 
 **What the model does not reproduce: ejection through the slot.** With the slot cut as a
 0.25 mm channel straight through the rod, three quarters of the ions ejected toward it

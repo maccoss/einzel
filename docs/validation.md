@@ -688,9 +688,15 @@ sensitivity.
 **And the pressure, changed alone, goes the other way from the Velos paper.** At the 2002
 settings, dropping the helium from 4.0e-3 to 5.3e-4 mbar broadens m/z 524 from 0.62 to
 1.44 u and m/z 1522 from 0.54 to 0.90; doubling the rate at 4.0e-3 costs 0.62 to 0.90 and
-0.54 to 0.63. The gas damps each ion's own phase before the excitation grows it. The Velos
-compared two retuned instruments; this compares one number. Open, and said so in the
-register.
+0.54 to 0.63. The gas damps each ion's own phase before the excitation grows it. Retuned,
+the gap closes: half the excitation at 5.3e-4 mbar gives 0.62 u, the 3 mTorr width. The
+Velos compared two retuned instruments, and a gentler excitation is the retuning that
+matters.
+
+**A ramped phase against a staircase.** The RF quadrupole's amplitude ramped from q 0.5 to
+0.8 over 40 µs flies an ion to within 2 µm of where a 40-step staircase puts it, against
+240 µm from holding the start value; a DC ramp is linear to the quarter point to 1e-12 and
+a ramp from zero amplitude works. The linear-ion-trap scans are ramps from here on.
 
 
 ## The ion funnel against a published instrument

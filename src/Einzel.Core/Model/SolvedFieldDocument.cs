@@ -829,6 +829,29 @@ public sealed record StageDocument
     public IReadOnlyDictionary<string, QuantityValue>? Set { get; init; }
 
     /// <summary>
+    /// Parameter values reached at the <em>end</em> of this phase, ramped linearly in
+    /// time from where each stands at its start. Everything not named holds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A mass-selective instability scan is a ramp: the RF amplitude rises steadily and
+    /// each ion leaves when its own q reaches the ejection point. Written as phases that
+    /// each hold a value, a scan is a staircase of thousands of steps; written with a
+    /// ramp it is one phase. A parameter named here and in <see cref="Set"/> starts at
+    /// the set value; named here alone, it starts at whatever value was in force.
+    /// </para>
+    /// <para>
+    /// A ramp is exact where the electrodes' potentials and drive amplitudes are linear
+    /// in the ramped parameter, because the solved field's channel weights are then
+    /// linear in time. That is checked at the phase's midpoint and a non-linear
+    /// dependence is refused - write the curve as more phases. A ramp may not move a
+    /// drive's phase, may not reach an analytic element, and is not supported in a
+    /// diffusive phase or on a volume solve.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyDictionary<string, QuantityValue>? Ramp { get; init; }
+
+    /// <summary>
     /// The transport mode this phase runs in, or absent to keep the model's.
     /// </summary>
     /// <remarks>
@@ -900,7 +923,15 @@ public sealed record DriveDocument
 /// <param name="DurationSeconds">How long it lasts.</param>
 /// <param name="Electrodes">The electrodes as they stand during it.</param>
 public sealed record CompiledStage(
-    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode> Electrodes);
+    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode> Electrodes)
+{
+    /// <summary>
+    /// The electrodes as they stand at the end of the stage when it ramps, or null when
+    /// it holds. Same metal in the same places as <see cref="Electrodes"/>; only what
+    /// each holds differs, and linearly in time between the two.
+    /// </summary>
+    public IReadOnlyList<CompiledElectrode>? EndElectrodes { get; init; }
+}
 
 /// <summary>A two-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField

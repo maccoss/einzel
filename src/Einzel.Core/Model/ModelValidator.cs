@@ -147,6 +147,23 @@ public static class ModelValidator
         // configuration it has.
         var transport = ValidateTransport(document.Transport, p, Modes(document, timeline), errors);
 
+        if (transport is not null)
+        {
+            foreach (var phase in timeline)
+            {
+                if (phase.EndSurface is not null && (phase.Mode ?? transport.Mode) == "diffusion")
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{phase.Path}/ramp",
+                        Constraint = $"stage '{phase.Name}' ramps a parameter in a diffusive phase, and the density solver steps through a field it holds fixed within a phase",
+                        Suggestion = "write the ramp as phases that each hold a value, each a fraction of the density step's timescale",
+                    });
+                }
+            }
+        }
+
         if (errors.Count > 0 || mass is null || charge is null
             || source is null || detector is null || transport is null)
         {
@@ -753,16 +770,34 @@ public static class ModelValidator
             // reporting it once per phase as well would turn one mistake into a wall.
             var ignored = new List<EinzelError>();
             var state = CompileOnce(field, path, phase.Surface, timeline, ignored);
-
             if (state is null)
             {
                 return baseline;
             }
 
+            // An analytic element is compiled once per phase and switched; there is no
+            // weight to interpolate. A ramp whose parameter reaches one would leave the
+            // element frozen at its start value while the solved elements ramp, which is
+            // the silent half-instrument the model-level timeline was built to prevent.
+            if (phase.EndSurface is not null)
+            {
+                var endState = CompileOnce(field, path, phase.EndSurface, timeline, ignored);
+                if (endState is not null && !Same(state, endState))
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{phase.Path}/ramp",
+                        Constraint = $"stage '{phase.Name}' ramps a parameter that the analytic element at {path} depends on, and a ramp is supported on solved geometries only",
+                        Suggestion = "switch the analytic element in more phases, or describe it as a solved geometry",
+                    });
+                    return baseline;
+                }
+            }
+
             elapsed += phase.DurationSeconds;
             boundaries.Add(elapsed);
             phases.Add(state);
-
             moved |= !Same(baseline, state);
         }
 
@@ -1115,6 +1150,8 @@ public static class ModelValidator
     /// <param name="Surface">Every parameter, as it stands during the phase.</param>
     /// <param name="Path">Where it was declared, for reporting.</param>
     /// <param name="Mode">The transport mode it names, or null to keep the model's.</param>
+    /// <param name="EndSurface">Where the ramped parameters end, when the phase ramps; null when it holds.</param>
+    /// <param name="MidSurface">The surface midway through a ramp, for the linearity check; null when the phase holds.</param>
     /// <remarks>
     /// <b>The surface is resolved once, for the whole instrument.</b> That is the fix for
     /// the defect this replaced: stages used to be compiled per element, so a stage
@@ -1127,7 +1164,9 @@ public static class ModelValidator
         double DurationSeconds,
         IReadOnlyDictionary<string, Quantity> Surface,
         string Path,
-        string? Mode);
+        string? Mode,
+        IReadOnlyDictionary<string, Quantity>? EndSurface = null,
+        IReadOnlyDictionary<string, Quantity>? MidSurface = null);
 
     /// <summary>
     /// The instrument's timeline, resolved once, from wherever it is declared.
@@ -1234,6 +1273,80 @@ public static class ModelValidator
                 continue;
             }
 
+            // A ramp names where each parameter ends; where it starts is whatever the
+            // start surface says, whether the phase set it or inherited it. The end
+            // and midpoint surfaces are resolved here so the derived parameters follow,
+            // exactly as they do for a set.
+            IReadOnlyDictionary<string, Quantity>? endSurface = null;
+            IReadOnlyDictionary<string, Quantity>? midSurface = null;
+            if (stage.Ramp is { Count: > 0 } ramp)
+            {
+                var endSet = new Dictionary<string, Quantity>(set, StringComparer.Ordinal);
+                var midSet = new Dictionary<string, Quantity>(set, StringComparer.Ordinal);
+                var rampOk = true;
+                foreach (var (parameter, value) in ramp)
+                {
+                    if (value.Expression is not null)
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.SchemaInvalid,
+                            Path = $"{stagePath}/ramp/{parameter}",
+                            Constraint = "a ramp ends a parameter at a value, not at an expression",
+                            Suggestion = "write the number and its unit, as a set does",
+                        });
+                        rampOk = false;
+                        continue;
+                    }
+                    if (!surface.TryGetValue(parameter, out var start))
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.SchemaInvalid,
+                            Path = $"{stagePath}/ramp/{parameter}",
+                            Constraint = $"'{parameter}' is not a declared parameter, so there is nothing to ramp",
+                            Observed = new ObservedValue(0.0, parameter),
+                            Suggestion = "ramp a parameter the document declares; a derived parameter follows the ones it is written over",
+                        });
+                        rampOk = false;
+                        continue;
+                    }
+                    try
+                    {
+                        var end = Quantity.From(value.Value, value.Unit);
+                        if (end.Dimension != start.Dimension)
+                        {
+                            errors.Add(new EinzelError
+                            {
+                                Code = ErrorCodes.SchemaInvalid,
+                                Path = $"{stagePath}/ramp/{parameter}",
+                                Constraint = $"'{parameter}' has dimension {start.Dimension} and the ramp's end value has {end.Dimension}",
+                                Suggestion = "give the end value in the parameter's own unit",
+                            });
+                            rampOk = false;
+                            continue;
+                        }
+                        endSet[parameter] = end;
+                        midSet[parameter] = Quantity.Si(0.5 * (start.SiValue + end.SiValue), start.Dimension);
+                    }
+                    catch (EinzelException failure)
+                    {
+                        errors.Add(failure.Error with { Path = $"{stagePath}/ramp/{parameter}" });
+                        rampOk = false;
+                    }
+                }
+                if (!rampOk)
+                {
+                    continue;
+                }
+                endSurface = restage(endSet, errors);
+                midSurface = restage(midSet, errors);
+                if (endSurface is null || midSurface is null)
+                {
+                    continue;
+                }
+            }
+
             if (stage.Mode is not null and not ("trajectory" or "diffusion"))
             {
                 errors.Add(new EinzelError
@@ -1250,7 +1363,7 @@ public static class ModelValidator
             }
 
             phases.Add(new PhaseSurface(
-                name, duration.Value.SiValue, surface, stagePath, stage.Mode));
+                name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface));
         }
 
         return phases;
@@ -1432,10 +1545,121 @@ public static class ModelValidator
                 continue;
             }
 
-            stages.Add(new CompiledStage(phase.Name, phase.DurationSeconds, electrodes));
+            List<CompiledElectrode>? endElectrodes = null;
+            if (phase.EndSurface is not null && phase.MidSurface is not null)
+            {
+                endElectrodes = [];
+                var midElectrodes = new List<CompiledElectrode>();
+                var ignored = new List<EinzelError>();
+                for (var i = 0; i < declaredElectrodes.Count; i++)
+                {
+                    Expand(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.EndSurface, endElectrodes, ignored);
+                    Expand(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.MidSurface, midElectrodes, ignored);
+                }
+                if (!SameGeometry(baseline, endElectrodes, phase.Name, phase.Path, errors)
+                    || !RampIsLinear(electrodes, midElectrodes, endElectrodes, phase.Name, phase.Path, errors))
+                {
+                    continue;
+                }
+            }
+
+            stages.Add(new CompiledStage(phase.Name, phase.DurationSeconds, electrodes) { EndElectrodes = endElectrodes });
         }
 
         return stages;
+    }
+
+    /// <summary>
+    /// Whether every electrode's potential and drive amplitude at the phase's midpoint is
+    /// the mean of its start and end values - which is what makes interpolating the
+    /// solved channel weights linearly in time exact - and no drive phase moves.
+    /// </summary>
+    /// <remarks>
+    /// Checked rather than assumed because a potential is an expression over the ramped
+    /// parameter and nothing stops it being its square root. A ramp of such a parameter
+    /// would still run, with the field at every instant between the ends but on the
+    /// wrong curve, and nothing in the result would say so.
+    /// </remarks>
+    private static bool RampIsLinear(
+        List<CompiledElectrode> start,
+        List<CompiledElectrode> mid,
+        List<CompiledElectrode> end,
+        string stage,
+        string path,
+        List<EinzelError> errors)
+    {
+        if (mid.Count != start.Count || end.Count != start.Count)
+        {
+            return true;   // SameGeometry has already complained
+        }
+
+        for (var i = 0; i < start.Count; i++)
+        {
+            var a = start[i];
+            var m = mid[i];
+            var b = end[i];
+
+            static bool Linear(double s, double m, double e)
+            {
+                var scale = Math.Max(Math.Max(Math.Abs(s), Math.Abs(e)), 1e-12);
+                return Math.Abs(m - (0.5 * (s + e))) <= 1e-9 * scale;
+            }
+
+            if (!Linear(a.Potential, m.Potential, b.Potential))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/ramp",
+                    Constraint =
+                        $"stage '{stage}' ramps a parameter that electrode '{a.Name}' depends on non-linearly: "
+                        + $"its potential at the midpoint is {m.Potential:G6} V, not the {0.5 * (a.Potential + b.Potential):G6} V midway between its ends",
+                    Observed = new ObservedValue(m.Potential, "V"),
+                    Suggestion =
+                        "a ramp is linear in time and exact only where the potentials are linear in the ramped "
+                        + "parameter; write this curve as more phases, or ramp the quantity the potential is linear in",
+                });
+                return false;
+            }
+
+            if (a.Taps.Count != b.Taps.Count || a.Taps.Count != m.Taps.Count)
+            {
+                return true;   // a differing tap structure is caught by the drive validation
+            }
+
+            for (var k = 0; k < a.Taps.Count; k++)
+            {
+                if (a.Taps[k].Phase != b.Taps[k].Phase)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/ramp",
+                        Constraint = $"stage '{stage}' moves the drive phase of electrode '{a.Name}' from {a.Taps[k].Phase:G6} to {b.Taps[k].Phase:G6}",
+                        Observed = new ObservedValue(b.Taps[k].Phase, "cycles"),
+                        Suggestion = "a ramped phase is a frequency shift, which a linear interpolation of amplitudes cannot express; ramp amplitudes and potentials only",
+                    });
+                    return false;
+                }
+
+                if (!Linear(a.Taps[k].Amplitude, m.Taps[k].Amplitude, b.Taps[k].Amplitude))
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/ramp",
+                        Constraint =
+                            $"stage '{stage}' ramps a parameter that the drive amplitude of electrode '{a.Name}' depends on non-linearly: "
+                            + $"{m.Taps[k].Amplitude:G6} V at the midpoint against {0.5 * (a.Taps[k].Amplitude + b.Taps[k].Amplitude):G6} V midway between its ends",
+                        Observed = new ObservedValue(m.Taps[k].Amplitude, "V"),
+                        Suggestion = "write this curve as more phases, or ramp the quantity the amplitude is linear in",
+                    });
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Whether two compilations put the same metal in the same places.</summary>
@@ -2048,6 +2272,19 @@ public static class ModelValidator
 
         if (timeline.Count == 0 || solve.Electrodes is not { } declaredElectrodes)
         {
+            return stages;
+        }
+
+        var ramped = timeline.FirstOrDefault(phase => phase.EndSurface is not null);
+        if (ramped is not null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{ramped.Path}/ramp",
+                Constraint = $"stage '{ramped.Name}' ramps a parameter, and a ramp is supported on two-dimensional solved geometries only",
+                Suggestion = "write the ramp as phases that each hold a value, or move the ramped element to a solved2d cross-section",
+            });
             return stages;
         }
 

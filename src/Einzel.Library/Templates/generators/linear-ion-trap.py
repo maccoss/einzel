@@ -15,6 +15,45 @@ import sys
 
 FACE_SEGMENTS = 24
 OUT = sys.argv[1] if len(sys.argv) > 1 else "linear-ion-trap.json"
+VARIANT = sys.argv[2] if len(sys.argv) > 2 else "ltq"     # "ltq" (Schwartz 2002) or "stellar" (Remes 2024)
+
+if VARIANT == "ltq":
+    NAME = "linear-ion-trap"
+    XSTRETCH, YSTRETCH = 0.75, 0.0
+    SLOTS = {"slotXPlus": 0.125, "slotXMinus": 0.0, "slotYPlus": 0.0, "slotYMinus": 0.0}
+    PRESSURE = 4.0e-3
+    MZ = 524.3
+    DESCRIPTION = (
+        "A radial-ejection linear ion trap in cross-section, after the two-dimensional quadrupole ion trap "
+        "of Schwartz, Senko and Syka (JASMS 2002, 13, 659): four hyperbolic rods at an inscribed radius of 4 mm, "
+        "the x pair moved out 0.75 mm to compensate the field fault of a 0.25 mm ejection slot cut through the +x "
+        "rod, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation across the "
+        "x rods for resonance ejection through the slot. Helium at three millitorr damps the ion. Each rod is two "
+        "polygons meeting at the slot, so a slot of zero height is a whole rod and a slot in every rod - the "
+        "symmetric dual-pressure design - is four numbers. The default holds one ion at a Mathieu q near 0.3 with "
+        "the excitation off; a study raises the RF into the excitation's resonance and asks what leaves through the "
+        "slot, and when. What this cross-section cannot express is the axial structure - three DC sections and the "
+        "end lenses - which belongs to a volume solve."
+    )
+else:
+    NAME = "stellar-ion-trap"
+    XSTRETCH, YSTRETCH = 0.76, 0.76
+    SLOTS = {"slotXPlus": 0.125, "slotXMinus": 0.125, "slotYPlus": 0.125, "slotYMinus": 0.125}
+    PRESSURE = 6.666e-4
+    MZ = 622.0
+    DESCRIPTION = (
+        "The mass-analysing cell of the Stellar's linear ion trap in cross-section, as its paper describes it "
+        "(Remes, Jacob, Heil, Shulman, MacLean, MacCoss, J. Proteome Res. 2024, 23, 5476): the Velos Pro structure, "
+        "a 4.0 mm field radius with a four-fold symmetric stretch of 0.76 mm - both rod pairs moved out, which "
+        "restores the x-y symmetry the 2002 trap's two-fold stretch broke - slots in all four rods, and helium at "
+        "0.5 mTorr in the low-pressure cell that performs the mass analysis. The paper gives the analysis scan rates "
+        "(33, 67, 125 and 200 kDa/s) and the peak widths they produce at m/z 622 (about 0.35, 0.5, 0.7 and 1.0 Th); "
+        "it does not give the RF frequency, the ejection q or the excitation, which are carried over from the 2002 "
+        "trap and named as guesses. The slot's depth and relief and the rods' truncation are guesses too. The high-"
+        "pressure cell (~6 mTorr) that receives ions and performs isolation and activation is the same cross-section "
+        "at a different heliumPressure. Generated from the same script as linear-ion-trap: the two are one function "
+        "with different numbers."
+    )
 
 
 def q(expr, unit):
@@ -85,27 +124,16 @@ electrodes = [
     electrode("rodXPlusLower", "x", +1, -1, "slotXPlus", "xStretch + ", "dcOffset", [rf_x, ex_plus]),
     electrode("rodXMinusUpper", "x", -1, +1, "slotXMinus", "xStretch + ", "dcOffset", [rf_x, ex_minus]),
     electrode("rodXMinusLower", "x", -1, -1, "slotXMinus", "xStretch + ", "dcOffset", [rf_x, ex_minus]),
-    electrode("rodYPlusRight", "y", +1, +1, "slotYPlus", "", "-dcOffset", [rf_y]),
-    electrode("rodYPlusLeft", "y", +1, -1, "slotYPlus", "", "-dcOffset", [rf_y]),
-    electrode("rodYMinusRight", "y", -1, +1, "slotYMinus", "", "-dcOffset", [rf_y]),
-    electrode("rodYMinusLeft", "y", -1, -1, "slotYMinus", "", "-dcOffset", [rf_y]),
+    electrode("rodYPlusRight", "y", +1, +1, "slotYPlus", "yStretch + ", "-dcOffset", [rf_y]),
+    electrode("rodYPlusLeft", "y", +1, -1, "slotYPlus", "yStretch + ", "-dcOffset", [rf_y]),
+    electrode("rodYMinusRight", "y", -1, +1, "slotYMinus", "yStretch + ", "-dcOffset", [rf_y]),
+    electrode("rodYMinusLeft", "y", -1, -1, "slotYMinus", "yStretch + ", "-dcOffset", [rf_y]),
 ]
 
 doc = {
     "schemaVersion": "0.9",
-    "name": "linear-ion-trap",
-    "description": (
-        "A radial-ejection linear ion trap in cross-section, after the two-dimensional quadrupole ion trap "
-        "of Schwartz, Senko and Syka (JASMS 2002, 13, 659): four hyperbolic rods at an inscribed radius of 4 mm, "
-        "the x pair moved out 0.75 mm to compensate the field fault of a 0.25 mm ejection slot cut through the +x "
-        "rod, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation across the "
-        "x rods for resonance ejection through the slot. Helium at three millitorr damps the ion. Each rod is two "
-        "polygons meeting at the slot, so a slot of zero height is a whole rod and a slot in every rod - the "
-        "symmetric dual-pressure design - is four numbers. The default holds one ion at a Mathieu q near 0.3 with "
-        "the excitation off; a study raises the RF into the excitation's resonance and asks what leaves through the "
-        "slot, and when. What this cross-section cannot express is the axial structure - three DC sections and the "
-        "end lenses - which belongs to a volume solve."
-    ),
+    "name": NAME,
+    "description": DESCRIPTION,
     "parameters": {
         "inscribedRadius": {
             "value": 4.0, "unit": "mm", "minimum": 1.0, "maximum": 20.0,
@@ -120,11 +148,15 @@ doc = {
             "description": "Axis to the flat back of an unstretched rod. Must exceed the face's height at the truncation, sqrt(r0^2 + halfWidth^2).",
         },
         "xStretch": {
-            "value": 0.75, "unit": "mm", "minimum": -2.0, "maximum": 5.0,
+            "value": XSTRETCH, "unit": "mm", "minimum": -2.0, "maximum": 5.0,
             "description": "How far the x rod pair is moved outward from the ideal position. The published trap moves the slotted rod and the rod opposite out 0.75 mm to compensate the slot's field fault, the analogue of the stretched 3-D trap. It costs a sixth of the quadrupole strength (q per volt 0.823 of ideal) and adds an octupole of 1.7e-3 of the quadrupole; zero is the ideal quadrupole.",
         },
+        "yStretch": {
+            "value": YSTRETCH, "unit": "mm", "minimum": -2.0, "maximum": 5.0,
+            "description": "How far the y rod pair is moved outward. Zero in the 2002 trap, whose stretch is two-fold; 0.76 mm in the Velos Pro and Stellar traps, whose stretch is four-fold - both pairs out - which restores the x-y symmetry the two-fold stretch broke and removes the axial barrier to injection that asymmetry caused.",
+        },
         "slotXPlus": {
-            "value": 0.125, "unit": "mm", "minimum": 0.0, "maximum": 2.0,
+            "value": SLOTS["slotXPlus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
             "description": "Half the height of the ejection slot through the +x rod. Published slot: 0.25 mm high. Zero closes it and the rod is whole.",
         },
         "slotDepth": {
@@ -136,15 +168,15 @@ doc = {
             "description": "The slot opens behind its channel to this multiple of its half-height; one is no relief, the channel running through to the back at the face's height. Not published. Measured at effective q 0.875 with twenty ions: the straight channel passes none or one of the ions ejected toward it and puts the rest on its walls, an eightfold relief half a millimetre behind the face passes four to nine, and the rest strike the relief's walls or the face beside the slot. Scales with the slot, so a closed slot has no relief and the rod is solid.",
         },
         "slotXMinus": {
-            "value": 0.0, "unit": "mm", "minimum": 0.0, "maximum": 2.0,
+            "value": SLOTS["slotXMinus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
             "description": "Half-height of a slot through the -x rod. Zero in the 2002 trap, which ejects one way; 0.125 for the symmetric design with slots in all four rods.",
         },
         "slotYPlus": {
-            "value": 0.0, "unit": "mm", "minimum": 0.0, "maximum": 2.0,
+            "value": SLOTS["slotYPlus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
             "description": "Half-height of a slot through the +y rod. Zero in the 2002 trap.",
         },
         "slotYMinus": {
-            "value": 0.0, "unit": "mm", "minimum": 0.0, "maximum": 2.0,
+            "value": SLOTS["slotYMinus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
             "description": "Half-height of a slot through the -y rod. Zero in the 2002 trap.",
         },
         "rfAmplitude": {
@@ -168,7 +200,7 @@ doc = {
             "description": "Zero to peak, as the potential difference between the x rods; each rod carries half. Zero is off. The published scan uses 3 V plus 20 mV per m/z, 13.5 V at m/z 524.",
         },
         "heliumPressure": {
-            "value": 4.0e-3, "unit": "mbar", "minimum": 1.0e-6, "maximum": 2.0e-2,
+            "value": PRESSURE, "unit": "mbar", "minimum": 1.0e-6, "maximum": 2.0e-2,
             "description": "Helium bath. Published: about three millitorr, which is 4.0e-3 mbar. The dual-pressure design holds its first cell near 6.7e-3 mbar and its second near 5.3e-4.",
         },
         "collisionCrossSection": {
@@ -197,7 +229,7 @@ doc = {
         "detectorX": {"expression": "rodBackX + 0.5 * housingClearance", "unit": "mm"},
         "cellSize": {"expression": "inscribedRadius / cellsPerRadius", "unit": "mm"},
     },
-    "ion": {"massToCharge": {"value": 524.3, "unit": "Da"}, "chargeNumber": 1},
+    "ion": {"massToCharge": {"value": MZ, "unit": "Da"}, "chargeNumber": 1},
     "source": {
         "position": {"expression": ["launchOffset", "launchOffset", "0"], "unit": "mm"},
         "direction": {"value": [1, 0, 0]},

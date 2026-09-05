@@ -325,6 +325,43 @@ optimiser uses to *perturb* a design is what a sequence uses to *operate* one.
 
 Anything a phase does not name keeps the value it has outside the sequence.
 
+### A phase may ramp
+
+```json
+"sequence": [
+  { "name": "cool", "duration": { "value": 300, "unit": "us" },
+    "set":  { "rfAmplitude": { "value": 500, "unit": "V" } } },
+  { "name": "scan", "duration": { "value": 5.9, "unit": "ms" },
+    "ramp": { "rfAmplitude": { "value": 532, "unit": "V" } } }
+]
+```
+
+`ramp` names where each parameter **ends**, and it gets there linearly in time from
+wherever it stood at the phase's start - the value the phase `set`, or the value in force
+before it. A mass-selective instability scan is exactly this: the RF amplitude rises
+steadily and every ion leaves when its own q reaches the ejection point. Written as
+phases that each hold a value, the scan is a staircase of thousands of steps; the
+linear-ion-trap studies were run that way before the ramp existed, at 4 µs a step, and a
+step of 4 µs is a fifth of a peak width at 200 kDa/s. Written with a ramp it is one phase.
+
+**Exact where the potentials are linear in the ramped parameter, and checked.** A
+solved geometry's field is a sum of solved patterns with time-varying weights, and the
+weights are linear in the electrode excitations; a ramp interpolates the weights between
+the phase's start and its end, so it is exact whenever every potential and drive
+amplitude is linear in the parameter. Nothing stops a potential being written as the
+square root of one, so the validator compiles the electrodes at the phase's midpoint too
+and refuses a ramp whose midpoint is not the mean of its ends, naming the electrode and
+the two numbers. A ramp that moves a drive *phase* is refused as well - that is a
+frequency shift, not an amplitude - and so is one that changes the geometry, as any phase
+that moves metal is.
+
+**Where it does not reach.** A ramp is supported on two-dimensional solved geometries. An
+analytic element that a ramped parameter reaches is refused rather than left frozen at its
+start value while the solved elements ramp, which is the silent half-instrument the
+model-level timeline exists to prevent; a volume solve refuses one for now; and a diffusive
+phase refuses one because the density solver steps through a field it holds fixed within a
+phase. In each case the refusal says to write the curve as phases that hold.
+
 ### Every element follows it, and how depends on what it is
 
 A **solved** geometry follows a phase by re-weighting the channels it has already

@@ -1228,12 +1228,28 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   this compares one number, and whether a retuned working point at the lower pressure wins
   in this model is a two-parameter study not yet run. Recorded as open, not as a refutation.
 
+  **Retuned, the low-pressure result reconciles.** At 5.3e-4 mbar, half the paper's
+  excitation (6.7 V) gives **0.62 u**, the 3 mTorr width exactly; the paper's 13.5 V gives
+  1.44 and twice it 1.46. A strong excitation at low pressure captures ions early from a
+  spread of phases; a gentle one lets each approach resonance. The Velos's gain was a
+  retuning, and this is the part of it that matters for the width.
+
+  **A phase may now ramp.** `ramp` on a sequence phase names where a parameter ends, and it
+  gets there linearly from wherever it stood; the solved geometry's channel weights are
+  interpolated in time, which is exact where potentials and amplitudes are linear in the
+  parameter - checked at the phase's midpoint and refused otherwise, naming the electrode and
+  the two numbers (70.7 V against 50 V for a square root). Refused for an analytic element
+  (it would freeze while the solved ones ramp), a diffusive phase, and a volume solve. A ramped
+  RF flies an ion to **2 µm** of where a forty-step staircase puts it, against 240 µm from the
+  held control; a ramp from zero amplitude works because the end electrodes count as solved
+  states. The scan is one phase now, where it was thousands; at 200 kDa/s a 4 µs step would
+  have been most of a peak.
+
   Two corpus examples at the paper's working point (held with the excitation off, ejected
-  with it on: same RF, same ion, same gas), 39 in all. Not built: a `ramp` inside a phase (the
-  scan is a 4 µs staircase), an extruded polygon in three dimensions, the axial sections and
-  end lenses, space charge in the scan. The Stellar's own trap differs from this lineage and
-  its paper is not in hand. Details in `docs/device-templates.md`, `docs/literature-targets.md`
-  section 2, `docs/validation.md`, SPEC.md Amendment 37.
+  with it on: same RF, same ion, same gas), 39 in all. Not built: an extruded polygon in
+  three dimensions, the axial sections and end lenses, space charge in the scan. Details in
+  `docs/device-templates.md`, `docs/literature-targets.md` section 2, `docs/validation.md`,
+  SPEC.md Amendment 37.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

@@ -1348,19 +1348,35 @@ ejection and each carries its own phase into it. Twelve ions per peak leaves eac
 good to a quarter of itself, which is not enough to rank the two low-pressure rows against
 each other but is enough for the factor of two.
 
-**This is not a refutation of the Velos paper, and the reason is worth stating.** That
-paper compares two tuned instruments - the Velos also changed the trap (slots in all four
-rods, a symmetric RF), its RF electronics and its ejection settings - whereas this table
-changes one number and leaves the LTQ's excitation amplitude, ejection q and scan law in
-place. A resonance ejection tuned for a thinner gas uses a different amplitude and a
-different approach, and finding the working point at 5.3e-4 mbar that beats 3 mTorr, if
-it exists in this model, is a two-dimensional study in excitation amplitude and ejection q
-that has not been run. What the table does establish is that the pressure is not a free
-improvement: at the 2002 settings the gas is doing work, and the Velos's gain came with
-retuning. One more thing the gas costs, visible in the same runs: at 4e-3 mbar about half
-the ions ejected toward the slot pass it, at 5.3e-4 mbar about two thirds, because a
-collision during the last few microseconds of ejection is a kick in y that a 0.25 mm slot
-does not forgive.
+**This is not a refutation of the Velos paper, and retuning shows why.** That paper
+compares two tuned instruments - the Velos also changed the trap (slots in all four rods, a
+symmetric RF), its RF electronics and its ejection settings - whereas the table above
+changes one number and leaves the LTQ's excitation in place. Scanning the excitation
+amplitude at 5.3e-4 mbar and 5,555 u/s, m/z 524, twelve ions:
+
+| excitation | ejected at effective q | FWHM |
+| --- | --- | --- |
+| 3.4 V (a quarter of the paper's law) | 0.8757 | 0.67 u |
+| 6.7 V (half) | 0.8722 | **0.62 u** |
+| 13.5 V (the paper's law) | 0.8674 | 1.44 u |
+| 27 V (twice) | 0.8573 | 1.46 u |
+
+**Half the excitation recovers the 3 mTorr width exactly** - 0.62 u at both pressures -
+and the ions then leave closer to the excitation's nominal q (0.872 against 0.867). A
+strong excitation at low pressure captures ions early and from a spread of phases; a
+gentle one lets each ion approach resonance and leave when its own q gets there. So the
+lower pressure is not a free improvement and not a penalty: it is a different working
+point, and the Velos's gain came with the retuning its paper does not itemise. What the
+gas costs at the slot is visible in the same runs: at 4e-3 mbar about half the ions
+ejected toward the slot pass it, at 5.3e-4 mbar about two thirds, because a collision in
+the last microseconds of ejection is a kick in y that a 0.25 mm slot does not forgive.
+
+**The scan is now a ramp.** These studies were run as staircases of 4 µs phases before a
+phase could ramp; a phase now declares where a parameter ends and gets there linearly, and
+a ramped RF flies an ion to within 2 µm of where a forty-step staircase puts it, against
+240 µm from holding the start value (see the model format). At the Stellar's 200 kDa/s a
+4 µs step would have been 0.8 Th, most of a peak, so the ramp is what makes the fast
+scans below possible at all.
 
 ### Through the slot, or into it
 

@@ -302,6 +302,60 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         Assert.True(Math.Abs(quarterCycle) < 1e-9, "a sinusoidal drive is exactly zero at a quarter cycle");
     }
 
+    /// <summary>
+    /// The Stellar's trap - the Velos Pro structure with a four-fold stretch of 0.76 mm and
+    /// slots in all four rods - as a second template from the same generator: symmetric
+    /// again, so the slot dipoles cancel, and a weaker quadrupole per volt than the 2002 trap.
+    /// </summary>
+    /// <remarks>
+    /// Remes et al. 2024 give the geometry in one sentence: "a 4.0 mm field radius and a
+    /// 4-fold symmetric stretch of 0.76 mm". Moving both pairs out is what an ideal formula
+    /// with r0 = 4.76 mm would describe, so the coefficient is expected near (4/4.76)^2 =
+    /// 0.706 - with the truncated faces and the slots moving it a little. The symmetry is
+    /// the sharper check: four slots at four-fold symmetry leave no dipole and no hexapole,
+    /// where the 2002 trap's single slot leaves both.
+    /// </remarks>
+    [Fact]
+    public void TheStellarTrapIsSymmetricAndItsQPerVoltIsMeasured()
+    {
+        var document = Io.ModelJson.Parse(DeviceTemplates.Read("stellar-ion-trap"));
+        var parameters = new Dictionary<string, ParameterDocument>(document.Parameters!, StringComparer.Ordinal);
+        parameters["rfAmplitude"] = parameters["rfAmplitude"] with { Value = 100.0 };
+        var stellar = Compile(document with { Parameters = parameters });
+        var ltq = Compile(Trap(("rfAmplitude", 100.0)));
+        var ideal = Compile(Trap(("slotXPlus", 0.0), ("xStretch", 0.0), ("rfAmplitude", 100.0)));
+
+        Assert.Equal(0.76e-3, stellar.Parameters["xStretch"].SiValue, 12);
+        Assert.Equal(0.76e-3, stellar.Parameters["yStretch"].SiValue, 12);
+        foreach (var name in SlotParameters)
+        {
+            Assert.Equal(0.125e-3, stellar.Parameters[name].SiValue, 12);
+        }
+
+        var r0 = stellar.Parameters["inscribedRadius"].SiValue;
+        var s = Multipoles(FieldAssembly.Build(stellar), 0.5 * r0, 10);
+        var l = Multipoles(FieldAssembly.Build(ltq), 0.5 * r0, 10);
+        var i = Multipoles(FieldAssembly.Build(ideal), 0.5 * r0, 10);
+
+        output.WriteLine("trap       A2/A2ideal   A1/A2      A3/A2      A4/A2      A6/A2");
+        output.WriteLine($"ideal      {i[2] / i[2],10:F4} {i[1] / i[2],10:E2} {i[3] / i[2],10:E2} {i[4] / i[2],10:E2} {i[6] / i[2],10:E2}");
+        output.WriteLine($"2002 LTQ   {l[2] / i[2],10:F4} {l[1] / l[2],10:E2} {l[3] / l[2],10:E2} {l[4] / l[2],10:E2} {l[6] / l[2],10:E2}");
+        output.WriteLine($"Stellar    {s[2] / i[2],10:F4} {s[1] / s[2],10:E2} {s[3] / s[2],10:E2} {s[4] / s[2],10:E2} {s[6] / s[2],10:E2}");
+        output.WriteLine($"(4.0 / 4.76)^2 = {Math.Pow(4.0 / 4.76, 2):F4}");
+
+        // Four-fold symmetry: no odd orders and no octupole, against the 2002 trap's dipole.
+        Assert.True(s[1] / s[2] < 1e-5, $"Stellar dipole {s[1] / s[2]:E2}");
+        Assert.True(s[3] / s[2] < 1e-5, $"Stellar hexapole {s[3] / s[2]:E2}");
+        Assert.True(s[4] / s[2] < 1e-5, $"Stellar octupole {s[4] / s[2]:E2}");
+        Assert.True(l[1] / l[2] > 1e-4, "the 2002 trap's single slot leaves a dipole");
+
+        // Weaker per volt than the 2002 trap, near what r0 = 4.76 mm would give.
+        Assert.InRange(s[2] / i[2], 0.66, 0.76);
+        Assert.True(s[2] < l[2]);
+    }
+
+    private static readonly string[] SlotParameters = ["slotXPlus", "slotXMinus", "slotYPlus", "slotYMinus"];
+
     /// <summary>Mathieu characteristic exponent on the a = 0 line, by the continued fraction.</summary>
     private static double Beta(double q)
     {

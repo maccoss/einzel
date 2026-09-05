@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,146 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,158 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -2549,16 +2549,15 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     cross-section reproduces the paper's resonance ejection and its unit resolution at
     5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
     that stand between that and the dual-pressure device the Stellar front end actually is.
-    In the order they are worth doing: **a `ramp` inside a phase**, because the scan is a
-    4 µs staircase of thousands of phases and a linear amplitude within a phase is what the
-    instrument does and what a document should be able to say; **the dual-pressure
-    comparison retuned** - the same scan at the Velos analyser pressure (5.3e-4 mbar) and
-    at twice the rate has been run with the 2002 settings held, and the pressure change
-    alone *broadens* the peaks (m/z 524 from 0.62 to 1.44 u), because the gas is what
-    damps each ion's phase before the excitation grows it; the 2009 paper's "two-fold
-    increase in scan rate at the same or superior resolution" is a claim about a retuned
-    instrument, so the study that would test it is two-dimensional in excitation amplitude
-    and ejection q at the lower pressure, and it has not been run; **the axial structure** - three DC sections and end lenses, a
+    In the order they are worth doing: ~~**a `ramp` inside a phase**~~ - **done**: a phase
+    declares where a parameter ends and gets there linearly, exact where the potentials are
+    linear in it and checked at the midpoint, refused for an analytic element, a diffusive
+    phase or a volume solve; a ramped RF flies an ion to 2 µm of a forty-step staircase
+    against 240 µm from the held control; ~~**the dual-pressure comparison retuned**~~ -
+    **done**: with the 2002 excitation held, the Velos analyser pressure alone broadens
+    m/z 524 from 0.62 to 1.44 u, and half the excitation brings it back to 0.62, so the
+    2009 paper's gain is a retuning and a gentler excitation is the part of it that
+    matters; **the axial structure** - three DC sections and end lenses, a
     `solved3d` with the segmented quadrupole's pattern, which is where the paper's figure 2
     (the dipole excitation field's uniformity along the centre section) and its mechanical
     tolerance argument live; and **the slot's exit optics**, which the cross-section cannot
