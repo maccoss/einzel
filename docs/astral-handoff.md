@@ -5444,3 +5444,34 @@ region needs no more thought than "grounded".
 E15 brackets the gap from 45 to 50 mm. The check that it is the geometry and not a coincidence
 is the paper's own condition: three stationary points, so `c3` must come to zero with `c1` on the
 same knob. If it does not, one knob has been tuned and the layout is still wrong somewhere.
+
+## 65. The board gap zeros the first-order term and nothing else
+
+E15 at candidate A, board gap 45 to 50 mm:
+
+| gap, mm | `L_eff` | `c1` | `c2` | `c3` | R over ±2.5% |
+| --- | --- | --- | --- | --- | --- |
+| 45 | 653.8 | -0.019 | +0.225 | +1.02 | 545 |
+| 46 | 654.6 | -0.009 | +0.287 | +1.10 | 1,072 |
+| **47** | 655.7 | **+0.002** | **+0.345** | **+1.22** | **1,793** |
+| 48 | 657.0 | +0.013 | +0.412 | +1.35 | 702 |
+| 50 | 660.0 | +0.039 | +0.555 | +1.76 | 247 |
+
+**`c1` crosses zero at 46.85 mm, exactly where E14's slope predicted.** And at that gap `c2` is
++0.345 and `c3` is +1.22, both large, so the period slope runs from -3.4 to +5.4 (1e-6 per eV)
+across the design window where the published curve stays within ±0.04. R is 1,793 against
+180,000. **One knob has been tuned; the paper's condition of three stationary points is not met,
+and that was the test set in advance.**
+
+What it says about the remaining error: `c2` is the term the board gap cannot fix, and E14
+showed it moves by about 0.1 per 2 mm of electrode 3 or 4 - so removing +0.345 needs several
+millimetres of the reflecting stack, outside the ±1 mm the figure gives. Either the figure's
+positions are less exact than they read, or U3 and U4 are not the table's (E12's free fit gave
+0.776 and 1.724 against 0.916 and 1.503, and the axis potential cannot separate them), or the
+fringe-field correctors the paper mentions and this model omits are doing real work at the
+turning point. Any of the three is a multi-parameter inverse problem - gap, two electrode edges,
+two voltages - against three conditions, which is what an optimiser is for.
+
+Also from this scan: the effective mirror separation is 656 mm at 47 against the published 641,
+2.3 per cent long, with the cap far enough away not to matter. The dwell in the mirror is set by
+the same reflecting-stack shape that sets `c2`, so the two discrepancies are probably one.
