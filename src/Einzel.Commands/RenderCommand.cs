@@ -273,7 +273,13 @@ public static class RenderCommand
     private static IReadOnlyList<Core.Results.ValidityWarning> TransportWarnings(
         CompiledModel model, Transport.Collisions.BackgroundGas gas)
     {
-        if (!gas.IsPresent)
+        // These are the trajectory mode's regime warnings, so they apply to a model that
+        // flies trajectories. A diffusive model has a density and no trajectory to be outside
+        // the validity of; stamping its figure "trajectory integration is not the description
+        // of this physics" qualified the drawing of a funnel at 1.3 mbar for a mode it was not
+        // using. The seventh appearance of asking the pressure a question that belongs to
+        // the mode, and the first in the renderer.
+        if (!gas.IsPresent || model.TransportMode == "diffusion")
         {
             return [];
         }
