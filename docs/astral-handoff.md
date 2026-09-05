@@ -5034,3 +5034,55 @@ drift-limited resolving power six times what the full-scale instrument needs. Th
 where the remaining factor of three sits, and the depth search should now target the
 peak-to-peak excursion of the oscillation period over ±2.5 per cent - or equivalently the
 three-point stationary condition - rather than the double zero.
+
+## 55. The arrival time measured in a flight: the drift is confirmed at R = 339,000
+
+Section 53 established from the paper's equations that the flight time is `K T0 + dT_K` with
+`K` an integer, and that this project had been measuring the drift period instead. Fixing the
+measurement needed **no new engine capability** - the trajectory already records every
+reflection, so the time at a fixed reflection index *is* `K T0 + dT_K` by construction. What
+was missing was knowing that it mattered.
+
+Flown through the solved three-dimensional fields, sixteen-segment stripe, at the corrected
+geometry:
+
+| injection angle | time at reflection 40 | drift period |
+| --- | --- | --- |
+| ×0.96 | 660.79126 us | 827.1922 us |
+| ×0.98 | 660.79128 | 825.8582 |
+| ×0.99 | 660.79135 | 824.1820 |
+| **×1.00** | **660.79145** | **822.5031** |
+| ×1.01 | 660.79160 | 821.3404 |
+| ×1.02 | 660.79180 | 821.2016 |
+| ×1.04 | 660.79223 | 824.1879 |
+
+| | spread | R |
+| --- | --- | --- |
+| **arrival time** | **1.473e-6** | **339,524** |
+| drift period, the same flights | 7.283e-3 | **69** |
+
+**A ratio of 4,946, measured in a flight rather than a quadrature.** And it agrees with the
+pseudopotential prediction of 7.9e-7 to within a factor of 1.9, which is close for a full field
+solve against an idealised model - so the pseudopotential treatment is validated end to end,
+and the remaining factor of two is the solved field's own departure from it.
+
+**R = 69 is the number that had this project believing the drift was hopeless.** It appears
+throughout sections 24 to 46 in various forms - "the drift limits R to about 35", "the device
+that makes the drift isochronous in sideways speed makes it non-isochronous in energy" - and
+it was always an artefact of where the detector sat, not a property of the instrument.
+
+Note also that the **total** reflection count varies between 50 and 51 across this scan, which
+is exactly the condition the paper places on the design: `T_D / T0` must stay within `K ± 1/2`
+so that every ion makes the same number of oscillations before detection. Reading at reflection
+40 is inside that for every angle. An ion detected on a plane, as this model does by default,
+is caught at whichever reflection it happens to be near - which is why its flight time tracks
+the drift period.
+
+### Where the model stands, all quantities now comparable
+
+| | this model | published | |
+| --- | --- | --- | --- |
+| drift contribution to R | **339,524**, flown | not quoted | not the limit |
+| mirror, over the paper's ±2.5% window | **36,700** | ~100,000 | **the limit** |
+
+One factor of three, in one place, with the mechanism named. That is the whole remaining gap.
