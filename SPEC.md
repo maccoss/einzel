@@ -117,7 +117,7 @@ and nobody can install this.
 | 2 | An update offered, deferred, later accepted | **Not met** — no update mechanism |
 | 3 | Mathieu diagram reproduced | Met twice — ideal field q = 0.90684, solved round rods q = 0.90525 |
 | 3 | Quadrupole transmission against resolution | **Met** — the band closes onto the tabulated apex q = 0.70600, R rising 1.6 to 15.6, both edges bisected to ACC-6 |
-| 3 | Funnel transmission against a published benchmark | **In progress, on the PNNL 100-electrode funnel.** The low-m/z cutoff of Page et al. 2006 is reproduced in mechanism (losses on the tapered rings), shape (a 200 kHz rise) and ordering with DC gradient, and sits 17–22 % low in frequency with hard-sphere collisions and on the measurement with Langevin ones - the two limiting collision models bracket the measured curve. The transmission-against-RF-amplitude curve of Kim et al. 2000 is being run in the diffusive mode. `docs/literature-targets.md` §5. |
+| 3 | Funnel transmission against a published benchmark | **Met, with stated caveats, on the PNNL 100-electrode funnel.** Both published curves on one template, one per transport mode: Kim et al. 2000's transmission against RF amplitude in the diffusive mode (threshold ~14 Vpp against a measured 16, nothing tuned; the plateau's absolute 65 % is not compared, since space charge and the inlet are not modelled), and Page et al. 2006's low-m/z cutoff in the collision-by-collision mode (mechanism, shape and gradient ordering reproduced; hard spheres 17–22 % low in frequency, Langevin on the measurement, the two bracketing the curve). `docs/literature-targets.md` §5; handoff 76–78. |
 | 3 | Cross-mode agreement in the overlap band | Met — 0.43 standard errors |
 
 ---

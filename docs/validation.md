@@ -658,3 +658,12 @@ hole - section 76 - and it sets nothing in the cutoff, which is decided on the r
 300 K, no gas jet, no space charge. What it exercises that nothing else here does: the
 collision-by-collision mode at 1.9 Torr, above the band it claims, over hundreds of thousands of
 collisions per point.
+
+The other published curve, Kim et al. 2000's transmission against RF amplitude at 1 Torr,
+is reproduced in the diffusive mode with nothing tuned: 0.17 / 0.57 / 0.90 / 0.97 / 0.99 at
+10 / 15 / 20 / 25 / 30 Vpp against a measured 0.05 / 0.39 / 0.85 / 0.97 / 1.00 (normalised to
+the plateau), a threshold near 14 Vpp against 16, and within a volt of the simulation Tolmachev
+et al. ran with an unrelated code. The plateau's absolute height (65 % in the instrument) is
+deliberately not compared: it is set by space charge and the inlet, neither modelled. So the
+one device both transport modes claim a share of has one published curve reproduced in each,
+which is the REG-1 seam earning its keep on an instrument rather than in a test.

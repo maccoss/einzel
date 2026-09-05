@@ -5992,3 +5992,47 @@ frequency. **That is REG-3's comparison made against a published instrument rath
 against ourselves**: the benchmark resolves the difference between the collision models, and
 says which way a hybrid potential would have to lean. A speed-dependent cross section - hard
 core plus polarization - is the next physics this device asks for, and it is one function.
+
+## 78. Transmission against RF amplitude: the threshold lands on the measurement
+
+The other published curve, Kim et al. 2000 Figure 6 (as reproduced in Kelly et al. 2010):
+transmitted current against RF amplitude at 1 Torr, 0.7 MHz, 16 V/cm, gramicidin ions, 5 nA in.
+Run in the **diffusive** mode with the RF entering as its collisional cycle average, doubly
+charged m/z 571, the extraction electrode behind the conductance limit, 10,000 ions of density:
+
+| Vpp | model | measured, normalised to its 3.3 nA plateau | Tolmachev 2000 simulation, normalised |
+| --- | --- | --- | --- |
+| 10 | 0.17 | 0.05 | 0.00 |
+| 15 | 0.57 | 0.39 | 0.52 |
+| 20 | 0.90 | 0.85 | 0.79 |
+| 25 | 0.97 | 0.97 | 0.97 |
+| 30 | 0.99 | 1.00 | 1.00 |
+| 40 | 1.00 | 0.97 | 1.00 |
+| **50 % point** | **~14 Vpp** | **~16 Vpp** | ~15 Vpp |
+
+**Nothing was tuned.** The threshold is where the RF's cycle-averaged well first overcomes the
+DC gradient's outward push in the taper and the diffusion that spreads the packet onto the
+rings, and it comes out within two volts of the measurement - and within a volt of the
+simulation Tolmachev ran with a code that shared nothing with this one. Below the threshold
+the losses are on the tapered rings (88 to 97); through it they move to the conductance-limit
+face as the packet narrows but not yet to a millimetre; above 25 Vpp essentially everything
+passes the 2 mm hole. The model is slightly early at 10 and 15 Vpp, which is the direction a
+doubly charged ion confined by a well proportional to its charge squared would be if the real
+packet carried some singly charged gramicidin too.
+
+**What is deliberately not compared is the plateau's absolute height.** The instrument
+transmitted 65 per cent of what entered; this model transmits everything above 25 Vpp. The
+difference is what the model leaves out and says so: 5 nA of space charge (Tolmachev's
+simulation included it and reached the same 3.3 nA), losses at the jet disrupter and in the
+capture of the expanding jet upstream of where these ions are released, and the jet itself.
+The threshold is a property of the funnel's field; the plateau is a property of the inlet.
+
+**So both of the funnel's published curves are reproduced on one template**, one per transport
+mode: the amplitude threshold in the diffusive mode at 1 Torr, the frequency cutoff in the
+collision-by-collision mode at 1.9 Torr, with the two limiting collision models bracketing the
+latter. Phase 3's last acceptance criterion moves from "not met" to met with stated caveats.
+
+One warning to read on the way: `mobility.outside-fit` on every run here. The declared
+mobility is valid to 100 Td and REG-2 evaluates the worst point in the gas, which is the
+extraction gap behind the conductance limit at 250 Td - an extrapolation in the last five
+millimetres, in a region that decides nothing about the threshold.
