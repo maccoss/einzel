@@ -5225,3 +5225,54 @@ is, the 2.2-fold optics gap closes at the source rather than by search.
 abut: `mouth` = 138.45 mm from the cap, `d1..d4` = 49.7 / 70.7 / 97.7 / 138.45. The gaps are a
 real difference the template cannot yet express, and are the next thing to add if the abutting
 approximation falls short.
+
+## 59. What is published about the mirror, what is guessed, and what the model has never been compared to
+
+Mike asked whether the ion optics here are borrowed from the published record. The full answer,
+now that both papers have been read from rendered pages rather than text extractions:
+
+| | status | source | used here? |
+| --- | --- | --- | --- |
+| mirror voltages `U1..U4` and both correction vectors | **published** | crowd-control Table 1, read off the rendered page: `-1.840, -1.158, +0.916, +1.503` | yes, correctly |
+| electrode count and order | **published** | design paper Fig. 1 schematic: five per mirror, 0 grounded and long, 1-4 outward, with gaps, 4 inside an end cap | partly - the template has four biased plus a grounded region, abutting |
+| electrode positions along the mirror | **published, graphically** | design paper Fig. 1 lower left, grey blocks: 204-250, 258-268, 282-298, 307-347+ mm from the mid-plane | **no - guessed**, and wrong by 2-3x on two of four |
+| on-axis potential `phi_0(z)` | **published, graphically** | same panel: -5.56 kV at 225, zero at 260, 4 kV at 293, 5.9 at 340 | **never compared** |
+| period slope `(1/T) dT/de` vs energy | **published, graphically** | crowd-control Fig. 2 curve 1, and design paper Fig. 1 lower right | **never compared** |
+| board gap (mirror-to-mirror in x) | not found in either paper | - | guessed at 40 mm |
+| gap treatment between electrodes | not stated | 9-15 mm gaps visible in the figure | template cannot express gaps |
+
+**So the voltages were right all along and the geometry they were applied to was not.** Every
+mirror result in sections 26 to 57 was the published voltage set on a guessed electrode layout.
+
+### E10: the naive fix does not work, and says why
+
+Mapping the published blocks onto the template by splitting each gap at its midpoint - so the
+electrodes still abut - and flying at the published voltages with nothing tuned:
+
+| | `c1` | `c2` | `c3` | excursion ±2.5% | R | on-axis rms vs figure |
+| --- | --- | --- | --- | --- | --- | --- |
+| shipped geometry | -0.033 | -0.098 | +1.39 | 1.60e-3 | 312 | 1.42 kV |
+| published blocks, abutting | -0.020 | **+0.996** | +3.03 | 1.18e-3 | 423 | **3.32 kV** |
+
+Neither is at a first-order focus, and the abutting version is *further* from the published
+on-axis potential. The reason is in the curve: the published dip sits at **225 mm, the centre
+of electrode 1**, while the abutting model puts it at 250, because electrode 2 - also negative
+at -4632 V - sits hard against electrode 1 and drags the negative region outward. The published
+design has a **9 mm gap and a 10 mm electrode 2** there, and the axis potential crosses zero
+directly under it. **The gaps are not a detail; they set where the lens is.**
+
+That also means the **board gap is now constrained**, because a 10 mm electrode at -4632 V with
+the axis potential near zero beneath it needs the axis to be far enough away that the two
+larger neighbours dominate. The 40 mm guess may be low. It is the one unpublished dimension
+left, and the on-axis curve pins it.
+
+### What this sets up
+
+A well-posed inverse problem for the first time on the mirror: **electrode positions from the
+figure, voltages from the table, sixteen points of on-axis potential as data, and one or two
+unknowns** - the board gap and the treatment of the inter-electrode gaps. The field is linear in
+the voltages, so once the geometry is right the comparison is direct. It needs the template to
+express electrodes by position rather than by abutting depth, which is the next change.
+
+Then the check that matters: the published `(1/T) dT/de` curve from crowd-control Fig. 2, which
+this model has never been held against.
