@@ -5300,3 +5300,36 @@ by working back from the whole-instrument figure with an assumed drift.
 The curve is saved as `slope_published.json` in the scratch directory: 961 points, energy in eV
 against slope in 1e-6 per eV. A model that reproduces it point by point has the published mirror;
 one that reproduces only the excursion has a mirror as good as it.
+
+## 61. The published layout with gaps does not reproduce the published curve either, and it says why
+
+E11 built the mirror from the figure's electrode extents with the gaps as bare board and a
+grounded electrode 0 running from the mid-plane out to electrode 1, at the crowd-control
+voltages, and scanned the one unpublished dimension - the board gap:
+
+| z, mm | figure | gap 30 | gap 40 | gap 50 | gap 60 | gap 80 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 225 | **-5.56** | -6.70 | -6.14 | **-5.56** | -5.01 | -4.04 |
+| 250 | -2.42 | -5.75 | -5.23 | -4.69 | -4.18 | -3.29 |
+| 260 | **-0.02** | -4.17 | -3.76 | **-3.36** | -2.99 | -2.37 |
+| 270 | +1.78 | -1.93 | -1.75 | -1.60 | -1.46 | -1.23 |
+| 280 | +3.03 | +0.74 | +0.50 | +0.32 | +0.19 | -0.01 |
+| rms | | 1.93 | 1.76 | **1.69** | 1.71 | 2.00 |
+
+**The lens is right and the rest is not.** At a 50 mm board gap the dip lands at -5.56 kV against
+the figure's -5.56, five millimetres from where the figure puts it. But the potential then stays
+negative to 278 mm at *every* board gap, where the figure crosses zero at 260 - directly beneath
+electrode 2. No board gap moves that crossing by more than a few millimetres, because it is set
+by electrode 2's voltage and not by the geometry.
+
+**So electrode 2 at -4632 V is incompatible with the published curve**, whatever the board gap.
+Both papers say in prose that electrodes 2 to 4 are positive - the design paper: "the other
+electrodes 2-4 are biased positively in an ascending progression"; the crowd-control paper:
+"three reflecting U2-4" - and only the crowd-control *table* has U2 negative, at -1.158. Either
+that table describes a tuning different from the one the design paper's figure shows, or the
+electrode positions are wrong in a way that happens to look like a sign.
+
+The field is linear in the voltages, so E12 settles it by fitting them: four basis solves, one
+electrode at a time, against the sixteen published points. A fit returning the table's
+coefficients would mean the geometry is at fault; one returning a positive U2 near the prose
+would mean the two papers describe different voltage sets, and the figure's is the one to model.
