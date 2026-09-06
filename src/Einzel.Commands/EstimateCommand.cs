@@ -223,6 +223,15 @@ public static class EstimateCommand
     /// <summary>Above this, GRD-8 asks for confirmation rather than proceeding.</summary>
     public const double ThresholdSeconds = 30.0;
 
+    /// <summary>The threshold in force, which a caller may raise or lower.</summary>
+    /// <remarks>
+    /// GRD-8's own wording is "a configurable cost threshold", and this was a constant with
+    /// no way to configure it. A gate whose number cannot be moved is not a gate, it is an
+    /// opinion: somebody who knows their study is worth an hour has no way to say so, and
+    /// the observed response was to shrink the study instead.
+    /// </remarks>
+    public static double Threshold { get; set; } = ThresholdSeconds;
+
     /// <summary>
     /// Cell updates per second for a diffusive step, in millions.
     /// </summary>
@@ -769,8 +778,8 @@ public static class EstimateCommand
             Elements = elements,
             Seconds = seconds,
             MemoryMiB = memory,
-            AboveThreshold = seconds > ThresholdSeconds,
-            ThresholdSeconds = ThresholdSeconds,
+            AboveThreshold = seconds > Threshold,
+            ThresholdSeconds = Threshold,
             Basis = basis,
             TrajectorySeconds = trajectory.Seconds,
             PilotSpread = Math.Max(planeRate.Item3, volumeRate.Item3),
@@ -976,9 +985,17 @@ public static class EstimateCommand
         var compile = CheapestMilliseconds(
             () => validation = ModelValidator.Validate(document, null, directory)) / 1000.0;
 
-        var members = validation.Model is { Cloud.IsCloud: true } compiled
-            ? compiled.Cloud.Ions
-            : study.Ions;
+        // HOW MANY FLIGHTS AN EVALUATION COSTS IS THE FIGURE OF MERIT'S ANSWER, not the
+        // study's ion count. This charged the ion count for every figure, which is right
+        // for an ensemble and wrong for the rest: `flightTime` is one ion down a three-rung
+        // convergence ladder, so a tolerance sweep of the shipped reflectron was costed at
+        // 29 s against a measured 1.08 s. The gate then called it expensive and an agent
+        // shrank its study to get past a number that was wrong - the gate degrading the
+        // work it exists to protect.
+        var members = FiguresOfMerit.FlightsPerEvaluation(
+            study.FigureOfMerit,
+            study.Ions,
+            validation.Model is { Cloud.IsCloud: true } compiled ? compiled.Cloud.Ions : null);
 
         // WHETHER AN EVALUATION IS A PACKET OR AN ENSEMBLE OF INDEPENDENT IONS, and the
         // two cost completely differently.
@@ -1047,7 +1064,7 @@ public static class EstimateCommand
         return model with
         {
             Seconds = seconds,
-            AboveThreshold = seconds > ThresholdSeconds,
+            AboveThreshold = seconds > Threshold,
             Basis = basis,
 
             // The flight the arithmetic above actually used, not the nominal pilot it
