@@ -2712,6 +2712,25 @@ theorem the model reproduces is worth more than an effect it shows, because it s
 part of the field the real effect has to live in - here the anharmonic part and the
 ejection - and so where the next measurement goes.
 
+## A view-model test cannot see a layout, and the layout was wrong
+
+The extension manager's four tests passed on the first run: the licences were right, the
+undeclared one said so, the containment gaps were present, and the read was journalled. The
+pane was still wrong. It sits in a docked panel about 270 px wide, and the seven-column
+grid I had written truncated its headers to "Exte / Li / Wh / Re" and showed the licences as
+"Ap" and "NC" - so the one field the pane exists to surface was the one it cut off. Rewritten
+as a stacked template it reads properly, and the containment lines then needed wrapping too,
+having been clipped mid-word at "needs a restricted token and a job ob".
+
+Neither defect is reachable from a view model: both are about width. What found them was
+driving the window through UI Automation and looking at the screenshot, which this project
+had already needed once, for a camera that silently opened in the wrong view. **A pane whose
+purpose is to make one field legible has not been tested until somebody has looked at it.**
+
+A smaller one alongside: the first driver script searched the whole window for a button
+named "Read" and clicked whichever came first, which on one run was the sequence editor's.
+Scope an automation search to the subtree you mean.
+
 ## A lambda in a branch that is never taken still allocates, on every call
 
 The packet integrator's stage loop was made allocation-free by pooling twenty-two arrays a

@@ -634,6 +634,13 @@ which is exactly the direction UI-1 exists to prevent. The test asserts the thre
 substance - network, filesystem, memory - so adding a fourth gap does not fail it and
 dropping one of these does.
 
+**And it was laid out wrongly at first, which no test could have said.** The pane began as
+a seven-column grid; in a 270 px panel that truncated the headers to "Exte / Li / Wh / Re"
+and the licences to "Ap" and "NC", so the field the pane exists for was the field it cut
+off. The four view-model tests passed throughout. Driving the window and reading the
+screenshot is what found it, as it was for the camera that opened in the wrong view; it is
+now a stacked template, and the containment lines wrap rather than clipping mid-word.
+
 **No extensions and nowhere to put them read differently.** A project with an empty
 `extensions/` folder says so and names `ext register`; a model sitting outside any project
 says there is no extensions folder to read. Both show no rows, and only one of them means

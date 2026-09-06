@@ -126,6 +126,57 @@
       </Grid>
     </DataTemplate>
 
+    <!--
+      A stacked template rather than a grid. The tab panel is about 270 px wide, and a
+      seven-column grid there truncated its headers to "Exte / Li / Wh / Re" and showed the
+      licence as "Ap" and "NC" - which defeats the pane's whole purpose. Found by driving
+      the window and reading the screenshot; every view-model test passed throughout.
+    -->
+    <DataTemplate x:Key="Extension">
+      <StackPanel Margin="4,4,4,7">
+        <TextBlock FontSize="11" FontWeight="Bold" TextWrapping="Wrap">
+          <Run Text="{Binding Name, Mode=OneWay}" />
+          <Run Text="  " /><Run Text="{Binding Version, Mode=OneWay}" Foreground="#606A72" />
+          <Run Text="  " /><Run Text="{Binding Kind, Mode=OneWay}" Foreground="#606A72" />
+          <Run Text="  " /><Run Text="{Binding Trust, Mode=OneWay}" Foreground="#606A72" />
+        </TextBlock>
+
+        <!-- LIC-2. Red and bold where nothing was declared: the one field on the row a
+             reader cannot recompute for themselves. -->
+        <TextBlock FontSize="10" TextWrapping="Wrap" Margin="0,1,0,0">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Setter Property="Foreground" Value="#404850" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding LicenceDeclared}" Value="False">
+                  <Setter Property="Foreground" Value="#A03020" />
+                  <Setter Property="FontWeight" Value="Bold" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+          <Run Text="licence: " /><Run Text="{Binding Licence, Mode=OneWay}" />
+        </TextBlock>
+
+        <TextBlock FontSize="10" TextWrapping="Wrap" Foreground="#606A72"
+                   Text="{Binding Description}" />
+
+        <TextBlock FontSize="10" FontWeight="Bold" Foreground="#A03020" TextWrapping="Wrap">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Setter Property="Visibility" Value="Collapsed" />
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding Usable}" Value="False">
+                  <Setter Property="Visibility" Value="Visible" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+          <Run Text="this engine refuses it: " /><Run Text="{Binding Incompatibility, Mode=OneWay}" />
+        </TextBlock>
+      </StackPanel>
+    </DataTemplate>
+
     <DataTemplate x:Key="Phase">
       <StackPanel Margin="4,4,4,6">
         <TextBlock FontSize="11" FontWeight="Bold" TextWrapping="Wrap">
@@ -538,32 +589,26 @@
                 <TextBlock Text="The sandbox does NOT enforce" FontWeight="SemiBold"
                            FontSize="11" Foreground="#A03020" />
               </HeaderedContentControl.Header>
-              <ListBox x:Name="ExtensionUnenforced" MaxHeight="110" BorderThickness="0" />
+              <!-- Wrapped, and the horizontal scrollbar disabled. A plain string ListBox
+                   clips instead of wrapping, which truncated these to "no network: needs a
+                   restricted token and a job ob" - a safety statement cut off mid-word is
+                   most of the way to not making it. -->
+              <ListBox x:Name="ExtensionUnenforced" MaxHeight="150" BorderThickness="0"
+                       HorizontalContentAlignment="Stretch"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="10"
+                               Margin="0,1,0,2" Foreground="#404850" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
             </HeaderedContentControl>
 
-            <DataGrid x:Name="ExtensionGrid" Margin="4,0,4,4" AutoGenerateColumns="False"
-                      IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="Extension" Binding="{Binding Name}" Width="1.2*" />
-                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="Auto" />
-                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto" />
-                <DataGridTextColumn Header="Trust" Binding="{Binding Trust}" Width="Auto" />
-                <DataGridTextColumn Header="Licence" Binding="{Binding Licence}" Width="1*">
-                  <DataGridTextColumn.CellStyle>
-                    <Style TargetType="DataGridCell">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding LicenceDeclared}" Value="False">
-                          <Setter Property="Foreground" Value="#A03020" />
-                          <Setter Property="FontWeight" Value="SemiBold" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </DataGridTextColumn.CellStyle>
-                </DataGridTextColumn>
-                <DataGridTextColumn Header="What it does" Binding="{Binding Description}" Width="2*" />
-                <DataGridTextColumn Header="Refused because" Binding="{Binding Incompatibility}" Width="1.4*" />
-              </DataGrid.Columns>
-            </DataGrid>
+            <ListBox x:Name="ExtensionGrid" Margin="4,0,4,4"
+                     HorizontalContentAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ItemTemplate="{StaticResource Extension}" />
           </DockPanel>
         </TabItem>
       </TabControl>
