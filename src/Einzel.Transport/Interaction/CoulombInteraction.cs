@@ -131,12 +131,18 @@ public sealed class CoulombInteraction : ISelfField
     /// </para>
     /// <para>
     /// A vanishing extent is floored at a thousandth of the largest, because a packet
-    /// declared with no spread along an axis still has to be softened at something.
+    /// declared with no spread along an axis still has to be softened at something. A
+    /// negative one is refused: a standard deviation cannot be negative, and the floor would
+    /// otherwise turn a sign error into a small positive spread and an under-softened force
+    /// with nothing said.
     /// </para>
     /// </remarks>
     public static double SpacingSoftening(double sigmaX, double sigmaY, double sigmaZ, int macroparticles)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(macroparticles);
+        ArgumentOutOfRangeException.ThrowIfNegative(sigmaX);
+        ArgumentOutOfRangeException.ThrowIfNegative(sigmaY);
+        ArgumentOutOfRangeException.ThrowIfNegative(sigmaZ);
 
         var largest = Math.Max(sigmaX, Math.Max(sigmaY, sigmaZ));
         if (!(largest > 0.0))

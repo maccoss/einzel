@@ -72,4 +72,14 @@ public sealed class SofteningShapeTests(ITestOutputHelper output)
         Assert.True(flat > 0.0 && flat < 1.0e-3);
         Assert.Equal(double.Epsilon, none);
     }
+
+    /// <summary>A negative standard deviation is a sign error, refused rather than floored into a small positive spread.</summary>
+    [Fact]
+    public void ANegativeExtentIsRefused()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => CoulombInteraction.SpacingSoftening(-1.0e-3, 1.0e-3, 1.0e-3, 100));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CoulombInteraction.SpacingSoftening(1.0e-3, -1.0e-3, 1.0e-3, 100));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CoulombInteraction.SpacingSoftening(1.0e-3, 1.0e-3, -1.0e-3, 100));
+        Assert.Throws<ArgumentOutOfRangeException>(() => CoulombInteraction.SpacingSoftening(1.0e-3, 1.0e-3, 1.0e-3, 0));
+    }
 }
