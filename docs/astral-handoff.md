@@ -20,10 +20,16 @@ model**, it reverses at **334.76 mm after 25 reflections with 13.39 mm of drift 
 reflection** — against a published **310 to 360 mm, 24 to 26 reflections, 13.40 mm** (§17).
 Two published numbers fix the two unknowns and the third checks.
 
-**The convergence is the one number to question.** 0.56 mm is 2.8× what this document used,
-and the whole factor is in what "a 200 µm thick spacer" tilts over: 200 µm closing the *gap*
-across the 350 mm drift, or 200 µm per mirror over a ~250 mm baseline. None of the four
-papers says. It is now the most consequential unpublished number here.
+**The convergence is published, and it was in a paper already in `papers/`.** This document
+said for a long stretch that the whole 2.8× was in what "a 200 µm thick spacer" tilts over
+and that none of the papers said which - and then listed the Grinfeld design paper as "the
+one to get next" while it sat unread on disk. **Its Table 1 states the convergence angle
+directly**, along with three other principal parameters (§1a). The arithmetic then picks the
+reading this document could not choose between: the published angle is 196 µm over a 250 mm
+mirror body, which is the spacer, and 503 µm across the 641 mm effective separation, which is
+what the model fitted independently at 0.56 mm. **The fit and the specification agree once
+the baseline is known.** What remains is the injection angle, where the paper says 1.78° and
+the fit wanted 2.29°.
 
 **The full track flies end to end** - 25 oscillations out to a 334.61 mm reversal and 25 back,
 31.27 m in 853.7 µs against a published ~30 m in ~779, with every geometric register number
@@ -43,7 +49,7 @@ missing was a geometry fitted to them, and the seam to fit it through.
 **What remains beyond that** is the drift, and the fourth paper names the mechanism. A tilted mirror pair applies a *constant* force, so the drift period depends on
 amplitude; the published requirement is that it be constant to **5e-6**, and the ion foil's
 stated job is to "counter ToF aberrations induced by the converging ion mirrors" — exactly
-that. There is a dedicated paper on it (Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017), which is the one to get next. The other half is that these mirrors have no
+that. The dedicated paper on it (Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017) **is in `papers/`** - obtained by interlibrary loan, text extracted, and read into §1a. The other half is that these mirrors have no
 time-energy focus and cannot have one, because Thermo's optimised potential coefficients are
 applied here to guessed electrode depths — which is what finally makes the depth fit
 well-posed (§16).
@@ -118,14 +124,17 @@ two `TE` correction vectors are for (§18).
 
 ### Next, in order
 
-1. **Settle the convergence.** §17 reproduces every published reversal figure at 0.56 mm and
-   nothing at 0.20 mm, and the whole 2.8× is in what a 200 µm spacer tilts over. Look for a
-   mirror-assembly length or a mounting baseline in the patent literature or the detector
-   paper's figures. **Every reversal number in this document depends on it.**
-2. **Get Grinfeld, Stewart, Makarov, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** —
-   *isochronous drift in elongated ion mirrors*. §16 derives the requirement (drift period
-   constant to 5e-6) and §17 confirms the foil's published job is exactly to meet it. There
-   is a whole paper on how; read it before optimising blind.
+1. ~~**Settle the convergence.**~~ **Settled by the design paper's Table 1** (§1a): the
+   convergence angle is stated, and it is 196 µm over a 250 mm mirror body - the spacer -
+   and 503 µm across the 641 mm effective separation, which is what §17 fitted at 0.56 mm.
+   **What is left is the injection angle**: the paper says 1.78° and the fit wanted 2.29°,
+   a 29% difference that the reversal distance is sensitive to as a fourth power. Re-run
+   §17 at the published pair and see whether the reversal still lands in 310-360 mm.
+2. ~~**Get Grinfeld, Stewart, Makarov, Nucl. Instrum. Methods Phys. Res. A 1060 (2024)
+   169017**~~ — **it is in `papers/` and its Table 1 is now in §1a.** What is left of this
+   item is the *stripe shape*: the paper gives the optimisation as a five-coefficient
+   polynomial, and §16's requirement (drift period constant to 5e-6) is what it is solved
+   against. Read that section before optimising the foil blind.
 3. **Optimise the foil's 16-slice profile for drift isochronicity**, if (2) does not simply
    give the answer. 16 parameters, and the first thing here that genuinely wants
    `Einzel.Sweeps`.
@@ -158,6 +167,39 @@ marker before trusting any number in them. The three corrections that matter mos
 
 A three-dimensional model of the **Thermo Astral** analyser: an asymmetric-track
 multi-reflection time-of-flight instrument. Published, and used here:
+
+### 1a. The design paper's principal parameters
+
+Grinfeld, Stewart, Balschun, Skoblin, Hock and Makarov, *Multi-reflection Astral mass
+spectrometer with isochronous drift in elongated ion mirrors*, Nucl. Instrum. Methods Phys.
+Res. A **1060** (2024) 169017, Table 1. Paraphrased here rather than reproduced; the paper is
+in `papers/` and is not tracked.
+
+| quantity | published | what this model had |
+| --- | --- | --- |
+| nominal drift length | 335 mm | 334.76 mm, **fitted** and matching |
+| effective mirror separation | 641 mm | 625 mm cap-to-cap, from a different source |
+| number of oscillations | 25 | 25, **fitted** and matching |
+| flight path in the analyser | ~32 m | 31.27 m flown |
+| ion acceleration voltage | 4000 V | 4000 V, used |
+| **mirror convergence angle** | **stated as an angle** | 0.56 mm, **fitted** |
+| **nominal injection angle** | **1.78°** | **2.29°, fitted** |
+| stripe bias | −13.8 V | not used |
+
+Two checks that the pairing is read correctly off a two-column extraction: 2 × 25 × 641 mm is
+32.05 m against the stated ~32 m, and the paper's own remark that the convergence is "a few
+hundred micrometers over the entire drift length" is what the stated angle gives over 335 mm.
+
+**The consequence for §17.** The convergence question this document called its most
+consequential unknown is answered: the published angle is 196 µm over a 250 mm mirror body -
+which is the 200 µm spacer the crowd-control paper names - and 503 µm across the effective
+separation, against the 0.56 mm the model fitted with no knowledge of the paper. The fit and
+the specification agree once the baseline is identified, and the fit identified the baseline.
+
+**And it leaves one disagreement worth chasing.** The injection angle is published at 1.78°
+and §17 fitted 2.29°. The reversal distance goes as a fourth power of that angle, so 29% is
+not a rounding difference. Either the fitted convergence absorbs it, or one of the two is
+being measured from a different reference. That is the next thing to run.
 
 ### The published register
 
@@ -2447,7 +2489,7 @@ because it contradicts what this document previously concluded:
 So the **tilt does the reversal on its own**, and the foil's job is to counter the *time-of-flight
 aberration* the converging mirrors induce - which is precisely the amplitude-dependent drift
 period §16 measured. [C] also cites a dedicated paper on it: **Grinfeld, Stewart, Makarov,
-*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** - which is the paper to get next.
+*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** - **obtained; see §1a.**
 
 ### Measured: mirrors only, no foil
 
