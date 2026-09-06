@@ -440,6 +440,18 @@ scan's 0.5 mm cell against the cross-section's 0.8223, 0.19 % lower and convergi
 with the mesh (0.8109 at 1 mm). The offset is the mesh; the three sections scan as the
 cross-section does.
 
+### Space charge, with the cloud cooled
+
+A 1 mm slice of the cloud along the axis, 240 macroparticles, cooled 1.5 ms in the paper's
+helium and scanned at 16,700 u/s with the packet pushing on itself: at 480, 2,400 and
+9,600 ions per millimetre (an LTQ's 30 mm cloud at 1e4-1e5 ions is 300-3,000) the peak
+moves -0.001, +0.001 and +0.011 u against the unpushed control and its interquartile width
+stays at 0.4-0.5 u. In a near-harmonic trap a dipole excitation drives the centre of mass,
+which the mutual force cannot move (Kohn), so the paper's argument that a line cloud's low
+density spares the peak is reproduced; what sets a real instrument's capacity - ejection
+across the slot and the cloud's axial extent under the end well - is the volume trap's
+question. `docs/device-templates.md` has the table and the caveats.
+
 
 ### What is reproduced from the 2002 paper, and how
 

@@ -1284,8 +1284,8 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   each ion's ejection by a tenth of a unit with no common direction and the median by under
   0.1 u. The cloud size is an input to a run with no gas, and the shift goes as the
   density; a cooled cloud of that population would sit inside about 60 µm, seventy times
-  denser. So the 2002 paper's capacity claim needs gas and space charge in one run, which
-  is the packet integrator's missing collision hook. Also fixed: the direct-sum path called
+  denser. So the 2002 paper's capacity claim needed gas and space charge in one run, which
+  was the packet integrator's missing collision hook. Also fixed: the direct-sum path called
   for an arrival peak unguarded, so a space-charge run in which every ion left through the
   rods ended in `INTERNAL_ERROR` - Amendment 15's defect, reintroduced on the other loop.
 
@@ -1298,11 +1298,27 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   the same at the section's middle and a quarter of the way to its end.
 
   Two corpus examples at the paper's working point (held with the excitation off, ejected
-  with it on: same RF, same ion, same gas), 39 in all. Not built: gas and space charge in
-  one run, which is what a cooled, space-charge-limited cloud needs and the packet
-  integrator's missing collision hook. Details in `docs/device-templates.md`,
-  `docs/literature-targets.md` section 2, `docs/validation.md`, SPEC.md Amendment 37 and
-  item 14.
+  **Gas and space charge in one run, and a null result with a theorem behind it.** The
+  packet integrator takes one collision sampler per macroparticle and lands its shared step
+  on the earliest collision anywhere in the packet. A 1 mm slice of the trap's cloud - 240
+  macroparticles, 50 µm across - cooled 1.5 ms in 4 mTorr of helium (560 collisions each)
+  and scanned at 16,700 u/s with the packet pushing on itself shifts by **-0.001 / +0.001 /
+  +0.011 u at 480 / 2,400 / 9,600 ions per millimetre** against the unpushed control, and
+  does not broaden; an LTQ's cloud runs at 300-3,000 per millimetre. **The reason is the
+  generalised Kohn theorem**: a dipole excitation drives the centre of mass, and in a field
+  linear in position the centre of mass does not feel the mutual force - pair forces cancel
+  by the third law. Checked directly: a packet in an ideal RF quadrupole pushed hard enough
+  to scatter its members by 18 mm moves its centre of mass by **1.8e-14 m**. So a
+  space-charge shift of a resonance-ejection peak lives in the anharmonic part of the field
+  and in the ejecting ion's view of the cloud it leaves, and in this trap both are under a
+  hundredth of a unit. What a cross-section cannot hold is the cloud's axial extent - a
+  slice's ends spread along the axis under their own charge where the real trap's end well
+  stops them - so the capacity question's remainder is the volume trap's, at days per run.
+
+  Two corpus examples at the paper's working point (held with the excitation off, ejected
+  with it on: same RF, same ion, same gas), 39 in all. Details in `docs/device-templates.md`,
+  `docs/literature-targets.md` section 2, `docs/validation.md`, `docs/numerics.md`, SPEC.md
+  Amendment 37 and item 14.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
