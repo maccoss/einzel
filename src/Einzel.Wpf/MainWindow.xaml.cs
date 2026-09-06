@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private ResultsViewModel? _results;
     private RegimeViewModel? _regime;
     private SequenceViewModel? _sequence;
+    private ExtensionsViewModel? _extensions;
     private ProjectViewModel? _project;
     private bool _framed;
     private bool _loaded;
@@ -66,6 +67,7 @@ public partial class MainWindow : Window
     /// <param name="results">Its figures by accuracy class.</param>
     /// <param name="regime">Its dimensionless numbers along the path.</param>
     /// <param name="sequence">Its declared timeline.</param>
+    /// <param name="extensions">The extension manager.</param>
     /// <param name="project">The project it belongs to.</param>
     public void Open(
         ModelTreeViewModel tree,
@@ -73,6 +75,7 @@ public partial class MainWindow : Window
         ResultsViewModel results,
         RegimeViewModel regime,
         SequenceViewModel sequence,
+        ExtensionsViewModel extensions,
         ProjectViewModel project)
     {
         ArgumentNullException.ThrowIfNull(tree);
@@ -80,6 +83,7 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(results);
         ArgumentNullException.ThrowIfNull(regime);
         ArgumentNullException.ThrowIfNull(sequence);
+        ArgumentNullException.ThrowIfNull(extensions);
         ArgumentNullException.ThrowIfNull(project);
 
         _tree = tree;
@@ -88,6 +92,7 @@ public partial class MainWindow : Window
         _regime = regime;
         _sequence = sequence;
         _project = project;
+        _extensions = extensions;
 
         ProjectModels.ItemsSource = project.Models;
         ProjectContents.ItemsSource = project.Contents;
@@ -97,6 +102,11 @@ public partial class MainWindow : Window
         PhaseList.ItemsSource = sequence.Phases;
         SequenceWarnings.ItemsSource = sequence.Warnings;
         SequenceStatus.Text = sequence.Status;
+
+        ExtensionGrid.ItemsSource = extensions.Extensions;
+        ExtensionUnenforced.ItemsSource = extensions.Unenforced;
+        ExtensionStatus.Text = extensions.Status;
+        ExtensionInterpreter.Text = extensions.Interpreter;
 
         ResultsList.ItemsSource = results.Rows;
         ResultsWarnings.ItemsSource = results.Warnings;
@@ -976,6 +986,19 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Reads the declared timeline.</summary>
+    private void OnExtensions(object sender, RoutedEventArgs e)
+    {
+        if (_extensions is null)
+        {
+            return;
+        }
+
+        _extensions.Refresh();
+
+        ExtensionStatus.Text = _extensions.Status;
+        ExtensionInterpreter.Text = _extensions.Interpreter;
+    }
+
     private void OnSequence(object sender, RoutedEventArgs e)
     {
         if (_sequence is null)

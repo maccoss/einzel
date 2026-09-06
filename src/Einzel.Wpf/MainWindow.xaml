@@ -516,6 +516,56 @@
                      ItemTemplate="{StaticResource Phase}" />
           </DockPanel>
         </TabItem>
+
+        <TabItem Header="Extensions">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="4,6,4,4">
+              <Button Content="Read" Click="OnExtensions" MinWidth="54"
+                      ToolTip="List the project's extensions" />
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Top" x:Name="ExtensionStatus" Margin="4,0,4,2"
+                       TextWrapping="Wrap" FontSize="11" Foreground="#606A72" />
+
+            <TextBlock DockPanel.Dock="Top" x:Name="ExtensionInterpreter" Margin="4,0,4,6"
+                       TextWrapping="Wrap" FontSize="11" Foreground="#606A72" />
+
+            <!-- The containment gaps sit on the pane rather than behind a control. A measure
+                 claimed and not applied is worse than one absent and known to be, and the
+                 command layer prints these on every single listing. -->
+            <HeaderedContentControl DockPanel.Dock="Bottom" Margin="4,4,4,0">
+              <HeaderedContentControl.Header>
+                <TextBlock Text="The sandbox does NOT enforce" FontWeight="SemiBold"
+                           FontSize="11" Foreground="#A03020" />
+              </HeaderedContentControl.Header>
+              <ListBox x:Name="ExtensionUnenforced" MaxHeight="110" BorderThickness="0" />
+            </HeaderedContentControl>
+
+            <DataGrid x:Name="ExtensionGrid" Margin="4,0,4,4" AutoGenerateColumns="False"
+                      IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Extension" Binding="{Binding Name}" Width="1.2*" />
+                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="Auto" />
+                <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="Auto" />
+                <DataGridTextColumn Header="Trust" Binding="{Binding Trust}" Width="Auto" />
+                <DataGridTextColumn Header="Licence" Binding="{Binding Licence}" Width="1*">
+                  <DataGridTextColumn.CellStyle>
+                    <Style TargetType="DataGridCell">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding LicenceDeclared}" Value="False">
+                          <Setter Property="Foreground" Value="#A03020" />
+                          <Setter Property="FontWeight" Value="SemiBold" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </DataGridTextColumn.CellStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="What it does" Binding="{Binding Description}" Width="2*" />
+                <DataGridTextColumn Header="Refused because" Binding="{Binding Incompatibility}" Width="1.4*" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </DockPanel>
+        </TabItem>
       </TabControl>
     </Grid>
   </DockPanel>

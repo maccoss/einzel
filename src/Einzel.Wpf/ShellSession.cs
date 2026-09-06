@@ -245,6 +245,32 @@ public sealed class ShellSession
         return outcome;
     }
 
+    /// <summary>The extensions this project carries, and what the sandbox does not enforce.</summary>
+    /// <returns>
+    /// The listing, or null when the model does not sit inside a project - there is nowhere
+    /// for an extension to live then, which is a different thing from having none.
+    /// </returns>
+    /// <remarks>
+    /// LIC-2 asks that extensions carry their own licences and that the manager surface
+    /// them. The engine half was built with the manifest's <c>licence</c> field; this is
+    /// the half that shows it to somebody deciding whether to install one.
+    /// </remarks>
+    public ExtensionListOutcome? Extensions()
+    {
+        var layout = Einzel.Project.ProjectLayout.Find(Journal.ModelPath);
+
+        if (layout is null)
+        {
+            return null;
+        }
+
+        var outcome = ExtensionCommand.List(layout);
+
+        Record("einzel ext list", entry: null);
+
+        return outcome;
+    }
+
     private ShellAction Record(string command, JournalEntry? entry)
     {
         var action = new ShellAction(command, entry);
