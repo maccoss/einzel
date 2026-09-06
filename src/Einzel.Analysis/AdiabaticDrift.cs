@@ -50,7 +50,7 @@ public sealed record SlowMotion(double TurningPoint, double HalfPeriod, bool Bra
 /// where the paper claims two, and a flight of the same configuration agrees with
 /// the quadrature rather than with the paper - which located the model's error in
 /// the drift electrode's discretisation rather than in the mesh or the
-/// integrator. See <c>docs/astral-handoff.md</c> sections 47 to 50.
+/// integrator. See <c>docs/astral-log.md</c> sections 47 to 50.
 /// </para>
 /// <para>
 /// <b>The approximation, stated.</b> The separation assumes the fast orbit is
@@ -233,7 +233,7 @@ public static class AdiabaticDrift
     /// how many oscillations happen. The <i>accumulated perturbation</i> decides when the ion
     /// arrives. Measured on the Thermo Astral's published design the two differ by a factor
     /// of 1.7 million over the same range - the slow period varies by a per cent while the
-    /// arrival time is flat to parts per billion. See <c>docs/astral-handoff.md</c>
+    /// arrival time is flat to parts per billion. See <c>docs/astral-log.md</c>
     /// section 53, and note that four earlier sections of that document measured the first
     /// and reported it as the second.
     /// </para>

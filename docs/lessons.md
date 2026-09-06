@@ -975,6 +975,72 @@ Same family as an unrecognised property being ignored rather than refused, and t
 consequence: **a document that means something other than what it says, with nothing
 anywhere to say so.**
 
+## An endpoint difference is not a spread
+
+A published isochronicity figure was compared against the model's own quadrature and
+reported as reproduced: 9.9e-7 against a paper's 2.1e-6. The first half was wrong, and it
+reached three documents before a second implementation of the same quadrature, written to a
+different specification, disagreed and forced the check.
+
+Two errors compounded, and the first is the general one. **The spread was measured as the
+difference between the two endpoints of the energy range**, and the shape being measured has
+an interior minimum — which is the design property, and the whole reason anyone cares about
+it. A curve that dips in the middle has nearly equal ends, so the endpoint difference is
+small by *cancellation* rather than by flatness, and it gets smaller the more sharply the
+curve dips. The statistic was anti-correlated with the thing it was standing in for.
+
+Measured properly, as maximum minus minimum over the published range, the same shape gives
+9.2e-5 rather than 9.9e-7 — and 1.1e-2 over the full published plateau, which was the second
+error: the range sampled was about a tenth of it.
+
+The rule: **when the quantity is "how much does this vary", the statistic is max minus min
+over the whole declared range, and an endpoint difference is only equal to it for a monotone
+function.** If the design property is a stationary point, the endpoints are the two places
+guaranteed to agree.
+
+## A fit goes stale when the thing it was fitted to moves, and arithmetic cannot see it
+
+A stripe shape had been fitted to a mirror geometry and shipped in the template. The mirror
+then moved three times over the following work. The fitted stripe stayed, and **the model
+stopped reproducing the published drift register for nineteen sections without anything
+saying so** — the reversal came out at 409.7 mm against a published 335.
+
+The part worth keeping is the guard that was in place. A geometry check had been added in the
+same commit that moved the mirror, and it verified the angles *by arithmetic*. It passed,
+correctly, because the arithmetic was right: what had gone stale was a fit whose validity is
+a property of a geometry that is no longer there, and no amount of checking the new geometry's
+internal consistency can detect that. **A flight would have caught it immediately**, because
+the fit's whole purpose is to produce a number a flight measures.
+
+Two rules. A parameter obtained by fitting carries an invisible dependency on everything it
+was fitted against, so **moving any of those invalidates it silently** — and the fix is to
+record what it was fitted to, or to refit as part of the same change. And **a derived quantity
+should be guarded by the measurement it was derived from**, not by a consistency check on its
+inputs; the second is cheaper, always available, and blind to exactly this.
+
+## A document whose name promises current state will be read as current state
+
+`docs/astral-log.md`, when it was called `astral-handoff.md`, grew to 6,000 lines and 80 numbered sections, each recording what
+was found next and several reversing what an earlier one concluded. Its own "Where this
+stands" summary cited sections 16 to 23 and nothing beyond, so the part a reader trusts first
+was current to under a third of the page.
+
+The harm was measurable rather than theoretical. Two claims in CLAUDE.md — which is loaded
+into *every* session — had been written from that summary and were superseded; one of them
+steered an hour of work in this repository before anyone checked. And the correction written
+for it was itself taken from the same stale summary and had to be corrected again within the
+hour.
+
+What made it dangerous was not the length and not the wrong turns, which are worth keeping.
+It was that the name and the opening section both promised a snapshot. Split into a
+current-state page, a published register and a chronological log — and renamed so the log
+says it is one — the same 6,000 lines are harmless.
+
+The rule this project already applies elsewhere: a status page that has drifted is worse than
+none, because it is trusted. **That applies to any document with a summary at the top, and
+the summary is the part most likely to be stale**, because it is written once and the
+sections below it are appended to.
+
 ## A test that drove the system onto a floor was a test of the platform's libm
 
 `CONVERGENCE_ORDER_BELOW_NOMINAL` now gives different advice for a gridded field and

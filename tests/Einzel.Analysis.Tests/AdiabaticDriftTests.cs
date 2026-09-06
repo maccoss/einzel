@@ -136,7 +136,7 @@ public sealed class AdiabaticDriftTests(ITestOutputHelper output)
     /// <b>Not reproduced:</b> the paper's stated 2.1e-6 over a plus or minus ten per cent
     /// range. This formulation gives about 2e-3 there, and the gap is not the printed
     /// coefficients - closing their sum to exactly one, or perturbing one by a unit in its
-    /// last printed digit, changes nothing. See <c>docs/astral-handoff.md</c> section 51.
+    /// last printed digit, changes nothing. See <c>docs/astral-log.md</c> section 51.
     /// </para>
     /// </remarks>
     [Theory]

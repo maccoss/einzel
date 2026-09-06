@@ -1170,7 +1170,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **And the cost picture is the opposite of what the broken run suggested.** That run spent 94% of its time flying, because the escaped ion coasted for 20,000,000 steps. Working, at a 4 mm cell in Release: **solve 5.298 s (94.3%), flight 0.321 s** — and the gap widens with refinement, since node count goes as 1/cell³ while step count goes as 1/cell. The solve is healthy rather than pathological (3 levels, limited by the thin 17-node axis; 13 cycles; factor 0.20; ~52 M node-updates/s on one core). **A number measured on a broken model describes the bug, not the instrument** — and it had already reached a planning document and inverted a priority there.
 
-  **What it did not yet show** was 24 oscillations: at 3.5% the ion crossed the drift in **3.77**, because getting 24 needs the drift to **reverse** and the mirror convergence was not modelled at that point. ~~So the oscillation count is the first real test of the tilt.~~ **It was, and it passed** — see the reversal bullet below, and `docs/astral-handoff.md` for the reconstruction in full.
+  **What it did not yet show** was 24 oscillations: at 3.5% the ion crossed the drift in **3.77**, because getting 24 needs the drift to **reverse** and the mirror convergence was not modelled at that point. ~~So the oscillation count is the first real test of the tilt.~~ **It was, and it passed** — see the reversal bullet below, and `docs/device-templates.md` for where the model now stands.
 
   **And a trap of my own, in the reader rather than the engine.** A probe read `flightTimeSeconds` from `--json` and printed **0.000 µs** for a 120 µs flight: there is no such key, because `flightTime` is a GRD-1 envelope, and `dict.get(k) or 0` turned the miss into a plausible zero. GRD-1 prevents the engine emitting a bare number; nothing stops a consumer reintroducing one.
 
@@ -1204,9 +1204,11 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **The reversal threshold is a fourth-power law in the injection angle**: 11.447 mm at 2°, 0.4638 mm at 1°, under 0.05 mm at 0.5° — 24.7x per halving, bisected by `einzel boundary`. Halving the angle doubles the reflections *and* quarters the axial energy, which predicts a cube; the measurement says more, and two points cannot say what else.
 
-  ~~**Not reconciled with the published instrument**~~ — **it reconciles.** That line was written when the gap was 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4, and the remainder was in the guesses: `d1..d4` free, the board gap assumed. Fitting them through the shipped template rather than by hand-editing a file — which is what making it a template was for — puts the reversal at **334.76 mm after 25 reflections at 13.39 mm of drift each**, against a published **310 to 360 mm, 24 to 26 reflections, 13.40 mm**, with **no ion foil in the model**. Two published numbers fix the two unknowns and the third checks.
+  ~~**Not reconciled with the published instrument**~~ — **it reconciles.** That line was written when the gap was 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4, and the remainder was in the guesses: `d1..d4` free, the board gap assumed. Reading the electrode positions off the published figure instead of guessing depths puts the reversal at **336.15 mm with 24 outbound**, against a published **310 to 360 mm, mean 335, and 24 to 26**, and the flight time at **786.44 µs** against 783.2 by arithmetic. The tilt on its own reverses at 404 mm and the published stripe shape brings it to 336, which is the design paper's own account of the mechanism rather than a discrepancy.
 
-  **And the convergence it fitted was published all along**, in a paper already sitting unread in `papers/`: its Table 1 states the angle, which is 196 µm over the 250 mm mirror body — the spacer — and 503 µm across the 641 mm effective separation, against the 0.56 mm the model fitted knowing none of it. What does not yet agree is the injection angle: published 1.78°, fitted 2.29°, and the reversal distance goes as its fourth power.
+  **And the convergence it fitted was published all along**, in a paper already sitting unread in `papers/`: its table states the angle, which is 196 µm over the 250 mm mirror body — the spacer — and 503 µm across the 641 mm effective separation, against the 0.56 mm the model fitted knowing none of it. What does not yet agree is the injection angle: published 1.78°, fitted 2.29°, and the reversal distance goes as its fourth power.
+
+  **Writing this paragraph twice is itself the finding.** Its first version said "334.76 mm after 25 reflections, by the mirror tilt alone, with no ion foil in the model" — taken from the handoff's own summary, which was current to section 23 of 78 while section 72 had already measured the tilt alone at 404 mm. A superseded number in **this** file steers every session that loads it, which is why the Astral state now lives in `docs/device-templates.md`, the published register in `docs/literature-targets.md`, and the chronology in `docs/astral-log.md` under a name that says it is one.
 
   **Known wrong and stated on the template**: the drift faces are Neumann, which says the structure repeats along z — true while the boards are parallel, false the moment they converge.
 
@@ -1653,7 +1655,7 @@ The two design documents remain the source of truth for *intent*. Tracked alongs
   instrument paper is open access and `papers/README.md` records how to get it (the browser
   tool, not curl — PMC blocks scripted fetches). **Read `papers/README.md` before asking for
   a paper.** The tracked record of what the papers say is the published register in
-  `docs/astral-handoff.md` §1, which paraphrases and cites rather than reproducing.
+  `docs/literature-targets.md` §4, which paraphrases and cites rather than reproducing.
 
 Both are hand-authored, self-contained HTML documents: inline `<style>` blocks over an IBM Plex / CSS-variable palette, figures as inline `<svg>`. Edit the HTML directly; there is no generator and no markdown source. Revisions are new files with a bumped suffix (`-r06` → `-r07`), not in-place overwrites, and the change line at the top of the document records what the revision added.
 

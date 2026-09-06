@@ -1,18 +1,37 @@
-# Astral 3-D modelling: handoff to a dedicated machine
+# Astral reconstruction: a chronological log
 
-**Written 2026-08-31, status current to 2026-09-01.** For moving the Astral analyser work
-onto a faster machine and running it unattended. It says what exists, what is measured,
-what is broken, and — most importantly — what will waste your time if you do not know it
-in advance.
+**This is a log, not a status page. Later sections supersede earlier ones, and nothing here
+is guaranteed to be current.** It runs to eighty numbered sections written over several
+weeks, each recording what was found next; several reverse what an earlier one concluded,
+and the reversals are usually the interesting part.
 
-**Start with *Where this stands*, immediately below.** The rest of the page accreted
-chronologically and five of its sections are marked superseded in place.
+**Do not quote a number out of it without checking whether a later section moved it.** The
+way to read it is backwards — find the highest-numbered section on a topic and treat that as
+the model's position. Reading forwards and believing the first statement is how two
+superseded numbers reached `CLAUDE.md` and steered work from there.
+
+For the three things anyone usually wants, go elsewhere:
+
+| | |
+| --- | --- |
+| **What the model currently claims, and what is guessed** | `docs/device-templates.md` |
+| **What the papers say**, paraphrased and cited | `docs/literature-targets.md` §4 |
+| **The traps that generalise beyond this device** | `docs/lessons.md` |
+
+What this page is still good for: the raw measurements, recorded so they need not be
+recomputed; the wrong turns, with what each cost and what caught it; and the pixel
+measurement of the ion foil off the published figure.
+
+It was called `astral-handoff.md` and opened with a summary headed *Where this stands*. The
+summary was current to section 23 of 78 while readers took it for the whole page, which is
+the naming failure recorded in `docs/lessons.md`. The summary is kept below **as a record of
+where the work stood at that point**, and is not current.
 
 Read `SPEC.md` first, as always. This page is scoped to the Astral work.
 
 ---
 
-## Where this stands
+## Where the work stood at section 23 (historical, not current)
 
 **The drift reversal is reproduced exactly, by the mirror tilt alone.** At a convergence of
 0.56 mm and the 2.29° the published figures themselves imply, with **no ion foil in the

@@ -672,9 +672,63 @@ than as an argument.
 > Stewart et al., *Crowd control of ions in the Astral analyzer*, J. Mass Spectrom.
 > 2024;59(4):e5006. <https://doi.org/10.1002/jms.5006>  **[B]**
 
-**The full published register, the pixel measurement of the ion foil, and the current
-state of the model are in `docs/astral-handoff.md`** - §1, §11 and §§70-72 respectively. This entry
-records only what is a *regression target* and its status, so the two do not drift.
+> Grinfeld, Stewart, Balschun, Skoblin, Hock and Makarov, *Multi-reflection Astral mass
+> spectrometer with isochronous drift in elongated ion mirrors*, Nucl. Instrum. Methods Phys.
+> Res. A **1060** (2024) 169017.  **[C]**
+
+**Nothing here came from conversation with anyone at the vendor.** That is deliberate: the
+value of this model is that it is derived from public information, and a number obtained
+privately would contaminate that. Everything below is paraphrased and cited rather than
+reproduced; the paper texts are in `papers/`, which is not tracked, so this is the tracked
+record of what they say.
+
+The current state of the model is in `docs/device-templates.md`; the pixel measurement of
+the ion foil and the narrative of the reconstruction are in `docs/astral-log.md`.
+
+### The published register
+
+| | | |
+| --- | --- | --- |
+| beam energy | 4 keV | A, B, C |
+| mirror electrodes | five per mirror - one grounded, one strongly accelerating (which provides the spatial focusing), three reflecting | B |
+| nominal drift length | 335 mm | C |
+| drift distance, varying with injection angle | 310-360 mm | B |
+| effective mirror separation | 641 mm | C |
+| number of oscillations | 25 | C |
+| oscillations / flight path | 24 / >30 m | A, B |
+| flight path in the analyser | ~32 m | C |
+| mirror convergence | a 200 um spacer; stated as an angle | B, C |
+| nominal injection angle | 1.78 degrees | C |
+| stripe bias | -13.8 V | C |
+| resolving power | > 100,000 | A |
+| detector | HDR | A |
+
+Two checks that [C]'s table is read correctly off a two-column extraction: twice 25 times
+641 mm is 32.05 m against the stated ~32 m, and the remark that the convergence is a few
+hundred micrometres over the entire drift length is what the stated angle gives over 335 mm.
+
+**A counting trap, written out once.** Three quantities in these papers are easy to conflate
+and two are numerically identical:
+
+| | |
+| --- | --- |
+| flight path | **>30 m** - metres, and the commonest thing to misremember as a count |
+| **total** oscillations, whole flight | **24 to 26** |
+| oscillations **outbound**, to the drift reversal | **12 to 13** ([A]: "the first 12-13 oscillations", then "the following 12-13") |
+| reflections per oscillation | **2** |
+| so **reflections outbound** | **24 to 26** |
+
+The last row and the second are the same numbers and different quantities, so a measurement
+reported in oscillations must be halved before it is compared with anything here. **This is
+still a live source of confusion in the model's own write-ups**, where "oscillations
+outbound" is sometimes used for the quantity this table calls reflections outbound. The
+drift-per-reflection the published set implies is 335 / 25 = **13.40 mm**, which is the
+unambiguous form and the one to compare against.
+
+### The regression targets
+
+This section records only what is a target and its status, so the register above and the
+model's own page do not drift into each other.
 
 The device the whole 3-D path exists for. It is also the first target whose geometry had
 to be **measured out of a published figure** rather than read off a table - the electrode
@@ -684,13 +738,15 @@ now reproduced against the same figure's on-axis potential and period-slope curv
 
 | target | published | status |
 | --- | --- | --- |
-| oscillations / flight path | 24 / 30 m | **25 outbound** from the tilt alone, `D/N` = 13.38 against 13.40 mm; handoff §47 |
-| drift reversal distance | 310-360 mm, mean 335 | **334.61 mm** from the tilt alone (handoff §47); with the stripe in the model the register is being refit to the reproduced mirror (§66, §71) |
-| resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **120,000-220,000** on the drawn layout at the paper's three-point condition (the range is a first-order residual at the 1e-4 level, the floor of the solve; handoff §73), slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; handoff §71 |
-| resolving power, drift alone | - | **73,500** over the full ±11 per cent angular acceptance, from the published stripe shape (handoff §55-56) |
-| energy acceptance | period stationary at 4000 and 4000 ± 100 V | **met by construction** at the solved gap, U3 and U4: c1 = 0.00000, c3 at the fit's noise floor, c2 on the balance point; handoff §71 |
-| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **0.987 of published** - dc1/dTE1 measured at four depths, and C(2) reduces c2 as published; handoff §49 |
+| oscillations / flight path | 24 / 30 m | **24 outbound**, flight time 786.44 us against 783.2 by arithmetic - 0.4 per cent, and the register test excludes 25 by 4.2 per cent |
+| drift reversal distance | 310-360 mm, mean 335 | **336.15 mm**, on the reproduced mirror with the published stripe shape in the model. The tilt alone gives 404 mm; the stripe brings it to 336, which is [C]'s own account of the mechanism - tilt term plus stripe term |
+| resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **120,000-220,000** on the drawn layout at the paper's three-point condition (the range is a first-order residual at the 1e-4 level, the floor of the solve; log §73), slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; log §71 |
+| resolving power, drift alone | - | **73,500** over the full ±11 per cent angular acceptance, from the published stripe shape (log §55-56) |
+| energy acceptance | period stationary at 4000 and 4000 ± 100 V | **met by construction** at the solved gap, U3 and U4: c1 = 0.00000, c3 at the fit's noise floor, c2 on the balance point; log §71 |
+| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **0.987 of published** - dc1/dTE1 measured at four depths, and C(2) reduces c2 as published; log §49 |
 | ion foil geometry | not stated in text | **measured off [A] figure 1** at 1.92 mm/px; shipped in `astral-3d.json` |
+| mirror convergence angle | stated in [C]'s table | **fitted at 0.56 mm before [C] was read**, which is 503 um across the 641 mm effective separation and 196 um over the 250 mm mirror body - the spacer. The fit and the specification agree once the baseline is identified, and the fit identified it |
+| nominal injection angle | 1.78 degrees | **2.29 degrees fitted**, and not reconciled. The reversal distance goes as its fourth power, so 29 per cent is not a rounding difference |
 
 **The C(1) row was run first because it is different in kind from the others.** Every
 other row needs the absolute geometry to be right, because it compares a number this model
@@ -769,7 +825,7 @@ adjacent rings through 10 nF; a 500 kΩ resistor chain for the DC gradient. Ship
 | --- | --- | --- | --- |
 | transmission against RF amplitude [K] | threshold: 3% at 10 Vpp, 40% at 15, 85% at 20, plateau from 25; plateau 3.3 nA of 5 nA in (65%) | 1 Torr N₂, 0.7 MHz, 16 V/cm, gramicidin, 5 nA | **threshold reproduced** — diffusive mode, nothing tuned: 0.17 / 0.57 / 0.90 / 0.97 / 0.99 at 10 / 15 / 20 / 25 / 30 Vpp against 0.05 / 0.39 / 0.85 / 0.97 / 1.00 normalised; 50 % near 14 Vpp against 16. The plateau's absolute 65 % is not compared: space charge and the inlet are not modelled. Handoff §78 |
 | the same, Tolmachev's simulation [K] | same threshold, plateau 3.3 nA | same, with space charge | comparison partner, not a target |
-| low-m/z cutoff against RF frequency, m/z 118.2 [P] Fig. 3 | 50% at 425 / 485 / 565 kHz for 9.0 / 19.1 / 29.1 V/cm | 1.9 Torr, 80 Vpp, singly charged betaine | **mechanism, shape and gradient ordering reproduced; 17–22 % low in frequency** — trajectory mode, hard-sphere collisions, 20 ions a point: 50 % at ~320 / ~380 / ~470 kHz, every loss below the cutoff on a tapered ring. with Langevin collisions instead the 50 % point is ~500 kHz against the measured 485, rising too slowly above it (0.75 at 600 kHz against 0.97): the two limiting collision models bracket the measured curve; handoff §77 |
+| low-m/z cutoff against RF frequency, m/z 118.2 [P] Fig. 3 | 50% at 425 / 485 / 565 kHz for 9.0 / 19.1 / 29.1 V/cm | 1.9 Torr, 80 Vpp, singly charged betaine | **mechanism, shape and gradient ordering reproduced; 17–22 % low in frequency** — trajectory mode, hard-sphere collisions, 20 ions a point: 50 % at ~320 / ~380 / ~470 kHz, every loss below the cutoff on a tapered ring. with Langevin collisions instead the 50 % point is ~500 kHz against the measured 485, rising too slowly above it (0.75 at 600 kHz against 0.97): the two limiting collision models bracket the measured curve; log §77 |
 | cutoff frequency against m/z, six ions [P] Fig. 4 | at 19.1 V/cm: 485, 290, 195, 170, 140, 130 kHz for m/z 118, 322, 622, 922, 1522, 2122 | 1.9 Torr, 80 Vpp | not yet attempted |
 | cutoff independent of RF amplitude [P] Fig. 5 | the same curve at 60, 80, 100, 120 Vpp | 19.1 V/cm | not yet attempted |
 | the closed form [P] eq. 7 | (m/z)ₗₒw = 8 e E_DC sin A / (m_u ω² δ), δ = pitch/π = 0.318 mm, tan A = 0.25 | predicts 511 kHz for m/z 118 at 19.1 V/cm against a measured 485; 351 against 425 at 9.0; 631 against 565 at 29.1 | the analytic partner |
