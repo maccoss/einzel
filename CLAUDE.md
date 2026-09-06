@@ -219,7 +219,7 @@ Two defects surfaced underneath it, both now fixed and recorded in `docs/lessons
 
   **Wired to the model format as schema 0.5**: `"transport": { "spaceCharge": "direct" }`. A string rather than a flag, because particle-in-cell will be a third value. **No new field was needed for the weighting** — `ions` (trajectories computed) and `population` (ions physically present) already meant exactly macroparticles and real ions, and two fields that must agree would have been one too many.
 
-  Three ways to ask for it and not get it are **refused rather than run**, because each would produce a result that looks like the one asked for: fewer than two trajectories (nobody to push on), a cloud with no spatial spread (an unbounded self-field, not a large one), and a declared gas (the packet advances in lockstep and has no collision hook, so the gas would take no part). And **`einzel estimate` states the cost in words as well as in a number** (GRD-8) — 150 trajectories through the shipped trap take 87 s and 2,000 would take about four hours, so the linear intuition is exactly wrong and saying "quadratic" is worth more than the figure.
+  Two ways to ask for it and not get it are **refused rather than run**, because each would produce a result that looks like the one asked for: fewer than two trajectories (nobody to push on) and a cloud with no spatial spread (an unbounded self-field, not a large one). A declared gas was a third refusal - the packet advanced in lockstep and had no collision hook - and is now a capability: **one sampler per macroparticle, the shared step cut to land on the earliest collision anywhere in the packet**, so cooling and the mutual push act on one packet in one run. Checked against equipartition (0.930 of (3/2)kT on 200 members, against 0.952 on the single-ion path) and against a vacuum control (a pushed ball expands 0.16 → 28.7 mm in vacuum and 8.1 mm in 10 Pa of nitrogen). The caveat is reported on every such run: a macroparticle scatters as one ion and carries many, so the fluctuations are those of the macroparticle count. And **`einzel estimate` states the cost in words as well as in a number** (GRD-8) — 150 trajectories through the shipped trap take 87 s and 2,000 would take about four hours, so the linear intuition is exactly wrong and saying "quadratic" is worth more than the figure.
 
   Two things the wiring caught. **Turn-around time inherited the setting and came back as 0.000 ns**: it works by flying a thermal-only cloud with every other spread switched off, which has no spatial extent by construction — so its self-field is unbounded, the packet blew up, too few ions arrived, and the catch returned zero. It reads exactly like a measurement. The sub-model now forces `none`, which is also the physically right answer: turn-around is the temperature's contribution alone. And **a 20 mm test drift showed a 0.2% change**, which would have passed on a build where the interaction was never wired up — a switch that runs different code and produces the same number is not a feature. The test drifts half a metre.
 
@@ -1284,8 +1284,8 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   each ion's ejection by a tenth of a unit with no common direction and the median by under
   0.1 u. The cloud size is an input to a run with no gas, and the shift goes as the
   density; a cooled cloud of that population would sit inside about 60 µm, seventy times
-  denser. So the 2002 paper's capacity claim needs gas and space charge in one run, which
-  is the packet integrator's missing collision hook. Also fixed: the direct-sum path called
+  denser. So the 2002 paper's capacity claim needed gas and space charge in one run, which
+  was the packet integrator's missing collision hook. Also fixed: the direct-sum path called
   for an arrival peak unguarded, so a space-charge run in which every ion left through the
   rods ended in `INTERNAL_ERROR` - Amendment 15's defect, reintroduced on the other loop.
 
@@ -1298,11 +1298,27 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   the same at the section's middle and a quarter of the way to its end.
 
   Two corpus examples at the paper's working point (held with the excitation off, ejected
-  with it on: same RF, same ion, same gas), 39 in all. Not built: gas and space charge in
-  one run, which is what a cooled, space-charge-limited cloud needs and the packet
-  integrator's missing collision hook. Details in `docs/device-templates.md`,
-  `docs/literature-targets.md` section 2, `docs/validation.md`, SPEC.md Amendment 37 and
-  item 14.
+  **Gas and space charge in one run, and a null result with a theorem behind it.** The
+  packet integrator takes one collision sampler per macroparticle and lands its shared step
+  on the earliest collision anywhere in the packet. A 1 mm slice of the trap's cloud - 240
+  macroparticles, 50 µm across - cooled 1.5 ms in 4 mTorr of helium (560 collisions each)
+  and scanned at 16,700 u/s with the packet pushing on itself shifts by **-0.001 / +0.001 /
+  +0.011 u at 480 / 2,400 / 9,600 ions per millimetre** against the unpushed control, and
+  does not broaden; an LTQ's cloud runs at 300-3,000 per millimetre. **The reason is the
+  generalised Kohn theorem**: a dipole excitation drives the centre of mass, and in a field
+  linear in position the centre of mass does not feel the mutual force - pair forces cancel
+  by the third law. Checked directly: a packet in an ideal RF quadrupole pushed hard enough
+  to scatter its members by 18 mm moves its centre of mass by **1.8e-14 m**. So a
+  space-charge shift of a resonance-ejection peak lives in the anharmonic part of the field
+  and in the ejecting ion's view of the cloud it leaves, and in this trap both are under a
+  hundredth of a unit. What a cross-section cannot hold is the cloud's axial extent - a
+  slice's ends spread along the axis under their own charge where the real trap's end well
+  stops them - so the capacity question's remainder is the volume trap's, at days per run.
+
+  Two corpus examples at the paper's working point (held with the excitation off, ejected
+  with it on: same RF, same ion, same gas), 39 in all. Details in `docs/device-templates.md`,
+  `docs/literature-targets.md` section 2, `docs/validation.md`, `docs/numerics.md`, SPEC.md
+  Amendment 37 and item 14.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

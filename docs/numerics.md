@@ -1271,6 +1271,43 @@ it says the answer is insensitive to resolution over a fourfold range. It is alr
 written down for the 3-D solver, and it caught me again here.
 
 
+## Gas and space charge in one run
+
+The packet integrator had no collision hook, and a declared gas was refused with a pushed
+packet because it would otherwise have taken no part. The hook is one argument: a list of
+collision samplers, one per macroparticle, each on its own schedule with its own seed
+stream. The shared step is cut to the earliest scheduled collision of any active member,
+the step is taken, and the members whose event that was scatter at the positions they have
+actually reached before the derivatives are rebuilt. A collision closer than the integrator
+can resolve is applied without a step, so a dense gas presents as a physical rate and not
+as step-size underflow - the same rule the single-ion path follows.
+
+**Why land on it rather than apply it at the end of the step it fell in.** The mutual
+force this integrator exists to compute is evaluated at the members' positions, and a
+velocity applied a fraction of a step late puts the scattered member somewhere it was not
+when it scattered. The single-ion path lands exactly for the same reason and the packet
+path should not be weaker. The price is that the step is bounded by the packet's total
+collision rate: two hundred macroparticles at a pascal collide every few nanoseconds
+between them.
+
+| | |
+| --- | --- |
+| 200 hot macroparticles in 1 Pa of nitrogen, 2 ms, no mutual force | mean energy **0.930** of (3/2)kT, 290 collisions each (the single-ion path gives 0.952 on 288) |
+| Collisions the integrator counted against the samplers' own totals | equal |
+| A dense ball released from rest, 100 µs, pushed, in vacuum | RMS radius 0.162 → **28.7 mm** |
+| The same packet, the same push, in 10 Pa of nitrogen | 0.162 → **8.07 mm**, 146 collisions each |
+
+The third and fourth rows are the point: the vacuum control is what makes "smaller" a
+statement about the gas rather than about a push that never acted, and "larger than it
+started" is what says the push still acted through the gas.
+
+**A macroparticle scatters as one ion and carries many.** The kinematics are one ion
+against one neutral, so the packet relaxes to the ion's velocity distribution sampled at
+the macroparticle count; the drag and the diffusion coefficients are the ion's, the
+fluctuations are those of the smaller sample. Reported on every such run
+(`spacecharge.macroparticle-collisions`), because a cooled cloud is exactly what such a run
+is for and its size is set by a balance the fluctuations enter.
+
 ## The quadro-logarithmic field
 
 `U(r, z) = (k/2)(z^2 - r^2/2) + (k/2) Rm^2 ln(r/Rm)` — a harmonic axial well superposed on

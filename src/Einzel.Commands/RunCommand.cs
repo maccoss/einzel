@@ -727,6 +727,33 @@ public static class RunCommand
     /// - a resolution limit is reported whether or not it is crossed - applied to the third
     /// such limit in this engine, after the coarsening guard and the particle-in-cell cell.
     /// </remarks>
+    /// <summary>
+    /// A pushed packet in a gas: each macroparticle collides as one ion and carries
+    /// the momentum of many, so the packet relaxes to the ion's velocity distribution
+    /// sampled at the macroparticle count. Reported whether or not it matters (REG-2),
+    /// because a cooled, space-charge-limited cloud is exactly what such a run is for
+    /// and its fluctuations are those of the smaller sample.
+    /// </summary>
+    private static IReadOnlyList<ValidityWarning> MacroparticleCollisionWarnings(CompiledModel model, double weight)
+    {
+        if (!model.Gas.IsPresent)
+        {
+            return [];
+        }
+
+        return
+        [
+            new ValidityWarning(
+                "spacecharge.macroparticle-collisions",
+                $"the packet collides with the gas: each of {model.Cloud.Ions} macroparticles scatters as one "
+                + $"ion and carries the charge and mass of {weight:F1}, so the drag and diffusion are the ion's "
+                + $"and the collisional fluctuations are those of {model.Cloud.Ions} samples rather than "
+                + $"{model.Cloud.Population ?? model.Cloud.Ions}. The step is cut to land on every collision in the "
+                + "packet, so a dense gas costs steps in proportion to the packet's total collision rate",
+                WarningSeverity.Provenance),
+        ];
+    }
+
     private static IReadOnlyList<ValidityWarning> SofteningWarnings(CompiledSpaceChargeGrid? grid, CompiledModel model)
     {
         if (grid is not null || model.Cloud.Ions < 2)
@@ -813,6 +840,7 @@ public static class RunCommand
 
                 .. GridResolutionWarnings(grid, model.Cloud.Ions),
                 .. SofteningWarnings(grid, model),
+                .. MacroparticleCollisionWarnings(model, weight),
             ];
         }
 

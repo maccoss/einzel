@@ -207,29 +207,38 @@ public sealed class SpaceChargeSurfaceTests : IDisposable
     }
 
     [Fact]
-    public void AGasIsRefusedBecauseItWouldTakeNoPartInTheRun()
+    public void AGasTakesPartInAPushedRunAndSaysHow()
     {
-        // The failure that would look most like success: a declared gas quietly
-        // doing nothing, because the packet integrator advances everything in
-        // lockstep and has no collision hook.
+        // This used to be a refusal: the packet integrator advanced everything in
+        // lockstep and had no collision hook, so a declared gas would have taken no
+        // part and the failure would have looked exactly like success. It now has one,
+        // and the run says both that the ions collided and what a macroparticle's
+        // collision stands for.
         var model = Tube(Packet, "direct", gas: """
         ,
             "gas": {
               "model": "hardSphere",
-              "pressure": { "value": 1e-4, "unit": "mbar" },
+              "pressure": { "value": 1e-2, "unit": "mbar" },
               "mass": { "value": 28.0134, "unit": "Da" },
               "crossSection": { "value": 250, "unit": "Å^2" }
             }
         """);
 
-        var (exitCode, stdout, stderr) = Run("validate", model, "--json");
+        var validate = Run("validate", model, "--json");
+        Assert.Equal(0, validate.ExitCode);
 
-        Assert.NotEqual(0, exitCode);
+        var (exitCode, stdout, stderr) = Run("run", model, "--json");
+        Assert.True(exitCode == 0 || exitCode == 2, $"exit {exitCode}: {stderr}");
 
-        var text = stdout + stderr;
+        using var result = JsonDocument.Parse(stdout);
+        var ensemble = result.RootElement.GetProperty("ensemble");
+        var collisions = ensemble.GetProperty("collisions").GetInt32();
+        var codes = ensemble.GetProperty("transmission").GetProperty("warnings").EnumerateArray()
+            .Select(w => w.GetProperty("code").GetString()).ToList();
 
-        Assert.Contains("REGIME_INVALID", text, StringComparison.Ordinal);
-        Assert.Contains("collision hook", text, StringComparison.Ordinal);
+        Assert.True(collisions > 0, "a packet in 1e-2 mbar of nitrogen over half a metre must collide");
+        Assert.Contains("spacecharge.modelled", codes);
+        Assert.Contains("spacecharge.macroparticle-collisions", codes);
     }
 
     [Fact]

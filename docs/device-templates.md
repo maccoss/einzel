@@ -1572,8 +1572,61 @@ balance between the line's own field and the pseudopotential puts 400,000 ions i
 about 60 um, seventy times denser, and the frequency shift goes as the density. So the
 instrument's space-charge shift lives in a cloud that gas cooling has compressed, and a
 run with no gas cannot produce that cloud - it can only be handed one. The 2002 paper's
-capacity claim therefore needs gas and space charge in the same run, which is the packet
-integrator's missing collision hook rather than a softening question.
+capacity claim therefore needs gas and space charge in the same run, which was the packet
+integrator's missing collision hook rather than a softening question. It has one now.
+
+### The cooled cloud, scanned: gas and space charge in one run
+
+The packet integrator takes one collision sampler per macroparticle and lands its shared
+step on the earliest collision anywhere in the packet (`docs/numerics.md`), so a cloud can
+cool and push on itself in the same run. A full 30 mm cloud would need thousands of
+macroparticles to resolve its cross-section, so what is scanned is a **1 mm (sigma) slice
+of it along the trap's axis** at the cloud's own linear density: 240 macroparticles, 50 µm
+across, held **1.5 ms in 4 mTorr of helium** at effective q 0.855 to cool (about 560
+collisions each), then ramped at 16,700 u/s through the edge with the 2002 excitation.
+The softening is 0.049 mm against a 0.050 mm transverse size, inside it. Populations are
+linear densities - 240 (the control, no push), 1,200, 6,000 and 24,000 ions per slice are
+about 100, 480, 2,400 and 9,600 ions per millimetre, and an LTQ's 30 mm cloud at 1e4-1e5
+ions is 300-3,000 per millimetre - so the last is three times the instrument's densest
+ordinary load.
+
+| ions per slice | per mm | ejected on the ramp | median | shift | IQR |
+| --- | --- | --- | --- | --- | --- |
+| 240 (control) | 96 | 240 of 240 | 517.349 u | - | 0.48 u |
+| 1,200 | 480 | 240 of 240 | 517.348 | -0.001 u | 0.36 |
+| 6,000 | 2,400 | 240 of 240 | 517.350 | +0.001 u | 0.46 |
+| 24,000 | 9,600 | 240 of 240 | 517.360 | **+0.011 u** | 0.38 |
+
+**No shift and no broadening, to a hundredth of a unit, three times past the instrument's
+load - and the reason is a theorem, not a weakness of the model.** A dipole excitation
+drives the packet's centre of mass, and in a field that is linear in position the centre
+of mass does not feel the mutual force at all: the pair forces cancel by the third law and
+the applied force on the centre is the applied force at the centre. That is the generalised
+Kohn theorem, and it is checked directly: in an ideal RF quadrupole a packet pushed hard
+enough to scatter its members by 18 mm moves its centre of mass by **1.8e-14 m** (the
+third-law imbalance is 1.6e-16). A space-charge shift of a resonance-ejection peak has to
+come from the anharmonic part of the field - here an octupole of 1.7e-3 - and from the
+ejecting ion's view of the cloud once it has left it, and in this trap at this load both
+are under a hundredth of a unit. The per-ion ejection instants do move with population (an
+interquartile range of ±0.3 u against the control at every load), but with no common
+direction: in a gas any perturbation reshuffles which scheduled collisions are accepted,
+and that is the collision noise of 240 samples, not the force.
+
+**What this does and does not say about the 2002 capacity claim.** The paper's argument
+for a linear trap over a three-dimensional one is that the same ions spread along a line
+have a lower density and so a smaller space-charge perturbation. This model agrees that at
+the line densities an LTQ runs at, the resonance-ejection peak is not shifted or broadened
+by space charge in a near-harmonic trap. It does not model the two things that set a real
+instrument's capacity: the *ejection* process across the slot, where an ion leaving the
+cloud crosses the anharmonic fringe and the field of the ions it leaves behind, and the
+cloud's own axial extent, which the end sections set and a cross-section cannot hold. A
+slice of a line is not a line: its ends are free to spread along the axis under their own
+charge, which the real trap's end well prevents. The volume template holds that well and
+would settle it, at a cost of days per run with the direct sum.
+
+**The caveat that travels with it**: each macroparticle scatters as one ion and carries up
+to a hundred, so the collisional fluctuations are those of 240 samples. The mean cooling is
+the ion's, which is what the equilibrium size depends on.
 
 **Two things the study got wrong first, both in the model rather than the engine.** A
 cloud's longitudinal spread follows the launch direction, and the first version left the

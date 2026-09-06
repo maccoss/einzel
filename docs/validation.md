@@ -718,6 +718,14 @@ rate, excitation and gas; its quadrupole term is 0.8207 of ideal at the 0.5 mm c
 the cross-section's 0.8223, which is the 0.2 % offset, and is the same at the centre
 section's middle and a quarter of the way to its end.
 
+**Gas and space charge in one run.** The packet integrator collides: 200 hot macroparticles
+in a pascal of nitrogen settle at 0.930 of (3/2)kT after 290 collisions each (the single-ion
+path gives 0.952), and a pushed ball that expands 0.16 → 28.7 mm in vacuum expands to
+8.1 mm in 10 Pa of nitrogen. **The centre of mass of a pushed packet in an ideal RF
+quadrupole moves by 1.8e-14 m** while its members scatter by 18 mm - the generalised Kohn
+theorem, which is why a cooled slice of the linear trap's cloud scanned at up to 9,600 ions
+per millimetre shifts its resonance-ejection peak by 0.011 u and does not broaden.
+
 
 ## The ion funnel against a published instrument
 

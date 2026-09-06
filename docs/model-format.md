@@ -867,14 +867,26 @@ approximates. Trajectory integration is otherwise excluded from the estimate —
 cost depends on a path that depends on a field not yet solved — so this is the one
 transport cost stated in advance.
 
-Three ways to ask for it and not get it are **refused rather than run**, because
+Two ways to ask for it and not get it are **refused rather than run**, because
 each would produce a result that looks like the one asked for:
 
 | | |
 | --- | --- |
 | Fewer than two trajectories | nobody to push on |
 | A cloud with no spatial spread | an unbounded self-field, not a large one |
-| A declared gas | either method advances the packet in lockstep and has no collision hook, so the gas would take no part in the run |
+
+A declared gas was a third refusal, because the packet integrator advanced everything in
+lockstep and had no collision hook. **It has one now**: each macroparticle carries its own
+collision sampler on its own schedule, seeded exactly as the independent-ion path seeds
+them, and the shared step is cut to land on whichever collision comes next anywhere in
+the packet - the same landing a single trajectory does, so a scattered velocity is applied
+where the ion actually was rather than a fraction of a step away. What that costs is
+steps in proportion to the packet's total collision rate, and what it means is stated
+on every such run as `spacecharge.macroparticle-collisions`: a macroparticle scatters as
+one ion and carries the momentum of many, so the drag and diffusion are the ion's and the
+collisional fluctuations are those of the macroparticle count rather than the population.
+It is the only way a cooled, space-charge-limited cloud can form in a run, which is what
+a trap's capacity question needs.
 
 What it gives up, stated rather than discovered: the packet integrator **cannot
 land exactly on a declared field discontinuity**, because a shared step cannot land

@@ -2696,6 +2696,22 @@ brings the softening inside the packet falls from 1.6 million to about 2,200. Th
 is about the word "mean": a mean spacing is a property of a distribution's shape, and a
 formula that reduces the shape to one radius has assumed the shape.
 
+## A null result needs a theorem or it is a shrug
+
+The cooled cloud scanned with its own charge on gave the same peak at every population, to
+a hundredth of a unit, three times past the instrument's load. The first two null results
+on this question had each been a defect - a softening that switched the force off, then a
+cloud spread across the trap instead of along it - so a third read as one more. It was
+not: in a field linear in position the mutual forces cancel in the centre-of-mass equation
+by the third law, and a dipole excitation drives the centre of mass, so the resonance a
+harmonic trap ejects at cannot depend on how many ions are in it. Written as a test, the
+theorem holds to 1.8e-14 m against members scattered by 18 mm. Two rules. A null result is
+only a result when the mechanism that should have produced an effect is named and shown
+not to apply, and "the force was on" (the per-ion instants moved) is not that. And a
+theorem the model reproduces is worth more than an effect it shows, because it says which
+part of the field the real effect has to live in - here the anharmonic part and the
+ejection - and so where the next measurement goes.
+
 ## A cloud is long along the launch direction, and the trap's axis is somewhere else
 
 A source declares a longitudinal and a transverse spread, and longitudinal means along the

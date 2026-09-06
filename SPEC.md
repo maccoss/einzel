@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,176 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,181 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -2584,8 +2584,15 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     a tenth of a unit with no common direction and the peak by under 0.1 u, because the
     cloud size is an input to a run with no gas and the shift goes as the density - a
     cooled cloud of that population would be about 60 µm across and seventy times denser.
-    The paper's 15x capacity claim needs gas and space charge in one run, which is the
-    packet integrator's missing collision hook. **The Stellar's own trap** is in hand
+    **Gas and space charge now run together** - the packet integrator lands its shared step
+    on every collision in the packet - and a 1 mm slice of the cloud cooled 1.5 ms in the
+    paper's helium and scanned at up to 9,600 ions per millimetre, three times the
+    instrument's densest ordinary load, shifts by 0.011 u and does not broaden. The reason
+    is the generalised Kohn theorem: a dipole excitation drives the centre of mass, which in
+    a near-harmonic field does not feel the mutual force (checked to 1.8e-14 m in an ideal
+    RF quadrupole against members scattered by 18 mm). What is left of the capacity question
+    is the ejection across the slot and the cloud's axial extent, which the volume trap holds
+    and the cross-section cannot. **The Stellar's own trap** is in hand
     (Remes 2024) and shipped as `stellar-ion-trap`; its scan at the paper's four rates gives
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
