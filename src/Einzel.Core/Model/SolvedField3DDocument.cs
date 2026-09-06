@@ -184,6 +184,14 @@ public sealed record Electrode3DDocument : ITappedElectrode
     /// </remarks>
     public QuantityValue? TiltHalfTurns { get; init; }
 
+
+    /// <summary>
+    /// Prism: the outline's vertices, in order, in the cross-section plane - the two axes
+    /// other than <c>axis</c>, in world order: (y, z) for a prism along x, (x, z) along y,
+    /// (x, y) along z. Runs with <c>count</c> and <c>index</c> are allowed, as for a polygon.
+    /// </summary>
+    public IReadOnlyList<VertexDocument>? Vertices { get; init; }
+
     /// <summary>Cylinder: lower end along its axis.</summary>
     public QuantityValue? Lower { get; init; }
 
@@ -288,4 +296,11 @@ public sealed record CompiledSolvedField3D
 /// <param name="DurationSeconds">How long it lasts.</param>
 /// <param name="Electrodes">The electrodes as they stand during it.</param>
 public sealed record CompiledStage3D(
-    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode3D> Electrodes);
+    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode3D> Electrodes)
+{
+    /// <summary>
+    /// The electrodes as they stand at the end of the stage when it ramps, or null when
+    /// it holds; the same metal in the same places as <see cref="Electrodes"/>.
+    /// </summary>
+    public IReadOnlyList<CompiledElectrode3D>? EndElectrodes { get; init; }
+}

@@ -1,4 +1,4 @@
-# Model format, schema 0.3
+# Model format, schema 0.9
 
 A model is declarative, schema-validated, diffable JSON. A model file plus its
 referenced artifacts fully determines a run.
@@ -291,6 +291,31 @@ Use it when the geometry genuinely varies along all three axes. A device that is
 cross-section extruded, or a half-plane rotated, is enormously cheaper and more
 accurate as `solved2d` with the matching symmetry.
 
+### A prism: the polygon, given a length
+
+The volume vocabulary was box, sphere and cylinder, and it could not extrude a slotted
+hyperbolic rod into the three axial sections a linear ion trap is cut into. A `prism` is a
+`polygon` outline swept along one axis between `lower` and `upper`:
+
+```json
+{
+  "name": "centreXPlusUpper", "shape": "prism", "axis": "z",
+  "lower": { "expression": "-centreHalfLength", "unit": "mm" },
+  "upper": { "expression": "centreHalfLength", "unit": "mm" },
+  "vertices": [ ...the same runs and corners a polygon takes... ],
+  "potential": { "expression": "dcOffset", "unit": "V" },
+  "taps": [ { "drive": "rf", "amplitude": { "expression": "-rfAmplitude", "unit": "V" } } ]
+}
+```
+
+The vertices are in the cross-section plane, the two world axes other than `axis` in world
+order: (y, z) for a prism along x, (x, z) along y, (x, y) along z. Its signed distance is the
+outline's own combined with the slab's, exactly as a box combines its three, so its faces are
+cut cells; its first crossing walks the outline's crossings and takes the first interval
+that is inside both the outline and the slab, so a re-entrant outline finds a link's entry
+through its notch. A square prism reproduces a box to 3e-18 m in distance and to the bit in a
+solve. A prism may not be tilted: write the tilt into the outline.
+
 ## Operating an instrument through a sequence
 
 The sequencer the architecture calls a timed state machine. A trap fills,
@@ -324,6 +349,45 @@ It also costs no new vocabulary: the same override mechanism a sweep or an
 optimiser uses to *perturb* a design is what a sequence uses to *operate* one.
 
 Anything a phase does not name keeps the value it has outside the sequence.
+
+### A phase may ramp
+
+```json
+"sequence": [
+  { "name": "cool", "duration": { "value": 300, "unit": "us" },
+    "set":  { "rfAmplitude": { "value": 500, "unit": "V" } } },
+  { "name": "scan", "duration": { "value": 5.9, "unit": "ms" },
+    "ramp": { "rfAmplitude": { "value": 532, "unit": "V" } } }
+]
+```
+
+`ramp` names where each parameter **ends**, and it gets there linearly in time from
+wherever it stood at the phase's start - the value the phase `set`, or the value in force
+before it. A mass-selective instability scan is exactly this: the RF amplitude rises
+steadily and every ion leaves when its own q reaches the ejection point. Written as
+phases that each hold a value, the scan is a staircase of thousands of steps; the
+linear-ion-trap studies were run that way before the ramp existed, at 4 µs a step, and a
+step of 4 µs is a fifth of a peak width at 200 kDa/s. Written with a ramp it is one phase.
+
+**Exact where the potentials are linear in the ramped parameter, and checked.** A
+solved geometry's field is a sum of solved patterns with time-varying weights, and the
+weights are linear in the electrode excitations; a ramp interpolates the weights between
+the phase's start and its end, so it is exact whenever every potential and drive
+amplitude is linear in the parameter. Nothing stops a potential being written as the
+square root of one, so the validator compiles the electrodes at the phase's midpoint too
+and refuses a ramp whose midpoint is not the mean of its ends, naming the electrode and
+the two numbers. A ramp that moves a drive *phase* is refused as well - that is a
+frequency shift, not an amplitude - and so is one that changes the geometry, as any phase
+that moves metal is.
+
+**Where it does not reach.** A ramp is supported on solved geometries in both dimensions -
+a volume solve weighs its channels at the phase's two ends exactly as a cross-section does,
+and its end state is one of the states gathered for the channel decomposition, so a ramp
+from zero amplitude has its pattern solved. An analytic element that a ramped parameter
+reaches is refused rather than left frozen at its start value while the solved elements
+ramp, which is the silent half-instrument the model-level timeline exists to prevent; and a
+diffusive phase refuses one because the density solver steps through a field it holds fixed
+within a phase. In each case the refusal says to write the curve as phases that hold.
 
 ### Every element follows it, and how depends on what it is
 
@@ -420,6 +484,69 @@ placed at a quarter turn would land a hair off axis and the multipole would carr
 spurious dipole made of rounding. `cosPi(0.5)` is exactly zero. This is the same
 convention, for the same reason, that the drive decomposition already uses to keep
 an antiphase electrode from picking up a quadrature component of pure round-off.
+
+## A polygon electrode
+
+Rectangle and disc build every device the templates shipped for two years, and cannot
+say one thing: a rod whose face is a hyperbola with a slot cut through it, which is what
+a radial-ejection linear ion trap is. A `polygon` is the general cross-section - any
+closed outline, convex or not, at one potential:
+
+```json
+{
+  "name": "rodXPlusUpper", "shape": "polygon",
+  "vertices": [
+    { "count": { "value": 25, "unit": "1" }, "index": "k",
+      "x": { "expression": "xStretch + inscribedRadius * sqrt(1 + (s / inscribedRadius) * (s / inscribedRadius))", "unit": "mm" },
+      "y": { "expression": "slotXPlus + (rodHalfWidth - slotXPlus) * k / 24", "unit": "mm" } },
+    { "x": { "expression": "xStretch + rodDepth", "unit": "mm" }, "y": { "expression": "rodHalfWidth", "unit": "mm" } },
+    { "x": { "expression": "xStretch + rodDepth", "unit": "mm" }, "y": { "expression": "slotXPlus", "unit": "mm" } }
+  ],
+  "potential": { "expression": "dcOffset", "unit": "V" },
+  "taps": [ { "drive": "rf", "amplitude": { "expression": "-rfAmplitude", "unit": "V" } } ]
+}
+```
+
+(In the shipped template `s` is written out in full; it is abbreviated here.) The outline
+closes itself from the last vertex back to the first, the winding direction does not
+matter, and the inside is decided by the even-odd rule.
+
+**A curved face is a run.** A vertex entry with a `count` stands for that many vertices:
+the same pair of expressions evaluated with `index` bound from zero to `count - 1`. That
+is `repeat`'s idea applied inside one electrode, and it is what keeps the document
+parametric - the hyperbola above is twenty-five points written once, and every one of
+them moves when `inscribedRadius` or `slotXPlus` does. Without it the linear-ion-trap
+template was 116 KB of generated expressions nobody could read; with it, 24 KB anyone
+can. The chord error is the sagitta of one segment, about two microns on a 4 mm rod
+sampled every quarter millimetre, two orders below the cell it sits in.
+
+**Exact where it matters.** The signed distance is closed form (nearest edge, signed by
+even-odd) and so is the first crossing of a grid link, so a polygon face is a cut cell
+like a disc's - a slot a quarter of a millimetre wide is located below one cell rather
+than rasterised onto whichever row of nodes it falls on. A square written as four
+vertices solves to the rectangle's field to 1e-13 of the applied potential (the two
+compute a cut fraction by different arithmetic, and round differently in the last bit),
+and a rod written as two halves meeting on a line is the whole rod to the bit - which is
+how a slotted rod is written, so that a slot of zero height is simply a rod.
+
+**Refused rather than solved:** fewer than three distinct vertices, zero enclosed area
+(the polygon has collapsed to a line and would vanish from the solve, as an inverted
+rectangle does), and an outline that crosses itself (a bow-tie has two insides by one rule
+and one by another). Consecutive vertices in the same place are **merged**, not refused: a
+parametric outline produces them whenever a feature collapses - a slot of zero height puts
+its channel's two corners on one point - exactly as a zero-extent rectangle is a legitimate
+thin plate. Two polygons that
+share an edge are tangent, not overlapping; two that share interior at different
+excitations are refused as any other pair of conductors is.
+
+**Two things it does not do.** A polygon is a cross-section, so it lives in `solved2d`;
+the volume solver's primitives are box, sphere and cylinder, and an extruded polygon in
+three dimensions is not yet expressible. And a polygon is a polyline, not a curve: a
+conductor that is an equipotential of a transcendental field can be approximated to any
+tolerance, but the document is then sampling a curve it cannot name, and the tolerance is
+the author's to state.
+
+Schema **0.9** carries `polygon`.
 
 ## What a solve is a cross-section of
 
@@ -768,8 +895,9 @@ composing two devices was ever in doubt. **And the obvious escape does not exist
 declaring the analyser as solved geometry, so its own domain bounds it, fails because its
 electrodes are equipotentials of the field they produce — the profile satisfies
 `-r^2/2 + Rm^2 ln(r/Rm) = A - z^2`, transcendental in `r` and invertible only through
-Lambert W — and the 2-D shape vocabulary is rectangle, disc and edge profile, none of which
-is a curve a document can name.
+Lambert W — and no 2-D shape is a curve a document can name. (A `polygon` can now
+approximate one to a stated tolerance, which moves this from impossible to a sampling
+choice; it does not make the profile exact.)
 
 So an analytic element may declare a **region**: a box outside which it contributes nothing.
 
@@ -875,15 +1003,18 @@ here.
 
 ## Versioning
 
-Schema 0.1 through 0.5 all load. Every bump ships a migration and a test that the
-prior corpus still loads. Codes and field names are a compatibility surface that
-agent workflows bind to: they are added, never reworded or repurposed.
+Schema 0.1 through 0.9 all load, and a test reads a document at every version the
+build claims. Every bump ships a migration and a test that the prior corpus still
+loads. Codes and field names are a compatibility surface that agent workflows bind
+to: they are added, never reworded or repurposed.
 
-0.3 adds the source cloud and 0.5 the mutual Coulomb force. Both purely additive,
-so every earlier document still reads — but a document whose ions push on each
-other genuinely is not a 0.4 document, and saying so is cheaper than an older
-build reading it, ignoring the field it does not know, and reporting a different
-flight with nothing to indicate that anything was dropped.
+0.3 adds the source cloud, 0.4 the gas, 0.5 the mutual Coulomb force, 0.6 the
+model-level sequence, 0.7 parametric directions, 0.8 a tilt on a cross-section's
+extrusion axis and 0.9 the polygon electrode. All purely additive, so every earlier
+document still reads — but a document whose ions push on each other genuinely is
+not a 0.4 document, and saying so is cheaper than an older build reading it,
+ignoring the field it does not know, and reporting a different flight with nothing
+to indicate that anything was dropped.
 
 ## Several generators on one geometry
 

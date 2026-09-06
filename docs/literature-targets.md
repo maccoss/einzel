@@ -348,17 +348,222 @@ So the 84% extraction efficiency and the ion-capacity figure are Phase 3 targets
 
 ## 2. The Stellar dual-pressure linear ion trap
 
-Not yet worked up, and deliberately listed separately from target 1 rather than
-folded into it. A radial-ejection linear ion trap is a different optical problem
-from a rectilinear transversal-extraction trap: the ejection is through slots in
-the rods rather than orthogonal to the axis, the electrode cross-section is round
-or hyperbolic rather than flat, and the figure of merit is a mass scan rather than
-a turn-around time.
+**Worked up as of 2026-09-05**, first through its ancestor - the 2002 LTQ cross-section,
+the shipped `linear-ion-trap` template - and then as the Stellar's own trap from its paper,
+the shipped `stellar-ion-trap` template. Deliberately listed separately from target 1
+rather than folded into it. A radial-ejection linear ion trap is a different optical
+problem from a rectilinear transversal-extraction trap: the ejection is through slots in
+the rods rather than orthogonal to the axis, the electrode cross-section is round or
+hyperbolic rather than flat, and the figure of merit is a mass scan rather than a
+turn-around time.
+
+### The Stellar's trap, from its paper
+
+> Remes, Jacob, Heil, Shulman, MacLean, MacCoss, *Hybrid Quadrupole Mass Filter - Radial
+> Ejection Linear Ion Trap and Intelligent Data Acquisition Enable Highly Multiplex
+> Targeted Proteomics*, J. Proteome Res. 2024, 23, 5476. PMC11956834.
+
+The paper gives the trap in one paragraph, and it is enough to draw it:
+
+| | Stellar (Remes 2024) | 2002 LTQ, for comparison |
+| --- | --- | --- |
+| Structure | the Velos Pro LIT | the original two-dimensional trap |
+| Field radius | 4.0 mm | 4 mm |
+| Stretch | **four-fold, 0.76 mm** - both rod pairs out | two-fold, 0.75 mm - the x pair out |
+| Slots | all four rods (the Velos design) | one x rod |
+| Helium | ~6 mTorr high-pressure cell, **0.5 mTorr** analysing cell | ~3 mTorr |
+| Analysis scan rates | 33, 67, 125, 200 kDa/s | 5,555 Da/s |
+| Peak widths at m/z 622 | **~0.35, 0.5, 0.7, 1.0 Th** at those rates | unit resolution |
+| RF frequency, ejection q, excitation | not given | 1 MHz, 0.88, 3 V + 20 mV per m/z |
+
+**What the geometry alone says, before any ion is flown.** With both pairs out the
+cross-section is four-fold symmetric again, and the field shows it: the dipole and the
+hexapole that the 2002 trap's single slot leaves (1.5e-3 and 2.1e-4 of the quadrupole)
+are gone to rounding (1e-15), and so is the octupole the two-fold stretch added - the
+four-fold stretch is not an aberration, it is a change of scale. The quadrupole term is
+**0.6966 of the ideal formula's** at r0 = 4 mm, against (4.0 / 4.76)² = 0.7062 for an ideal
+trap of the stretched radius; the truncated hyperbolae and the four slots account for the
+rest. So the Stellar's q per volt is 0.70 of the textbook value for its field radius, and
+its 12-pole is 2.7e-4 of the quadrupole. The paper's own reason for the four-fold stretch -
+that the two-fold one "introduced an axial barrier to ion injection ... and reduced the
+effectiveness of ion isolation during injection" - is an axial statement this
+cross-section cannot check.
+
+**The scan, at the paper's four rates.** The RF frequency, the ejection q and the
+excitation are not published, so the 2002 trap's are carried over: 1 MHz, q = 0.88, and its
+excitation law at half amplitude (7.7 V at m/z 622, the low-pressure working point the
+retuning found) and at full (15.4 V). Forty-eight ions per rate, the RF ramped as one phase
+from effective q 0.82 through the stability edge to 0.94. The distributions are a spike
+with a tail, so the width is the full width at half maximum of a kernel density (0.05 u):
+
+| rate | model, 7.7 V | model, 15.4 V | paper, at m/z 622 |
+| --- | --- | --- | --- |
+| 33 kDa/s | 0.19 u | 0.33 u | ~0.35 Th |
+| 67 kDa/s | 0.14 u | 0.22 u | ~0.5 Th |
+| 125 kDa/s | 0.15 u | 0.18 u | ~0.7 Th |
+| 200 kDa/s | 0.15 u | 0.25 u | ~1.0 Th |
+
+**Sharper than the instrument, and the gap grows with the rate.** In time rather than mass
+the instrument's widths are a nearly constant 5 to 10 µs of ejection spread at every rate;
+the model's core shrinks from 6 µs at 33 kDa/s to under 1 µs at 200, because an ideal
+four-fold trap with a cold cloud and a clean excitation ejects every ion within a few RF
+cycles of the ramp reaching resonance. The broadenings the instrument has and the model
+does not - a space-charge widened cloud (~1 mm by the 2002 paper's tomography against the
+model's 0.05 mm), amplitude noise on the RF and the excitation, real machining, and the
+Stellar's actual excitation - are not in the template, so the model's width is a floor. The
+floor is worth having: it says the geometry does not limit the Stellar to 0.35 Th at
+33 kDa/s. `docs/device-templates.md` has the two things the sweep taught about running a
+fast scan (through the edge, into a wall).
+
+### The three sections, in a volume
+
+`linear-ion-trap-3d` extrudes the same half-rod outlines as prisms into the paper's 12, 37
+and 12 mm sections with a 2 mm-aperture plate lens at each end, which is the structure the
+2002 paper's figure 2 is about:
+
+| | measured on the axis |
+| --- | --- |
+| Well from the end sections 3 V above the centre | 0.0006 V at the centre, 0.35 at 15 mm, 1.13 at 18 mm (centre section's end), 2.92 at 26 mm |
+| Axial reach of a 300 K ion (kT = 26 mV) | **8.7 mm** with the end sections; 17.1 mm with 20 V lenses alone |
+| Excitation's transverse field over that reach | uniform to below 0.001 % (three sections); 0.2 % over the lens-confined cloud |
+| Excitation's axial component, centre 15 mm | 0.17 % of its transverse field |
+
+The excitation field is one solved pattern and the DC another, so the two configurations
+share it; what the end sections change is where the ions sit in it - the paper's figure 2
+as numbers. A quadrupolar end offset (x up, y down) is zero on the axis and makes no well;
+the first draft had that, and the test caught it.
+
+Scanned at 16,700 u/s with the same twelve ions and excitation as the cross-section, the
+volume trap ejects at effective q 0.8703 against the cross-section's 0.8685 - 0.27 %
+later - and its quadrupole term at half the inscribed radius is 0.8207 of ideal at the
+scan's 0.5 mm cell against the cross-section's 0.8223, 0.19 % lower and converging upward
+with the mesh (0.8109 at 1 mm). The offset is the mesh; the three sections scan as the
+cross-section does.
+
+
+### What is reproduced from the 2002 paper, and how
+
+| Quantity | Paper | This model | Note |
+| --- | --- | --- | --- |
+| q per volt, m/z 587 at 600 V | q = 0.623 | 0.6245 from the ideal formula | the paper's calibration point, arithmetic |
+| Secular frequency at q = 0.83 | 368 kHz | 368.1 kHz, beta(0.83) = 0.7362 | so the paper's q scale is the **effective** q |
+| Quadrupole strength with the x pair stretched 0.75 mm | not stated | **0.822 of ideal** | measured from the solved field; the ideal formula's voltages are 22% low for this geometry |
+| Field fault of the 0.25 mm slot | "detrimental field effects" | dipole 9.6e-4, hexapole 1.9e-4 of A2 | odd orders, which the symmetric stretch cannot cancel |
+| What the stretch adds | "analogous to the stretch in 3D traps" | octupole **1.7e-3** of A2 | the same term a stretched 3-D trap adds on purpose |
+| Resonance ejection, 13.5 V at 421 kHz, m/z 524 | ejects at q = 0.88 | ejects from q = 0.870 up, 30 to 5 µs; confined to 0.86 | excitation-off edge between 0.890 and 0.900 (tabulated 0.908, moved by the octupole) |
+| Ejection direction | through the x slot | onto the x rods, none on y | the dipole is along x |
+
+The template's parameters carry the published geometry and operating point (r0 4 mm,
+1 MHz, slot 0.25 mm, stretch 0.75 mm, He 3 mTorr, excitation 3 V + 20 mV per m/z) and
+name what is guessed: the rods' truncation and back, the slot's depth and relief behind
+the face, and the hard-sphere cross-section.
+
+### The mass scan, against "unit resolution up to m/z 2000 at 5555 Da/sec"
+
+The paper's figure 8 is a full scan of the calibration mixture (caffeine 195, MRFA 524,
+Ultramark 1022 to 1822) at 5,555 u/s, and the text says the 20 µm mechanical tolerance
+"was found to be sufficient to obtain unit resolution up to m/z 2000" at that rate. The
+model's version: a cloud of twelve ions per species, thermal at 300 K and 0.05 mm wide,
+cooled three hundred microseconds in helium, then the RF ramped as a staircase (4 µs
+steps) at the rate a 5,555 u/s scan implies for that mass, with the paper's excitation
+law (3 V + 20 mV per m/z) at 421.3 kHz. Each ion's ejection instant is read as a mass on
+the scan law; the species are flown separately, so there is no space charge.
+
+| m/z | ions ejected | FWHM (u, from the central half) | m/Δm | ejected at effective q |
+| --- | --- | --- | --- | --- |
+| 195.09 | 12 | 0.75 | 254 | 0.8625 |
+| 524.26 | 12 | 0.62 | 830 | 0.8674 |
+| 1421.98 | 12 | 0.64 | 2206 | 0.8685 |
+| 1521.97 | 12 | 0.54 | 2791 | 0.8687 |
+
+**Unit resolution across the range at the paper's rate, with nothing tuned** - the widths
+sit between 0.5 and 0.75 u from m/z 195 to 1522, which is what the paper claims and what
+its figure 8 shows. Twelve ions per peak makes each width good to perhaps a quarter of
+itself; the statement that survives that is "under one u everywhere". Two things about
+the mass axis. Ions leave at an effective q of 0.862 to 0.869 rather than at the
+excitation's nominal 0.88 - the excitation captures them from below and pulls them out
+early, and a positive octupole (which the stretch supplies) is what lets an ion driven
+below its small-amplitude frequency stay in resonance as its amplitude grows - so a scan
+calibrated by the ideal formula would read 1.5 per cent low. Every instrument calibrates
+its mass axis against known ions rather than from metal, so this is absorbed exactly as it
+is in practice; the drift of the ejection q with mass (0.8625 to 0.8687) is what a
+multi-point calibration curve is for. The figure is
+[`docs/figures/linear-ion-trap-spectrum.svg`](figures/linear-ion-trap-spectrum.svg).
+
+**The Velos claim, asked of the pressure alone, is not reproduced.** Second et al.
+attribute the Velos's higher resolution at a given scan rate to its analyser cell's lower
+pressure (~4e-4 Torr, 5.3e-4 mbar). The same scan with only the helium pressure and the
+rate changed, twelve ions per species:
+
+| pressure | rate | m/z 524 FWHM | m/z 1522 FWHM |
+| --- | --- | --- | --- |
+| 4.0e-3 mbar | 5,555 u/s | 0.62 u | 0.54 u |
+| 5.3e-4 mbar | 5,555 u/s | 1.44 u | 0.90 u |
+| 5.3e-4 mbar | 11,111 u/s | 1.25 u | 1.20 u |
+| 4.0e-3 mbar | 11,111 u/s | 0.90 u | 0.63 u |
+
+Less gas broadens every peak here at the 2002 excitation, because the gas is what damps
+each ion's own thermal phase before the excitation grows it. **Retuning closes the gap**:
+at 5.3e-4 mbar, half the paper's excitation amplitude (6.7 V) gives 0.62 u at m/z 524 -
+the 3 mTorr width exactly - while the paper's 13.5 V gives 1.44 and twice it 1.46. The
+Velos paper compares two tuned instruments and does not itemise the retuning; this
+model says a gentler excitation is the part of it that matters for the width. Resolved
+as a working-point difference rather than a disagreement about the instrument.
+
+**What the model does not reproduce: ejection through the slot.** With the slot cut as a
+0.25 mm channel straight through the rod, three quarters of the ions ejected toward it
+strike the channel's walls within a few millimetres of the mouth - the slot mouth is a
+diverging aperture lens for an ion leaving a 5e5 V/m RF field into a field-free channel -
+and almost none reach the detector. The paper does not give the slot's profile behind the
+face; the template now carries a channel depth and a relief behind it as named guesses,
+and `docs/device-templates.md` records what each does to the count.
 
 Before working this up, confirm the published geometry and operating point from
 the Stellar and Tribrid literature rather than assuming it matches the Astral
 lineage — the two share an architecture at the block-diagram level and not much
 below it.
+
+### Published geometry and operating point, from the LTQ and Velos papers
+
+The Stellar trap is the dual-pressure linear trap of the LTQ Velos lineage. Its
+own paper is not in `papers/` (as of 2026-09-05); what is there, and what this
+table paraphrases, are the two papers it descends from — Schwartz, Senko and
+Syka, *A two-dimensional quadrupole ion trap mass spectrometer*, JASMS 2002,
+13, 659, and Second et al., *Dual-pressure linear ion trap mass spectrometer
+improving the analysis of complex protein mixtures*, Anal. Chem. 2009, 81, 7757.
+The Stellar-specific numbers are still to be confirmed against its own paper.
+
+| | LTQ (2002) | Velos dual-pressure (2009) |
+| --- | --- | --- |
+| Rods | hyperbolic, r0 = 4 mm | as LTQ, slots in all four rods (fully symmetric) |
+| Axial sections | 12 / 37 / 12 mm, DC-offset for axial trapping | two cells, one aperture lens between them |
+| Ejection slot | 0.25 mm high, 30 mm long, one X rod | all four rods |
+| Slot compensation | slotted rod pair moved out 0.75 mm | — |
+| Main RF | 1 MHz, up to 5 kV peak rod-to-ground | — |
+| Resonance ejection | dipole across X rods, q = 0.88 | — |
+| Isolation | multi-frequency waveform 5–500 kHz, 0.5 kHz spacing, precursor at q = 0.83 | as LTQ, 4 ms instead of 16 ms |
+| Activation | q = 0.25–0.35 | as LTQ, activation time cut 67 % |
+| Bath gas | He, ~3 mTorr (4e-3 mbar) | HP cell ~5e-3 Torr (6.7e-3 mbar); LP cell ~4e-4 Torr (5.3e-4 mbar) |
+| Scan rate / resolution | 16,000 u/s (LTQ XL) | 33,000 u/s at equal or better resolution; >25,000 FWHM in ultra-zoom |
+| Ion cloud | ~1.0 mm radius, ~30 mm long | — |
+
+**What is measurable in this build already.** The 2002 paper's Fig. 2 is a
+SIMION field plot: three DC-offset sections against one, showing how the
+end-section offsets distort the dipole excitation field. That is a DC solve of
+round-or-hyperbolic rods with an axial break — a `solved3d` template with three
+segments, nothing new — and the paper's own claim (distortion confined to the
+end sections) is checkable. The mass-selective-instability scan (ramp the RF,
+eject at q = 0.88 through the slot, count arrivals against m/z) is a `scan`
+study over the shipped RF path, and the LP-cell pressure is inside the
+event-driven collision models' range. The 15× ion-capacity ratio against a 3-D
+trap is a space-charge claim the direct-sum method can be pointed at.
+
+**What is not.** Both the HP cell's 5e-3 Torr and the LTQ's 3 mTorr are above
+the event-driven mode's stated validity and below where the diffusive mode's
+drift-diffusion description holds, so isolation and activation efficiency —
+the two things the dual-pressure design buys — sit in the band neither mode
+owns cleanly. That is the same band the funnel benchmark sat in, and the same
+hard-sphere-against-Langevin bracket applies.
 
 What it would need: time-domain RF, collisional damping at high-pressure-cell
 conditions, and Class B analysis for the secular frequency spectrum and ejection
@@ -438,29 +643,34 @@ than as an argument.
 > 2024;59(4):e5006. <https://doi.org/10.1002/jms.5006>  **[B]**
 
 **The full published register, the pixel measurement of the ion foil, and the current
-state of the model are in `docs/astral-handoff.md`** - §1 and §11 respectively. This entry
+state of the model are in `docs/astral-handoff.md`** - §1, §11 and §§70-72 respectively. This entry
 records only what is a *regression target* and its status, so the two do not drift.
 
-The device the whole 3-D path exists for, and the only target here that is not yet
-reproduced in any respect. It is also the first target whose geometry had to be
-**measured out of a published figure** rather than read off a table.
+The device the whole 3-D path exists for. It is also the first target whose geometry had
+to be **measured out of a published figure** rather than read off a table - the electrode
+positions, the back wall and the e0-e1 gap are all read off [A] figure 1, and the mirror is
+now reproduced against the same figure's on-axis potential and period-slope curve (handoff
+§§58-71). What is not yet reproduced is the drift register with the stripe in the model.
 
 | target | published | status |
 | --- | --- | --- |
-| oscillations / flight path | 24 / 30 m | **not reached** - and not yet measured with a real tilt; handoff §12 |
-| drift reversal distance | 310-360 mm, mean 335 | **unmeasured** - every prior figure was an artefact of a tilt the solver could not see, with the wrong sign; handoff §12 |
-| resolving power | > 100,000 | **6.56** - dominated by thermal drift spread that nothing refocuses |
-| energy acceptance | flat T over 4000 ± 100 V | mirrors **do** energy-focus: R = 2,600 on energy spread alone |
-| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **not attempted, and the best next test** |
+| oscillations / flight path | 24 / 30 m | **25 outbound** from the tilt alone, `D/N` = 13.38 against 13.40 mm; handoff §47 |
+| drift reversal distance | 310-360 mm, mean 335 | **334.61 mm** from the tilt alone (handoff §47); with the stripe in the model the register is being refit to the reproduced mirror (§66, §71) |
+| resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **120,000-220,000** on the drawn layout at the paper's three-point condition (the range is a first-order residual at the 1e-4 level, the floor of the solve; handoff §73), slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; handoff §71 |
+| resolving power, drift alone | - | **73,500** over the full ±11 per cent angular acceptance, from the published stripe shape (handoff §55-56) |
+| energy acceptance | period stationary at 4000 and 4000 ± 100 V | **met by construction** at the solved gap, U3 and U4: c1 = 0.00000, c3 at the fit's noise floor, c2 on the balance point; handoff §71 |
+| `(t\|e)` sensitivity to the C(1) perturbation | **~2.5 ppm/V at TE1 = 0.01** | **0.987 of published** - dc1/dTE1 measured at four depths, and C(2) reduces c2 as published; handoff §49 |
 | ion foil geometry | not stated in text | **measured off [A] figure 1** at 1.92 mm/px; shipped in `astral-3d.json` |
 
-**The C(1) row is the one to run next, and it is different in kind from the others.**
-Every other row needs the absolute geometry to be right first, because it compares a
-number this model produces against a number the instrument produces. C(1) and C(2) are
-*differential*: apply the published perturbation to the published potentials, measure how
-much the time-energy coefficient moves, and compare to a published sensitivity. A model
-whose focus is in the wrong place can still get that right or wrong informatively. It is
-the only Astral regression currently available that does not wait on fitting `d1..d4`.
+**The C(1) row was run first because it is different in kind from the others.** Every
+other row needs the absolute geometry to be right, because it compares a number this model
+produces against a number the instrument produces. C(1) and C(2) are *differential*: apply
+the published perturbation to the published potentials and measure how much the coefficient
+moves. It came out at 0.987 of published on a mirror that was then still wrong in polarity
+and position - which is what a differential check is for. **Three numbers are solved rather
+than read** and are the ones the papers do not give: the board gap (41.4 mm), U3 (0.974
+against the table's 0.916) and U4 (1.479 against 1.503), in a table that has U2's sign
+wrong. Everything else in the mirror is as published or as drawn.
 
 **Two cautions carried from [B] for anyone comparing numbers.** Their own simulations ran
 **22 oscillations rather than 24**. And the design condition is a **third-order** temporal
@@ -492,3 +702,55 @@ tell you the model is of the wrong thing — that the geometry was misread, a
 symmetry misapplied, or an effect left out that matters. Only agreement with a
 real instrument does that, and short of building one, a published instrument is
 the closest available.
+
+## 5. The PNNL electrodynamic ion funnel — the funnel benchmark
+
+> Kim, Tolmachev, Harkewicz, Prior, Anderson, Udseth, Smith, *Design and implementation
+> of a new electrodynamic ion funnel*, Anal. Chem. 2000, 72, 2247.
+> <https://doi.org/10.1021/ac991412x>  **[K]** — with the simulation of Tolmachev, Kim,
+> Udseth, Smith, Bailey, Futrell, Int. J. Mass Spectrom. 2000, 203, 31, reproduced as
+> Figure 6 of the open-access review Kelly, Tolmachev, Page, Tang, Smith, Mass Spectrom.
+> Rev. 2010, 29, 294 (PMC2824015).
+>
+> Page, Tolmachev, Tang, Smith, *Theoretical and experimental evaluation of the low m/z
+> transmission of an electrodynamic ion funnel*, J. Am. Soc. Mass Spectrom. 2006, 17, 586.
+> <https://doi.org/10.1016/j.jasms.2005.12.013>  **[P]** — open access, PMC1829303.
+>
+> Lynn, Chung, Han, *Characterizing the transmission properties of an ion funnel*, Rapid
+> Commun. Mass Spectrom. 2000, 14, 2129 — SIMION with a collisional drag model on the
+> earlier 28-electrode funnel, against the measured m/z transmission window. **[L]**
+
+**Why this device, and why these papers.** The §23 open decision — a published funnel
+geometry or one of ours — is settled here in favour of published, and this is the one:
+one device whose dimensions are fully in print, two independent measured curves, a closed
+form for one of them, and a SIMION comparison on the same family for the cross-code check
+§19 asked for and could never have. Digitised curves and the theory's definitions are in
+`papers/funnel/` (gitignored, like the rest of that directory).
+
+**The geometry, as published in [P] and [K]:** 100 ring electrodes of 0.5 mm brass on
+0.5 mm Teflon spacers (pitch 1.0 mm), holes cut by wire EDM; the first ~58 at 25.4 mm
+inner diameter, the last 42 tapering linearly to 2.5 mm ([K]'s earlier build: 55 and 45,
+to 1.5 mm); a DC-only conductance limit of 2.0 mm inner diameter after the last ring; a
+6.5 mm jet disrupter about 20 mm in from the inlet capillary. RF of opposite phase on
+adjacent rings through 10 nF; a 500 kΩ resistor chain for the DC gradient. Shipped as
+`pnnl-ion-funnel.json`.
+
+| target | published | conditions | status |
+| --- | --- | --- | --- |
+| transmission against RF amplitude [K] | threshold: 3% at 10 Vpp, 40% at 15, 85% at 20, plateau from 25; plateau 3.3 nA of 5 nA in (65%) | 1 Torr N₂, 0.7 MHz, 16 V/cm, gramicidin, 5 nA | **threshold reproduced** — diffusive mode, nothing tuned: 0.17 / 0.57 / 0.90 / 0.97 / 0.99 at 10 / 15 / 20 / 25 / 30 Vpp against 0.05 / 0.39 / 0.85 / 0.97 / 1.00 normalised; 50 % near 14 Vpp against 16. The plateau's absolute 65 % is not compared: space charge and the inlet are not modelled. Handoff §78 |
+| the same, Tolmachev's simulation [K] | same threshold, plateau 3.3 nA | same, with space charge | comparison partner, not a target |
+| low-m/z cutoff against RF frequency, m/z 118.2 [P] Fig. 3 | 50% at 425 / 485 / 565 kHz for 9.0 / 19.1 / 29.1 V/cm | 1.9 Torr, 80 Vpp, singly charged betaine | **mechanism, shape and gradient ordering reproduced; 17–22 % low in frequency** — trajectory mode, hard-sphere collisions, 20 ions a point: 50 % at ~320 / ~380 / ~470 kHz, every loss below the cutoff on a tapered ring. with Langevin collisions instead the 50 % point is ~500 kHz against the measured 485, rising too slowly above it (0.75 at 600 kHz against 0.97): the two limiting collision models bracket the measured curve; handoff §77 |
+| cutoff frequency against m/z, six ions [P] Fig. 4 | at 19.1 V/cm: 485, 290, 195, 170, 140, 130 kHz for m/z 118, 322, 622, 922, 1522, 2122 | 1.9 Torr, 80 Vpp | not yet attempted |
+| cutoff independent of RF amplitude [P] Fig. 5 | the same curve at 60, 80, 100, 120 Vpp | 19.1 V/cm | not yet attempted |
+| the closed form [P] eq. 7 | (m/z)ₗₒw = 8 e E_DC sin A / (m_u ω² δ), δ = pitch/π = 0.318 mm, tan A = 0.25 | predicts 511 kHz for m/z 118 at 19.1 V/cm against a measured 485; 351 against 425 at 9.0; 631 against 565 at 29.1 | the analytic partner |
+| m/z transmission window, SIMION with drag [L] | "compares favourably" with the measured window of the 28-electrode funnel | 1–10 Torr | the cross-code partner; the paper is behind Wiley and only its abstract has been read |
+
+**Three caveats that travel with every comparison here.** The transmission measurement
+carried 5 nA of ion current, so space charge is in it and Tolmachev's simulation included
+it; this model does not, and should match the threshold and the shape rather than the
+plateau. Both measurements sit behind a gas jet from the inlet capillary that neither paper
+characterises and this model omits, releasing the ions 20 mm in where the jet disrupter
+ends. And the cutoff is a breakdown of the averaged-field picture — a low-mass ion is pulled
+into a ring within one RF cycle — so the diffusive mode cannot see it by construction, and
+the measurement is a test of the collision-by-collision mode at a pressure above the band
+it claims, which is REG-3's overlap-band comparison made on a published instrument.

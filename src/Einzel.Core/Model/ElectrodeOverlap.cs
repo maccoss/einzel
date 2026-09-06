@@ -136,8 +136,81 @@ public static class ElectrodeOverlap
             (ElectrodeShape.Rectangle, ElectrodeShape.Rectangle) => RectangleRectangle(a, b),
             (ElectrodeShape.Disc, ElectrodeShape.Rectangle) => DiscRectangle(a, b),
             (ElectrodeShape.Rectangle, ElectrodeShape.Disc) => DiscRectangle(b, a),
+            (ElectrodeShape.Polygon, ElectrodeShape.Polygon) => PolygonPolygon(a.Vertices, b.Vertices),
+            (ElectrodeShape.Polygon, ElectrodeShape.Disc) => PolygonDisc(a, b),
+            (ElectrodeShape.Disc, ElectrodeShape.Polygon) => PolygonDisc(b, a),
+            (ElectrodeShape.Polygon, ElectrodeShape.Rectangle) => PolygonPolygon(a.Vertices, Corners(b)),
+            (ElectrodeShape.Rectangle, ElectrodeShape.Polygon) => PolygonPolygon(Corners(a), b.Vertices),
             _ => false,
         };
+
+    private static IReadOnlyList<(double X, double Y)> Corners(CompiledElectrode rectangle) =>
+        [(rectangle.MinX, rectangle.MinY), (rectangle.MaxX, rectangle.MinY), (rectangle.MaxX, rectangle.MaxY), (rectangle.MinX, rectangle.MaxY)];
+
+    /// <summary>
+    /// Whether a disc's interior reaches into a polygon: its centre is nearer the
+    /// polygon than its radius. Tangency is allowed, as for two discs.
+    /// </summary>
+    private static bool PolygonDisc(CompiledElectrode polygon, CompiledElectrode disc) =>
+        polygon.SignedDistance(disc.CentreX, disc.CentreY) < disc.Radius * (1.0 - 1e-12);
+
+    /// <summary>
+    /// Whether two polygons share interior: an edge of one crosses an edge of the
+    /// other properly, or a vertex of one lies strictly inside the other.
+    /// </summary>
+    /// <remarks>
+    /// Proper crossings and strict containment, so two polygons sharing an edge -
+    /// the two halves of a slotted rod with the slot closed, say - are tangent
+    /// rather than overlapping, which is the same allowance two touching discs get.
+    /// A vertex exactly on the other's surface counts as touching.
+    /// </remarks>
+    private static bool PolygonPolygon(IReadOnlyList<(double X, double Y)> a, IReadOnlyList<(double X, double Y)> b)
+    {
+        for (var i = 0; i < a.Count; i++)
+        {
+            var (ax, ay) = a[i];
+            var (bx, by) = a[(i + 1) % a.Count];
+            for (var j = 0; j < b.Count; j++)
+            {
+                var (cx, cy) = b[j];
+                var (dx, dy) = b[(j + 1) % b.Count];
+                var d1 = ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
+                var d2 = ((bx - ax) * (dy - ay)) - ((by - ay) * (dx - ax));
+                var d3 = ((dx - cx) * (ay - cy)) - ((dy - cy) * (ax - cx));
+                var d4 = ((dx - cx) * (by - cy)) - ((dy - cy) * (bx - cx));
+                if (((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))
+                    && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return StrictlyInside(a, b) || StrictlyInside(b, a);
+    }
+
+    private static bool StrictlyInside(IReadOnlyList<(double X, double Y)> points, IReadOnlyList<(double X, double Y)> outline)
+    {
+        var probe = new CompiledElectrode { Name = "probe", Shape = ElectrodeShape.Polygon, Vertices = outline };
+        var scale = 0.0;
+        foreach (var (x, y) in outline)
+        {
+            scale = Math.Max(scale, Math.Max(Math.Abs(x), Math.Abs(y)));
+        }
+
+        // Strictly, with a tolerance scaled to the geometry: a shared vertex lands
+        // at a distance of rounding noise, not of zero.
+        var tolerance = 1e-12 * Math.Max(scale, 1e-12);
+        foreach (var (x, y) in points)
+        {
+            if (probe.SignedDistance(x, y) < -tolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool DiscDisc(CompiledElectrode a, CompiledElectrode b)
     {

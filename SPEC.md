@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,021 tests across twelve assemblies, green on Linux and Windows.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 37 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,176 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -47,6 +47,7 @@ from the register means nothing.
 ```
 Einzel.Core  Fields  Transport  Analysis  Library  Sweeps
 Einzel.Io  Project  Extensions  Render  Commands  Cli
+Einzel.Mcp  Wpf
 ```
 
 ### What does not
@@ -54,13 +55,14 @@ Einzel.Io  Project  Extensions  Render  Commands  Cli
 ```
 Einzel.Compute      the SIMD and ILGPU dispatch layer (CMP-1, PERF-5)
 Einzel.Update       release check, staging, version policy (all of UPD, DST)
-Einzel.Wpf          the shell (§16, UI-1) - all eleven required views
 ```
 
-Two of those four are load-bearing for requirements that are otherwise met on
-paper. Without a shell, AGT-2 ("nothing exists only in the window") cannot be
-violated *or* confirmed; without `Einzel.Update`, GRD-11's defect taint has no
-published floor to compare a version against.
+The second is load-bearing for requirements that are otherwise met on paper:
+without `Einzel.Update`, GRD-11's defect taint has no published floor to compare a
+version against, and none of §18 can be exercised. The shell exists with nine of
+§16's eleven views (see [the shell section](#the-shell-and-the-rest-of-16)); its
+two missing views are the extension manager pane and the update notice, the latter
+waiting on `Einzel.Update`.
 
 `Einzel.Wpf` is a **deliverable rather than a permission**, and the Windows GUI
 capability was part of why the toolchain is C# - a rationale r06 never records. See
@@ -90,12 +92,15 @@ several were only reachable because an earlier increment removed an artefact
 (§19's coaxial check needed cut cells; a multipole measurement needed cut-cell rod
 surfaces; a turn-around time needed a source that can start at rest).
 
-**What it has cost is the agent thesis.** §21's own sequencing principle is that
-"the schema and the CLI are Phase 1 deliverables… which de-risks the thesis early",
-and the corpus EX-1 asks for is the other half of that: an agent has no Einzel
-forum posts or example files in its training data, and shipping models it can pull
-into context is the counter. **One model of thirty exists.** That is now the single
-largest gap in the project, and it is not a physics gap.
+**What it cost for a long while was the agent thesis.** §21's own sequencing
+principle is that "the schema and the CLI are Phase 1 deliverables… which de-risks
+the thesis early", and the corpus EX-1 asks for is the other half of that: an agent
+has no Einzel forum posts or example files in its training data, and shipping
+models it can pull into context is the counter. For most of the project one model
+of thirty existed; the corpus now holds thirty-nine, gated on every change (item 4
+of *What to do next*). **What remains is distribution**: eighteen of the
+thirty-one unbuilt requirements are the update mechanism and the release artifacts,
+and nobody can install this.
 
 ### Phase acceptance, checked
 
@@ -112,8 +117,9 @@ largest gap in the project, and it is not a physics gap.
 | 2 | An update offered, deferred, later accepted | **Not met** — no update mechanism |
 | 3 | Mathieu diagram reproduced | Met twice — ideal field q = 0.90684, solved round rods q = 0.90525 |
 | 3 | Quadrupole transmission against resolution | **Met** — the band closes onto the tabulated apex q = 0.70600, R rising 1.6 to 15.6, both edges bisected to ACC-6 |
-| 3 | Funnel transmission against a published benchmark | **Not met** — gas flow now exists, so what remains is the §23 decision on whose geometry, and a driven diffusive run being affordable |
+| 3 | Funnel transmission against a published benchmark | **Met, with stated caveats, on the PNNL 100-electrode funnel.** Both published curves on one template, one per transport mode: Kim et al. 2000's transmission against RF amplitude in the diffusive mode (threshold ~14 Vpp against a measured 16, nothing tuned; the plateau's absolute 65 % is not compared, since space charge and the inlet are not modelled), and Page et al. 2006's low-m/z cutoff in the collision-by-collision mode (mechanism, shape and gradient ordering reproduced; hard spheres 17–22 % low in frequency, Langevin on the measurement, the two bracketing the curve). `docs/literature-targets.md` §5; handoff 76–78. |
 | 3 | Cross-mode agreement in the overlap band | Met — 0.43 standard errors |
+| 4 | Trap sequences (§21 lists them under Phase 4) | **Partly met on a published trap.** The 2002 LTQ cross-section as `linear-ion-trap`: resonance ejection at the paper's working point, and a mass-selective-instability scan at its 5,555 u/s giving unit resolution from m/z 195 to 1522 as the paper claims; the ramp is a phase staircase, the axial sections are not modelled, and passage through the ejection slot depends on a slot profile the paper does not give. Amendment 37; `docs/literature-targets.md` §2. |
 
 ---
 
@@ -709,6 +715,58 @@ against a 60 V wave. The template ships with the confinement at zero, because sh
 a default that makes a device worse would be worse than shipping none. What the tests
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
+
+### 37 - The cross-section vocabulary had no general outline, and the first real trap needed one
+
+§9 and §10 describe electrodes as primitives with closed-form signed distance so the
+cut-cell discretisation can place a surface between nodes, and the 2-D primitives were a
+rectangle, a disc and an edge profile. Every shipped device fitted them - round rods, flat
+plates, tubes, rings - until the radial-ejection linear ion trap of Schwartz, Senko and
+Syka (2002): hyperbolic rods, one with a 0.25 mm slot cut through it, the pair moved out
+0.75 mm. Not awkward to write; **not expressible at all**. That is LIB-1's signal, and it
+fired for the sixth time (after `log`, trigonometry, `asinPi`, a parametric drive phase and
+a tilted box), and for the first time it asked for a shape rather than a function.
+
+**What was added.** A `polygon`: any closed outline, convex or not, at one potential, with a
+closed-form signed distance (nearest edge, signed by the even-odd rule) and a closed-form
+first crossing of a grid link, so its faces are cut cells exactly as a disc's are. A square
+written as four vertices solves to the rectangle's field to 1e-13 of the applied potential;
+a rod written as two halves meeting on a line solves to the whole rod to the bit, which is
+how a slotted rod is written so that a slot of zero height is a rod. Refused rather than
+solved: fewer than three vertices, a repeated vertex, zero area, a self-crossing outline.
+Schema 0.9.
+
+**And what the first version got wrong, which is the more general finding.** A hyperbolic
+face needs about twenty-five vertices, each two expressions over the parameter surface, and
+eight half-rods: the first template was 116 KB of generated JSON that validated, solved and
+flew correctly and that nobody could read. §9's "every placement is a parametric
+expression" was satisfied in the letter and defeated in spirit - the thing a reader needs
+to see, that the face is one hyperbola from the slot edge to the half-width, was buried in
+two hundred copies of itself. A vertex entry may now carry a `count` and an `index` and
+stand for a **run** of vertices, the same mechanism `repeat` uses for electrodes applied
+inside one outline. 24 KB, three entries per half-rod, the hyperbola written once. **When a
+generator script is needed to write a document, the format is missing the abstraction the
+script supplies**, and the script's size is a measurement of the gap.
+
+**What the device then taught about calibration.** Flown at a nominal Mathieu q of 0.92
+from the ideal formula, the ion stayed confined; the same document with round rods lost it
+in 3 µs. The paper's 0.75 mm stretch of the x pair weakens the quadrupole term to 0.822 of
+the ideal - measured from the solved field's multipoles, and again from the on-axis
+gradient - so the ion at "0.92" was at 0.757. The paper's own q scale is the effective one
+(its "q of 0.83" is quoted at 368 kHz, the ideal secular frequency to a tenth of a per
+cent), as every trap's is, since q is inferred from frequency rather than computed from
+metal. §12's Class B figures are stated in q, and this is the first device where the q
+per volt had to be measured before any of them could be compared with a paper. It costs
+one multipole projection and no ion. Details in `docs/device-templates.md` and
+`docs/lessons.md`.
+
+**And the volume vocabulary had the same gap.** Box, sphere and cylinder build the devices
+§1 lists and could not extrude a slotted hyperbolic rod into the paper's three axial
+sections. A `prism` - the polygon given a length along an axis, with the same vertex runs -
+closes it: a square prism is a box to 3e-18 m in distance and to the bit in a solve, and a
+re-entrant outline finds a link's entry through its notch. The 2-D and 3-D vocabularies now
+share one general outline, which is what LIB-1's "a new device is a new file" needs when the
+device is neither a plate nor a rod nor a bead.
 
 ### 36 - A geometric perturbation can sit below the discretisation floor, and then it must be constructed rather than solved
 
@@ -2407,7 +2465,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     breaks the instrument sign-reversed; the flight time there lands on the published value to
     3%. The template ships that arrangement. What the foil leaves is second order (-6.5), which
     is the well's shape not being harmonic - the subject of Grinfeld, Stewart, Makarov,
-    *Int. J. Mass Spectrom.* 2024, 1060, 169017, still the paper to read first.
+    *Nucl. Instrum. Methods Phys. Res. A* 1060 (2024) 169017, still the paper to read first.
 
     **The mirrors are measured and understood, and were not the instrument's limit.** The
     focusing coefficients `c1..c3` are figures of merit now, and the scaling law is the check:
@@ -2465,6 +2523,26 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     matching any single number. Three conditions on four depths, none fitted to a number this
     model produced, and that is the next search.
 
+    **Superseded by the following night (handoff sections 47-71): the mirror is reproduced.**
+    The paragraph above was written on guessed electrode positions with one electrode at the
+    wrong polarity. The design paper's figure 1, read as a rendered page, gives the electrode
+    positions as drawn blocks, shows electrode 4 wrapping into the mirror's back wall, and has
+    an on-axis potential that fixes U2's sign as positive where the crowd-control table prints
+    it negative. On that layout both published correction vectors do their published jobs
+    (dc1/dTE1 = 0.987 of published; C(2) reduces c2), so the "sharpest constraint" above was a
+    constraint on a wrong geometry. The three numbers the papers do not give - the board gap,
+    U3 and U4 - are then solved for the design paper's own three-point condition (the period
+    stationary at 4000 and 4000 +/- 100 eV): a 41.4 mm gap, U3 0.974 against the table's
+    0.916, U4 1.479 against 1.503. There the model gives **R of 120,000 to 220,000 over +/-2.5 per
+    cent against the published curve's ~180,000** (the range is a first-order residual at
+    the 1e-4 level, the floor of the solve; handoff 73), the figure's slope amplitude, an effective
+    drift of 646.8 against 641 mm, and the published on-axis potential to 0.16 kV rms at
+    sixteen points - the axis being a check the solve never saw. The grounded domain edge
+    behind a flat electrode 4 had moved c3 by 0.17 on its own; a grounded boundary is a third
+    electrode, met again. What remains open for this device is the drift register with the
+    stripe in the model, being refit to the reproduced mirror, and the reconciliation of the
+    published 25 oscillations with the 4-in-11 mm reversal the bare tilt gives.
+
     Two measurement limits bound any further work and are worth knowing before repeating it.
     **Flight-time differencing floors the drift coefficients at plus or minus 0.02 in `a`** at
     any mesh - a 330 ns signal on a 3 microsecond error that only 60% cancels - and refining
@@ -2474,6 +2552,43 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     absolute R), but is itself floored by adiabaticity, the x-period being 34 microseconds
     against a 500 microsecond drift. The two floors are independent, which is why the methods
     agree on ranking and disagree on values. Handoff sections 24-46.
+
+14. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
+    cross-section reproduces the paper's resonance ejection and its unit resolution at
+    5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
+    that stand between that and the dual-pressure device the Stellar front end actually is.
+    In the order they are worth doing: ~~**a `ramp` inside a phase**~~ - **done**: a phase
+    declares where a parameter ends and gets there linearly, exact where the potentials are
+    linear in it and checked at the midpoint, refused for an analytic element or a diffusive
+    phase, on a cross-section and on a volume solve alike; a ramped RF flies an ion to 2 µm
+    of a forty-step staircase against 240 µm from the held control; ~~**the dual-pressure comparison retuned**~~ -
+    **done**: with the 2002 excitation held, the Velos analyser pressure alone broadens
+    m/z 524 from 0.62 to 1.44 u, and half the excitation brings it back to 0.62, so the
+    2009 paper's gain is a retuning and a gentler excitation is the part of it that
+    matters; ~~**the axial structure**~~ - **done**, with a `prism` primitive (the 2-D
+    polygon given a length) so the same hyperbolic slotted half-rods make the paper's three
+    12 / 37 / 12 mm sections in `linear-ion-trap-3d`: the end sections 3 V above the centre
+    make a 2.9 V well holding a 300 K ion within 8.7 mm, where the excitation is uniform to
+    below 0.001 % - the paper's figure 2 as numbers - and it scans: twelve ions at
+    16,700 u/s eject at effective q 0.8703 against the cross-section's 0.8685, the 0.2 %
+    being its quadrupole term (0.8207 of ideal at the 0.5 mm cell against 0.8223, converging
+    with the mesh); **the slot's exit optics**, which the cross-section cannot settle because
+    the paper does not give the slot's profile and the real detector sits behind an
+    extraction field this model ends in a grounded wall; and ~~**space charge in the
+    scan**~~ - **resolved as far as a vacuum run can take it**: the direct sum's softening,
+    set from the packet's RMS radius, exceeded a line cloud's transverse size
+    thirty-four-fold and switched the force off; it is now reported
+    (`spacecharge.softening`) and set from the packet's three standard deviations, the
+    radius rule's number to the bit for a ball and an order of magnitude smaller for a line.
+    With the force on, 400,000 ions in a half-millimetre cloud shift each ion's ejection by
+    a tenth of a unit with no common direction and the peak by under 0.1 u, because the
+    cloud size is an input to a run with no gas and the shift goes as the density - a
+    cooled cloud of that population would be about 60 µm across and seventy times denser.
+    The paper's 15x capacity claim needs gas and space charge in one run, which is the
+    packet integrator's missing collision hook. **The Stellar's own trap** is in hand
+    (Remes 2024) and shipped as `stellar-ion-trap`; its scan at the paper's four rates gives
+    a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
+    has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
 ## Open decisions
 
@@ -2490,7 +2605,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
 | What the defect-floor policy file contains | Open, and untestable until there are releases |
 | What the agent acceptance suite measures and what gates a release | **Closed.** See Amendment 11 |
 | Whether the in-process extension runner is worth shipping at all | Open, and the evidence so far says sandboxed-only is sufficient: nothing has hit the 49 ms granularity floor |
-| Whether the funnel benchmark uses a published geometry or one of ours | **Open, and now blocking.** It gates a Phase 3 acceptance criterion, and the study should not be built before it is settled |
+| Whether the funnel benchmark uses a published geometry or one of ours | **Closed: published.** The PNNL 100-electrode funnel of Kim et al. 2000 and Page et al. 2006 - dimensions fully in print, two measured curves (transmission against RF amplitude; low-m/z cutoff against frequency and DC gradient), a closed form for the second, and a SIMION comparison on the same family (Lynn et al. 2000) for the cross-code check §19 wanted. Shipped as `pnnl-ion-funnel.json`; the register is `docs/literature-targets.md` §5. First results pending. |
 | Governance if this becomes a collaboration | Open |
 
 ---

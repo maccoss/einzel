@@ -18,6 +18,27 @@ namespace Einzel.Commands;
 public sealed record LossChannel(string Surface, int Ions);
 
 /// <summary>
+/// What became of one ion of a cloud, and when: the raw ledger the arrival counts,
+/// the losses by surface and the arrival-time peak are all computed from.
+/// </summary>
+/// <param name="Ion">The ion's index in the cloud, from zero.</param>
+/// <param name="Outcome">The integrator's outcome name: <c>StopConditionMet</c> for an arrival, <c>StruckElectrode</c>, <c>MaximumFlightTimeReached</c>, and so on.</param>
+/// <param name="Surface">The electrode struck, by the name the model author wrote; null unless the outcome is a strike.</param>
+/// <param name="TimeSeconds">When the flight ended, in seconds from launch.</param>
+/// <remarks>
+/// Kept per ion rather than summarised because a mass scan is read off exactly this: an
+/// ion's ejection instant is its mass on the scan's axis, so a spectrum is a histogram
+/// of these times and cannot be recovered from a peak width and a transmission. The end
+/// position says where on a surface an ion struck, which is how an ejection slot's
+/// efficiency is attributed - to the slot's width, or to the ions' spread.
+/// </remarks>
+public sealed record IonEvent(int Ion, string Outcome, string? Surface, double TimeSeconds)
+{
+    /// <summary>Where the flight ended, in metres: the impact point for a strike, the crossing for an arrival.</summary>
+    public Core.Geometry.Vec3 Position { get; init; }
+}
+
+/// <summary>
 /// What one flight of a source cloud produced.
 /// </summary>
 /// <param name="Peak">The arrival-time peak the cloud formed at the detector.</param>
@@ -77,4 +98,7 @@ public sealed record CloudFlight(
     /// </para>
     /// </remarks>
     public IReadOnlyList<PhaseState> Remaining { get; init; } = [];
+
+    /// <summary>Every launched ion's outcome and end time, in launch order.</summary>
+    public IReadOnlyList<IonEvent> Events { get; init; } = [];
 }

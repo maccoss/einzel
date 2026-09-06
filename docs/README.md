@@ -16,8 +16,8 @@ states the intent and these pages state the reality; both are noted.
 | --- | --- |
 | [Living specification](../SPEC.md) | Every r06 requirement with its status and evidence, what changed and why, and what to do next |
 | [Architecture](architecture.md) | Assemblies, layering, the four invariants, and why each exists |
-| [Model format](model-format.md) | Schema 0.3 in full: parameters, expressions, fields, electrodes, source clouds |
-| [Device templates](device-templates.md) | Writing a new device as data, and the three shipped examples |
+| [Model format](model-format.md) | Schema 0.9 in full: parameters, expressions, fields, electrodes (rectangle, disc, polygon, edge profile), source clouds, drives, sequences |
+| [Device templates](device-templates.md) | Writing a new device as data, and the seventeen shipped templates, each with what solving it bought |
 | [Numerics](numerics.md) | Integrator, field solver, interpolation, and the accuracy budget |
 | [Sweeps and optimisation](optimisation.md) | Tolerance studies, sensitivity fields, Nelder-Mead and CMA-ES |
 | [Rendering](rendering.md) | Vector sections in SVG and PDF, conductor surfaces for the viewport, decimation bounds, and how a figure carries its own caveats |

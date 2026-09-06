@@ -105,6 +105,10 @@ public static class GeometryBuilder
                     RasteriseDisc(mask, grid, electrode, potential);
                     break;
 
+                case ElectrodeShape.Polygon:
+                    RasterisePolygon(mask, grid, electrode, potential);
+                    break;
+
                 case ElectrodeShape.EdgeProfile:
                     RasteriseEdgeProfile(mask, grid, electrode, potentialOf is null ? 1.0 : potential);
                     break;
@@ -321,6 +325,34 @@ public static class GeometryBuilder
         }
     }
 
+
+    /// <summary>
+    /// Fixes every node inside a polygon electrode. Nodes are classified by the
+    /// polygon's own signed distance, so the raster and the cut links that follow it
+    /// agree about where the surface is.
+    /// </summary>
+    private static void RasterisePolygon(
+        DirichletMask mask, Grid2D grid, CompiledElectrode electrode, double potential)
+    {
+        var i0 = Math.Max(0, (int)Math.Floor((electrode.MinX - grid.OriginX) / grid.SpacingX));
+        var i1 = Math.Min(grid.CountX - 1, (int)Math.Ceiling((electrode.MaxX - grid.OriginX) / grid.SpacingX));
+        var j0 = Math.Max(0, (int)Math.Floor((electrode.MinY - grid.OriginY) / grid.SpacingY));
+        var j1 = Math.Min(grid.CountY - 1, (int)Math.Ceiling((electrode.MaxY - grid.OriginY) / grid.SpacingY));
+
+        for (var j = j0; j <= j1; j++)
+        {
+            var y = grid.Y(j);
+
+            for (var i = i0; i <= i1; i++)
+            {
+                if (electrode.Contains(grid.X(i), y))
+                {
+                    mask.Fix(i, j, potential);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Fixes an entire domain edge to a potential that varies along it.
     /// </summary>
@@ -441,9 +473,7 @@ public static class GeometryBuilder
             return [single];
         }
 
-        var states = solve.Stages.Count > 0
-            ? solve.Stages.Select(stage => stage.Electrodes).ToList()
-            : [solve.Electrodes];
+        var states = StageStates(solve);
 
         var (_, _, quadrature) = Clocks(solve.Drives);
 
@@ -526,9 +556,7 @@ public static class GeometryBuilder
         // in each. A trap that fills and then extracts usually shares most of its
         // patterns between the two, and paying for them twice would be paying for
         // the sequencer rather than for the physics.
-        var states = solve.Stages.Count > 0
-            ? solve.Stages.Select(stage => stage.Electrodes).ToList()
-            : [solve.Electrodes];
+        var states = StageStates(solve);
 
         // A sinusoid resolves every phase into two fixed quadrature components, so
         // a structure with a phase ramp along it costs two solves rather than one
@@ -596,6 +624,9 @@ public static class GeometryBuilder
         var stageDirect = new List<IReadOnlyList<double>>(solve.Stages.Count);
         var stageHarmonics =
             new List<IReadOnlyList<IReadOnlyList<WeightTerm>>>(solve.Stages.Count);
+        var stageEndDirect = new List<IReadOnlyList<double>?>(solve.Stages.Count);
+        var stageEndHarmonics = new List<IReadOnlyList<IReadOnlyList<WeightTerm>>?>(solve.Stages.Count);
+        var anyRamp = false;
 
         var elapsed = 0.0;
 
@@ -609,17 +640,104 @@ public static class GeometryBuilder
             var weights = DriveChannels.Weigh(
                 groups, [.. stage.Electrodes.Select(Excited)], quadrature);
 
+            if (stage.EndElectrodes is null)
+            {
+                stageDirect.Add(weights.Direct);
+                stageHarmonics.Add(weights.Harmonics);
+                stageEndDirect.Add(null);
+                stageEndHarmonics.Add(null);
+                continue;
+            }
+
+            // A ramp: the same channels weighed at the end of the stage as well, with
+            // the oscillating terms aligned so each start term has its end partner - a
+            // supply that is off at one end and on at the other appears in only one
+            // list, and is given a zero-amplitude partner in the other.
+            anyRamp = true;
+            var endWeights = DriveChannels.Weigh(
+                groups, [.. stage.EndElectrodes.Select(Excited)], quadrature);
+            var alignedStart = new List<IReadOnlyList<WeightTerm>>(groups.Count);
+            var alignedEnd = new List<IReadOnlyList<WeightTerm>>(groups.Count);
+            for (var k = 0; k < groups.Count; k++)
+            {
+                var (a, b) = Align(weights.Harmonics[k], endWeights.Harmonics[k]);
+                alignedStart.Add(a);
+                alignedEnd.Add(b);
+            }
+
             stageDirect.Add(weights.Direct);
-            stageHarmonics.Add(weights.Harmonics);
+            stageHarmonics.Add(alignedStart);
+            stageEndDirect.Add(endWeights.Direct);
+            stageEndHarmonics.Add(alignedEnd);
         }
 
         var sequenced = new DrivenSolvedField(
             channels, direct, harmonics, frequencies, waveforms,
-            boundaries, stageDirect, stageHarmonics);
+            boundaries, stageDirect, stageHarmonics,
+            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null);
 
         return (sequenced, worst);
     }
 
+    /// <summary>
+    /// Two lists of oscillating weight terms, one per end of a ramp, made term-for-term
+    /// comparable: the same (drive, phase) in the same order, a zero amplitude standing
+    /// in for a term one end does not have.
+    /// </summary>
+    internal static (IReadOnlyList<WeightTerm> Start, IReadOnlyList<WeightTerm> End) Align(
+        IReadOnlyList<WeightTerm> start, IReadOnlyList<WeightTerm> end)
+    {
+        var keys = new List<(int Drive, double Phase)>();
+        foreach (var term in start.Concat(end))
+        {
+            if (!keys.Contains((term.Drive, term.Phase)))
+            {
+                keys.Add((term.Drive, term.Phase));
+            }
+        }
+
+        WeightTerm Pick(IReadOnlyList<WeightTerm> terms, (int Drive, double Phase) key)
+        {
+            var amplitude = 0.0;
+            foreach (var term in terms)
+            {
+                if (term.Drive == key.Drive && term.Phase == key.Phase)
+                {
+                    amplitude += term.Amplitude;
+                }
+            }
+
+            return new WeightTerm(key.Drive, amplitude, key.Phase);
+        }
+
+        return ([.. keys.Select(k => Pick(start, k))], [.. keys.Select(k => Pick(end, k))]);
+    }
+
+
+    /// <summary>
+    /// Every state the electrodes pass through: each stage's start, and its end where it
+    /// ramps. A ramp that starts from zero has its whole pattern at its end, so gathering
+    /// starts alone would leave that pattern unsolved and the ramp would weigh nothing.
+    /// </summary>
+    private static List<IReadOnlyList<CompiledElectrode>> StageStates(CompiledSolvedField solve)
+    {
+        if (solve.Stages.Count == 0)
+        {
+            return [solve.Electrodes];
+        }
+
+        var states = new List<IReadOnlyList<CompiledElectrode>>(2 * solve.Stages.Count);
+        foreach (var stage in solve.Stages)
+        {
+            states.Add(stage.Electrodes);
+            if (stage.EndElectrodes is not null)
+            {
+                states.Add(stage.EndElectrodes);
+            }
+        }
+
+        return states;
+    }
 
     /// <summary>How a two-dimensional electrode is excited, for the shared decomposition.</summary>
     private static Excitation Excited(CompiledElectrode electrode) =>

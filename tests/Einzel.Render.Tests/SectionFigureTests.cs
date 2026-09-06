@@ -462,4 +462,28 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
 
         output.WriteLine(figure.Scene.Provenance[^1]);
     }
+
+    /// <summary>
+    /// A page narrower than its two margins is refused as the caller's number, with a
+    /// code and a suggestion, rather than failing inside the renderer as an internal error.
+    /// </summary>
+    /// <remarks>
+    /// Found by asking for <c>--width-mm 12</c> in the belief that it was a window onto the
+    /// model. The drawing area came out at minus eight millimetres, the decimation
+    /// tolerance went negative, and the run ended in <c>INTERNAL_ERROR</c> - "a defect in
+    /// einzel, not in your model" - for what was a mistaken flag.
+    /// </remarks>
+    [Fact]
+    public void APageNarrowerThanItsMarginsIsRefusedNotCrashed()
+    {
+        var lens = Compile("einzel-lens");
+        var spec = new RenderSpec { WidthMm = 12.0, Equipotentials = 4 };
+
+        var refusal = Assert.Throws<Core.Errors.EinzelException>(() => SectionRenderer.Render(lens, spec));
+
+        output.WriteLine($"{refusal.Error.Code} {refusal.Error.Path}: {refusal.Error.Constraint}");
+        Assert.Equal(Core.Errors.ErrorCodes.ValueOutOfBounds, refusal.Error.Code);
+        Assert.Equal("/widthMm", refusal.Error.Path);
+        Assert.Contains("twice the margin", refusal.Error.Constraint, StringComparison.Ordinal);
+    }
 }

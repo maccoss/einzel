@@ -43,8 +43,7 @@ missing was a geometry fitted to them, and the seam to fit it through.
 **What remains beyond that** is the drift, and the fourth paper names the mechanism. A tilted mirror pair applies a *constant* force, so the drift period depends on
 amplitude; the published requirement is that it be constant to **5e-6**, and the ion foil's
 stated job is to "counter ToF aberrations induced by the converging ion mirrors" — exactly
-that. There is a dedicated paper on it (Grinfeld et al., Int. J. Mass Spectrom. 2024, 1060,
-169017), which is the one to get next. The other half is that these mirrors have no
+that. There is a dedicated paper on it (Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017), which is the one to get next. The other half is that these mirrors have no
 time-energy focus and cannot have one, because Thermo's optimised potential coefficients are
 applied here to guessed electrode depths — which is what finally makes the depth fit
 well-posed (§16).
@@ -123,7 +122,7 @@ two `TE` correction vectors are for (§18).
    nothing at 0.20 mm, and the whole 2.8× is in what a 200 µm spacer tilts over. Look for a
    mirror-assembly length or a mounting baseline in the patent literature or the detector
    paper's figures. **Every reversal number in this document depends on it.**
-2. **Get Grinfeld, Stewart, Makarov, Int. J. Mass Spectrom. 2024, 1060, 169017** —
+2. **Get Grinfeld, Stewart, Makarov, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** —
    *isochronous drift in elongated ion mirrors*. §16 derives the requirement (drift period
    constant to 5e-6) and §17 confirms the foil's published job is exactly to meet it. There
    is a whole paper on how; read it before optimising blind.
@@ -2448,8 +2447,7 @@ because it contradicts what this document previously concluded:
 So the **tilt does the reversal on its own**, and the foil's job is to counter the *time-of-flight
 aberration* the converging mirrors induce - which is precisely the amplitude-dependent drift
 period §16 measured. [C] also cites a dedicated paper on it: **Grinfeld, Stewart, Makarov,
-*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Int. J. Mass
-Spectrom. 2024, 1060, 169017** - which is the paper to get next.
+*Multi-reflection [TOF] with isochronous drift in elongated ion mirrors*, Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017** - which is the paper to get next.
 
 ### Measured: mirrors only, no foil
 
@@ -4343,3 +4341,1699 @@ sitting at the mesh error floor; section 45 found the objective measuring the wr
 this is the same failure in the *sample size*. Each time the arithmetic that would have caught
 it in advance - error propagation through the statistic actually being compared - is two lines
 long and was not done first.
+
+## 47. The Grinfeld paper, and the reconstruction closes
+
+Mike obtained the isochronous-drift paper by interlibrary loan. **It is the design document**,
+and it settles most of what sections 24 to 46 were inferring. Two corrections to how this
+project has cited it: it is **Nuclear Instruments and Methods in Physics Research A** 1060
+(2024) 169017, not Nucl. Instrum. Methods Phys. Res. A as recorded everywhere above; and the drift-control
+electrode is called a **stripe** here, with "ion foil" being other papers' name for it, while
+"prism" in this paper means the *steering deflector* - a pair of 90-degree wedges that set the
+injection angle. Two different devices.
+
+### What it confirms
+
+- **Section 3 is titled "Adiabatic drift"** and derives exactly the separation this work
+  arrived at independently: the action on an x-oscillation is an adiabatic invariant, and with
+  energy conservation it gives a drift equation in an **effective pseudopotential**. The
+  paper's treatment is the more correct one - the invariant is the **action** `J(y, eps)`,
+  where section 24 used the time-averaged potential, which is why that quadrature carried a
+  2.5 per cent systematic.
+- **The tilt's effect**: "a decrease of the drift angle by 2 alpha on every two subsequent
+  reflections in converging mirrors" - the same closed form as section 13's
+  `dv_z = V sin 2 alpha`, with `alpha` there being the angle *between* the mirrors where
+  section 13's is per mirror.
+- **Both drift-control methods** are the two this work used: a biased stripe whose shape
+  function sets its extent, and mirror convergence.
+
+### Table 1, against this model
+
+| | published | this model | |
+| --- | --- | --- | --- |
+| nominal drift length `y0` | **335 mm** | 334.61 mm | 1.001 |
+| oscillations | **25** | 25 | exact |
+| flight path | **~32 m** | 31.27 m | 0.977 |
+| acceleration | **4000 V** | 4000 V | exact |
+| nominal injection angle | **1.78 deg** | 2.29 deg | 1.29 |
+| mirror convergence angle | **0.045 deg** | 0.0458 per mirror | see below |
+| stripe bias | **-13.8 V** | -3.0 V | 4.6x low |
+| effective mirror separation | **641 mm** | (cap-to-cap 716.6) | - |
+
+**Three independent readings agree that the tilt was twice too large**, which resolves the
+most consequential guess in this reconstruction. The published 0.045 degrees is the angle
+between the mirrors - the paper says the convergence is "only a few hundred micrometers on the
+entire drift length", and 0.045 total gives 263 microns where a per-mirror 0.0458 gives 536.
+Independently, the tilt must supply only `a0` = 0.84 of the pseudopotential, so the tilt alone
+must reverse at 335/0.84 = 399 mm, which at the published 1.78 degrees needs 0.0232 per
+mirror. And `tiltBaseline` = 494 mm follows, against the 250 mm guessed. The guess was wrong
+by exactly a factor of two, and section 17's warning that it carried a 2.8-fold ambiguity was
+the right warning.
+
+### The stripe shape, published
+
+The optimised drift pseudopotential is given outright:
+
+    psi_m(eta) = a0 eta                                    a0 = 0.83999
+    psi_s(eta) = c1 eta + c2 eta^2 + ... + c5 eta^5
+    c = [0.75160, -7.52535, 14.0242, -9.17661, 2.08613]
+
+normalised so `psi_m(1) + psi_s(1) = 1`. **Summing the published coefficients gives 0.99996**,
+which confirms both the values and the reading of the parameterisation. Evaluated against
+Fig. 4's plotted curves it agrees again: `psi_s(0.5)` = **-0.2608** against a plotted dip near
+-0.27, and `psi_s(1)` = **+0.15997** against a plotted +0.16.
+
+**That answers section 46's open question and explains why nothing tried tonight got close.**
+`psi_s` **dips negative** to -0.26 at mid-drift before rising - the stripe *accelerates* the
+drift over the first half and retards it over the second - and it is fifth order. Every law
+tried in sections 30 to 45 was monotonic and second order at best: two terms of five, and the
+wrong sign over half the range. The published isochronicity is **2.1e-6 over plus or minus 10
+per cent of drift length** (Fig. 4, right), which is R = 238,000; the best this work reached
+was 1.2e-3, **580 times worse**.
+
+### And the design is now directly implementable
+
+The sixteen per-slice basis wells of section 42 make "produce this pseudopotential" a **linear
+least-squares problem** rather than an optimisation: find `V_k` minimising
+`|| sum_k V_k W_k(z) - eps_y0 psi_s(z/L) ||`, with `eps_y0 = 4000 sin^2(1.78 deg)` = 3.859 V.
+Solved with a small ridge term (the wells overlap five deep, so the normal matrix is
+ill-conditioned), it fits the published pseudopotential to **0.37 per cent rms on a 1.64 V
+span**, with smooth slice potentials from +0.17 V rising to -5.30 V at mid-drift and +5.77 V
+at the far end.
+
+So the night's screen and basis - built to make a blind search affordable - turn out to be
+exactly the machinery needed to *implement a published design* instead. That is a better use
+of them, and it needs no pixel measurement of a perspective drawing: the shape is analytic,
+and only the two scaling lengths `w0` and `w1` are unpublished, which the fit bypasses
+entirely by solving for potentials rather than for a plate outline.
+
+### Flying it: a units error of mine, and what the diagnosis cost
+
+The first attempt at the published design put the tilt-only reversal at **40.6 mm** where
+399 was predicted. The ratio is 9.83, which is 3.14 squared - and `z_rev` goes as the square
+of the injection angle, so the angle was pi times too small.
+
+`injectionAngle` is the **tangent** of the angle, which its own description in the template
+says outright ("Tangent of the angle between the trajectory and the mirror axis, setting the
+drift rate as V tan(theta)"). I passed `degrees/180` as though it were half turns - the
+convention used for `mirrorTilt` and every other angle in this template - giving 0.009889
+where `tan(1.78 deg)` = 0.031077. Correcting it predicts 40.6 x 9.88 = **401 mm** against the
+399 expected, to half a per cent, so the model was right and the conversion was not.
+
+**Worth recording because the diagnosis was free and the error was avoidable.** The factor was
+identifiable from a single ratio - 9.83 is conspicuously pi squared, and only one quantity in
+the drift enters squared - and the correct convention was written in the parameter I was
+setting. Two habits would each have caught it: reading the description of a parameter before
+overriding it, and checking the tilt-only reversal against its closed form *before* adding the
+stripe on top. The second is the general one: **when implementing a two-part design, verify
+each part alone against its own prediction before combining them**, because the combined
+result has no unique diagnosis.
+
+This is the sixth convention or harness error of the night, and they all share a shape: a
+quantity read under the wrong convention, producing a plausible number rather than a failure.
+The others are collected in the harness note above.
+
+### The published design flown: the geometry reproduces to one per cent
+
+With the injection angle corrected to a tangent, `theta0` = 1.78 degrees, `tiltBaseline` =
+494 mm and the sixteen slice potentials fitted to `psi_s`:
+
+| | published | this model | |
+| --- | --- | --- | --- |
+| tilt-only reversal (predicted 335/0.84 = 399) | - | **400.3 mm** | 1.003 |
+| reversal with the stripe | **335 mm** | **338.6 mm** | 1.011 |
+| reflections | **50** | **51** | +1 |
+| flight time | **~779 us** | 873.2 us | 1.121 |
+
+**The tilt-only reversal at 400.3 mm against a predicted 399 is the sharp one**, because it
+tests the tilt calibration alone with nothing else in play - and it confirms that `a0` = 0.84
+means what section 47 read it to mean. The reversal with the stripe then lands within 1.1 per
+cent of the published 335 mm at the right reflection count, which is the published drift
+design reproduced in an independently built model.
+
+**And the flight time's 12 per cent has a single-number explanation.** The paper's effective
+mirror separation is **641 mm** against this template's 716.6, and `T` is proportional to it:
+779 x 716.6/641 = **871 us** against the measured 873.2, agreeing to **0.26 per cent**. So the
+remaining flight-time error is the mirror separation and nothing else - a quantity this model
+guessed from the published flight path and can now take from Table 1 instead. Note the
+published 641 mm is an *effective* distance ("the ion's nominal velocity times half the
+period"), not a physical cap-to-cap, so it is not a drop-in replacement for `capToCap`; the
+ratio is what the measurement pins.
+
+**A first isochronicity reading gave `a` = +5.20 where the design wants zero, and the
+explanation offered here was wrong.** It claimed the scan had strayed outside the published
+plateau, reasoning that `eta_D` goes as `sin^2(theta)` so `eta_D` = 1 ± 0.1 is only ± 5 per
+cent in angle. **That scaling holds for a constant-force drift and not for this one**: the
+designed `psi_total` rises steeply and nonlinearly, so an energy ratio of 1.232 moves the
+turning point only to `eta` = 1.099 - meaning ± 10 per cent in `eta_D` is ± 11.7 per cent in
+angle, and the ± 6.75 per cent scan was comfortably *inside* the plateau. The real cause was
+a crest in the fitted potential at the foil's far edge, section 48. Re-measuring inside it is the test that means
+something, and the arithmetic relating the two ranges is one line that should have been done
+before the first scan rather than after it.
+
+**And the re-measurement itself failed first, in a way this repository already documents.** The
+new angle list was patched into the script by string replacement and applied; the *reporting*
+block's replacement matched nothing, did nothing silently, and the old reporting code then
+crashed looking for the old keys - after the flights had run. CLAUDE.md records exactly this
+failure from the corpus work ("three tests edited the scaffolded model by string replacement
+against a JSON layout the corpus reformatted, so the edit matched nothing, the model was
+unchanged, and each reported the feature it was checking as broken"), and its fix is an edit
+helper that **asserts the replacement happened**. I made the same mistake in a scratch script
+with no assertion. The rewrite is a separate module that *imports* the builder from the first
+script rather than duplicating it, so the geometry cannot drift between the two - which is the
+same argument, applied to code rather than to text.
+
+### The knife-edge detector, and a measurement that does not need one
+
+The in-plateau scan gave flight times that were not smooth at all: 815.7, 818.9, 831.4,
+**873.2**, then **1641.5**, 1502.8, 1439.0 microseconds across angle factors 0.955 to 1.045.
+A near-doubling between x1.000 and x1.011 is not a flight time varying.
+
+**The trajectories say why**: `v_z` changes sign **once** at x1.000 and **three times** at
+x1.011 and x1.045, with 51 reflections becoming 96 and 84. The ion returns toward the
+injection plane, **fails to cross the detector at z = -2 mm, turns round and drifts out
+again**, and is caught on a later pass. The number of drift excursions is what changed.
+
+**The first hypothesis was wrong and cheap to refute.** The fit was constrained only over
+z in [0, 335] mm, so the foil's potential outside that range is unconstrained and could in
+principle build a barrier behind the injection plane. Sampled, it does not: the total falls
+monotonically from 0.0334 V at z = 0 to -0.29 V at -30 mm, with no maximum anywhere in
+z <= 0. Nothing reflects the ion there.
+
+**What actually happens is that the drift does not close exactly.** The adiabatic invariant is
+approximate - which is the whole basis of the pseudopotential treatment, and the paper says as
+much - so a little energy passes between the x-oscillation and the drift over 25 oscillations,
+and the ion returns to a few tenths of a millimetre either side of where it started. A
+detector 2 mm behind the injection plane is then a **threshold**, and whether a given ion
+clears it on the first return is decided by that asymmetry rather than by anything being
+measured.
+
+**So the measurement was replaced rather than the model.** The time to the **drift turning
+point** needs no detector, is half the drift period by symmetry, is present in every
+trajectory however many excursions follow it, and is the quantity the paper's Eq. (7) is built
+from. That is what should have been measured from the start: **an observable that depends on a
+threshold being crossed is not a good place to look for a part-per-million effect.**
+
+## 48. The stripe must outrun the drift, and a fit that stopped where the drift did
+
+The turning-point measurement removed the detector and the discontinuity survived: `z_turn`
+jumps from **338.65 mm to 409.05 mm** between angle factors 1.000 and 1.011, a 21 per cent
+change in reversal for a 1.1 per cent change in angle. And 409 is close to the **tilt-only**
+reversal of 400 mm, which is the clue.
+
+Sampling the fitted drift potential past the fitted range:
+
+| z, mm | 320 | 335 | **350** | 365 | **380** | 395 | 410 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| total, V | 3.460 | 3.847 | **3.947** | 3.855 | **3.832** | 3.893 | 3.999 |
+| intended, V | 3.459 | 3.859 | 4.265 | 4.673 | 5.080 | 5.484 | 5.884 |
+
+**The fitted potential has a local crest at 350 mm and then dips**, where the intended one
+rises monotonically, and the two diverge from exactly 335 mm - the edge of the fitted range.
+The cause is physical rather than numerical: **the foil ends at 350 mm in this template**, so
+past it the stripe's contribution decays away and cancels part of the tilt's rise.
+
+The drift energy at angle x1.011 is **3.9447 V against the 3.9471 V crest** - a margin of
+0.06 per cent. The ion clears it, coasts through the dip, and is finally stopped at 409 mm
+where the tilt's rise overtakes it, which is the measured number. At nominal energy
+(3.8594 V) it never reaches the crest and turns at 338 mm as designed.
+
+### The requirement this exposes
+
+**The stripe must extend far enough beyond the nominal drift length that its far-edge fringe
+forms no crest inside the operating range of drift lengths.** The published plateau spans
+`eta_D` = 1 ± 0.1, so drift lengths reach 368 mm, and the crest here sits at 350 - inside the
+range that must work. The margin between the nominal drift energy and the crest is 2.3 per
+cent while the plateau needs ±2.2 per cent, so they very nearly overlap, and that near-overlap
+is the whole instability.
+
+This is a design constraint the pseudopotential formalism does not state and the papers do not
+mention, because in a correctly built instrument it is satisfied comfortably: their stripe
+presumably runs well past 368 mm. In this template `driftLength` is 350 mm and the foil spans
+all of it, which puts the far edge 15 mm past the nominal reversal - far too close.
+
+**And it is a fitting error as much as a geometry one.** The least-squares fit of section 47
+was constrained over `0 <= z <= L` because that is where the published `psi_s` is defined. Past
+`L` the basis sum was free, and "free" meant "decays as the foil's fringe field does", which is
+not what the design needs there. **A fit over the range the observable occupies is not enough
+when the dynamics can leave that range** - and a drift whose whole purpose is to reverse near
+the edge of the fitted domain will leave it whenever it is perturbed.
+
+### The design reproduces, and the precision limit is the discretisation
+
+With the stripe extended and the fit run past the plateau:
+
+| angle | ×0.955 | ×0.978 | ×0.989 | **×1.000** | ×1.011 | ×1.022 | ×1.045 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `t_turn`, us | 413.547 | 408.255 | 406.980 | **406.592** | **406.371** | 406.471 | 410.674 |
+| `z_turn`, mm | 324.62 | 331.13 | 334.16 | 337.23 | 340.27 | 343.36 | 350.17 |
+
+**The turning-point time is flat to 0.6 us over 3.3 per cent of injection angle, with an
+interior minimum near ×1.011 and rising at both ends** - which is the shape of Fig. 4's
+`tau(eta_D)`. `z_turn` is monotonic throughout, so the discontinuity is gone. The drift now
+behaves as the design says it should.
+
+Quantitatively it is **1.5e-3 against the published 2.1e-6**, and the factor of 700 has an
+arithmetic explanation rather than a mysterious one. **The isochronicity is a cancellation to
+2.1e-6, so the drift pseudopotential has to be right to about that same relative precision** -
+roughly **4 microvolts on a 3.9 V well**. The sixteen-slice fit achieves 7 millivolts rms,
+0.18 per cent, which is a thousand times too coarse and predicts a residual of order 1e-3.
+That is what was measured.
+
+**Which says something about the instrument rather than about this model.** A *segmented*
+stripe cannot meet this specification: sixteen independently biased slices reproduce the
+required shape to 0.2 per cent where six orders are needed. The paper shapes a **continuous**
+electrode instead - its shape function `w(y)` - and its literature review notes as a drawback
+that an earlier scheme "had to split all mirror electrodes into multiple segments with
+individual voltages". The discretisation limit found here is a measurement of why that choice
+was made.
+
+So the model reproduces the design's mechanism and geometry faithfully, and its precision
+ceiling is the way this template approximates the stripe, not the physics.
+
+### The fit is the floor, not the mesh - established by quadrature with no flight in it
+
+Two things could set the 1.5e-3 spread: the 0.18 per cent residual of the sixteen-slice fit,
+or the flights themselves (the 4 mm foil mesh, the integrator). A half period computed by
+quadrature over the fitted potential - `t = integral dz / v_z` with `v_z` from the
+pseudopotential, no mesh, no trajectory - separates them, and the published polynomial run
+through the same quadrature is the control:
+
+| angle | fitted, us | design, us | flown, us |
+| --- | --- | --- | --- |
+| ×0.989 | 408.888 | 408.815 | 406.980 |
+| ×1.000 | 408.001 | 408.778 | 406.592 |
+| ×1.011 | 407.522 | 408.816 | 406.371 |
+| ×1.022 | 407.686 | 408.928 | 406.471 |
+| spread ±1.1% | **3.35e-3** | **9.9e-7** | **1.50e-3** |
+| spread ±2.2% | 4.81e-3 | 1.6e-7 | 4.39e-3 |
+| spread ±4.5% | 3.08e-3 | 1.6e-5 | 7.07e-3 |
+
+**The fitted potential predicts the flown spread to within a factor of two**, so the flights
+add little and refining the mesh would buy nothing. That conclusion survives; the numbers in
+the table above do not, and **the design column is wrong** - see section 51. The spreads there
+were measured as the difference between the two *endpoints* of each range, which for a curve
+with an interior minimum is nearly zero by cancellation rather than by isochronicity. Measured
+honestly, as the maximum minus the minimum over the range, the design gives 9.24e-5 at
+±1.1 per cent of angle rather than 9.9e-7, and the published 2.1e-6 is **not** reproduced.
+
+The absolute half period agrees across all three routes to 0.5 per cent (408.0 / 408.8 /
+406.6 us), so the quadrature is quantitatively right and not only right in shape. What that
+licenses is using it as the *objective* for the stripe design: any potential that the
+quadrature says is isochronous to 1e-6 will fly that way to within what the mesh adds,
+and the quadrature costs milliseconds where a flight costs a minute.
+
+## 49. The mirrors focus, and both published correction vectors do their published jobs
+
+Section 47 called `C(2)`'s apparent failure "the sharpest constraint in this reconstruction so
+far", on the strength of a table of `|c2|` against `te2` on a 0.3 grid, and concluded that the
+published vector makes the quadratic coefficient worse in both directions. **That was an
+artefact of the measurement.** Fitting the *signed* cubic through five energies at each `te2`:
+
+| `te2` | -0.20 | -0.15 | -0.10 | -0.05 | 0.00 | +0.05 | +0.10 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `c2` | -0.1684 | -0.1537 | -0.1363 | -0.1155 | -0.0901 | -0.0589 | -0.0210 |
+
+Monotonic, linear at slope +0.484, **crossing zero at `te2` = +0.169**. So `C(2)` reduces the
+quadratic coefficient exactly as published, and the old table's rise at `te2` = +0.30 is
+*overshoot past the zero* - which is what a working correction vector does when it is driven too
+far. **A magnitude cannot show a sign change**, and a 0.3 grid cannot bracket a zero at 0.169.
+The lesson generalises past this instrument: where a quantity is being *cancelled*, measure it
+signed, and put grid points close enough together to bracket the crossing.
+
+And `dc1/dTE1` = **+0.987 against the published 1.0** at these depths, measured at `te1` = 0.
+
+### Two knobs, two coefficients, solved simultaneously
+
+The published calibration is a two-parameter family, so the natural thing to ask is where both
+coefficients vanish at once. Newton on the 2x2 Jacobian, damped and seeded by continuation:
+
+| | `TE1` | `TE2` | `c1` | `c2` | `c3` | R at +/-3% |
+| --- | --- | --- | --- | --- | --- | --- |
+| uncorrected | 0 | 0 | -0.0330 | -0.0977 | +1.41 | 263 |
+| one linear solve | +0.0072 | +0.0923 | +0.0058 | +0.0292 | +2.28 | 1,066 |
+| **converged** | **+0.0050** | **+0.0860** | **+2e-5** | **+1e-4** | +2.07 | **4,424** |
+| the paper's own worked point | 0.01 | 0.10 | +0.0135 | +0.0695 | +2.56 | 528 |
+
+**A seventeen-fold gain, at a working point close to the paper's own worked examples** on a
+geometry fitted to neither. The control that matters is the row that is not in the table: `TE1`
+alone, driven to zero `c1`, gives `c2` = **+0.288**, three times worse than uncorrected. One
+knob cannot do this, which is presumably why the paper carries two.
+
+**The undamped Newton had to be fixed first, and the failure was instructive.** Away from focus
+the response curves hard, so an undamped step ran `TE2` out to 0.45 with `c2` still 0.36 - and
+`c3` read at an unconverged point says nothing at all, because `c3` depends on `TE1` and `TE2`
+as well as on the geometry. Damping to 0.6 with a 0.06 step limit and seeding each geometry from
+a converged neighbour puts the iterate inside the linear region from the start.
+
+### What is left is `c3`, and that is what the depths are for
+
+Two knobs can zero two coefficients; the third is a property of the geometry. The paper calls a
+**third-order** temporal focus the design condition, so **`c3` = 0 at the double zero is an
+unfitted condition on `d1..d4`** - and it comes from the published calibration scheme rather
+than from any number this model produced. That makes the depth search well posed for the first
+time: four parameters, one sharp condition, plus `dc1/dTE1` = 1 as an independent check.
+
+### And it sets the energy acceptance of a lower-resolution instrument
+
+With `c1` and `c2` cancelled the arrival spread goes as `c3` s^3, so resolving power goes as
+s^-3:
+
+| energy half-spread | +/-3.0% | +/-2.0% | +/-1.8% | +/-1.0% | +/-0.5% |
+| --- | --- | --- | --- | --- | --- |
+| R, mirror aberration alone | 4,482 | 15,126 | **20,749** | 121,007 | 968,054 |
+
+**So 20,000 comes with +/-1.82% of energy acceptance from the two-vector calibration alone**,
+and reaching the +/-3 to 5% a compact design would like needs `c3` cancelled by the geometry
+too. That is the number that decides whether a lower-resolution instrument needs the
+third-order focus, and it is now measured rather than assumed.
+
+## 50. Geometric scaling, and what a lower-resolution analyser would be
+
+The drift decrement per reflection is `dv_z = V sin 2a` exactly - it follows from conservation
+alone and is independent of the electrode design and of the mirror separation. So the number of
+reflections needed to reverse the drift is
+
+    N = sin(theta) / sin(2a),     sin(a) = spacer / baseline
+
+which contains **no length at all**. The prediction is that scaling every dimension by k at
+fixed voltages leaves `N` unchanged while the flight time, the effective separation, the drift
+length and the whole envelope all scale by k. Flown at four scales, with all sixteen length
+parameters and both mesh sizes scaled together:
+
+| k | cap to cap | N | T / kT0 | z_rev / k z0 | L_eff / k L0 |
+| --- | --- | --- | --- | --- | --- |
+| 1.00 | 685 mm | 40 | 1.0000 | 1.0000 | 1.0000 |
+| 0.70 | 480 mm | **40** | 1.0005 | 1.0000 | 0.9999 |
+| 0.50 | 343 mm | **40** | 1.0013 | 1.0000 | 1.0000 |
+| 0.30 | 206 mm | **40** | 1.0030 | 0.9994 | 0.9994 |
+
+**The oscillation count is untouched by a 3.3-fold change in size**, and the drift reversal
+divided by k is the same 393.9 mm at every scale. Applied to the published instrument, a
+one-fifth-scale similar analyser keeps all 25 oscillations at about 137 mm cap-to-cap, 67 mm of
+drift, 6.4 m of path and 156 microseconds of flight.
+
+**Two earlier attempts at this failed, both from an incomplete scaling rather than from the
+physics, and both looked like the prediction being wrong.** The first scaled the tilt baseline
+and left the 0.2 mm spacer alone - and the tilt is `asin(spacer / baseline)`, so the convergence
+angle went as 1/k and `N` came out 19 against 40 at k = 0.5. The second scaled the spacer too,
+fixing the angle, but left the mirror internals - `d1..d4`, the mouth, the board gap - at
+absolute millimetres; the geometry was still not similar, and at a 300 mm cap-to-cap with a
+130 mm mouth on each side the two mirrors nearly touch. `N` came out 19 again. **A similar
+analyser is similar in every length**, and a scaling test that scales a subset measures the
+subset.
+
+What the route costs is **acceptance**, and it is calculable rather than a worry. Scaling all
+lengths at fixed voltage scales the fields as 1/k, so trajectories are geometrically similar: an
+ion entering at the same *angle* follows the same relative path, the accepted angular range is
+preserved, and the accepted spatial extent scales with k. The accepted emittance therefore goes
+as k.
+
+### And opening the injection angle helps the drift aberration rather than costing it
+
+The thermal spread in sideways velocity is absolute - 70.6 m/s at 300 K for m/z 500 - while the
+sideways velocity itself is `V sin(theta)`. So the *relative* spread the drift electrode has to
+correct falls as `1 / sin(theta)`: 5.79 per cent at 1.78 degrees, 3.43 at 3 degrees, 1.72 at 6.
+A wider injection angle reduces the cancellation the stripe must supply by the same factor,
+which is the opposite of treating the aberration budget as the price of a wider angle.
+
+## 51. The published isochronicity: what is reproduced, what is not, and a claim I had to withdraw
+
+Section 50's predecessor stated that the quadrature "reproduces the paper's 2.1e-6 at 9.9e-7"
+and that the sixteen-slice fit's residual is therefore the limit. **The first half was wrong
+and it reached three documents** - this file, `docs/astral-explainer.html` section 6, and the
+working memo - before a C# port of the same quadrature, written to a different specification,
+disagreed with the Python one and forced the check.
+
+**Two errors compounded.** The spread was measured as the difference between the two
+*endpoints* of the energy range, and the published shape's period has an interior *minimum*,
+so the two ends are nearly equal by symmetry and their difference is nearly zero by
+cancellation rather than by flatness. And the range sampled was ±1.1 per cent of angle, about
+a tenth of the published plateau. Measured as maximum minus minimum, over the published range:
+
+| angle range | eta_D range | endpoint difference | max minus min |
+| --- | --- | --- | --- |
+| ±1.10% | 0.991 to 1.009 | 9.92e-07 | **9.24e-05** |
+| ±2.20% | 0.981 to 1.019 | 1.59e-07 | **3.68e-04** |
+| ±4.50% | 0.962 to 1.039 | 1.59e-05 | **1.55e-03** |
+| ±11.70% | 0.904 to 1.105 | 4.14e-04 | **1.07e-02** |
+
+**It is not the printed coefficients.** They sum with `a0` to 0.99996 rather than 1, which is
+the six-figure truncation showing, and that was the obvious suspect. It is refuted: scaling the
+stripe polynomial to close the sum exactly, or adjusting `a0` to close it, or perturbing
+`c3 = 14.0242` by a unit in its last printed digit, all leave the spread at 1.07e-2 unchanged.
+
+### What the published shape does deliver, and it is the design property
+
+The period against drift energy has a **stationary point exactly at the nominal**:
+
+| E/E0 | 0.90 | 0.95 | **1.00** | 1.05 | 1.10 |
+| --- | --- | --- | --- | --- | --- |
+| dt/t | +2.02e-3 | +4.87e-4 | **0** | +4.63e-4 | +1.80e-3 |
+
+`d(t/t)/d(E/E0)` at nominal is **-0.00001**, and both neighbours are slower - a genuine
+minimum, so the residual is *quadratic* in the energy offset rather than linear. **The control
+is the bare tilt**: a linear effective potential gives a period going as the square root of
+the drift energy, so the same derivative is exactly +0.5. Five orders apart, which is what
+makes the 1e-5 a measurement rather than a small number.
+
+That the stationary point lands on the nominal to five figures is not a coincidence and is not
+something this code knows - it says the formalism, the normalisation and the coefficients have
+all been read correctly. **So the published design's mechanism is reproduced; its stated
+magnitude is not.** What would settle the remaining three orders is the paper's own definition
+of `tau` and of the range it is quoted over, which needs the equations read from the PDF rather
+than from the text extraction - the extraction loses sub- and superscripts.
+
+### And the sixteen-slice fit destroys the mechanism, which is a stronger statement
+
+The earlier claim was that the fit's 0.26 per cent residual adds an error comparable to the
+flown spread. True, and weak. What the fit actually does:
+
+| | `d(t/t)/d(E/E0)` at nominal |
+| --- | --- |
+| the published polynomial | **-0.00001** |
+| sixteen slices fitted to it at 0.26 per cent | **-0.07948** |
+
+**The fit reproduces the potential to a quarter of a per cent and loses the stationary point by
+a factor of eight thousand**, which is the whole design property. A first-order cancellation is
+not robust to a quarter of a per cent of anything. So a segmented stripe cannot deliver an
+isochronous drift at all, rather than delivering a slightly worse one - and the conclusion that
+a continuous shaped electrode is required is strengthened rather than weakened by the
+correction.
+
+**The lesson, which is not about this instrument.** A cancellation must be measured by the
+quantity being cancelled - here a derivative at a point - and not by a spread over a range,
+because a spread depends on the range, on the sampling, and on whether it is read end to end or
+as an extremum. Two of those three choices flattered the answer by three orders of magnitude at
+once. `AdiabaticDriftTests` now asserts the derivative and carries the bare tilt as its
+control, so the number that can be got right by accident is no longer the one being checked.
+
+## 52. Electrode depth is quantised by the mesh, and cut cells do not reach it
+
+E7 returned **bit-identical coefficients** for `d3` = 82.25 and 82.00 - the same `c1`, `c2`,
+`c3` and flight time to every printed digit. Two different geometries cannot do that, so the
+depth scan was measuring something other than the depth. Checked directly at a fixed operating
+point, `d3` = 84.00 differs and 82.25 and 82.00 do not.
+
+**The cause is that `d1..d4` are boundaries between abutting conductors.** Cut cells
+(Shortley-Weller) handle a conductor/vacuum surface, which is what FLD-1 needed and what this
+project built them for. A boundary between two *conductors* is not a field boundary at all: the
+field only sees the outer surface of the combined region, and internally the boundary is a
+**step in the potential along the mirror's inner face**. Whichever node that step lands on
+decides which potential the node holds, so moving it within a cell changes nothing.
+
+Measured by scanning `d3` in 0.1 mm steps at a fixed `(TE1, TE2)`:
+
+| `d3`, mm | 82.0-82.2 | 82.3-82.6 | 82.7-82.9 | 83.0 |
+| --- | --- | --- | --- | --- |
+| `c1` | -0.0041493 | **+0.0000184** | +0.0042519 | +0.0085362 |
+| `c2` | +0.0239755 | +0.0000702 | -0.0220373 | -0.0428147 |
+| `c3` | +0.42737 | +0.43522 | +0.44334 | +0.48475 |
+| half period, us | 16.687596 | 16.727282 | 16.767496 | 16.808250 |
+
+Identical within each block, and the blocks are **0.350 mm** wide against an actual cell of
+**0.35576 mm**. The quantum is the cell.
+
+**And the cell is not the one requested.** The template asks for 0.5 mm over an x domain of
+728.6 mm, which is 1457.2 intervals; `Grid2D.OverBox` rounds the interval count **up to a power
+of two**, so it solves 2048 intervals at 0.35576 mm. Finer than asked, never coarser - which is
+the documented and correct behaviour - but it means the depth quantum is not a number anyone
+would predict from the model file.
+
+### What this invalidates
+
+**"c3 = 0 at d3 = 82.28 mm" is not a result.** It came from a linear fit through points 0.25 mm
+apart, which is inside one quantum, so the fit was through three samples of at most two distinct
+geometries. The same applies to the earlier sweeps at 0.5 mm steps: they straddled cells
+unevenly, and the apparent smoothness of `c3` against `d3` across 84 / 83.5 / 83 was real only
+because those steps happen to exceed the quantum.
+
+**What survives** is that `c3` at the double zero falls as `d3` falls - 2.065 at 84, 1.424 at
+83, 0.434 at the 82.3-82.6 cell - and that the double zero itself is genuine, since `c1` and
+`c2` reach 1.8e-5 and 7.0e-5 at a fixed operating point on that cell. The resolving power of
+21,134 measured there stands. What cannot be claimed is the depth to better than a third of a
+millimetre.
+
+### The rule that generalises
+
+**A geometric parameter that positions a boundary between two conductors is quantised by the
+mesh, and no cut-cell scheme fixes it**, because there is no cut to make - the potential step
+is a labelling of nodes, not a surface. Two consequences for this platform:
+
+- An optimiser given such a parameter sees a **staircase**: the derivative is identically zero
+  almost everywhere and jumps at cell boundaries. That is precisely the FLD-1 failure mode
+  recorded in `SPEC.md`, met in a place the fix does not cover, and it means a study over
+  electrode *segment lengths* is not the same kind of study as one over electrode *positions*.
+- The quantum should be **reported**, since it is computable with no solve: it is the domain
+  extent divided by the power-of-two interval count. A study whose step is finer than the
+  quantum is measuring the mesh.
+
+Neither is fixed here. The workaround used for the rest of this section is to solve one point
+per cell and label the answer by the cell.
+
+### The double zero per mesh cell, and the third-order focus is not there
+
+Solved one point per cell of depth, since finer steps are not distinguishable:
+
+| `d3` cell | `TE1` | `TE2` | `c1` | `c2` | `c3` | R at ±3% |
+| --- | --- | --- | --- | --- | --- | --- |
+| 82.10 and below | - | - | -2.2e-3 | +2.0e-2 | - | **no double zero found** |
+| **82.45** | -0.0349 | +0.2975 | **+1.8e-5** | **+7.0e-5** | **+0.435** | **20,319** |
+| 82.80 | -0.0170 | +0.2072 | +2.8e-6 | +1.4e-4 | +1.032 | 8,948 |
+| 83.15 | -0.0074 | +0.1558 | -3.4e-6 | -9.1e-5 | +1.424 | 6,520 |
+
+**`c3` at the double zero rises monotonically with depth and does not cross zero**, so the
+third-order focus is not reached over this axis. The earlier claim that it crossed between 82.5
+and 82.0 came from points the solve had not converged, and section 52 explains why those depths
+were not distinct geometries anyway.
+
+**Below 82.10 the two-knob solve stops converging at all** - four restarts each, with `c2` stuck
+between 2e-2 and 6e-2, while the cell immediately above converges from the same seed in one.
+Whether that is the search failing or the double zero genuinely not existing there is **not
+established**, and it matters: with two knobs the reachable set of `(c1, c2)` is the image of a
+two-dimensional map, and there is no reason it must contain the origin at every geometry.
+
+**What stands is the resolving power.** R = 20,319 at a ±3 per cent energy spread, with `c1`
+and `c2` both at parts in 10^5, from the published calibration family on a geometry fitted to
+none of it. Anchored against the cubic residual alone (21,276) it agrees to 5 per cent, so the
+number is the aberration rather than a numerical artefact. In acceptance terms: **±3.06 per
+cent at R = 20,000**, and ±5 per cent gives 4,596 - so the lower end of a 20k instrument's
+usual acceptance target is met by calibration alone and the upper end is not.
+
+## 53. Reading the paper's equations: the drift period is not the arrival time
+
+Sections 47 to 52 measured the wrong quantity. The design paper's equations, read from the
+rendered PDF pages rather than from the text extraction (which drops sub- and superscripts),
+give two integrals that look almost identical and mean entirely different things.
+
+    psi   = psi_s + psi_m                                                    the drift pseudopotential
+    T_D / T0   = (L / (W sin th0)) * kappa,   kappa = INT dn / sqrt(psi(nD) - psi(n))      Eq 13
+    dT_K / T0  = (L sin th0 / 2W)   * tau,    tau   = INT [psi_s(n) - psi_m(n)] / sqrt(psi(nD) - psi(n)) dn   Eq 14
+
+**`kappa` carries the sum; `tau` carries the difference.** The paper states the reason
+outright: "Though the components `Phi_s` and `Phi_m` sum up, the integral in Eq. (11) contains
+their difference. Indeed, a positive retarding voltage `v_s` decelerates an ion when crossing
+the stripe, while a reduced distance between the mirror makes the oscillations faster." Both
+mechanisms push the drift the same way and push the *timing* in opposite directions, which is
+what makes a cancellation possible at all.
+
+And the flight time is **`K T0 + dT_K` with `K` an integer** - the paper requires
+`T_D / T0` to stay inside `K +/- 1/2` across the whole range of injection angles, so every ion
+makes the same 25 oscillations. `T_D` decides *how many* oscillations happen. `dT_K` decides
+*when* the ion lands.
+
+| over `eta_D` = 1 ± 0.1 | spread |
+| --- | --- |
+| drift period `T_D`, the quantity sections 47-52 measured | **1.16e-2** |
+| arrival time `K T0 + dT_K`, the quantity that sets resolving power | **6.8e-9** |
+
+A factor of **1.7 million**. Both numbers are right; they are answers to different questions.
+The published design is isochronous in arrival time to parts per billion in this idealised
+calculation, which is beyond the "ppm-level plateau" it claims for itself.
+
+### The design conditions, as stated
+
+- `tau'` vanishes at **four** points inside `eta_D` = 1 ± 0.1 - the timing plateau. (This work
+  resolves two of the four; `tau` varies only in its sixth decimal there, so the quadrature
+  noise floor is comparable to the effect.)
+- `kappa'(1) = 0` - the drift period is stationary at nominal, "to minimize the spread of
+  `T_D`". **This work measured exactly that at -1e-5** in section 51, and correctly - it was
+  simply the wrong condition to be reading a resolving power from.
+- `psi(1) = c0 + ... + c5 = 1` - normalisation, confirmed at 0.99996.
+
+### Two claims withdrawn
+
+**"The published 2.1e-6 is not reproduced."** It is reproduced, and bettered - the arrival time
+is flat to 6.8e-9 in exact arithmetic. The figure came from Fig. 4's right panel and is a
+statement about `tau`, not about the drift period.
+
+**"A segmented stripe cannot deliver an isochronous drift at all."** Wrong, and the reversal is
+large:
+
+| stripe | arrival-time spread, `eta_D` = 1 ± 0.1 | R from the drift alone |
+| --- | --- | --- |
+| published continuous shape | 6.62e-9 | 75,500,000 |
+| **sixteen fitted segments** | 7.88e-7 | **634,000** |
+
+119 times worse, and **still thirty times more than a 20k instrument needs**. The earlier
+verdict came from watching sixteen segments destroy the stationary point of `kappa`, which is
+real and does not matter: `kappa'(1) = 0` controls the spread of the drift period, and the
+drift period is not the arrival time. The design guidance in the memo said a compact instrument
+must have a continuously shaped drift electrode. **It does not.**
+
+### The modelling gap this exposes, which is not yet closed
+
+The flown flight times in this work vary by about 1.5e-3 across the injection-angle range, and
+that is a real measurement of this model - but of `T_D`, because **the detector here is a plane
+the ion crosses at whatever phase it happens to be in**, while the instrument's detector
+requires a completed oscillation count. The flown number is therefore not comparable to
+`K T0 + dT_K` and never was. Closing this needs a detector condition that counts oscillations,
+or a flight long enough to compare the accumulated per-oscillation perturbation directly.
+Until then the quadrature is the only route here to the quantity that sets resolving power.
+
+**The rule that generalises**: when a published design states two similar integrals, the one
+whose value you can reproduce is not necessarily the one whose flatness it is claiming. Read
+which quantity the optimisation targets before matching a number to it - and read it from the
+equations, not from the prose around them.
+
+## 54. The mirror condition is three stationary points, not two vanishing coefficients
+
+Section 2 of the design paper, read from the rendered page: *"we claim that the slope
+`T'(eps) = J_0''` vanishes for three values of energy, namely `eps_0/q = 4000 V` and
+`eps_0/q +/- 100 V`. Under these conditions the oscillation period has a ppm-level plateau
+sufficiently wide to accommodate for the intrinsic energy spread."*
+
+**That is not the condition sections 49 to 52 solved for.** Those drove the first and second
+time-energy coefficients to zero with the two published voltage knobs. Three stationary points
+across ±100 V means `T'(u)` is proportional to `u(u^2 - 100^2)`, so in fractional-offset
+coefficients
+
+    c1 = 0,    c3 = 0,    c2 = -1.25e-3 * c4
+
+- the **second** coefficient is deliberately non-zero, held against the quartic, and the
+**third** is the one cancelled. Setting `c2 = 0` instead leaves the cubic uncancelled, and over
+the paper's own ±2.5 per cent window the cubic is the larger term. The double zero is a
+plausible-looking target that is not the design's.
+
+### Where the model actually stands, with the quantities finally sorted out
+
+| | this model | published | |
+| --- | --- | --- | --- |
+| drift contribution to R | **634,000** | not stated as a number | not the limit |
+| mirror, over ±2.5% (the paper's window) | **36,700** | ~100,000 | **the limit** |
+
+The published figure is read off Fig. 1's right panel, which plots `(1/T) dT/d(eps)` in units of
+1e-6 per eV and stays within about ±0.05 of those units across 3900-4100 eV - an excursion near
+5e-6, so R near 100,000. **So the gap is a factor of about three, in one place.** Every earlier
+statement of this gap in this document - three orders, a thousand-fold, "the drift is the
+binding constraint" - was an artefact of comparing quantities that are not the same quantity.
+
+Also worth recording plainly, because four sections of this file argued the opposite: **the
+drift electrode is not where the difficulty is.** Sixteen separately biased segments give a
+drift-limited resolving power six times what the full-scale instrument needs. The mirror is
+where the remaining factor of three sits, and the depth search should now target the
+peak-to-peak excursion of the oscillation period over ±2.5 per cent - or equivalently the
+three-point stationary condition - rather than the double zero.
+
+## 55. The arrival time measured in a flight: the drift is confirmed at R = 339,000
+
+Section 53 established from the paper's equations that the flight time is `K T0 + dT_K` with
+`K` an integer, and that this project had been measuring the drift period instead. Fixing the
+measurement needed **no new engine capability** - the trajectory already records every
+reflection, so the time at a fixed reflection index *is* `K T0 + dT_K` by construction. What
+was missing was knowing that it mattered.
+
+Flown through the solved three-dimensional fields, sixteen-segment stripe, at the corrected
+geometry:
+
+| injection angle | time at reflection 40 | drift period |
+| --- | --- | --- |
+| ×0.96 | 660.79126 us | 827.1922 us |
+| ×0.98 | 660.79128 | 825.8582 |
+| ×0.99 | 660.79135 | 824.1820 |
+| **×1.00** | **660.79145** | **822.5031** |
+| ×1.01 | 660.79160 | 821.3404 |
+| ×1.02 | 660.79180 | 821.2016 |
+| ×1.04 | 660.79223 | 824.1879 |
+
+| | spread | R |
+| --- | --- | --- |
+| **arrival time** | **1.473e-6** | **339,524** |
+| drift period, the same flights | 7.283e-3 | **69** |
+
+**A ratio of 4,946, measured in a flight rather than a quadrature.** And it agrees with the
+pseudopotential prediction of 7.9e-7 to within a factor of 1.9, which is close for a full field
+solve against an idealised model - so the pseudopotential treatment is validated end to end,
+and the remaining factor of two is the solved field's own departure from it.
+
+**R = 69 is the number that had this project believing the drift was hopeless.** It appears
+throughout sections 24 to 46 in various forms - "the drift limits R to about 35", "the device
+that makes the drift isochronous in sideways speed makes it non-isochronous in energy" - and
+it was always an artefact of where the detector sat, not a property of the instrument.
+
+Note also that the **total** reflection count varies between 50 and 51 across this scan, which
+is exactly the condition the paper places on the design: `T_D / T0` must stay within `K ± 1/2`
+so that every ion makes the same number of oscillations before detection. Reading at reflection
+40 is inside that for every angle. An ion detected on a plane, as this model does by default,
+is caught at whichever reflection it happens to be near - which is why its flight time tracks
+the drift period.
+
+### Where the model stands, all quantities now comparable
+
+| | this model | published | |
+| --- | --- | --- | --- |
+| drift contribution to R | **339,524**, flown | not quoted | not the limit |
+| mirror, over the paper's ±2.5% window | **36,700** | ~100,000 | **the limit** |
+
+One factor of three, in one place, with the mechanism named. That is the whole remaining gap.
+
+## 56. The drift-limited R was measured over a third of the real range
+
+Mike asked how a small analyser could out-resolve the full-size one. It cannot and never did -
+the figure quoted was the drift's contribution alone, not an instrument resolving power - but
+the question exposed a real error underneath the confusion.
+
+**Section 55's `R = 339,524` was measured over ±4 per cent of injection angle, and the real
+range is much wider.** Room-temperature thermal motion alone spreads the sideways velocity by
+**±5.8 per cent** at m/z 500, and the design paper's own accepted range is `eta_D` = 1 ± 0.1,
+about **±11 per cent in angle**. The arrival-time error grows faster than linearly, so a third
+of the range flatters the result badly.
+
+| angle range | drift-limited R | how obtained |
+| --- | --- | --- |
+| ±4.0% | 339,524 | flown - section 55, **too narrow** |
+| ±5.8% | 252,848 | quartic extrapolation |
+| ±11.0% | 113,466 | quartic extrapolation |
+| **±11.0%** | **73,527** | **flown** |
+
+**The extrapolation was itself 1.5 times optimistic.** A quartic fitted over ±4 per cent and
+evaluated at ±11 is outside its data; it was labelled as such before being used, and the flight
+is what settled it.
+
+### What this changes
+
+**The drift is not negligible.** At 73,527 it is the same order as the mirror, and for the
+full-scale instrument the two are comparable contributors. Every statement in sections 53 to 55
+that the drift "is not the limit" was measured too narrowly.
+
+**The 20k conclusion survives with a smaller margin** - 3.7 times rather than thirty. A
+segmented stripe remains adequate at that design point and the memo's recommendation stands,
+but the headroom is a factor of four, which matters once other terms are added.
+
+| | R | evaluated over |
+| --- | --- | --- |
+| drift, flown | 73,527 | the paper's ±11% acceptance |
+| mirror, three-point condition | ~78,000 | the paper's ±2.5% energy window |
+| both, added in quadrature | **~53,500** | |
+| published | >100,000 | at m/z 200 |
+
+About a factor of two short, the two contributions roughly equal, no single dominant gap. A
+worse headline than section 55's and a much more defensible one.
+
+### The pattern worth naming
+
+This is the **third** time here that a resolving power has been quoted over a range narrower
+than the physics uses - the energy scans of sections 30 to 45, the ±1.1 per cent isochronicity
+of section 51, and now this. **The range a figure of merit is evaluated over is part of the
+figure.** For an ion-optical aberration it should be the acceptance the instrument actually
+has, taken from the thermal spread and the published acceptance, not from whatever was
+convenient to compute.
+
+## 57. What shrinking costs: the aberrations do not scale, the timing chain does
+
+Mike confirmed that the rectilinear pulsed-extraction trap is part of the compact design
+regardless of the analyser's size - it was always the plan alongside the Stellar linear trap -
+so the 1.044 ns turn-around measured on that template is directly applicable rather than a
+stand-in. That settles one of the two absolute-time terms and makes the budget computable.
+
+**The terms split into two families that behave oppositely under a change of scale.**
+
+*Dimensionless, and therefore untouched by scaling*: the mirror's energy aberration and the
+drift's timing error are properties of the shape of the field, not its size. Scale every length
+at fixed voltages and they do not move - which section 50 established for the geometry and which
+follows for the aberrations because both are ratios. Measured here at 78,000 and 73,527, they
+cap the analyser at **53,500 at any scale**.
+
+*Fixed in nanoseconds, and therefore fivefold more important in a fivefold shorter flight*: the
+trap's turn-around, the detector response and the digitiser. **The trap does not shrink with the
+analyser**, so its 1.044 ns stays put while the flight time falls.
+
+| detector response | full size, 816 us | one-fifth scale, 163 us | what binds the small one |
+| --- | --- | --- | --- |
+| 0.5 ns | 52,900 | 42,600 | the drift |
+| 1.0 ns | 52,600 | **38,800** | the drift |
+| 2.0 ns | 51,300 | 30,000 | the detector |
+| 4.8 ns | 45,000 | **15,900** | the detector |
+
+**A fifth-scale analyser loses about a quarter of its resolving power, not four fifths** - and
+only if the detector is fast. That is a far better bargain than the envelope argument alone
+suggests, and it is the strongest quantitative case yet for the compact instrument.
+
+**And it holds with perfect optics, which is what makes it the design decision.** With
+Thermo-quality aberrations near 150,000 each, a fifth-scale instrument reaches 49,800 at a 1 ns
+detector and **16,400 at 4.8 ns**. Improving the ion optics cannot rescue a slow detector at
+this scale, because nothing the optics contribute scales with the flight.
+
+**So the detector and digitiser specification sets a compact instrument's resolving power**, and
+should be settled before the envelope rather than after. The memo's existing statement that the
+timing chain offers no saving is right; this is its quantitative form, and it is stronger than
+stated - the timing chain does not merely stay the same, it becomes the binding constraint.
+
+## 58. The electrode geometry is published - in a figure - and the template's is wrong
+
+Mike asked whether the ion optics in this reconstruction are borrowed from the published record
+or guessed. **The voltages are published and used; the electrode lengths were guessed, and they
+are published too**, in Fig. 1 of the design paper, as grey blocks under the on-axis potential
+plot. Nobody had read them.
+
+Measured pixel by pixel from a 500 dpi render (`pdftoppm -r 500 -x 680 -y 1180 -W 1400 -H 900`,
+PPM parsed in pure Python since PIL is not installed here), calibrated on the plot frame and
+checked against the tick marks. Right and left mirrors agree to half a millimetre, which is the
+check that the measurement is of the drawing rather than of noise. Distances from the mid-plane:
+
+| electrode | published, mm | length | template, mm | length |
+| --- | --- | --- | --- | --- |
+| 1, the accelerating lens | 204.3 - 249.5 | **45.2** | 212.8 - 232.8 | **20.0** |
+| 2 | 258.1 - 267.7 | 9.7 | 232.8 - 250.8 | 18.0 |
+| 3 | 282.3 - 297.8 | 15.6 | 250.8 - 296.8 | 46.0 |
+| 4, the reflector | 306.5 - 347+ | 41+ | 296.8 - 342.8 | 46.0 |
+
+**Electrode 1 is 2.3 times too short in the template and electrode 3 is 3 times too long.** The
+published design also has gaps of 9 to 15 mm between electrodes; the template's abut. Whether
+the grey blocks are to scale is a fair question - the top panel of the same figure says "not in
+scale" - but the bottom panel carries an axis, both mirrors agree, and the potential curve's
+features land where the blocks say they should.
+
+The on-axis potential is readable from the same panel and is a direct target for the solver:
+
+| z, mm | 200 | 225 | 250 | 260 | 270 | 280 | 290 | 293 | 300 | 340 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| phi, kV | -3.59 | **-5.56** | -2.42 | -0.02 | +1.78 | +3.03 | +3.78 | **4.00** | +4.49 | +5.90 |
+
+The dip at 225 mm is electrode 1's lens; the ion turns where the potential reaches its 4 kV at
+**293 mm**, so the turning-point separation is 586 mm against the 641 mm *effective* separation -
+the difference being the time the ion spends slowed inside the mirror, which is why the two
+numbers were never the same quantity.
+
+**So the answer to the question is: the optics are limiting, and they were never the published
+optics.** Every mirror result in sections 26 to 57 - the double zero, the three-point condition,
+the 36,700, the 78,000 - was measured on a guessed geometry. E10 flies the published one with
+the published voltages and nothing tuned, and asks whether it is at a first-order focus. If it
+is, the 2.2-fold optics gap closes at the source rather than by search.
+
+**Mapped onto the template**, splitting each gap at its midpoint since the template's electrodes
+abut: `mouth` = 138.45 mm from the cap, `d1..d4` = 49.7 / 70.7 / 97.7 / 138.45. The gaps are a
+real difference the template cannot yet express, and are the next thing to add if the abutting
+approximation falls short.
+
+## 59. What is published about the mirror, what is guessed, and what the model has never been compared to
+
+Mike asked whether the ion optics here are borrowed from the published record. The full answer,
+now that both papers have been read from rendered pages rather than text extractions:
+
+| | status | source | used here? |
+| --- | --- | --- | --- |
+| mirror voltages `U1..U4` and both correction vectors | **published** | crowd-control Table 1, read off the rendered page: `-1.840, -1.158, +0.916, +1.503` | yes, correctly |
+| electrode count and order | **published** | design paper Fig. 1 schematic: five per mirror, 0 grounded and long, 1-4 outward, with gaps, 4 inside an end cap | partly - the template has four biased plus a grounded region, abutting |
+| electrode positions along the mirror | **published, graphically** | design paper Fig. 1 lower left, grey blocks: 204-250, 258-268, 282-298, 307-347+ mm from the mid-plane | **no - guessed**, and wrong by 2-3x on two of four |
+| on-axis potential `phi_0(z)` | **published, graphically** | same panel: -5.56 kV at 225, zero at 260, 4 kV at 293, 5.9 at 340 | **never compared** |
+| period slope `(1/T) dT/de` vs energy | **published, graphically** | crowd-control Fig. 2 curve 1, and design paper Fig. 1 lower right | **never compared** |
+| board gap (mirror-to-mirror in x) | not found in either paper | - | guessed at 40 mm |
+| gap treatment between electrodes | not stated | 9-15 mm gaps visible in the figure | template cannot express gaps |
+
+**So the voltages were right all along and the geometry they were applied to was not.** Every
+mirror result in sections 26 to 57 was the published voltage set on a guessed electrode layout.
+
+### E10: the naive fix does not work, and says why
+
+Mapping the published blocks onto the template by splitting each gap at its midpoint - so the
+electrodes still abut - and flying at the published voltages with nothing tuned:
+
+| | `c1` | `c2` | `c3` | excursion ±2.5% | R | on-axis rms vs figure |
+| --- | --- | --- | --- | --- | --- | --- |
+| shipped geometry | -0.033 | -0.098 | +1.39 | 1.60e-3 | 312 | 1.42 kV |
+| published blocks, abutting | -0.020 | **+0.996** | +3.03 | 1.18e-3 | 423 | **3.32 kV** |
+
+Neither is at a first-order focus, and the abutting version is *further* from the published
+on-axis potential. The reason is in the curve: the published dip sits at **225 mm, the centre
+of electrode 1**, while the abutting model puts it at 250, because electrode 2 - also negative
+at -4632 V - sits hard against electrode 1 and drags the negative region outward. The published
+design has a **9 mm gap and a 10 mm electrode 2** there, and the axis potential crosses zero
+directly under it. **The gaps are not a detail; they set where the lens is.**
+
+That also means the **board gap is now constrained**, because a 10 mm electrode at -4632 V with
+the axis potential near zero beneath it needs the axis to be far enough away that the two
+larger neighbours dominate. The 40 mm guess may be low. It is the one unpublished dimension
+left, and the on-axis curve pins it.
+
+### What this sets up
+
+A well-posed inverse problem for the first time on the mirror: **electrode positions from the
+figure, voltages from the table, sixteen points of on-axis potential as data, and one or two
+unknowns** - the board gap and the treatment of the inter-electrode gaps. The field is linear in
+the voltages, so once the geometry is right the comparison is direct. It needs the template to
+express electrodes by position rather than by abutting depth, which is the next change.
+
+Then the check that matters: the published `(1/T) dT/de` curve from crowd-control Fig. 2, which
+this model has never been held against.
+
+## 60. The published mirror's own curve, read: R = 180,000 from the mirror alone
+
+The design paper's Fig. 1 lower right plots `(1/T) dT/de` in units of 1e-6 per eV against ion
+energy from 3700 to 4300 eV, for the nominal voltage set. Read pixel by pixel from a 500 dpi
+render, calibrated on the seven tick marks of each axis (found automatically, all fourteen):
+
+| eV | 3800 | 3850 | 3900 | 3950 | **4000** | 4050 | 4100 | 4150 | 4200 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| slope, 1e-6/eV | -0.259 | -0.050 | +0.035 | +0.016 | **-0.026** | -0.031 | +0.032 | +0.216 | +0.559 |
+
+**Over the design window 3900-4100 eV the slope stays within ±0.039 x 1e-6 per eV**, crossing
+zero three times as the paper says it was designed to. Integrating it gives the flight-time
+excursion over the window directly: **2.78e-6, so R about 180,000 from the mirror alone.**
+
+That is the published mirror's figure, taken from the published mirror's own curve rather than
+inferred. It is sharper than the ~100,000 estimated in section 54 by reading the plot's range by
+eye, and it is the number this model's mirror has to reach. The model's best converged mirror
+(section 55) is 36,700 over the same window - **a factor of five**, not the 2.2 inferred earlier
+by working back from the whole-instrument figure with an assumed drift.
+
+The curve is saved as `slope_published.json` in the scratch directory: 961 points, energy in eV
+against slope in 1e-6 per eV. A model that reproduces it point by point has the published mirror;
+one that reproduces only the excursion has a mirror as good as it.
+
+## 61. The published layout with gaps does not reproduce the published curve either, and it says why
+
+E11 built the mirror from the figure's electrode extents with the gaps as bare board and a
+grounded electrode 0 running from the mid-plane out to electrode 1, at the crowd-control
+voltages, and scanned the one unpublished dimension - the board gap:
+
+| z, mm | figure | gap 30 | gap 40 | gap 50 | gap 60 | gap 80 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 225 | **-5.56** | -6.70 | -6.14 | **-5.56** | -5.01 | -4.04 |
+| 250 | -2.42 | -5.75 | -5.23 | -4.69 | -4.18 | -3.29 |
+| 260 | **-0.02** | -4.17 | -3.76 | **-3.36** | -2.99 | -2.37 |
+| 270 | +1.78 | -1.93 | -1.75 | -1.60 | -1.46 | -1.23 |
+| 280 | +3.03 | +0.74 | +0.50 | +0.32 | +0.19 | -0.01 |
+| rms | | 1.93 | 1.76 | **1.69** | 1.71 | 2.00 |
+
+**The lens is right and the rest is not.** At a 50 mm board gap the dip lands at -5.56 kV against
+the figure's -5.56, five millimetres from where the figure puts it. But the potential then stays
+negative to 278 mm at *every* board gap, where the figure crosses zero at 260 - directly beneath
+electrode 2. No board gap moves that crossing by more than a few millimetres, because it is set
+by electrode 2's voltage and not by the geometry.
+
+**So electrode 2 at -4632 V is incompatible with the published curve**, whatever the board gap.
+Both papers say in prose that electrodes 2 to 4 are positive - the design paper: "the other
+electrodes 2-4 are biased positively in an ascending progression"; the crowd-control paper:
+"three reflecting U2-4" - and only the crowd-control *table* has U2 negative, at -1.158. Either
+that table describes a tuning different from the one the design paper's figure shows, or the
+electrode positions are wrong in a way that happens to look like a sign.
+
+The field is linear in the voltages, so E12 settles it by fitting them: four basis solves, one
+electrode at a time, against the sixteen published points. A fit returning the table's
+coefficients would mean the geometry is at fault; one returning a positive U2 near the prose
+would mean the two papers describe different voltage sets, and the figure's is the one to model.
+
+## 62. Fitting the voltages to the published curve: U2 is positive, and the table has one sign wrong
+
+The field is linear in the electrode voltages, so with four basis solves - one electrode at a
+time at 4000 V on the published layout - the sixteen published on-axis points determine the four
+coefficients by least squares. Done at three board gaps:
+
+| | U1 | U2 | U3 | U4 | rms vs figure |
+| --- | --- | --- | --- | --- | --- |
+| crowd-control table | -1.840 | **-1.158** | +0.916 | +1.503 | 1.69 kV |
+| fitted, gap 40 mm | **-1.855** | **+1.237** | +0.776 | +1.724 | 0.322 kV |
+| fitted, gap 50 mm | -2.159 | +1.762 | +0.593 | +1.944 | **0.226 kV** |
+| fitted, gap 60 mm | -2.513 | +2.380 | +0.350 | +2.232 | 0.234 kV |
+
+**U2 is positive in every fit**, as both papers say in prose, and the fitted curve tracks the
+figure point by point - the dip at 225 (-5.67 against -5.56), the zero crossing at 260 (+0.07
+against -0.02), the rise to 4 kV at 293. The fit is seven times better than the table's voltages
+on the same geometry.
+
+**And at a 40 mm board gap the fitted U1 is -1.855 against the table's -1.840, within one per
+cent.** That is the tell. The table is right about U1 and, within the partial degeneracy of two
+adjacent electrodes seen from the axis, plausibly right about U3 and U4; **it is wrong about the
+sign of U2**, and that one sign is what made electrode 2 drag the potential negative to 278 mm in
+E11 at every board gap. It also fits a detail from E10: the gap-40 fit is the one whose U1 the
+table reproduces, so 40 mm - the original guess - is probably the board gap after all.
+
+**So the mirror this project has been flying for weeks had one electrode at the wrong polarity.**
+Every mirror figure from section 26 onward - the double zero, the three-point condition, the
+36,700 and the 78,000, the depth searches - was measured with electrode 2 at -4632 V where the
+instrument has it near +4632. The correction vectors C(1) and C(2) were applied to that mirror
+too, and the fact that they still did roughly their published jobs says something about how
+forgiving the calibration scheme is, not about the geometry having been right.
+
+**What is not settled by the fit alone** is whether the table's other three values or the free
+fit's are the design paper's, since the axis potential cannot fully separate U3 from U4. E13
+flies three candidates and reads each one's period slope against the published curve, which is
+the discriminating measurement: the published mirror holds `(1/T) dT/de` within ±0.039 x 1e-6
+per eV across 3900-4100 with three zero crossings, and only the right voltages on the right
+geometry will do that untuned.
+
+## 63. Reproducing the on-axis potential does not reproduce the focus
+
+E13 put three candidate voltage sets on the figure's electrode layout and flew a half
+oscillation at each, reading the period slope against the published curve:
+
+| candidate | axis rms vs figure | `c1` | period slope at 4000 eV, 1e-6/eV |
+| --- | --- | --- | --- |
+| table as printed (U2 negative) | 1.76 kV | - | - |
+| **A: table with U2's sign corrected**, gap 40 | 0.400 kV | **-0.062** | **-15.5** |
+| B: free fit at gap 40 | 0.322 kV | -0.238 | -59.4 |
+| C: free fit at gap 50 | 0.226 kV | -0.224 | -56.1 |
+| **published** | 0 | ~0 | **within ±0.039** |
+
+**Two things, both worth keeping.**
+
+**The free fits match the axis potential best and are the worst mirrors.** B and C reproduce the
+published curve to 0.2-0.3 kV and have first-order coefficients four times larger than
+candidate A, which fits the curve worse. So the sixteen points read off a figure at ±0.1 kV are
+*not* a sufficient target for the focusing: the period's energy derivative is set by the potential
+near the turning point to a precision of parts in 10^4 or better, and a 0.2 kV rms fit is parts in
+10^2. **A curve read from a plot constrains the shape of the field to a per cent; a first-order
+focus is a cancellation to a hundredth of that.** Fitting the voltages to the axis potential was
+the right way to settle the sign of U2 and the wrong way to settle the values.
+
+**The table with one sign corrected is the closest to a focus**, and that supports the reading
+of section 62: U1, U3, U4 as printed, U2 with its sign flipped. It is still 400 times off the
+published slope. The residual, `c1` = -0.062, is equivalent to `TE1` = +0.06 in the paper's own
+knob - six times its worked example of 0.01 - so the geometry is off by an amount the figure's
+±1 mm may or may not cover. E14 perturbs each unpinned dimension (board gap, each electrode edge,
+electrode 0's extent, board thickness) and reads `dc1`, to say which.
+
+**And a check on the whole construction**: candidate A's half period is 16.594 us, so its
+effective mirror separation is 652 mm against the published 641 - 1.7 per cent - with the
+turning point and field-free length both taken from the figure and nothing adjusted. The
+geometry is roughly right; the focus is a finer thing than roughly.
+
+## 64. The residual is the board gap, and almost nothing else
+
+E14 perturbed each dimension the figure does not pin, at candidate A (figure positions, table
+voltages with U2's sign corrected, board gap 40), and read the change in `c1`:
+
+| perturbation | `dc1` | as `TE1` |
+| --- | --- | --- |
+| **board gap 40 -> 44 mm** | **+0.034** | **+0.034** |
+| board gap 40 -> 36 mm | -0.036 | -0.036 |
+| electrode 3 moved out 2 mm | -0.023 | -0.023 |
+| electrode 4 inner edge out 2 mm | +0.012 | +0.012 |
+| board 4 -> 2 mm thick | -0.009 | -0.009 |
+| electrode 1 inner edge in 2 mm | +0.003 | +0.003 |
+| electrode 1 outer edge out 2 mm | -0.001 | -0.001 |
+| electrode 0 stops at 180 mm | +0.002 | +0.002 |
+| electrode 0 stops at 100 mm | 0.000 | 0.000 |
+
+**The board gap dominates by a factor of ten over any position the figure gives to a millimetre**,
+and `dc1/dgap` is about +0.0085 per mm, so the residual of -0.062 extrapolates to a crossing near
+**47 mm**. That is also where E11 put the depth of the on-axis dip (matched at 50) and between the
+two board gaps E12 favoured (40 by `U1`, 50 by fit quality). Three independent readings of the one
+unpublished dimension, converging.
+
+**Electrode 1 barely matters for the time-of-flight focus.** Its edges move `c1` by a thousandth
+per two millimetres, which is right: the lens sets the transverse focusing and the depth of the
+on-axis dip, not the energy dependence of the period. That is set by the reflecting stack -
+electrodes 3 and 4 - and by how far the axis is from all of it, which is the board gap. It also
+means the -5.56 kV dip E11 matched so well was matching the wrong thing for the wrong reason.
+
+**Electrode 0's extent is irrelevant** to the focus at any length tried, so the field-free
+region needs no more thought than "grounded".
+
+E15 brackets the gap from 45 to 50 mm. The check that it is the geometry and not a coincidence
+is the paper's own condition: three stationary points, so `c3` must come to zero with `c1` on the
+same knob. If it does not, one knob has been tuned and the layout is still wrong somewhere.
+
+## 65. The board gap zeros the first-order term and nothing else
+
+E15 at candidate A, board gap 45 to 50 mm:
+
+| gap, mm | `L_eff` | `c1` | `c2` | `c3` | R over ±2.5% |
+| --- | --- | --- | --- | --- | --- |
+| 45 | 653.8 | -0.019 | +0.225 | +1.02 | 545 |
+| 46 | 654.6 | -0.009 | +0.287 | +1.10 | 1,072 |
+| **47** | 655.7 | **+0.002** | **+0.345** | **+1.22** | **1,793** |
+| 48 | 657.0 | +0.013 | +0.412 | +1.35 | 702 |
+| 50 | 660.0 | +0.039 | +0.555 | +1.76 | 247 |
+
+**`c1` crosses zero at 46.85 mm, exactly where E14's slope predicted.** And at that gap `c2` is
++0.345 and `c3` is +1.22, both large, so the period slope runs from -3.4 to +5.4 (1e-6 per eV)
+across the design window where the published curve stays within ±0.04. R is 1,793 against
+180,000. **One knob has been tuned; the paper's condition of three stationary points is not met,
+and that was the test set in advance.**
+
+What it says about the remaining error: `c2` is the term the board gap cannot fix, and E14
+showed it moves by about 0.1 per 2 mm of electrode 3 or 4 - so removing +0.345 needs several
+millimetres of the reflecting stack, outside the ±1 mm the figure gives. Either the figure's
+positions are less exact than they read, or U3 and U4 are not the table's (E12's free fit gave
+0.776 and 1.724 against 0.916 and 1.503, and the axis potential cannot separate them), or the
+fringe-field correctors the paper mentions and this model omits are doing real work at the
+turning point. Any of the three is a multi-parameter inverse problem - gap, two electrode edges,
+two voltages - against three conditions, which is what an optimiser is for.
+
+Also from this scan: the effective mirror separation is 656 mm at 47 against the published 641,
+2.3 per cent long, with the cap far enough away not to matter. The dwell in the mirror is set by
+the same reflecting-stack shape that sets `c2`, so the two discrepancies are probably one.
+
+## 66. The template carries the published mirror layout - and its drift register is broken, and has been since section 47's tilt fix
+
+*(The register described as broken below is restored in section 72, after the mirror was reproduced in section 71.)*
+
+`astral-3d.json` now places the mirror electrodes by position rather than by abutting depth:
+five per mirror, electrode 0 grounded from the beam region out, electrodes 1-4 at the figure's
+extents with the gaps as bare board, `U2` positive, board gap 46.85 mm, cap at 360 mm. `mouth` is
+derived from `e1In` so the foil expressions that reach the mirror keep their meaning. Sixty
+electrode definitions across the three fields regenerated by script; `d1..d4` gone; the two tests
+that encoded the old layout and the `U2` sign updated; nine Astral tests green; `einzel validate`
+clean. The half-oscillation flight is 16.66 us.
+
+**And the full track reverses at 409.7 mm with 37 reflections out, against a published 335 and
+25.** That is the tilt-only reversal. The shipped foil is a uniform -3 V on a measured contour,
+which was tuned in section 26 when the tilt baseline was 250 mm - twice too steep - and it
+contributed a few per cent. When section 47 corrected the baseline to 509.3, the tilt-only
+reversal moved from 335 to 400 and the foil was left at -3 V, where it moves the reversal by
+ten millimetres. **So the template has not reproduced the drift register since commit 2607622**,
+and the geometry guard added in that commit checks the angles by arithmetic and could not see
+it. A flight would have. The published register is reproduced only in scratch, with the sixteen
+fitted slice potentials of sections 47-50, which the template never carried.
+
+Two consequences, both to act on:
+
+- **The stripe has to go into the template**, as the sixteen slice potentials or as a shape, and
+  fitted at whatever mirror geometry the optimisation below settles on - the basis wells depend
+  on the x-orbit, and the mirror sets the x-orbit. Sequence: mirror first, then stripe.
+- **The register needs a flight-based test**, not an arithmetic one. `einzel test` on a
+  `flightTime` or reversal expectation is the right instrument; the corpus has no Astral example
+  because the flight is long, and this is the cost of that gap.
+
+The mirror optimisation (`mirror-optimise.json`, in scratch) searches board gap and the three
+edges of electrodes 3 and 4 that E14 found sensitive, maximising resolving power over the paper's
+own ±100 V window on the half-oscillation model, 200 Nelder-Mead evaluations. The published
+target is 180,000.
+
+## 67. The geometry cannot reach the plateau: four knobs zero `c1` and leave `c2`, `c3` where they were
+
+`einzel optimise` over the four dimensions the figure does not pin - board gap and the three
+edges of electrodes 3 and 4 that E14 found sensitive - maximising resolving power over the
+paper's own ±100 V window on the half-oscillation model, 200 Nelder-Mead evaluations, four in
+parallel:
+
+| | board gap | `e3In` | `e3Out` | `e4In` | R (FWHM, 9 ions) |
+| --- | --- | --- | --- | --- | --- |
+| start: figure positions, gap at the `c1` crossing | 46.85 | 282.3 | 297.8 | 306.5 | ~1,800 |
+| **optimum found** | 47.22 | 282.42 | **295.32** | 306.37 | **4,753** |
+| published | ? | | | | **~180,000** |
+
+A 2.6-fold gain, from shortening electrode 3 by 2.5 mm and nothing else the figure would
+notice - and **38 times short**. The simplex collapsed to a point (parameter spread 6e-8 of the
+box) while the objective never settled, which is a local optimum, and `optimiser.budget-exhausted`
+says so. Flown at the optimum with a five-point fit:
+
+    c1 = +0.004    c2 = +0.364    c3 = +1.22    c4 = +4.96
+
+**`c1` is zeroed and `c2`, `c3` are exactly where the board gap alone left them.** The paper's
+condition needs `c3` = 0 and `c2` about -0.006; the model has +1.22 and +0.364. Three electrode
+edges bought nothing on either. So **the reflecting stack's geometry, within the freedom the
+figure leaves, is not the lever for the second and third orders** - the same conclusion E15
+reached with one knob, now with four.
+
+What is left is the voltages. The crowd-control table's `U3` and `U4` were used throughout; the
+on-axis fit could not separate them (it returned 0.776 and 1.724 against 0.916 and 1.503, and
+the two are nearly degenerate seen from the axis) but the focusing can, because it is the shape
+of the reflecting field at the turning point that sets `c2` and `c3`. A six-knob search with `U3`
+and `U4` freed within ±35 per cent of the table, started from this geometric optimum, is
+running under CMA-ES. If it reaches the plateau the table is wrong about two more values; if it
+does not, the fringe-field correctors the paper mentions and this model omits are the remaining
+candidate.
+
+**A note on the two resolving powers quoted.** The optimiser's 4,753 is from the arrival-time
+peak's full width at half maximum over nine ions; the 1,386 flown at the same point is from the
+peak-to-peak excursion of a quartic fit. A curve dominated by `c2` is a parabola, whose half-max
+width is well inside its extremes, so FWHM reads about 3.4 times higher than peak-to-peak. Both
+are legitimate; the published 180,000 was derived from the integrated slope, which is
+peak-to-peak. Comparisons in this document should use peak-to-peak unless they say otherwise.
+
+## 68. Freeing the reflecting voltages found nothing - and that is a statement about the search, not the voltages
+
+Six knobs - board gap, three electrode edges, `U3`, `U4` - under CMA-ES from the geometric
+optimum, 320 evaluations, maximising the nine-ion FWHM resolving power over ±2.5 per cent.
+**It returned its starting point to thirteen digits**: R = 4,753.515, `U3` = 0.916,
+`U4` = 1.503, geometry unchanged.
+
+The history explains it without flattering it. The optimiser records only improvements and
+recorded one - the start. Four trials failed outright (an ion lost across the energy scan, so no
+peak, so a penalised design), and the other 315 came back worse. So the start is a genuine
+local maximum of *that objective* in six dimensions. It is also the converged output of a
+Nelder-Mead in four of those dimensions, so this is unsurprising for the four; what it says
+about `U3` and `U4` is only that moving either from the table makes a nine-ion FWHM figure
+worse near this point.
+
+**That is not the question.** The question is whether the reflecting voltages move `c2` and
+`c3` - the two coefficients the geometry could not touch - and a maximisation of a coarse
+objective around a sharp local maximum cannot answer it. E18 asks directly: `U3` and `U4`
+perturbed by 8 to 20 per cent one at a time, five energies each, the three coefficients read
+off the fit. A knob that moves `c3` by order one over that range is a lever the optimiser
+could not see; one that moves it by a hundredth is not a lever at all, and the remaining
+candidate is the fringe-field correctors the paper mentions and this model omits.
+
+**A note on the objective.** `resolvingPower` over nine ions reads the arrival-time peak's
+half-maximum width, which for a curve dominated by the quadratic term is a parabola's waist -
+a coarse and rather flat thing to optimise near its own maximum, and probably why the simplex
+collapsed to a point in section 67 without the objective settling. The peak-to-peak excursion
+of the fitted `T(delta)` is what the paper's plateau condition actually bounds, and it is what
+E15 to E18 report; the two differ by a factor near 3.4 here. A figure of merit that returned
+the excursion directly would be the better thing to optimise, and it is a small addition to
+`FiguresOfMerit` - noted for the morning rather than done at midnight.
+
+## 69. The reflecting voltages are the lever the geometry was not
+
+E18, at the geometric optimum, one voltage at a time, five energies each:
+
+| point | U3 | U4 | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| table | 0.916 | 1.503 | +0.004 | +0.364 | +1.222 | +5.0 | 1,386 |
+| U3 −20% | 0.733 | 1.503 | −0.067 | +0.577 | +1.830 | +4.6 | 151 |
+| U3 +20% | 1.099 | 1.503 | +0.083 | +0.561 | **+0.100** | +2.1 | 121 |
+| U4 −15% | 0.916 | 1.278 | +0.532 | +3.922 | **+33.25** | +269 | 18 |
+| U4 +8% | 0.916 | 1.623 | −0.075 | +0.195 | +0.388 | +2.4 | 133 |
+| U4 +15% | 0.916 | 1.728 | −0.119 | **+0.142** | **+0.137** | +0.7 | 84 |
+
+**Both voltages move `c3` by order one.** Raising `U3` a fifth takes it from 1.22 to 0.10;
+raising `U4` by 15 per cent takes it to 0.14 and takes `c2` down with it, 0.36 to 0.14. So the
+third order is not structural - the reflecting stack as modelled *can* make it vanish - and the
+answer to section 68's question is that the six-knob search failed on its objective, not on the
+physics. Two reasons, both now visible: the box it was given contained a catastrophe (lowering
+`U4` by 15 per cent gives `c3` = 33 and `c4` = 269 - the ion is barely reflected), and every
+single-voltage move that fixes `c3` breaks `c1` (+0.083, −0.119). A nine-ion FWHM objective sees
+only the `c1` damage, so every trial came back worse than the start.
+
+**So it is a simultaneous solve, and the conditions are the paper's own.** Three stationary
+points of the period at 4000 and 4000 ± 100 V are exactly `c1 = 0`, `c3 = 0`,
+`c2 = −1.25e-3 c4`. Three knobs: `U3`, `U4`, board gap. Newton with a central-difference
+Jacobian - what worked for the two calibration vectors in section 49 - is E19, running.
+
+**The on-axis potential points the same way, independently.** E11 had the model's axis 1 to
+1.4 kV *below* the figure across 270 to 300 mm at every board gap tried, with the table's
+voltages. Raising `U3` raises exactly that stretch. A voltage the focusing wants raised and
+the axis potential wants raised is two measurements sharing nothing agreeing about the table -
+which already has one sign wrong (section 62).
+
+**Also from E18: the fit's voltages were not crazy.** The pair the on-axis fit returned at gap 40
+(`U3` 0.776, `U4` 1.724 - section 62 called them "nearly degenerate seen from the axis") gives
+`c3` = 0.42 against the table's 1.22. The fit was pulling toward a flatter third order without
+being asked to.
+
+**`energyPlateau` now exists as a figure of merit** - (max T − min T)/T₀ over the raw energy
+scan, no fit, with the largest adjacent step as its GRD-1 bound. It is the quantity the plateau
+condition bounds and what R over the window is one over twice, and it is what a study should
+minimise for a mirror instead of `resolvingPower`. Section 68's midnight note, done.
+
+## 70. The three-point solve converges - and finds the back of the mirror was wrong
+
+E19: Newton on (`U3`, `U4`, board gap) to `c1 = 0`, `c3 = 0`, `c2 = −1.25e-3 c4`, from the
+geometric optimum with the table's voltages, central-difference Jacobian, damped and capped.
+
+| step | U3 | U4 | gap mm | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0.9160 | 1.5030 | 47.22 | +0.0040 | +0.3643 | +1.222 | 5.0 | 1,386 |
+| 2 | 0.9748 | 1.4949 | 41.80 | +0.0084 | +0.0619 | +0.166 | 5.1 | 1,175 |
+| 4 | 0.9766 | 1.5029 | 40.84 | +0.0023 | −0.0076 | +0.011 | 5.0 | 4,425 |
+| 6 | 0.9768 | 1.5061 | 40.88 | +0.0002 | −0.0067 | +0.0009 | 5.2 | 43,723 |
+| 7 | **0.9768** | **1.5064** | **40.88** | +0.00007 | −0.00657 | +0.0001 | 5.2 | **121,299** |
+
+Monotone, a factor of four a step, and it lands where the paper says: `c2` on the balance
+point (−0.0066 against −1.25e-3 × 5.2 = −0.0065), `c3` gone, `L_eff` 644.8 mm against 641.
+**`U3` is 6.6 per cent above the table, `U4` is the table's, and the board gap is 40.9 mm** -
+the gap at which the on-axis fit in section 62 reproduced `U1` to 1 per cent, so two routes
+now agree on it. The model's slope curve across 3900-4100 eV varies by 0.062 ppm/eV
+peak-to-peak; the published one by 0.066. The remaining offset is a constant 0.018, which is
+the not-quite-zero `c1`. R over ±2.5 per cent is **121,000 against the published ~180,000**.
+
+**E20, the independent check, was null.** The on-axis potential at the solution departs from
+the figure by 0.400 kV rms; with the table's voltages at the same gap, 0.404. Raising `U3` by
+6.6 per cent moves the axis by 0.1 kV where the figure is quoted to about that. The axis
+cannot see this solution, and section 69's claim that it would is withdrawn.
+
+**What the axis did see was the ends.** Across 280-300 mm the solution matches the figure to
+0.04 kV. At 340 mm it is 1.15 kV low (4.75 against 5.90), and from 150 to 210 mm it is too
+shallow by up to 0.76 kV. The first is the back of the mirror: electrode 4 ended at 355 mm
+with the grounded domain edge 11 mm behind it, and **the figure shows electrode 4 wrapping
+round into the mirror's back wall** - the end of the mirror is at `U4`, not at earth. The
+second is a gap between electrodes 0 and 1 that the figure shows and the model does not have.
+
+**E21 asked whether the back end matters for the focusing, and it does.** At the E19 solution:
+
+| back end | c1 | c2 | c3 | c4 | axis 320 | axis 340 |
+| --- | --- | --- | --- | --- | --- | --- |
+| e4 to 355, earth at 366 (E19) | +0.0001 | −0.0066 | +0.0001 | 5.2 | 5.34 | 4.75 |
+| e4 to 355, earth at 406 | −0.0115 | −0.0315 | −0.096 | 4.5 | 5.45 | 5.25 |
+| e4 to 395, earth at 406 | −0.0243 | −0.0559 | −0.171 | 3.9 | **5.59** | **5.88** |
+| figure | | | | | 5.52 | 5.90 |
+
+A long electrode 4 reproduces the figure's back end to 0.07 kV - and moves `c3` by 0.17 and
+`c1` by 0.024, both far outside the condition. So the E19 solution is a solution for a layout
+whose back end the figure contradicts, and the solve has to be redone on the corrected one.
+E22 first chooses the back end on the axis alone (a wall at `U4` at three depths, against the
+long-plate variant), then re-runs the Newton on it. The e0-e1 gap goes in at the same time.
+
+## 71. The published mirror, reproduced on a layout read off the figure
+
+Two corrections to the layout, both from the figure and both chosen on the axis alone before
+any flight (E22a, E23a):
+
+| | axis 320 / 340 mm | axis 150-230 rms | rms, all 16 points |
+| --- | --- | --- | --- |
+| E19 layout: flat electrode 4 to 355, earth at 366 | 5.34 / 4.75 | 0.421 kV | 0.400 kV |
+| electrode 4 wraps into a back wall at `U4` | 5.60 / 5.93 | 0.421 | 0.295 |
+| + electrode 0 stops 8.6 mm short of electrode 1 | 5.60 / 5.93 | **0.228** | **0.184** |
+| figure | 5.52 / 5.90 | | |
+
+The back wall is what the upper panel of the figure shows; *where* it is does not matter (a
+wall at 360, 380 or 395 mm, or a long flat plate with earth behind, all give the axis to 0.05
+kV), so 360 mm is a convention. The e0-e1 gap is not published (the lower panel draws only the
+live electrodes) and 8.6 mm - the width of the figure's other small gaps - is what the axis
+across 150-230 mm chooses over 5.3 (0.248) and 12.3 (0.263). Both are recorded as read off a
+figure rather than as dimensions.
+
+**E23b, the three-point Newton on that layout**, from the E19 endpoint (which E21 had shown to
+be off by `c1` = −0.016, `c3` = −0.16 there):
+
+| step | U3 | U4 | gap mm | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0.9768 | 1.5064 | 40.88 | −0.0160 | −0.0412 | −0.161 | 5.1 | 622 |
+| 1 | 0.9726 | 1.4812 | 41.45 | −0.0029 | −0.0083 | +0.015 | 5.6 | 3,477 |
+| 3 | 0.9738 | 1.4789 | 41.44 | −0.0001 | −0.0071 | −0.0017 | 5.7 | 89,130 |
+| 5 | 0.9737 | 1.4786 | 41.44 | 0.0000 | −0.0071 | −0.0006 | 5.8 | 213,201 |
+| 7 | **0.9736** | **1.4785** | **41.44** | **0.00000** | **−0.00712** | **+0.0002** | 5.7 | **222,289** |
+
+`c3` from step 3 on wanders between −0.0017 and +0.0002 without trend: that is the noise floor
+of a five-point quartic fit on flight times known to parts in 1e9, and the Newton is done.
+
+**So the published mirror is reproduced.** Against the published record:
+
+| | model | published |
+| --- | --- | --- |
+| R over ±2.5 per cent, peak-to-peak | **222,000** | ~180,000 (integrated slope) |
+| slope amplitude, 3900-4100 eV | ±0.034 ppm/eV | ±0.035 ppm/eV |
+| effective drift `L_eff` | 646.8 mm | 641 mm |
+| on-axis potential, 16 points | 0.159 kV rms | - |
+| board gap | 41.4 mm | not published |
+| U3 | 0.974 | table 0.916 (+6.3 per cent) |
+| U4 | 1.479 | table 1.503 (−1.6 per cent) |
+| U1, U2 | table's, U2 with the sign corrected (section 62) | |
+
+Two things about that comparison. **The shapes are the same and the tuning is not quite.** The
+model's slope is zero at 3900, 4000 and 4100 eV by construction - the paper's stated
+condition - while the digitised published curve crosses zero near 3958 and 4092 and reads
+−0.026 at 4000. That is a first-order term of about −1e-4 in the published tuning, which costs
+it a little against the model (the model's 222,000 to the curve's 150,000-180,000 depending
+on how the integral is taken). Either the built instrument is tuned a shade off the stated
+condition or the digitisation carries a 0.02 ppm/eV offset; the plot is not read finely
+enough to say which, and the difference is inside what the stripe and the detector set anyway.
+
+**And the three solved numbers are the three the papers do not give.** Every dimension that is
+published - the electrode positions, the U1 and U2 coefficients, the drift length, the tilt,
+the injection angle - is used as published. The gap is not published; U3 and U4 are, and the
+solve moves them 6 and 2 per cent, in a table that already has one sign wrong. An on-axis fit
+cannot distinguish them (section 62) but the focusing can, and the axis at the solution is the
+best of the night (0.159 kV rms against 0.400 at the start of it).
+
+**Shipped.** `astral-3d.json` now carries the wall (`near4wall`, `far4wall`, and grounded
+copies in the foil field), `e0Out` and `wallThickness` as parameters, the solved gap and
+voltages, and the geometric optimum for the electrode 3/4 edges. 22 electrodes per
+cross-section, 9 live; the decomposition tests count them.
+
+**What this does not settle** is anything about the drift register: the stripe fit in the
+shipped template was made against a mirror that has since moved three times, so the reversal
+point is wrong (section 66) and the full-track flight time is not yet a check. The refit runs
+next, on whatever the template now carries, which is why it reads the template rather than
+constants.
+
+## 72. The register restored on the reproduced mirror - and the stripe now carries part of the reversal
+
+The stripe fit in the shipped template had been made against a mirror that has since moved
+three times (section 66), so the shipped register was wrong: tilt-only reversal 409.7 mm where
+the design puts the total at 335. `refit_stripe.py` reads whatever the template carries, flies
+it with the stripe off, solves the sixteen slice bases, and fits the stripe to the published
+total minus what the tilt measurably gives:
+
+| | |
+| --- | --- |
+| tilt alone, on the reproduced mirror | reversal **404.2 mm**, `a0` = 0.8288 (published 0.84), x-period 33.30 µs |
+| fit of the sixteen slices to `0.84η + ψ_s` over 0-400 mm | residual 0.23 per cent |
+| first fall in the total effective potential | 430 mm (has to be well past the 368 mm operating limit) |
+| slice voltages, entrance to exit | +0.7, +0.8, −1.9, −4.1, −6.2, −7.6, −8.0, −7.3, −5.8, −3.2, −0.1, +3.4, +7.5, +11.3, +14.9, +21.7 V |
+
+**Flown end to end on the shipped template, one ion at the published injection angle:**
+
+| | model | published |
+| --- | --- | --- |
+| drift reversal | **336.2 mm** | 310-360, mean 335 |
+| oscillations outbound | **24** | 24-26 (25 at the design paper's tuning optimum) |
+| half-oscillation | 16.300 µs → `L_eff` 640.4 mm | 641 mm |
+| flight time | **786.8 µs** | 783.2 µs by `2 K L_eff / v` at K = 24; ~779 in the crowd-control paper; 815.8 at K = 25 |
+
+**Every geometric register number is back on one flight**, on a mirror that is now the
+published one rather than a stand-in. The flight time is 0.5 per cent above the K = 24
+arithmetic, and the difference between 24 and 25 oscillations is what the stripe amplitude
+tunes (section 55), not a discrepancy.
+
+**One statement in the explainer's ledger is now wrong and is corrected.** "The drift reversal
+is the mirror tilt alone" was measured on the earlier mirror, where the tilt alone reversed at
+334.6 mm; on the reproduced mirror the tilt alone reverses at 404 mm and the published stripe
+shape brings it to 336. That is what the design paper says the total is - `0.84η + ψ_s`, tilt
+plus stripe - so the model has moved *toward* the paper's account of the mechanism, not away
+from it. The reversal is set by the tilt with the stripe's shaping on top.
+
+**The register test is tightened, and the tightening is not a fit.** It had expected 815.8 µs
+(K = 25) at 4 per cent, which the model passed at 3.5 - close, and for the wrong K. It now
+expects 783.2 µs (K = 24, the instrument paper's own count over 641 mm) at 2 per cent, which
+the model meets at 0.5 and which *excludes* K = 25 (4.2 per cent off). So the test pins the
+oscillation count as well as the period: a stripe fitted to a stale mirror gave 1242 µs, a
+tilt twice too steep 1292, and a phase-mismatched detector plane whatever the drift period
+happened to be, all far outside either band. It lives in a scratch project rather than the
+corpus because the flight takes two and a half minutes.
+
+## 73. The drawn edges are enough - the fitted geometry goes
+
+Sections 67 and 70-71 carried the electrode 3/4 edges at a *fitted* optimum (282.42 / 295.32 /
+306.37 mm) found by a Nelder-Mead on the earlier layout, whose back end the figure contradicts.
+With the back wall and the e0-e1 gap in place, E24 repeats the three-point Newton with those
+edges put back where the figure draws them (282.3 / 297.8 / 306.5) and only the gap, `U3` and
+`U4` free:
+
+| step | U3 | U4 | gap mm | c1 | c2 | c3 | c4 | R p2p |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 (E23 endpoint, drawn edges) | 0.9736 | 1.4785 | 41.437 | +0.0019 | −0.0049 | +0.0145 | 5.2 | 5,151 |
+| 1 | 0.9740 | 1.4810 | 41.433 | +0.0004 | −0.0057 | +0.0019 | 5.0 | 24,819 |
+| 2 | **0.9740** | **1.4815** | **41.430** | +0.00008 | −0.00601 | +0.0003 | 4.9 | 119,169 |
+
+Same solution to three decimals in the voltages and to 7 µm in the gap; `L_eff` 646.2 mm;
+axis 0.159 kV rms, identical. The 2.5 mm the fit had moved electrode 3's outer edge bought
+nothing that the voltages do not also buy. **So the template now carries the drawn positions**,
+and the statement in section 71 - every dimension as published or as drawn, three numbers
+solved - holds without exception.
+
+**On the R figure.** 119,000 here against 222,000 in E23b is the residual `c1` (8e-5 against
+0.0), not the geometry: a first-order term of 1e-4 is a slope offset of 0.02 ppm/eV across the
+window and halves the peak-to-peak R. That is the level at which a four-decimal voltage moves
+`c1` (about 2e-5 per 5e-5 in `U3`), so it is the floor of what this solve, this mesh and this
+five-point fit can set, and the honest statement is **R between 120,000 and 220,000 over
+±2.5 per cent depending on a first-order residual at the 1e-4 level**, against a published
+curve that itself carries a −1e-4 first-order term (section 71). The published mirror and
+this one are the same mirror to within that.
+
+**Register on the drawn-edge template, stripe refit to it:** tilt-only `a0` 0.8299; sixteen
+slices fitted to 0.23 per cent; reversal **336.15 mm**, 24 oscillations outbound,
+half-oscillation 16.296 µs (`L_eff` 640.3 mm), flight time **786.44 µs** against 783.2 by
+arithmetic - 0.41 per cent, inside the register test's 2 per cent. Nothing about the register
+moved by more than a part in a thousand when the edges went back to where they are drawn,
+which is the other half of the statement that the fitted edges were doing nothing.
+
+## 74. The explainer rewritten around the model's own figures
+
+`docs/astral-explainer.html` was a layered record - each night's corrections stacked on the
+last, so it read as a history with stale numbers left standing (the 25-oscillation flight,
+the guessed depths, the uniform-bias foil table, "a thousand-fold gap"). It is now one
+description of the instrument as understood, with the wrong turns condensed into a section of
+their own, and ten figures, none of them drawn by hand from a number typed in:
+
+| figure | source |
+| --- | --- |
+| the flight in the beam plane | `einzel render section` on the shipped template, beam plane, cropped to the page margins |
+| drift against time, and the zigzag | the trajectory `einzel run --vtu` wrote (782 samples) |
+| one mirror as drawn, with dimensions | the template's own parameters |
+| the mirror's solved field in cross-section | `einzel render section`, plane z = 175 mm, cropped to one mirror, scale group removed (frame size stated in the caption) |
+| on-axis potential vs the sixteen published points | `einzel export` of the solved cross-section sampled every 0.5 mm |
+| T/T0 against energy, three mirror states, and the plateau zoom | the coefficients in sections 70-71 |
+| period slope, model vs published | `slope_published.json` (961 digitised points) and the E23 coefficients |
+| the drift effective potential | the design paper's closed forms |
+| the sixteen stripe voltages | `stripe_fit.json` |
+| the resolving-power budget | the budget arithmetic in `make_figs.py` |
+
+The charts are generated by `C:/Users/maccoss/einzel-figures/figs/make_figs.py` from the
+results files in `tiltchar/`, and the document by `assemble_explainer.py` in the same
+directory, which keeps the committed head and sources section and inlines the SVGs. Every
+figure carries a caption and a provenance line. Reviewed by rasterising each figure and the
+whole page with headless Edge - the in-app browser could not screenshot a local file - and
+the first draft of every chart had text on top of something; the fixes were legends moved
+off the data, captions given their own rows, and the plateau curve taken from the converged
+solve rather than the early-stopped one.
+
+## 75. The compact-instrument memo, r08, brought up to the reproduced mirror
+
+`compact-mrtof-stellar-memo-r08.html` (local only, not tracked) had its section-1 model
+account rewritten from the layered "correction, later the same night" form into one statement
+of the current result, its scaling budget recomputed with the reproduced mirror (120,000 to
+220,000 in place of the earlier 78,000; the dimensionless cap is now 63,000 to 70,000 at any
+scale, and a one-fifth-scale analyser reaches about 32,000 with the published 1.9 ns detector,
+43,000 at 1 ns, 15,600 at 4.8 ns), and four figures added: the on-axis potential against the
+published points (Fig. 8), resolving power against scale term by term (Fig. 9), the full-size
+and one-fifth analysers to one scale with the same flight scaled into both (Fig. 10), and the
+instrument as a chain from the Stellar front end to the detector (Fig. 11). The section-6 first
+item now says the optics are done and the detector binds. The r07-to-r08 generator
+(`edit_memo.py`) is superseded by hand edits and parked as `edit_memo_r08_superseded.py`;
+`edit_memo_figs.py` in `einzel-figures/figs/` is the script that applied this pass.
+
+## 76. The funnel benchmark: the PNNL 100-electrode funnel, first flights
+
+The §23 decision is closed in favour of a published geometry (`docs/literature-targets.md` §5):
+Kim et al. 2000's 100-electrode funnel, whose dimensions are in print, with two measured curves
+(transmission against RF amplitude at 1 Torr; the low-m/z cutoff against RF frequency and DC
+gradient at 1.9 Torr, Page et al. 2006, open access), a closed form for the second, and a
+SIMION-with-drag comparison on the earlier 28-electrode funnel (Lynn et al. 2000). The
+published figures are digitised in `papers/funnel/` from the PMC CDN images. Shipped as
+`pnnl-ion-funnel.json`: 100 rings and a conductance limit reduce to **two basis solves** (RF
+alternating pattern, DC chain), 24 and 29 cycles.
+
+**Both transport modes reproduce the frequency dependence and both lost every ion at the
+exit.** In the trajectory mode with collisions at 1.9 Torr (m/z 118, 80 Vpp, 19.1 V/cm, ten
+ions), at 300 kHz eight of ten are lost on rings 80-98 in the taper and two on the conductance
+limit - the cutoff mechanism the paper describes - while at 700 kHz none touches a ring and all
+ten reach the conductance limit. The diffusive mode at the Kim point (1 Torr, 40 Vpp, 0.7 MHz)
+likewise holds the density off every ring with the RF on (spread over rings 88-94 with it off)
+and absorbs all of it on the conductance limit. Refining the mesh from 0.25 to 0.1 mm changed
+nothing; a gentler gradient (9 V/cm) and a heavier ion (m/z 622) changed nothing; removing the
+conductance limit moved the loss to the last ring's own inner surface.
+
+**A first reading - the ions ride the taper wall - was wrong, and the trajectory file showed
+it.** A single ion's collisional path (25,704 samples) goes through the taper 1 to 2 mm off
+the wall, which is the paper's field-balance stand-off, reaches the exit **on the axis at
+r = 0.13 mm**, and then, inside the 0.5 mm-thick hole, drifts to r = 1.0 mm in fifteen
+microseconds and strikes the hole's wall. Behind the conductance limit the model had a
+field-free region (an open edge), so an ion in the hole has no axial pull, advances at 30 m/s
+instead of 160, and sits in the last ring's RF fringe for ten cycles. The real instrument has
+the next stage's optics at a lower potential behind that plate, and a gas jet through it;
+neither paper gives the voltage. `exitDrop` (40 V over 5 mm, a stated guess) adds an
+extraction electrode; the frequency probes are being re-run with it.
+
+**The trajectory file of a collisional run was a vacuum flight.** `--vtu` integrated a second
+time without the collision sampler the reported flight had: an ion crossing the funnel in
+10 µs on the axis, beside a result of 589 µs and a strike. Fixed by handing the same sampler,
+same seed, to the recorded flight; `TrajectoryFileGasTests` asserts the drawn flight is the
+reported one (drift tube in 1 mbar: vacuum would be 14 µs, the gas flight some 200). Third
+member of the family after the figure-of-merit path and the regime inspector: a shared entry
+point is not a shared computation.
+
+**Also seen, not yet fixed:** `render section` of a *diffusive* model stamps the figure
+`QUALIFIED` with `regime.trajectory-above-validity` - the renderer checks the trajectory
+regime on a density run, which is the mode question asked of the pressure instead of the mode.
+
+## 77. The low-m/z cutoff, flown: right mechanism, right scaling, twenty per cent low
+
+With the extraction electrode behind the conductance limit, m/z 118.2 at 80 Vpp and 1.9 Torr,
+twenty ions per point in the trajectory mode with hard-sphere collisions (125 Å²), the fraction
+arriving against RF frequency, beside Page et al. 2006 Fig. 3 read off the plot:
+
+| kHz | 9.0 V/cm model | measured | 19.1 V/cm model | measured | 29.1 V/cm model | measured |
+| --- | --- | --- | --- | --- | --- | --- |
+| 300 | 0.45 | 0.07 | 0.00 | 0.00 | 0.10 | 0.00 |
+| 350 | 0.55 | 0.15 | 0.20 | 0.05 | 0.20 | 0.00 |
+| 400 | 0.90 | 0.35 | 0.70 | 0.13 | 0.25 | 0.00 |
+| 450 | 0.90 | 0.63 | 0.60 | 0.31 | 0.40 | 0.06 |
+| 500 | 0.90 | 0.78 | 0.90 | 0.60 | 0.60 | 0.20 |
+| 550 | 1.00 | 0.94 | 0.95 | 0.81 | 1.00 | 0.44 |
+| 600 | 1.00 | 0.98 | 1.00 | 0.97 | 0.85 | 0.63 |
+| **50 % point** | **~320** | **425** | **~380** | **485** | **~470** | **565** |
+| eq. 7, α = 1 | 351 | | 511 | | 631 | |
+
+Every loss below the cutoff is on a tapered ring (79 to 98), none on the conductance limit;
+above it none is lost anywhere. **The mechanism, the gradual shape (a 200 kHz rise, as
+measured) and the ordering with DC gradient are the paper's.** The spacing with gradient is
+close: measured 425 → 485 → 565 (×1.14, ×1.16), model 320 → 380 → 470 (×1.19, ×1.24), the
+paper's square-root law ×1.46 and ×1.23 - the model tracks the measurement about as well as
+the paper's own formula does. And the model is **17 to 22 per cent low in frequency at every
+gradient**, which in m/z is a factor of about 1.6: at 485 kHz it would pass an ion of m/z 72
+where the instrument stops at 118. Twenty ions put ±0.1 on each point, so the offset is real.
+
+**What moves it, from one-parameter probes at 19.1 V/cm and 450 kHz** (hard sphere, 125 Å²:
+12 of 20):
+
+| change | arrived of 20 |
+| --- | --- |
+| cross section 100 Å² (mobility up 25 %) | 17 |
+| cross section 150 Å² (mobility down 17 %) | 13 |
+| **Langevin (polarization capture) instead of hard sphere** | **7** - the measured 0.31 |
+
+The cross section barely moves it inside the statistics. **The collision model moves it by a
+factor of two in transmission at the cutoff**, in the direction of the measurement. The two
+models have nearly the same rate at thermal speed (6.6 against 6.5 × 10⁻¹⁰ cm³/s for this ion
+in nitrogen) and differ in how the rate goes with speed: a hard sphere collides more often the
+faster the RF drives the ion, so it damps the quiver harder near a ring and survives; Langevin
+capture is speed-independent and does not. A real ion-neutral potential at these energies lies
+between, and the measurement sits on the Langevin side. A full Langevin scan is running; if it
+lands on the measured curve the benchmark has discriminated the collision models, which is
+REG-3's purpose stated on a published instrument rather than on ourselves.
+
+**Everything guessed, and its likely sign.** The gas is taken at 300 K; the inlet capillary is
+heated, and a warmer, thinner gas raises the mobility and the cutoff frequency - toward the
+measurement. The jet through the exit is not modelled; it would carry ions through the last
+rings faster and lower the cutoff - away from it. Space charge in the measurement is unknown.
+And the extraction electrode's 40 V is a stated guess that sets nothing here, since below the
+cutoff every loss is on a ring and above it there is none.
+
+**The Langevin scan brackets the measurement from the other side.** Same ions, same conditions,
+polarization capture instead of hard spheres (m/z 118, 19.1 V/cm, 80 Vpp, twenty a point):
+
+| kHz | 300 | 350 | 400 | 450 | 500 | 550 | 600 | 50 % point |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| hard sphere, 125 Å² | 0.00 | 0.20 | 0.70 | 0.60 | 0.90 | 0.95 | 1.00 | **~380** |
+| Langevin, α = 1.74 Å³ | 0.05 | 0.20 | 0.25 | 0.35 | 0.50 | 0.65 | 0.75 | **~500** |
+| measured | 0.00 | 0.05 | 0.13 | 0.31 | 0.60 | 0.81 | 0.97 | **485** |
+
+Langevin puts the cutoff where the instrument has it, to within the ±25 kHz the statistics
+allow, and rises too slowly above it - still losing a quarter of the ions at 600 kHz where the
+instrument loses three per cent. Hard spheres rise as sharply as the instrument and a hundred
+kilohertz early. A real ion-nitrogen interaction at these collision energies is polarization
+capture at low speed and a hard core at high, so the truth lies between the two limiting
+models this engine offers, and the measurement sits between their two curves at every
+frequency. **That is REG-3's comparison made against a published instrument rather than
+against ourselves**: the benchmark resolves the difference between the collision models, and
+says which way a hybrid potential would have to lean. A speed-dependent cross section - hard
+core plus polarization - is the next physics this device asks for, and it is one function.
+
+## 78. Transmission against RF amplitude: the threshold lands on the measurement
+
+The other published curve, Kim et al. 2000 Figure 6 (as reproduced in Kelly et al. 2010):
+transmitted current against RF amplitude at 1 Torr, 0.7 MHz, 16 V/cm, gramicidin ions, 5 nA in.
+Run in the **diffusive** mode with the RF entering as its collisional cycle average, doubly
+charged m/z 571, the extraction electrode behind the conductance limit, 10,000 ions of density:
+
+| Vpp | model | measured, normalised to its 3.3 nA plateau | Tolmachev 2000 simulation, normalised |
+| --- | --- | --- | --- |
+| 10 | 0.17 | 0.05 | 0.00 |
+| 15 | 0.57 | 0.39 | 0.52 |
+| 20 | 0.90 | 0.85 | 0.79 |
+| 25 | 0.97 | 0.97 | 0.97 |
+| 30 | 0.99 | 1.00 | 1.00 |
+| 40 | 1.00 | 0.97 | 1.00 |
+| 60 | 1.00 | 0.97 | 1.00 |
+| **50 % point** | **~14 Vpp** | **~16 Vpp** | ~15 Vpp |
+
+**Nothing was tuned.** The threshold is where the RF's cycle-averaged well first overcomes the
+DC gradient's outward push in the taper and the diffusion that spreads the packet onto the
+rings, and it comes out within two volts of the measurement - and within a volt of the
+simulation Tolmachev ran with a code that shared nothing with this one. Below the threshold
+the losses are on the tapered rings (88 to 97); through it they move to the conductance-limit
+face as the packet narrows but not yet to a millimetre; above 25 Vpp essentially everything
+passes the 2 mm hole. The model is slightly early at 10 and 15 Vpp, which is the direction a
+doubly charged ion confined by a well proportional to its charge squared would be if the real
+packet carried some singly charged gramicidin too.
+
+**What is deliberately not compared is the plateau's absolute height.** The instrument
+transmitted 65 per cent of what entered; this model transmits everything above 25 Vpp. The
+difference is what the model leaves out and says so: 5 nA of space charge (Tolmachev's
+simulation included it and reached the same 3.3 nA), losses at the jet disrupter and in the
+capture of the expanding jet upstream of where these ions are released, and the jet itself.
+The threshold is a property of the funnel's field; the plateau is a property of the inlet.
+
+**So both of the funnel's published curves are reproduced on one template**, one per transport
+mode: the amplitude threshold in the diffusive mode at 1 Torr, the frequency cutoff in the
+collision-by-collision mode at 1.9 Torr, with the two limiting collision models bracketing the
+latter. Phase 3's last acceptance criterion moves from "not met" to met with stated caveats.
+
+One warning to read on the way: `mobility.outside-fit` on every run here. The declared
+mobility is valid to 100 Td and REG-2 evaluates the worst point in the gas, which is the
+extraction gap behind the conductance limit at 250 Td - an extrapolation in the last five
+millimetres, in a region that decides nothing about the threshold.

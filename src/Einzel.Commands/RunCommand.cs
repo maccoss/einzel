@@ -40,6 +40,17 @@ public sealed record ValidateOutcome
             : ExitCode.ValidationFailure;
 }
 
+
+/// <summary>One ion's outcome and end time, as written to the result document.</summary>
+/// <param name="Ion">The ion's index in the cloud, from zero.</param>
+/// <param name="Outcome">The integrator's outcome name.</param>
+/// <param name="Surface">The electrode struck, by name, or null.</param>
+/// <param name="TimeUs">When the flight ended, in microseconds from launch.</param>
+/// <param name="XMm">Where the flight ended, x in millimetres: the impact point for a strike, the crossing for an arrival.</param>
+/// <param name="YMm">Where the flight ended, y in millimetres.</param>
+/// <param name="ZMm">Where the flight ended, z in millimetres.</param>
+public sealed record IonEventJson(int Ion, string Outcome, string? Surface, double TimeUs, double XMm, double YMm, double ZMm);
+
 /// <summary>What a cloud of ions did, when a model launches one.</summary>
 /// <remarks>
 /// The Class S half of a result: transmission, acceptance, efficiency, each with a
@@ -101,6 +112,13 @@ public sealed record EnsembleOutcome
     /// rather than an omission.
     /// </remarks>
     public required IReadOnlyList<LossChannel> Losses { get; init; }
+
+    /// <summary>
+    /// Every launched ion's outcome and end time, in launch order - the raw ledger
+    /// the counts above are computed from. A mass scan is read off this list: each
+    /// ion's ejection instant is its position on the scan's mass axis.
+    /// </summary>
+    public IReadOnlyList<IonEventJson> Events { get; init; } = [];
 
     /// <summary>
     /// The width enclosing the central half of the arrivals, in nanoseconds.
@@ -557,6 +575,7 @@ public static class RunCommand
                 Carry(peak is null ? transmission : peak.Transmission(), warnings), "1"),
 
             Losses = flight.Losses,
+            Events = [.. flight.Events.Select(e => new IonEventJson(e.Ion, e.Outcome, e.Surface, e.TimeSeconds * 1e6, e.Position.X * 1e3, e.Position.Y * 1e3, e.Position.Z * 1e3))],
 
             // Absent rather than zero where there is no peak to measure. Zero is a
             // real width and a reader cannot tell the two apart if both print as
@@ -694,6 +713,61 @@ public static class RunCommand
         ];
     }
 
+    /// <summary>
+    /// The direct sum softens the force between two macroparticles closer than the mean
+    /// spacing, and the mean spacing is set by the packet's RMS radius - so a packet that is
+    /// long in one direction and thin in the others is softened at a scale larger than its
+    /// thin dimension, and the mutual force across that dimension is nearly switched off.
+    /// </summary>
+    /// <remarks>
+    /// Found on a linear ion trap's cloud: 40 macroparticles standing for 4,000 ions along
+    /// 10 mm of axis and 0.05 mm across it. The RMS radius is 5.8 mm, the softening 1.7 mm,
+    /// thirty-four times the transverse size, and the space-charge scan came back identical
+    /// to the one without space charge, to the last digit. Nothing reported it. REG-2's rule
+    /// - a resolution limit is reported whether or not it is crossed - applied to the third
+    /// such limit in this engine, after the coarsening guard and the particle-in-cell cell.
+    /// </remarks>
+    private static IReadOnlyList<ValidityWarning> SofteningWarnings(CompiledSpaceChargeGrid? grid, CompiledModel model)
+    {
+        if (grid is not null || model.Cloud.Ions < 2)
+        {
+            return [];
+        }
+
+        var transverse = model.Cloud.TransverseSpreadM;
+        var longitudinal = model.Cloud.LongitudinalSpreadM;
+        var extents = new[] { transverse, longitudinal }.Where(v => v > 0.0).ToArray();
+        if (extents.Length == 0)
+        {
+            return [];
+        }
+
+        // The same rule the flight uses, from the declared spreads rather than the drawn
+        // packet, so the warning and the run cannot disagree about which softening applied.
+        var softening = Transport.Interaction.CoulombInteraction.SpacingSoftening(
+            transverse, transverse, longitudinal, model.Cloud.Ions);
+        var rms = Math.Sqrt((2.0 * transverse * transverse) + (longitudinal * longitudinal));
+        var smallest = extents.Min();
+        var ratio = softening / smallest;
+        var needed = (int)Math.Ceiling(model.Cloud.Ions * Math.Pow(ratio, 3));
+
+        return
+        [
+            new ValidityWarning(
+                "spacecharge.softening",
+                $"the mutual force is softened below {softening * 1e3:F3} mm, the mean spacing of "
+                + $"{model.Cloud.Ions} macroparticles in a packet of RMS radius {rms * 1e3:F2} mm and extents "
+                + $"{transverse * 1e3:F3} by {transverse * 1e3:F3} by {longitudinal * 1e3:F3} mm, against a "
+                + $"smallest declared extent of {smallest * 1e3:F3} mm"
+                + (ratio > 1.0
+                    ? $". The softening exceeds the packet's thin dimension {ratio:F1}-fold, so the force across it is "
+                      + $"suppressed and the packet's own charge is largely not being felt; about {needed} macroparticles "
+                      + "would bring the spacing below that dimension, or a grid method resolves it at the cell"
+                    : ", inside it, so the force between neighbours is Coulombic at the scale the packet has"),
+                ratio > 1.0 ? WarningSeverity.ValidityViolation : WarningSeverity.Provenance),
+        ];
+    }
+
     private static IReadOnlyList<ValidityWarning> SpaceChargeWarnings(
         SpaceChargeEstimate charge, double limit, CompiledModel model, double weight)
     {
@@ -738,6 +812,7 @@ public static class RunCommand
                     WarningSeverity.Provenance),
 
                 .. GridResolutionWarnings(grid, model.Cloud.Ions),
+                .. SofteningWarnings(grid, model),
             ];
         }
 
@@ -1420,10 +1495,19 @@ public static class RunCommand
         {
             var recorder = new TrajectoryRecorder(model.SampleIntervalSi);
 
+            // The drawn flight has to be the flown flight. This integration once omitted the
+            // collision sampler, so a --vtu of any collisional run was a vacuum flight - an
+            // ion crossing a 2.5 mbar funnel in 10 us on the axis, beside a result that said
+            // 589 us and a strike on the exit plate. Same gas, same seed: the same scheduled
+            // collision instants and the same velocity draws as the reported flight.
             TrajectoryIntegrator.Integrate(
                 launch, species, field,
                 settings with { RelativeTolerance = model.RelativeTolerance },
-                detector, recorder);
+                detector, recorder,
+                collisions: gas.IsPresent
+                    ? new Transport.Collisions.CollisionSampler(
+                        gas, species.MassSi, species.ChargeSi, model.Gas.Seed)
+                    : null);
 
             if (recorder.Samples.Count >= 2)
             {

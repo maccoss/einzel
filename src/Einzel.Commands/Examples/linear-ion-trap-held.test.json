@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.1",
+  "name": "linear-ion-trap-held",
+  "description": "Published: resonance ejection at q = 0.88 (Schwartz 2002) needs the excitation; with it off the ion at the same q is inside the stability region (edge 0.908 on the a = 0 line) and is still held after two hundred RF cycles.",
+  "model": "../models/linear-ion-trap-held.json",
+  "expect": [
+    {
+      "figureOfMerit": "confined",
+      "value": 1.0,
+      "unit": "1",
+      "tolerance": 1e-09
+    }
+  ]
+}

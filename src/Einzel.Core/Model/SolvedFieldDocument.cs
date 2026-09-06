@@ -54,12 +54,55 @@ public enum ElectrodeShape
     /// profile.
     /// </summary>
     EdgeProfile,
+
+    /// <summary>
+    /// A closed polygon held at one potential, given by its vertices in order. The
+    /// general cross-section: a hyperbolic rod face, a rod with a slot cut through
+    /// it, a wedge, anything a rectangle or a disc cannot say.
+    /// </summary>
+    /// <remarks>
+    /// Convexity is not required and the winding direction does not matter; the
+    /// inside is decided by the even-odd rule. A curved face is a polyline, and the
+    /// error is the sagitta of each chord, which for a hyperbolic quadrupole rod
+    /// sampled every quarter millimetre is about two microns - two orders below the
+    /// cell it sits in.
+    /// </remarks>
+    Polygon,
 }
 
 /// <summary>One point of a piecewise-linear potential profile along an edge.</summary>
 /// <param name="At">Position along the edge.</param>
 /// <param name="Potential">Potential held there.</param>
 public sealed record ProfilePointDocument(QuantityValue? At, QuantityValue? Potential);
+
+/// <summary>
+/// One vertex of a polygon electrode, or a run of them: a position in the
+/// cross-section plane, optionally repeated with an index bound.
+/// </summary>
+/// <param name="X">The vertex's x, a length. May be an expression over the parameter surface, and over <see cref="Index"/> in a run.</param>
+/// <param name="Y">The vertex's y, a length. May be an expression over the parameter surface, and over <see cref="Index"/> in a run.</param>
+/// <remarks>
+/// A curved face is a run: one pair of expressions evaluated <see cref="Count"/>
+/// times with <see cref="Index"/> bound from zero to <c>count - 1</c>, so a
+/// hyperbolic quadrupole rod is twenty-five points written once rather than
+/// twenty-five times. The same idea as an electrode's <c>repeat</c>, applied to
+/// the outline of a single electrode.
+/// </remarks>
+public sealed record VertexDocument(QuantityValue? X, QuantityValue? Y)
+{
+    /// <summary>
+    /// How many vertices this entry stands for. Absent for a single vertex; at least
+    /// two for a run.
+    /// </summary>
+    public QuantityValue? Count { get; init; }
+
+    /// <summary>
+    /// The name the run's index is bound to in <see cref="X"/> and <see cref="Y"/>,
+    /// from zero to <see cref="Count"/> minus one. Defaults to <c>index</c>. It may
+    /// not shadow a declared parameter.
+    /// </summary>
+    public string? Index { get; init; }
+}
 
 /// <summary>
 /// An electrode that can tap the generators its solve declares.
@@ -110,7 +153,7 @@ public sealed record ElectrodeDocument : ITappedElectrode
     /// <summary>A name, used in reporting and as the basis-field label.</summary>
     public string? Name { get; init; }
 
-    /// <summary>One of <c>rectangle</c>, <c>disc</c>, or <c>edgeProfile</c>.</summary>
+    /// <summary>One of <c>rectangle</c>, <c>disc</c>, <c>polygon</c>, or <c>edgeProfile</c>.</summary>
     public string? Shape { get; init; }
 
     /// <summary>Rectangle: lower x bound.</summary>
@@ -139,6 +182,12 @@ public sealed record ElectrodeDocument : ITappedElectrode
 
     /// <summary>Edge profile: the piecewise-linear potential along the edge.</summary>
     public IReadOnlyList<ProfilePointDocument>? Profile { get; init; }
+
+    /// <summary>
+    /// Polygon: the vertices, in order round the outline, at least three. The
+    /// outline closes itself from the last back to the first.
+    /// </summary>
+    public IReadOnlyList<VertexDocument>? Vertices { get; init; }
 
     /// <summary>
     /// Repeats this electrode, binding an index its expressions can name.
@@ -245,6 +294,13 @@ public sealed record CompiledElectrode
     /// <summary>Edge profile: position and potential pairs, in SI, sorted by position.</summary>
     public IReadOnlyList<(double At, double Potential)> Profile { get; init; } = [];
 
+    /// <summary>
+    /// Polygon: the vertices in order round the outline, in metres. For a polygon
+    /// <see cref="MinX"/>, <see cref="MinY"/>, <see cref="MaxX"/> and <see cref="MaxY"/>
+    /// hold its bounding box.
+    /// </summary>
+    public IReadOnlyList<(double X, double Y)> Vertices { get; init; } = [];
+
     /// <summary>Rectangle and disc: the potential held, in volts. The DC part.</summary>
     public double Potential { get; init; }
 
@@ -325,6 +381,45 @@ public sealed record CompiledElectrode
                 var ox = Math.Max(dx, 0.0);
                 var oy = Math.Max(dy, 0.0);
                 return Math.Sqrt((ox * ox) + (oy * oy));
+            }
+
+            case ElectrodeShape.Polygon:
+            {
+                // Exact: the distance to the nearest edge, signed by the even-odd
+                // rule. Both are closed form, so a slot a quarter of a millimetre
+                // wide is located as sharply as a rod's face - which is what lets
+                // the cut cells resolve it below one cell rather than rasterising
+                // it into whichever row of nodes it happens to fall on.
+                var count = Vertices.Count;
+                var nearest = double.PositiveInfinity;
+                var inside = false;
+
+                for (int i = 0, j = count - 1; i < count; j = i++)
+                {
+                    var (ax, ay) = Vertices[j];
+                    var (bx, by) = Vertices[i];
+                    var ex = bx - ax;
+                    var ey = by - ay;
+                    var px = x - ax;
+                    var py = y - ay;
+                    var length2 = (ex * ex) + (ey * ey);
+                    var t = length2 > 0.0 ? Math.Clamp(((px * ex) + (py * ey)) / length2, 0.0, 1.0) : 0.0;
+                    var dx = px - (t * ex);
+                    var dy = py - (t * ey);
+                    nearest = Math.Min(nearest, (dx * dx) + (dy * dy));
+
+                    if ((ay > y) != (by > y))
+                    {
+                        var crossing = ax + ((y - ay) * ex / ey);
+                        if (x < crossing)
+                        {
+                            inside = !inside;
+                        }
+                    }
+                }
+
+                var distance = Math.Sqrt(nearest);
+                return inside ? -distance : distance;
             }
 
             default:
@@ -415,6 +510,51 @@ public sealed record CompiledElectrode
                 low = (-b - root) / (2.0 * a);
                 high = (-b + root) / (2.0 * a);
                 break;
+            }
+
+            case ElectrodeShape.Polygon:
+            {
+                // A segment starting inside is met at once; otherwise the first
+                // crossing of any edge is the entry, because a segment that starts
+                // outside cannot cross into the interior anywhere but at an edge.
+                if (Contains(fromX, fromY))
+                {
+                    return 0.0;
+                }
+
+                var dx = toX - fromX;
+                var dy = toY - fromY;
+                var first = double.PositiveInfinity;
+                var count = Vertices.Count;
+
+                for (int i = 0, j = count - 1; i < count; j = i++)
+                {
+                    var (ax, ay) = Vertices[j];
+                    var (bx, by) = Vertices[i];
+                    var ex = bx - ax;
+                    var ey = by - ay;
+                    var denominator = (dx * ey) - (dy * ex);
+
+                    if (denominator == 0.0)
+                    {
+                        // Parallel, including collinear. A collinear overlap is a
+                        // segment running along the surface, and the nodes on it
+                        // are already classified as conductor by SignedDistance.
+                        continue;
+                    }
+
+                    var qx = ax - fromX;
+                    var qy = ay - fromY;
+                    var t = ((qx * ey) - (qy * ex)) / denominator;
+                    var u = ((qx * dy) - (qy * dx)) / denominator;
+
+                    if (t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0)
+                    {
+                        first = Math.Min(first, t);
+                    }
+                }
+
+                return double.IsFinite(first) ? first : null;
             }
 
             default:
@@ -689,6 +829,29 @@ public sealed record StageDocument
     public IReadOnlyDictionary<string, QuantityValue>? Set { get; init; }
 
     /// <summary>
+    /// Parameter values reached at the <em>end</em> of this phase, ramped linearly in
+    /// time from where each stands at its start. Everything not named holds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A mass-selective instability scan is a ramp: the RF amplitude rises steadily and
+    /// each ion leaves when its own q reaches the ejection point. Written as phases that
+    /// each hold a value, a scan is a staircase of thousands of steps; written with a
+    /// ramp it is one phase. A parameter named here and in <see cref="Set"/> starts at
+    /// the set value; named here alone, it starts at whatever value was in force.
+    /// </para>
+    /// <para>
+    /// A ramp is exact where the electrodes' potentials and drive amplitudes are linear
+    /// in the ramped parameter, because the solved field's channel weights are then
+    /// linear in time. That is checked at the phase's midpoint and a non-linear
+    /// dependence is refused - write the curve as more phases. A ramp may not move a
+    /// drive's phase, may not reach an analytic element, and is not supported in a
+    /// diffusive phase or on a volume solve.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyDictionary<string, QuantityValue>? Ramp { get; init; }
+
+    /// <summary>
     /// The transport mode this phase runs in, or absent to keep the model's.
     /// </summary>
     /// <remarks>
@@ -760,7 +923,15 @@ public sealed record DriveDocument
 /// <param name="DurationSeconds">How long it lasts.</param>
 /// <param name="Electrodes">The electrodes as they stand during it.</param>
 public sealed record CompiledStage(
-    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode> Electrodes);
+    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode> Electrodes)
+{
+    /// <summary>
+    /// The electrodes as they stand at the end of the stage when it ramps, or null when
+    /// it holds. Same metal in the same places as <see cref="Electrodes"/>; only what
+    /// each holds differs, and linearly in time between the two.
+    /// </summary>
+    public IReadOnlyList<CompiledElectrode>? EndElectrodes { get; init; }
+}
 
 /// <summary>A two-dimensional solved field, validated and reduced to SI.</summary>
 public sealed record CompiledSolvedField

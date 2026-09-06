@@ -276,6 +276,13 @@ public sealed class DiffusionSurfaceTests : IDisposable
             "a trajectory was drawn for a model that computes no trajectories");
 
         Assert.Contains("render.no-trajectories", stdout + stderr, StringComparison.Ordinal);
+
+        // And the figure is not qualified for the trajectory mode's regime. It was: the
+        // renderer computed the trajectory-mode regime warnings from the pressure alone, so a
+        // density drawn at 1 mbar was stamped "trajectory integration is not the description
+        // of this physics" for a mode it was not using. Asked of the mode now, like the paths.
+        Assert.DoesNotContain("regime.trajectory-above-validity", stdout + stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("regime.model-below-validity", stdout + stderr, StringComparison.Ordinal);
     }
 
     [Fact]

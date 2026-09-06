@@ -59,7 +59,14 @@ public sealed class AstralMirrorStudy(ITestOutputHelper output)
     /// </remarks>
     private static readonly string[] Names = ["stage1", "stage2", "stage3", "stage4"];
 
-    private static readonly double[] Coefficients = [-1.840, -1.158, 0.916, 1.503];
+    /// <summary>
+    /// The crowd-control paper's Table 1 as printed has U2 = -1.158. Both papers say in prose
+    /// that electrodes 2 to 4 are positive, and fitting the four voltages to the design paper's
+    /// published on-axis potential gives U2 positive at every board gap tried (+1.24 at 40 mm,
+    /// +1.76 at 50) while reproducing U1 to one per cent - so the table has one sign wrong.
+    /// docs/astral-handoff.md section 62.
+    /// </summary>
+    private static readonly double[] Coefficients = [-1.840, +1.158, 0.916, 1.503];
 
     /// <summary>Derived, not published: 30 m over 24 oscillations, out and back.</summary>
     private const double CapToCap = 30.0 / 24.0 / 2.0;
@@ -106,8 +113,12 @@ public sealed class AstralMirrorStudy(ITestOutputHelper output)
                 $"U{k + 1}  {volts[k],10:F1} V   ({Coefficients[k]:+0.000;-0.000} x {NominalEnergy:F0} eV)");
         }
 
-        // U1 and U2 accelerate a positive ion: it enters at 4 keV and speeds up.
-        Assert.True(volts[0] < 0.0 && volts[1] < 0.0);
+        // U1 accelerates a positive ion - it is the lens, and the on-axis potential dips to
+        // -5.56 kV under it. U2 is positive: the design paper says electrodes 2 to 4 "are
+        // biased positively in an ascending progression", and the published on-axis potential
+        // crosses zero directly beneath electrode 2, which a -4.6 kV electrode there cannot do.
+        Assert.True(volts[0] < 0.0, "U1 is the accelerating lens and must be negative");
+        Assert.True(volts[1] > 0.0, "U2 is the first reflecting electrode and must be positive");
 
         // And it turns between U3 and U4, because reflection is where the potential
         // reaches the beam energy.

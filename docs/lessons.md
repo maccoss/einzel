@@ -2577,3 +2577,152 @@ geometric perturbation is a rigid motion, apply it as a coordinate transform on 
 field rather than as a change to the geometry being solved. And a quantity that swings in
 sign under an irrelevant modelling choice is not a bad measurement of the right thing, it is
 a measurement of the modelling choice.
+
+## The drawn flight was not the flown flight
+
+`einzel run --vtu` on a collisional model wrote a trajectory that crossed a 2.5 mbar funnel in
+ten microseconds on the axis, beside a result that said 589 µs and a strike on the exit plate.
+The reportable flight time comes from a convergence study that flies the declared gas; the
+trajectory file came from a second integration in the same method, written to sample at the
+model's cadence, that was never handed the collision sampler. Both were "the run". Nothing
+checked that the two agreed, because the drawing was never compared with a number - it is the
+one artifact people look at with the numbers out of sight, which is exactly why it must not be
+the one that lies.
+
+The general form has now been met three times in three seams: the figure-of-merit path
+(`einzel test` flew in vacuum), the regime inspector (the path flown in vacuum and the gas
+numbers reported along it), and the trajectory file. **A shared entry point is not a shared
+computation.** Every integration that claims to be the run has to be handed everything the
+run was, and a test that reads the artifact back against the reported number is the only
+thing that catches the next one - `TrajectoryFileGasTests` asserts the file's last instant is
+the reported flight time on a model where vacuum and gas differ fifteen-fold, and fails with
+the sampler removed.
+
+## Asking the pressure a question that belongs to the mode, in the renderer
+
+`render section` of a *diffusive* model stamped the figure `QUALIFIED` with
+`regime.trajectory-above-validity` - "trajectory integration is not the description of this
+physics" - for a mode it was not using. The renderer computed the trajectory mode's regime
+warnings from the gas alone. RND-8 had already been fixed by asking `ProducesTrajectories`
+of the mode rather than inferring from the pressure; the regime stamp two functions away was
+still inferring. Seventh appearance of the pattern this file records under "a time-varying
+quantity reached through a time-free interface" and its cousins: a property of the *run*
+(its mode, its drive) asked of a proxy (the pressure, the DC) that stops being equivalent the
+moment a second mode exists. The fix is one condition; the lesson is to grep for every place
+a gas is present and check what each one asks.
+
+## A confined ion at a nominal q of 0.92 was the geometry telling the truth
+
+The linear ion trap template, on its first flight, held an ion at a nominal Mathieu q
+of 0.92 for four hundred RF cycles with the excitation off - past the tabulated
+stability edge of 0.908, where it should have struck a rod within a few microseconds.
+The same document with its hyperbolic polygons swapped for round rods lost the ion in
+3.3 µs. The run-path field was checked over a cycle and was exactly a cosine; the
+snapshot field's quadrupole term was 0.9994 of the ideal. Everything pointed at the
+polygon shape being wrong in the run and right in the snapshot, which is not a thing
+that can happen, since they are one object.
+
+The snapshot had been measured on the **unstretched** geometry. The paper moves the x
+rod pair out 0.75 mm to compensate the slot, and the ideal formula
+q = 4eV/(m r0² Ω²) puts every vertex at r0. With the x pair at 4.75 mm the quadrupole
+term is 0.822 of the ideal, so the ion at "0.92" was at 0.757 and confined for a good
+reason. Nothing in the engine was wrong; the number being compared against was
+computed from a geometry the document did not describe.
+
+Three things generalise. **A stretched trap's nominal q is not its q**, and every
+commercial trap is stretched - the paper's own q scale is the effective one, inferred
+from a measured secular frequency (its 368 kHz at "q = 0.83" is the ideal beta to a
+tenth of a per cent), which is how every trap user calibrates and is why the
+discrepancy never shows up in the literature. **Measure the coefficient from the solved
+field before calibrating anything against a formula**: the multipole projection at half
+the inscribed radius gives it in a second, with no ion involved. And **swap the shape,
+not the physics, to isolate a shape**: the round-rod control settled in one run what the
+field-over-a-cycle check and the multipole check together could not, because both of
+those were asked of the wrong geometry.
+
+## A polygon that costs one hundred and sixteen kilobytes is the wrong spelling
+
+The first linear-ion-trap template wrote each hyperbolic face as twenty-five vertices,
+each vertex two expressions over the parameter surface, eight half-rods: 116 KB of
+generated JSON that validated, solved and flew correctly and that no person or agent
+could read, edit or diff. The document was parametric in the letter - every vertex
+moved with `inscribedRadius` - and not in spirit, because the thing a reader needs to
+see, "the face is this hyperbola from the slot edge to the half-width", was buried in
+two hundred copies of itself.
+
+The fix was a *run*: one vertex entry with a `count` and an `index`, evaluated that many
+times - `repeat`'s mechanism applied inside one electrode. Twenty-four kilobytes, three
+entries per half-rod, and the hyperbola written once. The rule: when a generator script
+is needed to write a document, the format is missing the abstraction the script
+supplies, and the script is a measurement of how big the gap is.
+
+## A DC offset written x-up, y-down is zero on the axis and makes no well
+
+The three-section trap's end offset was first written the way the quadrupolar DC is: the
+x pair raised, the y pair lowered. That is a change of Mathieu a, exactly zero on the axis
+by symmetry, and the axis potential came out flat along the whole rod - no well at all -
+while every electrode reported the potential asked of it. The end sections' offset is a
+common one, all four rods of a section together; that is what raises the axis. The test
+that caught it asked for the well to rise by the end of the centre section and got a
+number smaller than the launch point's, which was the geometry answering a different
+question correctly. The rule: when a potential is applied to a symmetric set of electrodes,
+say which symmetry it has - common, quadrupolar, dipolar - because each is a different
+field and the document cannot tell them apart from the numbers.
+
+## A softened force is a switched-off force when the packet is thinner than the softening
+
+The direct-sum space charge softens the mutual force below the mean macroparticle
+spacing, and the spacing is set by the packet's RMS radius over the cube root of the
+count. A linear trap's cloud is a line: ten millimetres long and fifty microns across. Its
+RMS radius is dominated by the length, so forty macroparticles are spaced 1.7 mm and the
+force across a 0.05 mm packet is softened to nothing. A scan with four thousand ions came
+back identical to one with none, to the last digit, and nothing said so, because the
+softening was reported nowhere. It is reported now, against the packet's thinnest declared
+extent, on every direct-sum run. Two rules: a method with an internal length scale must
+compare it with the smallest scale in the problem, not the typical one; and identical
+results across a parameter that should matter are not corroboration, they are a method
+that is not seeing the parameter.
+
+**And the rule itself was the wrong rule for anything but a ball.** "The mean spacing" was
+computed as the radius over the cube root of the count, which is the spacing of points
+filling a sphere - and a line's RMS radius is its length, so the spacing came out as if the
+forty points filled a ball ten millimetres across. Points filling a box are spaced at the
+cube root of its *volume* over the count, and the volume goes as the product of the three
+extents. Written from the packet's three standard deviations, an isotropic packet gets the
+old number to the bit and the line cloud drops from 3.8 mm of softening to 0.19 mm: still
+3.8 times its transverse size at forty macroparticles, because forty points along ten
+millimetres are a quarter of a millimetre apart whatever rule is used, and the count that
+brings the softening inside the packet falls from 1.6 million to about 2,200. The lesson
+is about the word "mean": a mean spacing is a property of a distribution's shape, and a
+formula that reduces the shape to one radius has assumed the shape.
+
+## A cloud is long along the launch direction, and the trap's axis is somewhere else
+
+A source declares a longitudinal and a transverse spread, and longitudinal means along the
+launch direction. A linear trap's ion starts at rest, so its direction looks like a
+formality, and the space-charge study left it at x - toward the rods. The "line along the
+axis" was a line across the trap, most of its ions started inside the metal, and the
+scan's ejection ledger was full of strikes at the first step. Nothing refused it: a source
+inside a conductor is refused, and a cloud whose *tail* is inside one is not. For a
+packet at rest the direction is not a formality, it is the one thing that says which way
+the packet is long, and it has to be the trap's axis.
+
+## A domain edge is a boundary condition, not a conductor
+
+With slots in all four rods and a detector behind one, ions ejected through the other
+three left the trap, crossed the grounded domain edge, and coasted for the rest of the run
+in field-free space, reported metres away as still in flight. The edge holds the potential
+at zero; it stops no ion. Both trap templates now carry grounded housing walls on the sides
+without a detector: electrically nothing, since the edge was grounded anyway, but a named
+surface a loss can be charged to. A model whose ions can leave the solved box must say
+what they meet there, or the ledger reports a physical impossibility as an outcome.
+
+## A fast scan must run through the stability edge
+
+At 200 kDa/s the ramp passes from the excitation's resonance to the stability edge in
+forty microseconds, and an excitation that has not ejected an ion in that time hands it to
+the edge. A ramp that stopped short of the edge, at q 0.895, held a third of the ions to
+the end of the run and reported them held; extending it to 0.94 ejected them and put them
+in the tail of the peak, which is where the instrument has them too. What the scan window
+covers is part of the measurement, and a window chosen for a slow scan is not a window for
+a fast one.

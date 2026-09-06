@@ -47,6 +47,12 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     private readonly double[][] _stageDirect;
     private readonly WeightTerm[][][] _stageHarmonics;
 
+    // A stage that ramps carries its end weights too, and its weights at any instant are
+    // the linear interpolation between start and end over its own duration. Null per
+    // stage where the stage holds.
+    private readonly double[]?[] _stageEndDirect;
+    private readonly WeightTerm[][]?[] _stageEndHarmonics;
+
     internal DrivenSolvedField(
         IReadOnlyList<IElectrostaticField> channels,
         IReadOnlyList<double> direct,
@@ -55,7 +61,9 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         IReadOnlyList<RfWaveform> waveforms,
         IReadOnlyList<double>? boundaries = null,
         IReadOnlyList<IReadOnlyList<double>>? stageDirect = null,
-        IReadOnlyList<IReadOnlyList<IReadOnlyList<WeightTerm>>>? stageHarmonics = null)
+        IReadOnlyList<IReadOnlyList<IReadOnlyList<WeightTerm>>>? stageHarmonics = null,
+        IReadOnlyList<IReadOnlyList<double>?>? stageEndDirect = null,
+        IReadOnlyList<IReadOnlyList<IReadOnlyList<WeightTerm>>?>? stageEndHarmonics = null)
     {
         _channels = [.. channels];
         _direct = [.. direct];
@@ -69,7 +77,17 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
         _stageHarmonics = stageHarmonics is null
             ? []
             : [.. stageHarmonics.Select(stage => stage.Select(h => h.ToArray()).ToArray())];
+
+        _stageEndDirect = stageEndDirect is null
+            ? new double[]?[_boundaries.Length]
+            : [.. stageEndDirect.Select(d => d?.ToArray())];
+        _stageEndHarmonics = stageEndHarmonics is null
+            ? new WeightTerm[][]?[_boundaries.Length]
+            : [.. stageEndHarmonics.Select(stage => stage?.Select(h => h.ToArray()).ToArray())];
     }
+
+    /// <summary>Whether any stage ramps rather than holds.</summary>
+    public bool HasRamp => _stageEndDirect.Any(d => d is not null);
 
     /// <summary>How many stages the sequence has. Zero for a geometry held in one state.</summary>
     public int StageCount => _boundaries.Length;
@@ -192,6 +210,32 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
 
         var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
+
+        if (stage >= 0 && _stageEndDirect[stage] is { } endDirect)
+        {
+            // A ramp: interpolate every weight linearly over the stage's own duration.
+            // Past the last boundary the fraction is clamped to one, so the last stage
+            // holds the value its ramp reached, as a held last stage holds its value.
+            var start = stage == 0 ? 0.0 : _boundaries[stage - 1];
+            var fraction = Math.Clamp((timeSeconds - start) / (_boundaries[stage] - start), 0.0, 1.0);
+            var endHarmonics = _stageEndHarmonics[stage]![channel];
+
+            var ramped = direct + ((endDirect[channel] - direct) * fraction);
+            for (var k = 0; k < harmonics.Length; k++)
+            {
+                var term = harmonics[k];
+                var drive = term.Drive;
+                if (drive < 0 || drive >= _frequencies.Length)
+                {
+                    continue;
+                }
+
+                var amplitude = term.Amplitude + ((endHarmonics[k].Amplitude - term.Amplitude) * fraction);
+                ramped += amplitude * _waveforms[drive].At((_frequencies[drive] * timeSeconds) + term.Phase);
+            }
+
+            return ramped;
+        }
 
         var total = direct;
 

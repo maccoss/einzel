@@ -147,6 +147,23 @@ public static class ModelValidator
         // configuration it has.
         var transport = ValidateTransport(document.Transport, p, Modes(document, timeline), errors);
 
+        if (transport is not null)
+        {
+            foreach (var phase in timeline)
+            {
+                if (phase.EndSurface is not null && (phase.Mode ?? transport.Mode) == "diffusion")
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{phase.Path}/ramp",
+                        Constraint = $"stage '{phase.Name}' ramps a parameter in a diffusive phase, and the density solver steps through a field it holds fixed within a phase",
+                        Suggestion = "write the ramp as phases that each hold a value, each a fraction of the density step's timescale",
+                    });
+                }
+            }
+        }
+
         if (errors.Count > 0 || mass is null || charge is null
             || source is null || detector is null || transport is null)
         {
@@ -753,16 +770,34 @@ public static class ModelValidator
             // reporting it once per phase as well would turn one mistake into a wall.
             var ignored = new List<EinzelError>();
             var state = CompileOnce(field, path, phase.Surface, timeline, ignored);
-
             if (state is null)
             {
                 return baseline;
             }
 
+            // An analytic element is compiled once per phase and switched; there is no
+            // weight to interpolate. A ramp whose parameter reaches one would leave the
+            // element frozen at its start value while the solved elements ramp, which is
+            // the silent half-instrument the model-level timeline was built to prevent.
+            if (phase.EndSurface is not null)
+            {
+                var endState = CompileOnce(field, path, phase.EndSurface, timeline, ignored);
+                if (endState is not null && !Same(state, endState))
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{phase.Path}/ramp",
+                        Constraint = $"stage '{phase.Name}' ramps a parameter that the analytic element at {path} depends on, and a ramp is supported on solved geometries only",
+                        Suggestion = "switch the analytic element in more phases, or describe it as a solved geometry",
+                    });
+                    return baseline;
+                }
+            }
+
             elapsed += phase.DurationSeconds;
             boundaries.Add(elapsed);
             phases.Add(state);
-
             moved |= !Same(baseline, state);
         }
 
@@ -1115,6 +1150,8 @@ public static class ModelValidator
     /// <param name="Surface">Every parameter, as it stands during the phase.</param>
     /// <param name="Path">Where it was declared, for reporting.</param>
     /// <param name="Mode">The transport mode it names, or null to keep the model's.</param>
+    /// <param name="EndSurface">Where the ramped parameters end, when the phase ramps; null when it holds.</param>
+    /// <param name="MidSurface">The surface midway through a ramp, for the linearity check; null when the phase holds.</param>
     /// <remarks>
     /// <b>The surface is resolved once, for the whole instrument.</b> That is the fix for
     /// the defect this replaced: stages used to be compiled per element, so a stage
@@ -1127,7 +1164,9 @@ public static class ModelValidator
         double DurationSeconds,
         IReadOnlyDictionary<string, Quantity> Surface,
         string Path,
-        string? Mode);
+        string? Mode,
+        IReadOnlyDictionary<string, Quantity>? EndSurface = null,
+        IReadOnlyDictionary<string, Quantity>? MidSurface = null);
 
     /// <summary>
     /// The instrument's timeline, resolved once, from wherever it is declared.
@@ -1234,6 +1273,80 @@ public static class ModelValidator
                 continue;
             }
 
+            // A ramp names where each parameter ends; where it starts is whatever the
+            // start surface says, whether the phase set it or inherited it. The end
+            // and midpoint surfaces are resolved here so the derived parameters follow,
+            // exactly as they do for a set.
+            IReadOnlyDictionary<string, Quantity>? endSurface = null;
+            IReadOnlyDictionary<string, Quantity>? midSurface = null;
+            if (stage.Ramp is { Count: > 0 } ramp)
+            {
+                var endSet = new Dictionary<string, Quantity>(set, StringComparer.Ordinal);
+                var midSet = new Dictionary<string, Quantity>(set, StringComparer.Ordinal);
+                var rampOk = true;
+                foreach (var (parameter, value) in ramp)
+                {
+                    if (value.Expression is not null)
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.SchemaInvalid,
+                            Path = $"{stagePath}/ramp/{parameter}",
+                            Constraint = "a ramp ends a parameter at a value, not at an expression",
+                            Suggestion = "write the number and its unit, as a set does",
+                        });
+                        rampOk = false;
+                        continue;
+                    }
+                    if (!surface.TryGetValue(parameter, out var start))
+                    {
+                        errors.Add(new EinzelError
+                        {
+                            Code = ErrorCodes.SchemaInvalid,
+                            Path = $"{stagePath}/ramp/{parameter}",
+                            Constraint = $"'{parameter}' is not a declared parameter, so there is nothing to ramp",
+                            Observed = new ObservedValue(0.0, parameter),
+                            Suggestion = "ramp a parameter the document declares; a derived parameter follows the ones it is written over",
+                        });
+                        rampOk = false;
+                        continue;
+                    }
+                    try
+                    {
+                        var end = Quantity.From(value.Value, value.Unit);
+                        if (end.Dimension != start.Dimension)
+                        {
+                            errors.Add(new EinzelError
+                            {
+                                Code = ErrorCodes.SchemaInvalid,
+                                Path = $"{stagePath}/ramp/{parameter}",
+                                Constraint = $"'{parameter}' has dimension {start.Dimension} and the ramp's end value has {end.Dimension}",
+                                Suggestion = "give the end value in the parameter's own unit",
+                            });
+                            rampOk = false;
+                            continue;
+                        }
+                        endSet[parameter] = end;
+                        midSet[parameter] = Quantity.Si(0.5 * (start.SiValue + end.SiValue), start.Dimension);
+                    }
+                    catch (EinzelException failure)
+                    {
+                        errors.Add(failure.Error with { Path = $"{stagePath}/ramp/{parameter}" });
+                        rampOk = false;
+                    }
+                }
+                if (!rampOk)
+                {
+                    continue;
+                }
+                endSurface = restage(endSet, errors);
+                midSurface = restage(midSet, errors);
+                if (endSurface is null || midSurface is null)
+                {
+                    continue;
+                }
+            }
+
             if (stage.Mode is not null and not ("trajectory" or "diffusion"))
             {
                 errors.Add(new EinzelError
@@ -1250,7 +1363,7 @@ public static class ModelValidator
             }
 
             phases.Add(new PhaseSurface(
-                name, duration.Value.SiValue, surface, stagePath, stage.Mode));
+                name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface));
         }
 
         return phases;
@@ -1432,10 +1545,127 @@ public static class ModelValidator
                 continue;
             }
 
-            stages.Add(new CompiledStage(phase.Name, phase.DurationSeconds, electrodes));
+            List<CompiledElectrode>? endElectrodes = null;
+            if (phase.EndSurface is not null && phase.MidSurface is not null)
+            {
+                endElectrodes = [];
+                var midElectrodes = new List<CompiledElectrode>();
+                var ignored = new List<EinzelError>();
+                for (var i = 0; i < declaredElectrodes.Count; i++)
+                {
+                    Expand(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.EndSurface, endElectrodes, ignored);
+                    Expand(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.MidSurface, midElectrodes, ignored);
+                }
+                if (!SameGeometry(baseline, endElectrodes, phase.Name, phase.Path, errors)
+                    || !RampIsLinear(Excitations(electrodes), Excitations(midElectrodes), Excitations(endElectrodes), phase.Name, phase.Path, errors))
+                {
+                    continue;
+                }
+            }
+
+            stages.Add(new CompiledStage(phase.Name, phase.DurationSeconds, electrodes) { EndElectrodes = endElectrodes });
         }
 
         return stages;
+    }
+
+    /// <summary>
+    /// Whether every electrode's potential and drive amplitude at the phase's midpoint is
+    /// the mean of its start and end values - which is what makes interpolating the
+    /// solved channel weights linearly in time exact - and no drive phase moves.
+    /// </summary>
+    /// <remarks>
+    /// Checked rather than assumed because a potential is an expression over the ramped
+    /// parameter and nothing stops it being its square root. A ramp of such a parameter
+    /// would still run, with the field at every instant between the ends but on the
+    /// wrong curve, and nothing in the result would say so.
+    /// </remarks>
+    private static List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> Excitations(List<CompiledElectrode> electrodes) =>
+        [.. electrodes.Select(e => (e.Name, e.Potential, e.Taps))];
+
+    private static List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> Excitations(List<CompiledElectrode3D> electrodes) =>
+        [.. electrodes.Select(e => (e.Name, e.Potential, e.Taps))];
+
+    private static bool RampIsLinear(
+        List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> start,
+        List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> mid,
+        List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> end,
+        string stage,
+        string path,
+        List<EinzelError> errors)
+    {
+        if (mid.Count != start.Count || end.Count != start.Count)
+        {
+            return true;   // SameGeometry has already complained
+        }
+
+        for (var i = 0; i < start.Count; i++)
+        {
+            var a = start[i];
+            var m = mid[i];
+            var b = end[i];
+
+            static bool Linear(double s, double m, double e)
+            {
+                var scale = Math.Max(Math.Max(Math.Abs(s), Math.Abs(e)), 1e-12);
+                return Math.Abs(m - (0.5 * (s + e))) <= 1e-9 * scale;
+            }
+
+            if (!Linear(a.Potential, m.Potential, b.Potential))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/ramp",
+                    Constraint =
+                        $"stage '{stage}' ramps a parameter that electrode '{a.Name}' depends on non-linearly: "
+                        + $"its potential at the midpoint is {m.Potential:G6} V, not the {0.5 * (a.Potential + b.Potential):G6} V midway between its ends",
+                    Observed = new ObservedValue(m.Potential, "V"),
+                    Suggestion =
+                        "a ramp is linear in time and exact only where the potentials are linear in the ramped "
+                        + "parameter; write this curve as more phases, or ramp the quantity the potential is linear in",
+                });
+                return false;
+            }
+
+            if (a.Taps.Count != b.Taps.Count || a.Taps.Count != m.Taps.Count)
+            {
+                return true;   // a differing tap structure is caught by the drive validation
+            }
+
+            for (var k = 0; k < a.Taps.Count; k++)
+            {
+                if (a.Taps[k].Phase != b.Taps[k].Phase)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/ramp",
+                        Constraint = $"stage '{stage}' moves the drive phase of electrode '{a.Name}' from {a.Taps[k].Phase:G6} to {b.Taps[k].Phase:G6}",
+                        Observed = new ObservedValue(b.Taps[k].Phase, "cycles"),
+                        Suggestion = "a ramped phase is a frequency shift, which a linear interpolation of amplitudes cannot express; ramp amplitudes and potentials only",
+                    });
+                    return false;
+                }
+
+                if (!Linear(a.Taps[k].Amplitude, m.Taps[k].Amplitude, b.Taps[k].Amplitude))
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/ramp",
+                        Constraint =
+                            $"stage '{stage}' ramps a parameter that the drive amplitude of electrode '{a.Name}' depends on non-linearly: "
+                            + $"{m.Taps[k].Amplitude:G6} V at the midpoint against {0.5 * (a.Taps[k].Amplitude + b.Taps[k].Amplitude):G6} V midway between its ends",
+                        Observed = new ObservedValue(m.Taps[k].Amplitude, "V"),
+                        Suggestion = "write this curve as more phases, or ramp the quantity the amplitude is linear in",
+                    });
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Whether two compilations put the same metal in the same places.</summary>
@@ -1469,7 +1699,8 @@ public static class ModelValidator
             var moved = a.Shape != b.Shape
                 || a.MinX != b.MinX || a.MaxX != b.MaxX
                 || a.MinY != b.MinY || a.MaxY != b.MaxY
-                || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.Radius != b.Radius;
+                || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.Radius != b.Radius
+                || !a.Vertices.SequenceEqual(b.Vertices);
 
             if (moved)
             {
@@ -1840,15 +2071,83 @@ public static class ModelValidator
                 };
             }
 
+            case "prism":
+            {
+                if (electrode.TiltHalfTurns is not null || electrode.TiltAxis is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/{(electrode.TiltHalfTurns is not null ? "tiltHalfTurns" : "tiltAxis")}",
+                        Constraint = $"'{name}' is a prism and only a box may be tilted",
+                        Observed = new ObservedValue(0.0, "prism"),
+                        Suggestion = "a prism is oriented by 'axis' and shaped by its vertices; write the tilt into the outline",
+                    });
+                    return null;
+                }
+
+                var vertices = CompileVertices(electrode.Vertices, name, path, p, errors);
+                var lower = TryQuantity(electrode.Lower, $"{path}/lower", length, p, errors);
+                var upper = TryQuantity(electrode.Upper, $"{path}/upper", length, p, errors);
+
+                if (vertices is null || lower is null || upper is null)
+                {
+                    return null;
+                }
+
+                var axis = electrode.Axis switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (axis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/axis",
+                        Constraint = "a prism axis must be 'x', 'y' or 'z'",
+                        Observed = new ObservedValue(0.0, electrode.Axis ?? "(none)"),
+                        Suggestion = "'z' when omitted; the vertices are then (x, y)",
+                    });
+                    return null;
+                }
+
+                if (upper.Value.SiValue <= lower.Value.SiValue)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = path,
+                        Constraint = $"prism '{name}' must have upper above lower along its axis",
+                        Observed = new ObservedValue(upper.Value.SiValue - lower.Value.SiValue, "m"),
+                        Suggestion = "check the expressions that derive the ends",
+                    });
+                    return null;
+                }
+
+                return common with
+                {
+                    Shape = Electrode3DShape.Prism,
+                    Vertices = vertices,
+                    Axis = axis.Value,
+                    Lower = lower.Value.SiValue,
+                    Upper = upper.Value.SiValue,
+                };
+            }
+
             default:
                 errors.Add(new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/shape",
-                    Constraint = "an electrode shape must be 'box', 'sphere' or 'cylinder'",
+                    Constraint = "an electrode shape must be 'box', 'sphere', 'cylinder' or 'prism'",
                     Observed = new ObservedValue(0.0, electrode.Shape ?? "(none)"),
                     Suggestion =
-                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead",
+                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead, a prism is any outline given a length",
                 });
 
                 return null;
@@ -2066,7 +2365,26 @@ public static class ModelValidator
                 continue;
             }
 
-            stages.Add(new CompiledStage3D(phase.Name, phase.DurationSeconds, electrodes));
+            List<CompiledElectrode3D>? endElectrodes = null;
+            if (phase.EndSurface is not null && phase.MidSurface is not null)
+            {
+                endElectrodes = [];
+                var midElectrodes = new List<CompiledElectrode3D>();
+                var ignored = new List<EinzelError>();
+                for (var i = 0; i < declaredElectrodes.Count; i++)
+                {
+                    Expand3D(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.EndSurface, endElectrodes, ignored);
+                    Expand3D(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.MidSurface, midElectrodes, ignored);
+                }
+
+                if (!SameGeometry3D(baseline, endElectrodes, phase.Name, phase.Path, errors)
+                    || !RampIsLinear(Excitations(electrodes), Excitations(midElectrodes), Excitations(endElectrodes), phase.Name, phase.Path, errors))
+                {
+                    continue;
+                }
+            }
+
+            stages.Add(new CompiledStage3D(phase.Name, phase.DurationSeconds, electrodes) { EndElectrodes = endElectrodes });
         }
 
         return stages;
@@ -2105,7 +2423,8 @@ public static class ModelValidator
                 || a.MinY != b.MinY || a.MaxY != b.MaxY
                 || a.MinZ != b.MinZ || a.MaxZ != b.MaxZ
                 || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.CentreZ != b.CentreZ
-                || a.Radius != b.Radius || a.Lower != b.Lower || a.Upper != b.Upper;
+                || a.Radius != b.Radius || a.Lower != b.Lower || a.Upper != b.Upper
+                || !a.Vertices.SequenceEqual(b.Vertices);
 
             if (moved)
             {
@@ -2940,6 +3259,32 @@ public static class ModelValidator
                 };
             }
 
+            case "polygon":
+            {
+                var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
+                var taps = Taps(electrode, drives, path, p, errors);
+
+                var vertices = CompileVertices(electrode.Vertices, name, path, p, errors);
+
+                if (vertices is null || potential is null)
+                {
+                    return null;
+                }
+
+                return new CompiledElectrode
+                {
+                    Name = name,
+                    Shape = ElectrodeShape.Polygon,
+                    Vertices = vertices,
+                    MinX = vertices.Min(v => v.X),
+                    MinY = vertices.Min(v => v.Y),
+                    MaxX = vertices.Max(v => v.X),
+                    MaxY = vertices.Max(v => v.Y),
+                    Potential = potential.Value.SiValue,
+                    Taps = taps,
+                };
+            }
+
             case "edgeProfile":
             {
                 if (electrode.Profile is null || electrode.Profile.Count < 2)
@@ -3007,13 +3352,245 @@ public static class ModelValidator
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/shape",
-                    Constraint = "an electrode must declare one of: rectangle, disc, edgeProfile",
+                    Constraint = "an electrode must declare one of: rectangle, disc, polygon, edgeProfile",
                     Observed = new ObservedValue(0.0, electrode.Shape ?? "null"),
-                    Suggestion = "'disc' is a rod in cross-section; 'edgeProfile' is a printed board",
+                    Suggestion = "'disc' is a round rod in cross-section, 'polygon' is any other outline, 'edgeProfile' is a printed board",
                 });
                 return null;
         }
     }
+
+    /// <summary>
+    /// Compiles a declared outline - single vertices and runs - into distinct vertices in
+    /// metres, refusing what would vanish or be ambiguous in a solve. Shared by the polygon
+    /// and the prism, which are the same outline with and without a length.
+    /// </summary>
+    private static List<(double X, double Y)>? CompileVertices(
+        IReadOnlyList<VertexDocument>? declared,
+        string name,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        var length = Dimension.LengthDimension;
+        if (declared is null || declared.Count == 0)
+        {
+            errors.Add(Missing($"{path}/vertices",
+                "a polygon needs at least three vertices to enclose anything",
+                "add a list of {x, y} vertices in order round the outline"));
+            return null;
+        }
+
+        var vertices = new List<(double X, double Y)>(declared.Count);
+        var complete = true;
+        for (var k = 0; k < declared.Count; k++)
+        {
+            var declaredVertex = declared[k];
+            var vertexPath = $"{path}/vertices/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+            if (declaredVertex.Count is null)
+            {
+                var vx = TryQuantity(declaredVertex.X, $"{vertexPath}/x", length, p, errors);
+                var vy = TryQuantity(declaredVertex.Y, $"{vertexPath}/y", length, p, errors);
+                if (vx is not null && vy is not null)
+                {
+                    vertices.Add((vx.Value.SiValue, vy.Value.SiValue));
+                }
+                else
+                {
+                    complete = false;
+                }
+
+                continue;
+            }
+
+            // A run: the same pair of expressions evaluated with an index bound
+            // from zero to count - 1. This is how a curved face is written -
+            // the hyperbola of a quadrupole rod is one run of twenty-five points
+            // rather than twenty-five copies of the same formula - and it is the
+            // repeat mechanism's idea applied inside one electrode.
+            var count = TryQuantity(declaredVertex.Count, $"{vertexPath}/count", Dimension.Dimensionless, p, errors);
+            if (count is null)
+            {
+                complete = false;
+                continue;
+            }
+
+            var points = (int)Math.Round(count.Value.SiValue);
+            if (points < 2 || Math.Abs(count.Value.SiValue - points) > 1e-9)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{vertexPath}/count",
+                    Constraint = "a vertex run needs a whole count of at least two",
+                    Observed = new ObservedValue(count.Value.SiValue, "1"),
+                    Suggestion = "a run of one point is a point - write it without a count",
+                });
+                complete = false;
+                continue;
+            }
+
+            var index = declaredVertex.Index ?? "index";
+            if (p.ContainsKey(index))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{vertexPath}/index",
+                    Constraint = $"'{index}' is already a declared parameter, and binding it here would shadow it",
+                    Observed = new ObservedValue(0.0, index),
+                    Suggestion = "choose another index name, such as 'k' or 'point'",
+                });
+                complete = false;
+                continue;
+            }
+
+            for (var i = 0; i < points; i++)
+            {
+                var scoped = new Dictionary<string, Quantity>(p, StringComparer.Ordinal)
+                {
+                    [index] = Quantity.Si(i, Dimension.Dimensionless),
+                };
+                var vx = TryQuantity(declaredVertex.X, $"{vertexPath}/x", length, scoped, errors);
+                var vy = TryQuantity(declaredVertex.Y, $"{vertexPath}/y", length, scoped, errors);
+                if (vx is null || vy is null)
+                {
+                    // One report per run rather than one per point: the same
+                    // expression fails the same way at every index.
+                    complete = false;
+                    break;
+                }
+
+                vertices.Add((vx.Value.SiValue, vy.Value.SiValue));
+            }
+        }
+
+        if (!complete)
+        {
+            return null;
+        }
+
+        if (vertices.Count < 3)
+        {
+            errors.Add(Missing($"{path}/vertices",
+                "a polygon needs at least three vertices to enclose anything",
+                "add a list of {x, y} vertices in order round the outline"));
+            return null;
+        }
+
+        // Consecutive vertices in the same place are merged. A parametric outline
+        // produces them whenever a feature collapses - a slot of zero height puts
+        // the channel's two corners on one point - exactly as a rectangle of zero
+        // extent is a legitimate infinitely thin plate. A zero-length edge is
+        // harmless to the signed distance (it is a point) and to the crossing test
+        // (its determinant is zero and it is skipped), so nothing downstream
+        // needs it gone; it is removed so the vertex count below means distinct
+        // vertices.
+        for (var k = vertices.Count - 1; k >= 0 && vertices.Count > 1; k--)
+        {
+            var next = vertices[(k + 1) % vertices.Count];
+            if (vertices[k].X == next.X && vertices[k].Y == next.Y)
+            {
+                vertices.RemoveAt(k);
+            }
+        }
+
+        if (vertices.Count < 3)
+        {
+            errors.Add(Missing($"{path}/vertices",
+                "a polygon needs at least three distinct vertices to enclose anything",
+                "add a list of {x, y} vertices in order round the outline"));
+            return null;
+        }
+
+        // Zero area is a polygon that has collapsed to a line: it fixes no
+        // node and cuts no link, so it vanishes from the solve exactly as an
+        // inverted rectangle does.
+        var twiceArea = 0.0;
+        for (var k = 0; k < vertices.Count; k++)
+        {
+            var a = vertices[k];
+            var b = vertices[(k + 1) % vertices.Count];
+            twiceArea += (a.X * b.Y) - (b.X * a.Y);
+        }
+
+        if (twiceArea == 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/vertices",
+                Constraint = $"polygon '{name}' encloses no area, and a polygon with no area vanishes from the solve rather than failing",
+                Observed = new ObservedValue(0.0, "m^2"),
+                Suggestion = "check the expressions that place the vertices; a derived width can go to zero when one parameter reaches another",
+            });
+            return null;
+        }
+
+        // A self-intersecting outline has no single inside: the even-odd rule
+        // gives one answer and a winding rule another, and a solver handed
+        // either would return the field of a geometry nobody described.
+        if (SelfIntersects(vertices, out var edgeA, out var edgeB))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/vertices",
+                Constraint = $"polygon '{name}' crosses itself: the edge from vertex {edgeA} crosses the edge from vertex {edgeB}",
+                Observed = new ObservedValue(vertices.Count, "vertices"),
+                Suggestion = "order the vertices round the outline; a bow-tie is two triangles, not one polygon",
+            });
+            return null;
+        }
+
+        return vertices;
+    }
+
+    /// <summary>
+    /// Whether any two non-adjacent edges of a closed outline cross properly.
+    /// </summary>
+    /// <remarks>
+    /// Proper crossings only: two edges meeting at a shared vertex are adjacent and
+    /// skipped, and an edge touching another at an endpoint is a degenerate outline
+    /// rather than a self-crossing one. Quadratic in the vertex count, which for the
+    /// tens of vertices a curved face needs costs nothing.
+    /// </remarks>
+    private static bool SelfIntersects(List<(double X, double Y)> v, out int edgeA, out int edgeB)
+    {
+        var n = v.Count;
+        for (var i = 0; i < n; i++)
+        {
+            var (ax, ay) = v[i];
+            var (bx, by) = v[(i + 1) % n];
+            for (var j = i + 2; j < n; j++)
+            {
+                if (i == 0 && j == n - 1)
+                {
+                    continue;   // the closing edge is adjacent to the first
+                }
+
+                var (cx, cy) = v[j];
+                var (dx, dy) = v[(j + 1) % n];
+                var d1 = ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
+                var d2 = ((bx - ax) * (dy - ay)) - ((by - ay) * (dx - ax));
+                var d3 = ((dx - cx) * (ay - cy)) - ((dy - cy) * (ax - cx));
+                var d4 = ((dx - cx) * (by - cy)) - ((dy - cy) * (bx - cx));
+                if (((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))
+                    && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0)))
+                {
+                    edgeA = i;
+                    edgeB = j;
+                    return true;
+                }
+            }
+        }
+
+        edgeA = -1;
+        edgeB = -1;
+        return false;
+    }
+
 
     private static (Vec3 Point, Vec3 Normal)? ValidateDetector(DetectorDocument? detector, IReadOnlyDictionary<string, Quantity> p, List<EinzelError> errors)
     {
