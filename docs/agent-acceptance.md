@@ -87,7 +87,7 @@ before it shows up as anything else, and the absolute gate would still be met.
 
 ## The first run: six agents, six passes
 
-Run once, one attempt per task, against build `0.1.0`. Each agent got the project
+Run once, one attempt per task, against build `0.1.0` - the pre-release numbering, before versions became `YY.feature.patch`. Each agent got the project
 directory, the path to the CLI, and its prompt — no repository source, no tests,
 no `docs/`, and not the `agents` verb.
 

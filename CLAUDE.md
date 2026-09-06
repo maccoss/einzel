@@ -30,6 +30,30 @@ A status page that has drifted is worse than none, because it is trusted. This i
 the same argument that makes the platform layer of `AGENTS.md` generated rather
 than hand-written, applied to the one document here that is not generated.
 
+## Versions are `YY.feature.patch`, and bumped at release time
+
+Two-digit year, a feature number, a patch number: `26.1.0` is the first feature release of
+2026, `26.1.1` a fix on it, `26.2.0` the next feature release. **The version is bumped when
+a release is cut, not during development**, so the working tree carries the version last
+released and the commit hash distinguishes builds within it.
+
+The single source is `<VersionPrefix>` in `Directory.Build.props`; `EngineBuild.Version`
+reads it back through the assembly's informational version, so the CLI, the run manifests
+and `einzel doctor` cannot disagree with the build. The git tag is `v26.1.0` and the release
+workflow **refuses a tag that is not `vYY.feature.patch`**, because a malformed one produces
+assets nobody can order and the place that is noticed is a download.
+
+`release-notes/README.md` carries the scheme, where the version lives, and the steps for
+cutting a release. Append to `RELEASE_NOTES_next.md` as things land; it is renamed at
+release time so a planned patch can become a feature release without being renamed twice.
+
+**A year is not a semantic major, deliberately.** The thing this project must not silently
+break is the model format, which carries its own `schemaVersion` and its own tested
+compatibility rule. Putting a second compatibility promise on the package version would
+state the same claim in two places, and the two would eventually disagree.
+`solverBehaviourVersion` is separate again (PRJ-3): it changes when the numbers would
+change, which is a different event from a release.
+
 ## What this repository is
 
 The goal is to **build the software described in the specification**: a general, open-source, agent-native ion-optics platform — an open replacement for SIMION. Spec §1's device table spans einzel lenses, quadrupole mass filters, ion funnels, stacked-ring and travelling-wave guides, multipole guides, linear and 3D traps, orthogonal accelerators, reflectrons and MR-TOFs.

@@ -17,7 +17,10 @@ instruction rather than a complaint.
 
 ## Status
 
-**Pre-release. Build it from source; there is no installer and no published binary yet.**
+**Version 26.1.0.** Portable builds carry their own runtime: unpack and run, no installer
+and no updater. Or build from source, below. Versions are `YY.feature.patch` - two-digit
+year, a feature number, a patch number - and `release-notes/` explains the scheme and
+carries the notes for each release.
 The engine, the command line, the extension surface, the live-session server and part of
 the Windows shell are built and tested. See [`SPEC.md`](SPEC.md) for every requirement's
 status with the measurement behind it, and for what is being worked on next.
@@ -56,7 +59,7 @@ flight time   10.180506 +/- 6.05E-11 us
 energy drift  1.08E-011 relative (ACC-4 budget 1e-6)
 steps         141, 0.2000 m advanced analytically
 final x       -100.000000 mm
-engine        0.1.0+<commit>, model sha256:2e3ceb9...
+engine        26.1.0+<commit>, model sha256:2e3ceb9...
 ```
 
 That 10.180506 µs has a closed form, and the shipped test asserts against the closed form

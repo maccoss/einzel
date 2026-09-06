@@ -44,6 +44,28 @@ jobs:
           else
             v="${{ inputs.version }}"
           fi
+
+          # YY.feature.patch, checked rather than assumed: a malformed tag would otherwise
+          # produce assets stamped with a version nobody can order against the others, and
+          # the place that is noticed is a download rather than a build. A dispatch run may
+          # carry a suffix (0.0.0-dev) because it publishes nothing; a tag may not.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Two guards, because one glob cannot say both things. The first fixes the
+            # shape; the second rejects anything that is not a digit or a dot, which is
+            # what stops `v26.1.0-rc1` passing - `[0-9]*` matches `0-rc1` happily, and a
+            # first version of this comment claimed a rejection the pattern did not make.
+            case "$v" in
+              [0-9][0-9].[0-9]*.[0-9]*) ;;
+              *) echo "::error::tag '${GITHUB_REF_NAME}' is not vYY.feature.patch - see release-notes/README.md"; exit 1 ;;
+            esac
+            case "$v" in
+              *[!0-9.]*) echo "::error::tag '${GITHUB_REF_NAME}' carries a suffix; a released version is digits and dots only"; exit 1 ;;
+            esac
+            case "$v" in
+              *.*.*.*) echo "::error::tag '${GITHUB_REF_NAME}' has four components; the scheme is YY.feature.patch"; exit 1 ;;
+            esac
+          fi
+
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "building $v"
 
@@ -110,8 +132,10 @@ jobs:
 
       # Self-contained, and deliberately NOT trimmed.
       #
-      # Self-contained because DST-1's rationale is a locked-down instrument PC: an
-      # asset that first requires a .NET install is no use there. It costs cold start
+      # Self-contained so that nothing has to be installed before the asset runs: somebody
+      # who wants to model an ion optic should not first have to install a .NET SDK. r06's
+      # DST-1 gives a different reason - a per-user installer for a locked-down instrument
+      # PC - and that use case is speculative; this one is not. It costs cold start
       # - measured at 220-250 ms against PERF-8's 500 ms budget, where a
       # framework-dependent build is 73-147 - and about 75 MB of download.
       #
@@ -255,4 +279,4 @@ jobs:
 
           Unpack anywhere and run \`einzel --help\`. Verify with \`sha256sum -c SHA256SUMS.txt\`, or \`Get-FileHash\` on Windows.
 
-          \`SPEC.md\` in the repository records every requirement's status and the measurement behind it."
+          Release notes: \`release-notes/RELEASE_NOTES_v${{ needs.version.outputs.version }}.md\`. \`SPEC.md\` records every requirement's status and the measurement behind it."
