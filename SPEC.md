@@ -1483,13 +1483,13 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `DST-1` | Windows: a per-user installer requiring no administrator rights, so it works on a locked-down instrument PC, published as an asset on the GitHub release. | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
-| `DST-2` | Portable zip alongside, for machines where installing is not permitted. | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
-| `DST-3` | Linux: a tarball, engine and CLI only. No installer and no silent updater. | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
-| `DST-4` | SHA256SUMS.txt published with every release. | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
-| `DST-5` | Releases are built by CI on a version tag. Nothing distributed is ever built locally. | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
-| `DST-6` | The vendored Python runtime ships in the installer and the tarball. | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
-| `DST-7` | Optional external tools are detected, never bundled : the video encoder ( | Not built | No installer, no signed build, no release artifacts. Nothing here is released software. |
+| `DST-1` | Windows: a per-user installer requiring no administrator rights, so it works on a locked-down instrument PC, published as an asset on the GitHub release. | Not built, and **deferred indefinitely** | The portable zip needs no installer, and r06's rationale for this one - a locked-down instrument PC - is speculative rather than observed. The reason the assets are self-contained is the one that survives: somebody who wants to model an ion optic should not first have to install a .NET SDK. Together with the twelve UPD rows this is thirteen of the unbuilt requirements, all resting on the same unobserved need. |
+| `DST-2` | Portable zip alongside, for machines where installing is not permitted. | **Met** | `einzel-cli-win-x64.zip`, 37 MB, and `einzel-shell-win-x64.zip`, 80 MB, both self-contained: they carry their own runtime, so nothing is installed and nothing has to be. The shell is a separate asset because it brings the WPF desktop runtime and is two and a half times the download; somebody running an agent loop on a build server should not pay for a window they will never open. Verified end to end by a dispatch run of the release workflow. |
+| `DST-3` | Linux: a tarball, engine and CLI only. No installer and no silent updater. | **Met** | `einzel-cli-linux-x64.tar.gz`, 35 MB, the command line and the MCP server, self-contained. No installer and no updater exist for it to have, and `PORTABLE.txt` inside the archive says so along with UPD-2 and UPD-9's guarantees that it never contacts the network. |
+| `DST-4` | SHA256SUMS.txt published with every release. | **Met** | One file, computed in a single job over the assets as they will actually be published, rather than per-job and concatenated - sums generated beside each build would be sums of files nobody can prove are these files. |
+| `DST-5` | Releases are built by CI on a version tag. Nothing distributed is ever built locally. | **Met** | `.github/workflows/release.yml`, on `v*`. The tag is the human decision; everything after it happens on a clean checkout. The suite runs on both platforms as the gate (the CI workflow does not trigger on tags), and then **the published binary is run before it is shipped** - `--version`, `doctor`, `init`, `run`, `test`, `schema` - which checks the thing being distributed rather than the thing being built. The release is created as a **draft**: a tag says build this, and publishing binaries is a separate act by somebody who has looked. A malformed tag is refused rather than stamped onto an asset (three guards: shape, prerelease suffix, component count). |
+| `DST-6` | The vendored Python runtime ships in the installer and the tarball. | Not built | EXT-6's interpreter is *discovered*, not vendored, so there is nothing to ship. `einzel doctor` says which interpreter it found and that it is not vendored, rather than passing it off. |
+| `DST-7` | Optional external tools are detected, never bundled : the video encoder ( | **Met by construction** | Nothing is bundled, and nothing could be: LIC-1 forbids a GPL dependency in the default build, so ffmpeg and Gmsh are invoked out of process where they are used at all. `render animation` writes numbered vector frames and a schedule rather than a video, and assembling them is an out-of-process step with a tool the user supplies. |
 
 ### Examples corpus (§5)
 
@@ -1652,7 +1652,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `TST-1` | Every performance path is tested against the scalar reference. | Not built | There is no second performance path, so nothing is tested against the scalar reference. Vacuously true and not worth much. |
+| `TST-1` | Every performance path is tested against the scalar reference. | **Met, for the one path that exists** | The pair sum has a vectorised path and a scalar one, and the scalar one is **selectable** (`CoulombInteraction.Kernel`) rather than merely retained - which is what "never allowed to rot" has to mean, since a reference nothing can run is one nobody can check. They are compared over nine sizes spanning below one vector width to a thousand members, with members inactive, with a pre-loaded accumulator, and against Newton's third law: agreement to 3e-15 of the acceleration scale, and they cannot agree better because the additions happen in a different order. A deliberate mutation of the vector kernel fails 10 of 16. The parallel field loop is the other performance path and is asserted **bit-identical** to the serial one, which is a stronger statement than a tolerance and is available because nothing is summed across members. |
 | `TST-2` | Every golden-file tolerance carries a comment explaining its magnitude. | Partial | Tolerances in the suite are justified in comments as a matter of practice, and every literature comparison states its source. Not enforced. |
 
 ### Shell (§16)
@@ -2613,7 +2613,21 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     With the force on, 400,000 ions in a half-millimetre cloud shift each ion's ejection by
     a tenth of a unit with no common direction and the peak by under 0.1 u, because the
     cloud size is an input to a run with no gas and the shift goes as the density - a
-    cooled cloud of that population would be about 60 µm across and seventy times denser.
+    cooled cloud of that population would be about 60 µm across and seventy times denser. **Now asked of the volume trap and
+    answered: no.** Thirteen runs - a cooled slice held by the axial well, ramped through
+    the edge, against matched cross-section runs - put every pushed width inside the no-push
+    realisation spread of its own configuration, at up to 96,000 ions and with the softening
+    violation removed. The tightest form is the cross-section's: at a converged mesh, 400x
+    the population moves the width by under 0.03 u on a 0.43 u peak. Three findings came
+    with it, in `docs/device-templates.md` and `docs/lessons.md`: a **bootstrap over one
+    realisation is not an error bar** here, and reported a difference as significant between
+    two runs differing only in seed; the perturbation is **chaotic rather than mean-field**,
+    saturating at 1.6-1.7 u of per-ion shift whatever the population, so differencing two
+    runs cannot measure it; and the volume trap's peak width is set by its **1 mm mesh**
+    rather than by its third dimension, since the cross-section at 1 mm gives the same
+    width from a geometry with no axial motion. What the axial well demonstrably does is
+    hold the cloud against **diffusion**: none lost in a 500 us hold with it, 88 of 240 lost
+    without it and no space charge at all.
     **Gas and space charge now run together** - the packet integrator lands its shared step
     on every collision in the packet - and a 1 mm slice of the cloud cooled 1.5 ms in the
     paper's helium and scanned at up to 9,600 ions per millimetre, three times the

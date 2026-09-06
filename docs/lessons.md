@@ -2731,6 +2731,43 @@ A smaller one alongside: the first driver script searched the whole window for a
 named "Read" and clicked whichever came first, which on one run was the sequence editor's.
 Scope an automation search to the subtree you mean.
 
+## A bootstrap over one realisation is not an error bar for a chaotic system
+
+The cooled-cloud capacity study reported a 19 per cent broadening as significant: the
+control's interquartile width and the pushed one's had bootstrap bands that did not overlap.
+Then the control was re-run with a different cloud seed and *nothing else changed*, and its
+band did not overlap the first control's either. Two runs identical in every physical
+respect were being called different.
+
+A bootstrap resamples the draw you have. It measures the sampling error of the statistic and
+says nothing about the variability of the draw itself, which in a trap where each ion takes
+340 collisions over 1.7 ms is the larger of the two. The right error bar is **independent
+realisations**: three no-push seeds gave 1.320, 1.531 and 1.597, and every pushed run fell
+inside that. The rule generalises to any measurement on a chaotic trajectory ensemble - if
+the statistic is a width and the system amplifies perturbations, replicate the seed before
+believing a band.
+
+A corollary about the per-ion view, which looked like the sharper measurement and was not:
+switching the push on moved each ion's ejection by 1.6 u rms, and quadrupling the population
+moved that to 1.74. A mean-field perturbation scales linearly; this saturates. What is being
+measured there is decorrelation, and its magnitude says nothing about the force that started
+it.
+
+## Two configurations differing in more than the variable you are attributing
+
+The volume trap's peak came out three times wider than the cross-section's, which reads
+immediately as the axial degree of freedom. The volume solve runs at a 1 mm cell because a
+0.5 mm one takes minutes; the cross-section's default is 0.125 mm. Running the cross-section
+at 1 mm gives the volume's width exactly, from a geometry with no axial motion at all - so
+the attribution was to the wrong variable, and the true statement is that both are
+mesh-limited at 1 mm.
+
+Same shape as the pair-sum benchmark that appeared to show a 1.14x speedup rising to 3.74x:
+in both cases two configurations differed in something besides the thing being measured, and
+in both cases the cheap control - three minutes of cross-section, one time-budgeted rerun -
+settled it. **Before attributing a difference to the interesting variable, list what else
+differs between the two runs.**
+
 ## A lambda in a branch that is never taken still allocates, on every call
 
 The packet integrator's stage loop was made allocation-free by pooling twenty-two arrays a

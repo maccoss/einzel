@@ -1603,6 +1603,31 @@ Two findings from Stage 1 that bear on the spec:
   `docs/lessons.md`, with two others: a benchmark run a handful of times measures the
   warm-up, and measure which half is slow before optimising the half you assumed.
 
+- **The trap's capacity question, asked of the volume and answered no.** Thirteen runs: a
+  cooled 3 mm slice held by the axial well, ramped at 16,700 u/s through the stability edge
+  in the paper's helium, against matched cross-section runs. **Every pushed width lies inside
+  the no-push realisation spread of its own configuration** — cross-section 0.403/0.434 with
+  no push against 0.434 at 400×; volume 1.320/1.531/1.597 against 1.421, 1.539 and 1.575 —
+  and the median moves 0.005 u in the cross-section. The 240-macroparticle volume runs carry
+  a `spacecharge.softening` violation, so they were re-run at the 660 the warning names: 1.401 u,
+  inside the spread and *lower* than before. A null that survives removing its own caveat is
+  worth more than one that has not been tested against it.
+
+  **Three findings came with it, all methodological.** A **bootstrap over one realisation is
+  not an error bar** in a chaotic ensemble — it called two no-push runs differing only in
+  cloud seed significantly different, which is how the first "19% broadening" was retracted;
+  independent seeds are the error bar. The perturbation is **chaotic rather than mean-field**:
+  per-ion ejection moves 1.63 u rms at 24,000 ions and 1.74 at 96,000, a ratio of 1.07 for
+  4×, correlation 0.53 — decorrelation, saturating, so differencing two runs cannot measure
+  the force. And **the peak width here is the mesh, not the third dimension**: the volume runs
+  at 1 mm because 0.5 mm takes minutes, and the cross-section at 1 mm gives 1.391/1.562 —
+  the volume's range, from a geometry with no axial motion at all.
+
+  **What the axial well demonstrably does is hold the cloud against diffusion.** None lost in
+  a 500 µs hold with it; **88 of 240 lost without it and no space charge at all**, 121 at
+  96,000 ions. Mean free path 6.9 mm, so diffusion spreads ~17 mm in that time. That is the
+  thing a cross-section cannot show, and it is why the axial sections exist.
+
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
 The two design documents remain the source of truth for *intent*. Tracked alongside them: `SPEC.md`, `README.md`, `LICENSE` (Apache 2.0).

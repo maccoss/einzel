@@ -440,6 +440,24 @@ scan's 0.5 mm cell against the cross-section's 0.8223, 0.19 % lower and convergi
 with the mesh (0.8109 at 1 mm). The offset is the mesh; the three sections scan as the
 cross-section does.
 
+### Space charge in the volume trap: the capacity claim, answered no
+
+Thirteen runs against the 2002 paper's capacity argument, now with the axial well holding
+the cloud and the slot in front of it. Every pushed width lies inside the *no-push*
+realisation spread of its own configuration: cross-section 0.403 and 0.434 u with no push
+against 0.434 at 400× the population; volume 1.320, 1.531 and 1.597 against 1.421, 1.539 and
+1.575; and 1.401 at 660 macroparticles, the count that removes the softening violation. The
+median moves 0.005 u in the cross-section. The paper's argument - that spreading ions along
+a line lowers the density and spares the peak - is reproduced, and this model finds no
+residual effect at the line densities an LTQ runs at.
+
+Two caveats stated rather than buried. The volume widths are **mesh-limited**: the
+cross-section at the volume's own 1 mm cell gives the same 1.39-1.56 u from a geometry with
+no axial motion, so a broadening below that could hide there; the cross-section's own mesh is
+converged and its null is correspondingly tighter. And the **error bar is realisation spread,
+not a bootstrap** - a bootstrap over one draw called two no-push runs differing only in seed
+significantly different. `docs/device-templates.md` carries the full table.
+
 ### Space charge, with the cloud cooled
 
 A 1 mm slice of the cloud along the axis, 240 macroparticles, cooled 1.5 ms in the paper's
