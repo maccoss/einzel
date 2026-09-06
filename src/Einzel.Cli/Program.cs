@@ -1777,7 +1777,7 @@ public static class Program
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel outline <model.json> [--set <parameter>=<value>] [--json]");
+                "usage: einzel outline <model.json> [--set <parameter>=<value>]... [--json] [--dry-run]");
 
             return (int)ExitCode.ValidationFailure;
         }
@@ -1799,35 +1799,77 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        if (options.Value("set") is { } assignment)
+        // Every occurrence, not the last. `--set a=1 --set b=2` under a last-wins read
+        // applies b, drops a, exits 0 and says nothing - which is how an agent that
+        // batched two edits lost one and believed both had landed.
+        var assignments = options.Values("set");
+
+        if (assignments.Count > 0)
         {
-            var split = assignment.IndexOf('=', StringComparison.Ordinal);
+            var edited = File.ReadAllText(Path.GetFullPath(model));
+            var applied = new List<(string Name, double Value)>(assignments.Count);
 
-            if (split <= 0)
+            foreach (var assignment in assignments)
             {
-                Console.Error.WriteLine(
-                    "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
+                var split = assignment?.IndexOf('=', StringComparison.Ordinal) ?? -1;
 
-                return (int)ExitCode.ValidationFailure;
+                if (assignment is null || split <= 0)
+                {
+                    Console.Error.WriteLine(
+                        "--set takes <parameter>=<value>, for example --set inscribedRadius=7");
+
+                    return (int)ExitCode.ValidationFailure;
+                }
+
+                var name = assignment[..split];
+
+                if (!double.TryParse(
+                    assignment[(split + 1)..],
+                    System.Globalization.NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var value))
+                {
+                    Console.Error.WriteLine(
+                        $"'{assignment[(split + 1)..]}' is not a number. The value is in the "
+                        + "parameter's own declared unit, so write the magnitude alone");
+
+                    return (int)ExitCode.ValidationFailure;
+                }
+
+                edited = OutlineCommand.WithParameter(model, name, value, edited);
+                applied.Add((name, value));
             }
 
-            var name = assignment[..split];
-
-            if (!double.TryParse(
-                assignment[(split + 1)..],
-                System.Globalization.NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out var value))
+            // CLI-4: --dry-run says what would be written and writes nothing. This wrote,
+            // and two agents in the acceptance run hit it - one of them lost a model
+            // mid-task to the flag they had reached for in order to be careful. A
+            // --dry-run that mutates is worse than none, because it is the flag people
+            // use when they want to be safe.
+            if (options.Has("dry-run"))
             {
-                Console.Error.WriteLine(
-                    $"'{assignment[(split + 1)..]}' is not a number. The value is in the "
-                    + "parameter's own declared unit, so write the magnitude alone");
+                foreach (var (name, value) in applied)
+                {
+                    Console.Error.WriteLine(
+                        string.Create(CultureInfo.InvariantCulture, $"would set {name} to {value:G6}"));
+                }
 
-                return (int)ExitCode.ValidationFailure;
+                Console.Error.WriteLine($"would write {model} - nothing was written");
             }
+            else
+            {
+                File.WriteAllText(Path.GetFullPath(model), edited);
 
-            File.WriteAllText(
-                Path.GetFullPath(model), OutlineCommand.WithParameter(model, name, value));
+                // A mutating command whose output is indistinguishable from a read-only
+                // one is how an edit goes unnoticed, and it is what made the dry-run bug
+                // invisible for three commands.
+                foreach (var (name, value) in applied)
+                {
+                    Console.Error.WriteLine(
+                        string.Create(CultureInfo.InvariantCulture, $"set {name} to {value:G6}"));
+                }
+
+                Console.Error.WriteLine($"wrote {model}");
+            }
         }
 
         var outline = OutlineCommand.Execute(model);

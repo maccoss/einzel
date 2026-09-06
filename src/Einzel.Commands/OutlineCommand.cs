@@ -162,13 +162,27 @@ public static class OutlineCommand
     /// to do the conversion the format exists to make unnecessary.
     /// </para>
     /// </remarks>
-    public static string WithParameter(string modelPath, string parameter, double value)
+    public static string WithParameter(string modelPath, string parameter, double value) =>
+        WithParameter(modelPath, parameter, value, from: null);
+
+    /// <summary>The model with one parameter changed, starting from text already in hand.</summary>
+    /// <param name="modelPath">The model, for its path and for resolving what it references.</param>
+    /// <param name="parameter">The declared parameter to change.</param>
+    /// <param name="value">Its new value, in its own declared unit.</param>
+    /// <param name="from">
+    /// The document text to edit, or null to read the file. Passing it is what lets several
+    /// edits chain: applying each to the file's own text would apply them to the same
+    /// starting point and keep only the last.
+    /// </param>
+    /// <returns>The edited document.</returns>
+    /// <exception cref="Core.Errors.EinzelException">No such parameter, or it is derived.</exception>
+    public static string WithParameter(string modelPath, string parameter, double value, string? from)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(parameter);
 
         var absolute = Path.GetFullPath(modelPath);
-        var text = File.ReadAllText(absolute);
+        var text = from ?? File.ReadAllText(absolute);
         var document = ModelJson.Parse(text);
 
         if (document.Parameters is not { } declared

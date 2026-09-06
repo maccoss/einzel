@@ -12,6 +12,7 @@ namespace Einzel.Cli;
 public sealed class CommandLine
 {
     private readonly Dictionary<string, string?> _options = new(StringComparer.Ordinal);
+    private readonly List<(string Name, string? Value)> _all = [];
     private readonly List<string> _positional = [];
 
     private CommandLine()
@@ -30,6 +31,19 @@ public sealed class CommandLine
     /// <param name="name">The option name, without dashes.</param>
     /// <returns>The value, or null.</returns>
     public string? Value(string name) => _options.TryGetValue(name, out var value) ? value : null;
+
+    /// <summary>Every occurrence of a repeatable option, in the order given.</summary>
+    /// <param name="name">The option name, without the leading dashes.</param>
+    /// <returns>The values, which may be empty.</returns>
+    /// <remarks>
+    /// <see cref="Value"/> keeps the last occurrence, which is the usual convention and is
+    /// right for an option that means one thing. It is wrong for one that means "and also":
+    /// `--set a=1 --set b=2` under that rule applies b and drops a, with exit 0 and nothing
+    /// said, which is how an agent that batched two edits lost one. An option that may be
+    /// repeated must read its occurrences through this.
+    /// </remarks>
+    public IReadOnlyList<string?> Values(string name) =>
+        [.. _all.Where(o => string.Equals(o.Name, name, StringComparison.Ordinal)).Select(o => o.Value)];
 
     /// <summary>Parses arguments, skipping the leading verb.</summary>
     /// <param name="args">The raw arguments.</param>
@@ -57,6 +71,7 @@ public sealed class CommandLine
             if (separator >= 0)
             {
                 parsed._options[name[..separator]] = name[(separator + 1)..];
+                parsed._all.Add((name[..separator], name[(separator + 1)..]));
                 continue;
             }
 
@@ -65,6 +80,7 @@ public sealed class CommandLine
             if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
             {
                 parsed._options[name] = args[++i];
+                parsed._all.Add((name, args[i]));
             }
             else
             {

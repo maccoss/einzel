@@ -111,6 +111,56 @@ it from being worthless. The tasks were written before any agent attempted them,
 and the distractors CI asserts must fail did fail. And the value delivered was
 not the score.
 
+## The second run: six agents, six passes, and two defects in one command
+
+Run against `26.1.0`, one attempt per task again, same protocol: the project directory, the
+path to the CLI, and the prompt. **6 of 6.** As before the score is not the point, and this
+time the transcripts found two defects in a single verb, both of which had been shipped for
+months and neither of which any test written from inside the project would have caught,
+because both are about what a command *appears* to do.
+
+**`einzel outline --set --dry-run` wrote the file.** A straight CLI-4 violation - the
+contract says the flag says what would be written and writes nothing. Two agents hit it
+independently. One had reached for it precisely because they wanted to preview a change
+without touching their model; it silently rewrote the model, and they spent three commands
+blaming the wrong thing before isolating it. A `--dry-run` that mutates is worse than no
+`--dry-run`, because it is the flag somebody uses when they are being careful.
+
+**Repeated `--set` silently applied only the last one.** The option parser is a dictionary,
+so a repeated flag overwrote: two edits went in, one came out, exit 0, nothing said. The
+agent that used it inspected the result, saw its second edit, and reported the repetition as
+an undocumented convenience that worked. It had lost the first edit and did not know.
+
+Both are fixed, with five tests. The command now also says what it wrote, which is what made
+the first defect invisible: its output was identical whether it had written or not.
+
+### Three more, recorded and not yet acted on
+
+- **The cost gate refused a study that runs in 0.88 s.** `estimate` predicted 30 s for 2000
+  draws and exited 3. It charges one solve and 21 trajectories per evaluation, but
+  `flightTime` is a convergence study over three integrator tolerances - one ion, three
+  flights. The default energy-acceptance ensemble is being billed to a figure that does not
+  use it. The agent shrank the study to get past the gate, which is the gate degrading the
+  science it exists to protect, and there is no documented override.
+- **`CONVERGENCE_ORDER_BELOW_NOMINAL` prescribes a finer grid on a model with no grid.** It
+  fired on 578 of 1505 evaluations of an analytic field, non-suppressibly. An unsuppressible
+  warning that cries wolf on the simplest model in the project is the one that teaches people
+  to skim.
+- **An analytic half-space has no extent, and nothing says so.** Below the focusing voltage
+  the ion turns around *behind* the declared back plate - 5.6 mm behind it at 3600 V - because
+  `halfSpaceUniform` extrapolates past the cap without complaint. The arithmetic is right for
+  a ramp that continues forever, so nothing looks wrong. The suggested search window in one of
+  the tasks lies entirely in that region.
+
+### And one thing the suite cannot currently see
+
+`optimum-on-a-bound` scores whether the bound warning was acted on, which is its job and
+which it did. The agent widened the interval, the warning cleared, and the task passed on an
+answer of 4025 V - which the agent then argued from three independent routes is wrong, the
+focus being at 4000 V. **A task can pass while the platform returns a wrong number**, because
+the Warnings track scores the response to the warning rather than the physics. That is the
+design working as written, and it is worth knowing the boundary of what a pass means here.
+
 ### What the run was actually worth
 
 The score said nothing. The transcripts said a great deal, and roughly twenty
