@@ -38,6 +38,17 @@ public sealed record FlightTimeStudyResult(Measured FlightTime, IReadOnlyList<Tr
 /// </remarks>
 public static class FlightTimeStudy
 {
+    /// <summary>
+    /// Tolerance levels the ladder runs, and so the flights one evaluation of a
+    /// single-ion figure costs. Three is the minimum that yields an observed order.
+    /// </summary>
+    /// <remarks>
+    /// Public because the cost estimate has to charge the right number: it charged the
+    /// study's ion count for every figure, which for this ladder was seven flights billed
+    /// for every three flown.
+    /// </remarks>
+    public const int DefaultRefinements = 3;
+
     /// <summary>Nominal convergence order with respect to tolerance refinement.</summary>
     public const double NominalOrder = 1.0;
 
@@ -84,7 +95,7 @@ public static class FlightTimeStudy
         IElectrostaticField field,
         IntegrationSettings settings,
         TrajectoryStopFunction stopWhenNegative,
-        int refinements = 3,
+        int refinements = DefaultRefinements,
         double refinementRatio = 10.0,
         Func<Collisions.CollisionSampler>? collisions = null)
     {
@@ -249,13 +260,28 @@ public static class FlightTimeStudy
         // two independent readers reported as spurious before any test did.
         if (!atResolution && double.IsFinite(observedOrder) && observedOrder < NominalOrder * 0.5)
         {
+            // WHAT THE FLOOR IS DEPENDS ON WHETHER THE FIELD HAS A GRID, and the field
+            // knows. This prescribed "a finer grid rather than a tighter tolerance" to
+            // every reader, including one flying an analytic half-space, where there is no
+            // grid to refine and the advice cannot be taken. An agent in the acceptance run
+            // had it fire on 578 of 1505 evaluations of exactly that model and had to spend
+            // a deliberate second pass establishing that the answer it was about to quote
+            // was sound. A warning that cannot be acted on is one that teaches people to
+            // skim, which is the last thing an unsuppressible class should do.
+            var gridded = double.IsFinite(field.ResolutionLength) && field.ResolutionLength > 0.0;
+
+            var floor = gridded
+                ? "in a solved field this is usually the interpolation error, and the fix is a "
+                    + "finer grid rather than a tighter tolerance"
+                : "this field is analytic, so there is no grid to refine: the floor is the "
+                    + "arithmetic itself, or a discontinuity the ladder is straddling. Compare the "
+                    + "residual against the value before treating it as an error";
+
             warnings.Add(new ValidityWarning(
                 "CONVERGENCE_ORDER_BELOW_NOMINAL",
                 $"observed order {observedOrder:G3} against nominal {NominalOrder:G3} on tolerance "
                 + "refinement: the flight time stopped improving as fast as the tolerance tightened, "
-                + "which is what a floor other than the integrator looks like. In a solved field it "
-                + "is usually the interpolation error, and the fix is a finer grid rather than a "
-                + "tighter tolerance",
+                + $"which is what a floor other than the integrator looks like. {floor}",
                 WarningSeverity.Qualified));
         }
 
