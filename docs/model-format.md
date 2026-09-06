@@ -291,6 +291,31 @@ Use it when the geometry genuinely varies along all three axes. A device that is
 cross-section extruded, or a half-plane rotated, is enormously cheaper and more
 accurate as `solved2d` with the matching symmetry.
 
+### A prism: the polygon, given a length
+
+The volume vocabulary was box, sphere and cylinder, and it could not extrude a slotted
+hyperbolic rod into the three axial sections a linear ion trap is cut into. A `prism` is a
+`polygon` outline swept along one axis between `lower` and `upper`:
+
+```json
+{
+  "name": "centreXPlusUpper", "shape": "prism", "axis": "z",
+  "lower": { "expression": "-centreHalfLength", "unit": "mm" },
+  "upper": { "expression": "centreHalfLength", "unit": "mm" },
+  "vertices": [ ...the same runs and corners a polygon takes... ],
+  "potential": { "expression": "dcOffset", "unit": "V" },
+  "taps": [ { "drive": "rf", "amplitude": { "expression": "-rfAmplitude", "unit": "V" } } ]
+}
+```
+
+The vertices are in the cross-section plane, the two world axes other than `axis` in world
+order: (y, z) for a prism along x, (x, z) along y, (x, y) along z. Its signed distance is the
+outline's own combined with the slab's, exactly as a box combines its three, so its faces are
+cut cells; its first crossing walks the outline's crossings and takes the first interval
+that is inside both the outline and the slab, so a re-entrant outline finds a link's entry
+through its notch. A square prism reproduces a box to 3e-18 m in distance and to the bit in a
+solve. A prism may not be tilted: write the tilt into the outline.
+
 ## Operating an instrument through a sequence
 
 The sequencer the architecture calls a timed state machine. A trap fills,

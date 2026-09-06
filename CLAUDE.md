@@ -1245,11 +1245,47 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   states. The scan is one phase now, where it was thousands; at 200 kDa/s a 4 µs step would
   have been most of a peak.
 
+  **The Stellar's own trap, from its paper** (Remes et al. 2024, now in `papers/`): the Velos
+  Pro structure, a four-fold 0.76 mm stretch and slots in all four rods at 0.5 mTorr, as
+  `stellar-ion-trap` from the same generator. Four-fold symmetry is a change of scale, not an
+  aberration: the slot dipole and the stretch octupole vanish to 1e-15, the quadrupole term is
+  **0.6966 of ideal** against 0.7062 for r0 = 4.76 mm, the edge is at effective q 0.900-0.905.
+  Its scan at the paper's 33 / 67 / 125 / 200 kDa/s at m/z 622 gives **0.19 / 0.14 / 0.15 /
+  0.15 u** (48 ions, kernel-density FWHM) against the paper's ~0.35 / 0.5 / 0.7 / 1.0 Th: a
+  floor, since an ideal trap with a cold cloud ejects within a few RF cycles and none of the
+  instrument's broadenings (a millimetre cloud, amplitude noise, real machining) is in the
+  template. Two things a fast scan needs: the ramp must run through the stability edge, and
+  ions leaving through a slot with no detector behind it must strike something - both
+  templates now carry grounded housing walls, because the domain edge is a boundary condition
+  and an ion that crosses it coasts out of the box.
+
+  **The three sections, in a volume - and the prism it needed.** A `prism` is the 2-D polygon
+  given a length along an axis, with the same vertex runs, an exact signed distance and first
+  crossing; a square prism is a box to 3e-18 m and to the bit in a solve. `linear-ion-trap-3d`
+  extrudes the same half-rods into the paper's 12 / 37 / 12 mm sections with a 2 mm-aperture
+  lens at each end. The end sections 3 V above the centre make a **2.9 V well** that holds a
+  300 K ion within **8.7 mm** of the centre (17.1 mm with 20 V lenses alone), where the
+  excitation is uniform to below 0.001 % and carries 0.17 % of axial component - the paper's
+  figure 2 as numbers. **The end offset is common, not quadrupolar**: x up and y down is a
+  change of Mathieu a, zero on the axis, and makes no well; the first draft had that.
+
+  **Space charge in the scan found a limit of the method, now reported.** Forty macroparticles
+  for 4,000 ions along 10 mm of axis and 0.05 mm across it have an RMS radius of 5.8 mm and a
+  direct-sum softening of **1.7 mm, thirty-four times the transverse size**, so the force
+  across the packet is switched off and the scan came back identical to one with no space
+  charge, to the last digit, with nothing said. `spacecharge.softening` now reports the
+  softening against the packet's thinnest extent on every direct-sum run - a violation when it
+  exceeds it, with the macroparticle count that would fix it (1.6 million here). A line cloud
+  wants a grid method whose cell resolves its transverse size. Also fixed: the direct-sum
+  path called for an arrival peak unguarded, so a space-charge run in which every ion left
+  through the rods ended in `INTERNAL_ERROR` - Amendment 15's defect, reintroduced on the
+  other loop.
+
   Two corpus examples at the paper's working point (held with the excitation off, ejected
-  with it on: same RF, same ion, same gas), 39 in all. Not built: an extruded polygon in
-  three dimensions, the axial sections and end lenses, space charge in the scan. Details in
+  with it on: same RF, same ion, same gas), 39 in all. Not built: a ramp on a volume solve, a
+  scan of the volume trap, space charge resolved for a line cloud. Details in
   `docs/device-templates.md`, `docs/literature-targets.md` section 2, `docs/validation.md`,
-  SPEC.md Amendment 37.
+  SPEC.md Amendment 37 and item 14.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

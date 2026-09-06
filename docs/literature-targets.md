@@ -390,9 +390,48 @@ effectiveness of ion isolation during injection" - is an axial statement this
 cross-section cannot check.
 
 **The scan, at the paper's four rates.** The RF frequency, the ejection q and the
-excitation are not published, so the 2002 trap's are carried over (1 MHz, q = 0.88, and
-the excitation law at half its amplitude, which the low-pressure retuning above found to
-be the working point). The table is filled in below once the runs complete.
+excitation are not published, so the 2002 trap's are carried over: 1 MHz, q = 0.88, and its
+excitation law at half amplitude (7.7 V at m/z 622, the low-pressure working point the
+retuning found) and at full (15.4 V). Forty-eight ions per rate, the RF ramped as one phase
+from effective q 0.82 through the stability edge to 0.94. The distributions are a spike
+with a tail, so the width is the full width at half maximum of a kernel density (0.05 u):
+
+| rate | model, 7.7 V | model, 15.4 V | paper, at m/z 622 |
+| --- | --- | --- | --- |
+| 33 kDa/s | 0.19 u | 0.33 u | ~0.35 Th |
+| 67 kDa/s | 0.14 u | 0.22 u | ~0.5 Th |
+| 125 kDa/s | 0.15 u | 0.18 u | ~0.7 Th |
+| 200 kDa/s | 0.15 u | 0.25 u | ~1.0 Th |
+
+**Sharper than the instrument, and the gap grows with the rate.** In time rather than mass
+the instrument's widths are a nearly constant 5 to 10 µs of ejection spread at every rate;
+the model's core shrinks from 6 µs at 33 kDa/s to under 1 µs at 200, because an ideal
+four-fold trap with a cold cloud and a clean excitation ejects every ion within a few RF
+cycles of the ramp reaching resonance. The broadenings the instrument has and the model
+does not - a space-charge widened cloud (~1 mm by the 2002 paper's tomography against the
+model's 0.05 mm), amplitude noise on the RF and the excitation, real machining, and the
+Stellar's actual excitation - are not in the template, so the model's width is a floor. The
+floor is worth having: it says the geometry does not limit the Stellar to 0.35 Th at
+33 kDa/s. `docs/device-templates.md` has the two things the sweep taught about running a
+fast scan (through the edge, into a wall).
+
+### The three sections, in a volume
+
+`linear-ion-trap-3d` extrudes the same half-rod outlines as prisms into the paper's 12, 37
+and 12 mm sections with a 2 mm-aperture plate lens at each end, which is the structure the
+2002 paper's figure 2 is about:
+
+| | measured on the axis |
+| --- | --- |
+| Well from the end sections 3 V above the centre | 0.0006 V at the centre, 0.35 at 15 mm, 1.13 at 18 mm (centre section's end), 2.92 at 26 mm |
+| Axial reach of a 300 K ion (kT = 26 mV) | **8.7 mm** with the end sections; 17.1 mm with 20 V lenses alone |
+| Excitation's transverse field over that reach | uniform to below 0.001 % (three sections); 0.2 % over the lens-confined cloud |
+| Excitation's axial component, centre 15 mm | 0.17 % of its transverse field |
+
+The excitation field is one solved pattern and the DC another, so the two configurations
+share it; what the end sections change is where the ions sit in it - the paper's figure 2
+as numbers. A quadrupolar end offset (x up, y down) is zero on the axis and makes no well;
+the first draft had that, and the test caught it.
 
 
 ### What is reproduced from the 2002 paper, and how

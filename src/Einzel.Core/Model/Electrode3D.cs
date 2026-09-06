@@ -18,6 +18,13 @@ public enum Electrode3DShape
 
     /// <summary>A capped cylinder along one coordinate axis.</summary>
     Cylinder,
+
+    /// <summary>
+    /// A closed outline extruded along one axis between two ends: a rod of any
+    /// cross-section, a slotted hyperbolic quadrupole rod cut into axial sections, a
+    /// wedge. The two-dimensional polygon, given a length.
+    /// </summary>
+    Prism,
 }
 
 /// <summary>Which coordinate axis a cylinder runs along.</summary>
@@ -80,6 +87,13 @@ public sealed record CompiledElectrode3D
 
     /// <summary>Which axis a cylinder runs along.</summary>
     public CylinderAxis Axis { get; init; }
+
+    /// <summary>
+    /// Prism: the outline's vertices in the cross-section plane, in metres, in order.
+    /// The plane's two coordinates are the two world axes other than <see cref="Axis"/>,
+    /// in world order: (y, z) for a prism along x, (x, z) along y, (x, y) along z.
+    /// </summary>
+    public IReadOnlyList<(double X, double Y)> Vertices { get; init; } = [];
 
     /// <summary>Which axis a box is tilted about, through its own centre.</summary>
     public CylinderAxis TiltAxis { get; init; }
@@ -197,6 +211,11 @@ public sealed record CompiledElectrode3D
     {
         Electrode3DShape.Sphere => Radius,
         Electrode3DShape.Cylinder => Math.Min(Radius, 0.5 * Math.Abs(Upper - Lower)),
+        Electrode3DShape.Prism => Math.Min(
+            0.5 * Math.Min(
+                Vertices.Max(v => v.X) - Vertices.Min(v => v.X),
+                Vertices.Max(v => v.Y) - Vertices.Min(v => v.Y)),
+            0.5 * Math.Abs(Upper - Lower)),
         Electrode3DShape.Box => Math.Min(
             Math.Abs(MaxX - MinX),
             Math.Min(Math.Abs(MaxY - MinY), Math.Abs(MaxZ - MinZ))) * 0.5,
@@ -226,6 +245,10 @@ public sealed record CompiledElectrode3D
             CylinderAxis.Y => (CentreX, 0.5 * (Lower + Upper), CentreZ),
             _ => (CentreX, CentreY, 0.5 * (Lower + Upper)),
         },
+        Electrode3DShape.Prism => ToWorld(
+            0.5 * (Lower + Upper),
+            0.5 * (Vertices.Min(v => v.X) + Vertices.Max(v => v.X)),
+            0.5 * (Vertices.Min(v => v.Y) + Vertices.Max(v => v.Y))),
 
         _ => throw Unhandled(),
     };
@@ -255,6 +278,7 @@ public sealed record CompiledElectrode3D
 
         Electrode3DShape.Box => TiltedBounds(),
 
+        Electrode3DShape.Prism => PrismBounds(),
         Electrode3DShape.Cylinder => Axis switch
         {
             CylinderAxis.X => (
@@ -405,6 +429,27 @@ public sealed record CompiledElectrode3D
                 return Math.Sqrt((orad * orad) + (oax * oax));
             }
 
+            case Electrode3DShape.Prism:
+            {
+                // The exact distance to an extrusion: the outline's own signed distance in
+                // the cross-section and the slab's along the axis, combined as a box's
+                // two-dimensional and axial parts are. Exact because the outline's
+                // distance is exact, which is what lets a slot a quarter of a millimetre
+                // wide be a cut cell along the whole length of a rod.
+                var (along, a, b) = Resolve(x, y, z);
+                var across = PolygonDistance(a, b);
+                var axial = Math.Max(Lower - along, along - Upper);
+
+                if (across <= 0.0 && axial <= 0.0)
+                {
+                    return Math.Max(across, axial);
+                }
+
+                var oacross = Math.Max(across, 0.0);
+                var oaxial = Math.Max(axial, 0.0);
+                return Math.Sqrt((oacross * oacross) + (oaxial * oaxial));
+            }
+
             default:
                 throw Unhandled();
         }
@@ -468,6 +513,74 @@ public sealed record CompiledElectrode3D
                 }
 
                 break;
+            }
+
+            case Electrode3DShape.Prism:
+            {
+                // The outline is not convex in general, so the segment may enter and leave
+                // its cross-section more than once. Every crossing of an outline edge is
+                // found in closed form; between consecutive crossings the segment is wholly
+                // inside or wholly outside the outline, decided at the midpoint; the first
+                // inside interval that also lies within the axial slab is the entry.
+                var (fromAlong, fromA, fromB) = Resolve(fromX, fromY, fromZ);
+                var (toAlong, toA, toB) = Resolve(toX, toY, toZ);
+
+                if (!Slab(fromAlong, toAlong, Lower, Upper, out var axialLow, out var axialHigh))
+                {
+                    return null;
+                }
+
+                var crossings = new List<double> { 0.0, 1.0 };
+                var da = toA - fromA;
+                var db = toB - fromB;
+                var count = Vertices.Count;
+                for (int i = 0, j = count - 1; i < count; j = i++)
+                {
+                    var (ax, ay) = Vertices[j];
+                    var (bx, by) = Vertices[i];
+                    var ex = bx - ax;
+                    var ey = by - ay;
+                    var denominator = (da * ey) - (db * ex);
+                    if (denominator == 0.0)
+                    {
+                        continue;
+                    }
+
+                    var qx = ax - fromA;
+                    var qy = ay - fromB;
+                    var t = ((qx * ey) - (qy * ex)) / denominator;
+                    var u = ((qx * db) - (qy * da)) / denominator;
+                    if (t > 0.0 && t < 1.0 && u >= 0.0 && u <= 1.0)
+                    {
+                        crossings.Add(t);
+                    }
+                }
+
+                crossings.Sort();
+                for (var k = 0; k + 1 < crossings.Count; k++)
+                {
+                    var start = crossings[k];
+                    var end = crossings[k + 1];
+                    if (end <= start)
+                    {
+                        continue;
+                    }
+
+                    var middle = 0.5 * (start + end);
+                    if (!PolygonContains(fromA + (da * middle), fromB + (db * middle)))
+                    {
+                        continue;
+                    }
+
+                    var entry = Math.Max(start, axialLow);
+                    var exit = Math.Min(end, axialHigh);
+                    if (entry <= exit && exit >= 0.0 && entry <= 1.0)
+                    {
+                        return Math.Max(entry, 0.0);
+                    }
+                }
+
+                return null;
             }
 
             case Electrode3DShape.Cylinder:
@@ -587,4 +700,56 @@ public sealed record CompiledElectrode3D
         CylinderAxis.Y => which == 0 ? CentreX : CentreZ,
         _ => which == 0 ? CentreX : CentreY,
     };
+
+    /// <summary>The inverse of <see cref="Resolve"/>: an (along, a, b) triple back in world axes.</summary>
+    private (double X, double Y, double Z) ToWorld(double along, double a, double b) => Axis switch
+    {
+        CylinderAxis.X => (along, a, b),
+        CylinderAxis.Y => (a, along, b),
+        _ => (a, b, along),
+    };
+
+    private (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ) PrismBounds()
+    {
+        var (lowAlong, lowA, lowB) = ToWorld(Math.Min(Lower, Upper), Vertices.Min(v => v.X), Vertices.Min(v => v.Y));
+        var (highAlong, highA, highB) = ToWorld(Math.Max(Lower, Upper), Vertices.Max(v => v.X), Vertices.Max(v => v.Y));
+        return (lowAlong, lowA, lowB, highAlong, highA, highB);
+    }
+
+    /// <summary>Signed distance to the outline in its own plane: nearest edge, signed by the even-odd rule.</summary>
+    private double PolygonDistance(double a, double b)
+    {
+        var count = Vertices.Count;
+        var nearest = double.PositiveInfinity;
+        var inside = false;
+
+        for (int i = 0, j = count - 1; i < count; j = i++)
+        {
+            var (ax, ay) = Vertices[j];
+            var (bx, by) = Vertices[i];
+            var ex = bx - ax;
+            var ey = by - ay;
+            var px = a - ax;
+            var py = b - ay;
+            var length2 = (ex * ex) + (ey * ey);
+            var t = length2 > 0.0 ? Math.Clamp(((px * ex) + (py * ey)) / length2, 0.0, 1.0) : 0.0;
+            var dx = px - (t * ex);
+            var dy = py - (t * ey);
+            nearest = Math.Min(nearest, (dx * dx) + (dy * dy));
+
+            if ((ay > b) != (by > b))
+            {
+                var crossing = ax + ((b - ay) * ex / ey);
+                if (a < crossing)
+                {
+                    inside = !inside;
+                }
+            }
+        }
+
+        var distance = Math.Sqrt(nearest);
+        return inside ? -distance : distance;
+    }
+
+    private bool PolygonContains(double a, double b) => PolygonDistance(a, b) <= 0.0;
 }

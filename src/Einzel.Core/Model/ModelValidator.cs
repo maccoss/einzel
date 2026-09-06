@@ -2065,15 +2065,83 @@ public static class ModelValidator
                 };
             }
 
+            case "prism":
+            {
+                if (electrode.TiltHalfTurns is not null || electrode.TiltAxis is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/{(electrode.TiltHalfTurns is not null ? "tiltHalfTurns" : "tiltAxis")}",
+                        Constraint = $"'{name}' is a prism and only a box may be tilted",
+                        Observed = new ObservedValue(0.0, "prism"),
+                        Suggestion = "a prism is oriented by 'axis' and shaped by its vertices; write the tilt into the outline",
+                    });
+                    return null;
+                }
+
+                var vertices = CompileVertices(electrode.Vertices, name, path, p, errors);
+                var lower = TryQuantity(electrode.Lower, $"{path}/lower", length, p, errors);
+                var upper = TryQuantity(electrode.Upper, $"{path}/upper", length, p, errors);
+
+                if (vertices is null || lower is null || upper is null)
+                {
+                    return null;
+                }
+
+                var axis = electrode.Axis switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (axis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/axis",
+                        Constraint = "a prism axis must be 'x', 'y' or 'z'",
+                        Observed = new ObservedValue(0.0, electrode.Axis ?? "(none)"),
+                        Suggestion = "'z' when omitted; the vertices are then (x, y)",
+                    });
+                    return null;
+                }
+
+                if (upper.Value.SiValue <= lower.Value.SiValue)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = path,
+                        Constraint = $"prism '{name}' must have upper above lower along its axis",
+                        Observed = new ObservedValue(upper.Value.SiValue - lower.Value.SiValue, "m"),
+                        Suggestion = "check the expressions that derive the ends",
+                    });
+                    return null;
+                }
+
+                return common with
+                {
+                    Shape = Electrode3DShape.Prism,
+                    Vertices = vertices,
+                    Axis = axis.Value,
+                    Lower = lower.Value.SiValue,
+                    Upper = upper.Value.SiValue,
+                };
+            }
+
             default:
                 errors.Add(new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/shape",
-                    Constraint = "an electrode shape must be 'box', 'sphere' or 'cylinder'",
+                    Constraint = "an electrode shape must be 'box', 'sphere', 'cylinder' or 'prism'",
                     Observed = new ObservedValue(0.0, electrode.Shape ?? "(none)"),
                     Suggestion =
-                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead",
+                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead, a prism is any outline given a length",
                 });
 
                 return null;
@@ -2343,7 +2411,8 @@ public static class ModelValidator
                 || a.MinY != b.MinY || a.MaxY != b.MaxY
                 || a.MinZ != b.MinZ || a.MaxZ != b.MaxZ
                 || a.CentreX != b.CentreX || a.CentreY != b.CentreY || a.CentreZ != b.CentreZ
-                || a.Radius != b.Radius || a.Lower != b.Lower || a.Upper != b.Upper;
+                || a.Radius != b.Radius || a.Lower != b.Lower || a.Upper != b.Upper
+                || !a.Vertices.SequenceEqual(b.Vertices);
 
             if (moved)
             {
@@ -3183,174 +3252,10 @@ public static class ModelValidator
                 var potential = TryQuantity(electrode.Potential, $"{path}/potential", volt, p, errors);
                 var taps = Taps(electrode, drives, path, p, errors);
 
-                if (electrode.Vertices is null || electrode.Vertices.Count == 0)
+                var vertices = CompileVertices(electrode.Vertices, name, path, p, errors);
+
+                if (vertices is null || potential is null)
                 {
-                    errors.Add(Missing($"{path}/vertices",
-                        "a polygon needs at least three vertices to enclose anything",
-                        "add a list of {x, y} vertices in order round the outline"));
-                    return null;
-                }
-
-                var vertices = new List<(double X, double Y)>(electrode.Vertices.Count);
-                var complete = true;
-                for (var k = 0; k < electrode.Vertices.Count; k++)
-                {
-                    var declaredVertex = electrode.Vertices[k];
-                    var vertexPath = $"{path}/vertices/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-
-                    if (declaredVertex.Count is null)
-                    {
-                        var vx = TryQuantity(declaredVertex.X, $"{vertexPath}/x", length, p, errors);
-                        var vy = TryQuantity(declaredVertex.Y, $"{vertexPath}/y", length, p, errors);
-                        if (vx is not null && vy is not null)
-                        {
-                            vertices.Add((vx.Value.SiValue, vy.Value.SiValue));
-                        }
-                        else
-                        {
-                            complete = false;
-                        }
-
-                        continue;
-                    }
-
-                    // A run: the same pair of expressions evaluated with an index bound
-                    // from zero to count - 1. This is how a curved face is written -
-                    // the hyperbola of a quadrupole rod is one run of twenty-five points
-                    // rather than twenty-five copies of the same formula - and it is the
-                    // repeat mechanism's idea applied inside one electrode.
-                    var count = TryQuantity(declaredVertex.Count, $"{vertexPath}/count", Dimension.Dimensionless, p, errors);
-                    if (count is null)
-                    {
-                        complete = false;
-                        continue;
-                    }
-
-                    var points = (int)Math.Round(count.Value.SiValue);
-                    if (points < 2 || Math.Abs(count.Value.SiValue - points) > 1e-9)
-                    {
-                        errors.Add(new EinzelError
-                        {
-                            Code = ErrorCodes.ValueOutOfBounds,
-                            Path = $"{vertexPath}/count",
-                            Constraint = "a vertex run needs a whole count of at least two",
-                            Observed = new ObservedValue(count.Value.SiValue, "1"),
-                            Suggestion = "a run of one point is a point - write it without a count",
-                        });
-                        complete = false;
-                        continue;
-                    }
-
-                    var index = declaredVertex.Index ?? "index";
-                    if (p.ContainsKey(index))
-                    {
-                        errors.Add(new EinzelError
-                        {
-                            Code = ErrorCodes.SchemaInvalid,
-                            Path = $"{vertexPath}/index",
-                            Constraint = $"'{index}' is already a declared parameter, and binding it here would shadow it",
-                            Observed = new ObservedValue(0.0, index),
-                            Suggestion = "choose another index name, such as 'k' or 'point'",
-                        });
-                        complete = false;
-                        continue;
-                    }
-
-                    for (var i = 0; i < points; i++)
-                    {
-                        var scoped = new Dictionary<string, Quantity>(p, StringComparer.Ordinal)
-                        {
-                            [index] = Quantity.Si(i, Dimension.Dimensionless),
-                        };
-                        var vx = TryQuantity(declaredVertex.X, $"{vertexPath}/x", length, scoped, errors);
-                        var vy = TryQuantity(declaredVertex.Y, $"{vertexPath}/y", length, scoped, errors);
-                        if (vx is null || vy is null)
-                        {
-                            // One report per run rather than one per point: the same
-                            // expression fails the same way at every index.
-                            complete = false;
-                            break;
-                        }
-
-                        vertices.Add((vx.Value.SiValue, vy.Value.SiValue));
-                    }
-                }
-
-                if (!complete || potential is null)
-                {
-                    return null;
-                }
-
-                if (vertices.Count < 3)
-                {
-                    errors.Add(Missing($"{path}/vertices",
-                        "a polygon needs at least three vertices to enclose anything",
-                        "add a list of {x, y} vertices in order round the outline"));
-                    return null;
-                }
-
-                // Consecutive vertices in the same place are merged. A parametric outline
-                // produces them whenever a feature collapses - a slot of zero height puts
-                // the channel's two corners on one point - exactly as a rectangle of zero
-                // extent is a legitimate infinitely thin plate. A zero-length edge is
-                // harmless to the signed distance (it is a point) and to the crossing test
-                // (its determinant is zero and it is skipped), so nothing downstream
-                // needs it gone; it is removed so the vertex count below means distinct
-                // vertices.
-                for (var k = vertices.Count - 1; k >= 0 && vertices.Count > 1; k--)
-                {
-                    var next = vertices[(k + 1) % vertices.Count];
-                    if (vertices[k].X == next.X && vertices[k].Y == next.Y)
-                    {
-                        vertices.RemoveAt(k);
-                    }
-                }
-
-                if (vertices.Count < 3)
-                {
-                    errors.Add(Missing($"{path}/vertices",
-                        "a polygon needs at least three distinct vertices to enclose anything",
-                        "add a list of {x, y} vertices in order round the outline"));
-                    return null;
-                }
-
-                // Zero area is a polygon that has collapsed to a line: it fixes no
-                // node and cuts no link, so it vanishes from the solve exactly as an
-                // inverted rectangle does.
-                var twiceArea = 0.0;
-                for (var k = 0; k < vertices.Count; k++)
-                {
-                    var a = vertices[k];
-                    var b = vertices[(k + 1) % vertices.Count];
-                    twiceArea += (a.X * b.Y) - (b.X * a.Y);
-                }
-
-                if (twiceArea == 0.0)
-                {
-                    errors.Add(new EinzelError
-                    {
-                        Code = ErrorCodes.ValueOutOfBounds,
-                        Path = $"{path}/vertices",
-                        Constraint = $"polygon '{name}' encloses no area, and a polygon with no area vanishes from the solve rather than failing",
-                        Observed = new ObservedValue(0.0, "m^2"),
-                        Suggestion = "check the expressions that place the vertices; a derived width can go to zero when one parameter reaches another",
-                    });
-                    return null;
-                }
-
-                // A self-intersecting outline has no single inside: the even-odd rule
-                // gives one answer and a winding rule another, and a solver handed
-                // either would return the field of a geometry nobody described.
-                if (SelfIntersects(vertices, out var edgeA, out var edgeB))
-                {
-                    errors.Add(new EinzelError
-                    {
-                        Code = ErrorCodes.ValueOutOfBounds,
-                        Path = $"{path}/vertices",
-                        Constraint = $"polygon '{name}' crosses itself: the edge from vertex {edgeA} crosses the edge from vertex {edgeB}",
-                        Observed = new ObservedValue(vertices.Count, "vertices"),
-                        Suggestion = "order the vertices round the outline; a bow-tie is two triangles, not one polygon",
-                    });
                     return null;
                 }
 
@@ -3441,6 +3346,193 @@ public static class ModelValidator
                 });
                 return null;
         }
+    }
+
+    /// <summary>
+    /// Compiles a declared outline - single vertices and runs - into distinct vertices in
+    /// metres, refusing what would vanish or be ambiguous in a solve. Shared by the polygon
+    /// and the prism, which are the same outline with and without a length.
+    /// </summary>
+    private static List<(double X, double Y)>? CompileVertices(
+        IReadOnlyList<VertexDocument>? declared,
+        string name,
+        string path,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        var length = Dimension.LengthDimension;
+        if (declared is null || declared.Count == 0)
+        {
+            errors.Add(Missing($"{path}/vertices",
+                "a polygon needs at least three vertices to enclose anything",
+                "add a list of {x, y} vertices in order round the outline"));
+            return null;
+        }
+
+        var vertices = new List<(double X, double Y)>(declared.Count);
+        var complete = true;
+        for (var k = 0; k < declared.Count; k++)
+        {
+            var declaredVertex = declared[k];
+            var vertexPath = $"{path}/vertices/{k.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+            if (declaredVertex.Count is null)
+            {
+                var vx = TryQuantity(declaredVertex.X, $"{vertexPath}/x", length, p, errors);
+                var vy = TryQuantity(declaredVertex.Y, $"{vertexPath}/y", length, p, errors);
+                if (vx is not null && vy is not null)
+                {
+                    vertices.Add((vx.Value.SiValue, vy.Value.SiValue));
+                }
+                else
+                {
+                    complete = false;
+                }
+
+                continue;
+            }
+
+            // A run: the same pair of expressions evaluated with an index bound
+            // from zero to count - 1. This is how a curved face is written -
+            // the hyperbola of a quadrupole rod is one run of twenty-five points
+            // rather than twenty-five copies of the same formula - and it is the
+            // repeat mechanism's idea applied inside one electrode.
+            var count = TryQuantity(declaredVertex.Count, $"{vertexPath}/count", Dimension.Dimensionless, p, errors);
+            if (count is null)
+            {
+                complete = false;
+                continue;
+            }
+
+            var points = (int)Math.Round(count.Value.SiValue);
+            if (points < 2 || Math.Abs(count.Value.SiValue - points) > 1e-9)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{vertexPath}/count",
+                    Constraint = "a vertex run needs a whole count of at least two",
+                    Observed = new ObservedValue(count.Value.SiValue, "1"),
+                    Suggestion = "a run of one point is a point - write it without a count",
+                });
+                complete = false;
+                continue;
+            }
+
+            var index = declaredVertex.Index ?? "index";
+            if (p.ContainsKey(index))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{vertexPath}/index",
+                    Constraint = $"'{index}' is already a declared parameter, and binding it here would shadow it",
+                    Observed = new ObservedValue(0.0, index),
+                    Suggestion = "choose another index name, such as 'k' or 'point'",
+                });
+                complete = false;
+                continue;
+            }
+
+            for (var i = 0; i < points; i++)
+            {
+                var scoped = new Dictionary<string, Quantity>(p, StringComparer.Ordinal)
+                {
+                    [index] = Quantity.Si(i, Dimension.Dimensionless),
+                };
+                var vx = TryQuantity(declaredVertex.X, $"{vertexPath}/x", length, scoped, errors);
+                var vy = TryQuantity(declaredVertex.Y, $"{vertexPath}/y", length, scoped, errors);
+                if (vx is null || vy is null)
+                {
+                    // One report per run rather than one per point: the same
+                    // expression fails the same way at every index.
+                    complete = false;
+                    break;
+                }
+
+                vertices.Add((vx.Value.SiValue, vy.Value.SiValue));
+            }
+        }
+
+        if (!complete)
+        {
+            return null;
+        }
+
+        if (vertices.Count < 3)
+        {
+            errors.Add(Missing($"{path}/vertices",
+                "a polygon needs at least three vertices to enclose anything",
+                "add a list of {x, y} vertices in order round the outline"));
+            return null;
+        }
+
+        // Consecutive vertices in the same place are merged. A parametric outline
+        // produces them whenever a feature collapses - a slot of zero height puts
+        // the channel's two corners on one point - exactly as a rectangle of zero
+        // extent is a legitimate infinitely thin plate. A zero-length edge is
+        // harmless to the signed distance (it is a point) and to the crossing test
+        // (its determinant is zero and it is skipped), so nothing downstream
+        // needs it gone; it is removed so the vertex count below means distinct
+        // vertices.
+        for (var k = vertices.Count - 1; k >= 0 && vertices.Count > 1; k--)
+        {
+            var next = vertices[(k + 1) % vertices.Count];
+            if (vertices[k].X == next.X && vertices[k].Y == next.Y)
+            {
+                vertices.RemoveAt(k);
+            }
+        }
+
+        if (vertices.Count < 3)
+        {
+            errors.Add(Missing($"{path}/vertices",
+                "a polygon needs at least three distinct vertices to enclose anything",
+                "add a list of {x, y} vertices in order round the outline"));
+            return null;
+        }
+
+        // Zero area is a polygon that has collapsed to a line: it fixes no
+        // node and cuts no link, so it vanishes from the solve exactly as an
+        // inverted rectangle does.
+        var twiceArea = 0.0;
+        for (var k = 0; k < vertices.Count; k++)
+        {
+            var a = vertices[k];
+            var b = vertices[(k + 1) % vertices.Count];
+            twiceArea += (a.X * b.Y) - (b.X * a.Y);
+        }
+
+        if (twiceArea == 0.0)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/vertices",
+                Constraint = $"polygon '{name}' encloses no area, and a polygon with no area vanishes from the solve rather than failing",
+                Observed = new ObservedValue(0.0, "m^2"),
+                Suggestion = "check the expressions that place the vertices; a derived width can go to zero when one parameter reaches another",
+            });
+            return null;
+        }
+
+        // A self-intersecting outline has no single inside: the even-odd rule
+        // gives one answer and a winding rule another, and a solver handed
+        // either would return the field of a geometry nobody described.
+        if (SelfIntersects(vertices, out var edgeA, out var edgeB))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.ValueOutOfBounds,
+                Path = $"{path}/vertices",
+                Constraint = $"polygon '{name}' crosses itself: the edge from vertex {edgeA} crosses the edge from vertex {edgeB}",
+                Observed = new ObservedValue(vertices.Count, "vertices"),
+                Suggestion = "order the vertices round the outline; a bow-tie is two triangles, not one polygon",
+            });
+            return null;
+        }
+
+        return vertices;
     }
 
     /// <summary>

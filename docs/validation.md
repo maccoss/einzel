@@ -698,6 +698,21 @@ matters.
 240 µm from holding the start value; a DC ramp is linear to the quarter point to 1e-12 and
 a ramp from zero amplitude works. The linear-ion-trap scans are ramps from here on.
 
+**The Stellar's trap (Remes 2024), from its own paper.** Four-fold stretch of 0.76 mm, four
+slots, 0.5 mTorr: the slot dipole and the stretch octupole vanish to 1e-15 of the quadrupole
+(1.5e-3 and 1.7e-3 in the 2002 trap), the quadrupole term is 0.6966 of ideal against 0.7062
+for r0 = 4.76 mm, the stability edge is between effective q 0.900 and 0.905. Its scan at
+33 / 67 / 125 / 200 kDa/s, m/z 622, 48 ions: **0.19 / 0.14 / 0.15 / 0.15 u** at half the
+2002 excitation and 0.33 / 0.22 / 0.18 / 0.25 at full, against the paper's ~0.35 / 0.5 /
+0.7 / 1.0 Th. The model is a floor: an ideal trap with a cold cloud ejects within a few RF
+cycles, and the instrument's broadenings are not in the template.
+
+**The three sections in a volume.** A prism - an extruded polygon - reproduces a box to
+3e-18 m in distance and to the bit in a solve. The 2002 trap's end sections 3 V above the
+centre make a 2.9 V well that holds a thermal ion within 8.7 mm of the centre (17.1 mm with
+20 V lenses alone), where the excitation is uniform to below 0.001 % and carries 0.17 % of
+axial component. The paper's figure 2, as numbers.
+
 
 ## The ion funnel against a published instrument
 

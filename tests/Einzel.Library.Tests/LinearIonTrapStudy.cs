@@ -57,12 +57,12 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         var r0 = model.Parameters["inscribedRadius"].SiValue;
         var stretch = model.Parameters["xStretch"].SiValue;
 
-        Assert.Equal(8, solve.Electrodes.Count);
-        Assert.All(solve.Electrodes, e => Assert.Equal(ElectrodeShape.Polygon, e.Shape));
+        Assert.Equal(11, solve.Electrodes.Count);   // eight half-rods and three housing walls
+        Assert.All(solve.Electrodes.Where(e => e.Name.StartsWith("rod", StringComparison.Ordinal)), e => Assert.Equal(ElectrodeShape.Polygon, e.Shape));
         // 25 on the face, the back corner, and the slot channel and relief: 29 on the slotted
         // rod's halves, 28 on the others, where the closed slot puts two corners on one point
         // and they merge.
-        foreach (var e in solve.Electrodes)
+        foreach (var e in solve.Electrodes.Where(e => e.Name.StartsWith("rod", StringComparison.Ordinal)))
         {
             Assert.Equal(e.Name.StartsWith("rodXPlus", StringComparison.Ordinal) ? 29 : 28, e.Vertices.Count);
         }

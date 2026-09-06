@@ -148,7 +148,14 @@
       "unit": "mm",
       "minimum": 0.5,
       "maximum": 20.0,
-      "description": "From the deepest rod back to the grounded domain edge. The real rods sit in a grounded chamber further away; this is where the solve stops."
+      "description": "From the deepest rod back to the grounded housing. The real rods sit in a grounded chamber further away; this is where the solve stops. The +x side is left to the detector plane; the other three sides are grounded walls, so an ion leaving through a slot with no detector behind it strikes metal with a name."
+    },
+    "wallThickness": {
+      "value": 0.25,
+      "unit": "mm",
+      "minimum": 0.05,
+      "maximum": 2.0,
+      "description": "Thickness of the grounded housing walls on the three sides without a detector. Electrically nothing - the domain edge is grounded anyway - but an electrode is something an ion can strike and be counted against."
     },
     "cellsPerRadius": {
       "value": 32.0,
@@ -872,6 +879,78 @@
                 }
               }
             ]
+          },
+          {
+            "name": "housingLeft",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "-(domainHalfWidth - wallThickness)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "domainHalfWidth",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "housingBottom",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "domainHalfWidth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "-(domainHalfWidth - wallThickness)",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "housingTop",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "domainHalfWidth",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "domainHalfWidth - wallThickness",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "domainHalfWidth",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
           }
         ]
       }

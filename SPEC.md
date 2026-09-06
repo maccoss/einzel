@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,158 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,169 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -759,6 +759,14 @@ metal. §12's Class B figures are stated in q, and this is the first device wher
 per volt had to be measured before any of them could be compared with a paper. It costs
 one multipole projection and no ion. Details in `docs/device-templates.md` and
 `docs/lessons.md`.
+
+**And the volume vocabulary had the same gap.** Box, sphere and cylinder build the devices
+§1 lists and could not extrude a slotted hyperbolic rod into the paper's three axial
+sections. A `prism` - the polygon given a length along an axis, with the same vertex runs -
+closes it: a square prism is a box to 3e-18 m in distance and to the bit in a solve, and a
+re-entrant outline finds a link's entry through its notch. The 2-D and 3-D vocabularies now
+share one general outline, which is what LIB-1's "a new device is a new file" needs when the
+device is neither a plate nor a rod nor a bead.
 
 ### 36 - A geometric perturbation can sit below the discretisation floor, and then it must be constructed rather than solved
 
@@ -2557,15 +2565,21 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     **done**: with the 2002 excitation held, the Velos analyser pressure alone broadens
     m/z 524 from 0.62 to 1.44 u, and half the excitation brings it back to 0.62, so the
     2009 paper's gain is a retuning and a gentler excitation is the part of it that
-    matters; **the axial structure** - three DC sections and end lenses, a
-    `solved3d` with the segmented quadrupole's pattern, which is where the paper's figure 2
-    (the dipole excitation field's uniformity along the centre section) and its mechanical
-    tolerance argument live; and **the slot's exit optics**, which the cross-section cannot
-    settle because the paper does not give the slot's profile and the real detector sits
-    behind an extraction field this model ends in a grounded wall. Space charge in the scan
-    (the paper's 15x capacity claim against a 3-D trap) is a fifth, and the direct-sum
-    method exists for it. The Stellar's own trap differs from this lineage; its paper is
-    not in hand, and the register says so.
+    matters; ~~**the axial structure**~~ - **done**, with a `prism` primitive (the 2-D
+    polygon given a length) so the same hyperbolic slotted half-rods make the paper's three
+    12 / 37 / 12 mm sections in `linear-ion-trap-3d`: the end sections 3 V above the centre
+    make a 2.9 V well holding a 300 K ion within 8.7 mm, where the excitation is uniform to
+    below 0.001 % - the paper's figure 2 as numbers; **the slot's exit optics**, which the
+    cross-section cannot settle because the paper does not give the slot's profile and the
+    real detector sits behind an extraction field this model ends in a grounded wall; and
+    **space charge in the scan**, where the direct sum's softening (set by the packet's RMS
+    radius) exceeds a line cloud's transverse size thirty-four-fold and switches the force
+    off - now reported as `spacecharge.softening` - so the paper's 15x capacity claim wants a
+    grid method whose cell resolves the transverse size. **The Stellar's own trap** is now in
+    hand (Remes 2024) and shipped as `stellar-ion-trap`; its scan at the paper's four rates
+    gives a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the
+    instrument has (a millimetre cloud, amplitude noise, real machining) being absent from
+    the template. A ramp on a volume solve and a scan of the volume trap remain.
 
 ## Open decisions
 

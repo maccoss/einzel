@@ -26,6 +26,8 @@ physics or the abstraction is wrong, and almost always the second.
 | `c-trap` | Four rods bent around an arc: the curved RF trap that injects an orbital analyser |
 | `pnnl-ion-funnel` | The published PNNL 100-electrode funnel, as built to a literature benchmark: Kim 2000's transmission against RF amplitude and Page 2006's low-m/z cutoff |
 | `linear-ion-trap` | The radial-ejection linear ion trap of Schwartz, Senko and Syka (2002) in cross-section: hyperbolic rods as polygons, a 0.25 mm ejection slot, the x pair stretched 0.75 mm, main RF and a dipole excitation on two generators, helium |
+| `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
+| `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -1409,6 +1411,113 @@ LTQ detector also sits behind a strong extraction field, which this cross-sectio
 struck the back face of the 8 mm rod are that gap showing. The ejection efficiency through
 the slot is therefore a **sensitivity, not a prediction**: it depends on the one part of the
 geometry the paper does not give.
+
+
+### The Stellar's own trap, and its four scan rates
+
+The Stellar paper (Remes et al. 2024) gives the trap in one paragraph - "the same
+fundamental structure introduced with the Velos Pro that has a 4.0 mm field radius and a
+4-fold symmetric stretch of 0.76 mm", helium at ~6 mTorr in the receiving cell and 0.5 mTorr
+in the analysing cell, and "four standard scan rates of 33, 67, 125, and 200 kDa/sec, with
+typical full width half maximum peak widths of ~0.35, 0.5, 0.7, and 1.0 Th at m/z 622". It
+does not give the RF frequency, the ejection q or the excitation. `stellar-ion-trap` is the
+same generator as `linear-ion-trap` with both pairs stretched, four slots and the analysing
+cell's helium; the 2002 trap's 1 MHz, q = 0.88 and excitation law are carried over as named
+guesses.
+
+**Four-fold symmetry is a change of scale, not an aberration.** With both pairs out the slot
+dipole and the stretch octupole vanish to rounding (1e-15 of the quadrupole against 1.5e-3
+and 1.7e-3 in the 2002 trap); the quadrupole term is 0.6966 of the ideal formula's at r0 =
+4 mm, against (4/4.76)^2 = 0.7062 for an ideal trap of the stretched radius; the 12-pole is
+2.7e-4. The stability edge with the excitation off sits between effective q 0.900 and 0.905,
+closer to the tabulated 0.908 than the 2002 trap's 0.890 to 0.900, which is the octupole's
+absence.
+
+**The scan at the paper's four rates**, m/z 622, 48 ions per rate, the RF ramped as one
+phase from q 0.82 to 0.94, the excitation at half the 2002 law (7.7 V) and at the law
+(15.4 V). The distributions are a spike with a tail, so the width is the full width at half
+maximum of a kernel density (0.05 u), not an interquartile range:
+
+| rate | 7.7 V | 15.4 V | paper |
+| --- | --- | --- | --- |
+| 33 kDa/s | 0.19 u | 0.33 u | ~0.35 Th |
+| 67 kDa/s | 0.14 u | 0.22 u | ~0.5 Th |
+| 125 kDa/s | 0.15 u | 0.18 u | ~0.7 Th |
+| 200 kDa/s | 0.15 u | 0.25 u | ~1.0 Th |
+
+**The model is sharper than the instrument, and the gap grows with rate.** At 33 kDa/s the
+model's core is 0.2 to 0.3 u against the paper's 0.35; at 200 kDa/s it is 0.15 to 0.25
+against 1.0. Read in time rather than mass, the instrument's widths are a nearly constant 5
+to 10 us of ejection spread at every rate, while the model's core shrinks from 6 us at
+33 kDa/s to under 1 us at 200. An ideal four-fold trap with a cold 0.05 mm cloud and a clean
+excitation ejects all its ions within a few RF cycles once the ramp reaches resonance, and
+that is what the spike is. What the instrument has and this model does not: a space-charge
+widened cloud (the 2002 paper's tomography puts it near 1 mm), amplitude noise on the RF and
+the excitation, machining that is not an ideal hyperbola, and whatever the Stellar's
+excitation actually is. Each of those is a broadening; none is in the template. The model's
+number is therefore a floor, and it is the right floor to have: it says the geometry itself
+does not limit the Stellar to 0.35 Th at 33 kDa/s.
+
+Two things the sweep taught along the way. **A fast scan must run through the stability
+edge**: at 200 kDa/s the ramp passes from resonance to the paper's q_end in forty
+microseconds, and an excitation that has not ejected an ion by then leaves it for the edge
+at 0.908; a ramp that stopped at 0.895 held a third of the ions and called them held. **And
+ions that leave through a slot with no detector behind it must strike something**: with
+slots in all four rods, three of the four ways out led to the grounded domain edge, and the
+domain edge is a boundary condition rather than a conductor, so those ions coasted out of
+the box and were reported metres away as still in flight. Both templates now carry grounded
+housing walls on the three sides without a detector: electrically nothing, since the edge
+was grounded anyway, but a named surface a loss can be charged to.
+
+## `linear-ion-trap-3d` - the three sections, in a volume
+
+The cross-section cannot say what the paper's three axial sections do, because the axis is
+the direction it is invariant in. The volume template extrudes the same half-rod outlines
+as prisms - the two-dimensional polygon given a length, a new primitive built for this -
+into the paper's 12, 37 and 12 mm sections, each at its own DC, the slot only in the centre
+section, and a plate with a 2 mm square aperture at each end. Thirty-two electrodes; at a
+millimetre cell the two solves take a minute, at half a millimetre four.
+
+**The end offset is common, not quadrupolar, and the first draft had it wrong.** Raising
+the end sections' x pair and lowering their y pair is a change of Mathieu a, zero on the
+axis, and makes no well at all; the well comes from raising all four rods of a section
+together. Measured on the axis with the ends 3 V above the centre:
+
+| z from centre | 0 | 10 mm | 15 mm | 18 mm (centre section ends) | 22 mm | 26 mm |
+| --- | --- | --- | --- | --- | --- | --- |
+| axis potential | 0.0006 V | 0.035 | 0.35 | 1.13 | 2.50 | 2.92 |
+
+A 2.9 V well of the 3 V applied, rising over the last few millimetres of the centre
+section. **A thermal ion at 300 K, whose kT is 26 mV, reaches z = 8.7 mm**; the same rods
+with no section offsets and 20 V on the end lenses instead - the single-section trap the
+paper compares against - confine it only to 17.1 mm.
+
+**The excitation is one solved pattern and the DC another, so the two configurations have
+the same excitation field**; what differs is where the ions are in it. Isolated by
+difference (the trap with the excitation on minus the same trap with it off), the dipole's
+transverse field on the axis is uniform to **below 0.001 %** over the three-section cloud
+and to 0.2 % over the lens-confined one, and its axial component is 0.17 % of its
+transverse one over the centre 15 mm. That is the paper's figure 2 put as numbers: the end
+sections hold the cloud in the part of the trap where the excitation is clean.
+
+What the volume template does not yet do is scan: the RF and the excitation are declared
+on it, but a ramp is refused on a volume solve for now, and the scan studies above are all
+cross-section ones.
+
+### Space charge in the scan: a limit of the method, found and now reported
+
+The direct-sum method softens the force between two macroparticles closer than the mean
+spacing, and the mean spacing is set by the packet's RMS radius divided by the cube root of
+the count. A linear trap's cloud is a line: 40 macroparticles for 4,000 ions along 10 mm of
+axis and 0.05 mm across it have an RMS radius of 5.8 mm and a softening of **1.7 mm,
+thirty-four times the transverse size**, so the force across the packet is switched off
+and the scan with 4,000 ions came back identical to the one with none, to the last digit,
+with nothing said. The run now reports `spacecharge.softening` on every direct-sum run, as
+a violation when the softening exceeds the packet's thinnest declared extent and as
+provenance when it does not, with the macroparticle count that would bring it inside. For
+this cloud that count is about 1.6 million, which is not a study the direct sum can run;
+space charge in a line cloud wants a grid method whose cell resolves the transverse size,
+and that is the next step for the 2002 paper's 15x capacity claim.
 
 
 ## `pnnl-ion-funnel` — a published funnel, built to be compared

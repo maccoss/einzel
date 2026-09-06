@@ -992,8 +992,13 @@ public static class FiguresOfMerit
             losses[channel] = losses.GetValueOrDefault(channel) + 1;
         }
 
+        // Guarded exactly as the independent-ion path guards it: a packet that pushed
+        // itself into the electrodes has no peak, and that is a result rather than a
+        // defect. This path had the unguarded call, so a space-charge scan in which every
+        // ion left through the rods ended in INTERNAL_ERROR - the failure Amendment 15
+        // fixed on the other loop, reintroduced here.
         return new CloudFlight(
-            ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions),
+            arrivals.Count >= 2 ? ArrivalTimePeak.FromArrivals(arrivals, model.Cloud.Ions) : null,
             [.. arrived],
             [.. losses
                 .OrderByDescending(pair => pair.Value)

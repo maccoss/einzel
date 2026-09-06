@@ -713,6 +713,57 @@ public static class RunCommand
         ];
     }
 
+    /// <summary>
+    /// The direct sum softens the force between two macroparticles closer than the mean
+    /// spacing, and the mean spacing is set by the packet's RMS radius - so a packet that is
+    /// long in one direction and thin in the others is softened at a scale larger than its
+    /// thin dimension, and the mutual force across that dimension is nearly switched off.
+    /// </summary>
+    /// <remarks>
+    /// Found on a linear ion trap's cloud: 40 macroparticles standing for 4,000 ions along
+    /// 10 mm of axis and 0.05 mm across it. The RMS radius is 5.8 mm, the softening 1.7 mm,
+    /// thirty-four times the transverse size, and the space-charge scan came back identical
+    /// to the one without space charge, to the last digit. Nothing reported it. REG-2's rule
+    /// - a resolution limit is reported whether or not it is crossed - applied to the third
+    /// such limit in this engine, after the coarsening guard and the particle-in-cell cell.
+    /// </remarks>
+    private static IReadOnlyList<ValidityWarning> SofteningWarnings(CompiledSpaceChargeGrid? grid, CompiledModel model)
+    {
+        if (grid is not null || model.Cloud.Ions < 2)
+        {
+            return [];
+        }
+
+        var transverse = model.Cloud.TransverseSpreadM;
+        var longitudinal = model.Cloud.LongitudinalSpreadM;
+        var rms = Math.Sqrt((2.0 * transverse * transverse) + (longitudinal * longitudinal));
+        var extents = new[] { transverse, longitudinal }.Where(v => v > 0.0).ToArray();
+        if (extents.Length == 0 || rms <= 0.0)
+        {
+            return [];
+        }
+
+        var softening = Transport.Interaction.CoulombInteraction.SpacingSoftening(rms, model.Cloud.Ions);
+        var smallest = extents.Min();
+        var ratio = softening / smallest;
+        var needed = (int)Math.Ceiling(Math.Pow(rms / smallest, 3));
+
+        return
+        [
+            new ValidityWarning(
+                "spacecharge.softening",
+                $"the mutual force is softened below {softening * 1e3:F3} mm, the mean spacing of "
+                + $"{model.Cloud.Ions} macroparticles in a packet of RMS radius {rms * 1e3:F2} mm, against a "
+                + $"smallest declared extent of {smallest * 1e3:F3} mm"
+                + (ratio > 1.0
+                    ? $". The softening exceeds the packet's thin dimension {ratio:F1}-fold, so the force across it is "
+                      + $"suppressed and the packet's own charge is largely not being felt; about {needed} macroparticles "
+                      + "would bring the spacing below that dimension, or a grid method resolves it at the cell"
+                    : ", inside it, so the force between neighbours is Coulombic at the scale the packet has"),
+                ratio > 1.0 ? WarningSeverity.ValidityViolation : WarningSeverity.Provenance),
+        ];
+    }
+
     private static IReadOnlyList<ValidityWarning> SpaceChargeWarnings(
         SpaceChargeEstimate charge, double limit, CompiledModel model, double weight)
     {
@@ -757,6 +808,7 @@ public static class RunCommand
                     WarningSeverity.Provenance),
 
                 .. GridResolutionWarnings(grid, model.Cloud.Ions),
+                .. SofteningWarnings(grid, model),
             ];
         }
 

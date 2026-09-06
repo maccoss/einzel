@@ -184,6 +184,14 @@ public sealed record Electrode3DDocument : ITappedElectrode
     /// </remarks>
     public QuantityValue? TiltHalfTurns { get; init; }
 
+
+    /// <summary>
+    /// Prism: the outline's vertices, in order, in the cross-section plane - the two axes
+    /// other than <c>axis</c>, in world order: (y, z) for a prism along x, (x, z) along y,
+    /// (x, y) along z. Runs with <c>count</c> and <c>index</c> are allowed, as for a polygon.
+    /// </summary>
+    public IReadOnlyList<VertexDocument>? Vertices { get; init; }
+
     /// <summary>Cylinder: lower end along its axis.</summary>
     public QuantityValue? Lower { get; init; }
 

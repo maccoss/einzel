@@ -2655,3 +2655,50 @@ times - `repeat`'s mechanism applied inside one electrode. Twenty-four kilobytes
 entries per half-rod, and the hyperbola written once. The rule: when a generator script
 is needed to write a document, the format is missing the abstraction the script
 supplies, and the script is a measurement of how big the gap is.
+
+## A DC offset written x-up, y-down is zero on the axis and makes no well
+
+The three-section trap's end offset was first written the way the quadrupolar DC is: the
+x pair raised, the y pair lowered. That is a change of Mathieu a, exactly zero on the axis
+by symmetry, and the axis potential came out flat along the whole rod - no well at all -
+while every electrode reported the potential asked of it. The end sections' offset is a
+common one, all four rods of a section together; that is what raises the axis. The test
+that caught it asked for the well to rise by the end of the centre section and got a
+number smaller than the launch point's, which was the geometry answering a different
+question correctly. The rule: when a potential is applied to a symmetric set of electrodes,
+say which symmetry it has - common, quadrupolar, dipolar - because each is a different
+field and the document cannot tell them apart from the numbers.
+
+## A softened force is a switched-off force when the packet is thinner than the softening
+
+The direct-sum space charge softens the mutual force below the mean macroparticle
+spacing, and the spacing is set by the packet's RMS radius over the cube root of the
+count. A linear trap's cloud is a line: ten millimetres long and fifty microns across. Its
+RMS radius is dominated by the length, so forty macroparticles are spaced 1.7 mm and the
+force across a 0.05 mm packet is softened to nothing. A scan with four thousand ions came
+back identical to one with none, to the last digit, and nothing said so, because the
+softening was reported nowhere. It is reported now, against the packet's thinnest declared
+extent, on every direct-sum run. Two rules: a method with an internal length scale must
+compare it with the smallest scale in the problem, not the typical one; and identical
+results across a parameter that should matter are not corroboration, they are a method
+that is not seeing the parameter.
+
+## A domain edge is a boundary condition, not a conductor
+
+With slots in all four rods and a detector behind one, ions ejected through the other
+three left the trap, crossed the grounded domain edge, and coasted for the rest of the run
+in field-free space, reported metres away as still in flight. The edge holds the potential
+at zero; it stops no ion. Both trap templates now carry grounded housing walls on the sides
+without a detector: electrically nothing, since the edge was grounded anyway, but a named
+surface a loss can be charged to. A model whose ions can leave the solved box must say
+what they meet there, or the ledger reports a physical impossibility as an outcome.
+
+## A fast scan must run through the stability edge
+
+At 200 kDa/s the ramp passes from the excitation's resonance to the stability edge in
+forty microseconds, and an excitation that has not ejected an ion in that time hands it to
+the edge. A ramp that stopped short of the edge, at q 0.895, held a third of the ions to
+the end of the run and reported them held; extending it to 0.94 ejected them and put them
+in the tail of the peak, which is where the instrument has them too. What the scan window
+covers is part of the measurement, and a window chosen for a slow scan is not a window for
+a fast one.

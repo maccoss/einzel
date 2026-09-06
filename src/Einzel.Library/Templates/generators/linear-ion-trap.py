@@ -130,6 +130,25 @@ electrodes = [
     electrode("rodYMinusLeft", "y", -1, -1, "slotYMinus", "yStretch + ", "-dcOffset", [rf_y]),
 ]
 
+
+def wall(name, x0, x1, y0, y1):
+    """A grounded housing wall along one edge of the domain: electrically the same as the
+    grounded domain edge, but an electrode, so an ion that leaves through a slot strikes
+    metal with a name instead of coasting out of the box. With slots in all four rods
+    three of the four ways out have no detector behind them."""
+    return {
+        "name": name, "shape": "rectangle",
+        "minX": q(x0, "mm"), "maxX": q(x1, "mm"), "minY": q(y0, "mm"), "maxY": q(y1, "mm"),
+        "potential": {"value": 0, "unit": "V"},
+    }
+
+
+electrodes += [
+    wall("housingLeft", "-domainHalfWidth", "-(domainHalfWidth - wallThickness)", "-domainHalfWidth", "domainHalfWidth"),
+    wall("housingBottom", "-domainHalfWidth", "domainHalfWidth", "-domainHalfWidth", "-(domainHalfWidth - wallThickness)"),
+    wall("housingTop", "-domainHalfWidth", "domainHalfWidth", "domainHalfWidth - wallThickness", "domainHalfWidth"),
+]
+
 doc = {
     "schemaVersion": "0.9",
     "name": NAME,
@@ -217,7 +236,11 @@ doc = {
         },
         "housingClearance": {
             "value": 1.5, "unit": "mm", "minimum": 0.5, "maximum": 20.0,
-            "description": "From the deepest rod back to the grounded domain edge. The real rods sit in a grounded chamber further away; this is where the solve stops.",
+            "description": "From the deepest rod back to the grounded housing. The real rods sit in a grounded chamber further away; this is where the solve stops. The +x side is left to the detector plane; the other three sides are grounded walls, so an ion leaving through a slot with no detector behind it strikes metal with a name.",
+        },
+        "wallThickness": {
+            "value": 0.25, "unit": "mm", "minimum": 0.05, "maximum": 2.0,
+            "description": "Thickness of the grounded housing walls on the three sides without a detector. Electrically nothing - the domain edge is grounded anyway - but an electrode is something an ion can strike and be counted against.",
         },
         "cellsPerRadius": {
             "value": 32.0, "unit": "1", "minimum": 4.0, "maximum": 128.0,
@@ -275,4 +298,4 @@ doc = {
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(doc, f, indent=2)
     f.write("\n")
-print(f"wrote {OUT}: {len(electrodes)} electrodes, {sum(len(e['vertices']) for e in electrodes)} vertex entries")
+print(f"wrote {OUT}: {len(electrodes)} electrodes, {sum(len(e.get('vertices', [])) for e in electrodes)} vertex entries")
