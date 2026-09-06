@@ -11,7 +11,7 @@ physics or the abstraction is wrong, and almost always the second.
 
 | Template | What it is |
 | --- | --- |
-| `planar-mirror-pair` | **A compact Astral-type analyser**: two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair. The same class of instrument as `astral-3d` below - an asymmetric-track multi-reflection time-of-flight analyser - at the size the companion memo asks for rather than the published one |
+| `planar-mirror-pair` | **A compact Astral-type analyser**: two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair. The same class of instrument as `astral-3d` below: an asymmetric-track multi-reflection time-of-flight analyser, at a compact scale |
 | `quadrupole` | Four round rods in cross-section, alternating potential |
 | `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
 | `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
@@ -510,12 +510,11 @@ to the ideal hyperbolic field is the expected round-rod approximation.
 
 `planar-mirror-pair` is not a generic pair of mirrors. It is **an asymmetric-track
 multi-reflection time-of-flight analyser of the same family as the published Astral**
-(`astral-3d` below), built at the size the companion memo asks for rather than the size
-Thermo published: ions bounce between two planar printed-circuit mirrors while drifting
-slowly along them, so the flight path is folded many times into a short instrument. What
-differs between this template and `astral-3d` is scale and provenance, not principle -
-this one is a design being explored, and that one is a published instrument being
-reproduced.
+(`astral-3d` below), at a compact scale: ions bounce between two planar printed-circuit
+mirrors while drifting slowly along them, so the flight path is folded many times into a
+short instrument. What differs between this template and `astral-3d` is scale and
+provenance, not principle - this one is a design being explored, and that one is a
+published instrument being reproduced.
 
 The template models one plane of it. Stripe electrodes run along the drift direction, so
 the potential does not depend on that direction and a cross-section is exact away from the
