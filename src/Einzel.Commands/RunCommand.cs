@@ -734,6 +734,116 @@ public static class RunCommand
     /// because a cooled, space-charge-limited cloud is exactly what such a run is for
     /// and its fluctuations are those of the smaller sample.
     /// </summary>
+    /// <summary>
+    /// A half-space's ramp does not stop at the depth the document declares it to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// `halfSpaceUniform` takes a cap potential and a turning depth, uses them to compute a
+    /// gradient, and then extends that gradient for ever - so an ion with more axial energy
+    /// than the cap turns round *behind* the plate the document describes, in a region the
+    /// model does not claim to represent. The arithmetic is right for a ramp that never
+    /// ends, the flight time matches its own closed form, and nothing looks wrong.
+    /// </para>
+    /// <para>
+    /// An agent tuning the shipped reflectron was told to search 3600-3900 V against a
+    /// 4000 V beam. Every point in that window turns past the back plate - 5.6 mm past it at
+    /// 3600 V - and it took the agent a deliberate investigation to notice, because the
+    /// numbers are self-consistent. This is the one thing the model could have said.
+    /// </para>
+    /// </remarks>
+    /// <summary>
+    /// Whether any ion this run launches turns round behind the plate a half-space declares.
+    /// </summary>
+    /// <param name="model">The compiled model, for its fields and its launch energy.</param>
+    /// <returns>One warning per half-space the beam overshoots, and none otherwise.</returns>
+    /// <remarks>
+    /// <para>
+    /// A <c>halfSpaceUniform</c> field is a ramp with no far side: the cap potential is what
+    /// the model says the plate holds at the declared turning depth, and the arithmetic
+    /// continues past it. An ion carrying more energy along the normal than the cap therefore
+    /// turns round <em>behind</em> the plate, self-consistently, in a region the document does
+    /// not describe - and the run reports a flight time to full precision either way.
+    /// </para>
+    /// <para>
+    /// Found by an agent that lowered a cap below the beam energy while exploring a
+    /// reflectron's focus. Every number stayed plausible; the ion was turning 5.6 mm inside
+    /// the metal. This is the ACC-4 counterpart of the region-boundary warning, and
+    /// <see cref="WarningSeverity.Qualified"/> rather than a violation because the model is
+    /// arithmetically what its author wrote - what is wrong is the reading of it.
+    /// </para>
+    /// <para>
+    /// A cloud is measured at three sigma of its declared energy spread rather than at
+    /// nominal, because the tail is the population that overshoots first and a warning that
+    /// waits for the centre of the distribution to cross would stay silent through the whole
+    /// range where the effect is a selective loss rather than a total one.
+    /// </para>
+    /// </remarks>
+    private static List<ValidityWarning> HalfSpaceDepthWarnings(CompiledModel model)
+    {
+        var warnings = new List<ValidityWarning>();
+
+        // Three sigma of the declared supply ripple, since the tail is what crosses first.
+        // Zero for everything that declares no energy spread, which is most models.
+        var tail = 3.0 * model.Cloud.EnergyFractionSpread;
+        var fastest = (1.0 + model.EnergyFraction) * (1.0 + tail);
+
+        foreach (var element in model.Fields)
+        {
+            if (element.Kind != CompiledFieldKind.HalfSpaceUniform
+                || !(element.TurningDepthSi > 0.0)
+                || !(element.PotentialGradientSi > 0.0))
+            {
+                continue;
+            }
+
+            // The energy the ion carries into the region, along the normal. A launch at an
+            // angle carries less - v_n = v cos(theta), so the energy goes as cos squared -
+            // and that is what decides how deep it goes rather than the beam energy itself.
+            var along = Math.Abs(Core.Geometry.Vec3.Dot(
+                model.SourceDirection.Normalized(), element.InwardNormal));
+            var axialVolts = Math.Abs(model.AccelerationPotentialSi) * fastest * along * along;
+            var capVolts = element.PotentialGradientSi * element.TurningDepthSi;
+            var reached = axialVolts / element.PotentialGradientSi;
+
+            // A MODEL PLACED DELIBERATELY AT THE BOUNDARY MUST NOT TRIP ON ROUND-OFF. The
+            // scaffolded reflectron sets the cap equal to the acceleration potential and
+            // says so in its own description - the ion turns exactly at the declared depth -
+            // and the gradient is a division the model format performs, so cap over depth
+            // times depth is the same number only to within an ulp or two. Requiring the
+            // overshoot to clear a millionth of the depth (50 nm on a 50 mm mirror) makes
+            // the test independent of which way that rounding fell, and nothing physical is
+            // lost: an ion turning 50 nm past a plate is not the finding this exists to
+            // report.
+            if (reached - element.TurningDepthSi <= 1.0e-6 * element.TurningDepthSi)
+            {
+                continue;
+            }
+
+            var invariant = System.Globalization.CultureInfo.InvariantCulture;
+            var which = tail > 0.0 ? "the fastest ion this run launches turns" : "this ion turns";
+            var past = string.Create(invariant, $"{(reached - element.TurningDepthSi) * 1e3:F2}");
+            var declared = string.Create(invariant, $"{element.TurningDepthSi * 1e3:F2}");
+            var carried = string.Create(invariant, $"{axialVolts:F1}");
+            var cap = string.Create(invariant, $"{capVolts:F1}");
+            var basis = tail > 0.0
+                ? string.Create(invariant, $" at three sigma of the declared energy spread")
+                : string.Empty;
+
+            warnings.Add(new ValidityWarning(
+                "field.beyond-declared-depth",
+                $"{which} {past} mm beyond the {declared} mm turning depth the half-space "
+                + $"declares, because it carries {carried} V along the normal{basis} against a "
+                + $"cap of {cap} V. The ramp is extrapolated past the plate rather than stopped "
+                + "at it, so the arithmetic is self-consistent and describes a region the model "
+                + "does not claim. Raise the cap potential, lower the beam energy, or bound the "
+                + "element with a region",
+                WarningSeverity.Qualified));
+        }
+
+        return warnings;
+    }
+
     private static IReadOnlyList<ValidityWarning> MacroparticleCollisionWarnings(CompiledModel model, double weight)
     {
         if (!model.Gas.IsPresent)
@@ -1484,7 +1594,10 @@ public static class RunCommand
             ];
         }
 
-        fieldWarnings = [.. fieldWarnings, .. regimeWarnings];
+        // A half-space's ramp does not stop where the document says the plate is, and an
+        // ion with more energy than the cap turns round behind it - self-consistently, and
+        // in a region the model does not describe.
+        fieldWarnings = [.. fieldWarnings, .. regimeWarnings, .. HalfSpaceDepthWarnings(model)];
 
         var manifest = new RunManifest
         {

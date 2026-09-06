@@ -723,6 +723,41 @@ ensemble member through it, so a study costs `evaluations x (solve + members x f
 Multiplying the model's own total by the evaluation count charges a whole solve per
 member — 4.8x over on the shipped mirror pair at nine members.
 
+### How many flights a figure of merit actually costs
+
+`members` is not the study's declared ion count. It is what **one evaluation of the named
+figure** flies, and the registry says which of four bases each figure uses:
+
+| basis | flights per evaluation | figures |
+| --- | --- | --- |
+| convergence ladder | 3, whatever the ion count says | `flightTime`, `energyDrift` |
+| one flight | 1 | the six oscillation and secular frequencies |
+| ensemble | the declared ion count | resolving power, transmission, the focusing coefficients |
+| cloud | the source's declared cloud | turn-around, emittance, transit time, mean kinetic energy |
+
+Billing every figure the ion count is right for an ensemble and wrong by sevenfold for a
+convergence ladder — one ion down three integrator tolerances. A 2000-draw tolerance sweep
+of the shipped reflectron was costed at **29 s against a measured 1.08 s**, and an agent in
+the acceptance run shrank its study to get past it. An unrecognised figure falls back to the
+ensemble count, which is the conservative direction: the gate exists to stop a surprise
+rather than to permit one.
+
+### Moving the gate
+
+```bash
+einzel estimate studies/big.json --threshold 3600
+```
+
+GRD-8 asks for the threshold to be configurable and it was a constant. Somebody who knows
+their study is worth an hour needs a way to say so; without one, the observed response was
+to make the study smaller.
+
+**A refusal here is a refusal to proceed silently, not a refusal to proceed.** `sweep`,
+`scan`, `boundary` and `optimise` run whatever `estimate` says — only `estimate` itself
+exits 3, and what the gate buys is that the cost was seen first. The message says so in its
+first clause, because "this is above the threshold" on an exit code named cost-gate refusal
+reads as a prohibition and was obeyed as one.
+
 ### The rate is measured on this machine, on this geometry
 
 An absolute time is a statement about a machine (SPEC.md Amendments 27 and 33). The rate

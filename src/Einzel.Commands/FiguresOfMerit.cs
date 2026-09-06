@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Einzel.Analysis;
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
@@ -26,6 +27,7 @@ namespace Einzel.Commands;
 /// amendment on §12.
 /// </para>
 /// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter<AccuracyClass>))]
 public enum AccuracyClass
 {
     /// <summary>Not one of §12's figures: a raw quantity, or a diagnostic.</summary>
@@ -50,6 +52,41 @@ public enum AccuracyClass
     Boundary,
 }
 
+/// <summary>How many flights one evaluation of a figure of merit costs.</summary>
+/// <remarks>
+/// <para>
+/// The cost estimate needs this and had no way to ask for it, so it charged every figure
+/// the study's declared ion count. For <c>flightTime</c> - one ion down a three-rung
+/// convergence ladder - that is seven flights charged for every three flown, and a tolerance
+/// sweep of a reflectron was costed at 29 s against a measured 1.08 s. GRD-8's gate then
+/// reported it above the threshold, and an agent shrank its study to get past a number that
+/// was wrong.
+/// </para>
+/// <para>
+/// It is on the registry rather than computed at the call site because the registry is
+/// where a new figure is added, and a figure added without a basis should not silently
+/// inherit the wrong one.
+/// </para>
+/// </remarks>
+[JsonConverter(typeof(JsonStringEnumConverter<FlightBasis>))]
+public enum FlightBasis
+{
+    /// <summary>
+    /// One ion through <see cref="FlightTimeStudy"/>'s convergence ladder: three flights,
+    /// whatever the study's ion count says.
+    /// </summary>
+    ConvergenceLadder,
+
+    /// <summary>One ion, flown once, and its trajectory analysed.</summary>
+    OneFlight,
+
+    /// <summary>The declared ion count, flown independently through one solved field.</summary>
+    Ensemble,
+
+    /// <summary>The source's declared cloud, or the declared ion count when it declares none.</summary>
+    Cloud,
+}
+
 /// <summary>One figure of merit a study may ask for by name.</summary>
 /// <param name="Name">The name a study file uses.</param>
 /// <param name="Unit">The unit it is reported in.</param>
@@ -60,12 +97,14 @@ public enum AccuracyClass
 /// a result.
 /// </param>
 /// <param name="Class">
+/// <param name="Basis">How many flights one evaluation of it costs.</param>
 /// Which of §12's families it belongs to, or <see cref="AccuracyClass.None"/> where it
 /// is not one of §12's figures at all.
 /// </param>
 public sealed record FigureOfMeritInfo(
     string Name, string Unit, string Description, bool LargerIsBetter,
-    AccuracyClass Class = AccuracyClass.None)
+    AccuracyClass Class = AccuracyClass.None,
+    FlightBasis Basis = FlightBasis.Ensemble)
 {
     /// <summary>
     /// The physical dimension, derived from the unit rather than stated beside it.
@@ -141,33 +180,61 @@ public static class FiguresOfMerit
     /// </remarks>
     private static readonly FigureOfMeritInfo[] Catalogue =
     [
-        new("flightTime", "us", "Arrival time at the detector, from a convergence study over three integrator tolerances.", false, AccuracyClass.Trajectory),
-        new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false, AccuracyClass.None),
-        new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true, AccuracyClass.Trajectory),
-        new("transmission", "1", "Fraction of launched ions that reach the detector.", true, AccuracyClass.Statistical),
-        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false, AccuracyClass.Trajectory),
-        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false, AccuracyClass.Trajectory),
-        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false, AccuracyClass.Trajectory),
-        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false, AccuracyClass.Trajectory),
-        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical),
-        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical),
-        new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical),
-        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical),
-        new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory),
-        new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory),
-        new("focusingC3", "1", "The same for the third-order coefficient c3. With c1 and c2 both cancelled this is what binds, and a mirror pair holding all three near zero is what the literature calls a third-order temporal focus - the regime the Astral's mirrors are published as operating in. The fit is cubic, so this is its highest coefficient and the one most exposed to the fit residual; read it with focusing.fit-residual in view.", false, AccuracyClass.Trajectory),
-        new("energyPlateau", "1", "Peak-to-peak excursion of the flight time across the declared energy spread, as a fraction of the nominal flight time - the quantity a multi-reflection mirror's plateau condition bounds, and what resolving power over that window is one over twice. Read from the raw energy scan with no fit, so a plateau with a dip in the middle is measured as wide as it is. Prefer this to resolvingPower as an optimiser objective for a mirror: the half-maximum width of a parabolic peak is flat near its own optimum and a search collapses onto a point without settling. The uncertainty carried is the largest step between adjacent samples, a bound on what the grid could have missed.", false, AccuracyClass.Trajectory),
-        new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary),
-        new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
-        new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
-        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false, AccuracyClass.Boundary),
-        new("secularFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary),
-        new("secularFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary),
+        new("flightTime", "us", "Arrival time at the detector, from a convergence study over three integrator tolerances.", false, AccuracyClass.Trajectory, FlightBasis.ConvergenceLadder),
+        new("energyDrift", "1", "Largest relative departure of total energy over the flight. The ACC-4 budget is 1e-6; this is a diagnostic, not a design target.", false, AccuracyClass.None, FlightBasis.ConvergenceLadder),
+        new("resolvingPower", "1", "Arrival-time resolving power across the energy spread, model-free at half maximum.", true, AccuracyClass.Trajectory, FlightBasis.Ensemble),
+        new("transmission", "1", "Fraction of launched ions that reach the detector.", true, AccuracyClass.Statistical, FlightBasis.Ensemble),
+        new("arrivalSpread", "ns", "Full width at half maximum of the arrival-time peak, from the source cloud.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
+        new("turnAroundTime", "ns", "The part of the arrival spread imposed before the ion leaves, by the thermal velocity of the source. What limits a pulsed extraction.", false, AccuracyClass.Trajectory, FlightBasis.Cloud),
+        new("emittance", "um", "Geometric emittance of the arriving packet in its wider transverse plane. A micrometre is a millimetre-milliradian, so the number reads in the conventional unit. Smaller passes through a smaller aperture.", false, AccuracyClass.Trajectory, FlightBasis.Cloud),
+        new("normalisedEmittance", "um", "The same area measured against transverse momentum, so it survives acceleration. The figure to compare a source by, since a geometric emittance can be improved by acceleration alone.", false, AccuracyClass.Trajectory, FlightBasis.Cloud),
+        new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical, FlightBasis.Ensemble),
+        new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
+        new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
+        new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
+        new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
+        new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
+        new("focusingC3", "1", "The same for the third-order coefficient c3. With c1 and c2 both cancelled this is what binds, and a mirror pair holding all three near zero is what the literature calls a third-order temporal focus - the regime the Astral's mirrors are published as operating in. The fit is cubic, so this is its highest coefficient and the one most exposed to the fit residual; read it with focusing.fit-residual in view.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
+        new("energyPlateau", "1", "Peak-to-peak excursion of the flight time across the declared energy spread, as a fraction of the nominal flight time - the quantity a multi-reflection mirror's plateau condition bounds, and what resolving power over that window is one over twice. Read from the raw energy scan with no fit, so a plateau with a dip in the middle is measured as wide as it is. Prefer this to resolvingPower as an optimiser objective for a mirror: the half-maximum width of a parabolic peak is flat near its own optimum and a search collapses onto a point without settling. The uncertainty carried is the largest step between adjacent samples, a bound on what the grid could have missed.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
+        new("oscillationFrequencyX", "kHz", "Strongest periodic line in the ion's motion along x, over the whole record. Unlike secularFrequencyX this does not need a drive: it is the frequency of whatever the ion is actually doing, which for an electrostatic orbital trap is the axial oscillation the instrument measures mass by. In a driven field it will find the drive itself, which is why the secular figures exist separately and exclude it.", false, AccuracyClass.Boundary, FlightBasis.OneFlight),
+        new("oscillationFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary, FlightBasis.OneFlight),
+        new("oscillationFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary, FlightBasis.OneFlight),
+        new("secularFrequencyX", "kHz", "Strongest line in the ion's motion along x, below the drive. In a driven field an ion oscillates slowly in the effective well and quickly at the drive; this is the slow one, and it is what a resonance condition is written in. Needs a driven field - a static one has no secular motion to have a frequency.", false, AccuracyClass.Boundary, FlightBasis.OneFlight),
+        new("secularFrequencyY", "kHz", "The same along y.", false, AccuracyClass.Boundary, FlightBasis.OneFlight),
+        new("secularFrequencyZ", "kHz", "The same along z.", false, AccuracyClass.Boundary, FlightBasis.OneFlight),
     ];
 
     /// <summary>Every figure of merit that can be named, ordered by name.</summary>
     public static IReadOnlyList<FigureOfMeritInfo> All =>
         [.. Catalogue.OrderBy(f => f.Name, StringComparer.Ordinal)];
+
+    /// <summary>How many flights one evaluation of a named figure costs.</summary>
+    /// <param name="figureOfMerit">The figure the study names, or null for the default.</param>
+    /// <param name="ions">The study's declared ion count.</param>
+    /// <param name="cloud">The source's declared cloud size, or null when it declares none.</param>
+    /// <returns>The number of trajectories one evaluation flies.</returns>
+    /// <remarks>
+    /// The estimate charged <paramref name="ions"/> for every figure, which is right for an
+    /// ensemble and wrong by sevenfold for a convergence ladder. An unknown name falls back
+    /// to the ensemble count, which is the conservative direction: over-charging a figure
+    /// nobody has classified is better than under-charging it, since the gate exists to stop
+    /// a surprise rather than to permit one.
+    /// </remarks>
+    public static int FlightsPerEvaluation(string? figureOfMerit, int ions, int? cloud)
+    {
+        var info = figureOfMerit is null
+            ? null
+            : Catalogue.FirstOrDefault(
+                f => string.Equals(f.Name, figureOfMerit, StringComparison.Ordinal));
+
+        return (info?.Basis ?? FlightBasis.Ensemble) switch
+        {
+            FlightBasis.ConvergenceLadder => FlightTimeStudy.DefaultRefinements,
+            FlightBasis.OneFlight => 1,
+            FlightBasis.Cloud => cloud ?? ions,
+            _ => ions,
+        };
+    }
 
     /// <summary>Looks one up.</summary>
     /// <param name="name">The name a study file used.</param>

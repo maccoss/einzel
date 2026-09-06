@@ -975,6 +975,78 @@ Same family as an unrecognised property being ignored rather than refused, and t
 consequence: **a document that means something other than what it says, with nothing
 anywhere to say so.**
 
+## A test that drove the system onto a floor was a test of the platform's libm
+
+`CONVERGENCE_ORDER_BELOW_NOMINAL` now gives different advice for a gridded field and
+an analytic one, and the obvious way to test that is to drive a refinement ladder onto
+a floor and read the message. That worked: three tests, both mutations caught, 372 ms.
+**It passed on Windows and failed on Linux.**
+
+Two things conspired. The floor was made by giving the field structure below every step
+the controller takes — a square wave written as `Math.Sign(Math.Sin(x / period))`, and
+**libm's sine is not bit-identical between the Windows CRT and glibc**. And the whole
+construction is a deliberate amplifier of last-bit differences, so a difference in the
+final bit of one field sample becomes a different step sequence becomes a different
+fitted order.
+
+Making the wave exact — `Math.Floor` and an integer parity, both exact under IEEE-754 —
+fixes the sine and does not fix the test, because the step controller itself calls
+`Math.Pow(error, -0.2)`, which carries no cross-platform guarantee either.
+
+**The deeper problem is what was being asserted.** Reaching a floor means the flight
+time has stopped being set by the tolerance, so the fitted order is a fit to noise —
+and the test was asserting which side of a threshold that noise landed on. Measuring
+it makes that plain: sweeping the perturbation amplitude over four decades gave orders
+of −0.84, −0.49, −0.20, −0.10 and +0.08 against a threshold of 0.5, and one of the five
+did not fire at all. Sweeping a resolution cap instead gave 0.435 at one value and no
+firing at the next one down. **Neither was structural. Both were luck**, and the
+Windows pass was the same luck.
+
+What is exactly determined is *which advice a field earns*, which is the branch that
+was wrong. So the advice became a named function, tested directly for both kinds of
+field and for the three ways a resolution can fail to be one. The end-to-end test then
+has one job — that the warning uses the function rather than a second copy of the
+sentence — and it asks only that **at least one of seventeen** configurations reaches a
+floor, asserting the message on every one that does. Three do here; for all seventeen
+to stop would take far more than the last bit of a `Math.Pow`.
+
+The rule: **if a test needs a chaotic system to land on a particular side of a
+threshold, it is measuring the arithmetic of the machine it runs on.** Find the part of
+the behaviour that is exactly determined, test that directly, and let the end-to-end
+test assert something that many configurations satisfy rather than one.
+
+## A round-off guard tested with the numbers that motivated it
+
+A half-space field warns when the ion turns beyond the depth the model declares. The
+gradient is cap over depth, so multiplying it back by the depth returns the cap only to
+within an ulp or two, and a model placed **deliberately** at the boundary would trip on
+which way that rounding fell. The scaffolded reflectron is exactly such a model — its
+cap equals its acceleration potential, and its own description says the ion turns exactly
+at the declared depth. So the guard was written: the overshoot must clear a millionth of
+the depth before it is reported.
+
+The test for it used that model's numbers, 4 kV on 50 mm, and asserted silence. It
+passed. **It also passed with the guard removed**, because 4000 divided by 0.05 and
+multiplied back by 0.05 is exactly 4000. The obvious values were the benign ones.
+
+That is not luck, it is selection. The values a test reaches for are the ones from the
+model in front of you, and the model in front of you is the one that motivated the
+guard — which means it is the case you already know about, and the case you already know
+about is as likely to be benign as not. Half the guard's job is the instances you have
+not looked at.
+
+Searching the space settled it in a few seconds: over caps from 0.1 to 20 kV and depths
+from 5 to 200 mm at the granularity a person actually types, thousands of pairs round
+low, and 1 kV on 7 mm is one. With those the test fails when the guard is removed. The
+search has to use **the engine's own arithmetic** to be worth anything — a first pass
+divided by a thousand where the unit registry multiplies by 1e-3, and every pair it
+found was benign under the code being tested.
+
+The rule: when a guard exists to absorb round-off, the test's constants decide whether
+it exercises the guard at all, and no amount of reading the test tells you which. Run
+the mutation; if it survives, go and find an instance that discriminates rather than
+believing the one you have.
+
 ## The mutation passed four tests and failed two, and the four were the interesting ones
 
 A gas whose density varies from place to place needed the collision rate read at the

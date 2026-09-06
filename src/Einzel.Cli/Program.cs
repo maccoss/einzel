@@ -832,11 +832,30 @@ public static class Program
     {
         if (options.Positional.Count == 0)
         {
-            Console.Error.WriteLine("usage: einzel estimate <model.json|study.json> [--json]");
+            Console.Error.WriteLine(
+                "usage: einzel estimate <model.json|study.json> [--threshold <seconds>] [--json]");
             return (int)ExitCode.ValidationFailure;
         }
 
         var path = options.Positional[0];
+
+        // GRD-8 asks for a *configurable* threshold and it was a constant. Somebody who
+        // knows their study is worth an hour needs a way to say so; without one the
+        // observed response was to make the study smaller.
+        if (options.Value("threshold") is { } declared)
+        {
+            if (!double.TryParse(
+                    declared, System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                || seconds <= 0.0)
+            {
+                Console.Error.WriteLine(
+                    $"'{declared}' is not a positive number of seconds");
+
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            EstimateCommand.Threshold = seconds;
+        }
 
         // Calibration is on unless refused: an estimate is worth having about the
         // machine that will do the work. --no-calibrate keeps PERF-8's cold-start
@@ -894,11 +913,21 @@ public static class Program
 
         if (outcome.AboveThreshold)
         {
-            // GRD-8: above the threshold this is a refusal to proceed silently,
-            // not a warning printed on the way past.
-            Console.Error.WriteLine(string.Create(
-                invariant,
-                $"this is above the {outcome.ThresholdSeconds:F0} s cost threshold"));
+            // GRD-8: above the threshold this is a refusal to proceed *silently*, not a
+            // refusal to proceed. `sweep` and the other study verbs run whatever this says;
+            // what the gate buys is that the cost was seen first.
+            //
+            // Saying only "this is above the threshold" and exiting on a code named
+            // cost-gate refusal reads as a prohibition, and an agent in the acceptance run
+            // obeyed it: it cut a 2000-draw study to 1500 to get past a number that was
+            // itself 26x too high. A gate that makes somebody shrink their work is doing
+            // the opposite of its job, so it now says what it means and how to move it.
+            var limit = string.Create(invariant, $"{outcome.ThresholdSeconds:F0}");
+
+            Console.Error.WriteLine(
+                $"this is above the {limit} s cost threshold, which is why this exits 3. "
+                + "The study itself is not blocked - sweep, scan, boundary and optimise will "
+                + "run it. Pass --threshold <seconds> to say the cost is expected");
 
             return (int)ExitCode.CostGateRefused;
         }
