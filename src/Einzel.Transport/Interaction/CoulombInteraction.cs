@@ -1,3 +1,4 @@
+using System.Numerics;
 using Einzel.Core.Geometry;
 
 namespace Einzel.Transport.Interaction;
@@ -36,6 +37,18 @@ public sealed class CoulombInteraction : ISelfField
     private readonly double _massPerMacroparticleSi;
     private readonly double _softeningSquaredSi;
 
+    // Structure-of-arrays scratch, pooled across calls (CMP-1: the inner loop
+    // allocates nothing). Grown on demand and never shrunk, because a packet only
+    // ever loses members. Not thread-safe, and does not need to be: Accumulate is
+    // called once per integrator stage over the whole packet, not once per member.
+    private double[] _x = [];
+    private double[] _y = [];
+    private double[] _z = [];
+    private double[] _ax = [];
+    private double[] _ay = [];
+    private double[] _az = [];
+    private int[] _map = [];
+
     /// <summary>Builds the interaction for a weighted packet.</summary>
     /// <param name="population">Ions in the physical packet.</param>
     /// <param name="macroparticles">Trajectories actually computed.</param>
@@ -65,6 +78,31 @@ public sealed class CoulombInteraction : ISelfField
 
         SofteningLengthSi = softeningLengthSi;
     }
+
+    /// <summary>Which implementation of the pair sum to run.</summary>
+    /// <remarks>
+    /// CMP-1 requires that the scalar reference implementation is never deleted or
+    /// allowed to rot, and a reference nothing can select is one that rots quietly.
+    /// This is how a test reaches it: the two paths are compared on the same
+    /// configuration rather than the scalar one being kept and never run.
+    /// </remarks>
+    public enum PairKernel
+    {
+        /// <summary>Vectorised where the hardware has vectors, scalar where it does not.</summary>
+        Automatic,
+
+        /// <summary>The scalar reference implementation, always.</summary>
+        Scalar,
+
+        /// <summary>The vectorised implementation, always. Falls back to scalar on hardware without vectors.</summary>
+        Vector,
+    }
+
+    /// <summary>
+    /// Which pair-sum implementation to run. <see cref="PairKernel.Automatic"/> by
+    /// default, which is the vectorised one on any machine this is likely to run on.
+    /// </summary>
+    public PairKernel Kernel { get; init; } = PairKernel.Automatic;
 
     /// <inheritdoc/>
     public double Weight { get; }
@@ -196,6 +234,31 @@ public sealed class CoulombInteraction : ISelfField
             * _chargePerMacroparticleSi * _chargePerMacroparticleSi
             / _massPerMacroparticleSi;
 
+        var vectorised = Kernel switch
+        {
+            PairKernel.Scalar => false,
+            PairKernel.Vector => Vector.IsHardwareAccelerated,
+            _ => Vector.IsHardwareAccelerated && positions.Length >= 2 * Vector<double>.Count,
+        };
+
+        if (vectorised)
+        {
+            AccumulateVector(positions, active, accelerations, strength);
+            return;
+        }
+
+        AccumulateScalar(positions, active, accelerations, strength);
+    }
+
+    /// <summary>The scalar reference implementation of the pair sum (CMP-1).</summary>
+    /// <remarks>
+    /// Kept as written, and kept reachable through <see cref="Kernel"/>: it is what
+    /// the vectorised path is checked against, and a reference implementation that
+    /// nothing runs is a reference nobody can trust.
+    /// </remarks>
+    private void AccumulateScalar(
+        ReadOnlySpan<Vec3> positions, ReadOnlySpan<bool> active, Span<Vec3> accelerations, double strength)
+    {
         for (var i = 0; i < positions.Length; i++)
         {
             if (!active[i])
@@ -228,6 +291,140 @@ public sealed class CoulombInteraction : ISelfField
                 accelerations[i] += push;
                 accelerations[j] -= push;
             }
+        }
+    }
+
+    /// <summary>The same sum, over vector lanes of j.</summary>
+    /// <remarks>
+    /// <para>
+    /// Three things make this worth the second implementation. The active members are
+    /// <b>compacted first</b>, so the inner loop has no branch in it and the lanes are
+    /// always full. The layout is <b>structure-of-arrays</b> in pooled buffers, which
+    /// is what CMP-1 asks for and what lets a lane load be a contiguous read. And the
+    /// symmetric half of the sum falls out for free: with j across the lanes, the
+    /// reaction on each j is a lane of a vector accumulator while the action on i is
+    /// one horizontal sum at the end of the row.
+    /// </para>
+    /// <para>
+    /// It does <b>not</b> agree with the scalar path to the last bit and cannot: the
+    /// additions happen in a different order, so the two differ by rounding. What is
+    /// asserted is agreement to a relative tolerance a few multiples of the machine
+    /// epsilon wide, over a packet dense enough for the sum to matter.
+    /// </para>
+    /// </remarks>
+    private void AccumulateVector(
+        ReadOnlySpan<Vec3> positions, ReadOnlySpan<bool> active, Span<Vec3> accelerations, double strength)
+    {
+        var n = positions.Length;
+
+        if (_x.Length < n)
+        {
+            _x = new double[n];
+            _y = new double[n];
+            _z = new double[n];
+            _ax = new double[n];
+            _ay = new double[n];
+            _az = new double[n];
+            _map = new int[n];
+        }
+
+        // Compact the active members. The branch leaves the inner loop entirely, and
+        // an inactive member contributes nothing to anybody by definition.
+        var m = 0;
+        for (var k = 0; k < n; k++)
+        {
+            if (!active[k])
+            {
+                continue;
+            }
+
+            _map[m] = k;
+            _x[m] = positions[k].X;
+            _y[m] = positions[k].Y;
+            _z[m] = positions[k].Z;
+            _ax[m] = 0.0;
+            _ay[m] = 0.0;
+            _az[m] = 0.0;
+            m++;
+        }
+
+        var width = Vector<double>.Count;
+        var softening = new Vector<double>(_softeningSquaredSi);
+        var pull = new Vector<double>(strength);
+
+        for (var i = 0; i < m - 1; i++)
+        {
+            var xi = new Vector<double>(_x[i]);
+            var yi = new Vector<double>(_y[i]);
+            var zi = new Vector<double>(_z[i]);
+
+            var sumX = Vector<double>.Zero;
+            var sumY = Vector<double>.Zero;
+            var sumZ = Vector<double>.Zero;
+
+            var j = i + 1;
+
+            for (; j + width <= m; j += width)
+            {
+                var dx = xi - new Vector<double>(_x.AsSpan(j, width));
+                var dy = yi - new Vector<double>(_y.AsSpan(j, width));
+                var dz = zi - new Vector<double>(_z.AsSpan(j, width));
+
+                var squared = (dx * dx) + (dy * dy) + (dz * dz) + softening;
+                var scale = pull / (squared * Vector.SquareRoot(squared));
+
+                var pushX = dx * scale;
+                var pushY = dy * scale;
+                var pushZ = dz * scale;
+
+                sumX += pushX;
+                sumY += pushY;
+                sumZ += pushZ;
+
+                // The reaction, lane by lane: each j in this block is a distinct
+                // member, so this is a plain subtract rather than a scatter.
+                (new Vector<double>(_ax.AsSpan(j, width)) - pushX).CopyTo(_ax.AsSpan(j, width));
+                (new Vector<double>(_ay.AsSpan(j, width)) - pushY).CopyTo(_ay.AsSpan(j, width));
+                (new Vector<double>(_az.AsSpan(j, width)) - pushZ).CopyTo(_az.AsSpan(j, width));
+            }
+
+            var rowX = Vector.Sum(sumX);
+            var rowY = Vector.Sum(sumY);
+            var rowZ = Vector.Sum(sumZ);
+
+            // The tail of the row, where fewer than a full lane's worth remain.
+            for (; j < m; j++)
+            {
+                var dx = _x[i] - _x[j];
+                var dy = _y[i] - _y[j];
+                var dz = _z[i] - _z[j];
+
+                var squared = (dx * dx) + (dy * dy) + (dz * dz) + _softeningSquaredSi;
+                var scale = strength / (squared * Math.Sqrt(squared));
+
+                var pushX = dx * scale;
+                var pushY = dy * scale;
+                var pushZ = dz * scale;
+
+                rowX += pushX;
+                rowY += pushY;
+                rowZ += pushZ;
+
+                _ax[j] -= pushX;
+                _ay[j] -= pushY;
+                _az[j] -= pushZ;
+            }
+
+            _ax[i] += rowX;
+            _ay[i] += rowY;
+            _az[i] += rowZ;
+        }
+
+        // Scatter back, adding rather than assigning: the caller's accumulator may
+        // already hold a contribution, exactly as the scalar path leaves it.
+        for (var k = 0; k < m; k++)
+        {
+            accelerations[_map[k]] += new Vec3(_ax[k], _ay[k], _az[k]);
         }
     }
 

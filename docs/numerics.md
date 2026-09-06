@@ -1308,6 +1308,93 @@ fluctuations are those of the smaller sample. Reported on every such run
 (`spacecharge.macroparticle-collisions`), because a cooled cloud is exactly what such a run
 is for and its size is set by a balance the fluctuations enter.
 
+## Making a pushed packet affordable, and the measurement that redirected the work
+
+The direct pair sum is O(N^2) and looks like the obvious thing to make faster. Measuring
+first said otherwise, and the measurement is the useful part. One integrator stage, 240
+macroparticles, on the two linear-ion-trap templates:
+
+| | field evaluation | pair sum | pair sum's share |
+| --- | --- | --- | --- |
+| cross-section (2-D solve) | 0.119 ms | 0.288 ms | **71 %** |
+| volume (3-D solve) | 0.792 ms | 0.298 ms | **27 %** |
+| volume, 1000 macroparticles | 3.413 ms | 3.649 ms | 52 % |
+
+**On the volume geometry the pair sum is not the bottleneck at the sizes actually used**:
+a tricubic gather over a solved volume costs about 3 microseconds and there are as many of
+them as there are members. Vectorising the sum was still worth doing, and it is worth
+about four per cent there.
+
+### The pair sum, over vector lanes
+
+Structure-of-arrays in pooled buffers, active members compacted first so the inner loop
+has no branch, and j across the lanes so the symmetric half of the sum falls out: the
+reaction on each j is a lane of an accumulator, and the action on i is one horizontal sum
+at the end of the row.
+
+| macroparticles | scalar | vectorised | |
+| --- | --- | --- | --- |
+| 60 | 140 Mpair/s | 356 Mpair/s | 2.55x |
+| 240 | 140 | 434 | **3.11x** |
+| 1000 | 137 | 455 | 3.33x |
+| 2000 | 141 | 469 | 3.33x |
+
+Four doubles to a vector on this machine, so 3.33x of a possible 4x. The scalar rate is
+flat at 140 Mpair/s across a thirty-fold range, which is what says the measurement is of
+the arithmetic and not of the cache.
+
+The scalar implementation is kept and **selectable** (`CoulombInteraction.Kernel`), which
+is what CMP-1's "never deleted or allowed to rot" needs to mean in practice: a reference
+nothing can run is a reference nobody can check. The two are compared over every size that
+exercises a different part of the loop, with members switched off, with a pre-loaded
+accumulator, and against Newton's third law. They agree to **3e-15 of the acceleration
+scale** and cannot agree better: the additions happen in a different order.
+
+### The applied-field loop, across cores
+
+Every member's field evaluation is independent - it reads a field that holds no mutable
+state and writes only its own slot - so the loop may be spread across cores, and the answer
+is **bit-identical however many run it**, because nothing is summed across members. That is
+asserted, not argued: 96 members over 48 steps on 16 cores, every final position, velocity
+and flight time equal to the last bit.
+
+The mutual force is deliberately **not** parallelised. It is one call over the whole packet
+that already vectorises internally, and splitting a symmetric sum across threads would make
+the accumulation order depend on the thread count.
+
+**Whether to parallelise is measured, not assumed.** What decides it is members times
+cost-per-sample, and only one of those is known in advance, so the first stage is timed and
+the decision made from it. Forcing it on is the wrong answer for a cheap field: on the
+cross-section, parallel alone was no better than vectorising alone, because the field loop
+there is a tenth of a millisecond and starting a parallel loop costs some tens of
+microseconds. End to end, a 240-member packet pushed through a solved field for 2
+microseconds:
+
+| | scalar, serial | vectorised | and across cores | automatic |
+| --- | --- | --- | --- | --- |
+| cross-section | 226 ms | 113 ms (2.01x) | 117 ms | **113 ms (2.01x)** |
+| volume | 525 ms | 506 ms (1.04x) | 331 ms | **319 ms (1.64x)** |
+
+The automatic choice matches or beats the better of the two forced ones in both, which is
+the property worth having: a calibration that picked wrong would be worse than no
+calibration at all.
+
+### The inner loop allocates nothing, and a lambda that was never called
+
+CMP-1 asks that the inner loop allocate nothing, so a collection cannot interrupt a run.
+This one allocated **504 bytes on every step** - twenty-two arrays per step, from six stage
+derivative buffers, a staged state, an error vector, a position copy per stage, and the
+weight list each Runge-Kutta stage was called with. All are now built once per flight; the
+stage weight lists are *constant* rather than merely poolable, since which buffer each
+stage reads is fixed by the tableau.
+
+That left exactly 504 bytes a step still there, **invariant with the member count**, which
+is what identified it: 7 stages times 72 bytes is a display class with seven captured
+variables, allocated by the lambda in the parallel branch - a branch the serial path never
+takes. The compiler hoists captures at method entry, not at the branch. Moving the lambda
+into its own method took it to **zero bytes per step**, measured as the cheapest of five
+runs at 22 steps against 1002.
+
 ## The quadro-logarithmic field
 
 `U(r, z) = (k/2)(z^2 - r^2/2) + (k/2) Rm^2 ln(r/Rm)` — a harmonic axial well superposed on

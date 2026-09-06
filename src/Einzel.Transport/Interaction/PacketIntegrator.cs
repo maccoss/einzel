@@ -89,6 +89,19 @@ public sealed record PacketResult(
 /// </remarks>
 public static class PacketIntegrator
 {
+    /// <summary>
+    /// Below this many macroparticles the applied-field loop runs serially whatever it
+    /// costs, because starting a parallel loop over a handful of items cannot pay.
+    /// </summary>
+    private const int MinimumParallelMembers = 16;
+
+    /// <summary>
+    /// A first stage slower than this is worth spreading across cores. Starting a parallel
+    /// loop costs some tens of microseconds, so the threshold is several times that: a
+    /// solved volume is far above it and an analytic formula far below.
+    /// </summary>
+    private const double ParallelStageSeconds = 150e-6;
+
     /// <summary>Flies a packet, with the ions pushing on each other.</summary>
     /// <param name="launch">Starting state of each macroparticle.</param>
     /// <param name="species">The ion's mass and charge.</param>
@@ -193,8 +206,26 @@ public static class PacketIntegrator
         var scratch = new Vec3[count];
         var trial = new PhaseState[count];
         var derivative = new PhaseDerivative[count];
+        var work = new Workspace(count, derivative);
 
-        Derivatives(state, active, field, chargeToMass, interaction, time, scratch, derivative, ref imbalance);
+        // Time the first stage and decide from it whether to use the machine. A tricubic
+        // gather over a solved volume costs a thousand times an analytic formula, so the
+        // member count alone cannot say whether spreading the loop across cores pays for
+        // the twenty microseconds or so it costs to start one.
+        var began = System.Diagnostics.Stopwatch.GetTimestamp();
+        Derivatives(
+            state, active, field, chargeToMass, interaction, time, scratch, work.Positions,
+            derivative, parallel: false, ref imbalance);
+        var stageSeconds = System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalSeconds;
+
+        work.Parallel = settings.Members switch
+        {
+            PacketParallelism.Serial => false,
+            PacketParallelism.Parallel => Environment.ProcessorCount > 1,
+            _ => count >= MinimumParallelMembers
+                && Environment.ProcessorCount > 1
+                && stageSeconds > ParallelStageSeconds,
+        };
 
         var step = Math.Min(
             Math.Min(InitialStep(settings, derivative, state), resolutionCap), settings.MaximumStep);
@@ -216,7 +247,8 @@ public static class PacketIntegrator
                 {
                     collided += ApplyDueCollisions(collisions, state, active, time, settings.MinimumStep);
                     Derivatives(
-                        state, active, field, chargeToMass, interaction, time, scratch, derivative, ref imbalance);
+                        state, active, field, chargeToMass, interaction, time, scratch, work.Positions,
+                        derivative, work.Parallel, ref imbalance);
                     continue;
                 }
 
@@ -225,7 +257,7 @@ public static class PacketIntegrator
 
             var error = Advance(
                 state, active, derivative, step, field, chargeToMass, interaction, time,
-                scratch, trial, out var trialDerivative, ref imbalance);
+                scratch, trial, work, out var trialDerivative, ref imbalance);
 
             var norm = ErrorNorm(error, trial, active, settings);
 
@@ -292,7 +324,8 @@ public static class PacketIntegrator
             // Every macroparticle that left took its charge with it, so the
             // interaction has changed and the derivatives are stale.
             Derivatives(
-                state, active, field, chargeToMass, interaction, time, scratch, derivative, ref imbalance);
+                state, active, field, chargeToMass, interaction, time, scratch, work.Positions,
+                derivative, work.Parallel, ref imbalance);
         }
 
         var members = new PacketMember[count];
@@ -376,6 +409,88 @@ public static class PacketIntegrator
         return scattered;
     }
 
+    /// <summary>
+    /// Every buffer a step needs, allocated once for a flight.
+    /// </summary>
+    /// <remarks>
+    /// CMP-1 asks that the inner loop allocate nothing, so that a garbage collection
+    /// cannot interrupt a run. This one allocated twenty-two arrays per step - six stage
+    /// derivatives, a staged state, an error vector, a position copy per stage, and the
+    /// weight lists each stage was called with - which for a packet of a few hundred over
+    /// a few hundred thousand steps is a great deal of garbage for no reason.
+    /// <para>
+    /// The stage weight lists are constant, not merely poolable: which derivative buffer
+    /// each Runge-Kutta stage reads is fixed by the tableau, and the buffers themselves
+    /// are stable across steps, so the lists are built once here and never rebuilt.
+    /// </para>
+    /// </remarks>
+    private sealed class Workspace
+    {
+        public Workspace(int count, PhaseDerivative[] k1)
+        {
+            K2 = new PhaseDerivative[count];
+            K3 = new PhaseDerivative[count];
+            K4 = new PhaseDerivative[count];
+            K5 = new PhaseDerivative[count];
+            K6 = new PhaseDerivative[count];
+            K7 = new PhaseDerivative[count];
+            Staged = new PhaseState[count];
+            Error = new Vec3[2 * count];
+            Positions = new Vec3[count];
+
+            Terms2 = [(DormandPrince54.A21, k1)];
+            Terms3 = [(DormandPrince54.A31, k1), (DormandPrince54.A32, K2)];
+            Terms4 = [(DormandPrince54.A41, k1), (DormandPrince54.A42, K2), (DormandPrince54.A43, K3)];
+            Terms5 = [(DormandPrince54.A51, k1), (DormandPrince54.A52, K2), (DormandPrince54.A53, K3), (DormandPrince54.A54, K4)];
+            Terms6 = [(DormandPrince54.A61, k1), (DormandPrince54.A62, K2), (DormandPrince54.A63, K3), (DormandPrince54.A64, K4), (DormandPrince54.A65, K5)];
+            TermsResult = [(DormandPrince54.B1, k1), (DormandPrince54.B3, K3), (DormandPrince54.B4, K4), (DormandPrince54.B5, K5), (DormandPrince54.B6, K6)];
+            TermsError =
+            [
+                (DormandPrince54.E1, k1), (DormandPrince54.E3, K3), (DormandPrince54.E4, K4),
+                (DormandPrince54.E5, K5), (DormandPrince54.E6, K6), (DormandPrince54.E7, K7),
+            ];
+        }
+
+        public PhaseDerivative[] K2 { get; }
+
+        public PhaseDerivative[] K3 { get; }
+
+        public PhaseDerivative[] K4 { get; }
+
+        public PhaseDerivative[] K5 { get; }
+
+        public PhaseDerivative[] K6 { get; }
+
+        public PhaseDerivative[] K7 { get; }
+
+        public PhaseState[] Staged { get; }
+
+        public Vec3[] Error { get; }
+
+        public Vec3[] Positions { get; }
+
+        /// <summary>
+        /// Whether the applied-field evaluations are spread across cores. Set once, from a
+        /// measurement of the first stage rather than from the member count: what decides
+        /// it is members times cost-per-sample, and only one of those is known in advance.
+        /// </summary>
+        public bool Parallel { get; set; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] Terms2 { get; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] Terms3 { get; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] Terms4 { get; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] Terms5 { get; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] Terms6 { get; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] TermsResult { get; }
+
+        public (double Weight, PhaseDerivative[] Derivative)[] TermsError { get; }
+    }
+
     /// <summary>One Dormand-Prince step over the whole packet.</summary>
     /// <remarks>
     /// The tableau is the same one <see cref="TrajectoryIntegrator"/> uses, applied
@@ -395,54 +510,37 @@ public static class PacketIntegrator
         double time,
         Vec3[] scratch,
         PhaseState[] result,
+        Workspace work,
         out PhaseDerivative[] resultDerivative,
         ref double imbalance)
     {
         var count = state.Length;
+        var staged = work.Staged;
+        var parallel = work.Parallel;
 
-        var k2 = new PhaseDerivative[count];
-        var k3 = new PhaseDerivative[count];
-        var k4 = new PhaseDerivative[count];
-        var k5 = new PhaseDerivative[count];
-        var k6 = new PhaseDerivative[count];
-        var k7 = new PhaseDerivative[count];
+        Stage(state, active, staged, step, work.Terms2);
+        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C2 * step), scratch, work.Positions, work.K2, parallel, ref imbalance);
 
-        var staged = new PhaseState[count];
+        Stage(state, active, staged, step, work.Terms3);
+        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C3 * step), scratch, work.Positions, work.K3, parallel, ref imbalance);
 
-        Stage(state, active, staged, step, [(DormandPrince54.A21, k1)]);
-        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C2 * step), scratch, k2, ref imbalance);
+        Stage(state, active, staged, step, work.Terms4);
+        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C4 * step), scratch, work.Positions, work.K4, parallel, ref imbalance);
 
-        Stage(state, active, staged, step, [(DormandPrince54.A31, k1), (DormandPrince54.A32, k2)]);
-        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C3 * step), scratch, k3, ref imbalance);
+        Stage(state, active, staged, step, work.Terms5);
+        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C5 * step), scratch, work.Positions, work.K5, parallel, ref imbalance);
 
-        Stage(state, active, staged, step, [(DormandPrince54.A41, k1), (DormandPrince54.A42, k2), (DormandPrince54.A43, k3)]);
-        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C4 * step), scratch, k4, ref imbalance);
-
-        Stage(
-            state, active, staged, step,
-            [(DormandPrince54.A51, k1), (DormandPrince54.A52, k2), (DormandPrince54.A53, k3), (DormandPrince54.A54, k4)]);
-        Derivatives(staged, active, field, chargeToMass, interaction, time + (DormandPrince54.C5 * step), scratch, k5, ref imbalance);
-
-        Stage(
-            state, active, staged, step,
-            [(DormandPrince54.A61, k1), (DormandPrince54.A62, k2), (DormandPrince54.A63, k3), (DormandPrince54.A64, k4), (DormandPrince54.A65, k5)]);
+        Stage(state, active, staged, step, work.Terms6);
         Derivatives(
-            staged, active, field, chargeToMass, interaction, time + step, scratch, k6, ref imbalance);
+            staged, active, field, chargeToMass, interaction, time + step, scratch, work.Positions, work.K6, parallel, ref imbalance);
 
-        Stage(
-            state, active, result, step,
-            [(DormandPrince54.B1, k1), (DormandPrince54.B3, k3), (DormandPrince54.B4, k4), (DormandPrince54.B5, k5), (DormandPrince54.B6, k6)]);
+        Stage(state, active, result, step, work.TermsResult);
         Derivatives(
-            result, active, field, chargeToMass, interaction, time + step, scratch, k7, ref imbalance);
+            result, active, field, chargeToMass, interaction, time + step, scratch, work.Positions, work.K7, parallel, ref imbalance);
 
-        Stage(
-            state, active, staged, step,
-            [
-                (DormandPrince54.E1, k1), (DormandPrince54.E3, k3), (DormandPrince54.E4, k4),
-                (DormandPrince54.E5, k5), (DormandPrince54.E6, k6), (DormandPrince54.E7, k7),
-            ]);
+        Stage(state, active, staged, step, work.TermsError);
 
-        var error = new Vec3[2 * count];
+        var error = work.Error;
 
         for (var k = 0; k < count; k++)
         {
@@ -450,7 +548,7 @@ public static class PacketIntegrator
             error[count + k] = result[k].Velocity - staged[k].Velocity;
         }
 
-        resultDerivative = k7;
+        resultDerivative = work.K7;
 
         return error;
     }
@@ -483,6 +581,21 @@ public static class PacketIntegrator
         }
     }
 
+    /// <summary>Velocity and acceleration for every member: applied field plus mutual force.</summary>
+    /// <remarks>
+    /// <para>
+    /// The applied-field loop is where a packet run on a solved geometry spends its time,
+    /// and every member's evaluation is independent: it reads a field that holds no
+    /// mutable state and writes only its own slot. So it may be spread across cores, and
+    /// the result is <b>bit-identical however many run it</b> - nothing is summed across
+    /// members, so no rounding order can change. That is asserted rather than assumed.
+    /// </para>
+    /// <para>
+    /// The mutual force is not parallelised here. It is a single call over the whole
+    /// packet that already vectorises internally, and splitting a symmetric sum across
+    /// threads would make the accumulation order depend on the thread count.
+    /// </para>
+    /// </remarks>
     private static void Derivatives(
         PhaseState[] state,
         bool[] active,
@@ -491,7 +604,9 @@ public static class PacketIntegrator
         ISelfField? interaction,
         double time,
         Vec3[] scratch,
+        Vec3[] positions,
         PhaseDerivative[] into,
+        bool parallel,
         ref double imbalance)
     {
         for (var k = 0; k < state.Length; k++)
@@ -501,8 +616,6 @@ public static class PacketIntegrator
 
         if (interaction is not null)
         {
-            var positions = new Vec3[state.Length];
-
             for (var k = 0; k < state.Length; k++)
             {
                 positions[k] = state[k].Position;
@@ -529,6 +642,21 @@ public static class PacketIntegrator
             }
         }
 
+        if (parallel)
+        {
+            AppliedInParallel(state, active, field, chargeToMass, time, scratch, into);
+            return;
+        }
+
+        // The serial loop is written out rather than shared with the parallel branch, and
+        // this method contains no lambda at all. Both are deliberate. A lambda anywhere in
+        // a method allocates its display class when the method is *entered*, not when the
+        // branch holding it is taken: the compiler hoists every captured variable up front.
+        // With seven captures that is 72 bytes on every one of the seven stages of every
+        // step - 504 bytes a step, measured, and invariant with the member count, which is
+        // what gave it away - in the loop CMP-1 asks to allocate nothing. So the lambda
+        // lives in its own method, where it costs one closure per call on a path that only
+        // runs when the call is worth hundreds of microseconds.
         for (var k = 0; k < state.Length; k++)
         {
             if (!active[k])
@@ -542,6 +670,32 @@ public static class PacketIntegrator
             into[k] = new PhaseDerivative(applied.Velocity, applied.Acceleration + scratch[k]);
         }
     }
+
+    /// <summary>The applied-field loop, spread across cores.</summary>
+    /// <remarks>
+    /// Its own method so that <see cref="Derivatives"/> holds no lambda and so allocates
+    /// no closure on the serial path. See the comment there.
+    /// </remarks>
+    private static void AppliedInParallel(
+        PhaseState[] state,
+        bool[] active,
+        IElectrostaticField field,
+        double chargeToMass,
+        double time,
+        Vec3[] scratch,
+        PhaseDerivative[] into) =>
+        System.Threading.Tasks.Parallel.For(0, state.Length, k =>
+        {
+            if (!active[k])
+            {
+                into[k] = default;
+                return;
+            }
+
+            var applied = DormandPrince54.Derivative(in state[k], field, chargeToMass, time);
+
+            into[k] = new PhaseDerivative(applied.Velocity, applied.Acceleration + scratch[k]);
+        });
 
     private static double ErrorNorm(
         Vec3[] error, PhaseState[] trial, bool[] active, IntegrationSettings settings)
