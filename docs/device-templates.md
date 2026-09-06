@@ -11,7 +11,7 @@ physics or the abstraction is wrong, and almost always the second.
 
 | Template | What it is |
 | --- | --- |
-| `planar-mirror-pair` | Two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair |
+| `planar-mirror-pair` | **A compact Astral-type analyser**: two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair. The same class of instrument as `astral-3d` below: an asymmetric-track multi-reflection time-of-flight analyser, at a compact scale |
 | `quadrupole` | Four round rods in cross-section, alternating potential |
 | `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
 | `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
@@ -28,18 +28,21 @@ physics or the abstraction is wrong, and almost always the second.
 | `linear-ion-trap` | The radial-ejection linear ion trap of Schwartz, Senko and Syka (2002) in cross-section: hyperbolic rods as polygons, a 0.25 mm ejection slot, the x pair stretched 0.75 mm, main RF and a dipole excitation on two generators, helium |
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
+| `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
+| `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 46.85 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
 which is which. Adding a device is a new file.
 
 ```csharp
-DeviceTemplates.Names();
-// ["einzel-lens", "ion-funnel", "multipole-guide", "paul-trap",
-//  "planar-mirror-pair", "quadrupole", "quadrupole-rf", "rectilinear-trap",
-//  "segmented-quadrupole", "travelling-wave-guide"]
+DeviceTemplates.Names();   // every template above, in name order
 DeviceTemplates.Read("quadrupole");
 ```
+
+Not enumerated here on purpose: the list is discovered from the resources and a
+copy of it in prose goes stale the first time somebody adds a file. `einzel
+templates` prints the current one with each description.
 
 Templates are discovered by an embedded-resource glob, so a new JSON file under
 `Templates/` registers itself - it appears in `einzel templates`, in
@@ -503,9 +506,34 @@ which is the property that makes a quadrupole a mass filter once the potential i
 made to oscillate, and the premise the Mathieu equation rests on. The 0.926 ratio
 to the ideal hyperbolic field is the expected round-rod approximation.
 
-## The mirror pair
+## The mirror pair, which is a compact Astral analyser
 
-Two features worth noticing.
+`planar-mirror-pair` is not a generic pair of mirrors. It is **an asymmetric-track
+multi-reflection time-of-flight analyser of the same family as the published Astral**
+(`astral-3d` below), at a compact scale: ions bounce between two planar printed-circuit
+mirrors while drifting slowly along them, so the flight path is folded many times into a
+short instrument. What differs between this template and `astral-3d` is scale and
+provenance, not principle - this one is a design being explored, and that one is a
+published instrument being reproduced.
+
+The template models one plane of it. Stripe electrodes run along the drift direction, so
+the potential does not depend on that direction and a cross-section is exact away from the
+ends; the drift itself is what `astral-3d` adds. `firstStageFraction` moves between a
+single-stage ramp and the Mamyrin two-stage arrangement, and `capToCap` tunes the
+first-order energy focus:
+
+| | separation | c1 | c2 | R at ±3% |
+| --- | --- | --- | --- | --- |
+| Single-stage | 290.4 mm | 4.6e-8 | 0.130 | 8,347 |
+| Two-stage, 35% first stage | 767.0 mm | 4.8e-7 | −0.0028 | 316,681 |
+
+Those are energy-aberration limits alone - no spatial or angular spread, no turn-around
+time, no detector response - so the two-stage figure says energy spread stops being the
+limiting aberration, not that the instrument reaches 320k. And **the four-penetration-depth
+rule is wrong by 10 mm here**: first-order focus is at 290.4 mm rather than 300.0, because
+the fringe field moves it. That gap is what solving the geometry buys over assuming it.
+
+Two features of the template worth noticing.
 
 **The second mirror is the first, reflected.** `reflectAboutX` declares it in the
 document, so both halves are the same solve by construction and a difference
@@ -525,17 +553,56 @@ at a stage boundary is smoothed over roughly the board gap by the time it reache
 the mid-plane, because the boundary-value problem damps every Fourier component of
 the profile by cosh of its wavenumber times the half-gap.
 
+## The published Astral analyser
+
+`astral-3d` and `astral-mirror` reproduce the instrument the mirror pair above is a compact
+relative of, **entirely from published information**. They are a literature target rather
+than a design: what the papers give is reproduced, what they do not give is reconstructed
+and labelled as reconstruction.
+
+`astral-mirror` is one mirror at its published potentials - five electrodes, one earthed,
+one strongly accelerating to give spatial focusing, three reflecting, each stated as a
+coefficient of the nominal ion energy. **What no paper states is the electrode lengths**,
+and those are what decide where the turning point falls, so they are this model's own fit
+to the published time-of-flight curve. It recovers R ≈ 180,000 from the mirror alone, and
+the residual against the published curve turned out to be the board gap and almost nothing
+else.
+
+`astral-3d` is the whole analyser: two elongated mirrors across a 46.85 mm board gap, ions
+oscillating between them while drifting along their length. Two things about it are worth
+knowing before reading its numbers.
+
+**The mirrors converge, and that convergence is the mechanism rather than a tolerance.**
+Parallel boards give a drift of 1374.34 m/s in every 40 mm segment, to the last digit,
+because a translationally invariant analyser has no axial force. With 800 µm of convergence
+the drift decelerates monotonically to 1174 m/s, and pushed further it reverses - which is
+what folds the track back on itself. The reversal threshold goes as a **fourth power of the
+injection angle**: 11.447 mm at 2°, 0.4638 mm at 1°, under 0.05 mm at 0.5°.
+
+**Each mirror is a cross-section whose extrusion axis is tilted by half the convergence.**
+That makes the field anisotropy exactly tan(α) rather than a quantity no affordable volume
+mesh could resolve - the convergence is a couple of hundred microns over a third of a metre,
+which is 2.9e-4 of anisotropy against roughly 0.4% of second-order field error in a direct
+solve. `docs/astral-handoff.md` carries the reconstruction in full, including what is
+published, what is guessed, and what has been withdrawn.
+
+**Not reconciled with the published instrument**, and the gap points the right way: 200 µm
+of convergence at 2° gives 4 oscillations here against the published 24. The remainder lives
+in the guessed electrode depths and the assumed board gap, which is the inverse problem the
+model exists to pose.
+
 ## What is missing
 
-The primitives are `rectangle`, `disc`, and `edgeProfile` in two dimensions with
-translational invariance. That covers planar mirrors, plate stacks, apertures, and
-multipole cross-sections.
+The two-dimensional primitives are `rectangle`, `disc`, `polygon` and `edgeProfile`; three
+dimensions add `box`, `sphere`, `cylinder` and `prism`. Symmetry covers translational
+invariance, an axis of rotation, mirror planes and discrete periodicity, so an einzel lens,
+a funnel and a stacked-ring guide are each one file.
 
-It does not yet cover **axisymmetric** geometry, which is what an einzel lens or
-an ion funnel needs, or **discrete periodicity**, which is what a stacked-ring
-guide needs to be expressed compactly rather than as hundreds of rectangles.
-Both are symmetry declarations the solver would exploit, and both are the natural
-next additions.
+What is not covered: **a curved surface in a cross-section** other than a circle, so a
+hyperbolic rod is a polygon of many vertices rather than a curve; **mesh and grid
+electrodes**, which real instruments use and which cannot be modelled as their wires in a
+cross-section, since the wires run along the invariant axis; and **geometry that moves**, a
+stage being allowed to change what an electrode holds but not where it is.
 
 ---
 
