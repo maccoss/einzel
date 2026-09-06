@@ -985,7 +985,7 @@ public partial class MainWindow : Window
         ProjectStatus.Text = _project.Status;
     }
 
-    /// <summary>Reads the declared timeline.</summary>
+    /// <summary>Reads the project's extensions, and what the sandbox does not enforce.</summary>
     private void OnExtensions(object sender, RoutedEventArgs e)
     {
         if (_extensions is null)
@@ -999,6 +999,7 @@ public partial class MainWindow : Window
         ExtensionInterpreter.Text = _extensions.Interpreter;
     }
 
+    /// <summary>Reads the declared timeline.</summary>
     private void OnSequence(object sender, RoutedEventArgs e)
     {
         if (_sequence is null)
