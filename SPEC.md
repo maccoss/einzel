@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,199 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,203 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -1295,7 +1295,7 @@ requirement rather than two because of AGT-2, and Amendment 25 strengthens it: e
 shell action should be *expressible* as a CLI invocation and journalled as one, so a
 human's session hands over to an agent and back in the same vocabulary.
 
-**Six of the eleven views exist**, and the window opens on a model: `einzel-shell
+**Seven of the eleven views exist**, and the window opens on a model: `einzel-shell
 models/reflectron.json` gives a parameter tree, a trajectory bundle coloured by energy over
 the drawn instrument and field, the journal, results grouped by §12's accuracy class, the
 regime along the path, and the declared timeline. `ShellSession` holds one model, the shared journal, and every
@@ -1554,7 +1554,7 @@ in a table.
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
 | `LIC-1` | No GPL dependency in the default build, ever. Where GPL functionality is genuinely useful it is invoked out-of-process as a tool the user supplies, and ... | **Met** | No GPL dependency. The PDF writer is hand-written partly for this reason; `Directory.Packages.props` carries a licence note on every entry. |
-| `LIC-2` | Extensions carry their own licences; the extension manager surfaces them. | **Partial** | An extension **carries** one: `licence` on the manifest, scaffolded by `ext register` so a new extension answers from the first minute, and surfaced by `einzel ext list` in both forms. **An undeclared licence prints `NOT DECLARED` rather than being omitted** - the case where care is most needed must not be the one whose line is shortest - and is null in `--json` rather than a placeholder, so a caller cannot mistake "did not say" for a licence it recognises. What is missing is the manager *view*: the shell has no extension pane, so the surfacing is the CLI's alone. |
+| `LIC-2` | Extensions carry their own licences; the extension manager surfaces them. | **Met** | An extension **carries** one: `licence` on the manifest, scaffolded by `ext register` so a new extension answers from the first minute, and surfaced by `einzel ext list` in both forms. **An undeclared licence prints `NOT DECLARED` rather than being omitted** - the case where care is most needed must not be the one whose line is shortest - and is null in `--json` rather than a placeholder, so a caller cannot mistake "did not say" for a licence it recognises. The **manager view** now exists too: an Extensions pane listing name, version, kind, trust, licence and what refused it, with an undeclared licence marked in red rather than left blank, and **what the sandbox does not enforce printed on the pane itself** rather than behind a control - the command layer prints those on every listing, and a window that hid them would be the shell weakening a safety statement the engine refuses to weaken. The listing is `ExtensionCommand.List` through the session, so the window and `einzel ext list` cannot disagree about what is installed (UI-1), and the read is journalled as `einzel ext list` (Amendment 25). |
 
 ### Live session (§16)
 
@@ -2337,7 +2337,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
-12. **The shell (§16).** **Six of the eleven views exist** — the table in
+12. **The shell (§16).** **Seven of the eleven views exist** — the table in
     [the shell section](#the-shell-and-the-rest-of-16) is the current one; this entry
     said three for a while after it stopped being true. The window opens on a model, and
     what remains divides into three kinds rather than one:
@@ -2347,12 +2347,18 @@ each turned out to be cheap or expensive is worth more than the fact of it.
       frame export but no scrubbing. Both have the path underneath them; what is missing
       is the input surface. The figure composer is the same shape and can be built last,
       since `RenderSpec` is already text the CLI executes.
-    - **A view with a requirement behind it.** The extension manager is the only one that
-      would retire a tagged requirement rather than present an existing capability:
-      **LIC-2 asks that extensions carry their own licences and the manager surface
-      them, and nothing surfaces them.** That makes it the sixth instance of the pattern
-      §16 has produced five times already — a view that cannot be built until the command
-      layer gains something — and the one with the most engine-side content left.
+    - ~~**A view with a requirement behind it.**~~ **Built, and LIC-2 is met.** The
+      extension manager was the only remaining view that retired a tagged requirement
+      rather than presenting an existing capability. It lists what somebody deciding
+      whether to run third-party code needs before they run it: licence (marked in red
+      and reading `NOT DECLARED` where none was given, since that is the one field a
+      reader cannot recompute), trust, and **what the sandbox does not enforce, on the
+      pane rather than behind a control** — the command layer prints those gaps on every
+      listing, and a window that hid them would be the shell weakening a safety statement
+      the engine refuses to weaken. Notably it needed **nothing new below the shell**,
+      which is the first of §16's views to need nothing: `ExtensionCommand.List` already
+      returned every field the pane shows, because `einzel ext list` had already been made
+      to answer the same question.
     - **A view that needs a whole assembly.** The update notice needs §18 and
       `Einzel.Update`, which does not exist.
 

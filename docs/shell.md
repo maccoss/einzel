@@ -20,6 +20,7 @@ a command existed:
 | Results by class | `ResultsCommand`, and `AccuracyClass` on the registry | Which of §12's families a figure belongs to is the engine's taxonomy; a window sorting them itself would be a second copy of §12 |
 | Regime inspector | `RegimeDiagnostics.MeasureAt` and `RegimeCommand` | Where a regime boundary lies is spec figure 4's, and the numbers had only ever been computed at the worst point in the gas |
 | Sequence editor | `SequenceCommand` | Which phases exist and what each holds is compiled from the document; a window reading `stages` itself would be parsing the format |
+| Extension manager | `ExtensionCommand.List` | Which extensions are installed, what each declares and what the sandbox does not enforce are the runner's own answers; a window walking `extensions/` itself would be a second reader of the manifest format |
 
 The same argument, arriving five times — and each time the command layer gained the
 capability rather than the window keeping it, so an agent is better off for a window having
@@ -608,3 +609,41 @@ in the exit codes and in `einzel compare`.
 detector is an unbounded plane; the sizes are chosen to be visible — a fortieth of the
 instrument's extent, computed where the extent is already known — and a reader must not take
 the quad's edges for the detector's extent.
+
+## The extension manager, and the half of LIC-2 a command could not satisfy
+
+**LIC-2 has two halves and only one of them is the engine's.** An extension carries a
+licence - `licence` on the manifest, scaffolded by `ext register` so a new extension answers
+from the first minute - and `einzel ext list` prints it. The requirement's other half is
+that *the extension manager surfaces them*, and until there was a pane there was no manager.
+
+The Extensions tab lists name, version, kind, trust, licence, what it does, and why this
+engine refuses it where it does. Three decisions in it are worth keeping.
+
+**An undeclared licence says `NOT DECLARED`, in red, rather than showing an empty cell.**
+That is the CLI's decision carried into the window, and the reason is the same: the
+extension somebody most needs to ask about must not be the one whose row is quietest. It is
+also the one field on the row a reader cannot recompute for themselves - they can see the
+version and the directory, and they cannot infer a licence that was never stated.
+
+**What the sandbox does not enforce is on the pane, not behind a control.** `einzel ext list`
+prints those gaps on stderr on every single listing, because a containment measure claimed
+and not applied is worse than one absent and known to be. A window that put them behind a
+button would be the shell quietly weakening a statement the command layer refuses to weaken,
+which is exactly the direction UI-1 exists to prevent. The test asserts the three by
+substance - network, filesystem, memory - so adding a fourth gap does not fail it and
+dropping one of these does.
+
+**And it was laid out wrongly at first, which no test could have said.** The pane began as
+a seven-column grid; in a 270 px panel that truncated the headers to "Exte / Li / Wh / Re"
+and the licences to "Ap" and "NC", so the field the pane exists for was the field it cut
+off. The four view-model tests passed throughout. Driving the window and reading the
+screenshot is what found it, as it was for the camera that opened in the wrong view; it is
+now a stacked template, and the containment lines wrap rather than clipping mid-word.
+
+**No extensions and nowhere to put them read differently.** A project with an empty
+`extensions/` folder says so and names `ext register`; a model sitting outside any project
+says there is no extensions folder to read. Both show no rows, and only one of them means
+something is missing. An earlier version of that test put the loose model at the project
+root and reported the two states as identical - which they were, because the layout is found
+by walking up.
