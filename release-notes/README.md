@@ -69,8 +69,8 @@ The reason is that somebody who wants to model an ion optic should not first hav
 a .NET SDK. r06's DST-1 gives a different reason - a per-user installer for a locked-down
 instrument PC - and that use case is speculative; the one above is not, and it is the one
 this decision rests on. The **installer and the updater are consequently deferred**: the
-portable path needs neither, and thirteen of the specification's unbuilt requirements are
-the two of them.
+portable path needs neither, and fourteen of the specification's twenty-two unbuilt
+requirements are the two of them.
 
 ## Cutting a release
 
