@@ -975,6 +975,38 @@ Same family as an unrecognised property being ignored rather than refused, and t
 consequence: **a document that means something other than what it says, with nothing
 anywhere to say so.**
 
+## A round-off guard tested with the numbers that motivated it
+
+A half-space field warns when the ion turns beyond the depth the model declares. The
+gradient is cap over depth, so multiplying it back by the depth returns the cap only to
+within an ulp or two, and a model placed **deliberately** at the boundary would trip on
+which way that rounding fell. The scaffolded reflectron is exactly such a model — its
+cap equals its acceleration potential, and its own description says the ion turns exactly
+at the declared depth. So the guard was written: the overshoot must clear a millionth of
+the depth before it is reported.
+
+The test for it used that model's numbers, 4 kV on 50 mm, and asserted silence. It
+passed. **It also passed with the guard removed**, because 4000 divided by 0.05 and
+multiplied back by 0.05 is exactly 4000. The obvious values were the benign ones.
+
+That is not luck, it is selection. The values a test reaches for are the ones from the
+model in front of you, and the model in front of you is the one that motivated the
+guard — which means it is the case you already know about, and the case you already know
+about is as likely to be benign as not. Half the guard's job is the instances you have
+not looked at.
+
+Searching the space settled it in a few seconds: over caps from 0.1 to 20 kV and depths
+from 5 to 200 mm at the granularity a person actually types, thousands of pairs round
+low, and 1 kV on 7 mm is one. With those the test fails when the guard is removed. The
+search has to use **the engine's own arithmetic** to be worth anything — a first pass
+divided by a thousand where the unit registry multiplies by 1e-3, and every pair it
+found was benign under the code being tested.
+
+The rule: when a guard exists to absorb round-off, the test's constants decide whether
+it exercises the guard at all, and no amount of reading the test tells you which. Run
+the mutation; if it survives, go and find an instance that discriminates rather than
+believing the one you have.
+
 ## The mutation passed four tests and failed two, and the four were the interesting ones
 
 A gas whose density varies from place to place needed the collision rate read at the

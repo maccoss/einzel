@@ -134,23 +134,115 @@ an undocumented convenience that worked. It had lost the first edit and did not 
 Both are fixed, with five tests. The command now also says what it wrote, which is what made
 the first defect invisible: its output was identical whether it had written or not.
 
-### Three more, recorded and not yet acted on
+### Three more, now fixed
 
-- **The cost gate refused a study that runs in 0.88 s.** `estimate` predicted 30 s for 2000
-  draws and exited 3. It charges one solve and 21 trajectories per evaluation, but
-  `flightTime` is a convergence study over three integrator tolerances - one ion, three
-  flights. The default energy-acceptance ensemble is being billed to a figure that does not
-  use it. The agent shrank the study to get past the gate, which is the gate degrading the
-  science it exists to protect, and there is no documented override.
-- **`CONVERGENCE_ORDER_BELOW_NOMINAL` prescribes a finer grid on a model with no grid.** It
-  fired on 578 of 1505 evaluations of an analytic field, non-suppressibly. An unsuppressible
-  warning that cries wolf on the simplest model in the project is the one that teaches people
-  to skim.
-- **An analytic half-space has no extent, and nothing says so.** Below the focusing voltage
-  the ion turns around *behind* the declared back plate - 5.6 mm behind it at 3600 V - because
-  `halfSpaceUniform` extrapolates past the cap without complaint. The arithmetic is right for
-  a ramp that continues forever, so nothing looks wrong. The suggested search window in one of
-  the tasks lies entirely in that region.
+All three are the same shape as the two above: the platform was arithmetically right and
+told the reader something that was not true of their model.
+
+**The cost gate charged seven flights for every three flown.** `estimate` predicted 29 s for
+a 2000-draw tolerance sweep that runs in 1.08 s, exited 3, and offered no override. It billed
+every figure the study's declared ion count - right for an ensemble, and wrong for
+`flightTime`, which is one ion down a three-rung convergence ladder. The agent shrank its
+study to get past a number that was twenty-six times too high, which is the gate degrading the
+science it exists to protect.
+
+The registry now carries a `FlightBasis` per figure - convergence ladder, one flight,
+ensemble, or the declared cloud - and the estimate asks it. The reflectron sweep costs
+3 trajectories per evaluation rather than 21, and 4 s rather than 29. An unknown figure falls
+back to the ensemble count, which is the conservative direction: over-charging something
+nobody has classified is better than under-charging it, since the gate exists to stop a
+surprise rather than to permit one. `--threshold <seconds>` moves the gate, GRD-8 having asked
+for it to be configurable all along, and the refusal now says in its first clause that the
+study is **not blocked** - only `estimate` exits 3, and every study verb runs regardless.
+Saying only "this is above the threshold", on an exit code named cost-gate refusal, reads as a
+prohibition and was obeyed as one.
+
+**`CONVERGENCE_ORDER_BELOW_NOMINAL` prescribed a finer grid to a model with no grid.** It
+fired on 578 of 1505 evaluations of an analytic field, unsuppressibly, recommending a remedy
+that model cannot take - and the agent spent a deliberate second pass establishing that the
+number it was about to quote was sound. The field knows which it is, so the advice now asks
+it: a gridded field is still told that the floor is usually interpolation error and that
+refining is the fix, and an analytic one is told there is no grid to refine and that the floor
+is the arithmetic itself or a discontinuity the ladder is straddling. The finding is identical
+in both; only the remedy differs.
+
+**An analytic half-space has no far side, and nothing said so.** A `halfSpaceUniform` field is
+a ramp whose cap potential is what the model says the plate holds at the declared turning
+depth, and the arithmetic continues past it. Lower the cap below the beam energy and the ion
+turns round *behind* the plate - 5.6 mm behind it at 3600 V against a 4000 V beam - in a
+region the document does not describe, with a flight time reported to full precision either
+way. The suggested search window in one of the tasks lies entirely in that region.
+`field.beyond-declared-depth` now says where the ion actually turned and against what cap.
+
+Two things about it are worth keeping. It is measured at **three sigma of a declared energy
+spread** rather than at the nominal ion, because the tail is the population that overshoots
+first, and while only the tail is past the plate the effect is a selective loss of the fastest
+ions rather than a wrong flight time - the harder thing to notice, and the likelier to be read
+as physics. And the overshoot must clear **a millionth of the declared depth** before it is
+reported: the gradient is cap over depth, a division, so multiplying it back returns the cap
+only to within an ulp or two, and a model deliberately placed at the boundary - which the
+scaffolded reflectron is, and says so in its own description - would otherwise trip on which
+way that rounding fell.
+
+Fixed with fourteen tests, each checked by mutation.
+
+### And the rest of the list, checked one at a time
+
+Six further observations were carried out of the transcripts as notes rather than
+diagnoses. Re-running each against the build settles them, and most do not survive
+contact — which is the point of checking before writing them down as defects.
+
+**`outline --set` on a derived parameter does not corrupt the model.** The note said it
+injected a `"value": 0` beside the expression, which the schema then calls an error. It
+refuses instead, naming the expression, the parameters it is over, and both ways out:
+*"editing a derived parameter would edit a consequence, and the two would disagree at the
+next resolve."* The file is untouched and still validates.
+
+**A scanned figure of merit is not a bare number, but it does lose its interval.** The
+study result carries the figure's name, unit, description and accuracy class once at the
+top, and every warning on the ledger; what a row carries is the parameter value and the
+figure. That is `FiguresOfMerit.Evaluator`'s documented exception - ranking needs an
+ordering and a GRD-1 envelope has none - and the thing that exception once *also* dropped,
+the warnings, has been carried since the `WarningLedger` landed. So this is the boundary of
+GRD-1 at the study seam rather than a hole in it, and worth stating as such: **a scan tells
+you the shape of a curve, not the uncertainty on any point of it.**
+
+**`class` and `basis` were serialising as bare enum integers**, which is real and was found
+here rather than in a transcript - `"class": 1, "basis": 0` tells a reader nothing. Both now
+carry the house `JsonStringEnumConverter` the extension and render enums already use, so
+they read `"Trajectory"` and `"ConvergenceLadder"`.
+
+**`estimate` will cost a study that the verb you meant then refuses**, which is true and
+milder than it sounds: hand a scan file to `sweep` and it exits 1 naming the missing
+channels, while `estimate` costs it happily. But `estimate`'s own basis line says *"this is
+a study: a scan of 3 points over 'capPotential'"*, so it does state which kind of study it
+read. Left as it is.
+
+**`schema --study` is one flat object over four study kinds, and that one stands.** All
+twenty properties of a sweep, a scan, a boundary search and an optimisation sit at the same
+level, with no `oneOf` and no `required`, so nothing in the schema says that `channels`
+belongs to a sweep and `scan` to a scan, nor which of them any given study must have. An
+agent has to infer the four shapes from the property names. **This is the one open item of
+the six** - AGT-7's claim is that the format an agent reads cannot drift from the code, and
+this does not drift, it is under-specified. The fix is a `oneOf` over four branches emitted
+from the same reflection pass.
+
+**`new --from-example` writes a closed form, not a captured value** - and checking it found
+a different defect. The note said the scaffolded expectation pins whatever the engine
+produced. It does not: `free-flight` expects 25.451264294677983 µs, and `L / sqrt(2qU/m)`
+evaluated independently is 25.451264294677983 µs, to the last digit. What was wrong was the
+**description**, which said the ion travels at 39291.5 m/s and arrives in 25.4508 µs against
+a true 39290.78 and 25.45126 - a fifth-digit disagreement between an example's prose and its
+own expectation, in the model the description itself calls "the model to run first when
+checking that an installation works at all".
+
+Every corpus description was then audited the same way: any number in the prose within two
+per cent of the expectation but not equal to it. Six hit, five of them correct - four are
+the expectation rounded for reading, and two deliberately quote the *measured* value beside
+an arithmetic expectation (`gas-flow-carry` at 4904.5 against 5000, `travelling-wave-capture`
+at 8.875 against 9.0), which is the comparison those examples exist to make. `free-flight`
+was the only error, and it is fixed.
+
 
 ### And one thing the suite cannot currently see
 
