@@ -41,7 +41,14 @@ public sealed record PacketResult(
     IReadOnlyList<PacketMember> Members,
     int Steps,
     int RejectedSteps,
-    double MaximumInteractionImbalance);
+    double MaximumInteractionImbalance)
+{
+    /// <summary>
+    /// Real collisions applied across the packet, summed over every macroparticle;
+    /// zero for a flight in vacuum.
+    /// </summary>
+    public int Collisions { get; init; }
+}
 
 /// <summary>
 /// Advances a whole packet together, so the ions can push on each other.
@@ -89,16 +96,44 @@ public static class PacketIntegrator
     /// <param name="interaction">The mutual force, or null to fly them independently.</param>
     /// <param name="settings">Tolerances and ceilings.</param>
     /// <param name="stopWhenNegative">The stopping surface.</param>
+    /// <param name="collisions">
+    /// One gas sampler per macroparticle, or null for a flight in vacuum. Each
+    /// macroparticle collides on its own schedule; what is shared is the step, which
+    /// is cut to land on whichever collision comes next across the packet.
+    /// </param>
     /// <returns>What became of each macroparticle.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
-    /// <exception cref="ArgumentException"><paramref name="launch"/> is empty.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="launch"/> is empty, or <paramref name="collisions"/> does not
+    /// have one sampler per macroparticle.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// A collision is an instant, so it lands the way it lands on a single
+    /// trajectory: the time is known and the step is cut to it. With a packet the
+    /// cut is to the earliest scheduled collision of any active member, so a dense
+    /// gas costs steps in proportion to the packet's total collision rate. That is
+    /// the honest price of a shared step; the alternative - applying each collision
+    /// at the end of whatever step contained it - would put every scattered velocity
+    /// a fraction of a step from where it happened, and the mutual force that this
+    /// integrator exists to compute is evaluated at those positions.
+    /// </para>
+    /// <para>
+    /// A macroparticle standing for many ions scatters them all together. The
+    /// kinematics are those of one ion against one neutral, so the velocity
+    /// distribution the packet relaxes to is the ion's, sampled at as many points as
+    /// there are macroparticles rather than as there are ions. The drag and the
+    /// diffusion are right; the fluctuations are those of the smaller sample.
+    /// </para>
+    /// </remarks>
     public static PacketResult Fly(
         IReadOnlyList<PhaseState> launch,
         IonSpecies species,
         IElectrostaticField field,
         ISelfField? interaction,
         IntegrationSettings settings,
-        TrajectoryStopFunction stopWhenNegative)
+        TrajectoryStopFunction stopWhenNegative,
+        IReadOnlyList<Collisions.CollisionSampler>? collisions = null)
     {
         ArgumentNullException.ThrowIfNull(launch);
         ArgumentNullException.ThrowIfNull(field);
@@ -108,6 +143,13 @@ public static class PacketIntegrator
         if (launch.Count == 0)
         {
             throw new ArgumentException("a packet needs at least one macroparticle", nameof(launch));
+        }
+
+        if (collisions is not null && collisions.Count != launch.Count)
+        {
+            throw new ArgumentException(
+                $"a packet of {launch.Count} needs one gas sampler per macroparticle, not {collisions.Count}",
+                nameof(collisions));
         }
 
         var count = launch.Count;
@@ -131,6 +173,15 @@ public static class PacketIntegrator
         var steps = 0;
         var rejected = 0;
         var imbalance = 0.0;
+        var collided = 0;
+
+        if (collisions is not null)
+        {
+            for (var k = 0; k < count; k++)
+            {
+                collisions[k].Start(0.0, state[k].Velocity.Length);
+            }
+        }
 
         // The applied field's own resolution caps the step for the same reason it
         // does on a single trajectory: a gridded field cannot be sampled coarser
@@ -152,6 +203,25 @@ public static class PacketIntegrator
         {
             step = Math.Min(step, Math.Min(resolutionCap, settings.MaximumFlightTime - time));
             step = Math.Min(step, ToNearestDiscontinuity(state, active, field));
+
+            if (collisions is not null)
+            {
+                // The earliest collision of any active member is the next event the
+                // packet has to land on. One closer than the integrator can resolve is
+                // applied here rather than stepped to, so a dense gas presents as a
+                // physical rate and not as step-size underflow.
+                var toEvent = ToNextCollision(collisions, active, time);
+
+                if (toEvent < settings.MinimumStep)
+                {
+                    collided += ApplyDueCollisions(collisions, state, active, time, settings.MinimumStep);
+                    Derivatives(
+                        state, active, field, chargeToMass, interaction, time, scratch, derivative, ref imbalance);
+                    continue;
+                }
+
+                step = Math.Min(step, toEvent);
+            }
 
             var error = Advance(
                 state, active, derivative, step, field, chargeToMass, interaction, time,
@@ -207,6 +277,14 @@ public static class PacketIntegrator
             time += step;
             steps++;
 
+            if (collisions is not null)
+            {
+                // The step was cut to land on the earliest collision, so whichever
+                // members are due scatter now, at the positions they have actually
+                // reached, before the derivatives are rebuilt from the new velocities.
+                collided += ApplyDueCollisions(collisions, state, active, time, settings.MinimumStep);
+            }
+
             step = Math.Min(
                 Math.Min(resolutionCap, settings.MaximumStep),
                 step * Math.Clamp(0.9 * Math.Pow(Math.Max(norm, 1e-10), -0.2), 0.2, 5.0));
@@ -233,7 +311,69 @@ public static class PacketIntegrator
             members[k] = new PacketMember(outcome[k], flightTime[k], state[k], struck[k]);
         }
 
-        return new PacketResult(members, steps, rejected, imbalance);
+        return new PacketResult(members, steps, rejected, imbalance) { Collisions = collided };
+    }
+
+    /// <summary>Seconds from now to the earliest scheduled collision of any active member.</summary>
+    private static double ToNextCollision(
+        IReadOnlyList<Collisions.CollisionSampler> collisions, bool[] active, double time)
+    {
+        var earliest = double.PositiveInfinity;
+
+        for (var k = 0; k < active.Length; k++)
+        {
+            if (active[k] && collisions[k].NextEventSeconds < earliest)
+            {
+                earliest = collisions[k].NextEventSeconds;
+            }
+        }
+
+        return earliest - time;
+    }
+
+    /// <summary>
+    /// Scatters every active member whose collision is due at this instant, and
+    /// returns how many actually scattered.
+    /// </summary>
+    /// <remarks>
+    /// Due means within half a minimum step of now: the step was cut to the event's
+    /// own time, so the two agree to rounding, and a tolerance of one ulp would let
+    /// an event fall between two steps and be landed on again next time round with
+    /// the packet a step further along.
+    /// </remarks>
+    private static int ApplyDueCollisions(
+        IReadOnlyList<Collisions.CollisionSampler> collisions,
+        PhaseState[] state,
+        bool[] active,
+        double time,
+        double minimumStep)
+    {
+        var scattered = 0;
+        var horizon = time + (0.5 * minimumStep);
+
+        for (var k = 0; k < active.Length; k++)
+        {
+            if (!active[k])
+            {
+                continue;
+            }
+
+            var sampler = collisions[k];
+
+            while (sampler.NextEventSeconds <= horizon)
+            {
+                var velocity = state[k].Velocity;
+                var position = state[k].Position;
+
+                if (sampler.Collide(time, in position, ref velocity))
+                {
+                    state[k] = new PhaseState(position, velocity);
+                    scattered++;
+                }
+            }
+        }
+
+        return scattered;
     }
 
     /// <summary>One Dormand-Prince step over the whole packet.</summary>

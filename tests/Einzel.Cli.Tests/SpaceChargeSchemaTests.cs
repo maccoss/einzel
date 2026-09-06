@@ -111,26 +111,29 @@ public sealed class SpaceChargeSchemaTests
     }
 
     /// <summary>
-    /// The gas refusal names the method the document asked for, not one of them.
+    /// A gas with either space-charge method validates: the packet integrator collides now.
     /// </summary>
     /// <remarks>
-    /// It read "the direct space-charge method" for every method, which was true when
-    /// there was one. AGT-3 wants an error a reader can act on, and being told about a
-    /// method they did not ask for is the opposite.
+    /// This was the test that the gas refusal named the method asked for. The refusal is
+    /// gone - a pushed packet flies through the gas, each macroparticle on its own
+    /// collision schedule - so what is asserted is that the document is accepted with
+    /// both methods and that the gas survives compilation with its declared pressure.
     /// </remarks>
-    [Fact]
-    public void TheGasRefusalNamesTheMethodAsked()
+    [Theory]
+    [InlineData("pic")]
+    [InlineData("direct")]
+    public void AGasIsAcceptedWithEitherMethod(string method)
     {
-        var errors = Errors(
-            "\"spaceCharge\": \"pic\", "
+        var model = Compile(
+            $"\"spaceCharge\": \"{method}\", "
             + "\"gas\": { \"pressure\": { \"value\": 1e-3, \"unit\": \"mbar\" }, "
             + "\"temperature\": { \"value\": 300, \"unit\": \"K\" }, \"model\": \"hardSphere\", "
             + "\"mass\": { \"value\": 28.0, \"unit\": \"Da\" }, "
             + "\"crossSection\": { \"value\": 1e-18, \"unit\": \"m^2\" } }");
 
-        Assert.True(
-            errors.Any(e => e.Constraint.Contains("'pic'", StringComparison.Ordinal)),
-            string.Join("; ", errors.Select(e => $"{e.Path}: {e.Constraint}")));
+        Assert.Equal(method, model.SpaceChargeMode);
+        Assert.True(model.Gas.IsPresent);
+        Assert.Equal(0.1, model.Gas.PressureSi, 12);
     }
 
     private static CompiledModel Compile(string transport)

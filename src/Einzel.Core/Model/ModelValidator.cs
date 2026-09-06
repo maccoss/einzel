@@ -3799,12 +3799,13 @@ public static class ModelValidator
     /// Refuses a space-charge model that has nothing to compute or cannot be run.
     /// </summary>
     /// <remarks>
-    /// Three ways to ask for the mutual force and not get it, all of which would
+    /// Two ways to ask for the mutual force and not get it, both of which would
     /// otherwise run and report a number: a single trajectory has nobody to push
-    /// on; a packet with no spatial extent has an unbounded self-field rather than
-    /// a large one; and the packet integrator has no collision hook, so a declared
-    /// gas would be silently dropped. Refusing is better than any of the three,
-    /// because each would produce a result that looks like the one asked for.
+    /// on, and a packet with no spatial extent has an unbounded self-field rather
+    /// than a large one. Refusing is better than either, because each would produce
+    /// a result that looks like the one asked for. A declared gas used to be a third
+    /// refusal, because the packet integrator had no collision hook; it has one now,
+    /// and the run reports what a macroparticle's collision stands for.
     /// </remarks>
     /// <summary>
     /// Validates the density time-stepping choice, and refuses one that does nothing.
@@ -4012,20 +4013,6 @@ public static class ModelValidator
             });
         }
 
-        if (model.Gas.IsPresent)
-        {
-            errors.Add(new EinzelError
-            {
-                Code = ErrorCodes.RegimeInvalid,
-                Path = "/transport/spaceCharge",
-                Constraint = $"the '{model.SpaceChargeMode}' space-charge method advances the whole "
-                    + "packet in lockstep and has no collision hook, so a declared gas would take no "
-                    + "part in the run",
-                Observed = new ObservedValue(model.Gas.PressureSi, "Pa"),
-                Suggestion = "remove the gas, or set \"spaceCharge\": \"none\" and read the screening "
-                    + "estimate the run reports instead",
-            });
-        }
     }
 
     /// <summary>Validates the declared mobility, or derives one from the gas.</summary>

@@ -958,13 +958,41 @@ public static class FiguresOfMerit
                     species.MassSi,
                     RealisedSoftening(cloud));
 
+        // The same gas, the same one-stream-per-ion seeding, as the independent path:
+        // a run is reproducible from its manifest and raising the ion count does not
+        // change the flight of any ion already drawn. A pushed packet used to refuse a
+        // gas because this integrator had nowhere to put one; now the two act together,
+        // which is the only way a cooled, space-charge-limited cloud can form.
+        var gas = DiffusionRun.GasFor(model);
+        var samplers = gas.IsPresent
+            ? Enumerable.Range(0, cloud.Length)
+                .Select(index => new Transport.Collisions.CollisionSampler(
+                    gas, species.MassSi, species.ChargeSi, model.Gas.Seed + index))
+                .ToList()
+            : null;
+
         var result = Transport.Interaction.PacketIntegrator.Fly(
-            cloud, species, field, interaction, settings, detector);
+            cloud, species, field, interaction, settings, detector, samplers);
 
         var arrivals = new List<double>(cloud.Length);
         var arrived = new List<PhaseState>(cloud.Length);
         var losses = new Dictionary<string, int>(StringComparer.Ordinal);
         var events = new List<IonEvent>(cloud.Length);
+        var collisions = 0;
+        var scattered = 0;
+
+        if (samplers is not null)
+        {
+            foreach (var sampler in samplers)
+            {
+                collisions += sampler.Collisions;
+
+                if (sampler.Collisions > 0)
+                {
+                    scattered++;
+                }
+            }
+        }
 
         foreach (var member in result.Members)
         {
@@ -1003,8 +1031,8 @@ public static class FiguresOfMerit
                 .OrderByDescending(pair => pair.Value)
                 .ThenBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new LossChannel(pair.Key, pair.Value))],
-            Collisions: 0,
-            ScatteredIons: 0)
+            Collisions: collisions,
+            ScatteredIons: scattered)
         {
             Events = events,
         };

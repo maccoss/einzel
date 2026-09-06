@@ -1405,3 +1405,16 @@ unconfined one's tails. A first attempt sized for the confined case alone clippe
 unconfined packet and reported it 9% narrow. And a first fix over-corrected - 512 intervals
 where 256 was already enough - which cost four minutes against seventeen seconds for the
 same two answers to the same precision.
+
+## A pushed packet flies through the gas too
+
+The event-driven collision models were built for independent trajectories, and the packet
+integrator that computes space charge had no way to use them, so a model declaring both a
+gas and `spaceCharge` was refused rather than run in a gas that took no part. The packet
+integrator now takes one sampler per macroparticle and lands its shared step on the earliest
+collision anywhere in the packet. The physics of each collision is unchanged - hard sphere
+or Langevin, the same Maxwellian draw about the local gas velocity, the same graded density
+- and the samplers are seeded exactly as the independent path seeds them. What is new is
+that cooling and the mutual push act on the same packet in the same run, which is what a
+space-charge-limited cloud needs to form. The caveat that travels with every such run is
+that a macroparticle scatters as one ion while carrying many; see `docs/numerics.md`.
