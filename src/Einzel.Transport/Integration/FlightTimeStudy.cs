@@ -268,20 +268,11 @@ public static class FlightTimeStudy
             // a deliberate second pass establishing that the answer it was about to quote
             // was sound. A warning that cannot be acted on is one that teaches people to
             // skim, which is the last thing an unsuppressible class should do.
-            var gridded = double.IsFinite(field.ResolutionLength) && field.ResolutionLength > 0.0;
-
-            var floor = gridded
-                ? "in a solved field this is usually the interpolation error, and the fix is a "
-                    + "finer grid rather than a tighter tolerance"
-                : "this field is analytic, so there is no grid to refine: the floor is the "
-                    + "arithmetic itself, or a discontinuity the ladder is straddling. Compare the "
-                    + "residual against the value before treating it as an error";
-
             warnings.Add(new ValidityWarning(
                 "CONVERGENCE_ORDER_BELOW_NOMINAL",
                 $"observed order {observedOrder:G3} against nominal {NominalOrder:G3} on tolerance "
                 + "refinement: the flight time stopped improving as fast as the tolerance tightened, "
-                + $"which is what a floor other than the integrator looks like. {floor}",
+                + $"which is what a floor other than the integrator looks like. {ConvergenceFloorAdvice(field)}",
                 WarningSeverity.Qualified));
         }
 
@@ -310,6 +301,41 @@ public static class FlightTimeStudy
 
         return new FlightTimeStudyResult(measured, runs);
     }
+    /// <summary>
+    /// What the floor a refinement ladder has reached is likely to be, given the field it
+    /// was flown through.
+    /// </summary>
+    /// <param name="field">The field the ladder was flown through.</param>
+    /// <returns>A sentence naming the likely floor and what to do about it.</returns>
+    /// <remarks>
+    /// <para>
+    /// <c>CONVERGENCE_ORDER_BELOW_NOMINAL</c> prescribed "a finer grid rather than a tighter
+    /// tolerance" to every reader, including one flying an analytic half-space, where there
+    /// is no grid to refine and the advice cannot be taken. An agent in the acceptance run
+    /// had it fire on 578 of 1505 evaluations of exactly that model and had to spend a
+    /// deliberate second pass establishing that the answer it was about to quote was sound.
+    /// GRD-3 makes this class unsuppressible, and a warning that cannot be acted on teaches
+    /// people to skim the one class that must never be skimmed.
+    /// </para>
+    /// <para>
+    /// Separate from the warning so it can be tested for what it is. The floor a ladder
+    /// reaches is a fit to noise, so which side of the order threshold a given model lands
+    /// on is not a stable quantity to build a test on - but which advice a field earns is
+    /// exactly determined, and that is the part this branch is responsible for.
+    /// </para>
+    /// </remarks>
+    public static string ConvergenceFloorAdvice(IElectrostaticField field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+
+        return double.IsFinite(field.ResolutionLength) && field.ResolutionLength > 0.0
+            ? "in a solved field this is usually the interpolation error, and the fix is a "
+                + "finer grid rather than a tighter tolerance"
+            : "this field is analytic, so there is no grid to refine: the floor is the "
+                + "arithmetic itself, or a discontinuity the ladder is straddling. Compare the "
+                + "residual against the value before treating it as an error";
+    }
+
 
     /// <summary>
     /// The convergence residual a ladder of runs supports, and whether it collapsed.

@@ -975,6 +975,46 @@ Same family as an unrecognised property being ignored rather than refused, and t
 consequence: **a document that means something other than what it says, with nothing
 anywhere to say so.**
 
+## A test that drove the system onto a floor was a test of the platform's libm
+
+`CONVERGENCE_ORDER_BELOW_NOMINAL` now gives different advice for a gridded field and
+an analytic one, and the obvious way to test that is to drive a refinement ladder onto
+a floor and read the message. That worked: three tests, both mutations caught, 372 ms.
+**It passed on Windows and failed on Linux.**
+
+Two things conspired. The floor was made by giving the field structure below every step
+the controller takes — a square wave written as `Math.Sign(Math.Sin(x / period))`, and
+**libm's sine is not bit-identical between the Windows CRT and glibc**. And the whole
+construction is a deliberate amplifier of last-bit differences, so a difference in the
+final bit of one field sample becomes a different step sequence becomes a different
+fitted order.
+
+Making the wave exact — `Math.Floor` and an integer parity, both exact under IEEE-754 —
+fixes the sine and does not fix the test, because the step controller itself calls
+`Math.Pow(error, -0.2)`, which carries no cross-platform guarantee either.
+
+**The deeper problem is what was being asserted.** Reaching a floor means the flight
+time has stopped being set by the tolerance, so the fitted order is a fit to noise —
+and the test was asserting which side of a threshold that noise landed on. Measuring
+it makes that plain: sweeping the perturbation amplitude over four decades gave orders
+of −0.84, −0.49, −0.20, −0.10 and +0.08 against a threshold of 0.5, and one of the five
+did not fire at all. Sweeping a resolution cap instead gave 0.435 at one value and no
+firing at the next one down. **Neither was structural. Both were luck**, and the
+Windows pass was the same luck.
+
+What is exactly determined is *which advice a field earns*, which is the branch that
+was wrong. So the advice became a named function, tested directly for both kinds of
+field and for the three ways a resolution can fail to be one. The end-to-end test then
+has one job — that the warning uses the function rather than a second copy of the
+sentence — and it asks only that **at least one of seventeen** configurations reaches a
+floor, asserting the message on every one that does. Three do here; for all seventeen
+to stop would take far more than the last bit of a `Math.Pow`.
+
+The rule: **if a test needs a chaotic system to land on a particular side of a
+threshold, it is measuring the arithmetic of the machine it runs on.** Find the part of
+the behaviour that is exactly determined, test that directly, and let the end-to-end
+test assert something that many configurations satisfy rather than one.
+
 ## A round-off guard tested with the numbers that motivated it
 
 A half-space field warns when the ion turns beyond the depth the model declares. The
