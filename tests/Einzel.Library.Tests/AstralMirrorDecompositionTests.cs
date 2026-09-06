@@ -14,7 +14,7 @@ namespace Einzel.Library.Tests;
 /// anisotropy <c>Ez/Ex = tan(alpha)</c>, 2.9e-4 at the published convergence, which is well
 /// below the field error of a second-order solve - and measured against the closed form it
 /// returned anywhere from -0.57 to +3.54 of the truth depending on the width of the gaps
-/// between mirror strips. See docs/astral-handoff.md sections 12 and 13.
+/// between mirror strips. See docs/astral-log.md sections 12 and 13.
 /// </para>
 /// <para>
 /// What replaced it is exact: each mirror is a cross-section whose extrusion axis is
@@ -242,7 +242,7 @@ public sealed class AstralMirrorDecompositionTests(ITestOutputHelper output)
     /// with <c>y0 = 335 mm</c> and <c>L_eff = 641 mm</c> both from the same Table 1. That is
     /// a consistency check among four published numbers and the template's own declared
     /// parameters, computable with no field solve and no ion. A flight measures 0.8504 by an
-    /// independent route (docs/astral-handoff.md section 47), which is the confirmation; this
+    /// independent route (docs/astral-log.md section 47), which is the confirmation; this
     /// is the guard.
     /// </para>
     /// </remarks>

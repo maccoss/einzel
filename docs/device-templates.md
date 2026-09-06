@@ -29,7 +29,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
-| `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 46.85 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
+| `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -568,7 +568,7 @@ to the published time-of-flight curve. It recovers R ≈ 180,000 from the mirror
 the residual against the published curve turned out to be the board gap and almost nothing
 else.
 
-`astral-3d` is the whole analyser: two elongated mirrors across a 46.85 mm board gap, ions
+`astral-3d` is the whole analyser: two elongated mirrors across a 41.43 mm board gap, ions
 oscillating between them while drifting along their length. Two things about it are worth
 knowing before reading its numbers.
 
@@ -583,31 +583,87 @@ injection angle**: 11.447 mm at 2°, 0.4638 mm at 1°, under 0.05 mm at 0.5°.
 That makes the field anisotropy exactly tan(α) rather than a quantity no affordable volume
 mesh could resolve - the convergence is a couple of hundred microns over a third of a metre,
 which is 2.9e-4 of anisotropy against roughly 0.4% of second-order field error in a direct
-solve. `docs/astral-handoff.md` carries the reconstruction in full, including what is
-published, what is guessed, and what has been withdrawn.
+solve.
 
-**The drift reversal is reproduced, and by the mirror tilt alone.** At 0.56 mm of
-convergence - the 2.29° the published figures themselves imply - with no ion foil in the
-model, the drift reverses at **334.76 mm after 25 reflections at 13.39 mm per reflection**,
-against a published 310-360 mm, 24-26 reflections and 13.40 mm. Two published numbers fix
-the two unknowns and the third checks. The full track flies end to end: 25 oscillations out
-and back, 31.27 m in 853.7 µs against a published ~30 m in ~779 µs.
+**The drift reversal is reproduced, and the tilt does most of it rather than all of it.**
+An earlier reading of this model had the tilt doing the whole job; on the reproduced mirror
+below it does not, and the design paper's own account is the one that holds - the drift's
+effective potential is the tilt term plus the stripe's. Flown end to end, one ion at the
+published injection angle:
 
-**What is not settled is the convergence itself**, and it is the most consequential
-unpublished number in the reconstruction. The papers say "a 200 µm thick spacer" and none of
-them says what it tilts over - 200 µm closing the gap across the 350 mm drift, or 200 µm per
-mirror over a roughly 250 mm baseline. The two differ by 2.8×, and every reversal number
-here depends on which is meant. At 0.20 mm nothing reproduces; at 0.56 mm everything does.
+| | model | published |
+| --- | --- | --- |
+| drift reversal | **336.15 mm** | 310-360 mm, mean 335 |
+| oscillations outbound | **24** | 24-26 |
+| half-oscillation | 16.296 us, so `L_eff` 640.3 mm | 641 mm |
+| flight time | **786.44 us** | 783.2 us by `2 K L_eff / v` at K = 24; ~779 reported |
+| tilt term | 0.8299 | 0.84 |
 
-**And the resolving power is an inverse problem with a seam to fit through.** The mirror
-*voltages* are published and are used correctly; the electrode *positions* are published
-only as grey blocks in a figure and were guessed, wrong by two to three times on two of the
-four. So every mirror result was the right voltage set on the wrong geometry. Fitting three
-electrode depths with `einzel optimise` takes the model from **R = 1,086 to 47,657** at the
-published ±2.5% acceptance, and to 150,036 at ±0.5%, in a three-minute search. The published
-potentials were always compatible with the published resolving power; what was missing was a
-geometry fitted to them. `docs/astral-handoff.md` §16-18 carries the fit, and its own ranked
-next steps.
+The tilt on its own reverses at 404 mm; the published stripe shape brings it to 336. Sixteen
+per-slice bases fit the published law to a residual of 0.23 per cent. The register test
+expects the K = 24 arithmetic at 2 per cent, which the model meets at 0.4 and which
+*excludes* K = 25 by 4.2 per cent - so it pins the oscillation count and not only the period.
+
+**The convergence was the most consequential unpublished number, and it turned out to be
+published.** This model fitted it at 0.56 mm knowing only that the papers mention a 200 um
+spacer and not what it tilts over. The design paper's own table states the angle: it is
+196 um over the 250 mm mirror body, which is the spacer, and 503 um across the 641 mm
+effective separation, which is what was fitted. **The fit and the specification agree once
+the baseline is identified**, and the fit is what identified it. What still disagrees is the
+injection angle - published 1.78 degrees against a fitted 2.29 - and the reversal distance
+goes as its fourth power, so that is not a rounding difference.
+
+**The mirror is reproduced against its own published curve.** The electrode positions are
+published only as drawn blocks in a figure, and reading them off it - rather than guessing
+depths, which is what every earlier mirror number here rested on - closes the comparison:
+
+| | model | published |
+| --- | --- | --- |
+| resolving power over +/-2.5 per cent | **120,000 to 220,000** | ~180,000, integrated slope |
+| period slope amplitude, 3900-4100 eV | +/-0.034 ppm/eV | +/-0.035 |
+| effective drift `L_eff` | 646.2 mm | 641 mm |
+| on-axis potential, 16 points | 0.159 kV rms | read off the figure |
+
+The range on R is a first-order residual at the 1e-4 level, which is the floor of this solve,
+this mesh and a five-point quartic fit; the published curve itself carries a first-order term
+of about -1e-4. **The published mirror and this one are the same mirror to within that.**
+
+### What is published, what is drawn, and what this model solves for
+
+This distinction matters more than any single number, because it says which results would
+move if a better source turned up.
+
+| | status | in the model |
+| --- | --- | --- |
+| mirror coefficients `U1`, `U2`, both correction vectors | published, in a table | used as published, with `U2`'s sign corrected against the figure's on-axis potential |
+| electrode count, order and positions | published graphically, as blocks in a figure | used as drawn |
+| drift length, tilt, injection angle, acceleration voltage | published | used as published |
+| on-axis potential, period-slope curve | published graphically | used as **checks**, never fitted to |
+| board gap | **not published** | **solved**, 41.43 mm |
+| `U3`, `U4` | published, in the same table | **solved**: 0.9740 against 0.916, 1.4815 against 1.503 |
+
+Three solved numbers, and the two voltages move by 6 and 2 per cent in a table that already
+has one sign printed wrong. They are solved against the design paper's own stated condition -
+the drift period stationary at 4000 eV and at 4000 +/- 100 - and not against anything this
+model produced. The on-axis potential is then a check the solve never saw, and it improves
+from 0.400 kV rms to 0.159 at the solution.
+
+**A geometric fit was tried for the electrode edges and then removed.** Putting them back
+where the figure draws them changes the voltages by less than a part in a thousand and the
+gap by 7 um, so the 2.5 mm the fit had moved an edge was buying nothing the voltages do not
+also buy. The template carries the drawn positions.
+
+### What is not modelled
+
+No detector response, no space charge, and no gas. The inter-electrode gaps are drawn in the
+figure and this template abuts its electrodes, so the solved board gap absorbs some of that.
+And the drift faces are declared as mirror planes, which says the structure repeats along the
+drift - true while the boards are parallel and false the moment they converge. It is worth
+about 11 per cent, and the alternative is worse.
+
+The narrative of how this was reached, including several attributions that turned out to be
+wrong, is `docs/astral-log.md`. The published record it is compared against is
+`docs/literature-targets.md`.
 
 ## What is missing
 

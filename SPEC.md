@@ -2448,156 +2448,50 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
 
-13. **The Astral inverse problem, and the drift reversal is now reproduced.** This item has
-    been rewritten twice. Both earlier versions attributed the gap between this model and the
-    published instrument to the four unknown electrode depths, and both were wrong; the
-    reasoning is kept in the handoff because the wrong turns are instructive, and the
-    superseded parts are marked there.
+13. **The Astral inverse problem: the mirror is reproduced, and one published number is
+    not.** This item has now been rewritten four times, and the rewriting is the point rather
+    than an embarrassment - every earlier version attributed the gap between this model and
+    the published instrument to something that turned out not to be it. The chronology, with
+    what each wrong attribution cost and what caught it, is `docs/astral-log.md`. The model's
+    current position is `docs/device-templates.md` and the published record it is compared
+    against is `docs/literature-targets.md` §4; **this entry records only what bears on the
+    specification**, so the four do not drift into each other again.
 
-    **Reproduced, from the shipped template, with no ion foil contribution:**
+    **Where it stands.** The electrode positions are published only as drawn blocks in a
+    figure; reading them off it rather than guessing depths closes the mirror comparison, and
+    with the published stripe shape in the model the drift register closes too.
 
-    | | published | measured |
+    | | model | published |
     | --- | --- | --- |
-    | drift distance | 310 to 360 mm | **334.61 mm** |
-    | reflections outbound | 24 to 26 | **25** |
-    | drift per reflection | 13.40 mm | **13.38 mm** |
+    | resolving power, mirror alone, over ±2.5 per cent | 120,000 to 220,000 | ~180,000 |
+    | drift reversal | 336.15 mm | 310-360, mean 335 |
+    | flight time | 786.44 µs | 783.2 by arithmetic at 24 reflections |
+    | on-axis potential, 16 points | 0.159 kV rms | read off the figure |
 
-    **It is not a fit with spare parameters.** `D/N = t_r V tan(theta) / 2` contains no
-    convergence term, so the published drift distance and oscillation count fix the injection
-    angle on their own; the convergence then follows from either one alone, and the third
-    number checks. Two unknowns, two equations, one prediction.
+    Three numbers are solved rather than published - the board gap, and `U3` and `U4`, which
+    move 6 and 2 per cent from a table that already has one sign printed wrong - and they are
+    solved against the design paper's own stated condition, not against anything this model
+    produced. **The injection angle is the one published number that does not reconcile**:
+    1.78 degrees published against 2.29 fitted, and the reversal distance goes as its fourth
+    power, so that is a real disagreement rather than a rounding one.
 
-    **What had been wrong, in order, and each caught by its own control.**
+    **What this establishes for the specification**, which is why the item is here at all:
 
-    The tilt was invisible to the solver *and* its sign was inverted, two errors whose product
-    looked like the mechanism for weeks. See Amendment 36: the anisotropy `Ez/Ex` = 2.9e-4 is
-    fourteen times below the field error of any affordable mesh, so the solved answer ranged
-    over 3.54, 0.011 and -0.57 of the closed form on gap width alone. Rotating a
-    two-dimensional cross-section instead is exact at 5.4e-20, and makes each mirror a 2-D
-    solve.
-
-    **`N = alpha L / (eta c)` and `eta = 0.578` are withdrawn.** The drift impulse of one
-    reflection has a closed form - `Delta v_z = V sin(2 alpha)` exactly, from three
-    conservation facts - and it is **independent of the electrode design**, so eta is
-    identically 1 and there was never anything for the depths to move. Confirmed against the
-    integrator at 1.000000000 across three tilts and unchanged by an eightfold change of
-    mirror gradient. **That forbids the whole plan of fitting `d1..d4` against the reversal.**
-
-    **`capToCap` = 625 mm was derived wrongly** - the turning-point separation mistaken for
-    the cap-to-cap distance. The ion turns 84.2 mm past the mirror mouth and that offset is
-    independent of `capToCap`, so the published 24 oscillations over 30 m gives 716.6 mm.
-
-    **And the foil does not reverse the drift.** An interim conclusion had it supplying 58 to
-    69 per cent of the returning impulse; the detector paper (J. Am. Soc. Mass Spectrom.
-    2024;35:2390) says the tilt does it alone and the foil "counter[s] ToF aberrations
-    induced by the converging ion mirrors". The apparent deficit was a convergence too small
-    by 2.8x.
-
-    **The one number to question now is `tiltBaseline`.** The published quantity is a 200
-    micron spacer; what it tilts *over* is not published. Read as the gap closing across the
-    350 mm drift it gives 714.81 mm of drift and 61 reflections; read as 200 microns per
-    mirror over a ~250 mm baseline it gives the table above. The template declares the two
-    apart so the uncertainty sits where it belongs.
-
-    **The full track now flies end to end, and the resolving power has been located to one
-    term.** One ion at the shipped injection angle goes out to a 334.6 mm reversal and back in
-    25 oscillations, 31.27 m, 853.7 µs bare and 800.4 µs with the foil, against a published
-    24-26, 310-360 mm, ~30 m and ~779 µs - every geometric register number on one flight.
-    Two mechanisms were then measured separately on that track and both do what the papers say.
-    **The tilt** gives a return time exactly proportional to sideways speed (ratio +0.99), a
-    constant force and not an isochronous well. **The published foil** - the contoured plate at
-    a *uniform* voltage, not the graded ramp this model first tried - cancels that first-order
-    dependence 22-fold at -3 V inside the published 0 to -20 V window, overshoots at -20 V, and
-    breaks the instrument sign-reversed; the flight time there lands on the published value to
-    3%. The template ships that arrangement. What the foil leaves is second order (-6.5), which
-    is the well's shape not being harmonic - the subject of Grinfeld, Stewart, Makarov,
-    *Nucl. Instrum. Methods Phys. Res. A* 1060 (2024) 169017, still the paper to read first.
-
-    **The mirrors are measured and understood, and were not the instrument's limit.** The
-    focusing coefficients `c1..c3` are figures of merit now, and the scaling law is the check:
-    `R x s` constant means first-order limited (shipped depths, 21.5), `R x s^2` constant means
-    second-order (one depth moved, 1.2), each cancelled order buying one power of spread. **A
-    mirror is focused *for* a drift length** (`c1` grows 7.7-fold with the free path), so it
-    must be measured on the instrument's own per-oscillation path - and it carries to the full
-    track exactly, `c1` = -0.012 there against 0.012 on a half oscillation. **The foil adds
-    `c1` = -0.231 on its own** and is the entire gap between the half-oscillation R of 36,500
-    and the full track's 60-70.
-
-    **Both ways out of that were measured and both fail as parameterised.** A 2x2 Jacobian on
-    the full track puts the foil's two shape knobs **9.6 degrees from exactly opposed**, so the
-    device's speed-isochronising benefit and its energy defect are very nearly the same
-    quantity and shrinking one surrenders the other; the simultaneous zero asks for a plate
-    extending past the mirror mouth. And the mirrors cannot supply the cancellation: `|c1|`
-    ranges only 0.003 to 0.087 across `d2`, a third of what is needed, with `TE1` making up the
-    rest only at a `c2` cost that climbs monotonically.
-
-    **The one unfitted published number became a constraint on the geometry.** The
-    crowd-control paper defines `(t|e) = T^-1 dT/d(epsilon)` outright and states the 4 keV
-    beam, so the measured `dc1/dTE1` = 2.2 against a published 1.0 is neither a units error nor
-    a definitional half - it says the depths are wrong, and `d2` is the only depth that
-    controls it (`d1` is inert, `d3` and `d4` move it destructively). `d2` = 38.0 mm reproduces
-    it to 2 per cent against a guess of 50.
-
-    **And then the constraint no half-oscillation measurement can see.** At `d2` = 38 the ion
-    **strikes the board at y = -20 mm after 24 of 50 reflections** - the mirror does not confine
-    transversely over the track. Every coefficient above was measured on one reflection, where
-    an ion has no time to walk off axis; each is correct for what it measures and none can say
-    whether a geometry is flyable. That invalidated an earlier `c1_foil` comparison which had
-    been timing an ion hitting a rod, and whose tell was a bare-tilt speed ratio of 1.95 where
-    the closed form requires exactly 1.0. `d3` = 84 mm is the only rescue found: **20/38/84/130
-    flies the full 50 reflections**, and whether it still meets the published sensitivity and
-    what it does to `c1_foil` is the measurement in flight. Two floors stated rather than
-    hidden: `c1` has a mesh floor of +/-0.0015 from how the strips sit on the lattice, and the
-    `d2` constraint carries the paper's own "about" at +2.5/-3 mm. Handoff sections 18-28.
-
-    **The night of 2 September took this further, and the priority inverted.** Both prongs
-    above were measured and both fail as parameterised - but the **foil's voltage law along the
-    drift** is a knob neither tested, and it flips the sign of the energy term. Centring the
-    foil's well on the injection plane breaks the trade between the drift's first- and
-    second-order terms (they are the same condition there, since a half period is
-    amplitude-independent), and the drift spread falls from 8.3e-3 to about 2e-3. **Once the
-    drift is optimised it stops being the limit**: the mirrors' energy terms floor R at 836
-    whatever the drift does, so the mirrors are the whole remaining gap - and they are the part
-    with published constraints.
-
-    **And both published correction vectors fail to do their published jobs on this geometry**,
-    which is now the sharpest constraint in the reconstruction. `C(1)`'s sensitivity is 2.2
-    against a published 1.0 (met at `d2` = 38 mm to 2%), and `TE2` along `C(2)` *increases*
-    `c2` in both directions where its stated purpose is to reduce it - a **sign** condition,
-    so it cannot be satisfied by accident. A depth set where both hold is a geometry in which
-    the published calibration scheme works as published, which is a far stronger claim than
-    matching any single number. Three conditions on four depths, none fitted to a number this
-    model produced, and that is the next search.
-
-    **Superseded by the following night (handoff sections 47-71): the mirror is reproduced.**
-    The paragraph above was written on guessed electrode positions with one electrode at the
-    wrong polarity. The design paper's figure 1, read as a rendered page, gives the electrode
-    positions as drawn blocks, shows electrode 4 wrapping into the mirror's back wall, and has
-    an on-axis potential that fixes U2's sign as positive where the crowd-control table prints
-    it negative. On that layout both published correction vectors do their published jobs
-    (dc1/dTE1 = 0.987 of published; C(2) reduces c2), so the "sharpest constraint" above was a
-    constraint on a wrong geometry. The three numbers the papers do not give - the board gap,
-    U3 and U4 - are then solved for the design paper's own three-point condition (the period
-    stationary at 4000 and 4000 +/- 100 eV): a 41.4 mm gap, U3 0.974 against the table's
-    0.916, U4 1.479 against 1.503. There the model gives **R of 120,000 to 220,000 over +/-2.5 per
-    cent against the published curve's ~180,000** (the range is a first-order residual at
-    the 1e-4 level, the floor of the solve; handoff 73), the figure's slope amplitude, an effective
-    drift of 646.8 against 641 mm, and the published on-axis potential to 0.16 kV rms at
-    sixteen points - the axis being a check the solve never saw. The grounded domain edge
-    behind a flat electrode 4 had moved c3 by 0.17 on its own; a grounded boundary is a third
-    electrode, met again. What remains open for this device is the drift register with the
-    stripe in the model, being refit to the reproduced mirror, and the reconciliation of the
-    published 25 oscillations with the 4-in-11 mm reversal the bare tilt gives.
-
-    Two measurement limits bound any further work and are worth knowing before repeating it.
-    **Flight-time differencing floors the drift coefficients at plus or minus 0.02 in `a`** at
-    any mesh - a 330 ns signal on a 3 microsecond error that only 60% cancels - and refining
-    4 to 2 mm moves `a` by as much as the scatter while the integrator at 1e-12 changes
-    nothing. A **quadrature screen** over sixteen per-slice basis wells avoids that and costs
-    no flights (it ranked four flown laws in exactly the flown order, 23% optimistic in
-    absolute R), but is itself floored by adiabaticity, the x-period being 34 microseconds
-    against a 500 microsecond drift. The two floors are independent, which is why the methods
-    agree on ranking and disagree on values. Handoff sections 24-46.
+    - **A published instrument can be reconstructed from public information alone**, which is
+      §21 Phase 5's test of generality met on the hardest available case. Nothing in it came
+      from conversation with the vendor.
+    - **The geometry had to be measured out of a figure**, and the platform had no way to say
+      so. A parameter declares its value, unit, bounds and description and cannot declare
+      where the number came from, so "read off a drawing at 1.92 mm per pixel" survives only
+      as English inside a description. That is the strongest argument yet for a `provenance`
+      field on the parameter surface.
+    - **A grounded domain edge is a third electrode**, met again here: the edge behind a flat
+      electrode moved `c3` by 0.17 on its own.
+    - **Two measurement floors bound any further work.** Flight-time differencing floors the
+      drift coefficients at ±0.02 whatever the mesh, because it is a 330 ns signal on a 3 µs
+      error that only 60 per cent cancels; a quadrature screen over per-slice basis wells
+      avoids that and costs no flights, but is floored by adiabaticity. The two floors are
+      independent, which is why the methods agree on ranking and disagree on values.
 
 14. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
     cross-section reproduces the paper's resonance ejection and its unit resolution at

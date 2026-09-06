@@ -64,7 +64,7 @@ public sealed class AstralMirrorStudy(ITestOutputHelper output)
     /// that electrodes 2 to 4 are positive, and fitting the four voltages to the design paper's
     /// published on-axis potential gives U2 positive at every board gap tried (+1.24 at 40 mm,
     /// +1.76 at 50) while reproducing U1 to one per cent - so the table has one sign wrong.
-    /// docs/astral-handoff.md section 62.
+    /// docs/astral-log.md section 62.
     /// </summary>
     private static readonly double[] Coefficients = [-1.840, +1.158, 0.916, 1.503];
 
