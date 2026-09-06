@@ -643,7 +643,7 @@ flight time   10.180506 +/- 0 us
 energy drift  3.08E-015 relative (ACC-4 budget 1e-6)
 steps         131, 0.2000 m advanced analytically
 final x       -100.000000 mm
-engine        0.1.0+f69b53a, model sha256:f0b4199...
+engine        26.1.0+f69b53a, model sha256:f0b4199...
 
 wrote results\reflectron.manifest.json
 wrote .einzel\reflectron.trajectory.vtu

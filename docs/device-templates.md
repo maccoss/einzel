@@ -586,10 +586,28 @@ which is 2.9e-4 of anisotropy against roughly 0.4% of second-order field error i
 solve. `docs/astral-handoff.md` carries the reconstruction in full, including what is
 published, what is guessed, and what has been withdrawn.
 
-**Not reconciled with the published instrument**, and the gap points the right way: 200 µm
-of convergence at 2° gives 4 oscillations here against the published 24. The remainder lives
-in the guessed electrode depths and the assumed board gap, which is the inverse problem the
-model exists to pose.
+**The drift reversal is reproduced, and by the mirror tilt alone.** At 0.56 mm of
+convergence - the 2.29° the published figures themselves imply - with no ion foil in the
+model, the drift reverses at **334.76 mm after 25 reflections at 13.39 mm per reflection**,
+against a published 310-360 mm, 24-26 reflections and 13.40 mm. Two published numbers fix
+the two unknowns and the third checks. The full track flies end to end: 25 oscillations out
+and back, 31.27 m in 853.7 µs against a published ~30 m in ~779 µs.
+
+**What is not settled is the convergence itself**, and it is the most consequential
+unpublished number in the reconstruction. The papers say "a 200 µm thick spacer" and none of
+them says what it tilts over - 200 µm closing the gap across the 350 mm drift, or 200 µm per
+mirror over a roughly 250 mm baseline. The two differ by 2.8×, and every reversal number
+here depends on which is meant. At 0.20 mm nothing reproduces; at 0.56 mm everything does.
+
+**And the resolving power is an inverse problem with a seam to fit through.** The mirror
+*voltages* are published and are used correctly; the electrode *positions* are published
+only as grey blocks in a figure and were guessed, wrong by two to three times on two of the
+four. So every mirror result was the right voltage set on the wrong geometry. Fitting three
+electrode depths with `einzel optimise` takes the model from **R = 1,086 to 47,657** at the
+published ±2.5% acceptance, and to 150,036 at ±0.5%, in a three-minute search. The published
+potentials were always compatible with the published resolving power; what was missing was a
+geometry fitted to them. `docs/astral-handoff.md` §16-18 carries the fit, and its own ranked
+next steps.
 
 ## What is missing
 

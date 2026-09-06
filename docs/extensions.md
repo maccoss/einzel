@@ -33,7 +33,7 @@ because a project is a directory.
   "entry": "extension.py",
   "function": "run",
   "figures": ["resolvingPower", "flightTime"],
-  "engineMinimum": "0.1.0",
+  "engineMinimum": "26.1.0",
   "outputSchema": {
     "type": "object",
     "required": ["value"],
