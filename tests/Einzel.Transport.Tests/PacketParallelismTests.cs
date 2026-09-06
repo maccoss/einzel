@@ -165,8 +165,15 @@ public sealed class PacketParallelismTests(ITestOutputHelper output)
         output.WriteLine($"{(longRun - shortRun) / (double)(manySteps - fewSteps):F2} bytes per additional step");
 
         Assert.True(manySteps > 10 * fewSteps, $"the long run must be much longer: {fewSteps} against {manySteps}");
+
+        // A constant slack, not a per-step slope, and the same 256 bytes the single-ion
+        // test allows. A slope permits a real per-step allocation to hide behind it while
+        // the test still claims the loop allocates nothing; what is being asserted is that
+        // a forty-five-fold longer flight costs the same, and the measured difference is
+        // zero rather than small.
         Assert.True(
-            longRun - shortRun < 64 * (manySteps - fewSteps) / 10,
-            $"allocation grew by {longRun - shortRun} bytes over {manySteps - fewSteps} extra steps");
+            longRun <= shortRun + 256,
+            $"allocation grew with step count: {shortRun} bytes over {fewSteps} steps, "
+            + $"{longRun} bytes over {manySteps} steps");
     }
 }
