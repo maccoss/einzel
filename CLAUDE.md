@@ -1541,6 +1541,44 @@ Two findings from Stage 1 that bear on the spec:
   measured **2.9105718, 1.0e-7 out**: the finite plates and the grounded boundary, not
   the sequencer. Corpus 30 → 31. Full diagnosis in `docs/lessons.md`.
 
+- **A pushed packet got faster, and the measurement redirected the work.** The pair sum is
+  O(N²) and the field evaluation O(N), so the sum is the obvious target. Measured first:
+  on a solved **volume** at 240 macroparticles the sum is **27% of a stage** and the
+  tricubic gather is 73%; on a **cross-section** it is 71%. So vectorising the sum is worth
+  1.04x on the volume and 1.93x on the cross-section, and spreading the field loop across
+  cores is worth 1.64x on the volume and nothing on the cross-section. Both built; the
+  choice between them is **timed at the first stage** rather than guessed from the member
+  count, and the automatic choice matches or beats the better forced one in both cases
+  (226 → 113 ms and 525 → 319 ms end to end).
+
+  **The vectorised pair sum** compacts the active members first (no branch in the inner
+  loop), keeps structure-of-arrays in pooled buffers, and puts j across the lanes so the
+  symmetric half falls out — the reaction on each j is a lane, the action on i is one
+  horizontal sum. **434 Mpair/s against 140 scalar** at 240 members, 3.33x at a thousand,
+  against a 4-wide vector. The scalar rate is flat at 140 across a thirtyfold range, which
+  is what says the measurement is of the arithmetic rather than the cache.
+
+  **CMP-1's reference is now selectable, not merely retained.** A scalar implementation
+  nothing can run is one nobody can check; `CoulombInteraction.Kernel` is how a test reaches
+  it, and the two agree to 3e-15 of the acceleration scale over nine sizes, with members
+  inactive, with a pre-loaded accumulator, and on Newton's third law. A deliberate mutation
+  fails 10 of 16.
+
+  **The parallel field loop is bit-identical however many cores run it**, because nothing is
+  summed across members — asserted on 96 members over 48 steps on 16 cores, every final
+  position, velocity and flight time equal to the last bit. The mutual force is deliberately
+  *not* parallelised: splitting a symmetric sum across threads would make the accumulation
+  order depend on the thread count.
+
+  **And the inner loop now allocates nothing**, from 504 bytes a step. Twenty-two arrays a
+  step were pooled — including the Runge–Kutta stage weight lists, which are *constant*
+  rather than merely poolable. That left exactly 504 bytes still there, **invariant with the
+  member count**, which is what identified it: seven stages × 72 bytes is the closure of a
+  lambda in the `if (parallel)` branch the serial path never takes. **A lambda's captures
+  are hoisted when the method is entered, not when its branch is taken.** In
+  `docs/lessons.md`, with two others: a benchmark run a handful of times measures the
+  warm-up, and measure which half is slow before optimising the half you assumed.
+
 **`SPEC.md` is the living specification** — see the note at the top of this file for what it holds and when to update it.
 
 The two design documents remain the source of truth for *intent*. Tracked alongside them: `SPEC.md`, `README.md`, `LICENSE` (Apache 2.0).

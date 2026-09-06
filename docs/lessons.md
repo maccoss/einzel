@@ -2712,6 +2712,40 @@ theorem the model reproduces is worth more than an effect it shows, because it s
 part of the field the real effect has to live in - here the anharmonic part and the
 ejection - and so where the next measurement goes.
 
+## A lambda in a branch that is never taken still allocates, on every call
+
+The packet integrator's stage loop was made allocation-free by pooling twenty-two arrays a
+step, and 504 bytes a step remained. The number did not move with the member count, which
+is what gave it away: a per-member leak scales, and this did not. Seven stages times 72
+bytes is a display class holding seven captured variables - the closure of a lambda in the
+`if (parallel)` branch, which on the serial path is never entered. **The compiler hoists
+captured variables when the method is entered, not when the branch holding them is taken**,
+so a lambda anywhere in a hot method costs its closure on every call through it. Moving the
+lambda into its own method took the loop to zero bytes a step. The general rule: when a hot
+method must contain a lambda for one path, put the lambda somewhere else.
+
+## A benchmark run a handful of times measures the warm-up
+
+The first comparison of the vectorised pair sum against the scalar one reported 1.14x at 60
+macroparticles rising to 3.74x at 2000, and the shape of that curve invited an explanation
+about cache behaviour and loop overhead. It was warm-up: the rep counts were 555 down to 3,
+so the small cases amortised the jitting and the large ones did not. Run against a time
+budget and taking the cheapest of seven batches, the same measurement is 2.55x at 60 and
+3.33x at 2000, and the scalar rate is flat at 140 Mpair/s across the whole range - which is
+the sanity check the first version lacked. This project had already written the rule down
+for `AllocationDoesNotGrowWithStepCount`: a floor sampled once is not a floor. It applies to
+any performance number, and **the tell is a quantity that should be flat and is not**.
+
+## Measure which half is slow before optimising the half you assumed
+
+The pair sum in a pushed packet is O(N^2) and the field evaluation is O(N), so the sum is
+obviously the thing to speed up - and on a solved *volume* at the macroparticle counts
+actually used, it is 27% of a stage while the tricubic field gather is 73%. Vectorising the
+sum, done first because it was the obvious target, is worth 1.04x there. Spreading the field
+loop across cores is worth 1.64x. On a *cross-section*, where the field is cheap, the
+ordering reverses exactly. Both were worth building, but the recommendation given before the
+measurement named the wrong one as the thing that would unblock the 3-D study.
+
 ## A cloud is long along the launch direction, and the trap's axis is somewhere else
 
 A source declares a longitudinal and a transverse spread, and longitudinal means along the

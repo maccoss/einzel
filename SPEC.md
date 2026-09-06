@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,181 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,199 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -715,6 +715,30 @@ against a 60 V wave. The template ships with the confinement at zero, because sh
 a default that makes a device worse would be worse than shipping none. What the tests
 assert is that the generator **reaches** the ion — the acceptance differs with it on —
 which is the claim the capability supports.
+
+### 38 - The obvious kernel to optimise was the wrong one, and CMP-1's reference must be selectable
+
+**r06 §6** puts the SIMD and GPU dispatch in `Einzel.Compute`, and **CMP-1** asks that the
+scalar reference never be deleted or allowed to rot. Two things about that turned out to
+need saying.
+
+**A retained reference is not a checked one.** Keeping the scalar implementation in the file
+satisfies the letter of CMP-1 and nothing else: if the fast path is the only one anything
+calls, the reference rots silently and the day it is needed nobody knows whether it still
+works. It has to be *selectable*, and the two have to be compared as a test. Here that
+comparison is over nine sizes spanning below one vector width to a thousand members, with
+members inactive, with a pre-loaded accumulator, and against Newton's third law; a
+deliberate mutation of the vector kernel fails ten of sixteen.
+
+**And the obvious kernel was not the expensive one.** The pair sum is O(N^2) against the
+field evaluation's O(N), so it is the obvious target. On a solved *volume* at the
+macroparticle counts actually used it is 27% of an integrator stage, against 73% for the
+tricubic gather; vectorising it is worth 1.04x there and spreading the field loop across
+cores is worth 1.64x. On a *cross-section*, where the field is cheap, the ordering reverses.
+The lesson for §6's compute layer is that **the dispatch layer is not the interesting part**
+- the interesting part is knowing which loop dominates for a given geometry, and that is a
+measurement per model rather than a property of the code. `Einzel.Compute` is still not
+built, and one kernel does not justify it; PERF-5's GPU stability scan is what would.
 
 ### 37 - The cross-section vocabulary had no general outline, and the first real trap needed one
 
@@ -1447,7 +1471,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `CMP-1` | The scalar reference implementation is never deleted or allowed to rot. Collisions and space charge Model Regime Used for Mobility-based, no discrete ... | Not built | `Einzel.Compute` does not exist, so there is one path and nothing to test it against. The scalar implementation is the only implementation. |
+| `CMP-1` | The scalar reference implementation is never deleted or allowed to rot. Collisions and space charge Model Regime Used for Mobility-based, no discrete ... | **Partly met** | The pair sum has two paths, and the scalar one is **selectable** rather than merely retained (`CoulombInteraction.Kernel`), which is what "never allowed to rot" has to mean: a reference nothing can run is a reference nobody can check. They are compared over every size that exercises a different part of the loop, with members inactive, with a pre-loaded accumulator, and against Newton's third law, agreeing to 3e-15 of the acceleration scale - and a deliberate mutation fails 10 of 16. The vectorised path runs at 434 Mpair/s against 140 scalar at 240 macroparticles. The packet inner loop now allocates **nothing** (504 bytes/step before). `Einzel.Compute` still does not exist: one kernel does not need a dispatch layer, and the GPU path PERF-5 needs is what would justify one. See Amendment 38. |
 
 ### Collisions (§11)
 

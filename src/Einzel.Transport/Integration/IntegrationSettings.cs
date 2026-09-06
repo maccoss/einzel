@@ -91,6 +91,19 @@ public sealed record IntegrationSettings
     /// <summary>Controller safety factor on the proposed step size.</summary>
     public double SafetyFactor { get; init; } = 0.9;
 
+    /// <summary>
+    /// Whether a packet flight spreads its applied-field evaluations across cores.
+    /// Ignored by single-trajectory flights, which have one member.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="PacketParallelism.Automatic"/> decides from a measurement of the first
+    /// stage, because what matters is members times cost-per-sample and only one of those
+    /// is known before the run. The other two settings exist because the choice must be
+    /// pinnable: the two paths are asserted to agree to the last bit, and an assertion
+    /// nothing can arrange is not one.
+    /// </remarks>
+    public PacketParallelism Members { get; init; } = PacketParallelism.Automatic;
+
     /// <summary>Largest factor by which one step may grow over its predecessor.</summary>
     public double MaximumStepGrowth { get; init; } = 5.0;
 
@@ -188,4 +201,17 @@ public static class TrajectoryOutcomes
             "a new trajectory outcome has to say whether it is a completed run or a "
             + "failure to compute one; it cannot default to either"),
     };
+}
+
+/// <summary>How a packet flight uses the machine's cores.</summary>
+public enum PacketParallelism
+{
+    /// <summary>Decide from a measurement of the first stage.</summary>
+    Automatic,
+
+    /// <summary>One core, always. Every member is evaluated in index order.</summary>
+    Serial,
+
+    /// <summary>Spread the applied-field evaluations across cores, whatever they cost.</summary>
+    Parallel,
 }
