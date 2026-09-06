@@ -123,14 +123,22 @@ jobs:
       #
       # Everything is staged into a directory named after the asset, so unpacking
       # gives one folder rather than two hundred files in the download directory.
+      #
+      # `Version`, not `VersionPrefix`: the value here is the whole version, including
+      # any prerelease label a tag carries, and `Version` means exactly that string
+      # while `VersionPrefix` means the part before a suffix. Both publish a
+      # prerelease correctly today - checked, `0.0.0-dev` builds and reports
+      # `0.0.0-dev+<sha>` either way - but a `VersionSuffix` appearing in
+      # Directory.Build.props later would silently append to the prefix and not to
+      # the version.
       - name: Publish CLI and MCP server
         run: |
-          dotnet publish src/Einzel.Cli -c Release -r ${{ matrix.rid }} --self-contained true -p:VersionPrefix=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
-          dotnet publish src/Einzel.Mcp -c Release -r ${{ matrix.rid }} --self-contained true -p:VersionPrefix=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
+          dotnet publish src/Einzel.Cli -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
+          dotnet publish src/Einzel.Mcp -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
 
       - name: Publish the shell
         if: matrix.withShell
-        run: dotnet publish src/Einzel.Wpf -c Release -r ${{ matrix.rid }} --self-contained true -p:VersionPrefix=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
+        run: dotnet publish src/Einzel.Wpf -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
 
       # What a reader of the archive needs before running anything: what it is, what
       # licence it is under, and that nothing installed it.
