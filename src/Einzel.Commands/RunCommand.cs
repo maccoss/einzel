@@ -752,6 +752,58 @@ public static class RunCommand
     /// numbers are self-consistent. This is the one thing the model could have said.
     /// </para>
     /// </remarks>
+    /// <summary>What this run's numbers rest on, where that is not the author's own choice.</summary>
+    /// <param name="model">The compiled model, for its parameter surface.</param>
+    /// <returns>One warning naming the guessed parameters, one naming the fitted, or none.</returns>
+    /// <remarks>
+    /// <para>
+    /// REG-2's rule applied to provenance: reported whether or not anything is wrong with it,
+    /// because a reader who sees which numbers are guesses knows the run was checked, and one
+    /// who sees nothing cannot tell that from its not having been checked.
+    /// </para>
+    /// <para>
+    /// <see cref="WarningSeverity.Provenance"/> rather than a validity violation, and the
+    /// severity's name is the argument: a guessed dimension does not make a result invalid,
+    /// it makes it a result about a geometry somebody assumed. Published and drawn parameters
+    /// are deliberately silent - a run resting on cited values is the ordinary case, and a
+    /// line on every model is noise rather than information.
+    /// </para>
+    /// </remarks>
+    private static List<ValidityWarning> ProvenanceWarnings(CompiledModel model)
+    {
+        var warnings = new List<ValidityWarning>();
+
+        foreach (var (provenance, code, what) in new[]
+        {
+            (ParameterProvenance.Guess, "parameters.guessed",
+                "are guesses: the result is about a geometry somebody assumed, and moves if a "
+                + "better value turns up"),
+            (ParameterProvenance.Fitted, "parameters.fitted",
+                "were fitted rather than declared, so the model agrees with whatever they were "
+                + "fitted against by construction and that agreement is not evidence"),
+        })
+        {
+            var named = model.Parameters.Parameters.Values
+                .Where(p => p.Provenance == provenance)
+                .Select(p => p.Name)
+                .Order(StringComparer.Ordinal)
+                .ToList();
+
+            if (named.Count == 0)
+            {
+                continue;
+            }
+
+            warnings.Add(new ValidityWarning(
+                code,
+                $"{named.Count} of {model.Parameters.Parameters.Count} declared parameters "
+                + $"{what}: {string.Join(", ", named)}",
+                WarningSeverity.Provenance));
+        }
+
+        return warnings;
+    }
+
     /// <summary>
     /// Whether any ion this run launches turns round behind the plate a half-space declares.
     /// </summary>
@@ -1597,7 +1649,11 @@ public static class RunCommand
         // A half-space's ramp does not stop where the document says the plate is, and an
         // ion with more energy than the cap turns round behind it - self-consistently, and
         // in a region the model does not describe.
-        fieldWarnings = [.. fieldWarnings, .. regimeWarnings, .. HalfSpaceDepthWarnings(model)];
+        fieldWarnings =
+        [
+            .. fieldWarnings, .. regimeWarnings, .. HalfSpaceDepthWarnings(model),
+            .. ProvenanceWarnings(model),
+        ];
 
         var manifest = new RunManifest
         {

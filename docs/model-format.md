@@ -72,6 +72,59 @@ Bounds are **checked, not clamped**: a sweep that walks a parameter past its
 declared range has found something the template author did not intend, and
 clamping would hide it.
 
+### Where a number came from
+
+A parameter may declare `provenance`, and where that makes a claim it must say what backs it:
+
+```json
+"ionEnergy":  {
+  "value": 4000.0, "unit": "V",
+  "provenance": "published",
+  "source": "Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017, table 1"
+},
+"boardGap":   {
+  "value": 41.43, "unit": "mm",
+  "provenance": "fitted",
+  "source": "solved for the design paper's three-point condition"
+},
+"capToCap":   { "value": 740.0, "unit": "mm", "provenance": "guess" }
+```
+
+| | |
+| --- | --- |
+| `chosen` | a design value the model's author picked. **The default** |
+| `published` | stated in a cited source |
+| `drawn` | measured off a figure in a cited source |
+| `fitted` | solved or optimised by this platform against a stated condition or dataset |
+| `guess` | a placeholder nobody has justified, flagged as one |
+
+**`source` is required for `published`, `drawn` and `fitted`, and refused for the other
+two.** Required for the same reason section 9 requires a unit: a claim of authority with
+nothing behind it is worse than no claim, because a reader cannot recompute it and cannot
+tell it apart from one that is backed. Refused where there is nothing to cite, because a
+document declaring a source on a value its author chose is saying two things at once — the
+same rule that refuses a solve declaring both `drive` and `drives`.
+
+**`drawn` is separate from `published` on purpose.** A number read off a figure carries a
+reading error a table does not, and in a reconstruction the two behave differently: a
+redrawn figure moves the geometry, a corrected table moves a voltage.
+
+**A run reports the two that qualify its result.** `parameters.guessed` names the guesses —
+the result is about a geometry somebody assumed, and it moves if a better value turns up —
+and `parameters.fitted` names the fitted ones, because a model agrees with whatever it was
+fitted against *by construction* and that agreement is not evidence. Both are severity
+`Provenance` rather than validity violations: neither makes a result wrong. `published` and
+`drawn` are silent, since a run resting on cited values is the ordinary case and a line on
+every model would be noise.
+
+**Why this is in the format rather than in prose.** It is the one thing about a parameter a
+study cannot infer — a sweep can perturb one and an optimiser can fit one, and neither can
+say whether the nominal was measured or invented. The shipped `astral-3d` template is the
+case that forced it: three of its numbers are solved for, thirteen are read off a published
+drawing, and the rest are published outright, and which results would move if a better
+source turned up depends entirely on which is which. That distinction had lived only as
+English inside `description` fields, where nothing could query it and it drifted.
+
 ### Expressions
 
 Arithmetic over other parameters: `+ - * /`, parentheses, unary minus, and

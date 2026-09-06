@@ -181,11 +181,16 @@ public static class ModelSchema
     /// case in a sharper form: an older build would solve the untilted cross-section and
     /// report a converging analyser as a parallel one.
     /// </remarks>
-    public const string CurrentVersion = "0.9";
+    public const string CurrentVersion = "0.10";
 
     /// <summary>Versions this build can read.</summary>
+    /// <remarks>
+    /// Membership, not ordering: a version is supported because it is in this list and a
+    /// test asserts that every entry actually reads. So <c>0.10</c> follows <c>0.9</c> even
+    /// though it sorts before it as text, and nothing here compares two versions.
+    /// </remarks>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10"];
 }
 
 /// <summary>The ion being tracked.</summary>

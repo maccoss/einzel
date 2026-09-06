@@ -20,6 +20,8 @@ namespace Einzel.Commands;
 /// Whether a caller may set it. False for a derived parameter, whose value is its
 /// expression's - editing it would be editing a consequence.
 /// </param>
+/// <param name="Provenance">Where the number came from.</param>
+/// <param name="Source">The citation or the fitted condition, or null.</param>
 public sealed record ParameterOutline(
     string Name,
     double? Value,
@@ -29,7 +31,9 @@ public sealed record ParameterOutline(
     double? Minimum,
     double? Maximum,
     string? Description,
-    bool Editable);
+    bool Editable,
+    ParameterProvenance Provenance = ParameterProvenance.Chosen,
+    string? Source = null);
 
 /// <summary>A model's declared surface, as something can show it.</summary>
 /// <param name="ModelPath">The model, as an absolute path.</param>
@@ -127,7 +131,9 @@ public static class OutlineCommand
                 // A derived parameter's value is its expression's. Offering it for edit
                 // would offer to edit a consequence, and the two would disagree at the
                 // next resolve.
-                Editable: declared.Expression is null));
+                Editable: declared.Expression is null,
+                declared.Provenance ?? ParameterProvenance.Chosen,
+                declared.Source));
         }
 
         return new OutlineOutcome(

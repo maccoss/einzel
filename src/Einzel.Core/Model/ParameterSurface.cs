@@ -3,6 +3,51 @@ using Einzel.Core.Units;
 
 namespace Einzel.Core.Model;
 
+/// <summary>Where a parameter's number came from.</summary>
+/// <remarks>
+/// <para>
+/// A parameter declares its value, unit, bounds and meaning, and could not declare where
+/// the number came from - so in a model reconstructed from the literature, "this is the
+/// published acceleration voltage" and "this is a guess nobody has justified" were the same
+/// kind of statement, distinguishable only by reading English inside a description.
+/// </para>
+/// <para>
+/// The distinction is not decoration. In the Astral reconstruction three numbers are solved
+/// for, four are read off a drawing, and the rest are published; which results would move if
+/// a better source turned up depends entirely on which is which, and that question was asked
+/// repeatedly and answered by re-reading prose. It is also the one thing a study cannot
+/// infer: a sweep can perturb a parameter and an optimiser can fit one, and neither can tell
+/// you whether the nominal was measured or invented.
+/// </para>
+/// <para>
+/// <see cref="Chosen"/> is the default because it is what most parameters are - a design
+/// value the author picked - and because a scheme whose honest answer has to be opted into
+/// gets the wrong answer by omission.
+/// </para>
+/// </remarks>
+[System.Text.Json.Serialization.JsonConverter(
+    typeof(System.Text.Json.Serialization.JsonStringEnumConverter<ParameterProvenance>))]
+public enum ParameterProvenance
+{
+    /// <summary>A design value the model's author chose. The default.</summary>
+    Chosen,
+
+    /// <summary>Stated in a cited source.</summary>
+    Published,
+
+    /// <summary>
+    /// Measured off a figure in a cited source, which carries a reading error a table does
+    /// not and is worth distinguishing for that reason.
+    /// </summary>
+    Drawn,
+
+    /// <summary>Solved or optimised by this platform against a stated condition or dataset.</summary>
+    Fitted,
+
+    /// <summary>A placeholder nobody has justified, flagged as one.</summary>
+    Guess,
+}
+
 /// <summary>
 /// One named parameter: either a free value with bounds, or an expression
 /// derived from other parameters.
@@ -48,6 +93,22 @@ public sealed record ParameterDocument
 
     /// <summary>What this parameter means. Carried into schema self-description (AGT-7).</summary>
     public string? Description { get; init; }
+
+    /// <summary>Where the number came from. Defaults to <see cref="ParameterProvenance.Chosen"/>.</summary>
+    public ParameterProvenance? Provenance { get; init; }
+
+    /// <summary>
+    /// What it came from: a citation for <c>published</c> and <c>drawn</c>, or the condition
+    /// or dataset for <c>fitted</c>. Required for those three and refused for the others.
+    /// </summary>
+    /// <remarks>
+    /// Required rather than encouraged, and for the reason section 9 requires a unit: a claim
+    /// of authority with nothing behind it is worse than no claim, because a reader cannot
+    /// recompute it for themselves and has no way to tell the difference. Refused on
+    /// <c>chosen</c> and <c>guess</c> because neither has a source by definition, and a
+    /// document that supplied one would be saying two things at once.
+    /// </remarks>
+    public string? Source { get; init; }
 }
 
 /// <summary>A parameter resolved to a quantity, with its bounds.</summary>
@@ -57,13 +118,17 @@ public sealed record ParameterDocument
 /// <param name="Maximum">Upper bound, in SI, or null.</param>
 /// <param name="IsDerived">Whether the value came from an expression.</param>
 /// <param name="Description">What it means.</param>
+/// <param name="Provenance">Where the number came from.</param>
+/// <param name="Source">The citation or the fitted condition, or null.</param>
 public sealed record ResolvedParameter(
     string Name,
     Quantity Value,
     Quantity? Minimum,
     Quantity? Maximum,
     bool IsDerived,
-    string? Description)
+    string? Description,
+    ParameterProvenance Provenance = ParameterProvenance.Chosen,
+    string? Source = null)
 {
     /// <summary>Whether a candidate value lies within the declared bounds.</summary>
     /// <param name="candidate">The value to test.</param>
@@ -239,8 +304,39 @@ public sealed class ParameterSurface
             var minimum = document.Minimum is { } low ? Quantity.From(low, document.Unit) : (Quantity?)null;
             var maximum = document.Maximum is { } high ? Quantity.From(high, document.Unit) : (Quantity?)null;
 
+            var provenance = document.Provenance ?? ParameterProvenance.Chosen;
+
+            // A source is required exactly where it is the point, and refused where it would
+            // contradict the provenance. Same argument as section 9's units: a claim of
+            // authority with nothing behind it cannot be checked by the reader.
+            var needsSource = provenance
+                is ParameterProvenance.Published
+                or ParameterProvenance.Drawn
+                or ParameterProvenance.Fitted;
+
+            if (needsSource && string.IsNullOrWhiteSpace(document.Source))
+            {
+                errors.Add(Error(
+                    $"{path}/source",
+                    $"a '{provenance.ToString().ToLowerInvariant()}' parameter must say what it "
+                    + "came from",
+                    provenance == ParameterProvenance.Fitted
+                        ? "add \"source\": \"fitted against the published period-slope curve\""
+                        : "add \"source\": \"Author et al., J. Am. Soc. Mass Spectrom. 2024, table 1\""));
+            }
+            else if (!needsSource && !string.IsNullOrWhiteSpace(document.Source))
+            {
+                errors.Add(Error(
+                    $"{path}/source",
+                    $"a '{provenance.ToString().ToLowerInvariant()}' parameter has no source by "
+                    + "definition, so declaring one says two things at once",
+                    "remove the source, or say where the number came from with "
+                    + "\"provenance\": \"published\""));
+            }
+
             var parameter = new ResolvedParameter(
-                name, value, minimum, maximum, document.Expression is not null, document.Description);
+                name, value, minimum, maximum, document.Expression is not null, document.Description,
+                provenance, document.Source);
 
             // Bounds are checked, not silently clamped. A sweep that walks a
             // parameter past its declared range has found something the template

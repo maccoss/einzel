@@ -1081,6 +1081,41 @@ threshold, it is measuring the arithmetic of the machine it runs on.** Find the 
 the behaviour that is exactly determined, test that directly, and let the end-to-end
 test assert something that many configurations satisfy rather than one.
 
+## Comparing a vectorised device against a scalar one flatters it by the vector width
+
+The specification says a quadrupole stability scan is "GPU-bound; why ILGPU is in the
+stack", so the obvious first measurement is FP64 throughput on both devices. Chained
+fused multiply-adds, best of several runs, on a GTX 1650 against an i9-9900K:
+
+| | GFLOP/s FP64 |
+| --- | --- |
+| CPU, one core | 1.2 |
+| CPU, all cores | 17.0 |
+| GPU | 90.8 |
+
+**Five times the CPU. And the comparison is wrong**, because the CPU kernel is a single
+dependent chain per lane: each multiply-add needs the previous one's result, so it uses
+neither SIMD nor the second FMA port and is latency-bound rather than throughput-bound.
+The GPU kernel is the same dependent chain, but there are thousands of them running at
+once, which is precisely the thing the CPU version was not allowed to do.
+
+The physics decides whether that is fair. One ion's Runge-Kutta stages **are** a
+dependent chain — but ions are independent of each other, so the CPU can vectorise
+across them exactly as the GPU parallelises across threads. Measured that way the CPU
+gives **65.8 GFLOP/s** and the GPU's advantage is **1.38x**, not 5.34x. The missing
+factor is 3.87, and the AVX2 lane count for doubles is 4.
+
+The rule: **when comparing two devices, both sides must be allowed the parallelism the
+problem actually has.** A scalar baseline against a parallel candidate measures the
+baseline's restraint, and the ratio it produces is roughly the candidate's width — which
+is a number about the benchmark, not about the hardware.
+
+A second thing the same measurement settled, and it is worth stating because it is easy
+to take from a spec sheet instead: this card runs FP64 at **1:37 of FP32**, measured. So
+a 1.4x advantage in double precision sits underneath a 37x advantage in single, and the
+decision about whether to build a GPU backend is a decision about which card is in the
+machine rather than about the software.
+
 ## A round-off guard tested with the numbers that motivated it
 
 A half-space field warns when the ion turns beyond the depth the model declares. The

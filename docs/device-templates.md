@@ -642,6 +642,12 @@ move if a better source turned up.
 | board gap | **not published** | **solved**, 41.43 mm |
 | `U3`, `U4` | published, in the same table | **solved**: 0.9740 against 0.916, 1.4815 against 1.503 |
 
+**The template declares this rather than only describing it.** Every parameter carries a
+`provenance` and, where that makes a claim, the source it rests on: 3 published, 13 drawn off
+the figure, 18 fitted, and 28 the model's own choices. A run reports the guesses and the
+fitted values on the result, so a number quoted out of this model arrives with what it rests
+on attached.
+
 Three solved numbers, and the two voltages move by 6 and 2 per cent in a table that already
 has one sign printed wrong. They are solved against the design paper's own stated condition -
 the drift period stationary at 4000 eV and at 4000 +/- 100 - and not against anything this

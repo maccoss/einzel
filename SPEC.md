@@ -143,6 +143,82 @@ not merely a note about what is unbuilt.
 [Spec findings](docs/spec-findings.md) carries the long form of most of these with
 the measurements attached; what follows is the register of them.
 
+### 40 - A parameter could not say where its number came from
+
+**r06 §9** gives a parameter a value, a unit, bounds and a description, and LIB-1 makes that
+surface the thing a study varies. What none of it can express is **where the number came
+from** — so in a model reconstructed from the literature, "this is the published acceleration
+voltage" and "this is a guess nobody has justified" are the same kind of statement,
+distinguishable only by reading English inside a description field.
+
+**The Astral reconstruction is where it bit.** Three of its numbers are solved for, thirteen
+are read off a published drawing, and the rest are published outright. Which results would
+move if a better source turned up depends entirely on which is which, and that question was
+asked repeatedly over weeks and answered each time by re-reading prose — which is exactly how
+the geometry came to be described as "guessed depths" in one document and "read off figure 1"
+in another, both current, both wrong about part of it.
+
+**It is also the one thing a study cannot infer.** A sweep can perturb a parameter and an
+optimiser can fit one; neither can say whether the nominal was measured or invented. Every
+other property of a parameter is either used by the machinery or checkable against it.
+
+**Recommend §9 give a parameter a `provenance` and a `source`.** Built: `chosen` (the
+default), `published`, `drawn`, `fitted`, `guess`, with the source **required** for the three
+that make a claim and **refused** for the two that do not — the same argument §9 makes for
+units, since a claim of authority with nothing behind it cannot be recomputed by the reader
+and cannot be told apart from one that is backed. `drawn` is separate from `published`
+because a number read off a figure carries a reading error a table does not, and in a
+reconstruction the two behave differently.
+
+A run reports `parameters.guessed` and `parameters.fitted` at severity `Provenance` —
+the first because the result is about a geometry somebody assumed, the second because a
+model agrees with whatever it was fitted against *by construction* and that agreement is not
+evidence. Published and drawn are silent: a run resting on cited values is the ordinary case.
+Schema 0.10.
+
+### 39 - PERF-5 is not GPU-bound on the hardware anyone has, and the fair comparison is 1.4x
+
+**r06 §PERF-5** sets a quadrupole stability scan of 500 geometries by 1000 ions at under two
+hours and says it is *"GPU-bound; why ILGPU is in the stack"*. Both halves were measured
+before any GPU code was written, and both are wrong on this hardware.
+
+**The scan is reachable on the CPU.** `einzel estimate` on exactly that study — 500 points
+over the RF amplitude, 1000 ions each — gives **77 minutes against the two-hour budget**, from
+a pilot measured on the machine rather than a constant.
+
+**And the GPU's advantage in double precision is 1.4x, not the 5x it first appears.** ILGPU
+1.5.3 on a GTX 1650 against an i9-9900K, chained fused multiply-adds, best of several runs:
+
+| | GFLOP/s FP64 |
+| --- | --- |
+| CPU, one core | 1.2 |
+| CPU, all cores, scalar | 17.0 |
+| **CPU, all cores, vectorised** | **65.8** |
+| **GPU** | **90.8** |
+| GPU, FP32, for comparison | 3,369 |
+
+The card runs FP64 at **1:37 of FP32**, measured, which is what consumer Turing silicon is.
+And the honest CPU baseline is the *vectorised* one: a single ion's Runge-Kutta stages are a
+dependent chain, but ions are independent of each other, so the CPU can vectorise across them
+exactly as the GPU parallelises across threads. **Comparing a vectorised GPU against a scalar
+CPU flatters the GPU by the vector width** — 5.34x becomes 1.38x when the comparison is made
+fairly, and the difference is a factor of four that is the AVX2 lane count and nothing else.
+
+**So the GPU is a hardware-purchase decision, not a software one.** On a card whose FP64 is
+1:2 rather than 1:37 the same kernel would be worth roughly thirty times the CPU; on the
+hardware this project has, it is worth 1.4 times and costs a whole backend. **Recommend
+PERF-5 drop the claim that it is GPU-bound**, and that the next compute work be the CPU path
+it names in passing: vectorising trajectory integration across ions, which is the measured
+4x, reuses the existing integrator and interpolant, and is what makes the GPU comparison fair
+in the first place.
+
+Two things this does not say. ILGPU itself is sound and its licence is clear — University of
+Illinois/NCSA, no GPL anywhere in its closure, LIC-1 satisfied — so nothing here argues
+against it later. And the field *solve* is a separate question from the trajectory scan: it
+is memory-bandwidth bound, which is why study-level parallelism tops out near 5x on eight
+cores while a pure-arithmetic control keeps scaling, and bandwidth is the one thing a GPU
+does bring.
+
 ### 1 · SYM-1 is missing translational invariance
 
 **r06 §9** lists cylindrical symmetry, a mirror plane, and discrete periodicity.
@@ -2491,11 +2567,11 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     - **A published instrument can be reconstructed from public information alone**, which is
       §21 Phase 5's test of generality met on the hardest available case. Nothing in it came
       from conversation with the vendor.
-    - **The geometry had to be measured out of a figure**, and the platform had no way to say
-      so. A parameter declares its value, unit, bounds and description and cannot declare
-      where the number came from, so "read off a drawing at 1.92 mm per pixel" survives only
-      as English inside a description. That is the strongest argument yet for a `provenance`
-      field on the parameter surface.
+    - **The geometry had to be measured out of a figure**, and the platform had no way to
+      say so. That is now Amendment 40 and it is built: a parameter declares a `provenance`
+      and a `source`, and the shipped template carries them — **3 published, 13 drawn,
+      18 fitted, 28 chosen**, so which results would move if a better source turned up is a
+      question the document answers rather than one its prose does.
     - **A grounded domain edge is a third electrode**, met again here: the edge behind a flat
       electrode moved `c3` by 0.17 on its own.
     - **Two measurement floors bound any further work.** Flight-time differencing floors the
