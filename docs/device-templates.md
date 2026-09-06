@@ -1724,6 +1724,75 @@ half-millimetre cloud has ions at amplitudes where the positive octupole lifts t
 frequency into the excitation early, which is also why the control's distribution spans
 4.6 u where the twelve-ion cold-cloud scans span a quarter of a unit.
 
+### The capacity question, asked of the volume trap, and answered no
+
+The cross-section could not settle the 2002 paper's capacity claim because it cannot hold
+the cloud axially and cannot eject through the slot with a three-dimensional cloud behind
+it. The volume template can. Thirteen runs: a 3 mm slice of the cloud, 240 macroparticles
+50 µm across, cooled 500 µs in the paper's 4 mTorr helium and ramped at 16,700 u/s through
+the stability edge with the paper's excitation, against matched runs on the cross-section.
+
+**No shift, and no broadening.** Every pushed run lies inside the *no-push* spread of its
+own configuration:
+
+| configuration | no push, per realisation | pushed |
+| --- | --- | --- |
+| cross-section, 0.125 mm cell | 0.403, 0.434 u | **0.434** at 400× |
+| volume, 1.0 mm cell | 1.320, 1.531, 1.597 u | **1.421**, **1.539** at 100×; **1.575** at 400× |
+| volume, 660 macroparticles | - | **1.401** at 400× |
+
+The median moves +0.170 u at 24,000 ions and +0.075 u at 96,000, against a standard error of
+0.10 u on a peak 1.3 u wide - neither significant, and not monotone. The tightest statement
+is the cross-section's: at a converged mesh, four hundred times the population changes the
+width by less than 0.03 u on a 0.43 u peak and the median by 0.005 u. That is the
+generalised Kohn theorem surviving contact with a real geometry, an axial well, a slot and a
+gas.
+
+The last row matters most. The engine flags `spacecharge.softening` as a validity violation
+on the 240-macroparticle runs - 0.070 mm of softening against a 0.050 mm cloud - so the
+transverse force is partly smoothed and those numbers are a lower bound. Re-run at 660
+macroparticles, the count that brings the softening inside the cloud, the width is 1.401 u:
+inside the no-push spread, and *lower* than the 240-macroparticle pushed run. **A null result
+that survives removing its own stated caveat is worth more than one that has not been tested
+against it.**
+
+**The perturbation is chaotic, not mean-field, and that is why the width is the only usable
+statistic.** Switching the push on moves each ion's ejection instant by 1.6 u root-mean-square,
+and that barely grows with population: 1.63 u at 24,000 against 1.74 u at 96,000, a ratio of
+1.07 for a fourfold increase, with a correlation of only 0.53 between the two. A mean-field
+perturbation would scale linearly and correlate near one. Over 1.7 ms with 340 collisions
+per ion, any perturbation is amplified until the trajectory is uncorrelated with its
+unpushed twin, and a larger one changes little. So a space-charge effect in this trap cannot
+be measured by differencing two runs at these macroparticle counts, however carefully they
+are seeded.
+
+### What the well is for, and it is diffusion
+
+The one unambiguous positive result. With the end sections 3 V above the centre, **no ion is
+lost during the 500 µs hold**. With them at zero, 88 of 240 are gone before the ramp starts
+**with no space charge at all**, rising to 121 at 96,000 ions, and those that leave do so at
+a median axial excursion of 12.7 mm against 5.3 mm when held.
+
+The mean free path is 6.9 mm, so diffusion spreads the cloud about 17 mm in that time. The
+axial well is holding back diffusion, and charge is a secondary contributor. This is the
+thing a cross-section cannot show at all, and it is why the axial sections exist.
+
+### The peak width here is the mesh, not the third dimension
+
+Worth stating because the obvious reading is wrong. The volume trap's peak is three times
+wider than the cross-section's - 1.32-1.60 u against 0.40-0.43 - and the tempting conclusion
+is that the axial degree of freedom broadens it. It does not. The volume runs at a 1 mm cell
+because a 0.5 mm volume solve takes minutes, while the cross-section's default is 0.125 mm.
+**Run the cross-section at the volume's own 1 mm cell and it gives 1.391 and 1.562 u** - the
+volume's range, from a geometry with no axial motion whatever.
+
+So the width in these runs is set by the discretisation, and the volume results are
+mesh-limited rather than physics-limited. The null result above is unaffected in the
+cross-section, where the mesh is converged and the sensitivity is correspondingly better;
+in the volume it means a broadening smaller than the mesh-induced width could hide. Anything
+quantitative about the volume trap's peak shape needs a converged mesh first, which is eight
+times the nodes.
+
 ## `pnnl-ion-funnel` — a published funnel, built to be compared
 
 The first template written against a literature benchmark rather than as a demonstration: the
