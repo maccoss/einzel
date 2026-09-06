@@ -711,7 +711,12 @@ cycles, and the instrument's broadenings are not in the template.
 3e-18 m in distance and to the bit in a solve. The 2002 trap's end sections 3 V above the
 centre make a 2.9 V well that holds a thermal ion within 8.7 mm of the centre (17.1 mm with
 20 V lenses alone), where the excitation is uniform to below 0.001 % and carries 0.17 % of
-axial component. The paper's figure 2, as numbers.
+axial component. The paper's figure 2, as numbers. **Scanned**, with a ramp on the volume
+solve (linear to 1e-12 at the quarter point; a drive ramp from zero works), the volume trap
+ejects twelve ions at effective q 0.8703 against the cross-section's 0.8685 at the same
+rate, excitation and gas; its quadrupole term is 0.8207 of ideal at the 0.5 mm cell against
+the cross-section's 0.8223, which is the 0.2 % offset, and is the same at the centre
+section's middle and a quarter of the way to its end.
 
 
 ## The ion funnel against a published instrument

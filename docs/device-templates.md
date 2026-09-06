@@ -1500,25 +1500,91 @@ and to 0.2 % over the lens-confined one, and its axial component is 0.17 % of it
 transverse one over the centre 15 mm. That is the paper's figure 2 put as numbers: the end
 sections hold the cloud in the part of the trap where the excitation is clean.
 
-What the volume template does not yet do is scan: the RF and the excitation are declared
-on it, but a ramp is refused on a volume solve for now, and the scan studies above are all
-cross-section ones.
+**And it scans.** A ramp on a volume solve weighs the channels at the phase's two ends
+exactly as a cross-section does (the end state joins the states gathered for the channel
+decomposition, so a ramp from zero has its pattern solved), and the same driver that scans
+the cross-section scans the volume. Twelve ions of m/z 524.26 at 16,700 u/s, the 2002
+paper's excitation (13.5 V), 4e-3 mbar, the RF ramped as one phase from effective q 0.855
+through the edge to 0.92, read on the cross-section's q scale of 0.8223:
 
-### Space charge in the scan: a limit of the method, found and now reported
+| | volume trap, 0.5 mm cell | cross-section, same run |
+| --- | --- | --- |
+| ejection, median | 518.50 u (q_eff 0.8703) | 517.13 u (q_eff 0.8685) |
+| kernel-density FWHM | 0.24 u | 0.14 u |
+| through the slot to the detector | 4 of 12 | 4 of 12 |
+| solve + twelve flights, Release | about 25 min, three runs in parallel | about 3 min |
+
+**The 0.27 % offset between the two is the field, not the sections.** The volume trap's
+quadrupole term at half the inscribed radius is **0.8207 of ideal at a 0.5 mm cell**
+(0.8109 at 1 mm) against the cross-section's 0.8223 - 0.19 % lower, converging upward
+with the mesh - and it is the same at the middle of the centre section and a quarter of the
+way to its end, so the end sections carrying the same RF do not weaken it inside the
+centre. A q per volt 0.19 % lower puts the resonance 0.19 % later on the ramp, which is
+the offset measured to within the twelve-ion sampling. The widths are not distinguishable
+at twelve ions (the interquartile ranges order the other way), so what the volume scan
+shows is that the three-section trap scans as its cross-section does, on the same q scale
+to two parts in a thousand, with the mesh accounting for those two parts.
+
+### Space charge in the scan: a limit of the method, found, reported, and then corrected
 
 The direct-sum method softens the force between two macroparticles closer than the mean
-spacing, and the mean spacing is set by the packet's RMS radius divided by the cube root of
-the count. A linear trap's cloud is a line: 40 macroparticles for 4,000 ions along 10 mm of
-axis and 0.05 mm across it have an RMS radius of 5.8 mm and a softening of **1.7 mm,
-thirty-four times the transverse size**, so the force across the packet is switched off
-and the scan with 4,000 ions came back identical to the one with none, to the last digit,
-with nothing said. The run now reports `spacecharge.softening` on every direct-sum run, as
-a violation when the softening exceeds the packet's thinnest declared extent and as
-provenance when it does not, with the macroparticle count that would bring it inside. For
-this cloud that count is about 1.6 million, which is not a study the direct sum can run;
-space charge in a line cloud wants a grid method whose cell resolves the transverse size,
-and that is the next step for the 2002 paper's 15x capacity claim.
+spacing. The first version set that spacing from the packet's RMS radius over the cube root
+of the count, and a linear trap's cloud is a line: 40 macroparticles for 4,000 ions along
+10 mm of axis and 0.05 mm across it were softened at **1.7 mm, thirty-four times the
+transverse size**, so the force across the packet was switched off and a scan with 4,000
+ions came back identical to one with none, with nothing said. Two things followed.
 
+**The run reports its softening**, `spacecharge.softening`, on every direct-sum run: a
+violation when the softening exceeds the packet's thinnest declared extent, provenance when
+it does not, with the macroparticle count that would bring it inside.
+
+**And the rule was the wrong rule for anything but a ball.** The spacing of points filling
+a region is the cube root of its volume over the count, and a line's volume is not the cube
+of its length. The softening is now `sqrt(5) * cbrt(sigma_x sigma_y sigma_z) / cbrt(N)`
+from the packet's own three standard deviations - the radius rule's number to the bit for
+an isotropic packet, an order of magnitude smaller for the line: 0.19 mm for that cloud at
+forty macroparticles, still 3.8 times its transverse size because forty points along ten
+millimetres are a quarter of a millimetre apart whatever rule is used, and inside it at
+about 2,200 macroparticles rather than 1.6 million.
+
+**The scan, with the packet pushing on itself.** Four hundred macroparticles for 400
+(the control, no push), 20,000, 100,000 and 400,000 ions, a line along the trap's axis
+10 mm long and 0.5 mm across, 300 K, in vacuum (the packet integrator has no collision
+hook), ramped at 16,700 u/s from effective q 0.84 - below the excitation's capture range -
+through the edge, with the 2002 excitation (13.5 V). The softening is 0.41 mm, inside the
+transverse size, so the force is on:
+
+| population | median | 90th percentile | per-ion shift against the control |
+| --- | --- | --- | --- |
+| 400 (control) | 515.263 u | 517.442 u | - |
+| 20,000 | 515.263 | 517.432 | median -0.000 u, IQR -0.005 to +0.001 |
+| 100,000 | 515.329 | 517.441 | median -0.001 u, IQR -0.056 to +0.019 |
+| 400,000 | 515.313 | 517.442 | median -0.013 u, IQR -0.116 to +0.112 |
+
+**The force acts and the peak does not move.** Each ion's ejection instant shifts by more
+as the population grows - a tenth of a unit either way at 400,000 - and the shifts have no
+common direction, so the median moves by less than 0.1 u where a resonance shifted by the
+cloud's own field would move it one way. The reason is the cloud size, which here is an
+input: a half-millimetre packet of 400,000 ions along 25 mm has a self-field at its edge of
+about 36 V/m against a pseudopotential restoring field of 4,000 V/m, under one per cent,
+and half of that again inside the softening. A cooled cloud is not half a millimetre: the
+balance between the line's own field and the pseudopotential puts 400,000 ions inside
+about 60 um, seventy times denser, and the frequency shift goes as the density. So the
+instrument's space-charge shift lives in a cloud that gas cooling has compressed, and a
+run with no gas cannot produce that cloud - it can only be handed one. The 2002 paper's
+capacity claim therefore needs gas and space charge in the same run, which is the packet
+integrator's missing collision hook rather than a softening question.
+
+**Two things the study got wrong first, both in the model rather than the engine.** A
+cloud's longitudinal spread follows the launch direction, and the first version left the
+direction along x - so the "line along the axis" lay across the trap, most of the ions
+started inside the rods, and the scan read ejection from a cloud that was mostly dead at
+launch. And starting the ramp at effective q 0.865 with a 13.5 V excitation, which captures
+from 0.870, ejected two thirds of the cloud during the hold before any mass could be read.
+Sixty-eight of four hundred still leave during the hold at q 0.84: an uncooled
+half-millimetre cloud has ions at amplitudes where the positive octupole lifts their
+frequency into the excitation early, which is also why the control's distribution spans
+4.6 u where the twelve-ion cold-cloud scans span a quarter of a unit.
 
 ## `pnnl-ion-funnel` — a published funnel, built to be compared
 

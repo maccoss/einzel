@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,169 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,175 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -2559,9 +2559,9 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     that stand between that and the dual-pressure device the Stellar front end actually is.
     In the order they are worth doing: ~~**a `ramp` inside a phase**~~ - **done**: a phase
     declares where a parameter ends and gets there linearly, exact where the potentials are
-    linear in it and checked at the midpoint, refused for an analytic element, a diffusive
-    phase or a volume solve; a ramped RF flies an ion to 2 µm of a forty-step staircase
-    against 240 µm from the held control; ~~**the dual-pressure comparison retuned**~~ -
+    linear in it and checked at the midpoint, refused for an analytic element or a diffusive
+    phase, on a cross-section and on a volume solve alike; a ramped RF flies an ion to 2 µm
+    of a forty-step staircase against 240 µm from the held control; ~~**the dual-pressure comparison retuned**~~ -
     **done**: with the 2002 excitation held, the Velos analyser pressure alone broadens
     m/z 524 from 0.62 to 1.44 u, and half the excitation brings it back to 0.62, so the
     2009 paper's gain is a retuning and a gentler excitation is the part of it that
@@ -2569,17 +2569,26 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     polygon given a length) so the same hyperbolic slotted half-rods make the paper's three
     12 / 37 / 12 mm sections in `linear-ion-trap-3d`: the end sections 3 V above the centre
     make a 2.9 V well holding a 300 K ion within 8.7 mm, where the excitation is uniform to
-    below 0.001 % - the paper's figure 2 as numbers; **the slot's exit optics**, which the
-    cross-section cannot settle because the paper does not give the slot's profile and the
-    real detector sits behind an extraction field this model ends in a grounded wall; and
-    **space charge in the scan**, where the direct sum's softening (set by the packet's RMS
-    radius) exceeds a line cloud's transverse size thirty-four-fold and switches the force
-    off - now reported as `spacecharge.softening` - so the paper's 15x capacity claim wants a
-    grid method whose cell resolves the transverse size. **The Stellar's own trap** is now in
-    hand (Remes 2024) and shipped as `stellar-ion-trap`; its scan at the paper's four rates
-    gives a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the
-    instrument has (a millimetre cloud, amplitude noise, real machining) being absent from
-    the template. A ramp on a volume solve and a scan of the volume trap remain.
+    below 0.001 % - the paper's figure 2 as numbers - and it scans: twelve ions at
+    16,700 u/s eject at effective q 0.8703 against the cross-section's 0.8685, the 0.2 %
+    being its quadrupole term (0.8207 of ideal at the 0.5 mm cell against 0.8223, converging
+    with the mesh); **the slot's exit optics**, which the cross-section cannot settle because
+    the paper does not give the slot's profile and the real detector sits behind an
+    extraction field this model ends in a grounded wall; and ~~**space charge in the
+    scan**~~ - **resolved as far as a vacuum run can take it**: the direct sum's softening,
+    set from the packet's RMS radius, exceeded a line cloud's transverse size
+    thirty-four-fold and switched the force off; it is now reported
+    (`spacecharge.softening`) and set from the packet's three standard deviations, the
+    radius rule's number to the bit for a ball and an order of magnitude smaller for a line.
+    With the force on, 400,000 ions in a half-millimetre cloud shift each ion's ejection by
+    a tenth of a unit with no common direction and the peak by under 0.1 u, because the
+    cloud size is an input to a run with no gas and the shift goes as the density - a
+    cooled cloud of that population would be about 60 µm across and seventy times denser.
+    The paper's 15x capacity claim needs gas and space charge in one run, which is the
+    packet integrator's missing collision hook. **The Stellar's own trap** is in hand
+    (Remes 2024) and shipped as `stellar-ion-trap`; its scan at the paper's four rates gives
+    a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
+    has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
 ## Open decisions
 

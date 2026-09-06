@@ -956,8 +956,7 @@ public static class FiguresOfMerit
                     cloud.Length,
                     species.ChargeSi,
                     species.MassSi,
-                    Transport.Interaction.CoulombInteraction.SpacingSoftening(
-                        RealisedRadius(cloud), cloud.Length));
+                    RealisedSoftening(cloud));
 
         var result = Transport.Interaction.PacketIntegrator.Fly(
             cloud, species, field, interaction, settings, detector);
@@ -1016,6 +1015,39 @@ public static class FiguresOfMerit
     /// Matched by root-mean-square radius, the same convention the screening
     /// estimate uses, so the softening length and the screen describe one packet.
     /// </remarks>
+    /// <summary>
+    /// The direct sum's softening from the launched packet's own shape - its standard
+    /// deviation along each axis - so a long thin packet is softened at its thin
+    /// dimension's scale and not its length's.
+    /// </summary>
+    private static double RealisedSoftening(PhaseState[] cloud)
+    {
+        if (cloud.Length < 2)
+        {
+            return double.Epsilon;
+        }
+
+        var centre = default(Vec3);
+        foreach (var one in cloud)
+        {
+            centre += one.Position;
+        }
+
+        centre *= 1.0 / cloud.Length;
+
+        double sx = 0.0, sy = 0.0, sz = 0.0;
+        foreach (var one in cloud)
+        {
+            var d = one.Position - centre;
+            sx += d.X * d.X;
+            sy += d.Y * d.Y;
+            sz += d.Z * d.Z;
+        }
+
+        return Transport.Interaction.CoulombInteraction.SpacingSoftening(
+            Math.Sqrt(sx / cloud.Length), Math.Sqrt(sy / cloud.Length), Math.Sqrt(sz / cloud.Length), cloud.Length);
+    }
+
     private static double RealisedRadius(PhaseState[] cloud)
     {
         if (cloud.Length < 2)

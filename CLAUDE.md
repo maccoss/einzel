@@ -1269,23 +1269,40 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   figure 2 as numbers. **The end offset is common, not quadrupolar**: x up and y down is a
   change of Mathieu a, zero on the axis, and makes no well; the first draft had that.
 
-  **Space charge in the scan found a limit of the method, now reported.** Forty macroparticles
-  for 4,000 ions along 10 mm of axis and 0.05 mm across it have an RMS radius of 5.8 mm and a
-  direct-sum softening of **1.7 mm, thirty-four times the transverse size**, so the force
-  across the packet is switched off and the scan came back identical to one with no space
-  charge, to the last digit, with nothing said. `spacecharge.softening` now reports the
-  softening against the packet's thinnest extent on every direct-sum run - a violation when it
-  exceeds it, with the macroparticle count that would fix it (1.6 million here). A line cloud
-  wants a grid method whose cell resolves its transverse size. Also fixed: the direct-sum
-  path called for an arrival peak unguarded, so a space-charge run in which every ion left
-  through the rods ended in `INTERNAL_ERROR` - Amendment 15's defect, reintroduced on the
-  other loop.
+  **Space charge in the scan found a limit of the method, and the rule behind it was wrong.**
+  Forty macroparticles for 4,000 ions along 10 mm of axis and 0.05 mm across it were
+  softened at **1.7 mm, thirty-four times the transverse size**, so the force across the
+  packet was switched off and the scan came back identical to one with no space charge, to
+  the last digit, with nothing said. `spacecharge.softening` now reports the softening
+  against the packet's thinnest extent on every direct-sum run. And the softening is now
+  set from the packet's **three standard deviations** rather than its RMS radius - the
+  spacing of points filling a box goes as the cube root of its volume, and a line's volume
+  is not the cube of its length: the radius rule's number to the bit for a ball, an order of
+  magnitude smaller for the line, inside the transverse size at about 2,200 macroparticles
+  rather than 1.6 million. **With the force on the peak does not move**: 400 macroparticles
+  for up to 400,000 ions in a half-millimetre line, scanned at 16,700 u/s in vacuum, shift
+  each ion's ejection by a tenth of a unit with no common direction and the median by under
+  0.1 u. The cloud size is an input to a run with no gas, and the shift goes as the
+  density; a cooled cloud of that population would sit inside about 60 µm, seventy times
+  denser. So the 2002 paper's capacity claim needs gas and space charge in one run, which
+  is the packet integrator's missing collision hook. Also fixed: the direct-sum path called
+  for an arrival peak unguarded, so a space-charge run in which every ion left through the
+  rods ended in `INTERNAL_ERROR` - Amendment 15's defect, reintroduced on the other loop.
+
+  **The volume trap scans.** A ramp on a `solve3d` weighs the channels at the phase's two
+  ends as a cross-section does, its end state joining the states gathered for the channel
+  decomposition so a ramp from zero has its pattern solved. Twelve ions at 16,700 u/s eject
+  at effective q **0.8703 against the cross-section's 0.8685** in the same run, and the
+  0.2 % is the field: the centre section's quadrupole term is **0.8207 of ideal at the
+  0.5 mm cell** (0.8109 at 1 mm, converging upward) against the cross-section's 0.8223, and
+  the same at the section's middle and a quarter of the way to its end.
 
   Two corpus examples at the paper's working point (held with the excitation off, ejected
-  with it on: same RF, same ion, same gas), 39 in all. Not built: a ramp on a volume solve, a
-  scan of the volume trap, space charge resolved for a line cloud. Details in
-  `docs/device-templates.md`, `docs/literature-targets.md` section 2, `docs/validation.md`,
-  SPEC.md Amendment 37 and item 14.
+  with it on: same RF, same ion, same gas), 39 in all. Not built: gas and space charge in
+  one run, which is what a cooled, space-charge-limited cloud needs and the packet
+  integrator's missing collision hook. Details in `docs/device-templates.md`,
+  `docs/literature-targets.md` section 2, `docs/validation.md`, SPEC.md Amendment 37 and
+  item 14.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

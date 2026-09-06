@@ -107,6 +107,51 @@ public sealed class CoulombInteraction : ISelfField
     }
 
     /// <summary>
+    /// A softening length from the packet's shape: the mean spacing between
+    /// macroparticles in a packet whose standard deviations along the three axes are
+    /// given, which for an isotropic packet is exactly <see cref="SpacingSoftening(double, int)"/>
+    /// of its effective radius and for a long thin one is far smaller.
+    /// </summary>
+    /// <param name="sigmaX">Standard deviation of position along x, in metres.</param>
+    /// <param name="sigmaY">Along y.</param>
+    /// <param name="sigmaZ">Along z.</param>
+    /// <param name="macroparticles">How many trajectories share the packet.</param>
+    /// <returns>A softening length, in metres.</returns>
+    /// <remarks>
+    /// <para>
+    /// The radius rule divides the packet's RMS radius by the cube root of the count, and
+    /// the RMS radius of a line is its length: forty macroparticles along ten millimetres
+    /// of a linear trap's axis and fifty microns across it were softened at 1.7 mm,
+    /// thirty-four times the transverse size, and the force across the packet was switched
+    /// off. The spacing of points filling a box is the cube root of its volume over the
+    /// count, and the volume goes as the product of the three extents, not the cube of the
+    /// largest. Written so that an isotropic packet gives the radius rule's number exactly:
+    /// the effective radius of a Gaussian packet is root five times its sigma, so this is
+    /// root five times the geometric mean sigma, over the cube root of the count.
+    /// </para>
+    /// <para>
+    /// A vanishing extent is floored at a thousandth of the largest, because a packet
+    /// declared with no spread along an axis still has to be softened at something.
+    /// </para>
+    /// </remarks>
+    public static double SpacingSoftening(double sigmaX, double sigmaY, double sigmaZ, int macroparticles)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(macroparticles);
+
+        var largest = Math.Max(sigmaX, Math.Max(sigmaY, sigmaZ));
+        if (!(largest > 0.0))
+        {
+            return double.Epsilon;
+        }
+
+        var floor = 1e-3 * largest;
+        var geometricMean = Math.Cbrt(
+            Math.Max(sigmaX, floor) * Math.Max(sigmaY, floor) * Math.Max(sigmaZ, floor));
+
+        return Math.Sqrt(5.0) * geometricMean / Math.Cbrt(macroparticles);
+    }
+
+    /// <summary>
     /// Adds the mutual acceleration of every active pair into an accumulator.
     /// </summary>
     /// <param name="positions">Position of each macroparticle.</param>

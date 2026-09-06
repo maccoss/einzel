@@ -433,6 +433,13 @@ share it; what the end sections change is where the ions sit in it - the paper's
 as numbers. A quadrupolar end offset (x up, y down) is zero on the axis and makes no well;
 the first draft had that, and the test caught it.
 
+Scanned at 16,700 u/s with the same twelve ions and excitation as the cross-section, the
+volume trap ejects at effective q 0.8703 against the cross-section's 0.8685 - 0.27 %
+later - and its quadrupole term at half the inscribed radius is 0.8207 of ideal at the
+scan's 0.5 mm cell against the cross-section's 0.8223, 0.19 % lower and converging upward
+with the mesh (0.8109 at 1 mm). The offset is the mesh; the three sections scan as the
+cross-section does.
+
 
 ### What is reproduced from the 2002 paper, and how
 

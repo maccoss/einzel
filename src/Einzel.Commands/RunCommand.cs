@@ -736,24 +736,28 @@ public static class RunCommand
 
         var transverse = model.Cloud.TransverseSpreadM;
         var longitudinal = model.Cloud.LongitudinalSpreadM;
-        var rms = Math.Sqrt((2.0 * transverse * transverse) + (longitudinal * longitudinal));
         var extents = new[] { transverse, longitudinal }.Where(v => v > 0.0).ToArray();
-        if (extents.Length == 0 || rms <= 0.0)
+        if (extents.Length == 0)
         {
             return [];
         }
 
-        var softening = Transport.Interaction.CoulombInteraction.SpacingSoftening(rms, model.Cloud.Ions);
+        // The same rule the flight uses, from the declared spreads rather than the drawn
+        // packet, so the warning and the run cannot disagree about which softening applied.
+        var softening = Transport.Interaction.CoulombInteraction.SpacingSoftening(
+            transverse, transverse, longitudinal, model.Cloud.Ions);
+        var rms = Math.Sqrt((2.0 * transverse * transverse) + (longitudinal * longitudinal));
         var smallest = extents.Min();
         var ratio = softening / smallest;
-        var needed = (int)Math.Ceiling(Math.Pow(rms / smallest, 3));
+        var needed = (int)Math.Ceiling(model.Cloud.Ions * Math.Pow(ratio, 3));
 
         return
         [
             new ValidityWarning(
                 "spacecharge.softening",
                 $"the mutual force is softened below {softening * 1e3:F3} mm, the mean spacing of "
-                + $"{model.Cloud.Ions} macroparticles in a packet of RMS radius {rms * 1e3:F2} mm, against a "
+                + $"{model.Cloud.Ions} macroparticles in a packet of RMS radius {rms * 1e3:F2} mm and extents "
+                + $"{transverse * 1e3:F3} by {transverse * 1e3:F3} by {longitudinal * 1e3:F3} mm, against a "
                 + $"smallest declared extent of {smallest * 1e3:F3} mm"
                 + (ratio > 1.0
                     ? $". The softening exceeds the packet's thin dimension {ratio:F1}-fold, so the force across it is "

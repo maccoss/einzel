@@ -356,6 +356,9 @@ public static class GeometryBuilder3D
         var stageDirect = new List<IReadOnlyList<double>>(geometry.Stages.Count);
         var stageHarmonics =
             new List<IReadOnlyList<IReadOnlyList<WeightTerm>>>(geometry.Stages.Count);
+        var stageEndDirect = new List<IReadOnlyList<double>?>(geometry.Stages.Count);
+        var stageEndHarmonics = new List<IReadOnlyList<IReadOnlyList<WeightTerm>>?>(geometry.Stages.Count);
+        var anyRamp = false;
 
         var elapsed = 0.0;
 
@@ -367,13 +370,39 @@ public static class GeometryBuilder3D
             var weights = DriveChannels.Weigh(
                 groups, [.. stage.Electrodes.Select(Excited)], quadrature);
 
+            if (stage.EndElectrodes is null)
+            {
+                stageDirect.Add(weights.Direct);
+                stageHarmonics.Add(weights.Harmonics);
+                stageEndDirect.Add(null);
+                stageEndHarmonics.Add(null);
+                continue;
+            }
+
+            // A ramp: weighed at both ends, the oscillating terms aligned so every start
+            // term has its end partner, exactly as the plane path does it.
+            anyRamp = true;
+            var endWeights = DriveChannels.Weigh(
+                groups, [.. stage.EndElectrodes.Select(Excited)], quadrature);
+            var alignedStart = new List<IReadOnlyList<WeightTerm>>(groups.Count);
+            var alignedEnd = new List<IReadOnlyList<WeightTerm>>(groups.Count);
+            for (var k = 0; k < groups.Count; k++)
+            {
+                var (a, b) = GeometryBuilder.Align(weights.Harmonics[k], endWeights.Harmonics[k]);
+                alignedStart.Add(a);
+                alignedEnd.Add(b);
+            }
+
             stageDirect.Add(weights.Direct);
-            stageHarmonics.Add(weights.Harmonics);
+            stageHarmonics.Add(alignedStart);
+            stageEndDirect.Add(endWeights.Direct);
+            stageEndHarmonics.Add(alignedEnd);
         }
 
         var sequenced = new DrivenSolvedField(
             channels, direct, harmonics, frequencies, waveforms,
-            boundaries, stageDirect, stageHarmonics);
+            boundaries, stageDirect, stageHarmonics,
+            anyRamp ? stageEndDirect : null, anyRamp ? stageEndHarmonics : null);
 
         return (sequenced, worst);
     }
@@ -452,9 +481,25 @@ public static class GeometryBuilder3D
 
     private static List<DriveChannel> Groups(Geometry3D geometry)
     {
-        var states = geometry.Stages.Count > 0
-            ? geometry.Stages.Select(stage => stage.Electrodes).ToList()
-            : [geometry.Electrodes];
+        // Every state the electrodes pass through, a ramp's end included: a ramp from
+        // zero has its whole pattern at its end, and a pattern gathered from starts alone
+        // would leave it unsolved.
+        var states = new List<IReadOnlyList<CompiledElectrode3D>>();
+        if (geometry.Stages.Count == 0)
+        {
+            states.Add(geometry.Electrodes);
+        }
+        else
+        {
+            foreach (var stage in geometry.Stages)
+            {
+                states.Add(stage.Electrodes);
+                if (stage.EndElectrodes is not null)
+                {
+                    states.Add(stage.EndElectrodes);
+                }
+            }
+        }
 
         var (_, _, quadrature) = Clocks(geometry.Drives);
 

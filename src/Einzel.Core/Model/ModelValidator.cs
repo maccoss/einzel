@@ -1557,7 +1557,7 @@ public static class ModelValidator
                     Expand(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.MidSurface, midElectrodes, ignored);
                 }
                 if (!SameGeometry(baseline, endElectrodes, phase.Name, phase.Path, errors)
-                    || !RampIsLinear(electrodes, midElectrodes, endElectrodes, phase.Name, phase.Path, errors))
+                    || !RampIsLinear(Excitations(electrodes), Excitations(midElectrodes), Excitations(endElectrodes), phase.Name, phase.Path, errors))
                 {
                     continue;
                 }
@@ -1580,10 +1580,16 @@ public static class ModelValidator
     /// would still run, with the field at every instant between the ends but on the
     /// wrong curve, and nothing in the result would say so.
     /// </remarks>
+    private static List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> Excitations(List<CompiledElectrode> electrodes) =>
+        [.. electrodes.Select(e => (e.Name, e.Potential, e.Taps))];
+
+    private static List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> Excitations(List<CompiledElectrode3D> electrodes) =>
+        [.. electrodes.Select(e => (e.Name, e.Potential, e.Taps))];
+
     private static bool RampIsLinear(
-        List<CompiledElectrode> start,
-        List<CompiledElectrode> mid,
-        List<CompiledElectrode> end,
+        List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> start,
+        List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> mid,
+        List<(string Name, double Potential, IReadOnlyList<CompiledTap> Taps)> end,
         string stage,
         string path,
         List<EinzelError> errors)
@@ -2343,19 +2349,6 @@ public static class ModelValidator
             return stages;
         }
 
-        var ramped = timeline.FirstOrDefault(phase => phase.EndSurface is not null);
-        if (ramped is not null)
-        {
-            errors.Add(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = $"{ramped.Path}/ramp",
-                Constraint = $"stage '{ramped.Name}' ramps a parameter, and a ramp is supported on two-dimensional solved geometries only",
-                Suggestion = "write the ramp as phases that each hold a value, or move the ramped element to a solved2d cross-section",
-            });
-            return stages;
-        }
-
         foreach (var phase in timeline)
         {
             var electrodes = new List<CompiledElectrode3D>();
@@ -2372,7 +2365,26 @@ public static class ModelValidator
                 continue;
             }
 
-            stages.Add(new CompiledStage3D(phase.Name, phase.DurationSeconds, electrodes));
+            List<CompiledElectrode3D>? endElectrodes = null;
+            if (phase.EndSurface is not null && phase.MidSurface is not null)
+            {
+                endElectrodes = [];
+                var midElectrodes = new List<CompiledElectrode3D>();
+                var ignored = new List<EinzelError>();
+                for (var i = 0; i < declaredElectrodes.Count; i++)
+                {
+                    Expand3D(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.EndSurface, endElectrodes, ignored);
+                    Expand3D(declaredElectrodes[i], $"{phase.Path}/electrodes/{i}", drives, phase.MidSurface, midElectrodes, ignored);
+                }
+
+                if (!SameGeometry3D(baseline, endElectrodes, phase.Name, phase.Path, errors)
+                    || !RampIsLinear(Excitations(electrodes), Excitations(midElectrodes), Excitations(endElectrodes), phase.Name, phase.Path, errors))
+                {
+                    continue;
+                }
+            }
+
+            stages.Add(new CompiledStage3D(phase.Name, phase.DurationSeconds, electrodes) { EndElectrodes = endElectrodes });
         }
 
         return stages;

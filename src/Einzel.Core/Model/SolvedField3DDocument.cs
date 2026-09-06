@@ -296,4 +296,11 @@ public sealed record CompiledSolvedField3D
 /// <param name="DurationSeconds">How long it lasts.</param>
 /// <param name="Electrodes">The electrodes as they stand during it.</param>
 public sealed record CompiledStage3D(
-    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode3D> Electrodes);
+    string Name, double DurationSeconds, IReadOnlyList<CompiledElectrode3D> Electrodes)
+{
+    /// <summary>
+    /// The electrodes as they stand at the end of the stage when it ramps, or null when
+    /// it holds; the same metal in the same places as <see cref="Electrodes"/>.
+    /// </summary>
+    public IReadOnlyList<CompiledElectrode3D>? EndElectrodes { get; init; }
+}

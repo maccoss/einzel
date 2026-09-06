@@ -380,12 +380,14 @@ the two numbers. A ramp that moves a drive *phase* is refused as well - that is 
 frequency shift, not an amplitude - and so is one that changes the geometry, as any phase
 that moves metal is.
 
-**Where it does not reach.** A ramp is supported on two-dimensional solved geometries. An
-analytic element that a ramped parameter reaches is refused rather than left frozen at its
-start value while the solved elements ramp, which is the silent half-instrument the
-model-level timeline exists to prevent; a volume solve refuses one for now; and a diffusive
-phase refuses one because the density solver steps through a field it holds fixed within a
-phase. In each case the refusal says to write the curve as phases that hold.
+**Where it does not reach.** A ramp is supported on solved geometries in both dimensions -
+a volume solve weighs its channels at the phase's two ends exactly as a cross-section does,
+and its end state is one of the states gathered for the channel decomposition, so a ramp
+from zero amplitude has its pattern solved. An analytic element that a ramped parameter
+reaches is refused rather than left frozen at its start value while the solved elements
+ramp, which is the silent half-instrument the model-level timeline exists to prevent; and a
+diffusive phase refuses one because the density solver steps through a field it holds fixed
+within a phase. In each case the refusal says to write the curve as phases that hold.
 
 ### Every element follows it, and how depends on what it is
 

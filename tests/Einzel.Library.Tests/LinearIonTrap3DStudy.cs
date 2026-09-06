@@ -28,11 +28,13 @@ namespace Einzel.Library.Tests;
 /// </remarks>
 public sealed class LinearIonTrap3DStudy(ITestOutputHelper output)
 {
+    private const double CellMm = 1.0;
+
     private static CompiledModel Compile(params (string Name, double Value)[] overrides)
     {
         var document = Io.ModelJson.Parse(DeviceTemplates.Read("linear-ion-trap-3d"));
         var parameters = new Dictionary<string, ParameterDocument>(document.Parameters!, StringComparer.Ordinal);
-        parameters["cellSize"] = parameters["cellSize"] with { Value = 1.0 };
+        parameters["cellSize"] = parameters["cellSize"] with { Value = CellMm };
         foreach (var (name, value) in overrides)
         {
             parameters[name] = parameters[name] with { Value = value };
@@ -171,5 +173,65 @@ public sealed class LinearIonTrap3DStudy(ITestOutputHelper output)
         Assert.True(spread3 < 1e-3, $"the excitation varies {spread3:P2} over the three-section cloud");
         Assert.True(spread3 < spread1, "the excitation should be cleaner over the tighter cloud");
         Assert.True(ez3.Take(4).Max(v => Math.Abs(v)) / Math.Abs(ex3[0]) < 0.01, "the excitation carries an axial component in the centre section");
+    }
+
+    /// <summary>
+    /// The volume trap's q per volt at the centre of its centre section, measured the way the
+    /// cross-section's was (the quadrupole term of a multipole projection at half the
+    /// inscribed radius, against the ideal formula), so a scan of the volume trap can be read
+    /// on the same q scale as the cross-section's and any offset between the two attributed.
+    /// </summary>
+    /// <remarks>
+    /// The cross-section gives 0.8223 at its own mesh. At a millimetre cell a volume solve
+    /// resolves the hyperbolic faces coarsely, so the bound is loose; the number the scan
+    /// used, at half a millimetre, is recorded in the docs. What is asserted here is that the
+    /// centre section's field is the cross-section's to a few per cent, and that it is the
+    /// same at the section's middle and a quarter of the way to its end - the end sections
+    /// carry the same RF, so the quadrupole should not fall off inside the centre section.
+    /// </remarks>
+    [Fact]
+    public void TheCentreSectionsQPerVoltIsTheCrossSectionsToAFewPerCent()
+    {
+        var model = Compile(("rfAmplitude", 100.0), ("exciteAmplitude", 0.0), ("endOffset", 0.0), ("lensPotential", 0.0));
+        var r0 = model.Parameters["inscribedRadius"].SiValue;
+        var ideal = 100.0 * (0.5 * r0) * (0.5 * r0) / (r0 * r0); // A2 of the ideal quadrupole V (x^2 - y^2) / r0^2 at radius r0/2: 25 V per 100 V
+        var field = FieldAssembly.Build(model);
+
+        var a2Middle = Multipoles(field, 0.5 * r0, 0.0, 4)[2];
+        var a2Quarter = Multipoles(field, 0.5 * r0, 0.25 * model.Parameters["centreHalfLength"].SiValue, 4)[2];
+        var middle = a2Middle / ideal;
+        var quarter = a2Quarter / ideal;
+
+        output.WriteLine($"A2 at z = 0: {a2Middle:F4} V per 100 V, {middle:F4} of ideal; at a quarter of the centre section: {quarter:F4}; cross-section 0.8223");
+
+        Assert.InRange(middle, 0.78, 0.86);
+        Assert.Equal(middle, quarter, 2);
+    }
+
+    private static double[] Multipoles(IElectrostaticField field, double radius, double z, int highestOrder)
+    {
+        const int Samples = 1024;
+        var cosine = new double[highestOrder + 1];
+        var sine = new double[highestOrder + 1];
+
+        for (var k = 0; k < Samples; k++)
+        {
+            var theta = 2.0 * Math.PI * k / Samples;
+            var point = new Vec3(radius * Math.Cos(theta), radius * Math.Sin(theta), z);
+            var phi = field.PotentialAt(in point);
+            for (var order = 0; order <= highestOrder; order++)
+            {
+                cosine[order] += phi * Math.Cos(order * theta);
+                sine[order] += phi * Math.Sin(order * theta);
+            }
+        }
+
+        var magnitude = new double[highestOrder + 1];
+        for (var order = 0; order <= highestOrder; order++)
+        {
+            magnitude[order] = Math.Sqrt((cosine[order] * cosine[order]) + (sine[order] * sine[order])) * 2.0 / Samples;
+        }
+
+        return magnitude;
     }
 }

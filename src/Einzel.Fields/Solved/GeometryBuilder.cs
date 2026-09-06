@@ -684,7 +684,7 @@ public static class GeometryBuilder
     /// comparable: the same (drive, phase) in the same order, a zero amplitude standing
     /// in for a term one end does not have.
     /// </summary>
-    private static (IReadOnlyList<WeightTerm> Start, IReadOnlyList<WeightTerm> End) Align(
+    internal static (IReadOnlyList<WeightTerm> Start, IReadOnlyList<WeightTerm> End) Align(
         IReadOnlyList<WeightTerm> start, IReadOnlyList<WeightTerm> end)
     {
         var keys = new List<(int Drive, double Phase)>();

@@ -2683,6 +2683,30 @@ compare it with the smallest scale in the problem, not the typical one; and iden
 results across a parameter that should matter are not corroboration, they are a method
 that is not seeing the parameter.
 
+**And the rule itself was the wrong rule for anything but a ball.** "The mean spacing" was
+computed as the radius over the cube root of the count, which is the spacing of points
+filling a sphere - and a line's RMS radius is its length, so the spacing came out as if the
+forty points filled a ball ten millimetres across. Points filling a box are spaced at the
+cube root of its *volume* over the count, and the volume goes as the product of the three
+extents. Written from the packet's three standard deviations, an isotropic packet gets the
+old number to the bit and the line cloud drops from 3.8 mm of softening to 0.19 mm: still
+3.8 times its transverse size at forty macroparticles, because forty points along ten
+millimetres are a quarter of a millimetre apart whatever rule is used, and the count that
+brings the softening inside the packet falls from 1.6 million to about 2,200. The lesson
+is about the word "mean": a mean spacing is a property of a distribution's shape, and a
+formula that reduces the shape to one radius has assumed the shape.
+
+## A cloud is long along the launch direction, and the trap's axis is somewhere else
+
+A source declares a longitudinal and a transverse spread, and longitudinal means along the
+launch direction. A linear trap's ion starts at rest, so its direction looks like a
+formality, and the space-charge study left it at x - toward the rods. The "line along the
+axis" was a line across the trap, most of its ions started inside the metal, and the
+scan's ejection ledger was full of strikes at the first step. Nothing refused it: a source
+inside a conductor is refused, and a cloud whose *tail* is inside one is not. For a
+packet at rest the direction is not a formality, it is the one thing that says which way
+the packet is long, and it has to be the trap's axis.
+
 ## A domain edge is a boundary condition, not a conductor
 
 With slots in all four rods and a detector behind one, ions ejected through the other
