@@ -131,9 +131,16 @@ public static class DiffusionRun
             gain = model.DensityStep.Gain;
         }
 
+        var selfField = SelfFieldFor(model, grid, absorbers, edges, species);
+
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
-            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds);
+            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds, selfField: selfField);
+
+        if (selfField is not null)
+        {
+            warnings.AddRange(SelfFieldWarnings(selfField, result, gas));
+        }
 
         // The seed's overlap with metal joins the same ledger the run fills, so the
         // itemisation adds back up to the launched population.
@@ -524,6 +531,92 @@ public static class DiffusionRun
     /// absorbs. Reflecting where the instrument has a wall would make ions bounce
     /// off vacuum.
     /// </remarks>
+
+    /// <summary>
+    /// The density's own self-field, where the model asks for one, or null where it does not.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="grid">The tracked region.</param>
+    /// <param name="absorbers">The conductors inside it, which screen the self-potential.</param>
+    /// <param name="edges">What each domain edge does, which decides its condition here.</param>
+    /// <param name="species">The ion, for its charge.</param>
+    /// <returns>The solver, or null.</returns>
+    /// <remarks>
+    /// Shared between the wholly diffusive path and a sequenced run's diffusive legs, because
+    /// this is the seam that has been dropped four times in this project: a capability wired
+    /// into one of the two and not the other gives a model that runs, answers, and quietly
+    /// leaves out the physics it was asked for.
+    /// </remarks>
+    internal static Transport.Diffusion.DensitySelfField? SelfFieldFor(
+        CompiledModel model,
+        Grid2D grid,
+        AbsorbingCells absorbers,
+        DriftDiffusion.DomainEdges edges,
+        IonSpecies species) =>
+        model.ModelsMeanField
+            ? new Transport.Diffusion.DensitySelfField(
+                grid,
+                model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical),
+                absorbers,
+                edges,
+                species.ChargeSi)
+            : null;
+
+    /// <summary>What a mean-field run has to say about the charge it modelled.</summary>
+    /// <param name="selfField">The solver the run used.</param>
+    /// <param name="result">What the run produced.</param>
+    /// <param name="gas">The gas, for its temperature.</param>
+    /// <returns>The warnings, which is one.</returns>
+    /// <remarks>
+    /// Reported whether or not it crosses a threshold, per REG-2: a reader who sees a peak
+    /// self-potential of a millivolt against a thermal 26 mV knows the packet's own charge was
+    /// asked about and did not matter, and one who sees nothing cannot tell that from its
+    /// never having been modelled. The comparison is against kT/q rather than against the
+    /// applied field, because what the self-potential competes with in setting a held cloud's
+    /// width is the thermal energy - a well is only as sharp as the temperature lets it be.
+    /// </remarks>
+    internal static List<ValidityWarning> SelfFieldWarnings(
+        Transport.Diffusion.DensitySelfField selfField,
+        DiffusionResult result,
+        BackgroundGas gas)
+    {
+        const double Boltzmann = 1.380649e-23;
+        const double Charge = 1.602176634e-19;
+
+        var thermal = Boltzmann * gas.TemperatureK / Charge;
+        var occupied = 0;
+        var density = result.Density;
+
+        for (var j = 0; j < density.Grid.CountY; j++)
+        {
+            for (var i = 0; i < density.Grid.CountX; i++)
+            {
+                if (density[i, j] > 0.0)
+                {
+                    occupied++;
+                }
+            }
+        }
+
+        var perCell = occupied > 0 ? result.Remaining / occupied : 0.0;
+
+        return
+        [
+            new ValidityWarning(
+                "spacecharge.mean-field",
+                $"the density's own charge was solved as a potential on the tracked grid and added to the "
+                + $"applied one: {result.SelfFieldSolves} solve(s), peak {result.PeakSelfPotentialVolts:G4} V "
+                + $"against a thermal kT/q of {thermal:G4} V, so the packet's own charge is "
+                + $"{result.PeakSelfPotentialVolts / thermal:G3} times the energy scale that sets a held "
+                + $"cloud's width. The continuum treatment holds while a cell holds many ions, and here it "
+                + $"holds about {perCell:G3} over {occupied} occupied cell(s) - where that falls below one "
+                + "the field is being built from lumps rather than from a density, which is the same limit "
+                + "the particle-in-cell deposit has. No bound is asserted on it, because none has been "
+                + "measured",
+                WarningSeverity.Provenance),
+        ];
+    }
+
     internal static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)
     {
         var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);

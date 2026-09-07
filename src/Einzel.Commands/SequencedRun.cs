@@ -43,6 +43,19 @@ namespace Einzel.Commands;
 /// RF amplitude. The well is the expensive half of a cycle average, so this is the number
 /// that says what the ramp actually cost.
 /// </param>
+/// <param name="SelfFieldSolves">
+/// In a diffusive phase asked for a mean field, how many times the density's own charge was
+/// solved as a potential. <c>null</c> where none was asked for, and in a trajectory phase,
+/// because a count of zero is a real answer - a solver that ran and never needed to refresh -
+/// and a reader cannot tell that from its never having been asked.
+/// </param>
+/// <param name="PeakSelfPotentialVolts">
+/// The largest self-potential anywhere on the grid over the phase, or <c>null</c> on the same
+/// terms. Reported per phase rather than once for the run because a sequence is where the
+/// packet is compressed: a hold and the pulse that follows it hold the same ions at very
+/// different densities, and one number for the run would be the larger of the two with
+/// nothing saying which phase it belonged to.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>Every trajectory is accounted for within a phase</b>, which ACC-5 requires and
@@ -72,7 +85,9 @@ public sealed record PhaseOutcome(
     int Arrived,
     IReadOnlyList<LossChannel> Losses,
     int Assemblies = 0,
-    int WellRebuilds = 0);
+    int WellRebuilds = 0,
+    int? SelfFieldSolves = null,
+    double? PeakSelfPotentialVolts = null);
 
 /// <summary>What a run across a changing transport mode did.</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -306,7 +321,14 @@ public static class SequencedRun
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
                     density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, [],
-                    diffused.Assemblies, diffused.WellRebuilds));
+                    diffused.Assemblies, diffused.WellRebuilds,
+                    // Asked of the model rather than inferred from the result, and the same
+                    // predicate the wholly diffusive path uses. A count of zero is a real
+                    // answer - a field that never needed refreshing - so "was one asked for"
+                    // is the question, and reading it off a value of zero would answer a
+                    // different one.
+                    model.ModelsMeanField ? diffused.SelfFieldSolves : null,
+                    model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null));
             }
 
             started = phase.EndsAtSeconds;
@@ -603,17 +625,38 @@ public static class SequencedRun
             ? StepScheme.Implicit
             : StepScheme.Explicit;
 
-        return DriftDiffusion.Run(
+        // The same self-field the wholly diffusive path builds, from the same helper. A
+        // capability wired into one of the two paths and not the other is how this project
+        // has four times produced a run that answers while leaving out the physics it was
+        // asked for.
+        var edges = DiffusionRun.EdgesFor(model, grid);
+        var selfField = DiffusionRun.SelfFieldFor(model, grid, absorbers, edges, species);
+
+        var result = DriftDiffusion.Run(
             density,
             seen,
             gas,
             mobility,
             species,
             phase.DurationSeconds,
-            DiffusionRun.EdgesFor(model, grid),
+            edges,
             absorbers,
             scheme: scheme,
             stepGain: model.DensityStep.IsImplicit ? model.DensityStep.Gain : 1.0,
-            fieldAt: fieldAt);
+            fieldAt: fieldAt,
+            selfField: selfField);
+
+        if (selfField is not null)
+        {
+            foreach (var warning in DiffusionRun.SelfFieldWarnings(selfField, result, gas))
+            {
+                if (!warnings.Any(w => w.Code == warning.Code))
+                {
+                    warnings.Add(warning);
+                }
+            }
+        }
+
+        return result;
     }
 }

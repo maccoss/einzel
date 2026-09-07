@@ -142,6 +142,19 @@ public sealed record CompiledModel
         || string.Equals(SpaceChargeMode, "pic", StringComparison.Ordinal);
 
     /// <summary>
+    /// Whether the density's own charge enters its field: the diffusive mode's method.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="ModelsSpaceCharge"/> deliberately, and neither is the
+    /// general question. That property is the predicate the <em>trajectory</em> path uses to
+    /// reach for a packet integrator, and a mean field has no packet to integrate: widening
+    /// it to mean "space charge of any kind" would send a diffusive model down a path with no
+    /// method for it. A reader wanting "does this run model charge at all" wants both.
+    /// </remarks>
+    public bool ModelsMeanField =>
+        string.Equals(SpaceChargeMode, "meanField", StringComparison.Ordinal);
+
+    /// <summary>
     /// The grid a particle-in-cell solve uses, or null where the method is not it.
     /// </summary>
     public CompiledSpaceChargeGrid? SpaceChargeGrid { get; init; }

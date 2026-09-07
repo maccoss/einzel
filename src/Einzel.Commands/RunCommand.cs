@@ -306,6 +306,17 @@ public sealed record RegimeJson
 /// moved an RF amplitude, zero where nothing is driven. The expensive half of a cycle
 /// average, so this is what a ramp through a driven geometry actually costs.
 /// </param>
+/// <param name="SelfFieldSolves">
+/// In a diffusive phase asked for a mean field, how many times the density's own charge was
+/// solved as a potential; absent where none was asked for. Absent rather than zero, because
+/// zero is a real answer - a field that never needed refreshing - and the two must not print
+/// the same.
+/// </param>
+/// <param name="PeakSelfPotentialVolts">
+/// The largest self-potential anywhere on the grid during the phase, absent on the same terms.
+/// Per phase, because a hold and the pulse after it carry the same ions at very different
+/// densities.
+/// </param>
 public sealed record SequencePhaseJson(
     string Name,
     string Mode,
@@ -315,7 +326,9 @@ public sealed record SequencePhaseJson(
     IReadOnlyList<double> CentroidMm,
     bool Converted,
     int Assemblies,
-    int WellRebuilds);
+    int WellRebuilds,
+    int? SelfFieldSolves = null,
+    double? PeakSelfPotentialVolts = null);
 
 /// <summary>What a run across a changing transport mode did (SEQ-1).</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -396,6 +409,23 @@ public sealed record DiffusionJson
     /// a field that was never consulted.
     /// </remarks>
     public double? GasSpeedSi { get; init; }
+
+    /// <summary>
+    /// How many times the density's own self-potential was solved, or null where space charge
+    /// was not modelled.
+    /// </summary>
+    /// <remarks>
+    /// Absent rather than zero, which is the rule the rest of this surface follows: zero is a
+    /// real answer - a run whose density never moved enough to need a second solve - and a
+    /// reader cannot tell that from a run that never modelled charge at all.
+    /// </remarks>
+    public int? SelfFieldSolves { get; init; }
+
+    /// <summary>
+    /// The largest self-potential anywhere in the tracked region, in volts, or null where
+    /// space charge was not modelled.
+    /// </summary>
+    public double? PeakSelfPotentialVolts { get; init; }
 
     /// <summary>Grid the density was tracked on, columns then rows.</summary>
     public required IReadOnlyList<int> Nodes { get; init; }
@@ -1241,7 +1271,9 @@ public static class RunCommand
                     phase.CentroidMm,
                     phase.Converted,
                     phase.Assemblies,
-                    phase.WellRebuilds))],
+                    phase.WellRebuilds,
+                    phase.SelfFieldSolves,
+                    phase.PeakSelfPotentialVolts))],
                 outcome.Conversions,
                 outcome.Arrived,
                 outcome.Losses)
@@ -1388,6 +1420,8 @@ public static class RunCommand
                 MobilitySi = outcome.Mobility.ZeroFieldSi,
                 MobilityDerived = outcome.Mobility.Derived,
                 GasSpeedSi = gas.IsFlowing ? gas.FastestBulkSpeedSi : null,
+                SelfFieldSolves = model.ModelsMeanField ? result.SelfFieldSolves : null,
+                PeakSelfPotentialVolts = model.ModelsMeanField ? result.PeakSelfPotentialVolts : null,
                 Nodes = [outcome.Grid.CountX, outcome.Grid.CountY],
                 Steps = result.Steps,
                 ElapsedUs = result.ElapsedSeconds * 1e6,

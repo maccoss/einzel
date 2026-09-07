@@ -3844,7 +3844,7 @@ public static class ModelValidator
             }
         }
 
-        if (transport.SpaceCharge is not ("none" or "direct" or "pic"))
+        if (transport.SpaceCharge is not ("none" or "direct" or "pic" or "meanField"))
         {
             errors.Add(new EinzelError
             {
@@ -3856,7 +3856,39 @@ public static class ModelValidator
                     + "exist; \"direct\" sums every pair, which is the reference method and costs "
                     + "the square of the trajectory count; \"pic\" deposits the packet onto its own "
                     + "grid and solves once, which is cheaper above about 850 trajectories and "
-                    + "dearer below",
+                    + "dearer below; \"meanField\" solves the density's own charge as a potential on "
+                    + "the grid it is already tracked on, which is the diffusive mode's method",
+            });
+
+            return null;
+        }
+
+        // A method that cannot act is refused rather than ignored. "direct" and "pic" fly
+        // particles and there are none in a density; "meanField" is a continuum and there is
+        // no continuum in a set of trajectories. A sequenced model may legitimately use both
+        // modes, so the test is against the modes the run actually reaches rather than
+        // against the declared one - the same question the diffusive requirements ask.
+        var particleMethod = transport.SpaceCharge is "direct" or "pic";
+        var meanFieldMethod = transport.SpaceCharge is "meanField";
+        var anyTrajectory = modes.Contains("trajectory");
+        var anyDiffusion = modes.Contains("diffusion");
+
+        if ((particleMethod && !anyTrajectory) || (meanFieldMethod && !anyDiffusion))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/spaceCharge",
+                Constraint = particleMethod
+                    ? $"'{transport.SpaceCharge}' pushes trajectories on one another and this run has "
+                        + "none: every phase is diffusive, which computes a density"
+                    : "'meanField' solves the charge of a density and this run has none: every phase "
+                        + "is a trajectory",
+                Observed = new ObservedValue(0.0, transport.SpaceCharge),
+                Suggestion = particleMethod
+                    ? "use \"meanField\" for a diffusive run, or give the model a trajectory phase"
+                    : "use \"direct\" or \"pic\" for a trajectory run, or set "
+                        + "\"transport\": { \"mode\": \"diffusion\" }",
             });
 
             return null;
