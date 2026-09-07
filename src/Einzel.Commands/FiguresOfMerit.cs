@@ -1329,6 +1329,24 @@ public static class FiguresOfMerit
     private static DiffusiveArrivals DiffusiveRun(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report)
     {
+        // Neither path below knows about `species`, and neither fails when handed one:
+        // they would run the FIRST population's mass against a mobility derived from the
+        // gas cross section and report a number about an ion the document never declared.
+        // A project test pinning that number would pass while measuring the wrong thing,
+        // which is worse than a refusal by exactly the margin that makes it believable.
+        if (model.IsMixture)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a figure of merit is one number and a mixture has one per "
+                    + "population, so this build cannot compute one for a mixture",
+                Suggestion = "measure a single \"ion\" model, or read the per-population "
+                    + "results from `einzel run --json` under 'mixture'",
+            });
+        }
+
         var (field, fieldWarnings) = Fields.FieldAssembly.BuildReported(model);
 
         if (model.Phases.Count > 0)

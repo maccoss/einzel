@@ -43,11 +43,21 @@ public sealed class TimsFieldProfileDump(ITestOutputHelper output)
         // Sampled from the tunnel entrance to its exit, on the axis, at half-millimetre steps.
         var samples = new List<(double Mm, double VoltsPerMetre)>();
 
-        for (var mm = 0.0; mm <= tunnelLength * 1e3 + 1e-9; mm += 0.5)
+        var lengthMm = tunnelLength * 1e3;
+
+        // The exit is sampled explicitly. A fixed 0.5 mm step stops at the last half-millimetre
+        // BEFORE it - 46.5 of 46.6 - so a profile drawn from this would stop short of the
+        // tunnel it is drawn against, by an amount that depends on the length rather than on
+        // anything physical. Raised by review.
+        for (var mm = 0.0; mm < lengthMm; mm += 0.5)
         {
             var e = built.Field.ElectricFieldAt(new Vec3(mm * 1e-3, 0.0, 0.0));
             samples.Add((mm, Math.Abs(e.X)));
         }
+
+        var atExit = built.Field.ElectricFieldAt(new Vec3(tunnelLength, 0.0, 0.0));
+
+        samples.Add((lengthMm, Math.Abs(atExit.X)));
 
         var peak = samples.MaxBy(s => s.VoltsPerMetre);
         var most = peak.VoltsPerMetre;

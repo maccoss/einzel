@@ -166,6 +166,17 @@ public static class RenderCommand
                     provenance.Add(
                         $"{mixture.Result.Species.Count} ion populations, contoured on one ladder: "
                         + string.Join(", ", mixture.Result.Species.Select(member => member.Name)));
+
+                    // Said rather than dropped. The mixture stepper takes no snapshot list, so
+                    // there is no instant to draw at - and a figure that quietly showed the end
+                    // state for a caller who asked for 500 us is the same silent discard this
+                    // flag already had fixed once for `--vtu`.
+                    if (spec.AtSeconds > 0.0)
+                    {
+                        provenance.Add(
+                            $"asked for t = {spec.AtSeconds * 1e6:G6} us and drew the END of the run: "
+                            + "the mixture stepper records no intermediate densities in this build");
+                    }
                 }
                 else
                 {

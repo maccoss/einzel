@@ -3155,3 +3155,50 @@ the same device as the outcome switch that throws on an unrecognised case.
 This is at least the fourth quantity here to be fixed by widening a list and then have to be
 fixed again by replacing the list with the question. The others were the success set of
 outcome names, twice, and the diffusive requirement gate.
+
+## A capability is wired into every path or refused by the ones it is not
+
+Mixtures landed and were wired into `einzel run` for a plain diffusive model and into
+`render section`. A review of the branch found three other paths that took a mixture, did not
+fail, and answered about an ion the document never declared.
+
+The mechanism is the same in all three. A mixture declares its mobilities per species and is
+refused a `transport.mobility`, so the compiled mobility falls back to one **derived from the
+gas cross section**; and `MassSi`/`ChargeSi` are documented as the first population's, "enough
+for the diagnostics that need AN ion". Together those two make the single-species path *work*
+on a mixture rather than throw — it runs a fifth, invented ion.
+
+- **A sequenced mixture.** The run fork tests for a sequence before it tests for a mixture, so
+  a mixture with an elution ramp — the configuration the feature was built for — took the
+  sequenced path, which steps one density.
+- **Every diffusive figure of merit.** `einzel test`, `sweep`, `scan`, `optimise` and
+  `boundary` computed `transitTime` and the rest from that invented ion. A project test
+  pinning the number would pass while measuring the wrong thing, which is worse than a failure
+  by exactly the margin that makes it believable.
+- **`render section --at-us`.** Accepted and discarded, because the mixture stepper records no
+  intermediate densities.
+
+All three are now refused or reported by name. Refusing is the right first move rather than
+wiring: stepping several populations through a timeline needs the sequenced path to take the
+mixture stepper, and a refusal that says what is missing is honest where a plausible
+single-population answer is not.
+
+**The rule that generalises: when a new capability makes an existing type polymorphic, the
+paths that consumed the old singular form do not fail — they read the fallback.** After adding
+one, grep for every consumer of the fields the new form leaves at a default, and make each one
+either handle it or refuse it. `IsMixture` was honoured in three places out of six.
+
+## A test whose fixture is wrong reports the refusal it was not testing
+
+The test for the figure-of-merit refusal wrote its own project test file, guessing
+`"model": "models/x.json"` and `"figure": "transitTime"`. The scaffold uses
+`"../models/reflectron.json"` — relative to the *tests* directory — and `"figureOfMerit"`.
+
+So the run was refused for a **missing model**, which is a refusal, from the right command,
+with a non-zero exit. Only the message gave it away. A test asserting merely "this is refused"
+would have passed while exercising nothing, and the guess that produced it was mine twice over
+— I had made the same relative-path assumption about a render spec an hour earlier and
+corrected it the same way.
+
+**Assert on the refusal's own text, not on the fact of one.** Every guard in this project
+carries a constraint sentence for exactly this reason.

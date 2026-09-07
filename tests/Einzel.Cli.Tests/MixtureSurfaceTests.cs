@@ -251,6 +251,82 @@ public sealed class MixtureSurfaceTests(ITestOutputHelper output) : IDisposable
         Assert.Contains(expected, stderr, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A sequenced mixture is refused, and so is a figure of merit over one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both were silently wrong until a review found them.</b> The run fork tests for a
+    /// sequence BEFORE it tests for a mixture, so a mixture with an elution ramp - the exact
+    /// configuration this feature was built for - took the sequenced path, which steps one
+    /// density: it ran the first population's mass against a mobility derived from the gas
+    /// cross section and reported nothing about the rest. Every diffusive figure of merit went
+    /// the same way, so <c>einzel test</c> on a mixture would pin a number measured on an ion
+    /// the document never declared.
+    /// </para>
+    /// <para>
+    /// Refused rather than wired, for now: stepping several populations through a timeline
+    /// needs the sequenced path to take the mixture stepper, and a refusal naming what is
+    /// missing is honest where a plausible single-population answer is not.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ASequencedMixtureIsRefused()
+    {
+        var path = Model(TwoSpecies);
+        var text = File.ReadAllText(path);
+
+        const string Sequence =
+            "\"sequence\": [ { \"name\": \"hold\", \"duration\": "
+            + "{ \"value\": 30, \"unit\": \"us\" } }, { \"name\": \"go\", "
+            + "\"duration\": { \"value\": 30, \"unit\": \"us\" } } ], \"fields\": [";
+
+        var edited = text.Replace(
+            "\"fields\": [", Sequence, StringComparison.Ordinal);
+
+        // Asserted, because a replacement that matched nothing would leave the model
+        // unsequenced and the test would report a refusal that never had to happen.
+        Assert.NotEqual(text, edited);
+
+        File.WriteAllText(path, edited);
+
+        var (exit, _, stderr) = Run("validate", path);
+
+        output.WriteLine(stderr.Trim());
+
+        Assert.NotEqual(0, exit);
+        Assert.Contains("/species", stderr, StringComparison.Ordinal);
+        Assert.Contains("sequenced run steps one density", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And a figure of merit over a mixture is refused rather than measured on one of it.
+    /// </summary>
+    [Fact]
+    public void AFigureOfMeritOverAMixtureIsRefused()
+    {
+        var model = Model(TwoSpecies);
+
+        Directory.CreateDirectory(Path.Combine(_root, "tests"));
+
+        File.WriteAllText(
+            Path.Combine(_root, "tests", "mix.test.json"),
+            // Relative to the TESTS directory and keyed `figureOfMerit`, which is what the
+            // scaffolded test file uses - a first version guessed both and was refused for
+            // a missing model rather than for the mixture, which would have read as the
+            // refusal under test.
+            "{ \"model\": \"../models/" + Path.GetFileName(model) + "\", \"expect\": [ "
+            + "{ \"figureOfMerit\": \"transitTime\", \"value\": 100, \"unit\": \"us\", "
+            + "\"tolerance\": 50 } ] }");
+
+        var (exit, stdout, stderr) = Run("test", "--project", _root);
+
+        output.WriteLine((stdout + stderr).Trim());
+
+        Assert.NotEqual(0, exit);
+        Assert.Contains("mixture", stdout + stderr, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>The same two populations, on a trajectory model.</summary>
     /// <remarks>
     /// Written and then edited, with the edit asserted. Three tests in this repository once

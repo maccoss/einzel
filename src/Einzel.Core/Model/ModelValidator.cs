@@ -4243,6 +4243,28 @@ public static class ModelValidator
             return [];
         }
 
+        // A sequenced run takes its own path, and that path steps ONE density: it would
+        // run the first population's mass against a derived mobility, produce one packet
+        // and report nothing about the rest. Refused by name rather than run, because a
+        // mixture with an elution ramp is precisely what this feature is for and getting
+        // one population back would look exactly like getting the right answer.
+        if (document.Sequence is { Count: > 0 }
+            || (document.Fields?.Any(f => f?.Solve?.Stages is { Count: > 0 }
+                || f?.Solve3d?.Stages is { Count: > 0 }) ?? false))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a sequenced run steps one density, so it cannot carry several ion "
+                    + "populations in this build",
+                Suggestion = "run the sequence with a single \"ion\", or run the mixture without a "
+                    + "sequence. Stepping several populations through a timeline needs the "
+                    + "sequenced path to take the mixture stepper, which it does not yet",
+            });
+            return [];
+        }
+
         if (declared.Count < 2)
         {
             errors.Add(new EinzelError
