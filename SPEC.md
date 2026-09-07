@@ -143,6 +143,42 @@ not merely a note about what is unbuilt.
 [Spec findings](docs/spec-findings.md) carries the long form of most of these with
 the measurements attached; what follows is the register of them.
 
+### 41 - A model could describe one ion, and an instrument that separates ions holds several
+
+**r06 §9** gives a model an `ion`: one mass-to-charge, one charge number, and under
+`transport` one mobility. Every device in §1's table that exists to *separate* ions is
+therefore modellable only one ion at a time — a mobility analyser, a mass filter, a funnel
+with a mixed beam through it. That is fine while the ions are independent, and they stop
+being independent at exactly the populations those devices run at.
+
+**The coupling is one quantity and nothing else.** Every coefficient a species needs is its
+own — its mobility sets its drift, its charge and the gas temperature set its diffusion
+through the Einstein relation, its charge sets its Scharfetter–Gummel thermal voltage, and in
+a driven structure its mass and momentum-transfer rate set the cycle-averaged well it feels.
+If the field were its own as well, N species would be N independent runs and could be done
+one after another with no new machinery. What ties them together is the potential their
+**total** charge raises, which no sequence of separate runs computes.
+
+So the amendment is narrow: a model may declare `species` in place of `ion`, each entry
+carrying its own mobility, and a diffusive run steps them together over one shared step
+through one shared self-potential. Measured: a one-species mixture is **bit-identical** to
+the single-species path; a second population with the mean field switched off leaves the
+first **bit-identical**, which is what says the field is the only coupling; and with it on the
+first is displaced 91.6 µm away from its neighbour.
+
+**Two things r06 does not anticipate fall out of it.** The mobility has to move onto the
+species — mass, charge and mobility are one ion's three properties, and leaving the mobility
+under `transport` would make a document say which ions are present in one place and how each
+of them moves in another. And a driven mixture needs **one pseudopotential per species**,
+because that well is built from charge, mass and damping: measured at 30.55 V for m/z 200
+against 3.055 V for m/z 2000 at the same point in the same RF. A shared one is refused,
+because it would give every population the well built for whichever ion it came from and
+would look exactly like a correct answer.
+
+Schema 0.13. Trajectory mixtures are refused by name rather than run as the first population:
+the packet integrator flies one species at a time and there is no mode in this build that
+steps several trajectory species. See `docs/model-format.md` and `docs/pressure.md`.
+
 ### 40 - A parameter could not say where its number came from
 
 **r06 §9** gives a parameter a value, a unit, bounds and a description, and LIB-1 makes that
@@ -1753,7 +1789,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `TRN-1` | Mobility is an explicit input with stated field dependence. | **Met** | Mobility is a declared input; a derived one is marked `mobility.derived`, and `IsWithinFit` refuses to leave the caller to work out whether the field dependence still holds. |
+| `TRN-1` | Mobility is an explicit input with stated field dependence. | **Met** | Mobility is a declared input; a derived one is marked `mobility.derived`, and `IsWithinFit` refuses to leave the caller to work out whether the field dependence still holds. **And it is now per ion population** (schema 0.13, Amendment 41): a model may declare `species` in place of `ion`, each carrying its own mobility, because mass, charge and mobility are one ion's three properties and a list of populations in one place with a list of mobilities in another has nothing tying the two together. A species that declares none derives its own by Mason-Schamp for **that species' mass** rather than sharing a number, which would separate nothing while looking like a converged answer; `transport.mobility` beside `species` is refused rather than treated as a default. |
 | `TRN-2` | Diffusive transport emits a time-resolved density field rather than trajectories, because that is what it computes. This is what §17 renders for a funnel. ... | **Met** | A density field, now with somewhere to go: exported as `.vti`, drawn as contours, and assertable through the `transitTime` figure of merit - which did not exist, so the mode's principal scalar could not be pinned by a project test or ranked by a study. |
 
 ### Test (§19)

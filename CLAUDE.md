@@ -1531,6 +1531,85 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   the funnel's own higher-pressure gas, an exit funnel. Details in
   `docs/device-templates.md`.
 
+- **Several ion populations at once, and the one thing that couples them.** A model may
+  declare `species` in place of `ion` (schema **0.13**), each entry carrying its own
+  mass-to-charge, charge number, mobility and population, and a diffusive run steps them all
+  through one field. **Every coefficient a species needs is its own** — mobility sets its
+  drift, charge and gas temperature set its diffusion through the Einstein relation, charge
+  sets its Scharfetter–Gummel thermal voltage, and in a driven structure mass and
+  momentum-transfer rate set the well it feels. If the field were its own too, N species would
+  be N independent runs. They are coupled by **exactly one quantity, the potential their total
+  charge raises**, which no sequence of separate runs computes.
+
+  | | |
+  | --- | --- |
+  | one species through the mixture path vs `DriftDiffusion.Run` | **0 of 8385 nodes differ**, same steps, population equal to 17 digits |
+  | two mobilities parking vs `v_gas / (K·slope)` | 3.19 vs 3.19 mm, 6.38 vs 6.38; **position ratio 2.000 against a mobility ratio of 2.000** |
+  | a second population, mean field **off** | **0 of 4257 nodes** of the first differ |
+  | the same, **on** | first displaced **−91.6 µm**, away from its neighbour |
+  | equal and opposite polarities | **exactly 0 V and 0 C** against 0.652 V alone |
+  | the shared step | set by the quicker species, **10.0×** shorter than the sluggish one needed |
+
+  **Three of those are controls and they carry the weight.** Bit-equality against the
+  single-species path is what keeps the two from drifting; the numerics are literally the same
+  functions and only the loop is new. A second population being *unfelt* with the mean field
+  off says the field is the **only** coupling — a run that merely differs proves something
+  changed. Exact cancellation says the source is a **signed** sum: an implementation that
+  solved each species and added the potentials would land *near* zero with solver round-off
+  rather than *on* it.
+
+  **`"spaceCharge": "meanField"` is the diffusive mode's method**, wired to both diffusive
+  paths through one shared helper — `q·n` on the tracked grid, one Poisson solve, added per
+  node so drift, the SG exponent and the stability limit all come from one field. Conductors
+  screen it exactly. Reported per phase in a sequence, **absent rather than zero** where none
+  was asked for. A method that cannot act is refused rather than ignored, both ways round.
+
+  **The step is shared and has to be** — a mutual field between densities at different times is
+  not a field between anything, the same argument `PacketIntegrator` makes in the discrete
+  case. **What goes wrong without it is not what the textbook says**: an overlong explicit
+  Scharfetter–Gummel step here does not go negative, it **creates ions** — 1.0376% more than
+  were launched, with the lowest density anywhere still exactly zero. My positivity test passed
+  with the bug restored; the conservation test kills it.
+
+  **A driven mixture needs one well per species.** The pseudopotential is built from charge,
+  mass and momentum-transfer rate, so one RF structure is worth **30.55 V to m/z 200 and
+  3.055 V to m/z 2000** at the same point — a factor of 10.0, exactly 1/m, and the mechanism by
+  which a driven guide is mass-selective at all. A shared one is refused by name.
+
+  **Every way of saying it twice is refused**: `ion` beside `species`, `transport.mobility`
+  beside `species`, a cloud population beside species populations, a list of one, and a
+  trajectory-only run. `einzel schema` carries the lot **by reflection with no schema edit**.
+
+  **And the well cache stopped being gated on the ramped path.** It was built only when the
+  field was a function of time — true when written, false the moment the density's own charge
+  started forcing re-samples. A self-field re-sample leaves the *applied* field untouched, so
+  the well is unchanged by construction, and rebuilding it at sixteen samples a node over the
+  whole grid per species per refresh was the dominant cost of a driven mean-field run.
+  Verified to change no answer against 259 transport and 27 corpus tests.
+
+  **Also fixed, and it is the fourth time**: the terminal decided whether to print a flight
+  time by listing the modes that have none (`Diffusion is null`, then `&& Sequence is null`).
+  It asks `run.HasFlightTime` now, a **required** member set at each of four construction sites
+  with its reason, so a fifth kind of run fails to compile until somebody decides which it is.
+  SPEC.md Amendment 41; details in `docs/model-format.md`, `docs/pressure.md`, `docs/lessons.md`.
+
+- **The published TIMS space-charge estimate reproduces, and my prediction about it was
+  wrong.** Silveira's Eq. 4 for a million charges on a 23 mm line gives 61.68 V/m at 2 mm,
+  matching their quoted "roughly 0.6 V/cm"; the solver gives **62.28 V/m in the real 4 mm
+  bore, 1.010 of theirs**. I predicted the bore would screen that and make their free-space
+  estimate conservative by a computable factor. **It does not screen it at all** — moving the
+  wall from 4 to 32 mm moves the field at 2 mm by **1.4%**, monotonically, while moving the
+  potential at that very same node by **3.07× against 3.12× predicted** from the closed form.
+
+  **Gauss's law is why, and it means their neglect of the electrodes is not an approximation
+  for this quantity.** Induced charge on an axisymmetric bore sits at larger radius than the
+  point being read, and a cylindrical shell contributes exactly nothing inside itself. Which
+  boundary condition applies is not a free choice: made no-flux instead of earthed — a mirror
+  rather than a wall — the same bore takes **31%** out of the field, because a mirror images
+  the line charge and an image is not a shell. My first wall study also reported a
+  *non-monotone* approach that read as physics and was my own grid: at a fixed interval count
+  the cells coarsen as the domain grows.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

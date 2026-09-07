@@ -993,3 +993,49 @@ entrance in a linear manner ramps the field strength at the plateau in a linear 
 That is a pleasing fit and it should be treated with suspicion until it runs: the sequencer
 has never driven a diffusive phase whose *purpose* is to hold a population stationary, and
 "the density stops moving" is not a thing any existing test asserts.
+
+## Silveira's space-charge estimate, and what the electrodes are worth
+
+Silveira and colleagues bound the field a stored population exerts on itself by treating it
+as a uniformly charged line **in free space**, explicitly neglecting the electrodes, and
+quote the radial field 2 mm from the axis of 10^6 charges on a 23 mm line as roughly
+0.6 V/cm — about two orders below the analytical field, which is the basis of their
+conclusion that 10^6 to 10^7 charges can be stored without harming performance.
+
+Their closed form gives **61.68 V/m = 0.617 V/cm**, so their own arithmetic checks out. The
+solver, in the real 4 mm grounded bore, gives **62.28 V/m — 1.010 of theirs**.
+
+**I predicted the bore would screen it and it does not.** The expectation was that a grounded
+wall two millimetres away would pull the field well below the free-space value, making their
+estimate conservative by a computable factor. Moving the wall out over an eightfold range:
+
+| wall radius | field at 2 mm | of theirs | potential at 2 mm |
+| --- | --- | --- | --- |
+| 4 mm | 62.28 V/m | 1.010 | 0.0862 V |
+| 8 mm | 61.89 V/m | 1.003 | 0.1681 V |
+| 16 mm | 61.53 V/m | 0.998 | 0.2302 V |
+| 32 mm | 61.42 V/m | 0.996 | 0.2644 V |
+
+The field moves **1.4%** across that range; the potential *at the same node* moves **3.07×**,
+against **3.12×** predicted by the free-space closed form. Both are read at one point, and the
+pair is the point: a field that did not move could mean the wall never entered the solve, and
+a potential that trebles says it did.
+
+**Gauss's law is why.** The induced charge on an axisymmetric bore sits at larger radius than
+the point being read, and a cylindrical shell of charge contributes exactly nothing inside
+itself — so the wall cannot alter the radial field at any smaller radius, however close it is.
+For a finite line the induced distribution is only nearly axisymmetric, which is the residual
+per cent. **Their neglect of the electrodes is therefore not an approximation for this
+quantity at all**, rather than being conservative.
+
+Which boundary condition applies is not a free choice, and swapping it is what shows the wall
+is doing anything: made no-flux instead of earthed — a mirror rather than a wall — the same
+bore takes **31%** out of the field at 2 mm, because a mirror *images* the line charge and an
+image is not a shell.
+
+Two things about the measurement rather than the physics. A first version of the wall study
+reported a **non-monotone** approach that read as physics and was my own grid: at a fixed
+interval count the cells coarsen as the domain grows, so the four cases were not the same
+discretisation. And two mutations — solving the same problem as a plane, and unearthing the
+wall — each fail both tests, which is what makes them tests rather than assertions that a
+file exists.
