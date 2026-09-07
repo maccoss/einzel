@@ -2337,3 +2337,78 @@ in, past the jet disrupter, with a 3 mm spread), the extraction electrode's pote
 at 300 K (the inlet capillary is heated), no gas jet, no space charge. The template's own
 description lists them, and the trajectory-file fix that this device found - `--vtu` of a
 collisional run was a vacuum flight - is in the working notes, section 76.
+
+## Two populations in `tims-tandem`, and the capacity that falls out
+
+The question a trapped-mobility analyser is designed around: how much charge can it hold
+before the ions stop being separated by their mobility and start being separated by their own
+space charge. Two populations of m/z 622 differing only in mobility — the second ten per cent
+slower — released together into the storage region and held for 2.5 ms at 5000 V/m, with and
+without their own charge in the field.
+
+Holding everything but the mobility fixed is what makes the separation attributable: two
+species differing in mass would also differ in their diffusion and, in this driven tunnel, in
+the well they feel.
+
+| launched | charge | fast (mm) | slow (mm) | gap (mm) | width (mm) | held |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10^5 | off | 26.991 | 33.286 | 6.295 | 0.652 | 8.07e4 |
+| 10^5 | on | 26.995 | 33.350 | 6.355 | 0.910 | 8.07e4 |
+| 10^7 | off | 26.991 | 33.286 | 6.295 | 0.652 | 8.07e6 |
+| 10^7 | on | 26.113 | 34.539 | 8.426 | 2.314 | 7.51e6 |
+| 10^8 | off | 26.991 | 33.286 | 6.295 | 0.652 | 8.07e7 |
+| 10^8 | on | 25.997 | 35.033 | 9.036 | 2.564 | **1.39e7** |
+
+**The tunnel has a capacity, and it is the published one.** Launching ten times more than
+10^7 holds only 1.8 times more, so it stops accepting between 8 × 10^6 and 1.4 × 10^7 ions.
+Silveira and colleagues put the storable population at 10^6 to 10^7 from a free-space
+line-charge argument that neglects the electrodes entirely; this is the same answer from
+solving the geometry with two populations pushing on one another, which is about as
+independent as two routes to a number get.
+
+**The uncharged column is what makes it a measurement.** With no charge the tunnel holds
+81 per cent of whatever it is given at every population, and the widths and positions are
+identical to the digit — so what saturates is the charge rather than the geometry, and the
+run really did vary what it says it varied.
+
+Where the other 19 per cent goes is **not established**: the study sums each population's
+density and does not read its itemised losses, so the figure is a retention fraction and not
+an attribution. It is the same at every population and in both columns, which is why it does
+not confound the comparison, and it is worth itemising before anything is concluded from it.
+
+**The degradation has a shape a designer could misread.** Their own charge pushes the two
+populations *further apart* — 6.3 mm to 9.0 mm — and the separation still gets worse, because
+the peaks widen faster than their centres move. Watch only the peak spacing and space charge
+looks like it is helping.
+
+**And the broadening starts far below the capacity**: 1.4× wider at 10^5 ions. That is not a
+contradiction with the published estimate, because the two are about different quantities.
+Their criterion is the packet's own field against the analysing field, which is of order a
+per cent. What sets a *held* packet's width is its own potential against the thermal energy
+`kT/q`, 25.85 mV at 300 K — and these packets settle to well under a millimetre, so their
+self-potential passes that scale at a much lower count.
+
+### Two things this measurement is not
+
+**Its ratio is spatial, not a resolving power.** The gap and the width are both millimetres,
+measured at an equilibrium reached long before the run ends. A real analyser's resolving
+power is measured in the time domain after an elution ramp, and the ramp is most of where it
+comes from — so the number here is one to two orders below a published one by construction
+and must never be set beside one. What it is good for is a ratio against itself.
+
+**Its ion counts are not comparable with the published ones.** Their reference spreads 10^6
+charges over 23 mm; these packets sit in under a millimetre. Per unit length per population,
+the 10^5 row is 0.6 times their reference density rather than a hundredth of it, which is the
+comparison that has to be made.
+
+The eluted version is what would produce a mobility resolving power comparable with a
+published one, and `mobilityResolvingPower` already computes it.
+
+### Cost
+
+14 minutes for six configurations at 256 × 16 over 2.5 ms. An uncharged configuration is
+30 seconds; a mean-field one is 220 to 330. The difference is that the density's own charge
+forces a coefficient re-sample whenever it moves, and although the cycle-averaged well now
+survives one, everything else about the operator is rebuilt. The geometry is solved **once**
+for the whole study and reused: re-solving 55 rings and two funnels per configuration ran for
+over an hour without reaching its first line of output.
