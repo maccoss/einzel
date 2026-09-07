@@ -289,7 +289,14 @@ public static class DriftDiffusion
         // spread of probes at each one, so a document that really does ramp an amplitude
         // gets the right answer without the saving. Only on the ramped path - a fixed
         // field assembles once and has nothing to save.
-        var wellCache = fieldAt is not null && at is PonderomotiveField effective
+        // Built whenever the field is a cycle average, not only when it is ramped. The reason
+        // it was gated on `fieldAt` is that a fixed field assembles once and has nothing to
+        // save - which stopped being true when the density's own charge started forcing
+        // re-samples. A self-field re-sample leaves the APPLIED field exactly where it was, so
+        // the well is unchanged by construction and rebuilding it is pure waste: at sixteen
+        // samples per node over the whole grid, per species, it is the dominant cost of a
+        // driven mean-field run and it buys nothing.
+        var wellCache = at is PonderomotiveField effective
             ? new PonderomotiveWellCache(grid, effective)
             : null;
 

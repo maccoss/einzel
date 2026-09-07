@@ -1504,3 +1504,84 @@ or Langevin, the same Maxwellian draw about the local gas velocity, the same gra
 that cooling and the mutual push act on the same packet in the same run, which is what a
 space-charge-limited cloud needs to form. The caveat that travels with every such run is
 that a macroparticle scatters as one ion while carrying many; see `docs/numerics.md`.
+
+## The density's own charge, and several populations at once
+
+A diffusive model may declare `"spaceCharge": "meanField"`. The charge density is `q·n` on
+the grid the density is already tracked on, one Poisson solve gives the potential it raises,
+and that potential is added per node to the applied one — so the drift, the
+Scharfetter–Gummel exponent and the stability limit all come from **one** field rather than
+from two that agree by construction. Conductors screen it exactly, because the self-potential
+is held at zero on their cells; reflecting edges are Neumann and open ones earthed.
+
+Re-solved only when the density has moved, against a declared tolerance, and the solve count
+and peak potential are reported on every such run — REG-2's rule applied to a new quantity.
+A reader who sees a peak of a millivolt against a thermal `kT/q` of 26 mV knows the packet's
+own charge was asked about and did not matter; one who sees nothing cannot tell that from its
+never having been modelled. Both numbers are **absent rather than zero** where none was asked
+for, and a sequenced run reports them per phase, because a hold and the pulse after it carry
+the same ions at very different densities.
+
+A method that cannot act is refused rather than ignored, both ways round: `direct` and `pic`
+push trajectories on one another and a density has none; `meanField` solves the charge of a
+continuum and a set of trajectories is not one. The test is against the modes the run
+actually reaches rather than the declared one, since a sequenced model may legitimately use
+both.
+
+### A mixture is one problem, not several runs
+
+`MixtureDiffusion.Run` steps N populations together. Every coefficient a species needs is its
+own — its mobility sets its drift, its charge and the gas temperature set its diffusion
+through the Einstein relation, its charge sets its thermal voltage, and in a driven structure
+its mass and momentum-transfer rate set the well it feels. **If the field were its own too,
+N species would be N independent runs and could be done one after another.** They are coupled
+by exactly one quantity, the potential their total charge raises, and that is why this exists.
+
+| Check | Result |
+| --- | --- |
+| one species through the mixture path against `DriftDiffusion.Run` | **0 of 8385 nodes differ**, same steps, population equal to 17 digits |
+| two mobilities parking, against `v_gas / (K·slope)` | 3.19 mm against 3.19, 6.38 against 6.38 |
+| the position ratio, against the mobility ratio | **2.000 against 2.000** |
+| a second population present, mean field **off** | **0 of 4257 nodes** of the first differ |
+| the same, mean field **on** | first displaced **−91.6 µm**, away from its neighbour |
+| equal and opposite polarities | **exactly 0 V and 0 C**, against 0.652 V for one alone |
+| the shared step | 1.509 ns, set by the quicker species, **10.0×** shorter than the sluggish one needed |
+
+Three of those are controls and they carry the weight. Bit-equality against the
+single-species path is what stops the two drifting apart later; the numerics are literally
+the same functions, and only the loop around them is new. A second species being *unfelt*
+with the mean field off is what says the field is the **only** coupling — a run that merely
+differs proves something changed, and one that does not proves only that nothing was wired
+up. And exact cancellation of opposite polarities says the source is a signed sum: two
+bit-identical densities carrying `q` and `−q` contribute exact negatives, so a version that
+solved each species separately and added the potentials would land *near* zero with solver
+round-off rather than *on* it.
+
+### The step is shared, and it has to be
+
+A mutual field between densities evaluated at different times is not a field between
+anything: if a light species ran ahead on its own longer step, the potential the heavy one
+drifted in would be the potential of a distribution that no longer existed. This is the same
+argument `PacketIntegrator` makes for a space-charged packet of trajectories, met again in
+the continuum. So a mixture costs what its most demanding member costs, and both the step and
+the species that set it are reported rather than left to be inferred.
+
+What goes wrong without it is **not** what the textbook says. An overlong explicit
+Scharfetter–Gummel step here does not produce a negative density — it produces 1.04% more
+ions than were launched. See `lessons.md`.
+
+### A driven mixture needs one well per species
+
+`PonderomotiveField` is built from charge, mass and momentum-transfer rate, so one RF
+structure presents a **different** effective potential to every species in it — measured at
+30.55 V for m/z 200 against 3.055 V for m/z 2000 at the same point, a factor of 10.0, which
+is the 1/m dependence exactly. That is the mechanism by which a driven guide is
+mass-selective at all. A mixture handed one wrapper would give every species the well built
+for whichever ion it came from, silently, so that case is refused by name.
+
+### Not built
+
+Nothing chooses the refresh tolerance, and a driven mixture with a mean field recomputes the
+cycle-averaged well over the whole grid at every re-sample: the well cache exists only on the
+ramped path, so a re-sample driven by the density's own charge rebuilds it from scratch. That
+is the dominant cost of a driven mean-field run and the obvious next optimisation.

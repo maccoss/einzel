@@ -358,6 +358,7 @@ public static class MixtureDiffusion
         private readonly List<(double, double)> _arrivals = [];
 
         private DensityField _next;
+        private PonderomotiveWellCache? _well;
         private double[] _driftX = [];
         private double[] _driftY = [];
         private double[] _diffusion = [];
@@ -400,9 +401,31 @@ public static class MixtureDiffusion
             // pseudopotential - and the shared one otherwise.
             var seen = Member.Field ?? shared;
 
+            // One cycle-averaged well per species, kept across re-samples. The well is a
+            // property of the APPLIED field, and a re-sample driven by the mixture's own charge
+            // leaves that untouched - so rebuilding it at sixteen samples a node over the whole
+            // grid, once per species per refresh, is the dominant cost of a driven mean-field
+            // run and buys nothing. `Refresh` probes first and rebuilds only if the drive
+            // really moved, so a ramped field still gets the right answer.
+            if (seen is PonderomotiveField pondered)
+            {
+                if (_well is null)
+                {
+                    _well = new PonderomotiveWellCache(grid, pondered);
+                }
+                else
+                {
+                    _well.Refresh(pondered);
+                }
+            }
+            else
+            {
+                _well = null;
+            }
+
             (_driftX, _driftY, _diffusion, _potential, _gasX, _gasY) = DriftDiffusion.SampleCoefficients(
                 grid, seen, gas, Member.Mobility, Member.Species, _sign, _number, cylindrical,
-                well: null, selfField: selfField);
+                well: _well, selfField: selfField);
 
             Stable = DriftDiffusion.StableStep(
                 grid, _driftX, _driftY, _gasX, _gasY, _diffusion, Density.LargestRadialWeight());

@@ -3098,3 +3098,60 @@ the end of the run and reported them held; extending it to 0.94 ejected them and
 in the tail of the peak, which is where the instrument has them too. What the scan window
 covers is part of the measurement, and a window chosen for a slow scan is not a window for
 a fast one.
+
+## Positivity is not the failure mode I expected, and my test had no teeth
+
+The explicit Scharfetter-Gummel step is bounded by a stability limit, and the textbook
+consequence of exceeding it is a **negative density** — the thing exponential fitting exists
+to prevent in the first place. So when the mixture solver gained a shared step, taken as the
+shortest any species needs, the obvious test was that no species goes negative when a fast
+one is stepped at a sluggish one's rate.
+
+It passed with the wrong-step mutation restored. Told to take the first member's step —
+seven times too long for the quick member — the lowest density anywhere stayed at exactly
+zero, and the run looked fine.
+
+What actually happened is that the quick species finished with **1.0376% more ions than were
+launched**. The scheme did not go negative; it created matter. The test now asserts the
+conservation ledger, which is the sharper claim anyway: a population that grew has no
+defensible reading, where a small negative density can always be argued as round-off.
+Positivity is still checked, because it costs one pass over the grid, but it is not what
+carries the test.
+
+The general form: **the failure mode a scheme is famous for is not necessarily the one it
+exhibits at the parameters you are at.** Run the mutation before believing the test, and if
+the assertion survives, find the quantity that does move.
+
+## A convenience the schema forces on you is worth measuring before working around it
+
+A study of the tandem tunnel varied two things across eight runs — how many ions each
+population held, and whether their charge was modelled — and re-solved fifty-five rings and
+two funnels for every one of them, because the obvious spelling builds the field from the
+model inside the loop. It ran for over an hour without reaching its first line of output.
+
+Neither varied quantity touches an electrode. `ExecuteMixture` takes the field as an
+argument precisely so a caller can hoist it, and hoisting it is the whole difference between
+a study that finishes and one that does not. The same shape as the energy-sweep loop that
+built a field per ion: **a per-iteration cost that does not fall as the iteration count
+rises is a fixed cost in the wrong place**, and it is invisible to a suite that only checks
+answers.
+
+## The printer kept asking which mode this was, when the question was whether there is a number
+
+`einzel run`'s terminal output decided whether to print a flight time with
+`run.Diffusion is null`. A sequenced run then walked into `flight time NaN +/- NaN`, so the
+line became `run.Diffusion is null && run.Sequence is null`. A mixture would have been the
+third addition to that list, and the comment above the line already said so in as many
+words.
+
+A list of the modes known when a line was written is not the question the line is asking.
+The question is **did this run produce a single arrival time for an ion**, which is a
+property of the result: false for a density, which has no ions; false for a sequence, which
+ends on its own clock rather than on an arrival; false for a mixture, for both reasons at
+once. It is now a **required** member of `RunOutcome`, set at each construction site with
+its reason, so a fifth kind of run fails to compile until somebody decides which it is —
+the same device as the outcome switch that throws on an unrecognised case.
+
+This is at least the fourth quantity here to be fixed by widening a list and then have to be
+fixed again by replacing the list with the question. The others were the success set of
+outcome names, twice, and the diffusive requirement gate.
