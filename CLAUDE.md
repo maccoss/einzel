@@ -1615,14 +1615,16 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   faster than their centres move. And broadening starts far below the capacity — 1.4× at 10^5
   ions — which does not contradict the published estimate because the two are about different
   quantities: theirs is the packet's field against the analysing field, of order a per cent,
-  while what sets a *held* packet's width is its own potential against kT/q.
+  while what sets a *held* packet's width is its own potential against kT/q. Measured: **0.105
+  V = 4.1x thermal** at 10^5, 1.783 V = 69x at 10^7, 2.519 V = 97x at 10^8. Already four times
+  the energy that would otherwise set the width, at the lowest population tried.
 
   **Two things it is not, both recorded with the measurement.** Its ratio is spatial — gap
   over width in millimetres, at equilibrium, with no elution ramp — so it is one to two orders
   below a published resolving power by construction and must never be set beside one. And its
   ion counts are not comparable with theirs without converting to charge per unit length:
   their reference spreads 10^6 over 23 mm, these packets sit in under a millimetre, so the
-  10^5 row is **0.6×** their line density rather than a hundredth of it.
+  10^5 row is **0.29x** their line density rather than a hundredth of it.
 
   **Cost**: 14 minutes for six configurations; an uncharged one is 30 s against a mean-field
   one at 220-330. The geometry is solved **once** for the study — re-solving 55 rings and two

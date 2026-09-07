@@ -2386,7 +2386,18 @@ contradiction with the published estimate, because the two are about different q
 Their criterion is the packet's own field against the analysing field, which is of order a
 per cent. What sets a *held* packet's width is its own potential against the thermal energy
 `kT/q`, 25.85 mV at 300 K — and these packets settle to well under a millimetre, so their
-self-potential passes that scale at a much lower count.
+self-potential passes that scale at a much lower count:
+
+| launched | peak self-potential | against kT/q | broadening |
+| --- | --- | --- | --- |
+| 10^5 | 0.105 V | 4.1× | 1.40× |
+| 10^7 | 1.783 V | 69.0× | 3.55× |
+| 10^8 | 2.519 V | 97.5× | 3.93× |
+
+At the lowest population the packet's own potential is already four times the energy that
+would otherwise set its width, which is the whole of why it broadens there. And the
+self-potential saturates too — 1.78 V to 2.52 V for ten times the charge — for the same
+reason the width does: past the capacity the extra ions are not there.
 
 ### Two things this measurement is not
 
