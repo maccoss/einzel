@@ -300,6 +300,12 @@ public sealed record RegimeJson
 /// In a diffusive phase, how many times the density solver assembled its operator: once for
 /// a field that held, once per step for one that changed. Zero for a trajectory phase.
 /// </param>
+/// <param name="WellRebuilds">
+/// How many of those assemblies computed the ponderomotive well over the whole grid rather
+/// than reusing the one before: one where the ramp moved only DC, one per assembly where it
+/// moved an RF amplitude, zero where nothing is driven. The expensive half of a cycle
+/// average, so this is what a ramp through a driven geometry actually costs.
+/// </param>
 public sealed record SequencePhaseJson(
     string Name,
     string Mode,
@@ -308,7 +314,8 @@ public sealed record SequencePhaseJson(
     int Trajectories,
     IReadOnlyList<double> CentroidMm,
     bool Converted,
-    int Assemblies);
+    int Assemblies,
+    int WellRebuilds);
 
 /// <summary>What a run across a changing transport mode did (SEQ-1).</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -1233,7 +1240,8 @@ public static class RunCommand
                     phase.Trajectories,
                     phase.CentroidMm,
                     phase.Converted,
-                    phase.Assemblies))],
+                    phase.Assemblies,
+                    phase.WellRebuilds))],
                 outcome.Conversions,
                 outcome.Arrived,
                 outcome.Losses)

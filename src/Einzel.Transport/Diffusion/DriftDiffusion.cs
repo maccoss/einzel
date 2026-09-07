@@ -57,6 +57,26 @@ public sealed record DiffusionResult(
     /// </remarks>
     public int Assemblies { get; init; } = 1;
 
+    /// <summary>
+    /// How many of those assemblies computed the ponderomotive well over the whole grid,
+    /// rather than reusing the one before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Zero where there is no drive and so no well to compute; one where the field is
+    /// fixed, or where a ramp moved only DC and left the oscillating field alone; one
+    /// per assembly where the ramp really did move an RF amplitude.
+    /// </para>
+    /// <para>
+    /// Reported for the same reason <see cref="Assemblies"/> is: the well is the
+    /// expensive half of a cycle average - two passes over the field at every node
+    /// against one pass over the potential - and a saving nothing reports is a saving
+    /// nobody can check. It is also the only place a reader can see that the cache did
+    /// its job, since by construction the density is unmoved either way.
+    /// </para>
+    /// </remarks>
+    public int WellRebuilds { get; init; }
+
     /// <summary>The density at each requested instant, in order.</summary>
     /// <remarks>
     /// <para>
@@ -229,13 +249,28 @@ public static class DriftDiffusion
         // is the reference the scaling is against rather than the value used.
         var number = gas.NumberDensitySi;
 
+        var at = fieldAt?.Invoke(0.0) ?? field;
+
+        // The well is the expensive half of a cycle average and, in an elution scan, the
+        // half that cannot have changed: the ramp walks the DC gradient down and holds
+        // every RF amplitude. Kept per node across the steps of a ramp and checked at a
+        // spread of probes at each one, so a document that really does ramp an amplitude
+        // gets the right answer without the saving. Only on the ramped path - a fixed
+        // field assembles once and has nothing to save.
+        var wellCache = fieldAt is not null && at is PonderomotiveField effective
+            ? new PonderomotiveWellCache(grid, effective)
+            : null;
+
+        // One well computation for a fixed driven field, none where there is no drive.
+        var wellRebuilds = wellCache?.Rebuilds ?? (at is PonderomotiveField ? 1 : 0);
+
         // Sampled once when the field is fixed, which it is for every run except a
         // ramped phase of a sequence. When `fieldAt` is given the field is a function of
         // time and these are re-sampled every step inside the loop below - the comment
         // that stood here said a sequenced run "would need this inside the loop, and does
         // not exist yet", and a TIMS elution ramp is that run.
         var (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
-            grid, fieldAt?.Invoke(0.0) ?? field, gas, mobility, species, sign, number, initial.Cylindrical);
+            grid, at, gas, mobility, species, sign, number, initial.Cylindrical, wellCache);
 
         // The thermal voltage, which is what turns a potential difference across a
         // face into the exponent Scharfetter-Gummel needs.
@@ -301,8 +336,29 @@ public static class DriftDiffusion
             // the field actually changing, and it is paid only when it does.
             if (fieldAt is not null && steps > 0)
             {
+                var now = fieldAt(time);
+
+                // The cache holds the well and the field of the moment supplies the
+                // direct term, so it has to be pointed at this step's field before
+                // anything is read through it. `Refresh` probes first and rebuilds only
+                // if the well has moved.
+                if (wellCache is not null && now is PonderomotiveField pondered)
+                {
+                    wellCache.Refresh(pondered);
+                    wellRebuilds = wellCache.Rebuilds;
+                }
+                else
+                {
+                    // A field that stopped being a cycle average part way through a
+                    // phase cannot happen today, and dropping the cache rather than
+                    // reading a well through a field it was not built from is the
+                    // reading that stays correct if it ever does.
+                    wellCache = null;
+                }
+
                 (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
-                    grid, fieldAt(time), gas, mobility, species, sign, number, initial.Cylindrical);
+                    grid, now, gas, mobility, species, sign, number, initial.Cylindrical,
+                    wellCache);
 
                 stable = StableStep(
                     grid, driftX, driftY, gasX, gasY, diffusion, density.LargestRadialWeight());
@@ -360,6 +416,7 @@ public static class DriftDiffusion
             Sweeps = sweeps,
             WorstSweepChange = worstChange,
             Assemblies = assemblies,
+            WellRebuilds = wellRebuilds,
         };
     }
 
@@ -503,7 +560,8 @@ public static class DriftDiffusion
         IonSpecies species,
         int sign,
         double number,
-        bool cylindrical)
+        bool cylindrical,
+        PonderomotiveWellCache? well = null)
     {
         var count = grid.CountX * grid.CountY;
 
@@ -518,8 +576,17 @@ public static class DriftDiffusion
         {
             for (var i = 0; i < grid.CountX; i++)
             {
+                var k = (j * grid.CountX) + i;
+
                 var point = new Vec3(grid.X(i), grid.Y(j), 0.0);
-                var electric = field.ElectricFieldAt(in point);
+
+                // Through the cache where there is one, which reads the well it already
+                // holds and recomputes only the direct term. The arithmetic is the
+                // field's own, in the field's own order, so a run with a cache and a run
+                // without one are the same numbers to the bit.
+                var electric = well is null
+                    ? field.ElectricFieldAt(in point)
+                    : well.ElectricFieldAt(k, in point);
 
                 var strength = Math.Sqrt((electric.X * electric.X) + (electric.Y * electric.Y));
 
@@ -532,13 +599,14 @@ public static class DriftDiffusion
                 var here = gas.NumberDensityAt(in point);
                 var local = mobility.At(strength, here, number);
 
-                var k = (j * grid.CountX) + i;
-
                 driftX[k] = sign * local * electric.X;
                 driftY[k] = sign * local * electric.Y;
 
                 diffusion[k] = Mobility.DiffusionSi(gas.TemperatureK, species.ChargeSi, local);
-                potential[k] = field.PotentialAt(in point);
+
+                potential[k] = well is null
+                    ? field.PotentialAt(in point)
+                    : well.PotentialAt(k, in point);
 
                 // Sampled per node rather than taken once, even though only a
                 // uniform flow can be declared today. A flow field is what GAS-1

@@ -429,6 +429,82 @@ step gave a step of infinity, a difference of infinity minus infinity, and an
 effective field of NaN — while every potential stayed correct, so only the
 gradient was wrong.
 
+### The well, kept across the steps of a ramp
+
+A ramped diffusive phase re-samples its coefficients and rebuilds its face
+operator at every step, and where the field is driven every sample is a cycle
+average: **one pass over the potential for the direct term and two passes over
+the field for the well**, at each of seven points per node — the node itself and
+the two ends of the central difference on each axis. An elution scan holds every
+RF amplitude and walks only the DC, so the *oscillating* field is the same at
+every step and so is its mean square. Only the direct term moves.
+
+So `PotentialAt` is now exactly the sum of `DirectPotentialAt` and `WellAt`,
+asserted bit-for-bit over a spread of points and four RF phases, and a ramped
+run keeps the well per node and recomputes only the direct term. It is
+**verified rather than assumed**: sixteen nodes on a four-by-four lattice are
+recomputed from scratch at every step, and one disagreement past a relative 1e-12
+throws the whole cache away. So a document that really does ramp an RF amplitude
+gets the right answer, just without the saving. `DiffusionResult.WellRebuilds`
+rides out beside `Assemblies`, per phase in `einzel run --json`, because a saving
+nothing reports is a saving nobody can check.
+
+**Seven points, not one**, and that is what makes the saving free of consequence.
+Caching only the node value would force the central difference to be split into a
+direct part and a well part, and `(D+ + W+) - (D- + W-)` is not bit-identically
+`(D+ - D-) + (W+ - W-)`. Holding the well at all seven lets the difference be
+taken exactly as the field takes it.
+
+| Synthetic DC ramp, 129 x 33 nodes, 20 steps | cached | reference |
+| --- | --- | --- |
+| Well rebuilds | **1** | 0 (no cache) |
+| Driven-field evaluations | 490,208 | 9,609,600 |
+| Driven-potential evaluations | 4,804,800 | 4,804,800 |
+| Nodes of the final density that differ | **0 of 2,145** | — |
+| Collected ions | 3.46411859447254722 | 3.46411859447254722 |
+| Wall clock, analytic drive | 576 ms | 2,119 ms |
+
+The reference path is reached with a **pass-through wrapper** rather than a
+switch: the cache engages on the concrete `PonderomotiveField` type, so a
+forwarding `IElectrostaticField` around one gives the arithmetic the solver did
+before, with no knob in the engine and none in the model format.
+
+**Field evaluations fall 19.6x and potential evaluations not at all**, which is
+the half of the original inference that was wrong. It read "about a sixteenth per
+step"; the direct term is the *cycle mean of the potential* and needs its sixteen
+samples whatever the ramp moves. Total evaluations fall 2.72x, and the wall clock
+3.7x on an analytic drive — more than the count ratio, because a field evaluation
+costs more than a potential lookup, and more still where the field is solved.
+
+**And on the shipped TIMS analyser the cache does not hold, for a reason that is
+not the cache's.** Its `walk` phase rebuilt the well at **30 of 30** assemblies,
+because the well at a fixed point genuinely moves between successive instants of
+the ramped field — by a relative 1.8e-5 at the median. Deterministic (asking the
+same field twice reproduces the well to the bit) and over exactly one drive
+period (1/850 kHz, checked). Two controls:
+
+| | median step-to-step change in the well |
+| --- | --- |
+| ramp rate cut 100x (40 → 39.8 V instead of 40 → 20 V) | 3.6e-5 — **not smaller** |
+| RF amplitude 25 V | 7.0e-5 |
+| RF amplitude 100 V (shipped) | 1.8e-5 |
+| RF amplitude 400 V | 1.2e-6 |
+
+So it scales as **1/amplitude** and not with the ramp rate, which is the
+signature of an additive absolute contamination cross-multiplied with the drive:
+something that is not the drive is entering the mean square of the *oscillating*
+field. The obvious candidate — the ramp advancing inside the averaging window, so
+a slow drift is averaged as though it were a quiver — is **refuted by its own
+control**, since a hundredfold slower ramp did not reduce it. Recorded as
+measured rather than explained.
+
+The tolerance is deliberately **not** loosened to cover it. A tolerance chosen
+larger than a variation nobody has explained is caching over that variation, and
+the same measurement says something a reader should know anyway: a ramped driven
+diffusive run's well is not the well to better than about 1e-5, so the number to
+settle is the jitter and not the tolerance. Until it is settled the saving is
+realised on ramps whose well is genuinely held and not on that model.
+
 
 ## Electrodes absorb for the whole run, not only the seed
 

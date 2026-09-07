@@ -248,6 +248,17 @@ public sealed class PonderomotiveField : IElectrostaticField
     public double ResolutionLength => _driven.ResolutionLength;
 
     /// <summary>
+    /// The central-difference step the effective field is taken over, in metres.
+    /// </summary>
+    /// <remarks>
+    /// Half the resolution of whatever is underneath, or a micrometre where that is
+    /// infinite. Reported because a caller that caches the well has to cache it at
+    /// exactly the points the gradient asks about, and a step it guessed at would
+    /// give a different answer from the one this class computes.
+    /// </remarks>
+    public double DifferencingStepM => _step;
+
+    /// <summary>
     /// The mesh the oscillating part of the wrapped field is known on, which is what the
     /// quiver has to be compared against; infinite where the drive is analytic.
     /// </summary>
@@ -260,45 +271,87 @@ public sealed class PonderomotiveField : IElectrostaticField
     /// <summary>The effective potential: the DC part plus the ponderomotive well.</summary>
     /// <param name="position">Where to evaluate.</param>
     /// <returns>The potential, in volts.</returns>
-    public double PotentialAt(in Vec3 position)
+    /// <remarks>
+    /// Exactly the sum of its two halves, and asserted to be so bit-for-bit: every
+    /// diffusive number this engine has published through a driven geometry comes
+    /// through here, so the split that lets a caller cache one half must not move the
+    /// whole by a bit.
+    /// </remarks>
+    public double PotentialAt(in Vec3 position) =>
+        DirectPotentialAt(in position) + WellAt(in position);
+
+    /// <summary>
+    /// The direct half of the effective potential: the cycle mean of the potential.
+    /// </summary>
+    /// <param name="position">Where to evaluate.</param>
+    /// <returns>The potential, in volts.</returns>
+    /// <remarks>
+    /// The half a ramp moves. In an elution scan the RF amplitudes are held and only
+    /// the DC is walked, so this changes at every step and
+    /// <see cref="WellAt(in Vec3)"/> does not - which is what makes caching the well
+    /// worth doing and why the two are separable at all.
+    /// </remarks>
+    public double DirectPotentialAt(in Vec3 position)
     {
         var direct = 0.0;
-        var meanSquare = 0.0;
-        var mean = default(Vec3);
 
-        // One pass for the cycle mean of the field, which is the DC part, and one
-        // for the mean square of what is left. Two passes rather than one because
-        // the oscillating part is defined relative to the mean, and a structure with
-        // an asymmetric duty cycle has a mean that is not zero - which is a real DC
-        // offset and belongs in the direct term, not in the well.
         for (var s = 0; s < _samples; s++)
         {
-            var time = PeriodSeconds * s / _samples;
-
-            direct += _driven.PotentialAt(in position, time);
-            mean += _driven.ElectricFieldAt(in position, time);
+            direct += _driven.PotentialAt(in position, PeriodSeconds * s / _samples);
         }
 
-        direct /= _samples;
-        mean *= 1.0 / _samples;
+        return direct / _samples;
+    }
+
+    /// <summary>The ponderomotive well at a point, as a potential in volts.</summary>
+    /// <param name="position">Where to evaluate.</param>
+    /// <returns>The well, in volts.</returns>
+    /// <remarks>
+    /// <para>
+    /// The expensive half: two passes of the cycle sampling over the field, against
+    /// one pass over the potential for the direct term.
+    /// </para>
+    /// <para>
+    /// Psi is an energy; divided by the charge it is a potential, which is what the
+    /// drift-diffusion solve wants. The sign is such that a strong-field region is
+    /// uphill for either polarity, because the ponderomotive force always pushes
+    /// towards weaker field - so the charge divides out in magnitude but not in sign,
+    /// and dividing by the signed charge here is what makes an anion feel the same
+    /// well as a cation.
+    /// </para>
+    /// </remarks>
+    public double WellAt(in Vec3 position) =>
+        ScaleAt(in position) * MeanSquareOscillating(in position) / _chargeSi;
+
+    /// <summary>The cycle mean square of the oscillating field, in volts squared per metre squared.</summary>
+    /// <remarks>
+    /// Two passes rather than one because the oscillating part is defined relative to
+    /// the cycle mean, and a structure with an asymmetric duty cycle has a mean that
+    /// is not zero - which is a real DC offset and belongs in the direct term, not in
+    /// the well.
+    /// </remarks>
+    private double MeanSquareOscillating(in Vec3 position)
+    {
+        var mean = default(Vec3);
 
         for (var s = 0; s < _samples; s++)
         {
-            var time = PeriodSeconds * s / _samples;
-            var oscillating = _driven.ElectricFieldAt(in position, time) - mean;
+            mean += _driven.ElectricFieldAt(in position, PeriodSeconds * s / _samples);
+        }
+
+        mean *= 1.0 / _samples;
+
+        var meanSquare = 0.0;
+
+        for (var s = 0; s < _samples; s++)
+        {
+            var oscillating =
+                _driven.ElectricFieldAt(in position, PeriodSeconds * s / _samples) - mean;
 
             meanSquare += oscillating.LengthSquared;
         }
 
-        meanSquare /= _samples;
-
-        // Psi is an energy; divided by the charge it is a potential, which is what
-        // the drift-diffusion solve wants. The sign is such that a strong-field
-        // region is uphill for either polarity, because the ponderomotive force
-        // always pushes towards weaker field - so the charge divides out in
-        // magnitude but not in sign, and dividing by the signed charge here is what
-        // makes an anion feel the same well as a cation.
-        return direct + (ScaleAt(in position) * meanSquare / _chargeSi);
+        return meanSquare / _samples;
     }
 
     /// <summary>The effective field: minus the gradient of the effective potential.</summary>
@@ -340,25 +393,10 @@ public sealed class PonderomotiveField : IElectrostaticField
     /// </remarks>
     public double QuiverAmplitude(in Vec3 position)
     {
-        var mean = default(Vec3);
-        var meanSquare = 0.0;
-
-        for (var s = 0; s < _samples; s++)
-        {
-            mean += _driven.ElectricFieldAt(in position, PeriodSeconds * s / _samples);
-        }
-
-        mean *= 1.0 / _samples;
-
-        for (var s = 0; s < _samples; s++)
-        {
-            var oscillating =
-                _driven.ElectricFieldAt(in position, PeriodSeconds * s / _samples) - mean;
-
-            meanSquare += oscillating.LengthSquared;
-        }
-
-        meanSquare /= _samples;
+        // The same mean square the well is built from, rather than a second copy of
+        // the loops: a pair of implementations of one quantity agrees until one of
+        // them is changed.
+        var meanSquare = MeanSquareOscillating(in position);
 
         // Amplitude of a linear polarisation carrying this mean square.
         var amplitude = Math.Sqrt(2.0 * meanSquare);

@@ -36,6 +36,13 @@ namespace Einzel.Commands;
 /// a trajectory phase, which has no operator. Reported because the cost of a ramp is
 /// otherwise invisible, and so is the cost of a hold mistaken for one.
 /// </param>
+/// <param name="WellRebuilds">
+/// How many of those assemblies computed the ponderomotive well over the whole grid
+/// rather than reusing the one before. Zero where nothing is driven; one where a ramp
+/// moved only DC, which is what an elution scan does; one per assembly where it moved an
+/// RF amplitude. The well is the expensive half of a cycle average, so this is the number
+/// that says what the ramp actually cost.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>Every trajectory is accounted for within a phase</b>, which ACC-5 requires and
@@ -64,7 +71,8 @@ public sealed record PhaseOutcome(
     bool Converted,
     int Arrived,
     IReadOnlyList<LossChannel> Losses,
-    int Assemblies = 0);
+    int Assemblies = 0,
+    int WellRebuilds = 0);
 
 /// <summary>What a run across a changing transport mode did.</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -298,7 +306,7 @@ public static class SequencedRun
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
                     density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, [],
-                    diffused.Assemblies));
+                    diffused.Assemblies, diffused.WellRebuilds));
             }
 
             started = phase.EndsAtSeconds;
