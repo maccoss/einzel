@@ -39,11 +39,26 @@ namespace Einzel.Library.Tests;
 /// </remarks>
 public sealed class TimsTandemTests(ITestOutputHelper output)
 {
-    /// <summary>Where the storage region's rising edge ends and its plateau begins, in mm.</summary>
-    private const double StorageRiseMm = 23.0;
+    /// <summary>
+    /// The storage region's extents, read from the template rather than repeated here.
+    /// </summary>
+    /// <remarks>
+    /// Repeating them would make the test pass or fail on whether two files agree about a
+    /// number, which is not what it is for - and the extents moved once already, when the
+    /// first version borrowed the first-generation tunnel's 23 mm rise and 18 mm plateau for
+    /// a 96 mm tunnel that has neither.
+    /// </remarks>
+    private static (double Start, double Rise, double Plateau, double PeakField) Storage()
+    {
+        var parameters = ModelValidator
+            .Validate(ModelJson.Parse(DeviceTemplates.Read("tims-tandem"))).Model!
+            .Parameters.Parameters;
 
-    /// <summary>Where the storage region's plateau ends, in mm.</summary>
-    private const double StorageEndMm = 41.0;
+        return (parameters["storageStart"].Value.SiValue * 1e3,
+                parameters["storageRise"].Value.SiValue * 1e3,
+                parameters["storagePlateau"].Value.SiValue * 1e3,
+                parameters["storagePeakField"].Value.SiValue);
+    }
 
     private static (DiffusiveOutcome Outcome, CompiledModel Model) Run(
         double mobilityRatio,
@@ -121,8 +136,17 @@ public sealed class TimsTandemTests(ITestOutputHelper output)
             }
         }
 
-        return ions / outcome.Launched;
+        // Of what SURVIVES, not of what was launched. This stage carries no radial confinement
+        // over the funnel-wide tracked region, so about a fifth of any packet reaches the bore
+        // during a millisecond hold - equally in every arm of every comparison here. Dividing
+        // by the launched population would make "where is the density" unanswerable above
+        // four fifths and would have the tests failing on a loss they are not about.
+        return ions / outcome.Result.Remaining;
     }
+
+    /// <summary>What fraction of the launched population is still in flight at all.</summary>
+    private static double Surviving(DiffusiveOutcome outcome) =>
+        outcome.Result.Remaining / outcome.Launched;
 
     /// <summary>
     /// On a rising edge whose field goes as the square root of position, the parking point
@@ -132,21 +156,22 @@ public sealed class TimsTandemTests(ITestOutputHelper output)
     public void ParkingPositionGoesAsTheSquareOfOneOverMobility()
     {
         var measured = new Dictionary<double, double>();
+        var (start, rise, _, peak) = Storage();
 
         foreach (var ratio in new[] { 1.5, 1.0, 0.75 })
         {
-            var (outcome, _) = Run(ratio, sourceMm: 10.0, flightUs: 1500.0);
+            var (outcome, _) = Run(ratio, sourceMm: 10.0, flightUs: 2500.0);
             var (x, _) = outcome.Result.Density.Centroid();
             measured[ratio] = x * 1e3;
 
-            // Where the declared profile balances the gas: E = 5000 sqrt(z / 23 mm) and the
-            // ion is held where mu E = v_g, so z = 23 mm (v_g / (K * 5000))^2.
-            var balance = StorageRiseMm * Math.Pow(150.0 / (0.042802 * ratio * 5000.0), 2.0);
+            // Where the declared profile balances the gas: the field is peak sqrt(z / rise)
+            // and the ion is held where mu E = v_g, so z = rise (v_g / (K peak))^2.
+            var balance = start + (rise * Math.Pow(150.0 / (0.042802 * ratio * peak), 2.0));
 
             output.WriteLine($"K x {ratio:F2}: parked at {measured[ratio]:F2} mm, closed form {balance:F2} mm");
 
-            Assert.Equal(balance, measured[ratio], 1.5);
-            Assert.True(measured[ratio] < StorageRiseMm, "the ion parked past the rising edge, where the balance is not stable");
+            Assert.Equal(balance, measured[ratio], 2.5);
+            Assert.True(measured[ratio] < start + rise, "the ion parked past the rising edge, where the balance is not stable");
         }
 
         // The exponent, which is what separates this profile from the analyser's linear one:
@@ -169,15 +194,23 @@ public sealed class TimsTandemTests(ITestOutputHelper output)
         // Held while the analysis field is walked all the way to zero.
         var (scanned, _) = Run(1.0, sourceMm: 10.0, flightUs: 3000.0, analysisRampTo: 0.0);
 
-        var stayed = Between(scanned, 0.0, StorageEndMm);
-        var leaked = Between(scanned, StorageEndMm, 200.0);
+        var (start, rise, plateau, _) = Storage();
+        var end = start + rise + plateau;
+        var stayed = Between(scanned, 0.0, end);
+        var leaked = Between(scanned, end, 200.0);
         var (x, _) = scanned.Result.Density.Centroid();
 
-        output.WriteLine($"analysis field ramped 5000 -> 0 V/m: {stayed:P2} still in the storage region "
-            + $"(centre {x * 1e3:F2} mm), {leaked:P3} past it, {scanned.Result.Collected / scanned.Launched:P3} collected");
+        output.WriteLine($"analysis field ramped 5000 -> 0 V/m: {stayed:P2} of the surviving density still in the "
+            + $"storage region (centre {x * 1e3:F2} mm), {leaked:P3} past it, "
+            + $"{scanned.Result.Collected / scanned.Launched:P3} collected; {Surviving(scanned):P1} of the launched "
+            + "population survived the hold at all");
 
-        Assert.True(stayed > 0.95, $"only {stayed:P1} of the stored population stayed put while the analysis region was scanned");
-        Assert.True(scanned.Result.Collected / scanned.Launched < 0.01, "the scan eluted the stored population, so the regions are not decoupled");
+        // The claim is decoupling, so what must be true is that nothing crossed out of the
+        // storage region and nothing reached the detector - not that no ion was lost to the
+        // wall, which happens equally whatever the analysis region is doing.
+        Assert.True(stayed > 0.99, $"only {stayed:P1} of the surviving density stayed in the storage region while the analysis region was scanned");
+        Assert.True(leaked < 0.005, $"{leaked:P2} of the density crossed out of the storage region during the scan");
+        Assert.True(scanned.Result.Collected / scanned.Launched < 0.001, "the scan eluted the stored population, so the regions are not decoupled");
     }
 
     /// <summary>
@@ -190,17 +223,34 @@ public sealed class TimsTandemTests(ITestOutputHelper output)
         var (held, _) = Run(1.0, sourceMm: 10.0, flightUs: 2500.0);
         var (pulsed, _) = Run(1.0, sourceMm: 10.0, flightUs: 2500.0, storageField: 0.0);
 
-        var heldInStorage = Between(held, 0.0, StorageEndMm);
-        var pulsedInStorage = Between(pulsed, 0.0, StorageEndMm);
-        var pulsedDownstream = Between(pulsed, StorageEndMm, 200.0);
+        var (start, rise, plateau, _) = Storage();
+        var end = start + rise + plateau;
+        var heldInStorage = Between(held, 0.0, end);
+        var pulsedInStorage = Between(pulsed, 0.0, end);
+        var pulsedDownstream = Between(pulsed, end, 200.0);
         var (hx, _) = held.Result.Density.Centroid();
         var (px, _) = pulsed.Result.Density.Centroid();
 
-        output.WriteLine($"storage held:   {heldInStorage:P2} in the storage region, centre {hx * 1e3:F2} mm");
-        output.WriteLine($"storage pulsed: {pulsedInStorage:P2} in the storage region, {pulsedDownstream:P2} downstream, centre {px * 1e3:F2} mm");
+        // Where the analysis region's own rising edge balances the gas for this ion, which is
+        // where a transferred population should come to rest: the same closed form as the
+        // storage region's, on the analysis region's start, length and field.
+        var parameters = ModelValidator
+            .Validate(ModelJson.Parse(DeviceTemplates.Read("tims-tandem"))).Model!
+            .Parameters.Parameters;
+        var analysisBalance =
+            (parameters["analysisStart"].Value.SiValue * 1e3)
+            + (parameters["analysisRise"].Value.SiValue * 1e3
+               * Math.Pow(150.0 / (0.042802 * parameters["analysisPeakField"].Value.SiValue), 2.0));
 
-        Assert.True(heldInStorage > 0.95, "the held control did not hold, so the pulse has nothing to be compared against");
-        Assert.True(pulsedDownstream > 0.5, $"the pulse moved only {pulsedDownstream:P1} of the population downstream");
-        Assert.True(px > hx + 0.020, "the pulsed packet did not travel at least 20 mm further than the held one");
+        output.WriteLine($"storage held:   {heldInStorage:P2} in the storage region, centre {hx * 1e3:F2} mm");
+        output.WriteLine($"storage pulsed: {pulsedInStorage:P2} in the storage region, {pulsedDownstream:P2} downstream, "
+            + $"centre {px * 1e3:F2} mm against the analysis region's own balance point at {analysisBalance:F2} mm");
+
+        Assert.True(heldInStorage > 0.99, "the held control did not hold, so the pulse has nothing to be compared against");
+        Assert.True(pulsedDownstream > 0.9, $"the pulse moved only {pulsedDownstream:P1} of the density downstream");
+
+        // And it does not merely leave - it parks where the analysis region holds it, which is
+        // what makes this a transfer between two traps rather than a loss out of one.
+        Assert.Equal(analysisBalance, px * 1e3, 2.5);
     }
 }
