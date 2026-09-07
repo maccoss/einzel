@@ -3047,6 +3047,25 @@ without a detector: electrically nothing, since the edge was grounded anyway, bu
 surface a loss can be charged to. A model whose ions can leave the solved box must say
 what they meet there, or the ledger reports a physical impossibility as an outcome.
 
+## A bounded field's edge is a wall, and the instrument has no wall there
+
+A region bounds an analytic element with a step: full strength inside, nothing outside. For a
+DC element that costs a potential step, which the run reports. For a confining RF it is worse,
+and it took a funnel to show it: a packet delivered to the tunnel entrance at radii up to a
+few millimetres met the whole pseudopotential well at once at the region's face — `Ψ(r)` for
+whatever r it happened to arrive at — and 42 per cent of it stopped in the last two
+millimetres before the RF began. Pushing harder made it worse, 54 per cent at 50 V of funnel
+drop and 71 at 100 V, which is what identified it: a barrier, not a push too weak.
+
+The real ring stack's field decays over about a bore radius, and across that fringe the well's
+radial gradient squeezes an ion toward the axis while its axial gradient is still small. The
+hard edge has the axial gradient infinite and the radial one absent until it is too late.
+
+**A boundary the model has and the instrument does not is a force the instrument does not
+have.** Where a modelling boundary stands in for a real electrode's fringe, give it the
+fringe's shape — here a declared ramp over a bore radius — and say in the run that it is
+declared rather than solved.
+
 ## A validity check written on a proxy fires on the proxy
 
 The pseudopotential's mesh check asked whether the ion's quiver was larger than the cell

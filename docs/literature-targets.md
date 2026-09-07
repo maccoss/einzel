@@ -871,7 +871,7 @@ target at these pressures has been a transmission question.
 
 | | | |
 | --- | --- | --- |
-| sections | entrance funnel, tunnel, exit funnel | H |
+| sections | entrance funnel, tunnel, exit funnel — the first two are `tims-front-end` | H |
 | lengths | 50 mm, **46 mm**, 15 mm (sequential); **96 mm** tunnel for parallel accumulation | H, R |
 | bore | 26 → 8 mm, then **8 mm constant**, then 8 → 1 mm | H |
 | electrodes | segmented rings on PC board, 1.6 mm thick, **four isolated segments each** | H |

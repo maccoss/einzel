@@ -29,6 +29,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
+| `tims-front-end` | The analyser with Hernandez's entrance funnel and gate in front of it: a 50 mm funnel tapering 26 to 8 mm with plate-alternating RF delivers a wide packet to the tunnel's own balance point at 99.8 per cent, and the fill-trap-ramp sequence runs as phases |
 | `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow while a quadrupolar RF on the ring segments — entering as its pseudopotential, 1.27 of a hyperbolic quadrupole by the solved cross-section — holds them off the bore. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order |
 | `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
@@ -1017,6 +1018,73 @@ point, inside the `E/p < 10 V/cm/torr` Hernandez states, rather than the 45-150 
 gives as the optimum — where a low-field mobility is not valid and this model would be
 describing a different regime from the one its mobility was measured in.
 `docs/literature-targets.md` section 6 carries the register and the remaining targets.
+
+## `tims-front-end` — the funnel and the gate in front of the analyser
+
+The analyser template starts its packet inside the tunnel. The instrument does not: Hernandez
+draws a **50 mm entrance funnel** whose bore tapers from 26 mm to the tunnel's 8 mm — sixteen
+plates 1.6 mm thick on a 1.5 mm spacing, the RF alternating plate to plate as a funnel's does,
+where the tunnel's alternates segment to segment — then the tunnel, and an operating sequence
+of **fill, trap, ramp** driven through the entrance potential. This template is that front end
+in front of the analyser: the funnel, an entrance gate electrode, the tunnel with its own RF
+and gradient, and the sequence as phases. Everything the analyser template measures holds here
+unchanged; what it adds is the delivery of a wide, low-field packet into the tunnel, and the
+gate that decides whether it gets in.
+
+**The funnel delivers because of its RF, and the tunnel accepts because of its fringe.** A
+packet 2 mm wide released 40 mm up the funnel, gas at 50 m/s and a 25 V DC drop pushing it in
+(`TimsFrontEndTests`, 4 ms, 256 × 32):
+
+| | funnel RF on | funnel RF off |
+| --- | --- | --- |
+| survives the funnel | **99.993 %** | 65.28 % |
+| where the rest went | six ions of a hundred thousand | the last three plates (18,428 / 3,800 / 3,759) and the gate (6,873) |
+| inside the tunnel after 4 ms | **99.80 %** | |
+| packet centre | **21.09 mm**, the analyser's own balance point | |
+| mean radius | **0.29 mm**, the tunnel RF's own Boltzmann radius | |
+
+The funnel's plate-alternating RF is a wall that decays inward as `exp(−2πr/pitch)` — nothing
+on the axis, everything at the plates — and without it a third of the packet ends on the
+narrow end of the taper. What makes the delivery figure meaningful is that the packet arrives
+at the analyser's *own* numbers: the same parking point the analyser template measures to a
+micrometre, at the same radius its confinement holds a packet to.
+
+**The first version delivered the packet to the tunnel entrance and stopped it there.** 42 per
+cent sat in the last two millimetres before the tunnel, and a *steeper* funnel gradient made
+it worse — 54 per cent at 50 V of drop, 71 at 100 V, which is the signature of a barrier
+rather than of a push that is too weak. The cause was the model: the tunnel's quadrupolar RF
+is an analytic element bounded to the tunnel, and a bounded element's edge was a **step**, so
+an ion arriving at radius r met the whole pseudopotential well `Ψ(r)` at once and was held
+against it with nothing to squeeze it inward first. A real segmented ring's field decays over
+about a bore radius, and across that fringe the well's radial gradient acts on the ion while
+its axial gradient is still small. Schema 0.12 adds `fringe` to a region — the element rises
+linearly from nothing at the face to full strength that far inside, the potential is
+continuous, and the field is the gradient of the fringed potential — and with a 4 mm fringe
+the packet goes straight through to the balance point. The fringe is a declared shape and the
+run says so (`field.region-fringe`); its length is a guess of one bore radius, and the
+delivery does not depend on it finely.
+
+**The gate gates, and what it holds back it loses.** With the entrance gate at 30 V from the
+start, nothing reaches the tunnel — and nothing survives either: the whole packet, pressed
+against the closed gate by the gas and the funnel's gradient, ends on the last funnel plate.
+That is what a funnel's effective wall is worth against a steady axial push, and it is why
+Hernandez's sequence closes the gate *and* diverts the beam upstream with a deflector plate
+during the trap. A gate alone is a beam dump.
+
+**The whole sequence end to end is a study rather than a test**, and it is the expensive one:
+fill, trap and an 8 ms ramp over a domain that spans the funnel as well as the tunnel is 512 ×
+64 cells for 18 ms, and a first attempt ran 4.75 CPU-hours without finishing. What the pieces
+already say is that it should hold no surprises — the funnel delivers to the analyser's own
+parking point and radius, and from there the elution is the analyser's, measured above. The
+number worth having from it is whether the arrival width is the analyser's too, or whether the
+delivery leaves an axial spread the ramp then reads as mobility.
+
+**What this template does not carry.** No deflector plate, so a continuous beam cannot be
+diverted during the trap and the fill is a single released packet rather than ten milliseconds
+of arrivals. The gas is the analyser's uniform 50 m/s stream through funnel and tunnel alike,
+where the real funnel sits at a higher pressure with a slower, wider flow. No exit funnel. And
+three plates of the geometry are guesswork the papers do not give: the DC drop (an ordinary
+5 V/cm), the gate's thickness and its gaps, and the RF amplitude on the funnel plates.
 
 ## What is missing
 

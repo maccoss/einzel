@@ -1488,6 +1488,41 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   diffusive figure takes the sequenced path for a sequenced model. Details in
   `docs/device-templates.md`.
 
+- **`tims-front-end` — the funnel and the gate, and the fringe a bounded field needed.**
+  Hernandez's 50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, the RF
+  alternating plate to plate, a 25 V DC drop) and an entrance gate in front of the analyser,
+  with his fill / trap / ramp as phases. A 2 mm-wide packet released 40 mm up the funnel:
+  **99.993 per cent survives with the funnel RF on against 65.28 with it off** — the rest on
+  the last three plates and the gate, every loss named — and it parks at **21.09 mm at a mean
+  radius of 0.29 mm**, which are the analyser template's own balance point and its own
+  confined radius. That coincidence is what makes the delivery figure mean something.
+
+  **The first version stopped 42 per cent of it two millimetres short of the tunnel, and a
+  steeper funnel gradient made that worse** (54 per cent at 50 V of drop, 71 at 100 V) — the
+  signature of a barrier rather than of a push too weak. Not the instrument: the tunnel's RF
+  is an analytic element bounded to the tunnel, and a region's edge was a step, so an ion
+  arriving at radius r met the whole pseudopotential well at once with nothing to squeeze it
+  inward first. A real ring's field decays over about a bore radius, and across that fringe
+  the radial gradient acts before the axial one bites. Schema **0.12** adds `fringe` to a
+  region: a linear rise from nothing at the face to full strength that far inside, the
+  potential continuous, the field the gradient of the fringed potential (checked by central
+  differences), and **no fringe bit-identical** to what a bounded element was. The
+  region-step warning gives way to a note that a fringe is a declared shape, not a solved
+  one. **A boundary the model has and the instrument does not is a force the instrument does
+  not have** — `docs/lessons.md`.
+
+  **The gate gates, and what it holds back it loses**: at 30 V nothing enters the tunnel and
+  the whole packet, pressed against the gate by the gas and the funnel's gradient, ends on
+  the last plate — which is why the instrument also diverts the beam with a deflector plate
+  during the trap. A gate alone is a beam dump.
+
+  **Left open:** the whole sequence end to end is a study rather than a test — 512 x 64 cells
+  over 18 ms, and a first attempt ran 4.75 CPU-hours without finishing. Its useful question
+  is whether the arrival width is the analyser's own or whether the delivery leaves an axial
+  spread the ramp then reads as mobility. Not carried: a deflector plate, a continuous fill,
+  the funnel's own higher-pressure gas, an exit funnel. Details in
+  `docs/device-templates.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

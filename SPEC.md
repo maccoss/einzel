@@ -2704,6 +2704,30 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     The remainder is the front end: the entrance funnel and the gate the operating
     sequence opens and closes (see item 16).
 
+16. **The TIMS front end, and the fringe it needed.** `tims-front-end` puts Hernandez's
+    50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, plate-alternating
+    RF, a DC drop) and an entrance gate in front of the analyser, with fill / trap / ramp as
+    phases. The funnel delivers **99.993 %** of a 2 mm-wide packet against 65.28 % with its
+    RF off (the rest on the last three plates and the gate, every loss named), and it parks
+    at **21.09 mm at r = 0.29 mm** — the analyser's own balance point and its own confined
+    radius, which is what makes the delivery figure mean something.
+
+    **It also found a defect in the field model.** The first version stopped 42 % of the
+    packet at the tunnel entrance, worse with a steeper funnel gradient, because a bounded
+    analytic element's edge is a step and a step in a pseudopotential is a wall: an ion
+    arriving at radius r meets the whole well at once. Schema **0.12** adds `fringe` to a
+    region — a linear rise from nothing at the face to full strength a declared distance
+    inside, with the field the gradient of the fringed potential and no fringe bit-identical
+    to what a bounded element was. `docs/lessons.md`.
+
+    The gate at 30 V lets nothing in and loses everything held against it on the last plate,
+    which is why the instrument also diverts the beam during the trap. **Left open:** the
+    whole sequence end to end is a study rather than a test (512 × 64 over 18 ms; a first
+    attempt ran 4.75 CPU-hours without finishing), and its useful question is whether the
+    arrival width is the analyser's or whether delivery adds an axial spread the ramp reads
+    as mobility. Not carried: a deflector plate, a continuous fill, the funnel's own gas, an
+    exit funnel.
+
 ## Open decisions
 
 §23's list, with what has been settled since.
