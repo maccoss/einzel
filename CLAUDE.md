@@ -1516,9 +1516,17 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   the last plate — which is why the instrument also diverts the beam with a deflector plate
   during the trap. A gate alone is a beam dump.
 
-  **Left open:** the whole sequence end to end is a study rather than a test — 512 x 64 cells
-  over 18 ms, and a first attempt ran 4.75 CPU-hours without finishing. Its useful question
-  is whether the arrival width is the analyser's own or whether the delivery leaves an axial
+  **Left open, and it points at an optimisation.** The whole sequence end to end did not
+  finish — 4.75 CPU-hours at 512 x 64 over 18 ms, then 40 minutes at 256 x 32 over 12 ms. A
+  ramped diffusive phase re-assembles its operator every step, and here every assembly samples
+  the **solved** funnel RF at sixteen instants per node for its cycle mean and mean square,
+  which is sixteen bicubic interpolations per node per step; the analyser's own ramps are cheap
+  because their RF is analytic. **But the ramp moves only DC** - `exitPotential` moves and the
+  RF amplitudes do not - so the mean-square field, the expensive half, is the same at every
+  step. Caching it per node and re-sampling only the direct term should cost about a sixteenth
+  per step for every elution scan there is. Stated as an inference from the code path, and the
+  per-phase assembly counts make it measurable directly. The study's own question stays open:
+  whether the arrival width is the analyser's own or whether the delivery leaves an axial
   spread the ramp then reads as mobility. Not carried: a deflector plate, a continuous fill,
   the funnel's own higher-pressure gas, an exit funnel. Details in
   `docs/device-templates.md`.

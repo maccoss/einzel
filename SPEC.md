@@ -2721,12 +2721,19 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     to what a bounded element was. `docs/lessons.md`.
 
     The gate at 30 V lets nothing in and loses everything held against it on the last plate,
-    which is why the instrument also diverts the beam during the trap. **Left open:** the
-    whole sequence end to end is a study rather than a test (512 × 64 over 18 ms; a first
-    attempt ran 4.75 CPU-hours without finishing), and its useful question is whether the
-    arrival width is the analyser's or whether delivery adds an axial spread the ramp reads
-    as mobility. Not carried: a deflector plate, a continuous fill, the funnel's own gas, an
-    exit funnel.
+    which is why the instrument also diverts the beam during the trap.
+
+    **Left open, and it points at an optimisation.** The whole sequence end to end did not
+    finish: 4.75 CPU-hours at 512 × 64 over 18 ms, then 40 minutes at 256 × 32 over 12 ms.
+    A ramped diffusive phase re-assembles its operator every step, and here each assembly
+    samples the *solved* funnel RF at sixteen instants per node to take its cycle mean and
+    mean square. **But the ramp moves only DC** — the RF amplitudes are constant through the
+    scan — so the mean-square field, the expensive half, does not change step to step.
+    Caching it per node and re-sampling only the direct term should take the per-step cost to
+    about a sixteenth for every elution scan; the per-phase assembly counts make that
+    measurable directly. The study's own question stays open: whether the arrival width is
+    the analyser's or whether delivery adds an axial spread the ramp reads as mobility. Not
+    carried: a deflector plate, a continuous fill, the funnel's own gas, an exit funnel.
 
 ## Open decisions
 

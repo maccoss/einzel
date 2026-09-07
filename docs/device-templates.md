@@ -1071,13 +1071,30 @@ That is what a funnel's effective wall is worth against a steady axial push, and
 Hernandez's sequence closes the gate *and* diverts the beam upstream with a deflector plate
 during the trap. A gate alone is a beam dump.
 
-**The whole sequence end to end is a study rather than a test**, and it is the expensive one:
-fill, trap and an 8 ms ramp over a domain that spans the funnel as well as the tunnel is 512 ×
-64 cells for 18 ms, and a first attempt ran 4.75 CPU-hours without finishing. What the pieces
-already say is that it should hold no surprises — the funnel delivers to the analyser's own
-parking point and radius, and from there the elution is the analyser's, measured above. The
-number worth having from it is whether the arrival width is the analyser's too, or whether the
-delivery leaves an axial spread the ramp then reads as mobility.
+**The whole sequence end to end is a study rather than a test, and it did not finish** — 4.75
+CPU-hours at 512 × 64 over 18 ms, and then 40 minutes at 256 × 32 over 12 ms, both killed.
+What the pieces already say is that it should hold no surprises: the funnel delivers to the
+analyser's own parking point and radius, and from there the elution is the analyser's,
+measured above. The number worth having from it is whether the arrival width is the
+analyser's too, or whether the delivery leaves an axial spread the ramp then reads as
+mobility.
+
+**Why it costs what it does, and the fix it points at.** A ramped diffusive phase re-assembles
+its face operator every step, which is what a changing field requires. Here the field is
+`funnelPlate`'s *solved* RF wrapped in a pseudopotential, and each assembly samples the
+oscillating field at **sixteen instants per node** to take its cycle mean and mean square —
+sixteen bicubic interpolations over the solved channels, per node, per step. The analyser's own
+ramps are cheap by comparison because their RF is analytic.
+
+But **the ramp moves only DC.** The sequence ramps `exitPotential`; `funnelRfAmplitude` and
+`rfAmplitude` are constant throughout, so the oscillating part of the field — and therefore
+its cycle mean square, the expensive half — does not change from step to step. Only the direct
+term does, and that is one field evaluation per node rather than sixteen. Caching the
+mean-square field per node on the first assembly and re-sampling only the DC part would take
+the per-step cost to about a sixteenth where the drive is held, which is every elution scan
+this instrument runs. **Stated as an inference from the code path rather than a measurement**:
+the assembly counts and the ramp/hold cost ratio are reported per phase, so it can be
+measured directly by holding the drive and re-running.
 
 **What this template does not carry.** No deflector plate, so a continuous beam cannot be
 diverted during the trap and the fill is a single released packet rather than ten milliseconds
