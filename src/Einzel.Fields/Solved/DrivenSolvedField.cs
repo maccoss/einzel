@@ -184,7 +184,15 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
                 shortest = Math.Min(shortest, 1.0 / (_frequencies[k] * highest));
             }
 
-            return double.IsPositiveInfinity(shortest) ? 1.0 : shortest;
+            // Infinite when nothing oscillates. This returned a placeholder of one second
+            // for a geometry with stages and no drive, and every reader took it at its
+            // word: the regime report called it a 1 Hz drive, and the diffusive path's
+            // pseudopotential wrapper - which gates on a finite period, because a ramp
+            // is not an oscillation - saw a finite period and cycle-averaged a DC ramp
+            // over a one-second cycle, sweeping 97 per cent of a trapped density out of a
+            // TIMS tunnel that was holding it. The integrator's step cap and the regime
+            // report both already treat infinity as "no drive", which is what it is.
+            return shortest;
         }
     }
 

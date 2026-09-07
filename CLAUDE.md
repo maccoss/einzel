@@ -1277,7 +1277,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   interpolated in time, which is exact where potentials and amplitudes are linear in the
   parameter - checked at the phase's midpoint and refused otherwise, naming the electrode and
   the two numbers (70.7 V against 50 V for a square root). Refused for an analytic element
-  (it would freeze while the solved ones ramp), a diffusive phase, and a volume solve. A ramped
+  (it would freeze while the solved ones ramp), ~~a diffusive phase~~ (since allowed - the density solver re-samples a changing field every step, which is what a TIMS elution scan needed), and a volume solve. A ramped
   RF flies an ion to **2 µm** of where a forty-step staircase puts it, against 240 µm from the
   held control; a ramp from zero amplitude works because the end electrodes count as solved
   states. The scan is one phase now, where it was thousands; at 200 kDa/s a 4 µs step would
@@ -1357,6 +1357,65 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   with it on: same RF, same ion, same gas), 39 in all. Details in `docs/device-templates.md`,
   `docs/literature-targets.md` section 2, `docs/validation.md`, `docs/numerics.md`, SPEC.md
   Amendment 37 and item 14.
+
+- **`tims-analyzer` — an ion held still against a moving gas, and the scan that lets it go.**
+  The separating tunnel of the Bruker timsTOF, from the published dimensions (Hernandez 2014,
+  Ridgeway 2018): 27 segmented ring boards on a 1.725 mm pitch through an 8 mm bore, the ring
+  potentials going as the square of position so the axial field is linear in it, and
+  nitrogen flowing entrance to exit at 50 m/s. An ion parks where the field's push back
+  equals the gas drag, so each mobility has its own place along the tunnel — the elution
+  relation `E_e = v_g / K` written as a distance. The register is `docs/literature-targets.md`
+  section 6; the write-up is `docs/device-templates.md`.
+
+  **The two questions are asked separately.** Whether the ring stack makes the field its
+  potentials imply is geometry: the solved balance point is **21.1036 mm against a closed-form
+  21.1169**, 0.06 per cent. Whether the density settles where the *solved* field balances the
+  gas is physics, asked against that solved point so a discretisation error cannot hide in
+  it: **21.1041 mm, one micrometre**. Three mobilities park in inverse proportion to 0.17 per
+  cent. The field peaks at **41.2 mm of 46.6**, because the exit element flattens the gradient
+  as it is approached, so 88 per cent of the metal is analyser and the widest mobility it
+  holds is set by that peak. Two things the geometry taught: the solve's own grounded edge
+  reversed the gradient over the last 8 mm until entrance and exit elements at the end
+  potentials stood in for the funnels — and their **length** is load-bearing, a tube shorter
+  than its bore letting the grounded plane reach down the axis; and the operating point is
+  deliberately Hernandez's low-field one (18.6 Td) rather than the commercial 45-150 Td,
+  because at the commercial point a low-field mobility is not valid.
+
+  **The elution ramp runs, and it needed the density solver to see time.** A `sequence`
+  phase may `ramp` a parameter in a **diffusive** phase now: `DriftDiffusion.Run` takes a
+  field *function* and re-samples the coefficients, the stability step and the face operator
+  every step (bit-identical to the fixed path when the function returns the same field; a
+  reversing field brings the packet back; a *rising* field keeps the step stable, which a
+  step chosen at the start would not). Hold 300 µs at 60 V, walk the exit potential to zero
+  over 8 ms: the least mobile ion elutes first — TIMS order, opposite to a drift tube — and
+  both eluting ions let go about **10 V below the quasi-static `v_g / (K E_peak)`**, because
+  the settling time `L²/2KV` is 0.4-0.8 ms against an 8 ms ramp and the packet lags the
+  sliding balance. That time constant is confirmed independently: three packets released
+  from one point and read after a millisecond sit where `7 mm · exp(−1 ms/τ)` puts them, to
+  a twentieth of a millimetre. `run --json` reports `meanArrivalUs`/`arrivalSpreadUs` and
+  writes the whole spectrum as `<name>.arrivals.csv`.
+
+  **But 45 of 97,770 ions arrived, and the most mobile ion none.** This stage carries no RF,
+  so radial diffusion puts ~3 mm on the density in the five milliseconds before release and
+  the bore takes it — 93,000 on rings 11-13, where the packet parks. The machinery, the order
+  and the lag are measured; the transmission and the widths are not the instrument's, and
+  **RF confinement is the next stage** (SPEC.md item 15): a quadrupolar RF alternating
+  between the four segments of each ring, which is not axisymmetric but whose pseudopotential
+  is, so it enters the r-z density solve as the collisional well the funnel already measured.
+
+  **Two defects, both producing clean output.** A staged geometry with no drive was given a **placeholder 1 Hz clock** with a
+  comment saying nothing read it; the pseudopotential wrapper read it, saw a finite period,
+  and cycle-averaged the whole ramp over a one-second cycle — a trap that measurably holds
+  let its density drift out at gas speed during the hold, and the leg discarded the wrapper's
+  own warnings. And a model declaring `diffusion` whose sequence never left it was routed to
+  the plain diffusive path, which reads the field once through the time-free interface — so
+  with the refusal lifted the ramp ran **silently ignored**, exit 0 - the sixth sighting of a
+  time-varying quantity reached through a time-free interface answering at an arbitrary
+  instant; and the leg, once reached, discarded the wrapper's own warnings, the seventh time
+  evidence about a computation's quality was dropped at a seam. A third, smaller one: an
+  onset read as the first non-empty bin came out at 22 µs, during the hold, because
+  Scharfetter-Gummel moves 1e-100 of an ion across the collecting face from the first step;
+  an onset is a quantile. All three in `docs/lessons.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

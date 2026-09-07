@@ -749,9 +749,22 @@ public static class GeometryBuilder
     /// declares, in declaration order.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A geometry with stages and no drive still switches; it just switches between
-    /// states that do not oscillate. There is then one nominal clock whose frequency
-    /// nothing uses, and one hertz keeps the step cap out of the way.
+    /// states that do not oscillate, and it gets <b>no clock at all</b>. It used to get a
+    /// nominal one at one hertz, with the comment that nothing used its frequency. Two
+    /// things did. The shortest period came out as one second rather than infinite, so
+    /// the diffusive path's pseudopotential wrapper - gated on a finite period, because a
+    /// ramp is not an oscillation - cycle-averaged a DC elution ramp over a one-second
+    /// cycle, most of which is zero field, and a TIMS tunnel that measurably held its
+    /// density for a millisecond let it all drift out at gas speed during a 300 us hold.
+    /// And the regime report called the geometry a 1 Hz drive.
+    /// </para>
+    /// <para>
+    /// The step cap the comment worried about needs no placeholder: an infinite period
+    /// divided by the steps per period is an infinite cap, which is the cap a static
+    /// field already has, and a stage boundary is landed on through NextSwitchAfter.
+    /// </para>
     /// </remarks>
     private static (List<double> Frequencies, List<RfWaveform> Waveforms, List<bool> Quadrature)
         Clocks(IReadOnlyList<Core.Model.CompiledDrive> drives)
@@ -769,13 +782,6 @@ public static class GeometryBuilder
                 : new RfWaveform.Sinusoid());
 
             quadrature.Add(drive.Waveform != DriveWaveform.Rectangular);
-        }
-
-        if (frequencies.Count == 0)
-        {
-            frequencies.Add(1.0);
-            waveforms.Add(new RfWaveform.Sinusoid());
-            quadrature.Add(true);
         }
 
         return (frequencies, waveforms, quadrature);
