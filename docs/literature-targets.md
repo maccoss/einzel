@@ -902,11 +902,11 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 | target | published | status |
 | --- | --- | --- |
 | elution field | `E_e = v_g / K` | **Met on the 46 mm tunnel.** The density parks where the solved field balances the gas to **1 micrometre**, and the position goes as 1/K to 0.17 per cent across three mobilities. `tims-analyzer`; `docs/device-templates.md` |
-| plateau transit | `t_p = sqrt(2 L_p / (K beta))`, beta the field scan rate | not yet run |
-| resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | not yet run |
-| R against scan rate | R goes as `beta^(-1/4)` | not yet run |
-| R against mobility | R goes as `K^(-3/4)` | not yet run |
-| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Partly run, and not yet a calibration.** Two mobilities eluted in the right order under an 8 ms ramp (K × 0.75 at 32.8 V, K × 1.0 at 22.8 V, read at the first per cent of arrivals); the third was lost to the bore before its release. Both released about 10 V below the quasi-static `v_g / (K E_peak)`, because the settling time `L²/2KV` (0.4-0.8 ms) is not small against the ramp — a lag a calibration constant would absorb, and whose statistics confinement will change. Needs RF first. `docs/device-templates.md` |
+| plateau transit | `t_p = sqrt(2 L_p / (K beta))`, beta the field scan rate | **Measured as the release lag**, with `L_p` taken as parking point to field peak since a linear-gradient tunnel has no plateau: 1.59 / 1.48 / 1.35 ms for K × 0.75 / 1.0 / 1.5 against the formula's 2.13 / 1.85 / 1.51 — same ordering, same `K^(-1/2)`, 0.75-0.9 of it. `docs/device-templates.md` |
+| resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | **First measurement, confined: R = 11 / 8 / 5** for K × 0.75 / 1.0 / 1.5 at 50 m/s of gas and 7.5 V/ms, against the law's 24 / 19 / 14 with the same `L_p` guess. Every ion collected. Hernandez's 100-250 is at 1.5-2.6× the gas speed; `R ∝ v_g` |
+| R against scan rate | R goes as `beta^(-1/4)` | not yet run — a study over the ramp duration, now affordable |
+| R against mobility | R goes as `K^(-3/4)` | **Trend present**: 1.34 : 1 : 0.60 measured against 1.24 : 1 : 0.74, three mobilities |
+| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Linear to 2 per cent over three mobilities**, confined: exit potential at the median 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667, slope 29.4 V, intercept −8.5 V. The intercept is the release lag in volts — the settling time `L²/2KV` is not small against the ramp — which is what the instrument constant absorbs. `docs/device-templates.md` |
 
 **The resolving-power law is the target that matters**, because it is a *shape* over two
 independent variables rather than a single number: R must fall as the fourth root of the

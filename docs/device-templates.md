@@ -883,6 +883,60 @@ now against the mesh the **oscillating** members are known on (`OscillatingResol
 infinite for an analytic drive), and a solved DC gradient summed with an analytic RF no
 longer lends the RF its cell. The funnel, whose RF is solved, warns exactly as before.
 
+### The confined scan: every ion arrives, and a first resolving power
+
+The same ramp as above — hold 300 µs at 60 V, walk the exit potential to zero over 8 ms —
+with the RF on, three mobilities each released at its own parking point, on a 256 × 16
+density grid stepped implicitly at 64 times the explicit limit (about nine minutes a run):
+
+| K relative to the reference | reached the detector | median arrival | exit potential then | quasi-static release | peak σ | FWHM (2.355 σ) | R = V / (β · FWHM) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.75 | **100.00 %** | 4.201 ms | 30.7 V | 42.7 V at 2.61 ms | 157 µs | 370 µs | **11** |
+| 1.00 | **100.00 %** | 5.513 ms | 20.9 V | 32.0 V at 4.03 ms | 143 µs | 337 µs | **8** |
+| 1.50 | **100.00 %** | 6.797 ms | 11.3 V | 21.3 V at 5.45 ms | 128 µs | 301 µs | **5** |
+
+**The wall was selecting ions, not moving the peak.** The unconfined runs delivered 1,684 and
+45 ions with medians at 4.225 and 5.526 ms; confined, 100,000 arrive at 4.201 and 5.513 —
+within 25 µs. So the release lag reported above was a property of the scan and not of the
+survivors, and the third ion, which the bore had taken entirely, arrives last as it should.
+With every ion collected the arrival distribution is the instrument's, and two things can be
+read off it that the unconfined runs could not give.
+
+**The lag is the plateau transit.** In the TIMS theory the time from release to arrival is
+`t_p = sqrt(2 L_p / (K β))`, the distance the ion has to cover against a field that is only
+just failing to hold it. There is no plateau in a linear-gradient tunnel; taking `L_p` as the
+distance from the parking point to the field's peak (20 mm for the reference ion) and β as
+the rate the peak field falls (2.74 × 10⁵ V/m/s) gives **2.13 / 1.85 / 1.51 ms** for the
+three ions, against the measured medians' lag past the quasi-static instant of
+**1.59 / 1.48 / 1.35 ms** — the same ordering, the same `K^(-1/2)` trend, 0.75-0.9 of the
+formula, whose `L_p` was a guess.
+
+**Elution voltage against 1/K is linear to 2 per cent, with an offset.** The exit potential
+at the median, 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667 relative, has a slope
+of 29.4 V per unit and an intercept of −8.5 V — the register's "one instrument constant".
+The intercept is the lag turned into volts: a packet that lets go later than the
+quasi-static instant is read at a lower potential by β × lag, and the lag scales the same way
+the calibration does. A real instrument calibrates that constant away; here it is measured.
+
+**The resolving power is low, and it says which knob.** `R = K/ΔK` with `ΔK/K = ΔV/V =
+β Δt / V(t_peak)`, the FWHM taken as 2.355 σ of the arrival times because the histogram at a
+64× implicit step is too lumpy for a half-maximum to be read off it. The register's law
+`R = v_g (2L_p/β)^(1/4) K^(-3/4) sqrt(q / (16 ln2 kT))` gives **24 / 19 / 14** for the
+three ions at this operating point with the same `L_p` guess, so the measurement sits at
+0.4-0.5 of it — and the `K^(-3/4)` trend is there, 1.34 : 1 : 0.60 measured against
+1.24 : 1 : 0.74. Hernandez's 100-250 is at a gas speed 1.5-2.6 times this one and with a
+plateau; R goes as `v_g` directly and as the fourth root of a slower ramp, so the gap is
+where the operating point is rather than where the physics is. Two things the measurement
+does not yet separate: how much of the width is the axial thermal spread in the restoring
+gradient (0.686 mm at hold, `sqrt(kT L² / (2 q V))`, growing as `V^(-1/2)` down the ramp)
+and how much is the release itself. The scan-rate dependence is a study over β, not run.
+
+**And the review's bug is in these numbers.** The hold phase assembled its operator 130, 171
+and 253 times — every step — for a field that did not change, because the probe that asks
+whether a phase changes the field sampled the phase boundary (which a staged field already
+reads as the next phase) and the instantaneous RF (which differs from itself at any two
+instants). Both are fixed and counted: a held phase now reports one assembly.
+
 ### What this stage still does not carry
 
 **The gas is one stream at 50 m/s.** Ridgeway's fig. 2 has it at 75 m/s at the entrance

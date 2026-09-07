@@ -2682,8 +2682,17 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     collisionless one, so the 0.685 suppression is measured rather than reported. One
     check had to be corrected on the way: `rf.quiver-exceeds-mesh` compared the quiver to
     the density grid's cell and fired on an exact analytic confinement; it now asks the
-    mesh the oscillating members are known on (`docs/lessons.md`). The confined elution and
-    the resolving-power figure are the remainder.
+    mesh the oscillating members are known on (`docs/lessons.md`).
+
+    **The confined scan runs, and every ion arrives**: 100,000 of 100,000 for each of three
+    mobilities, in TIMS order, at medians within 25 µs of what the unconfined survivors
+    gave — so the wall selected ions and did not move the peak. First resolving power
+    **R = 11 / 8 / 5** for K × 0.75 / 1.0 / 1.5 against the register's law's 24 / 19 / 14
+    at this operating point, with the `K^(-3/4)` trend present; elution voltage linear in
+    1/K to 2 per cent with a −8.5 V intercept that is the release lag in volts; the lag
+    itself 0.75-0.9 of the plateau-transit formula. The remainder is a mobility
+    resolving power as a figure of merit, the scan-rate study, and the register's gas
+    profile.
 
 ## Open decisions
 

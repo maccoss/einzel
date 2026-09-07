@@ -1455,7 +1455,23 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   `OscillatingResolutionLength`: infinite for an analytic drive, the solve cell for a solved
   one, and never the DC gradient's. The funnel warns as before. Two conventions are stated
   as choices: "200 Vpp" read as ±100 V per segment with neighbours in antiphase, and a 0.5 mm
-  segment gap the papers do not give. Details in `docs/device-templates.md`.
+  segment gap the papers do not give.
+
+  **Confined, the scan delivers every ion, and the wall was never moving the peak.** The
+  same hold-and-ramp with the RF on: **100,000 of 100,000** arrive for each of three
+  mobilities, in TIMS order, at medians within 25 µs of the unconfined survivors' — the bore
+  had been selecting ions, not shifting them. First resolving power **R = 11 / 8 / 5** for
+  K × 0.75 / 1.0 / 1.5 at 50 m/s of gas and 7.5 V/ms, against the register's law's
+  24 / 19 / 14 with a guessed plateau length, the `K^(-3/4)` trend present; Hernandez's
+  100-250 is at 1.5-2.6× the gas speed and R goes as v_g. Elution voltage is linear in 1/K
+  to 2 per cent with a −8.5 V intercept that is the release lag turned into volts, and the
+  lag is 0.75-0.9 of the plateau-transit formula. **And a review comment on the elution PR
+  was right, and these runs show it in numbers**: the hold phase assembled its operator
+  130-253 times for a field that never changed, because the phase-change probe sampled the
+  boundary (already the next phase for a staged field) and the instantaneous RF (which
+  differs from itself at any two instants). Fixed - inside the phase, on the cycle-averaged
+  field, to a tolerance - and now counted per phase in the JSON, so a hold reports one.
+  Details in `docs/device-templates.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
