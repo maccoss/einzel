@@ -296,6 +296,10 @@ public sealed record RegimeJson
 /// </param>
 /// <param name="CentroidMm">Where the packet was when the phase ended.</param>
 /// <param name="Converted">Whether the packet was converted into this description.</param>
+/// <param name="Assemblies">
+/// In a diffusive phase, how many times the density solver assembled its operator: once for
+/// a field that held, once per step for one that changed. Zero for a trajectory phase.
+/// </param>
 public sealed record SequencePhaseJson(
     string Name,
     string Mode,
@@ -303,7 +307,8 @@ public sealed record SequencePhaseJson(
     double Population,
     int Trajectories,
     IReadOnlyList<double> CentroidMm,
-    bool Converted);
+    bool Converted,
+    int Assemblies);
 
 /// <summary>What a run across a changing transport mode did (SEQ-1).</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -1227,7 +1232,8 @@ public static class RunCommand
                     phase.Population,
                     phase.Trajectories,
                     phase.CentroidMm,
-                    phase.Converted))],
+                    phase.Converted,
+                    phase.Assemblies))],
                 outcome.Conversions,
                 outcome.Arrived,
                 outcome.Losses)

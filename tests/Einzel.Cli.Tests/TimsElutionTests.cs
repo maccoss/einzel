@@ -183,6 +183,58 @@ public sealed class TimsElutionTests(ITestOutputHelper output) : IDisposable
         Assert.True(onsetUs > 100.0, "one per cent of the ions had arrived before the hold ended, so the trap did not hold");
     }
 
+    /// <summary>
+    /// A held phase assembles its operator once, whatever the phase after it does; a ramp
+    /// assembles every step.
+    /// </summary>
+    /// <remarks>
+    /// The probe that decides whether a phase changes the field sampled the phase's END,
+    /// which for a staged field is already the next phase's weights - so a hold followed by
+    /// a step read as a change and the solver rebuilt its operator every step of the hold,
+    /// for a ramp that was not there. The density was right; the cost was not, and nothing
+    /// reported it. The assembly count per phase is what makes this a test rather than a
+    /// stopwatch, and the step after the hold is what makes it a test of the boundary rather
+    /// than of a hold followed by more of the same.
+    /// </remarks>
+    [Fact]
+    public void AHeldPhaseBeforeAStepAssemblesOnce()
+    {
+        var path = Model(ramp: true);
+        var document = JsonNode.Parse(File.ReadAllText(path))!;
+
+        document["transport"]!["maximumFlightTime"] = JsonNode.Parse("""{ "value": 300, "unit": "us" }""");
+        document["sequence"] = new JsonArray(
+            JsonNode.Parse("""
+                { "name": "hold", "duration": { "value": 100, "unit": "us" },
+                  "set": { "exitPotential": { "value": 60.0, "unit": "V" } } }
+                """),
+            JsonNode.Parse("""
+                { "name": "step", "duration": { "value": 100, "unit": "us" },
+                  "set": { "exitPotential": { "value": 40.0, "unit": "V" } } }
+                """),
+            JsonNode.Parse("""
+                { "name": "walk", "duration": { "value": 100, "unit": "us" },
+                  "set": { "exitPotential": { "value": 40.0, "unit": "V" } },
+                  "ramp": { "exitPotential": { "value": 20.0, "unit": "V" } } }
+                """));
+
+        File.WriteAllText(path, document.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        var (exit, stdout, stderr) = Run("run", path, "--json");
+        Assert.True(exit == 0, stderr);
+
+        using var doc = JsonDocument.Parse(stdout);
+        var phases = doc.RootElement.GetProperty("sequence").GetProperty("phases").EnumerateArray()
+            .Select(p => (Name: p.GetProperty("name").GetString(), Assemblies: p.GetProperty("assemblies").GetInt32()))
+            .ToList();
+
+        output.WriteLine(string.Join(", ", phases.Select(p => $"{p.Name}: {p.Assemblies} assemblies")));
+
+        Assert.Equal(1, phases[0].Assemblies);
+        Assert.Equal(1, phases[1].Assemblies);
+        Assert.True(phases[2].Assemblies > 1, "the ramped phase assembled once, so the ramp was not followed");
+    }
+
     private static (int ExitCode, string Stdout, string Stderr) Run(params string[] args)
     {
         var stdout = new StringWriter();

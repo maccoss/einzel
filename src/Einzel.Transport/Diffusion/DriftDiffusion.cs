@@ -45,6 +45,18 @@ public sealed record DiffusionResult(
     IReadOnlyDictionary<string, double> Lost,
     IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals)
 {
+    /// <summary>
+    /// How many times the face operator was assembled: once for a field that holds, once
+    /// per step for one that changes.
+    /// </summary>
+    /// <remarks>
+    /// Reported because the cost is otherwise invisible to a suite that only checks answers.
+    /// A field that is merely held needs one assembly; a caller that hands the solver a field
+    /// function for it anyway pays for a ramp it does not have, and nothing about the density
+    /// would say so.
+    /// </remarks>
+    public int Assemblies { get; init; } = 1;
+
     /// <summary>The density at each requested instant, in order.</summary>
     /// <remarks>
     /// <para>
@@ -262,6 +274,7 @@ public static class DriftDiffusion
         var collected = 0.0;
         var time = 0.0;
         var steps = 0;
+        var assemblies = 1;
         var sweeps = 0L;
         var worstChange = 0.0;
 
@@ -298,6 +311,7 @@ public static class DriftDiffusion
                 faces = FaceCoefficients.Assemble(
                     density, grid, driftX, driftY, gasX, gasY, diffusion, potential, thermal,
                     edges, absorbers);
+                assemblies++;
             }
 
             var dt = Math.Min(step, untilSeconds - time);
@@ -345,6 +359,7 @@ public static class DriftDiffusion
             StepGain = stepGain,
             Sweeps = sweeps,
             WorstSweepChange = worstChange,
+            Assemblies = assemblies,
         };
     }
 

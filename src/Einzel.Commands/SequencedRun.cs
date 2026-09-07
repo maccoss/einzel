@@ -30,6 +30,12 @@ namespace Einzel.Commands;
 /// <param name="Losses">
 /// Trajectories that left another way, by the surface the model author named.
 /// </param>
+/// <param name="Assemblies">
+/// In a diffusive phase, how many times the density solver assembled its operator: once
+/// for a field that held through the phase, once per step for one that changed. Zero for
+/// a trajectory phase, which has no operator. Reported because the cost of a ramp is
+/// otherwise invisible, and so is the cost of a hold mistaken for one.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>Every trajectory is accounted for within a phase</b>, which ACC-5 requires and
@@ -57,7 +63,8 @@ public sealed record PhaseOutcome(
     IReadOnlyList<double> CentroidMm,
     bool Converted,
     int Arrived,
-    IReadOnlyList<LossChannel> Losses);
+    IReadOnlyList<LossChannel> Losses,
+    int Assemblies = 0);
 
 /// <summary>What a run across a changing transport mode did.</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -290,7 +297,8 @@ public static class SequencedRun
                 // phase instead, which is what the next conversion will carry.
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
-                    density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, []));
+                    density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, [],
+                    diffused.Assemblies));
             }
 
             started = phase.EndsAtSeconds;
@@ -324,6 +332,28 @@ public static class SequencedRun
     /// static field needs no shift and is passed through, which keeps an unsequenced
     /// element bit-identical.
     /// </remarks>
+    /// <summary>
+    /// Where a phase is asked whether it changes the field: the packet's own centre, and
+    /// the four corners of the tracked region half a cell in, so a change anywhere the
+    /// density can reach is seen.
+    /// </summary>
+    private static IEnumerable<Vec3> Probes(DensityField density, Grid2D grid)
+    {
+        var (cx, cy) = density.Centroid();
+        yield return new Vec3(cx, cy, 0.0);
+
+        var dx = 0.5 * grid.SpacingX;
+        var dy = 0.5 * grid.SpacingY;
+        yield return new Vec3(grid.OriginX + dx, grid.OriginY + dy, 0.0);
+        yield return new Vec3(grid.X(grid.CountX - 1) - dx, grid.OriginY + dy, 0.0);
+        yield return new Vec3(grid.OriginX + dx, grid.Y(grid.CountY - 1) - dy, 0.0);
+        yield return new Vec3(grid.X(grid.CountX - 1) - dx, grid.Y(grid.CountY - 1) - dy, 0.0);
+    }
+
+    /// <summary>Whether two potentials differ by more than round-off.</summary>
+    private static bool Changed(double before, double after) =>
+        Math.Abs(after - before) > 1e-9 * Math.Max(1.0, Math.Abs(before));
+
     private static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
             ? new TimeShiftedField(driven, atSeconds)
@@ -493,17 +523,26 @@ public static class SequencedRun
         }
 
         // Does the field change over this phase? Asked of the field at the phase's two
-        // ends, at the seeded packet's own centre, which is where the answer matters.
+        // ends - the last instant INSIDE the phase, not the boundary. A staged field
+        // switches to the next phase's weights at the boundary itself (its stage lookup
+        // takes t < boundary), so sampling exactly there reads the phase after this one,
+        // and a held phase followed by a step looked like a change: the solver then
+        // rebuilt its operator every step for a ramp that was not there. Found in review,
+        // and it would have been found by the assembly count - which is why that count
+        // now rides out per phase.
+        //
+        // Asked at several points, because a phase can leave the packet's own centre
+        // alone and move the field elsewhere; and to a tolerance, because two evaluations
+        // of one unchanged field at different absolute times can differ in the last bits.
         Func<double, IElectrostaticField>? fieldAt = null;
 
         if (field is ITimeVaryingField varying)
         {
-            var (cx, cy) = density.Centroid();
-            var probe = new Vec3(cx, cy, 0.0);
-            var atStart = varying.PotentialAt(in probe, startedAt);
-            var atEnd = varying.PotentialAt(in probe, startedAt + phase.DurationSeconds);
+            var inside = Math.BitDecrement(startedAt + phase.DurationSeconds);
 
-            if (atStart != atEnd)
+            if (Probes(density, grid).Any(probe => Changed(
+                    varying.PotentialAt(in probe, startedAt),
+                    varying.PotentialAt(in probe, inside))))
             {
                 fieldAt = elapsed =>
                 {
