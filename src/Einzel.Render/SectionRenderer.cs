@@ -177,9 +177,10 @@ public static class SectionRenderer
     /// <param name="model">The validated model.</param>
     /// <param name="spec">What to draw.</param>
     /// <param name="provenance">Lines to record in the output and stamp on the page.</param>
-    /// <param name="density">
-    /// The density a diffusive run produced, drawn in place of the trajectories that
-    /// mode does not have, or null when there is none.
+    /// <param name="densities">
+    /// The densities a diffusive run produced, drawn in place of the trajectories that mode
+    /// does not have, or null when there are none. A list because a model may declare several
+    /// ion populations, and drawing one of them would be a picture of a different experiment.
     /// </param>
     /// <returns>The figure.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
@@ -211,7 +212,7 @@ public static class SectionRenderer
         CompiledModel model,
         RenderSpec spec,
         IReadOnlyList<string>? provenance = null,
-        Transport.Diffusion.DensityField? density = null,
+        IReadOnlyList<Transport.Diffusion.DensityField>? densities = null,
         FramePlan? plan = null,
         Transport.Collisions.BackgroundGas? gas = null,
         IReadOnlyList<ValidityWarning>? transportWarnings = null)
@@ -406,11 +407,24 @@ public static class SectionRenderer
         // this inside the "trajectories were requested" branch, which is how it was
         // written, made --no-trajectory silently suppress the one output a diffusive
         // model has. Two independent questions, asked independently.
-        if (density is not null && spec.DensityContours > 0)
+        if (densities is { Count: > 0 } && spec.DensityContours > 0)
         {
-            densityLevels = DrawDensity(
-                paths, density, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage,
-                plan?.DensityPeak);
+            // One contour ladder across every population, anchored on the largest peak among
+            // them. Per-population levels would draw a small population with as many rings as
+            // a large one and make them look equally dense - the same argument that anchors an
+            // animation's levels once across its frames rather than per frame.
+            var peak = plan?.DensityPeak ?? densities.Max(d => d.Peak());
+
+            foreach (var one in densities)
+            {
+                var levels = DrawDensity(
+                    paths, one, plane, spec, minU, minV, spanU, spanV, tolerance, ToPage, peak);
+
+                if (levels.Length > densityLevels.Length)
+                {
+                    densityLevels = levels;
+                }
+            }
 
             if (densityLevels.Length == 0)
             {

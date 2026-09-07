@@ -210,7 +210,15 @@ public static class AnimationRenderer
             };
 
             var figure = SectionRenderer.Render(
-                model, spec, provenance, densities?[frame.Index], plan);
+                model,
+                spec,
+                provenance,
+
+                // One density per frame, wrapped: the renderer takes a list because a model
+                // may declare several ion populations, and an animation of a mixture is a
+                // separate question from drawing one.
+                densities is null ? null : [densities[frame.Index]],
+                plan);
 
             rendered.Add(new RenderedFrame(
                 frame,

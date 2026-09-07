@@ -137,7 +137,7 @@ public static class RenderCommand
         // swallow evidence about why a result is missing, and the comment above
         // promised the opposite. The reason goes into the provenance block, which is
         // stamped on the page (GRD-12) and returned in --json.
-        Transport.Diffusion.DensityField? density = null;
+        List<Transport.Diffusion.DensityField>? densities = null;
 
         // Not gated on spec.Trajectory. That toggle means "fly the ion and draw its
         // path", and a diffusive model has no path to draw by definition - so
@@ -151,53 +151,76 @@ public static class RenderCommand
             {
                 var (built, fieldWarnings) = Fields.FieldAssembly.BuildReported(validation.Model!);
 
-                // At the declared instant when there is one, and at the end otherwise.
-                // A run reports the density it ENDED with, which for a model whose ions
-                // have all arrived is an empty box - correctly, and uselessly, because
-                // the picture worth having is the packet in flight. Until snapshots
-                // existed the only way to get one was to shorten maximumFlightTime,
-                // which throws away everything after the moment being looked at.
-                var outcome = spec.AtSeconds > 0.0
-                    ? DiffusionRun.Execute(
-                        validation.Model!,
-                        built,
-                        fieldWarnings,
-                        snapshotSeconds: [spec.AtSeconds])
-                    : DiffusionRun.Execute(validation.Model!, built, fieldWarnings);
-
-                if (spec.AtSeconds > 0.0 && outcome.Result.Snapshots.Count == 0)
+                // A mixture is stepped by its own path, and asking the single-species one
+                // for it does not fail - it runs the FIRST population's mass against a
+                // mobility derived from the gas cross section and draws a packet that is none
+                // of the declared ones. Found by rendering a four-population model and getting
+                // one blob: the recurring shape here is a capability wired into one path and
+                // not the other, producing output that looks correct.
+                if (validation.Model!.IsMixture)
                 {
+                    var mixture = DiffusionRun.ExecuteMixture(validation.Model!, built, fieldWarnings);
+
+                    densities = [.. mixture.Result.Species.Select(member => member.Density)];
+
                     provenance.Add(
-                        $"the run ended before t = {spec.AtSeconds * 1e6:G6} us, so the density "
-                        + "drawn is the one it finished with");
+                        $"{mixture.Result.Species.Count} ion populations, contoured on one ladder: "
+                        + string.Join(", ", mixture.Result.Species.Select(member => member.Name)));
                 }
-
-                density = outcome.Result.Snapshots.Count > 0
-                    ? outcome.Result.Snapshots[0].Density
-                    : outcome.Result.Density;
-
-                if (outcome.Result.Snapshots.Count > 0)
+                else
                 {
-                    provenance.Add(
-                        $"density at t = {outcome.Result.Snapshots[0].AtSeconds * 1e6:G6} us, "
-                        + $"asked for {spec.AtSeconds * 1e6:G6} us");
+                    // At the declared instant when there is one, and at the end otherwise.
+                    // A run reports the density it ENDED with, which for a model whose ions
+                    // have all arrived is an empty box - correctly, and uselessly, because
+                    // the picture worth having is the packet in flight. Until snapshots
+                    // existed the only way to get one was to shorten maximumFlightTime,
+                    // which throws away everything after the moment being looked at.
+                    var outcome = spec.AtSeconds > 0.0
+                        ? DiffusionRun.Execute(
+                            validation.Model!,
+                            built,
+                            fieldWarnings,
+                            snapshotSeconds: [spec.AtSeconds])
+                        : DiffusionRun.Execute(validation.Model!, built, fieldWarnings);
+
+                    if (spec.AtSeconds > 0.0 && outcome.Result.Snapshots.Count == 0)
+                    {
+                        provenance.Add(
+                            $"the run ended before t = {spec.AtSeconds * 1e6:G6} us, so the density "
+                            + "drawn is the one it finished with");
+                    }
+
+                    densities =
+                    [
+                        outcome.Result.Snapshots.Count > 0
+                            ? outcome.Result.Snapshots[0].Density
+                            : outcome.Result.Density,
+                    ];
+
+                    if (outcome.Result.Snapshots.Count > 0)
+                    {
+                        provenance.Add(
+                            $"density at t = {outcome.Result.Snapshots[0].AtSeconds * 1e6:G6} us, "
+                            + $"asked for {spec.AtSeconds * 1e6:G6} us");
+                    }
                 }
             }
             catch (EinzelException refused)
             {
-                density = null;
+                densities = null;
 
                 provenance.Add(
                     "no density drawn: the transport refused - "
                     + refused.Error.Constraint);
             }
+
         }
 
         var renderGas = Io.GasFlowImport.Resolve(
             validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? ".");
 
         var figure = SectionRenderer.Render(
-            validation.Model!, spec, provenance, density, plan: null,
+            validation.Model!, spec, provenance, densities, plan: null,
             gas: renderGas,
             transportWarnings: TransportWarnings(validation.Model!, renderGas));
 
