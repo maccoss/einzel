@@ -151,9 +151,19 @@ public sealed class RampDocumentTests(ITestOutputHelper output)
         output.WriteLine($"{error.Code} {error.Path}: {error.Constraint}");
     }
 
-    /// <summary>A ramp in a diffusive phase is refused, because the density solver holds its field within a phase.</summary>
+    /// <summary>
+    /// A ramp in a diffusive phase is accepted, because the density solver re-samples a
+    /// changing field every step - which is what a mobility analyser's elution scan is.
+    /// </summary>
+    /// <remarks>
+    /// This test asserted the refusal while the solver stepped through a field it held fixed
+    /// within a phase. The refusal was lifted with the solver, and the test that documented
+    /// it has to turn over with it or the suite pins the limitation rather than the
+    /// capability. What it still guards is that the document validates at all with a ramp in
+    /// a diffusive phase, and that no error mentions the phase kind.
+    /// </remarks>
     [Fact]
-    public void ARampInADiffusivePhaseIsRefused()
+    public void ARampInADiffusivePhaseIsAccepted()
     {
         const string diffusive = """
             "mode": "diffusion",
@@ -169,8 +179,12 @@ public sealed class RampDocumentTests(ITestOutputHelper output)
             """;
         var validation = ModelValidator.Validate(ModelJson.Parse(Model("bias", HoldThenRamp, transport: diffusive)), null);
 
-        Assert.Null(validation.Model);
-        var error = Assert.Single(validation.Errors, e => e.Constraint.Contains("diffusive phase", StringComparison.Ordinal));
-        output.WriteLine($"{error.Code} {error.Path}: {error.Constraint}");
+        output.WriteLine(validation.IsValid
+            ? "accepted"
+            : string.Join("; ", validation.Errors.Select(e => $"{e.Code} {e.Path}: {e.Constraint}")));
+
+        Assert.True(validation.IsValid, "a ramp in a diffusive phase is refused, which the density solver no longer needs");
+        Assert.NotNull(validation.Model);
+        Assert.DoesNotContain(validation.Errors, e => e.Constraint.Contains("diffusive phase", StringComparison.Ordinal));
     }
 }
