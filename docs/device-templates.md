@@ -937,13 +937,74 @@ whether a phase changes the field sampled the phase boundary (which a staged fie
 reads as the next phase) and the instantaneous RF (which differs from itself at any two
 instants). Both are fixed and counted: a held phase now reports one assembly.
 
+### The scan-rate law, recovered where it should hold and broken where it should not
+
+The register's law for a trapped-ion-mobility analyser is `R = v_g (2L_p/β)^(1/4) K^(-3/4)
+sqrt(q / 16 ln2 kT)`: resolving power rises as the fourth root of a slower ramp and in
+proportion to the gas speed. Six ramps on the reference ion at 50 m/s, RF on, every ion
+collected in every run:
+
+| ramp | β | median arrival | exit potential then | peak σ | FWHM | **R** | R ratio per halving of β |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 ms | 15.0 V/ms | 3.43 ms | 13.1 V | 112 µs | 264 µs | **3.3** | |
+| 8 ms | 7.5 | 5.51 | 20.9 | 143 | 336 | **8.3** | 2.52 |
+| 16 ms | 3.75 | 9.53 | 25.4 | 213 | 501 | **13.5** | 1.63 |
+| 32 ms | 1.88 | 17.36 | 28.0 | 349 | 823 | **18.2** | 1.35 |
+| 64 ms | 0.94 | 32.71 | 29.6 | 602 | 1418 | **22.3** | 1.23 |
+| 128 ms | 0.47 | 62.97 | 30.6 | 1081 | 2546 | **25.7** | 1.15 |
+
+**The law's exponent is recovered asymptotically.** Halving β should raise R by
+2^(1/4) = **1.19**. The measured ratio falls 2.52 → 1.63 → 1.35 → 1.23 → 1.15 and closes on it
+from above, so the law holds where the ramp is slow against the packet's settling time and
+fails where it is not — and the failure is the release lag: at a fast ramp the exit potential
+has fallen far below the quasi-static release value by the time the peak arrives (13.1 V
+against 32 V at 4 ms; 30.6 against 32 at 128 ms), while the arrival width in *time* hardly
+moves, so `V/(β Δt)` collapses as `V(t_peak)`. A 2 ms ramp is faster than the lag itself and
+the peak arrives after the field is off. **This is the same time constant as everything
+else in this section**: the lag in volts `β × lag` is 18.9 / 11.1 / 6.6 / 4.0 / 2.4 / 1.4 V
+down the table, so the release converges on the quasi-static 32 V exactly as the ramp slows.
+
+**The absolute level sits at 0.4-0.7 of the law**, with the fraction rising as the ramp slows
+(8.3 against 19.4 at 8 ms; 25.7 against 38.8 at 128 ms, with `L_p` taken as the 20 mm from the
+parking point to the field's peak, since a linear-gradient tunnel has no plateau). What the
+remaining factor is made of is not separated here — the axial thermal spread of the held
+packet in the restoring gradient (0.68 mm at 60 V, growing as `V^(-1/2)` down the ramp) and
+the definition's reading of the ramp at arrival rather than at release are the two
+candidates.
+
+**At Ridgeway's operating point the resolving power doubles, as `R ∝ v_g` says.** The
+register's gas profile — 75 m/s at the entrance rising to 130 m/s at 45 mm on the axis,
+parabolic across the bore, 2.61 falling to 2.30 mbar — authored as imported velocity and
+pressure fields from the numbers the register cites, with 100 V across the tunnel so it can
+hold against the faster gas:
+
+| ramp | parked | collected | median arrival | exit potential then | FWHM | **R** | at 50 m/s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8 ms | 24.92 mm | 100.00 % | 3.49 ms | 60.2 V | 223 µs | **21.6** | 8.3 |
+| 32 ms | 24.92 mm | 100.00 % | 10.76 ms | 67.3 V | 580 µs | **37.2** | 18.2 |
+
+The parking point is where the local gas speed and the local mobility — both now varying
+along the tunnel, the mobility as `1/n` — balance the field: predicted 25.2 mm by hand from
+the profile, measured 24.92. The gas at that point is 105 m/s, 2.1× the uniform stream,
+and R is 2.6× and 2.0× the 50 m/s values at the same ramp; the ramp is also 1.67× steeper in
+volts per millisecond because the well is deeper, which the law charges at the fourth root.
+
+**So the gap to Hernandez's 100-250 is now a quantitative one rather than a missing
+mechanism.** From 37 at 32 ms and Ridgeway's gas: his ramps are 100-300 ms (`β^(-1/4)`:
+×1.3-1.8), the optimum flow is ~140 m/s rather than the 105 at this parking point (`v_g`:
+×1.3), and the instrument accumulates on a plateau this tunnel does not have, which enters
+the law as `L_p^(1/4)` and is not modelled. Those account for a factor of 2-3 of the
+remaining 3-7, which leaves about 1.5 for the width's own composition — the same unresolved
+factor as at 50 m/s. What is *not* in the gap: the transmission (every ion arrives), the
+order (least mobile first), the parking (to 1 µm), or the exponent.
+
 ### What this stage still does not carry
 
-**The gas is one stream at 50 m/s.** Ridgeway's fig. 2 has it at 75 m/s at the entrance
-rising to about 130 m/s at 45 mm, with a parabolic profile across the bore; the register
-records it and the engine imports such a field, and this template has not been given one.
-The parking positions and the elution order do not depend on it; the release voltages and
-the widths do.
+**The shipped template's gas is one stream at 50 m/s.** Ridgeway's profile has been run
+against it as imported fields (above) and doubles the resolving power; it is not the
+template's default because a template is a single file and the profile is two data files
+beside it. The parking positions and the elution order do not depend on it; the release
+voltages and the widths do.
 
 **Ring-to-ring structure of the RF.** The axisymmetric pseudopotential is smooth along the
 axis, while real segmented rings on a 1.725 mm pitch modulate the RF near the bore at that

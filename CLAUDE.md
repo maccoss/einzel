@@ -1471,7 +1471,22 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   boundary (already the next phase for a staged field) and the instantaneous RF (which
   differs from itself at any two instants). Fixed - inside the phase, on the cycle-averaged
   field, to a tolerance - and now counted per phase in the JSON, so a hold reports one.
-  Details in `docs/device-templates.md`.
+
+  **The scan-rate law is recovered where it should hold and broken where it should not.**
+  Six ramps from 4 to 128 ms on the reference ion at 50 m/s: **R = 3.3 / 8.3 / 13.5 / 18.2 /
+  22.3 / 25.7**, every ion collected. The law says halving β raises R by 2^(1/4) = 1.19; the
+  measured ratio falls 2.52 → 1.63 → 1.35 → 1.23 → 1.15 and closes on it from above. The
+  fast-ramp shortfall is the release lag — the exit potential at the peak is 13.1 V at 4 ms
+  against the quasi-static 32 V, 30.6 V at 128 ms — so `V/(β Δt)` collapses as `V(t_peak)`
+  while the width in time barely moves. **At Ridgeway's gas profile R doubles** (21.6 at
+  8 ms, 37.2 at 32 ms), the profile authored as imported velocity and pressure fields from
+  the register's own numbers, the parking point moving to 24.92 mm against 25.2 predicted
+  by hand from the local gas speed and the `1/n` mobility. The gap to Hernandez's 100-250
+  is arithmetic now - his 100-300 ms ramps, his 140 m/s optimum, an accumulation plateau -
+  with about 1.5 left in the width's own composition. `mobilityResolvingPower` (V/ΔV off
+  the arrivals against the ramped parameter) is a Class B figure of merit, and every
+  diffusive figure takes the sequenced path for a sequenced model. Details in
+  `docs/device-templates.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

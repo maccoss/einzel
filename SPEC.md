@@ -2690,9 +2690,19 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     **R = 11 / 8 / 5** for K × 0.75 / 1.0 / 1.5 against the register's law's 24 / 19 / 14
     at this operating point, with the `K^(-3/4)` trend present; elution voltage linear in
     1/K to 2 per cent with a −8.5 V intercept that is the release lag in volts; the lag
-    itself 0.75-0.9 of the plateau-transit formula. The remainder is a mobility
-    resolving power as a figure of merit, the scan-rate study, and the register's gas
-    profile.
+    itself 0.75-0.9 of the plateau-transit formula.
+
+    **The scan-rate law's exponent is recovered asymptotically**, and the gas-speed
+    scaling with it. Six ramps from 4 to 128 ms give R = 3.3 → 25.7 with the ratio per
+    halving of β falling 2.52 → 1.15 onto the law's 2^(1/4) = 1.19; fast ramps fall short
+    because the release lags the sliding balance and the exit potential at the peak has
+    fallen below the release value. At Ridgeway's gas profile — imported velocity and
+    pressure fields authored from the register's numbers — R doubles (21.6 at 8 ms, 37.2
+    at 32 ms), as `R ∝ v_g`. The gap to Hernandez's 100-250 is now arithmetic: his ramps
+    (×1.3-1.8), his flow (×1.3), and an accumulation plateau this tunnel lacks, leaving
+    ~1.5 unresolved in the width. `mobilityResolvingPower` is a Class B figure of merit.
+    The remainder is the front end: the entrance funnel and the gate the operating
+    sequence opens and closes (see item 16).
 
 ## Open decisions
 

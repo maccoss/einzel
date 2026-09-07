@@ -181,7 +181,7 @@ public static class ModelSchema
     /// case in a sharper form: an older build would solve the untilted cross-section and
     /// report a converging analyser as a parallel one.
     /// </remarks>
-    public const string CurrentVersion = "0.11";
+    public const string CurrentVersion = "0.12";
 
     /// <summary>Versions this build can read.</summary>
     /// <remarks>
@@ -190,7 +190,7 @@ public static class ModelSchema
     /// though it sorts before it as text, and nothing here compares two versions.
     /// </remarks>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11", "0.12"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -551,6 +551,21 @@ public sealed record RegionDocument
 
     /// <summary>Upper bound along z.</summary>
     public QuantityValue? MaxZ { get; init; }
+
+    /// <summary>
+    /// Optional: a distance inside every face over which the element rises linearly from
+    /// nothing to full strength, so the potential is continuous across the face instead of
+    /// stepping. Absent means a hard edge, which is what every earlier document had.
+    /// </summary>
+    /// <remarks>
+    /// It stands in for the decay of a real electrode's field over about a bore radius, and
+    /// is a modelling choice rather than anything solved - the run says so. For a confining
+    /// RF it is the difference between a wall and an entrance: at a hard edge an ion at any
+    /// radius meets the whole pseudopotential well at once and is held against it, while a
+    /// fringe squeezes it toward the axis as the well grows under it. Must not exceed half
+    /// the region's smallest extent, or the element never reaches full strength anywhere.
+    /// </remarks>
+    public QuantityValue? Fringe { get; init; }
 }
 
 /// <summary>The surface that ends the flight.</summary>

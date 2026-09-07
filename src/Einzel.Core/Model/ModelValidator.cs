@@ -895,7 +895,38 @@ public static class ModelValidator
             return null;
         }
 
-        return new FieldRegion(si[0], si[1], si[2], si[3], si[4], si[5]);
+        var fringe = 0.0;
+
+        if (region.Fringe is not null)
+        {
+            var value = TryQuantity(region.Fringe, $"{path}/region/fringe", Dimension.LengthDimension, p, errors);
+
+            if (value is null)
+            {
+                return null;
+            }
+
+            fringe = value.Value.In("m");
+            var smallest = Math.Min(si[1] - si[0], Math.Min(si[3] - si[2], si[5] - si[4]));
+
+            if (fringe < 0.0 || fringe > 0.5 * smallest)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/region/fringe",
+                    Constraint = $"a region's fringe must lie between zero and half its smallest extent, "
+                        + $"{0.5 * smallest:G6} m here, or the element never reaches full strength anywhere",
+                    Observed = new ObservedValue(fringe, "m"),
+                    Suggestion = "a fringe of about a bore radius stands in for a real electrode's "
+                        + "field decaying at its end; omit it for a hard edge",
+                });
+
+                return null;
+            }
+        }
+
+        return new FieldRegion(si[0], si[1], si[2], si[3], si[4], si[5], fringe);
     }
 
     /// <summary>Whether a kind needs whole compiled copies to follow a phase.</summary>

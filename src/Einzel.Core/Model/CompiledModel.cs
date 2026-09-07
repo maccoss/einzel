@@ -265,14 +265,88 @@ public sealed record CompiledRamp(string Parameter, Quantity Start, Quantity End
 /// <param name="MaxY">Upper bound along y.</param>
 /// <param name="MinZ">Lower bound along z.</param>
 /// <param name="MaxZ">Upper bound along z.</param>
+/// <param name="FringeSi">
+/// Depth inside every face over which the element rises from nothing to full strength, in
+/// metres; zero for a hard edge.
+/// </param>
 public sealed record FieldRegion(
     double MinX,
     double MaxX,
     double MinY,
     double MaxY,
     double MinZ,
-    double MaxZ)
+    double MaxZ,
+    double FringeSi = 0.0)
 {
+    /// <summary>
+    /// How much of the element applies at a point: one deep inside, nothing outside, and
+    /// rising linearly through a band <see cref="FringeSi"/> deep inside every face.
+    /// </summary>
+    /// <param name="position">Where to evaluate, in metres.</param>
+    /// <returns>A factor between zero and one.</returns>
+    /// <remarks>
+    /// A region with no fringe is a step, and a step in the potential at the face is what a
+    /// bounded element has always cost (the <c>field.region-potential-step</c> warning). A
+    /// fringe makes the potential continuous - zero at the face, the element's own a fringe
+    /// inside - and gives the field there a gradient it can act through, which for a
+    /// confining RF is the difference between a wall and an entrance: an ion approaching
+    /// the hard edge of a pseudopotential well at any radius meets the whole well at once
+    /// and is held there, while one approaching a ramp is squeezed toward the axis as the
+    /// well grows under it. It stands in for the decay of a real electrode's field over
+    /// about a bore radius, and is a modelling choice rather than anything solved.
+    /// </remarks>
+    public double Scale(in Vec3 position)
+    {
+        var depth = -SignedDistance(in position);
+
+        if (depth < 0.0)
+        {
+            return 0.0;
+        }
+
+        return FringeSi <= 0.0 ? 1.0 : Math.Min(1.0, depth / FringeSi);
+    }
+
+    /// <summary>
+    /// The gradient of <see cref="Scale"/>: zero outside and deep inside, and one over the
+    /// fringe along the inward normal of the nearest face across the fringe band.
+    /// </summary>
+    /// <param name="position">Where to evaluate, in metres.</param>
+    /// <returns>The gradient, in inverse metres.</returns>
+    public Vec3 ScaleGradient(in Vec3 position)
+    {
+        if (FringeSi <= 0.0)
+        {
+            return Vec3.Zero;
+        }
+
+        var depth = -SignedDistance(in position);
+
+        if (depth < 0.0 || depth >= FringeSi)
+        {
+            return Vec3.Zero;
+        }
+
+        // The depth is the distance to the nearest face, so its gradient is that face's
+        // inward normal. Ties at an edge take the first axis, which is a measure-zero set.
+        var toMinX = position.X - MinX;
+        var toMaxX = MaxX - position.X;
+        var toMinY = position.Y - MinY;
+        var toMaxY = MaxY - position.Y;
+        var toMinZ = position.Z - MinZ;
+        var toMaxZ = MaxZ - position.Z;
+        var nearest = Math.Min(Math.Min(Math.Min(toMinX, toMaxX), Math.Min(toMinY, toMaxY)), Math.Min(toMinZ, toMaxZ));
+        var inward =
+            nearest == toMinX ? new Vec3(1.0, 0.0, 0.0)
+            : nearest == toMaxX ? new Vec3(-1.0, 0.0, 0.0)
+            : nearest == toMinY ? new Vec3(0.0, 1.0, 0.0)
+            : nearest == toMaxY ? new Vec3(0.0, -1.0, 0.0)
+            : nearest == toMinZ ? new Vec3(0.0, 0.0, 1.0)
+            : new Vec3(0.0, 0.0, -1.0);
+
+        return inward * (1.0 / FringeSi);
+    }
+
     /// <summary>Signed distance to the boundary: negative inside, positive outside.</summary>
     /// <param name="position">Where to evaluate, in metres.</param>
     /// <returns>The signed distance in metres.</returns>
