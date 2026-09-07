@@ -1039,3 +1039,29 @@ interval count the cells coarsen as the domain grows, so the four cases were not
 discretisation. And two mutations — solving the same problem as a plane, and unearthing the
 wall — each fail both tests, which is what makes them tests rather than assertions that a
 file exists.
+
+### And the storable population, from the geometry rather than the estimate
+
+Their line-charge argument concludes that 10^6 to 10^7 charges can be stored without harming
+performance. That conclusion can now be checked directly, by holding two populations in the
+solved tunnel with their own charge in the field and asking how many stay.
+
+| launched | held, charge off | held, charge on |
+| --- | --- | --- |
+| 10^5 | 8.07e4 | 8.07e4 |
+| 10^7 | 8.07e6 | 7.51e6 |
+| 10^8 | 8.07e7 | **1.39e7** |
+
+Launching ten times more than 10^7 holds only 1.8 times more. **The tunnel stops accepting
+between 8 × 10^6 and 1.4 × 10^7 ions**, which is the top of their stated range — reached by
+solving the geometry rather than by bounding a free-space line charge, and therefore about as
+independent as two routes to a number get.
+
+The uncharged column is the control: with no charge the tunnel holds the same 81 per cent of
+whatever it is given at every population, so what saturates is the charge and not the
+geometry. Where that 19 per cent goes is not established and is recorded as not established.
+
+**What this does not do is compare a resolving power.** The packets here are held, not
+eluted, so the ratio of their separation to their width is a millimetre ratio at equilibrium
+and is one to two orders below a published resolving power by construction. Nothing in this
+comparison should be set beside their 100 to 250.

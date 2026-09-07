@@ -1593,6 +1593,41 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   with its reason, so a fifth kind of run fails to compile until somebody decides which it is.
   SPEC.md Amendment 41; details in `docs/model-format.md`, `docs/pressure.md`, `docs/lessons.md`.
 
+- **The tandem TIMS tunnel holds about 10^7 ions, which is the published figure by another
+  route.** Two populations of m/z 622 differing only in mobility, held together in the storage
+  region for 2.5 ms with and without their own charge:
+
+  | launched | held, charge off | held, charge on | width | gap |
+  | --- | --- | --- | --- | --- |
+  | 10^5 | 8.07e4 | 8.07e4 | 0.65 → 0.91 mm | 6.30 → 6.36 mm |
+  | 10^7 | 8.07e6 | 7.51e6 | 0.65 → 2.31 mm | 6.30 → 8.43 mm |
+  | 10^8 | 8.07e7 | **1.39e7** | 0.65 → 2.56 mm | 6.30 → 9.04 mm |
+
+  **Launching ten times more than 10^7 holds only 1.8 times more** — the tunnel stops
+  accepting between **8e6 and 1.4e7**, the top of Silveira's stated 10^6 to 10^7, which they
+  reached by bounding a free-space line charge that neglects the electrodes entirely. The
+  uncharged column is the control: with no charge the tunnel holds the same 81 per cent at
+  every population, so what saturates is the charge and not the geometry. Where that 19 per
+  cent goes is **not established** and is recorded as not established.
+
+  **The degradation has a shape a designer could misread**: the charge pushes the populations
+  *further apart* (6.3 → 9.0 mm) and the separation still gets worse, because the peaks widen
+  faster than their centres move. And broadening starts far below the capacity — 1.4× at 10^5
+  ions — which does not contradict the published estimate because the two are about different
+  quantities: theirs is the packet's field against the analysing field, of order a per cent,
+  while what sets a *held* packet's width is its own potential against kT/q.
+
+  **Two things it is not, both recorded with the measurement.** Its ratio is spatial — gap
+  over width in millimetres, at equilibrium, with no elution ramp — so it is one to two orders
+  below a published resolving power by construction and must never be set beside one. And its
+  ion counts are not comparable with theirs without converting to charge per unit length:
+  their reference spreads 10^6 over 23 mm, these packets sit in under a millimetre, so the
+  10^5 row is **0.6×** their line density rather than a hundredth of it.
+
+  **Cost**: 14 minutes for six configurations; an uncharged one is 30 s against a mean-field
+  one at 220-330. The geometry is solved **once** for the study — re-solving 55 rings and two
+  funnels per configuration ran over an hour without reaching its first line of output.
+
 - **The published TIMS space-charge estimate reproduces, and my prediction about it was
   wrong.** Silveira's Eq. 4 for a million charges on a 23 mm line gives 61.68 V/m at 2 mm,
   matching their quoted "roughly 0.6 V/cm"; the solver gives **62.28 V/m in the real 4 mm
