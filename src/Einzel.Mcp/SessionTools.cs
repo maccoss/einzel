@@ -216,6 +216,46 @@ public sealed class SessionTools
     /// current.
     /// </remarks>
     public string Preview() => CommandJson.Write(PreviewCommand.Execute(_journal.ModelPath));
+
+    /// <summary>The models the platform ships, by kind.</summary>
+    /// <param name="kind">Either <c>template</c> or <c>example</c>.</param>
+    /// <returns>The catalogue, as the CLI serialises it.</returns>
+    /// <exception cref="EinzelException">No such kind.</exception>
+    /// <remarks>
+    /// <para>
+    /// EX-3 requires the corpus to be "enumerable and fetchable from both surfaces", and this
+    /// is the second one. Until it existed the requirement was carried as Partial with the
+    /// reason "there is no second one", which stopped being true when MCP-1 was built and
+    /// then sat unnoticed for a while - see the register audit.
+    /// </para>
+    /// <para>
+    /// This is the one place the server deliberately widens past a live session's own state,
+    /// and the justification is that a requirement asks for it by name rather than that it
+    /// would be convenient. It is also what the corpus is <em>for</em>: an agent has no
+    /// Einzel forum posts or example files in its training data, so shipping models it can
+    /// pull into context is the counter, and an agent working over this protocol could not
+    /// reach them at all.
+    /// </para>
+    /// </remarks>
+    public static string Catalogue(string kind) => CommandJson.Write(kind switch
+    {
+        "template" => CatalogCommand.Templates(),
+        "example" => CatalogCommand.Examples(),
+        _ => throw new EinzelException(new EinzelError
+        {
+            Code = ErrorCodes.SchemaInvalid,
+            Path = "/kind",
+            Constraint = $"'{kind}' is not something the platform ships",
+            Suggestion = "ask for a 'template' or an 'example'",
+        }),
+    });
+
+    /// <summary>The text of one shipped template or example.</summary>
+    /// <param name="kind">Either <c>template</c> or <c>example</c>.</param>
+    /// <param name="name">Which one, as the catalogue names it.</param>
+    /// <returns>The model document.</returns>
+    /// <exception cref="EinzelException">No such kind, or no such name.</exception>
+    public static string Fetch(string kind, string name) => CatalogCommand.Read(kind, name);
 }
 
 /// <summary>The session as a joining party finds it.</summary>

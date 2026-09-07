@@ -31,6 +31,7 @@ states the intent and these pages state the reality; both are noted.
 | [Literature targets](literature-targets.md) | Published instruments to reproduce, and what each needs |
 | [Validation](validation.md) | The test tiers, what each proves, and what is not covered |
 | [Spec findings](spec-findings.md) | Places where building it revealed something about the specification |
+| [GPU handoff](gpu-handoff.md) | Whether a GPU is worth it here, the probe that answers it on any machine in ten minutes, and which kernel to port |
 | [Astral log](astral-log.md) | **A chronological log, not a status page.** Eighty sections of the Astral reconstruction, several reversing earlier ones. Read it backwards, and take the model's current position from [Device templates](device-templates.md) instead |
 
 ## The two ideas everything follows from

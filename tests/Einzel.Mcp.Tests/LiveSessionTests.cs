@@ -445,9 +445,91 @@ public sealed class LiveSessionTests(ITestOutputHelper output) : IDisposable
         output.WriteLine(string.Join(", ", tools));
 
         Assert.Equal(
-            ["model_edit", "model_preview", "model_read", "model_undo", "model_validate",
-             "session_journal"],
+            ["catalog_list", "catalog_read", "model_edit", "model_preview", "model_read",
+             "model_undo", "model_validate", "session_journal"],
             tools);
+    }
+
+    /// <summary>
+    /// The shipped corpus is reachable over this protocol, which is EX-3's second surface.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The requirement asks for examples "enumerable and fetchable from both surfaces", and
+    /// it was carried as Partial with the reason "there is no second one" - which stopped
+    /// being true the day this server was built and then sat unnoticed until a register
+    /// audit found it. This is the one place the tool surface deliberately reaches past the
+    /// live session's own state, and the justification is that a requirement names it.
+    /// </para>
+    /// <para>
+    /// It matters more here than the count suggests. An agent has no Einzel forum posts or
+    /// example files in its training data, so shipping models it can pull into context is
+    /// the whole counter to that - and an agent working over this protocol could not reach
+    /// any of them.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheShippedCorpusIsReachableOverTheProtocol()
+    {
+        var model = WriteModel();
+
+        await using var client = await JoinAsync(model, "surveyor", "3.1");
+
+        var listed = await client.CallToolAsync(
+            "catalog_list",
+            new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "example" });
+
+        var catalogue = Assert.IsType<TextContentBlock>(Assert.Single(listed.Content)).Text;
+        output.WriteLine(catalogue[..Math.Min(300, catalogue.Length)]);
+
+        using var document = System.Text.Json.JsonDocument.Parse(catalogue);
+        var names = document.RootElement.GetProperty("entries").EnumerateArray()
+            .Select(e => e.GetProperty("name").GetString()!)
+            .ToList();
+
+        Assert.True(names.Count >= 30, $"EX-1 asks for thirty and the catalogue has {names.Count}");
+        Assert.Contains("free-flight", names);
+
+        // Every entry carries its prose description, which is what makes the listing worth
+        // reading rather than a list of filenames.
+        Assert.All(
+            document.RootElement.GetProperty("entries").EnumerateArray(),
+            e => Assert.False(string.IsNullOrWhiteSpace(e.GetProperty("description").GetString())));
+
+        // And fetchable, not only enumerable - the second half of the requirement.
+        var fetched = await client.CallToolAsync(
+            "catalog_read",
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["kind"] = "example",
+                ["name"] = "free-flight",
+            });
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(fetched.Content)).Text;
+        using var fetchedModel = System.Text.Json.JsonDocument.Parse(text);
+
+        Assert.Equal("free-flight", fetchedModel.RootElement.GetProperty("name").GetString());
+    }
+
+    /// <summary>An unknown kind is refused as a recovery instruction, not a fault.</summary>
+    [Fact]
+    public async Task AnUnknownCatalogueKindIsRefusedWithAnInstruction()
+    {
+        var model = WriteModel();
+
+        await using var client = await JoinAsync(model, "surveyor", "3.1");
+
+        var refused = await client.CallToolAsync(
+            "catalog_list",
+            new Dictionary<string, object?>(StringComparer.Ordinal) { ["kind"] = "device" });
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(refused.Content)).Text;
+        output.WriteLine(text);
+
+        // AGT-3: a refusal is an answer about the request, so it comes back as a result
+        // carrying a code and a suggestion rather than as a transport fault.
+        Assert.Contains("SCHEMA_INVALID", text, StringComparison.Ordinal);
+        Assert.Contains("template", text, StringComparison.Ordinal);
     }
 
     /// <summary>

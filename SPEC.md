@@ -20,17 +20,17 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,230 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,245 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
-| **Met**, with evidence | 78 |
-| **Partial**, with a stated gap | 14 |
-| **Not built** | 22 |
-| **Unverified** — plausible but unmeasured | 4 |
+| **Met**, with evidence | 82 |
+| **Partial**, with a stated gap | 13 |
+| **Not built** | 21 |
+| **Unverified** — plausible but unmeasured | 2 |
 | Total tagged in r06 | 118 |
 
-A count is a weak summary and it flatters the project: **fourteen of the 22 not
+A count is a weak summary and it flatters the project: **fourteen of the 21 not
 built are the update mechanism and distribution**, which is one assembly that does
 not exist, while the 78 met are spread across the parts that carry numbers. The
 useful reading is the register, not the total.
@@ -109,8 +109,8 @@ the thesis early", and the corpus EX-1 asks for is the other half of that: an ag
 has no Einzel forum posts or example files in its training data, and shipping
 models it can pull into context is the counter. For most of the project one model
 of thirty existed; the corpus now holds thirty-nine, gated on every change (item 4
-of *What to do next*). **What remains is distribution**: **78 of the 118
-requirements are met**, and fourteen of the twenty-two that are not built at all
+of *What to do next*). **What remains is distribution**: **82 of the 118
+requirements are met**, and fourteen of the twenty-one that are not built at all
 are the update mechanism and distribution. Nobody can install this.
 
 ### Phase acceptance, checked
@@ -218,6 +218,11 @@ against it later. And the field *solve* is a separate question from the trajecto
 is memory-bandwidth bound, which is why study-level parallelism tops out near 5x on eight
 cores while a pure-arithmetic control keeps scaling, and bandwidth is the one thing a GPU
 does bring.
+
+`docs/gpu-handoff.md` carries the probe that makes this measurement on any machine in about
+ten minutes, what to look for in its output, and which of the two candidate kernels to port
+once it is known. It is written to be picked up on different hardware, since that is the
+decision this amendment turns on.
 
 ### 1 · SYM-1 is missing translational invariance
 
@@ -1600,7 +1605,7 @@ in a table.
 | --- | --- | --- | --- |
 | `EX-1` | Ship at least thirty validated reference models spanning every device class, each with a prose description, expected results, and assertion tolerances. | **Met** | **39 against the thirty asked for**, spanning free flight, accelerating gaps, reflectrons, an orthogonal accelerator, a thermal source, an einzel lens, a DC and an RF quadrupole, a hexapole guide, a funnel, a travelling-wave guide captured and ballistic, an extraction trap, a 3-D Paul trap held and ejected, a linear ion trap held and ejected, a sequenced extraction, a driven and an undriven RF quadrupole in the diffusive mode, three drift tubes including an imported pressure gradient, a slit, a thermalisation, and a three-dimensional parallel-plate gap. **Every expectation is arithmetic, a published value, or an exact invariant** - never a number this engine produced and then had enshrined - and each carries a relative tolerance. EX-2's gate runs all of them on every change. The count had been recorded as "31 of the thirty" and was stale. |
 | `EX-2` | The corpus runs in CI; a failing example blocks release. | **Met** | `ExampleCorpusTests` materialises every example into a real project and drives `einzel test` through `Program.Main`. **31 of 31 in 48 s**, so it is affordable on every change rather than at release. It also asserts that every example ships a test and describes itself, and it materialises an example's data files beside its model - which is what lets an imported gas field be covered by the gate at all. |
-| `EX-3` | Examples are enumerable and fetchable from both surfaces. | Partial | `einzel examples` enumerates and prints, and `einzel new --from-example` writes the model **and its test**, rewriting the model reference to wherever the file landed. **The second surface now exists and does not carry them**: `Einzel.Mcp` has no examples tool, its surface being deliberately narrow. The earlier evidence gave the reason as "there is no second one", which stopped being true when MCP-1 was built. Adding it is a tool over a command object that already exists, and it closes half of AGT-2 with it. |
+| `EX-3` | Examples are enumerable and fetchable from both surfaces. | **Met** | `einzel examples` enumerates and prints, `einzel new --from-example` writes the model **and its test** with the model reference rewritten to wherever the file landed, and `catalog_list` / `catalog_read` do both over MCP. **The second surface was the gap and it had been closed-able since MCP-1 was built** - the row read "there is no second one" long after there was, which a register audit found. The tools are thin wrappers over the same `CatalogCommand` the CLI drives, which is AGT-2's mechanism rather than a parallel implementation. It matters more than the count suggests: an agent has no Einzel forum posts or example files in its training data, so shipping models it can pull into context is the whole counter to that, and an agent on this protocol could not reach any of them. |
 
 ### Extensions (§12)
 
@@ -1670,14 +1675,14 @@ in a table.
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
 | `PERF-1` | Nominal field solve, all basis solutions < 30 min Cached. Symmetry reduction makes this reachable for a 200-ring funnel | **Met** | A 96-ring travelling-wave guide reduces to two basis solves; a 48-ring funnel to two. Well inside 30 minutes. |
-| `PERF-2` | Single ion, cached fields < 100 ms Interactive tuning must feel live | Unverified | Not measured as a target. A single ion through cached fields is fast in practice; no benchmark asserts it. |
+| `PERF-2` | Single ion, cached fields < 100 ms Interactive tuning must feel live | **Met, measured** | **5.6 ms in process against the 100 ms budget**, cheapest of seven on an i9-9900K. Measured in process because that is what the budget is about - the shell drives the same command objects there, and "interactive tuning must feel live" is a statement about that path. Through the executable the same run costs 266-286 ms, of which roughly 230 is a self-contained build starting its own runtime, which is PERF-8's separate budget. `PerformanceBudgetTests` reports the number and asserts at ten times it, because a wall-clock bound is a statement about a machine (Amendment 27) and the useful assertion is the one that catches an order-of-magnitude regression without measuring the runner. |
 | `PERF-3` | Preview tier, any model < 10 s | **Met** | 9 ms on the shipped reflectron against a 10 s budget. |
-| `PERF-4` | 10 4 -ion ensemble, Class S < 5 min CPU, embarrassingly parallel | Unverified | Ensembles of 20,000 ions are run in tests, but wall time against the 5-minute budget is not asserted. |
-| `PERF-5` | Quadrupole stability scan, 500 × 10 3 < 2 h GPU-bound; why ILGPU is early | Not built | Needs the GPU path. `einzel scan` makes the scan expressible; nothing makes it fast. |
+| `PERF-4` | 10 4 -ion ensemble, Class S < 5 min CPU, embarrassingly parallel | **Met, measured** | **1.9 to 2.7 s against the 300 s budget** for 10,000 ions with a thermal, spatial and energy spread through the shipped reflectron - two orders inside. Asserted at the budget itself rather than at ten times it, there being no need for headroom at that margin. |
+| `PERF-5` | Quadrupole stability scan, 500 x 10^3 < 2 h GPU-bound; why ILGPU is in the stack | **Met, on the CPU** | **2,809 s - 46.8 minutes against the two-hour budget** - for 500 amplitudes by 1,000 ions, 500,000 trajectories through one solved field, on an i9-9900K at 16-way parallelism and sharing the machine with a test suite for the first third of it. `einzel estimate` predicted 77 minutes, so the gate is conservative by 1.6x here. **This run is the expensive end of the requirement**: the amplitude range (100-600 V, q = 0.12 to 0.73) lies entirely inside the stable region, so every ion flew the full length; a scan that crosses the cut-off loses half its ions early and costs less. So the timing is a cost measurement rather than a physics one, and the margin is a floor. **The requirement's own claim that this is GPU-bound is withdrawn** - see Amendment 39, where the fair CPU baseline puts this machine's GPU at 1.4x in double precision. |
 | `PERF-6` | Tolerance sweep, 10 3 geometries × 10 3 ions < 8 h Only reachable via §10 sensitivity fields | Partial | The superposition side is measured - 500 linearised draws at 25 ms against 142 ms for one solve. The full 10^3 x 10^3 campaign has not been run. |
 | `PERF-7` | Extension round trip, sandboxed < 50 ms Sets the granularity floor for | **Unverified** | **Not separable from process start, which is not this platform's to control.** Launching the interpreter and doing nothing costs 45.0, 49.6, 53.9, 58.2, 40, 51 and 63 ms across seven runs on one machine; the budget straddles that spread, so asserting it measures CPython's start cost rather than anything here. On a shared build agent a bare launch takes **seconds**, and the old assertion passed and failed on the same commit in two runs minutes apart. What is measured and asserted instead is the platform's own share: a round trip costs **1.08x to 1.52x** a bare launch, and on one run came in *below* it - the marshalling is under the noise floor of process start. The absolute number is reported on every run. See Amendment 27. |
 | `PERF-8` | CLI cold start to first output < 500 ms No network call permitted in that path | **Met** | 73-147 ms cold start against 500 ms. |
-| `PERF-9` | Vector figure, 10 3 decimated trajectories < 5 s Agents iterate on figures; it must not be a batch job | Unverified | Figures are drawn in tests but not timed against the 5 s budget. |
+| `PERF-9` | Vector figure, 10 3 decimated trajectories < 5 s Agents iterate on figures; it must not be a batch job | Unverified, and not yet measurable | **The vector renderer draws one trajectory, not a bundle**, however many ions the source declares - so a figure carrying 10^3 decimated trajectories cannot be produced and the 5 s budget has nothing to time. Same reason as PERF-10, which was already recorded this way. The viewport does draw bundles, so the capability exists one surface over. A test pins the current behaviour, so whoever adds bundle rendering is told to come and measure both budgets rather than discovering the gap later. |
 | `PERF-10` | Vector figure file size, same < 5 MB Must open in a text editor and an illustration program | Partial | The quadrupole PDF is 13 KB. No test asserts the 5 MB ceiling for 10^3 trajectories, because nothing draws 10^3 trajectories yet. |
 
 ### Project (§3)

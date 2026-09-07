@@ -105,6 +105,25 @@ public static class SessionServer
                 + "exported, or fed to an optimiser. Use it to see whether a change "
                 + "helped; use the CLI's `einzel run` for a number anybody will rely on.",
                 () => Guarded(session.Preview)),
+
+            Tool(
+                "catalog_list",
+                "The models this platform ships: 'example' for the validated reference "
+                + "corpus, each with a prose description and an expected result you can "
+                + "check against, or 'template' for the parameterised device library. Start "
+                + "here rather than writing a model from scratch - there is almost certainly "
+                + "one close to what you want.",
+                ([Description("Either 'example' or 'template'.")] string kind) =>
+                    Guarded(() => SessionTools.Catalogue(kind))),
+
+            Tool(
+                "catalog_read",
+                "The full text of one shipped example or template, ready to adapt. An "
+                + "example also ships a test stating what it must produce and why, which is "
+                + "the thing to keep when you change it.",
+                ([Description("Either 'example' or 'template'.")] string kind,
+                 [Description("Its name, as catalog_list gives it.")] string name) =>
+                    Guarded(() => SessionTools.Fetch(kind, name))),
         ];
     }
 
