@@ -286,6 +286,63 @@ public sealed record RegimeJson
     public double? CollisionsPerRfCycle { get; init; }
 }
 
+
+/// <summary>What became of one ion population in a mixture run.</summary>
+/// <param name="Name">The name the document gave it.</param>
+/// <param name="MobilitySi">The mobility it actually ran with, in m^2/(V s).</param>
+/// <param name="MobilityDerived">
+/// Whether that was derived from the gas cross section rather than declared - which the reader
+/// needs, because a derived mobility is Mason-Schamp for this species' mass and carries that
+/// model's assumptions rather than a measurement.
+/// </param>
+/// <param name="Launched">Real ions of it that were seeded.</param>
+/// <param name="Collected">Real ions of it that reached the detector.</param>
+/// <param name="Remaining">Real ions of it still in the tracked region.</param>
+/// <param name="Losses">Every other way it left, by named surface.</param>
+/// <param name="Transmission">Collected over what left the region at all.</param>
+/// <param name="MeanTransitUs">Its mean transit, or absent where none of it arrived.</param>
+/// <param name="CentroidMm">Where it ended up along the axis.</param>
+/// <param name="StableStepUs">
+/// The step this population alone would have taken. A mixture runs at the shortest, so this is
+/// how a reader sees what sharing one cost.
+/// </param>
+public sealed record MixtureSpeciesJson(
+    string Name,
+    double MobilitySi,
+    bool MobilityDerived,
+    double Launched,
+    double Collected,
+    double Remaining,
+    IReadOnlyList<LossChannel> Losses,
+    double Transmission,
+    double? MeanTransitUs,
+    double CentroidMm,
+    double StableStepUs);
+
+/// <summary>What a run of several ion populations produced.</summary>
+/// <param name="Species">Each population, in the order declared.</param>
+/// <param name="Steps">Shared steps taken.</param>
+/// <param name="StepUs">The shared step, which is the shortest any population needed.</param>
+/// <param name="StepSetBy">Which population needed it.</param>
+/// <param name="SelfFieldSolves">
+/// How many times the potential of their total charge was solved, or absent where the document
+/// did not ask for one - in which case the populations did not interact at all, and the run is
+/// what several separate ones would give.
+/// </param>
+/// <param name="PeakSelfPotentialVolts">The largest such potential over the run.</param>
+/// <param name="NetChargeSi">
+/// The net charge that potential was raised by, signed - so a mixture of opposite polarities
+/// holding a great deal of charge and raising almost no field says so.
+/// </param>
+public sealed record MixtureJson(
+    IReadOnlyList<MixtureSpeciesJson> Species,
+    int Steps,
+    double StepUs,
+    string StepSetBy,
+    int? SelfFieldSolves,
+    double? PeakSelfPotentialVolts,
+    double? NetChargeSi);
+
 /// <summary>One phase of a sequenced run, as it is reported.</summary>
 /// <param name="Name">What the phase is for.</param>
 /// <param name="Mode">The transport mode it ran in.</param>
@@ -491,6 +548,16 @@ public sealed record RunOutcome
     public DiffusionJson? Diffusion { get; init; }
 
     /// <summary>
+    /// What a run of several ion populations produced, or null where the model declared one ion.
+    /// </summary>
+    /// <remarks>
+    /// Mutually exclusive with <see cref="Diffusion"/>, which reports a single density: a
+    /// mixture has no single mobility, no single transit and no single density, so filling that
+    /// block from the first population would report one species under the name of the run.
+    /// </remarks>
+    public MixtureJson? Mixture { get; init; }
+
+    /// <summary>
     /// The per-phase result, when the run crossed a transport-mode boundary (SEQ-1).
     /// </summary>
     public SequenceJson? Sequence { get; init; }
@@ -503,6 +570,30 @@ public sealed record RunOutcome
 
     /// <summary>Files written by this run, relative to the project root.</summary>
     public required IReadOnlyList<string> Artifacts { get; init; }
+
+    /// <summary>
+    /// Whether this run produced a single arrival time for an ion, which is what
+    /// <see cref="FlightTime"/> reports and what a reader may quote.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Required, and it is a question rather than a mode.</b> False for a density, which has
+    /// no ions and so no arrival; false for a sequenced run, which ends when its sequence ends
+    /// rather than when anything arrives; false for a mixture, for both reasons at once. True
+    /// only where one ion was flown to a detector.
+    /// </para>
+    /// <para>
+    /// This exists because the printer kept asking the wrong question. It was written as
+    /// "is this diffusive", then "is this diffusive or sequenced", each time by adding the mode
+    /// that had just been caught printing <c>flight time NaN +/- NaN</c> - and a mixture would
+    /// have been the fourth. A list of the modes known when it was written is not the question
+    /// being asked, and it stops being equivalent the moment a mode is added. Required rather
+    /// than defaulted so that a fifth kind of run fails to compile until somebody decides which
+    /// it is, which is the same reason <c>TrajectoryOutcome.Completed</c> throws on an
+    /// unrecognised outcome.
+    /// </para>
+    /// </remarks>
+    public required bool HasFlightTime { get; init; }
 
     /// <summary>What the cloud did, when the model launches one.</summary>
     public EnsembleOutcome? Ensemble { get; init; }
@@ -1260,6 +1351,7 @@ public static class RunCommand
             AcceptedSteps = 0,
             AnalyticDriftDistanceM = 0.0,
             Artifacts = artifacts,
+            HasFlightTime = false, // a sequence ends on its own clock rather than on an arrival
 
             Sequence = new SequenceJson(
                 [.. outcome.Phases.Select(phase => new SequencePhaseJson(
@@ -1284,6 +1376,148 @@ public static class RunCommand
         };
     }
 
+
+    /// <summary>Runs a model that declares several ion populations.</summary>
+    /// <remarks>
+    /// Beside <see cref="Diffusive"/> rather than folded into it. The shared reporting - the
+    /// manifest, the regime, the warnings - is the same because it is about the run rather than
+    /// about any one population; what differs is that there is no single density, no single
+    /// mobility and no single transit, so the block that carries those has to be per species.
+    /// A single `diffusion` block filled from the first population would be a report of one
+    /// species wearing the name of the run.
+    /// </remarks>
+    private static RunOutcome Mixture(
+        CompiledModel model,
+        Fields.IElectrostaticField field,
+        IReadOnlyList<ValidityWarning> fieldWarnings,
+        ValidateOutcome validation,
+        ProjectLayout project,
+        DateTimeOffset timestampUtc)
+    {
+        var resolved = Io.GasFlowImport.Resolve(
+            model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
+
+        var outcome = DiffusionRun.ExecuteMixture(model, field, fieldWarnings, resolved);
+        var result = outcome.Result;
+
+        var manifest = new RunManifest
+        {
+            ModelHash = validation.ModelHash,
+            ModelPath = RunManifest.Portable(
+                Path.GetRelativePath(project.Root, validation.ModelPath)),
+            SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
+            EngineVersion = EngineBuild.Version,
+            SolverBehaviourVersion = EngineBuild.SolverBehaviourVersion,
+            TransportMode = model.TransportMode,
+            ComputePath = EngineBuild.ComputePath,
+            Machine = Environment.MachineName,
+            CreatedUtc = timestampUtc.ToUniversalTime().ToString("O"),
+        };
+
+        Directory.CreateDirectory(project.Results);
+
+        var stem = Path.GetFileNameWithoutExtension(validation.ModelPath);
+
+        var manifestPath = Path.Combine(project.Results, $"{stem}.manifest.json");
+
+        File.WriteAllText(manifestPath, manifest.ToJson());
+
+        var species = new List<MixtureSpeciesJson>(result.Species.Count);
+
+        for (var s = 0; s < result.Species.Count; s++)
+        {
+            var member = result.Species[s];
+            var left = member.Collected + member.Losses.Values.Sum();
+
+            double? transit = null;
+
+            if (member.Arrivals.Count > 0 && member.Collected > 0.0)
+            {
+                transit = member.Arrivals.Sum(a => a.AtSeconds * a.Ions) / member.Collected * 1e6;
+            }
+
+            var (centroidX, _) = member.Density.Centroid();
+
+            species.Add(new MixtureSpeciesJson(
+                member.Name,
+                outcome.Mobilities[s].ZeroFieldSi,
+                outcome.Mobilities[s].Derived,
+                outcome.Launched[s],
+                member.Collected,
+                member.Population,
+                [
+                    .. member.Losses
+                        .OrderByDescending(pair => pair.Value)
+                        .ThenBy(pair => pair.Key, StringComparer.Ordinal)
+                        .Select(pair => new LossChannel(pair.Key, (int)Math.Round(pair.Value))),
+                ],
+                left > 0.0 ? member.Collected / left : 0.0,
+                transit,
+                centroidX * 1e3,
+                member.StableStepSeconds * 1e6));
+        }
+
+        var gas = resolved;
+
+        var regime = Transport.Collisions.RegimeDiagnostics.Measure(
+            gas, IonSpecies.FromModel(model), 1.0, result.ElapsedSeconds, SmallestAperture(model));
+
+        return new RunOutcome
+        {
+            Manifest = manifest,
+
+            FlightTime = MeasuredJson.From(
+                Carry(
+                    new Measured(
+                        Quantity.Si(double.NaN, Dimension.TimeDimension),
+                        UncertaintyInterval.Symmetric(
+                            Quantity.Si(double.NaN, Dimension.TimeDimension),
+                            Quantity.Si(0.0, Dimension.TimeDimension),
+                            1.0),
+                        new Evidence.Convergence("diffusive transport", double.NaN, 0.0, double.NaN),
+                        [
+                            new ValidityWarning(
+                                "transport.no-flight-time",
+                                "this run computed densities, not trajectories, so there is no flight "
+                                + "time. What each population did is reported under 'mixture'",
+                                WarningSeverity.Provenance),
+                        ]),
+                    outcome.Warnings),
+                "us"),
+
+            Outcome = "DensityEvolved",
+            Completed = true,
+            FinalPositionMm = [],
+            MaximumRelativeEnergyDrift = double.NaN,
+            AcceptedSteps = result.Steps,
+            AnalyticDriftDistanceM = 0.0,
+            Artifacts = [Path.GetRelativePath(project.Root, manifestPath)],
+            HasFlightTime = false, // several densities: no ions to arrive, and no single one of them if there were
+
+            Regime = gas.IsPresent
+                ? new RegimeJson
+                {
+                    PressureMbar = regime.PressureMbar,
+                    CollisionModel = model.Gas.Model,
+                    MeanFreePathMm = regime.MeanFreePathM * 1e3,
+                    ApertureMm = regime.ApertureM * 1e3,
+                    Knudsen = regime.Knudsen,
+                    CollisionsPerFlight = regime.CollisionsPerFlight,
+                    CollisionsPerRfCycle = regime.CollisionsPerRfCycle,
+                }
+                : null,
+
+            Mixture = new MixtureJson(
+                species,
+                result.Steps,
+                result.StepSeconds * 1e6,
+                result.StepSetBy,
+                model.ModelsMeanField ? result.SelfFieldSolves : null,
+                model.ModelsMeanField ? result.PeakSelfPotentialVolts : null,
+                model.ModelsMeanField ? result.NetChargeSi : null),
+        };
+    }
+
     private static RunOutcome Diffusive(
         CompiledModel model,
         Fields.IElectrostaticField field,
@@ -1293,6 +1527,13 @@ public static class RunCommand
         DateTimeOffset timestampUtc,
         bool exportVtu)
     {
+        // Asked of the model rather than of the caller: a mixture is a property of the document,
+        // and a fork the caller had to remember is one a caller will forget.
+        if (model.IsMixture)
+        {
+            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc);
+        }
+
         // The one place that knows where the model file is, so the one place that can
         // resolve a declared velocity field.
         var resolved = Io.GasFlowImport.Resolve(
@@ -1429,6 +1670,7 @@ public static class RunCommand
             },
 
             Artifacts = [Path.GetRelativePath(project.Root, manifestPath)],
+            HasFlightTime = false, // a density has no arrival time; the transit distribution is under `diffusion`
         };
 
         var artifacts = new List<string> { Path.GetRelativePath(project.Root, manifestPath) };
@@ -1868,6 +2110,7 @@ public static class RunCommand
             AcceptedSteps = finest.AcceptedSteps,
             AnalyticDriftDistanceM = finest.AnalyticDriftDistance,
             Artifacts = artifacts,
+            HasFlightTime = true, // one ion, flown to a detector
         };
 
         // A model that launches a cloud gets the Class S half of a result too. The

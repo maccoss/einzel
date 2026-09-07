@@ -2,6 +2,7 @@ using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Core.Results;
+using Einzel.Core.Units;
 using Einzel.Fields;
 using Einzel.Fields.Solved;
 using Einzel.Transport;
@@ -21,6 +22,24 @@ public sealed record DiffusiveOutcome(
     CompiledMobility Mobility,
     Grid2D Grid,
     double Launched,
+    IReadOnlyList<ValidityWarning> Warnings);
+
+
+/// <summary>What a mixture run of a model document did, per population and overall.</summary>
+/// <param name="Result">The mixture solver's own result.</param>
+/// <param name="Mobilities">
+/// The mobility each species actually ran with, in the order declared - the derived value where
+/// the document left it to be derived, so a report can say what was used rather than what was
+/// asked for.
+/// </param>
+/// <param name="Grid">The region the densities were tracked over, shared.</param>
+/// <param name="Launched">How many real ions of each species were seeded, in the same order.</param>
+/// <param name="Warnings">Everything qualifying the run.</param>
+public sealed record MixtureOutcome(
+    MixtureResult Result,
+    IReadOnlyList<CompiledMobility> Mobilities,
+    Grid2D Grid,
+    IReadOnlyList<double> Launched,
     IReadOnlyList<ValidityWarning> Warnings);
 
 /// <summary>
@@ -165,6 +184,176 @@ public static class DiffusionRun
         }
 
         return new DiffusiveOutcome(result, used, grid, launched, warnings);
+    }
+
+
+    /// <summary>Runs a model that declares several ion populations.</summary>
+    /// <param name="model">The validated model, which must declare a mixture.</param>
+    /// <param name="field">The applied field.</param>
+    /// <param name="fieldWarnings">Whatever building that field had to say.</param>
+    /// <param name="resolved">A gas already resolved against the model's directory, if there is one.</param>
+    /// <param name="scheme">Explicit or implicit, overriding the document's own choice.</param>
+    /// <param name="stepGain">The implicit gain, overriding the document's.</param>
+    /// <returns>What became of each population.</returns>
+    /// <exception cref="EinzelException">The model does not declare a mixture.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Every shared piece is the same function the single-species path calls</b> - the grid,
+    /// the seed shape, the absorbers, the edges, the gas, the self-field. Only what is genuinely
+    /// per species is computed per species: the mobility, and the cycle-averaged well, which
+    /// depends on mass and damping and so differs between populations in the same RF.
+    /// </para>
+    /// <para>
+    /// <b>Every species is seeded from the one source, scaled to its own population.</b> That is
+    /// what a real source does - one packet of mixed ions enters the instrument - and it means
+    /// a mixture needs no per-species geometry in the document. What separates them afterwards
+    /// is their mobility, which is the point.
+    /// </para>
+    /// </remarks>
+    public static MixtureOutcome ExecuteMixture(
+        CompiledModel model,
+        IElectrostaticField field,
+        IReadOnlyList<ValidityWarning> fieldWarnings,
+        BackgroundGas? resolved = null,
+        Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
+        double stepGain = 1.0)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(field);
+
+        if (!model.IsMixture)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a mixture run needs a model that declares several ion populations",
+                Suggestion = "declare a \"species\" list, or run this model through the "
+                    + "single-species path",
+            });
+        }
+
+        var gas = resolved ?? GasFor(model);
+
+        var grid = GridFor(model);
+        var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
+
+        // The shape every species is seeded with. Taken once and scaled per population, because
+        // one source emits them all: a mixture that seeded each species from its own geometry
+        // would be a model of several instruments.
+        var shape = Seed(model, grid, cylindrical);
+        var shapePopulation = shape.Population();
+
+        if (shapePopulation <= 0.0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/source",
+                Constraint = "the source seeded no density, so there is nothing to scale per species",
+                Suggestion = "check the source position lies inside the tracked region",
+            });
+        }
+
+        var (absorbers, seedLoss) = Absorb(model, grid, shape);
+        var edges = EdgesFor(model, grid);
+
+        var warnings = new List<ValidityWarning>(fieldWarnings);
+
+        var members = new List<MixtureMember>(model.Species.Count);
+        var mobilities = new List<CompiledMobility>(model.Species.Count);
+        var launched = new List<double>(model.Species.Count);
+
+        foreach (var declared in model.Species)
+        {
+            var species = IonSpecies.Create(
+                Quantity.Si(declared.MassSi, Dimension.MassDimension),
+                Quantity.Si(declared.ChargeSi, Dimension.Charge));
+
+            // Mason-Schamp for THIS species' mass where the document left it to be derived, not
+            // a number shared across the mixture: a derived mobility that ignored the mass would
+            // separate nothing and would look like a converged answer.
+            var mobility = declared.Mobility.Derived
+                ? Mobility.FromCrossSection(gas, species)
+                : new Mobility(
+                    declared.Mobility.ZeroFieldSi,
+                    declared.Mobility.Alpha,
+                    declared.Mobility.ValidToTownsend);
+
+            mobilities.Add(declared.Mobility with { ZeroFieldSi = mobility.ZeroFieldSi });
+
+            var seeded = shape.Clone();
+            var scale = declared.Population / shapePopulation;
+
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    seeded[i, j] *= scale;
+                }
+            }
+
+            launched.Add(seeded.Population());
+
+            // The well this species feels, where the field is driven. Its own, because the
+            // pseudopotential is built from charge, mass and momentum-transfer rate - which is
+            // why MixtureDiffusion refuses a shared one.
+            var seen = field;
+            var effective = Effective(ref seen, species, mobility, gas);
+
+            if (effective is not null)
+            {
+                warnings.AddRange(EffectiveFieldWarnings(effective, grid));
+            }
+
+            members.Add(new MixtureMember(declared.Name, species, mobility, seeded, seen));
+        }
+
+        var chosen = scheme;
+        var gain = stepGain;
+
+        if (scheme == Transport.Diffusion.StepScheme.Explicit && stepGain == 1.0)
+        {
+            chosen = model.DensityStep.IsImplicit
+                ? Transport.Diffusion.StepScheme.Implicit
+                : Transport.Diffusion.StepScheme.Explicit;
+
+            gain = model.DensityStep.Gain;
+        }
+
+        // One self-field over the sum of q_s n_s, which is the whole reason these run together.
+        // Built with the first species' charge, which it uses only as a default the mixture
+        // overload never reads.
+        var selfField = SelfFieldFor(model, grid, absorbers, edges, members[0].Species);
+
+        var result = MixtureDiffusion.Run(
+            members, field, gas, model.MaximumFlightTimeSi, edges, absorbers,
+            scheme: chosen, stepGain: gain, selfField: selfField);
+
+        if (seedLoss.Count > 0)
+        {
+            warnings.Add(new ValidityWarning(
+                "mixture.seed-overlaps-metal",
+                $"the source overlaps a conductor, so every species lost part of its seed to it "
+                + $"before the run began: {string.Join(", ", seedLoss.Select(l => $"{l.Key} {l.Value / shapePopulation:P2}"))} "
+                + "of each population",
+                WarningSeverity.ValidityViolation));
+        }
+
+        warnings.Add(new ValidityWarning(
+            "mixture.populations",
+            $"{model.Species.Count} ion populations were stepped together, sharing one field and "
+            + $"one step of {result.StepSeconds * 1e9:F3} ns set by '{result.StepSetBy}'. They are "
+            + "coupled through the potential their total charge raises and through nothing else, "
+            + (selfField is null
+                ? "and no mean field was asked for - so on this run they are independent, and the "
+                  + "result is what several separate runs would give"
+                : $"and that field was solved {result.SelfFieldSolves} time(s), peaking at "
+                  + $"{result.PeakSelfPotentialVolts:G4} V over a net "
+                  + $"{result.NetChargeSi:G4} C"),
+            WarningSeverity.Provenance));
+
+        return new MixtureOutcome(result, mobilities, grid, launched, warnings);
     }
 
     /// <summary>

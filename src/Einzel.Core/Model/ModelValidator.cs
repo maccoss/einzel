@@ -71,7 +71,14 @@ public static class ModelValidator
 
         var p = surface.Values();
 
-        var (mass, charge) = ValidateIon(document.Ion, p, errors);
+        // A mixture says what it is transporting in `species`, so `ion` is neither required nor
+        // permitted - and asking ValidateIon anyway would refuse every valid mixture for a
+        // missing field, before the check that explains why it is missing ever ran.
+        var declaresSpecies = document.Species is { Count: > 0 };
+
+        var (mass, charge) = declaresSpecies
+            ? (null, null)
+            : ValidateIon(document.Ion, p, errors);
         // Fields are compiled before the source because whether a source may start
         // at rest depends on whether anything else can accelerate it: a beam
         // carries its own energy, a trapped packet is accelerated by the
@@ -145,14 +152,25 @@ public static class ModelValidator
         // DC, the drive, the 3D arm, the solved stages, the analytic phases, and now the
         // phase modes. A check that asks what an instrument is doing must ask over every
         // configuration it has.
-        var transport = ValidateTransport(document.Transport, p, Modes(document, timeline), errors);
+        var modes = Modes(document, timeline);
+        var transport = ValidateTransport(document.Transport, p, modes, errors);
 
         // A ramp in a diffusive phase used to be refused here, because the density solver
         // stepped through a field it held fixed within a phase. It re-samples the field
         // every step now, so a ramped diffusive phase is the elution scan of a mobility
         // analyser rather than a thing to write as a staircase.
-        if (errors.Count > 0 || mass is null || charge is null
+        if (errors.Count > 0
+            || (!declaresSpecies && (mass is null || charge is null))
             || source is null || detector is null || transport is null)
+        {
+            return new ModelValidation(null, errors);
+        }
+
+        // After transport, because a species may derive its mobility from the gas - which is
+        // the same ordering ValidateMobility already needed and for the same reason.
+        var mixture = ValidateSpecies(document, transport.Gas, modes, p, errors);
+
+        if (errors.Count > 0)
         {
             return new ModelValidation(null, errors);
         }
@@ -161,8 +179,14 @@ public static class ModelValidator
         {
             SourceDirectory = sourceDirectory,
             Source = document,
-            MassSi = mass.Value,
-            ChargeSi = charge.Value,
+
+            // A mixture leaves these at its first population's values. Enough for the
+            // diagnostics that need AN ion - a Knudsen number, a regime check - and never
+            // enough to be mistaken for all of them, because `IsMixture` is what a caller
+            // asks when the difference matters.
+            MassSi = mixture.Count > 0 ? mixture[0].MassSi : mass!.Value,
+            ChargeSi = mixture.Count > 0 ? mixture[0].ChargeSi : charge!.Value,
+            Species = mixture,
             SourcePosition = source.Position,
             SourceDirection = source.Direction,
             Cloud = source.Cloud,
@@ -3820,7 +3844,7 @@ public static class ModelValidator
             return null;
         }
 
-        var mobility = ValidateMobility(transport, gas, p, errors);
+        var mobility = ValidateMobility(transport.Mobility, "/transport/mobility", gas, p, errors);
         var densityGrid = ValidateDensityGrid(transport.DensityGrid, p, errors);
 
         if (modes.Contains("diffusion"))
@@ -4122,6 +4146,229 @@ public static class ModelValidator
 
     }
 
+
+    /// <summary>Validates a declared mixture, and the ways of declaring one twice.</summary>
+    /// <remarks>
+    /// <para>
+    /// A mixture is not a convenience over running a model several times: the populations are
+    /// coupled through the potential their total charge raises, which is a thing no sequence of
+    /// separate runs computes. So what has to be true of the document is that each population is
+    /// completely described - what it is, how it moves, how much of it there is - and that
+    /// nothing anywhere else claims to describe the same thing.
+    /// </para>
+    /// <para>
+    /// <b>Every refusal here is a document saying two things.</b> <c>ion</c> beside
+    /// <c>species</c> says two different things about what is being transported;
+    /// <c>transport.mobility</c> beside <c>species</c> says how "the" ion moves when there
+    /// is no "the" ion; a cloud population beside species populations says how many ions
+    /// there are twice. None has a reading under which one is a default for the other, so
+    /// none is merged.
+    /// </para>
+    /// </remarks>
+    private static List<CompiledSpecies> ValidateSpecies(
+        ModelDocument document,
+        CompiledGas gas,
+        IReadOnlyCollection<string> modes,
+        IReadOnlyDictionary<string, Quantity> p,
+        List<EinzelError> errors)
+    {
+        var declared = document.Species;
+
+        if (declared is null || declared.Count == 0)
+        {
+            return [];
+        }
+
+        if (document.Ion is not null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a model declares either one ion or several species, never both",
+                Suggestion = "remove \"ion\", or remove \"species\" and describe the single ion with "
+                    + "\"ion\" and \"transport\": { \"mobility\": ... }",
+            });
+            return [];
+        }
+
+        if (document.Transport?.Mobility is not null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/transport/mobility",
+                Constraint = "a mixture carries a mobility per species, so there is no single one "
+                    + "for this to be",
+                Suggestion = "move it onto the species it belongs to, or omit it and let each "
+                    + "species derive its own from the gas cross section",
+            });
+            return [];
+        }
+
+        // A density per species is what a mixture is stepped as, and there is no trajectory
+        // equivalent in this build: the packet integrator flies one species at a time. Refused
+        // by name rather than run as the first population, which would separate nothing and
+        // look exactly like a result.
+        if (!modes.Contains("diffusion"))
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "several ion populations are stepped as several densities, which is the "
+                    + "diffusive mode; this run has no diffusive phase",
+                Suggestion = "set \"transport\": { \"mode\": \"diffusion\" }, or give the sequence a "
+                    + "diffusive phase, or model one ion at a time with \"ion\"",
+            });
+            return [];
+        }
+
+        // The cloud's spatial spread still shapes every species' seed - that is geometry, and one
+        // source really does emit them all from one place. Its POPULATION is the singular form of
+        // exactly what each species now declares, so a document carrying both says how many ions
+        // there are twice.
+        if (document.Source?.Cloud?.Population is not null)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/source/cloud/population",
+                Constraint = "a mixture's populations are declared per species, so the source cannot "
+                    + "also declare one",
+                Observed = new ObservedValue(document.Source.Cloud.Population.Value, "1"),
+                Suggestion = "remove it; the cloud's spreads still set the shape every species is "
+                    + "seeded with",
+            });
+            return [];
+        }
+
+        if (declared.Count < 2)
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a mixture is two or more populations; one is an ion",
+                Observed = new ObservedValue(declared.Count, "1"),
+                Suggestion = "add the other populations, or describe this one with \"ion\" and "
+                    + "\"transport\": { \"mobility\": ... }",
+            });
+            return [];
+        }
+
+        var compiled = new List<CompiledSpecies>(declared.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var i = 0; i < declared.Count; i++)
+        {
+            var member = declared[i];
+            var at = $"/species/{i}";
+
+            if (string.IsNullOrWhiteSpace(member.Name))
+            {
+                errors.Add(Missing($"{at}/name",
+                    "every species needs a name, because a mixture's results are reported by it",
+                    "add {\"name\": \"peptide-2+\"}"));
+                continue;
+            }
+
+            if (!seen.Add(member.Name))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = $"{at}/name",
+                    Constraint = "species names have to be distinct, because results are reported "
+                        + "under them",
+                    Observed = new ObservedValue(0.0, member.Name),
+                    Suggestion = "give this one a different name",
+                });
+                continue;
+            }
+
+            if (member.ChargeNumber == 0)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{at}/chargeNumber",
+                    Constraint = "an ion cannot have zero charge",
+                    Observed = new ObservedValue(0, "1"),
+                    Suggestion = "use 1 for a singly charged cation",
+                });
+                continue;
+            }
+
+            if (member.MassToCharge is null)
+            {
+                errors.Add(Missing($"{at}/massToCharge",
+                    "the species' mass-to-charge ratio is required",
+                    "add {\"value\": 500, \"unit\": \"Da\"}"));
+                continue;
+            }
+
+            var massToCharge = TryQuantity(
+                member.MassToCharge, $"{at}/massToCharge", Dimension.MassDimension, p, errors);
+
+            if (massToCharge is null)
+            {
+                continue;
+            }
+
+            if (massToCharge.Value.SiValue <= 0.0)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{at}/massToCharge",
+                    Constraint = "mass-to-charge must be positive",
+                    Observed = new ObservedValue(member.MassToCharge.Value, member.MassToCharge.Unit),
+                    Suggestion = "supply a positive mass-to-charge ratio",
+                });
+                continue;
+            }
+
+            // Required, not defaulted. What a mixture is for is that the populations push on one
+            // another, and a population defaulted to zero would be present in the separation and
+            // absent from the space charge - the two halves of the same run disagreeing about
+            // whether it is there.
+            if (member.Population <= 0.0)
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{at}/population",
+                    Constraint = "every species in a mixture needs a population, because the "
+                        + "populations are what act on one another",
+                    Observed = new ObservedValue(member.Population, "1"),
+                    Suggestion = "add {\"population\": 1e6}",
+                });
+                continue;
+            }
+
+            var mobility = ValidateMobility(member.Mobility, $"{at}/mobility", gas, p, errors);
+
+            if (mobility is null)
+            {
+                errors.Add(Missing($"{at}/mobility",
+                    $"'{member.Name}' has no mobility and none can be derived: the gas declares no "
+                    + "cross section",
+                    "declare a mobility on the species, or give the gas a cross section"));
+                continue;
+            }
+
+            compiled.Add(new CompiledSpecies(
+                member.Name,
+                massToCharge.Value.SiValue * Math.Abs(member.ChargeNumber),
+                Quantity.From(member.ChargeNumber, "e").SiValue,
+                mobility,
+                member.Population));
+        }
+
+        return compiled;
+    }
+
     /// <summary>Validates the declared mobility, or derives one from the gas.</summary>
     /// <remarks>
     /// TRN-1 wants it declared. Deriving it from a cross section is offered because a
@@ -4132,12 +4379,13 @@ public static class ModelValidator
     /// say so.
     /// </remarks>
     private static CompiledMobility? ValidateMobility(
-        TransportDocument transport,
+        MobilityDocument? declaredMobility,
+        string path,
         CompiledGas gas,
         IReadOnlyDictionary<string, Quantity> p,
         List<EinzelError> errors)
     {
-        if (transport.Mobility?.ZeroField is null)
+        if (declaredMobility?.ZeroField is null)
         {
             // Mason-Schamp, from the cross section, when there is one.
             if (!gas.IsPresent || gas.CrossSectionSi <= 0.0)
@@ -4148,10 +4396,10 @@ public static class ModelValidator
             return new CompiledMobility(0.0, 0.0, 50.0, Derived: true);
         }
 
-        var declared = transport.Mobility;
+        var declared = declaredMobility;
 
         var zeroField = TryQuantity(
-            declared.ZeroField, "/transport/mobility/zeroField", Dimension.Mobility, p, errors);
+            declared.ZeroField, path + "/zeroField", Dimension.Mobility, p, errors);
 
         if (zeroField is null)
         {
@@ -4163,7 +4411,7 @@ public static class ModelValidator
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.ValueOutOfBounds,
-                Path = "/transport/mobility/zeroField",
+                Path = path + "/zeroField",
                 Constraint = "a mobility must be positive",
                 Suggestion = "an ion drifts along the field, not against it; the charge sign is "
                     + "carried by the ion rather than by the mobility",

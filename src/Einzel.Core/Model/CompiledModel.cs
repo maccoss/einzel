@@ -117,6 +117,21 @@ public sealed record CompiledModel
     /// <summary>Ion mobility, for the diffusive mode. Null when none applies.</summary>
     public CompiledMobility? Mobility { get; init; }
 
+    /// <summary>
+    /// The ion populations, where the model declared a mixture; empty where it declared one ion.
+    /// </summary>
+    /// <remarks>
+    /// Empty rather than a list of one for the single-ion case, so that "is this a mixture" is a
+    /// question with one answer. A caller wanting the ion regardless asks
+    /// <see cref="MassSi"/>/<see cref="ChargeSi"/>, which a mixture leaves at the first
+    /// population's values - enough for the diagnostics that need <em>an</em> ion, and never
+    /// enough to be mistaken for all of them.
+    /// </remarks>
+    public IReadOnlyList<CompiledSpecies> Species { get; init; } = [];
+
+    /// <summary>Whether the model describes several ion populations at once.</summary>
+    public bool IsMixture => Species.Count > 1;
+
     /// <summary>The density grid, for the diffusive mode. Null when none applies.</summary>
     public CompiledDensityGrid? DensityGrid { get; init; }
 
@@ -586,6 +601,23 @@ public sealed record CompiledMobility(
     double Alpha,
     double ValidToTownsend,
     bool Derived);
+
+/// <summary>One ion population of a mixture, validated and in SI.</summary>
+/// <param name="Name">What it is called, and what its results are reported under.</param>
+/// <param name="MassSi">Mass, in kilograms.</param>
+/// <param name="ChargeSi">Charge, in coulombs, signed.</param>
+/// <param name="Mobility">
+/// Its mobility, or a derived marker: Mason-Schamp needs the ion assembled and validation does
+/// not have it, so the derivation happens where the run does.
+/// </param>
+/// <param name="Population">How many real ions of it there are.</param>
+public sealed record CompiledSpecies(
+    string Name,
+    double MassSi,
+    double ChargeSi,
+    CompiledMobility Mobility,
+    double Population);
+
 
 /// <summary>The region a density is tracked over, compiled to SI.</summary>
 /// <param name="MinX">Lower x, in metres.</param>
