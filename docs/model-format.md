@@ -436,11 +436,25 @@ that moves metal is.
 **Where it does not reach.** A ramp is supported on solved geometries in both dimensions -
 a volume solve weighs its channels at the phase's two ends exactly as a cross-section does,
 and its end state is one of the states gathered for the channel decomposition, so a ramp
-from zero amplitude has its pattern solved. An analytic element that a ramped parameter
-reaches is refused rather than left frozen at its start value while the solved elements
-ramp, which is the silent half-instrument the model-level timeline exists to prevent; and a
-diffusive phase refuses one because the density solver steps through a field it holds fixed
-within a phase. In each case the refusal says to write the curve as phases that hold.
+from zero amplitude has its pattern solved. An analytic element that a ramped parameter reaches is refused rather than left frozen at its
+start value while the solved elements move.
+
+A **diffusive phase may ramp too**: the density solver re-samples the field and rebuilds its
+face operator every step while the field is changing, and keeps the assemble-once path where
+it is not, so a held phase is bit-identical to what it was. This is what makes a mobility
+analyser's elution scan expressible - the axial gradient walked down while the density is
+held - and it used to be refused, because the solver stepped through a field it held fixed
+within a phase. In each remaining case the refusal says to write the curve as phases that
+hold.
+
+Two things had to be true underneath for that to work, and neither was. A geometry with
+stages and no drive was given a placeholder clock at one hertz, so its "shortest period" was
+one second rather than infinite, and the pseudopotential wrapper - gated on a finite period,
+because a DC ramp has no cycle to average over - averaged the ramp over a one-second cycle
+that is mostly zero field. And a diffusive model whose sequence never left diffusion was
+routed to the plain diffusive path, which steps a snapshot of the field, so the ramp ran
+ignored. Both produced a clean answer; both are fixed, and each has a test that fails with
+the defect restored.
 
 ### Every element follows it, and how depends on what it is
 

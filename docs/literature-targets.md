@@ -906,7 +906,7 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 | resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | not yet run |
 | R against scan rate | R goes as `beta^(-1/4)` | not yet run |
 | R against mobility | R goes as `K^(-3/4)` | not yet run |
-| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | not yet run |
+| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Partly run, and not yet a calibration.** Two mobilities eluted in the right order under an 8 ms ramp (K × 0.75 at 32.8 V, K × 1.0 at 22.8 V, read at the first per cent of arrivals); the third was lost to the bore before its release. Both released about 10 V below the quasi-static `v_g / (K E_peak)`, because the settling time `L²/2KV` (0.4-0.8 ms) is not small against the ramp — a lag a calibration constant would absorb, and whose statistics confinement will change. Needs RF first. `docs/device-templates.md` |
 
 **The resolving-power law is the target that matters**, because it is a *shape* over two
 independent variables rather than a single number: R must fall as the fourth root of the
@@ -935,6 +935,15 @@ has driven a stack that way yet.
 
 **Mobility resolving power does not exist as a figure of merit.** The engine has
 arrival-time resolving power; this is `K/dK` off an elution profile against a ramped field.
+The elution run now writes the profile itself (`<name>.arrivals.csv`), so the figure has
+something to be computed from.
+
+**The ramp runs, and the first thing it measured is why confinement comes before any of
+the resolving-power rows.** Without RF the density reaches the bore wall in the millisecond
+or two before the ramp releases it: 45 of 97,770 reference ions arrived, and the most mobile
+ion none. The order (least mobile first) and the release lag are measured; the widths are
+not yet the instrument's. Segment-level RF phasing, the row above, is therefore the next
+increment rather than a refinement.
 
 **And the operating point straddles the low-field limit, which the two sources do not
 agree about.** [H] states it as `E/p < 10 V cm^-1 torr^-1` **at all times**, which at 300 K

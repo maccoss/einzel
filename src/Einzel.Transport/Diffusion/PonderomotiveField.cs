@@ -109,7 +109,22 @@ public sealed class PonderomotiveField : IElectrostaticField
         ArgumentOutOfRangeException.ThrowIfLessThan(samplesPerCycle, 4);
 
         var period = driven.ShortestPeriodSeconds;
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(period);
+
+        // Finite, not merely positive. A field that varies in time WITHOUT a drive - a DC
+        // ramp - reports an infinite shortest period, and ThrowIfNegativeOrZero lets
+        // infinity straight through: the angular frequency becomes zero, the well depth
+        // becomes q^2/(2 m nu^2), and the cycle average samples at infinity times s over
+        // the sample count, which is NaN at s = 0. A ramp is not an oscillation and has
+        // no cycle to average over; the caller has to hand this a field that has one.
+        if (!double.IsFinite(period) || period <= 0.0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(driven),
+                period,
+                "a pseudopotential averages over one period of a drive, and this field has "
+                + "no drive - its shortest period is not finite. A field that varies in time "
+                + "because a parameter ramps is not an oscillation and is not to be averaged");
+        }
 
         _driven = driven;
         _chargeSi = chargeSi;
