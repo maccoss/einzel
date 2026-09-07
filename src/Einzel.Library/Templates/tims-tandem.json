@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.12",
   "name": "tims-tandem",
-  "description": "Silveira's second-generation TIMS tunnel behind the entrance funnel: 96 mm rather than 46, holding an ion accumulation trap upstream of the analysis region so that one population is accumulated while a previous one is mobility-analysed - the parallel-accumulation mode that gives a 100 per cent duty cycle. Each region is a rising edge where ions park by mobility and a plateau they elute across, and the field on the rising edge goes as the square root of position, which the literature reports gives equivalent axial storage per mobility interval. The sequence is the published one: accumulate-and-elute, then a transfer pulse that sweeps the stored population into the analysis region. Unlike tims-analyzer this runs at the commercial operating point - 150 m/s of gas puts the parked ion near 47 townsend - so the declared low-field mobility is outside its fitted range and the run says so.",
+  "description": "Silveira's second-generation TIMS tunnel with both funnels: 96 mm rather than 46, holding an ion accumulation trap upstream of the analysis region so that one population is accumulated while a previous one is mobility-analysed - the parallel-accumulation mode that gives a 100 per cent duty cycle. The storage region is a long rising edge, which is where the ion capacity the longer tunnel was built for comes from; the analysis region downstream of it is a shorter rising edge and a plateau ions elute across. The field on a rising edge goes as the square root of position, which the paper reports gives equivalent axial storage per mobility interval. The sequence is the published one: accumulate-and-elute at the same time, then a short transfer pulse that sweeps the stored population into the analysis region. This runs at the commercial operating point - 150 m/s of gas puts the parked ion near 47 townsend - so the declared low-field mobility is outside its fitted range and the run says so. It carries no space charge, which is what the extra electrodes exist for: the diffusive transport mode has no self-field, so this reproduces the timing benefit of two regions and not the capacity benefit.",
   "parameters": {
     "ringCount": {
       "value": 55,
@@ -55,14 +55,14 @@
     "exitPotential": {
       "expression": "storageRiseVolts * 2.5 + analysisRiseVolts * 2.5",
       "unit": "V",
-      "description": "The exit element, at the potential the tunnel's own profile reaches: each region contributes its rising edge (one riseVolts) plus its plateau (1.5 riseVolts). Derived rather than declared, so pulsing a region's field moves its end potential with it."
+      "description": "The potential the tunnel's profile reaches at its end: each region contributes its rising edge (one riseVolts) plus its plateau (1.5 riseVolts). Derived, so pulsing a region's field moves the end potential with it."
     },
     "gasVelocity": {
       "value": 150.0,
       "unit": "m/s",
       "minimum": 1,
       "maximum": 400,
-      "description": "Axial counterflow. The pressure difference across the second-generation tunnel is reported to give gas velocities of this order.",
+      "description": "Axial counterflow, from the pressure difference across the tunnel.",
       "provenance": "published",
       "source": "Silveira et al., IJMS 2017;413:168 - 3.1 and 0.9 mbar in the two funnel regions, giving ~150 m/s"
     },
@@ -71,7 +71,7 @@
       "unit": "mbar",
       "minimum": 0.1,
       "maximum": 20,
-      "description": "Entrance-funnel-region pressure. The exit region is at 0.9 mbar; the gradient between them is what drives the flow, and this template declares the entrance value as the reference rather than importing the profile.",
+      "description": "Entrance-funnel-region pressure; the exit region is at 0.9 mbar and the gradient between them drives the flow. Declared as the reference rather than imported as a profile.",
       "provenance": "published",
       "source": "Silveira et al., IJMS 2017;413:168"
     },
@@ -263,93 +263,135 @@
       "unit": "mm",
       "minimum": 0,
       "maximum": 96,
-      "description": "Where the storage region's rising edge begins along the tunnel.",
-      "provenance": "published",
-      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b - storage begins at the tunnel entrance"
+      "description": "Where the storage region's rising edge begins along the tunnel. The accumulation trap. Its rising edge takes most of the tunnel, which is where the capacity the longer tunnel was built for comes from - a mobility parks where the field balances the gas, so a longer edge spreads the same mobility range over more millimetres and more rings. The short plateau at the top is the barrier that holds everything parked behind it until the transfer pulse.",
+      "provenance": "drawn",
+      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b - the storage and analysis bars, read off the figure"
     },
     "storageRise": {
-      "value": 23.0,
+      "value": 55.0,
       "unit": "mm",
       "minimum": 2,
-      "maximum": 60,
-      "description": "Length of the storage region's rising edge, where ions are stored according to mobility.",
-      "provenance": "published",
-      "source": "Silveira et al., IJMS 2017;413:168 section 3.2 - the rising edge is ~23 mm long"
+      "maximum": 90,
+      "description": "Length of the storage region's rising edge, where ions park according to mobility.",
+      "provenance": "drawn",
+      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b. The published 23 mm rise is cited for the first-generation 46 mm tunnel, not for this one"
     },
     "storagePlateau": {
-      "value": 18.0,
+      "value": 5.0,
       "unit": "mm",
-      "minimum": 2,
+      "minimum": 0,
       "maximum": 60,
-      "description": "Length of the storage region's plateau, which ions must elute across.",
-      "provenance": "published",
-      "source": "Silveira et al., IJMS 2017;413:168 section 3.2 - the plateau is ~18 mm in length"
+      "description": "Length of the storage region's plateau at peak field.",
+      "provenance": "drawn",
+      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b. The published 18 mm plateau is the first generation's"
     },
     "storagePeakField": {
       "value": 5000.0,
       "unit": "V/m",
       "minimum": 0,
       "maximum": 20000,
-      "description": "Axial field at the top of the storage region's rising edge, held across its plateau. Ridgeway reports up to ~70 V/cm; 50 V/cm holds every mobility whose v_g/K is below it. Lowering this is what elutes - the analysis region's is ramped and the storage region's is pulsed.",
+      "description": "Axial field at the top of the storage region's rising edge, held across its plateau. Ridgeway reports up to ~70 V/cm across the tunnel; 50 V/cm holds every mobility whose v_g/K is below it. Lowering it is what releases: the analysis field is scanned and the storage field is pulsed.",
       "provenance": "chosen"
     },
     "storageRiseVolts": {
       "expression": "storagePeakField * storageRise / 1.5",
       "unit": "V",
-      "description": "Potential gained across the rising edge. With the field going as the square root of position the potential goes as its three-halves power, so the integral is two thirds of the peak field times the length - and this is the quantity a ring potential is written in."
+      "description": "Potential gained across the rising edge. With the field going as the square root of position the potential goes as its three-halves power, so the integral is two thirds of the peak field times the length."
     },
     "analysisStart": {
-      "value": 50.0,
+      "value": 62.0,
       "unit": "mm",
       "minimum": 0,
       "maximum": 96,
-      "description": "Where the analysis region's rising edge begins along the tunnel. Chosen to leave a gap the transferred population crosses at gas speed.",
-      "provenance": "chosen"
+      "description": "Where the analysis region's rising edge begins along the tunnel. The analysis region. A transferred population parks on its rising edge and elutes across its plateau as the field is scanned down. Shorter than the storage region because it holds one population at a time rather than accumulating.",
+      "provenance": "drawn",
+      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b - the storage and analysis bars, read off the figure"
     },
     "analysisRise": {
-      "value": 23.0,
-      "unit": "mm",
-      "minimum": 2,
-      "maximum": 60,
-      "description": "Length of the analysis region's rising edge, where ions are stored according to mobility.",
-      "provenance": "published",
-      "source": "Silveira et al., IJMS 2017;413:168 section 3.2 - the rising edge is ~23 mm long"
-    },
-    "analysisPlateau": {
       "value": 18.0,
       "unit": "mm",
       "minimum": 2,
+      "maximum": 90,
+      "description": "Length of the analysis region's rising edge, where ions park according to mobility.",
+      "provenance": "drawn",
+      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b. The published 23 mm rise is cited for the first-generation 46 mm tunnel, not for this one"
+    },
+    "analysisPlateau": {
+      "value": 15.0,
+      "unit": "mm",
+      "minimum": 0,
       "maximum": 60,
-      "description": "Length of the analysis region's plateau, which ions must elute across.",
-      "provenance": "published",
-      "source": "Silveira et al., IJMS 2017;413:168 section 3.2 - the plateau is ~18 mm in length"
+      "description": "Length of the analysis region's plateau at peak field.",
+      "provenance": "drawn",
+      "source": "Silveira et al., IJMS 2017;413:168 fig. 1b. The published 18 mm plateau is the first generation's"
     },
     "analysisPeakField": {
       "value": 5000.0,
       "unit": "V/m",
       "minimum": 0,
       "maximum": 20000,
-      "description": "Axial field at the top of the analysis region's rising edge, held across its plateau. Ridgeway reports up to ~70 V/cm; 50 V/cm holds every mobility whose v_g/K is below it. Lowering this is what elutes - the analysis region's is ramped and the storage region's is pulsed.",
+      "description": "Axial field at the top of the analysis region's rising edge, held across its plateau. Ridgeway reports up to ~70 V/cm across the tunnel; 50 V/cm holds every mobility whose v_g/K is below it. Lowering it is what releases: the analysis field is scanned and the storage field is pulsed.",
       "provenance": "chosen"
     },
     "analysisRiseVolts": {
       "expression": "analysisPeakField * analysisRise / 1.5",
       "unit": "V",
-      "description": "Potential gained across the rising edge. With the field going as the square root of position the potential goes as its three-halves power, so the integral is two thirds of the peak field times the length - and this is the quantity a ring potential is written in."
-    },
-    "storageBalanceField": {
-      "expression": "gasVelocity / mobilityZeroField",
-      "unit": "V/m",
-      "description": "The field that holds the reference ion against the gas: v_g / K, so the parking point is where the rising edge reaches this value."
+      "description": "Potential gained across the rising edge. With the field going as the square root of position the potential goes as its three-halves power, so the integral is two thirds of the peak field times the length."
     },
     "mobilityZeroField": {
       "value": 0.042802,
       "unit": "m^2/(V s)",
       "minimum": 0.0001,
       "maximum": 1,
-      "description": "The reference ion's low-field mobility, declared here as well as in transport so the balance field can be derived from it.",
+      "description": "The reference ion's low-field mobility, declared here as well as in transport so the field that balances the gas can be derived from it.",
       "provenance": "published",
       "source": "Mason-Schamp from the cross section this template declares, at the declared pressure"
+    },
+    "balanceField": {
+      "expression": "gasVelocity / mobilityZeroField",
+      "unit": "V/m",
+      "description": "The field that holds the reference ion against the gas, v_g / K. Its parking point is where a rising edge reaches this value."
+    },
+    "exitFunnelLength": {
+      "value": 15.0,
+      "unit": "mm",
+      "minimum": 3,
+      "maximum": 60,
+      "description": "Length of the exit funnel behind the tunnel.",
+      "provenance": "published",
+      "source": "Hernandez et al., Analyst 2014;139:1913 - 50, 46 and 15 mm for entrance funnel, tunnel and exit funnel"
+    },
+    "exitFunnelExitRadius": {
+      "value": 0.5,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 6,
+      "description": "Half the 1 mm bore where the exit funnel meets the next stage.",
+      "provenance": "published",
+      "source": "Hernandez et al., Analyst 2014;139:1913 - the exit funnel tapers 8 to 1 mm"
+    },
+    "exitFunnelPlates": {
+      "expression": "floor(exitFunnelLength / funnelPitch)",
+      "unit": "1",
+      "description": "Plates in the exit funnel, on the same board and spacing as the entrance funnel's: four at the published length and pitch."
+    },
+    "exitFunnelTaper": {
+      "expression": "(boreRadius - exitFunnelExitRadius) / (exitFunnelPlates - 1)",
+      "unit": "mm",
+      "description": "How much the inner radius shrinks per exit-funnel plate."
+    },
+    "exitFunnelDrop": {
+      "value": 20.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 300,
+      "description": "DC dropped along the exit funnel, pulling eluted ions out of the tunnel toward the next stage. Not published; an ordinary funnel gradient.",
+      "provenance": "guess"
+    },
+    "exitFunnelRfAmplitude": {
+      "expression": "funnelRfAmplitude",
+      "unit": "V",
+      "description": "Zero-to-peak RF on each exit-funnel plate, adjacent plates in antiphase, taken as the entrance funnel's. Hernandez gives the phasing and not the amplitude."
     }
   },
   "ion": {
@@ -395,7 +437,7 @@
   "detector": {
     "planePoint": {
       "expression": [
-        "tunnelLength + detectorPad",
+        "tunnelLength + gateGap + exitFunnelLength - detectorPad",
         "0",
         "0"
       ],
@@ -427,7 +469,7 @@
         "unit": "mm"
       },
       "maxX": {
-        "expression": "tunnelLength + domainPad",
+        "expression": "tunnelLength + gateGap + exitFunnelLength",
         "unit": "mm"
       },
       "minY": {
@@ -483,7 +525,7 @@
           "unit": "mm"
         },
         "maxX": {
-          "expression": "tunnelLength + exitLength + domainPad",
+          "expression": "tunnelLength + gateGap + exitFunnelLength + domainPad",
           "unit": "mm"
         },
         "minY": {
@@ -526,30 +568,6 @@
             },
             "potential": {
               "expression": "storageRiseVolts * (min(max((ring * ringPitch + ringThickness / 2) - storageStart, 0), storageRise) / storageRise) * sqrt((min(max((ring * ringPitch + ringThickness / 2) - storageStart, 0), storageRise) / storageRise)) + 1.5 * storageRiseVolts * min(max((ring * ringPitch + ringThickness / 2) - storageStart - storageRise, 0), storagePlateau) / storageRise + analysisRiseVolts * (min(max((ring * ringPitch + ringThickness / 2) - analysisStart, 0), analysisRise) / analysisRise) * sqrt((min(max((ring * ringPitch + ringThickness / 2) - analysisStart, 0), analysisRise) / analysisRise)) + 1.5 * analysisRiseVolts * min(max((ring * ringPitch + ringThickness / 2) - analysisStart - analysisRise, 0), analysisPlateau) / analysisRise",
-              "unit": "V"
-            }
-          },
-          {
-            "name": "exitElement",
-            "shape": "rectangle",
-            "minX": {
-              "expression": "tunnelLength",
-              "unit": "mm"
-            },
-            "maxX": {
-              "expression": "tunnelLength + exitLength",
-              "unit": "mm"
-            },
-            "minY": {
-              "expression": "boreRadius",
-              "unit": "mm"
-            },
-            "maxY": {
-              "expression": "outerRadius",
-              "unit": "mm"
-            },
-            "potential": {
-              "expression": "exitPotential",
               "unit": "V"
             }
           },
@@ -610,6 +628,40 @@
               "expression": "funnelRfAmplitude * (1 - 2 * mod(plate, 2))",
               "unit": "V"
             }
+          },
+          {
+            "name": "exitFunnelPlate",
+            "shape": "rectangle",
+            "repeat": {
+              "count": {
+                "expression": "exitFunnelPlates"
+              },
+              "index": "plate"
+            },
+            "minX": {
+              "expression": "tunnelLength + gateGap + plate * funnelPitch",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "tunnelLength + gateGap + plate * funnelPitch + funnelPlateThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "boreRadius - plate * exitFunnelTaper",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "funnelOuterRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "exitPotential + exitFunnelDrop * plate / (exitFunnelPlates - 1)",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "exitFunnelRfAmplitude * (1 - 2 * mod(plate, 2))",
+              "unit": "V"
+            }
           }
         ],
         "drive": {
@@ -646,7 +698,7 @@
           "unit": "mm"
         },
         "maxX": {
-          "expression": "tunnelLength + domainPad",
+          "expression": "tunnelLength",
           "unit": "mm"
         },
         "minY": {
@@ -729,7 +781,7 @@
       },
       "set": {
         "gatePotential": {
-          "value": 30.0,
+          "value": 0.0,
           "unit": "V"
         },
         "storagePeakField": {

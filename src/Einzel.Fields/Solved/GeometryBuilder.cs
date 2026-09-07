@@ -480,7 +480,7 @@ public static class GeometryBuilder
         return
         [
             .. DriveChannels
-                .Decompose([.. states.SelectMany(e => e).Select(Excited)], quadrature)
+                .DecomposeStates(States(states), quadrature)
                 .Select(group => group.Pattern),
         ];
     }
@@ -551,11 +551,12 @@ public static class GeometryBuilder
         var grid = BuildGrid(solve);
         var (frequencies, waveforms, quadrature) = Clocks(solve.Drives);
 
-        // Every stage's electrodes go into the decomposition together, so a pattern
-        // that appears in two stages is solved once and simply weighted differently
-        // in each. A trap that fills and then extracts usually shares most of its
-        // patterns between the two, and paying for them twice would be paying for
-        // the sequencer rather than for the physics.
+        // Every stage is decomposed on its own and the patterns are then shared, so a
+        // pattern appearing in two stages is solved once and simply weighted differently
+        // in each. A trap that fills and then extracts usually shares most of its patterns
+        // between the two, and paying for them twice would be paying for the sequencer
+        // rather than for the physics. Decomposing the states *together* is what this used
+        // to do and is the one thing that must not happen - see DecomposeStates.
         var states = StageStates(solve);
 
         // A sinusoid resolves every phase into two fixed quadrature components, so
@@ -564,8 +565,7 @@ public static class GeometryBuilder
         // distinct phase stays its own supply. Decided per generator, since an
         // instrument may run a sinusoidal confinement and a switched excitation at
         // once and each collapses or does not on its own terms.
-        var groups = DriveChannels.Decompose(
-            [.. states.SelectMany(e => e).Select(Excited)], quadrature);
+        var groups = DriveChannels.DecomposeStates(States(states), quadrature);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
@@ -738,6 +738,11 @@ public static class GeometryBuilder
 
         return states;
     }
+
+    /// <summary>Each stage state as its own list of excitations, for the decomposition.</summary>
+    private static List<IReadOnlyList<Excitation>> States(
+        IReadOnlyList<IReadOnlyList<CompiledElectrode>> states) =>
+        [.. states.Select(state => (IReadOnlyList<Excitation>)[.. state.Select(Excited)])];
 
     /// <summary>How a two-dimensional electrode is excited, for the shared decomposition.</summary>
     private static Excitation Excited(CompiledElectrode electrode) =>
