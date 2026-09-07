@@ -901,7 +901,7 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 
 | target | published | status |
 | --- | --- | --- |
-| elution field | `E_e = v_g / K` | not yet run |
+| elution field | `E_e = v_g / K` | **Met on the 46 mm tunnel.** The density parks where the solved field balances the gas to **1 micrometre**, and the position goes as 1/K to 0.17 per cent across three mobilities. `tims-analyzer`; `docs/device-templates.md` |
 | plateau transit | `t_p = sqrt(2 L_p / (K beta))`, beta the field scan rate | not yet run |
 | resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | not yet run |
 | R against scan rate | R goes as `beta^(-1/4)` | not yet run |
