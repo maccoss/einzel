@@ -1,4 +1,5 @@
 using Einzel.Core.Geometry;
+using Einzel.Core.Units;
 
 namespace Einzel.Core.Model;
 
@@ -215,6 +216,10 @@ public enum CompiledFieldKind
 /// <param name="DurationSeconds">How long it lasts.</param>
 /// <param name="Mode">The transport mode it runs in.</param>
 /// <param name="EndsAtSeconds">When it ends, cumulative from zero.</param>
+/// <param name="Ramps">
+/// The parameters this phase ramps, with where each starts and ends; empty for a phase
+/// that holds.
+/// </param>
 /// <remarks>
 /// <para>
 /// The elements each carry their own per-phase states, which is what the field
@@ -226,9 +231,32 @@ public enum CompiledFieldKind
 /// Two elements naming different modes for one instant is not something a superposition
 /// can resolve, the way it resolves two fields.
 /// </para>
+/// <para>
+/// The ramps are here for the same reason: a figure of merit read against a scan - a
+/// mobility resolving power against an elution ramp - needs to know what the instrument
+/// was doing at the instant an ion arrived, and the elements only know their own
+/// weights. A reader that wants the ramped parameter's value at an instant interpolates
+/// linearly between <see cref="CompiledRamp.Start"/> and <see cref="CompiledRamp.End"/>
+/// across the phase, which is exactly what the field does.
+/// </para>
 /// </remarks>
 public sealed record CompiledPhase(
-    string Name, double DurationSeconds, string Mode, double EndsAtSeconds);
+    string Name,
+    double DurationSeconds,
+    string Mode,
+    double EndsAtSeconds,
+    IReadOnlyList<CompiledRamp> Ramps);
+
+/// <summary>One parameter a phase ramps linearly from where it stands to a declared end.</summary>
+/// <param name="Parameter">The parameter's name, as the document declares it.</param>
+/// <param name="Start">Its value when the phase begins, in SI.</param>
+/// <param name="End">Its value when the phase ends, in SI.</param>
+/// <remarks>
+/// The start is whatever was in force - the phase's own <c>set</c>, or the value
+/// inherited from the phase before - so a document ramping "from wherever it was" and
+/// one setting the start explicitly compile to the same record.
+/// </remarks>
+public sealed record CompiledRamp(string Parameter, Quantity Start, Quantity End);
 
 /// <summary>An axis-aligned box in metres, outside which a field element is silent.</summary>
 /// <param name="MinX">Lower bound along x.</param>

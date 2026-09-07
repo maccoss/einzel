@@ -940,10 +940,25 @@ with it on the bore takes **0.0000 %** of the density in 600 µs against 26.0 % 
 Boltzmann width of 0.34 mm in the collisional well — 21 % wider than the collisionless
 formula predicts, which is the check that the collisional form ran. `docs/device-templates.md`.
 
-**Mobility resolving power does not exist as a figure of merit.** The engine has
-arrival-time resolving power; this is `K/dK` off an elution profile against a ramped field.
-The elution run now writes the profile itself (`<name>.arrivals.csv`), so the figure has
-something to be computed from.
+**Mobility resolving power now exists as a figure of merit**, `mobilityResolvingPower`,
+beside the arrival-time one the engine already had. It is `K/dK` read as `V/dV` against the
+ramp: the ramped parameter's value at the peak of the arrival-time distribution, over how
+far that parameter moves during the peak's full width at half maximum —
+`R = |p(t_peak)| / (beta · FWHM_t)`, with `beta = |p_end − p_start| / ramp duration`. The
+peak is the ion-weighted mean arrival and the width is the Gaussian-equivalent
+`2 sqrt(2 ln 2) sigma_t`, because the arrivals are binned at the density solver's own step
+and a literal half-maximum of that histogram would measure the step. What it assumes is
+stated on every result (`mobility.resolving-power-definition`): the release parameter goes
+as `1/K`, which holds when it scales a field linear in position — the tunnel's quadratic
+ring profile gives exactly that, so ramping `exitPotential` qualifies. A peak arriving
+before the ramp begins or after it ends has no defined release value and the figure is null
+with `mobility.peak-outside-ramp` rather than an extrapolation; on a millisecond ramp the
+transit from the release point to the detector can put it there, and did on the first coarse
+model it was tried on. It runs a sequenced model through the sequencer, as `einzel run`
+does — the figures of merit had been taking the plain diffusive path, which steps a snapshot
+of the field with the ramp ignored, so `run` and `test` disagreed on every sequenced
+diffusive model until they were made to share one path. The elution run also writes the
+profile itself (`<name>.arrivals.csv`), so the shape the figure summarises is there to look at.
 
 **The ramp runs, and the first thing it measured is why confinement comes before any of
 the resolving-power rows.** Without RF the density reaches the bore wall in the millisecond

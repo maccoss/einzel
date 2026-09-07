@@ -1186,6 +1186,7 @@ public static class ModelValidator
     /// <param name="Mode">The transport mode it names, or null to keep the model's.</param>
     /// <param name="EndSurface">Where the ramped parameters end, when the phase ramps; null when it holds.</param>
     /// <param name="MidSurface">The surface midway through a ramp, for the linearity check; null when the phase holds.</param>
+    /// <param name="Ramps">The parameters the phase declares a ramp on, with their start and end values; null when it holds.</param>
     /// <remarks>
     /// <b>The surface is resolved once, for the whole instrument.</b> That is the fix for
     /// the defect this replaced: stages used to be compiled per element, so a stage
@@ -1200,7 +1201,8 @@ public static class ModelValidator
         string Path,
         string? Mode,
         IReadOnlyDictionary<string, Quantity>? EndSurface = null,
-        IReadOnlyDictionary<string, Quantity>? MidSurface = null);
+        IReadOnlyDictionary<string, Quantity>? MidSurface = null,
+        IReadOnlyList<CompiledRamp>? Ramps = null);
 
     /// <summary>
     /// The instrument's timeline, resolved once, from wherever it is declared.
@@ -1313,10 +1315,12 @@ public static class ModelValidator
             // exactly as they do for a set.
             IReadOnlyDictionary<string, Quantity>? endSurface = null;
             IReadOnlyDictionary<string, Quantity>? midSurface = null;
+            List<CompiledRamp>? ramps = null;
             if (stage.Ramp is { Count: > 0 } ramp)
             {
                 var endSet = new Dictionary<string, Quantity>(set, StringComparer.Ordinal);
                 var midSet = new Dictionary<string, Quantity>(set, StringComparer.Ordinal);
+                ramps = new List<CompiledRamp>(ramp.Count);
                 var rampOk = true;
                 foreach (var (parameter, value) in ramp)
                 {
@@ -1362,6 +1366,11 @@ public static class ModelValidator
                         }
                         endSet[parameter] = end;
                         midSet[parameter] = Quantity.Si(0.5 * (start.SiValue + end.SiValue), start.Dimension);
+
+                        // Recorded by the name the document used, in declaration order, so a
+                        // consumer reading the schedule can tell a ramped parameter from a
+                        // derived one that merely moved with it.
+                        ramps.Add(new CompiledRamp(parameter, start, end));
                     }
                     catch (EinzelException failure)
                     {
@@ -1397,7 +1406,7 @@ public static class ModelValidator
             }
 
             phases.Add(new PhaseSurface(
-                name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface));
+                name, duration.Value.SiValue, surface, stagePath, stage.Mode, endSurface, midSurface, ramps));
         }
 
         return phases;
@@ -1531,7 +1540,8 @@ public static class ModelValidator
             elapsed += phase.DurationSeconds;
 
             phases.Add(new CompiledPhase(
-                phase.Name, phase.DurationSeconds, phase.Mode ?? modelMode, elapsed));
+                phase.Name, phase.DurationSeconds, phase.Mode ?? modelMode, elapsed,
+                phase.Ramps ?? []));
         }
 
         return phases;
