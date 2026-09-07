@@ -29,7 +29,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
-| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K` |
+| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order — without RF, though, most of the density reaches the bore before release |
 | `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
 They **share no code at all**. They name the same electrode primitives in
@@ -737,8 +737,6 @@ the device rather than of the solve: the exit funnel is at a single potential an
 gradient as it is approached. It is measured rather than asserted at a chosen place, because
 where it falls is the answer and not the question.
 
-### What this stage does not carry
-
 **No RF.** The real tunnel confines radially with a quadrupolar field alternating between
 adjacent *segments* of each ring, and without it the density diffuses to the bore wall — 65
 per cent of it over the first millisecond. That does not move the parking point, which is an
@@ -746,10 +744,74 @@ axial balance, and Hernandez is explicit that the elution voltage is independent
 while the peak **width** is what the radial confinement sets. So transmission and resolving
 power are not modelled here and the parking point is.
 
-**No elution ramp.** The field is held rather than scanned, so this reproduces where ions sit
-and not the spectrum they make when the field is walked down. The engine has the machinery —
-a sequence phase can ramp a parameter linearly, which is what the instrument does — and
-nothing has yet driven a diffusive phase whose purpose is to hold a population still.
+### The elution ramp, and what a scan without confinement shows
+
+Hold 300 µs at 60 V, then walk the exit potential to zero over 8 ms — a `sequence` of two
+diffusive phases, the second carrying a `ramp`. As the field falls the balance point slides
+toward the exit, and once it passes the field's peak nothing holds the ion and it leaves.
+The first to go is the one that needed the *most* field, the least mobile, so the tunnel
+elutes in the opposite order to a drift tube. Three runs, one per mobility, from the shipped
+template with the source at each ion's own parking point:
+
+| K relative to the reference | quasi-static release `60 V · (v_g/K) / E_peak` | first 1 % arrive | exit potential then | median arrival | middle half of the peak | reached the detector |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.75 | 42.7 V at 2.61 ms | 3.92 ms | **32.8 V** | 4.23 ms | 175 µs | 1,684 of 97,770 |
+| 1.00 | 32.0 V at 4.03 ms | 5.26 ms | **22.8 V** | 5.53 ms | 156 µs | **45** of 97,770 |
+| 1.50 | 21.3 V at 5.46 ms | — | — | — | — | **none** |
+
+**The order is right and the release is late, by about 1.3 ms in both runs that eluted.**
+The quasi-static rule assumes the packet always sits at the balance point. It does not: the
+drift toward a moved balance is proportional to the remaining distance, so the approach is
+exponential with time constant `1 / (K dE/dx) = L² / (2KV)` — 0.42 ms at 60 V and 0.79 ms
+at 32 V for the reference ion — and that is not small against a ramp crossing 60 V in 8 ms.
+The packet lags the sliding balance and lets go later than the line says. The same time
+constant is measured independently by the parking runs below, which is what makes this an
+explanation rather than a story.
+
+**And without RF the scan empties the bore before it releases anything.** Radial diffusion
+alone puts about 3 mm of spread on the density in five milliseconds, against a 4 mm bore:
+93,000 of the reference ion's 97,770 ended on rings 11-13, exactly where the packet parks,
+before the ramp reached its release voltage. The most mobile ion — released last and
+diffusing fastest, since D goes as K — never arrives at all. So the elution *machinery* is
+exercised and the order and the lag are measured, and the transmission and the peak width
+are not yet the instrument's: **RF confinement is the next stage**, and it is what turns the
+widths above into a resolving power that can be compared with Hernandez's 100-250.
+
+**Two defects had to be fixed before the ramp did anything, and both produced clean
+output.** A geometry that switches between DC states with no drive was given a placeholder
+clock at one hertz, with a comment saying nothing read it; the diffusive path's
+pseudopotential wrapper read it, saw a finite period, and cycle-averaged the whole ramp over
+a one-second cycle, most of which is zero field — the trap let its density drift out at gas
+speed during a hold that measurably holds, and the leg discarded the wrapper's own warnings.
+And a model declaring `diffusion` whose sequence never left it was routed to the plain
+diffusive path, which reads the field once through the time-free interface — so with the
+validator's refusal lifted and nothing else changed, the ramp ran *silently ignored*: exit 0,
+a density, no warning — the sixth occurrence of a time-varying quantity reached through a
+time-free interface answering at an arbitrary instant. And the sequenced leg, once reached,
+discarded the wrapper's own warnings: the seventh time evidence about a computation's quality
+was dropped at a seam. All three in `docs/lessons.md`.
+
+**Three mobilities released from one point settle at rates the same time constant
+predicts.** All three launched at 21.1 mm and read after 1 ms:
+
+| K relative to the reference | balance | settling time L²/2KV | expected centre after 1 ms | measured | difference |
+| --- | --- | --- | --- | --- | --- |
+| 1.50 | 14.079 mm | 0.28 ms | 14.281 mm | **14.285 mm** | +4 µm |
+| 1.00 | 21.104 mm | 0.42 ms | 21.104 mm | **21.104 mm** | 0 |
+| 0.75 | 28.167 mm | 0.56 ms | 26.970 mm | **26.925 mm** | −45 µm |
+
+A run that *fails* to reach its balance in a millisecond is the measurement here: the
+residual displacement is `7 mm · exp(−1 ms / τ)`, and it lands within a twentieth of a
+millimetre for both moving packets. That is the restoring-drift rate the elution lag depends
+on, measured with no ramp in the model.
+
+`einzel run --json` on a sequenced diffusive model now reports `meanArrivalUs` and
+`arrivalSpreadUs` and writes the whole arrival-time spectrum beside the manifest as
+`<name>.arrivals.csv`, because a mean and a width have lost the shape, and an onset has to
+be read as a quantile — the Scharfetter-Gummel flux moves 1e-100 of an ion across the
+collecting face from the first step, so the first non-empty bin is during the hold.
+
+### What this stage does not carry, still
 
 **And the operating point is deliberately not the commercial one.** 18.6 Td at the parking
 point, inside the `E/p < 10 V/cm/torr` Hernandez states, rather than the 45-150 Td Ridgeway

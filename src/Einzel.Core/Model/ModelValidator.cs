@@ -147,23 +147,10 @@ public static class ModelValidator
         // configuration it has.
         var transport = ValidateTransport(document.Transport, p, Modes(document, timeline), errors);
 
-        if (transport is not null)
-        {
-            foreach (var phase in timeline)
-            {
-                if (phase.EndSurface is not null && (phase.Mode ?? transport.Mode) == "diffusion")
-                {
-                    errors.Add(new EinzelError
-                    {
-                        Code = ErrorCodes.SchemaInvalid,
-                        Path = $"{phase.Path}/ramp",
-                        Constraint = $"stage '{phase.Name}' ramps a parameter in a diffusive phase, and the density solver steps through a field it holds fixed within a phase",
-                        Suggestion = "write the ramp as phases that each hold a value, each a fraction of the density step's timescale",
-                    });
-                }
-            }
-        }
-
+        // A ramp in a diffusive phase used to be refused here, because the density solver
+        // stepped through a field it held fixed within a phase. It re-samples the field
+        // every step now, so a ramped diffusive phase is the elution scan of a mobility
+        // analyser rather than a thing to write as a staircase.
         if (errors.Count > 0 || mass is null || charge is null
             || source is null || detector is null || transport is null)
         {

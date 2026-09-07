@@ -1480,7 +1480,9 @@ public static class FiguresOfMerit
     {
         var (launch, species, field, settings, detector, collisions) = Setup(model, report: report);
 
-        if (field is not Fields.ITimeVaryingField driven)
+        // Gated on having a drive, not on varying in time: a geometry with DC stages and no
+        // RF is time-varying and has no secular motion, and its shortest period is infinite.
+        if (field is not Fields.ITimeVaryingField driven || !double.IsFinite(driven.ShortestPeriodSeconds))
         {
             report?.Invoke(new Core.Results.ValidityWarning(
                 "secular.no-drive",

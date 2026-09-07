@@ -69,6 +69,11 @@ public sealed record PhaseOutcome(
 /// <param name="Losses">
 /// Every other way ions left, by named surface, in real ions.
 /// </param>
+/// <param name="Arrivals">
+/// When ions reached the detector during the diffusive legs, on the instrument's clock, one
+/// entry per step that collected anything. For a mobility analyser this is the spectrum.
+/// Trajectory legs count their arrivals but record no instants here.
+/// </param>
 /// <remarks>
 /// In <em>ions</em> rather than trajectories, because a conversion re-samples and the
 /// trajectory count on the far side of one is a numerical choice. Weighted by what each
@@ -80,7 +85,8 @@ public sealed record SequencedOutcome(
     int Conversions,
     IReadOnlyList<ValidityWarning> Warnings,
     double Arrived,
-    IReadOnlyList<WeightedLoss> Losses);
+    IReadOnlyList<WeightedLoss> Losses,
+    IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals);
 
 /// <summary>Ions lost one way, in real ions rather than in trajectories.</summary>
 /// <param name="Surface">Where they went, named as the model author named it.</param>
@@ -149,6 +155,7 @@ public static class SequencedRun
         // side of one is a numerical choice rather than a quantity of anything.
         var arrivedTotal = 0.0;
         var lostTotal = new Dictionary<string, double>(StringComparer.Ordinal);
+        var arrivals = new List<(double TimeSeconds, double Ions)>();
 
         // What one trajectory stands for. It starts as the declared population spread
         // over the launched cloud, and a conversion back from a density re-derives it
@@ -254,7 +261,26 @@ public static class SequencedRun
             }
             else
             {
-                density = Diffuse(density!, model, field, gas, species, started, phase);
+                var diffused = Diffuse(density!, model, field, gas, species, started, phase, warnings);
+                density = diffused.Density;
+
+                // The diffusive leg's own ledger used to be dropped here - `Diffuse`
+                // returned the density and nothing else - so a sequenced diffusive run
+                // reported no arrivals, no collected count and no named losses. For a
+                // mobility analyser the arrivals ARE the result: the elution spectrum is
+                // when ions reached the exit, against the ramp. Offset to the instrument's
+                // clock, since the leg's own starts at zero.
+                arrivedTotal += diffused.Collected;
+
+                foreach (var (where, ions) in diffused.Lost)
+                {
+                    lostTotal[where] = lostTotal.GetValueOrDefault(where) + ions;
+                }
+
+                foreach (var (at, ions) in diffused.Arrivals)
+                {
+                    arrivals.Add((started + at, ions));
+                }
 
                 var (cx, cy) = density.Centroid();
 
@@ -287,7 +313,8 @@ public static class SequencedRun
             warnings,
             arrivedTotal,
             [.. lostTotal.OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => new WeightedLoss(pair.Key, pair.Value))]);
+                .Select(pair => new WeightedLoss(pair.Key, pair.Value))],
+            arrivals);
     }
 
     /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>
@@ -409,14 +436,23 @@ public static class SequencedRun
     }
 
     /// <summary>Steps the density for one phase.</summary>
-    private static DensityField Diffuse(
+    /// <remarks>
+    /// A phase that changes the field - a ramp - hands the solver the field as a function
+    /// of time, and it re-samples every step. A phase that holds keeps the assemble-once
+    /// path, which is bit-identical to what it was. Which one applies is decided by asking
+    /// the field whether it differs between the phase's two ends at a probe point, rather
+    /// than by asking the phase whether it declares a ramp: the field is what the solver
+    /// steps through, and a phase could in principle change it some other way.
+    /// </remarks>
+    private static DiffusionResult Diffuse(
         DensityField density,
         CompiledModel model,
         IElectrostaticField field,
         BackgroundGas gas,
         IonSpecies species,
         double startedAt,
-        CompiledPhase phase)
+        CompiledPhase phase,
+        List<ValidityWarning> warnings)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -438,9 +474,54 @@ public static class SequencedRun
         // in this project a time-varying quantity reached through a time-free interface
         // has answered at an arbitrary instant rather than failing.
         var seen = Instant(field, startedAt);
-        _ = DiffusionRun.Effective(ref seen, species, mobility, gas);
+        var effective = DiffusionRun.Effective(ref seen, species, mobility, gas);
 
-        var result = DriftDiffusion.Run(
+        // What the wrapper did rides out on the result, as it does on a wholly diffusive
+        // run. This leg discarded it - the return of Effective was assigned to nothing -
+        // so a sequenced diffusive phase that was cycle-averaged over a one-second cycle
+        // of a DC ramp said nothing about having been averaged at all. Evidence about a
+        // computation's own quality, dropped at a seam, again.
+        if (effective is not null)
+        {
+            foreach (var warning in DiffusionRun.EffectiveFieldWarnings(effective, grid))
+            {
+                if (!warnings.Any(w => w.Code == warning.Code))
+                {
+                    warnings.Add(warning);
+                }
+            }
+        }
+
+        // Does the field change over this phase? Asked of the field at the phase's two
+        // ends, at the seeded packet's own centre, which is where the answer matters.
+        Func<double, IElectrostaticField>? fieldAt = null;
+
+        if (field is ITimeVaryingField varying)
+        {
+            var (cx, cy) = density.Centroid();
+            var probe = new Vec3(cx, cy, 0.0);
+            var atStart = varying.PotentialAt(in probe, startedAt);
+            var atEnd = varying.PotentialAt(in probe, startedAt + phase.DurationSeconds);
+
+            if (atStart != atEnd)
+            {
+                fieldAt = elapsed =>
+                {
+                    var now = Instant(field, startedAt + elapsed);
+                    _ = DiffusionRun.Effective(ref now, species, mobility, gas);
+                    return now;
+                };
+            }
+        }
+
+        // The same step scheme the wholly diffusive path honours. This leg used to step
+        // explicitly whatever the model declared, which made a millisecond ramp cost
+        // what a millisecond of explicit stepping costs.
+        var scheme = model.DensityStep.IsImplicit
+            ? StepScheme.Implicit
+            : StepScheme.Explicit;
+
+        return DriftDiffusion.Run(
             density,
             seen,
             gas,
@@ -448,8 +529,9 @@ public static class SequencedRun
             species,
             phase.DurationSeconds,
             DiffusionRun.EdgesFor(model, grid),
-            absorbers);
-
-        return result.Density;
+            absorbers,
+            scheme: scheme,
+            stepGain: model.DensityStep.IsImplicit ? model.DensityStep.Gain : 1.0,
+            fieldAt: fieldAt);
     }
 }

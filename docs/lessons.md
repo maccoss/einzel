@@ -1041,6 +1041,57 @@ none, because it is trusted. **That applies to any document with a summary at th
 the summary is the part most likely to be stale**, because it is written once and the
 sections below it are appended to.
 
+## A placeholder whose comment said nothing read it, and two things did
+
+A geometry with DC stages and no RF drive was given a nominal clock at one hertz, and the
+comment beside it said: *"there is then one nominal clock whose frequency nothing uses, and
+one hertz keeps the step cap out of the way."* Two readers took the frequency at its word.
+`ShortestPeriodSeconds` reported one second instead of infinity, and the regime report
+described the geometry as a 1 Hz drive. Neither mattered until a third reader arrived.
+
+The diffusive path wraps a driven field in a pseudopotential — the cycle-averaged well a
+slow ion feels — and the wrapper had to be gated on *having a drive*, because a DC ramp is
+time-varying with nothing to average over. The obvious gate is a finite shortest period.
+The placeholder made the period finite. So a TIMS elution ramp — a field that measurably
+held its density to a micrometre for a millisecond — was averaged over a one-second cycle,
+most of which is zero field, and the whole density drifted out at gas speed during a
+300 µs hold. **The only symptom was a physically plausible spectrum arriving too early.**
+
+Two rules. **A placeholder is a value, and every reader will treat it as one**; the honest
+value for "no drive" is the one the arithmetic gives — infinity — and every reader of it
+already handled infinity as "no cap" and "no drive". And **a comment asserting what does
+not read a value is a claim about the whole codebase at the moment it was written**, which
+the next reader falsifies without ever seeing the comment.
+
+## A single-mode sequence took the path that steps a snapshot
+
+The run command routes a model to the sequencer when its phases change transport mode, and
+otherwise to the plain path for its declared mode. A diffusive model with a sequence that
+*stays* diffusive therefore went to the plain diffusive path, which reads the field through
+the time-free interface and steps a snapshot of it — so an elution ramp declared on it ran
+with the ramp silently ignored: exit 0, a density, no warning. The sixth occurrence here of
+a time-varying quantity reached through a time-free interface answering at an arbitrary
+instant rather than failing.
+
+The routing test was "does the mode change", which is a *proxy* for "does this run need
+the sequencer", and the two came apart exactly when a sequence changed the field without
+changing the mode. The trajectory path never had the problem because its integrator asks
+the field for the instant it is at.
+
+And the sequenced leg, once reached, discarded the return value of the very wrapper that
+had done the damage — `_ = Effective(...)` — so the run that averaged a DC ramp over a
+second said nothing about having averaged anything. Evidence about a computation's own
+quality dropped at a seam: the seventh time, in a file whose comments name the sixth.
+
+## The first non-empty bin is not an onset
+
+An elution spectrum's first arrival came out at 22 µs, during a hold that measurably held.
+The bin held about 10⁻¹⁰⁰ of an ion: Scharfetter–Gummel moves an exponentially small
+amount of density across every face at every step, so the collecting boundary sees a
+non-zero flux from the first step onward. **The onset of a spectrum is where a measurable
+fraction has arrived** — a quantile — and a test written on the first non-empty bin is a
+test of the scheme's tail.
+
 ## A test that drove the system onto a floor was a test of the platform's libm
 
 `CONVERGENCE_ORDER_BELOW_NOMINAL` now gives different advice for a gridded field and

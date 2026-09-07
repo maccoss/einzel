@@ -319,7 +319,22 @@ public sealed record SequenceJson(
     IReadOnlyList<SequencePhaseJson> Phases,
     int Conversions,
     double ArrivedIons,
-    IReadOnlyList<WeightedLoss> Losses);
+    IReadOnlyList<WeightedLoss> Losses)
+{
+    /// <summary>
+    /// When ions reached the detector, averaged over every diffusive leg's arrivals and
+    /// placed on the instrument's clock, in microseconds. Absent when nothing arrived.
+    /// </summary>
+    /// <remarks>
+    /// For a mobility analyser this is the elution time, and the number a spectrum is
+    /// calibrated on. It is the diffusive legs' arrivals only: a trajectory leg counts its
+    /// arrivals but records no instants for them here.
+    /// </remarks>
+    public double? MeanArrivalUs { get; init; }
+
+    /// <summary>One standard deviation of the arrival instants, in microseconds.</summary>
+    public double? ArrivalSpreadUs { get; init; }
+}
 
 /// <summary>What a diffusive run produced, on the wire.</summary>
 /// <remarks>
@@ -1137,6 +1152,33 @@ public static class RunCommand
 
         var last = outcome.Phases[^1];
 
+        // The arrival instants from the diffusive legs, which for a mobility analyser are
+        // the spectrum. Written whole as an artifact - one line per step that collected
+        // anything - because a spectrum reduced to a mean and a width has lost its shape,
+        // and the shape is what a resolving power is read off.
+        var artifacts = new List<string> { manifestPath };
+        double? meanArrivalUs = null;
+        double? arrivalSpreadUs = null;
+
+        var collected = outcome.Arrivals.Sum(a => a.Ions);
+
+        if (outcome.Arrivals.Count > 0 && collected > 0.0)
+        {
+            var weighted = outcome.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / collected;
+            var variance = outcome.Arrivals.Sum(
+                a => a.Ions * (a.TimeSeconds - weighted) * (a.TimeSeconds - weighted)) / collected;
+
+            meanArrivalUs = weighted * 1e6;
+            arrivalSpreadUs = Math.Sqrt(Math.Max(0.0, variance)) * 1e6;
+
+            var arrivalsPath = Path.Combine(project.Results, $"{stem}.arrivals.csv");
+            var lines = new List<string>(outcome.Arrivals.Count + 1) { "time_us,ions" };
+            lines.AddRange(outcome.Arrivals.Select(a => string.Create(
+                System.Globalization.CultureInfo.InvariantCulture, $"{a.TimeSeconds * 1e6:R},{a.Ions:R}")));
+            File.WriteAllLines(arrivalsPath, lines);
+            artifacts.Add(arrivalsPath);
+        }
+
         return new RunOutcome
         {
             Manifest = manifest,
@@ -1175,7 +1217,7 @@ public static class RunCommand
             MaximumRelativeEnergyDrift = double.NaN,
             AcceptedSteps = 0,
             AnalyticDriftDistanceM = 0.0,
-            Artifacts = [manifestPath],
+            Artifacts = artifacts,
 
             Sequence = new SequenceJson(
                 [.. outcome.Phases.Select(phase => new SequencePhaseJson(
@@ -1188,7 +1230,11 @@ public static class RunCommand
                     phase.Converted))],
                 outcome.Conversions,
                 outcome.Arrived,
-                outcome.Losses),
+                outcome.Losses)
+            {
+                MeanArrivalUs = meanArrivalUs,
+                ArrivalSpreadUs = arrivalSpreadUs,
+            },
         };
     }
 
@@ -1551,7 +1597,16 @@ public static class RunCommand
         // A run whose phases are not all in one description is a third case, and it
         // comes first: a model may declare "diffusion" as its own mode and still have a
         // sequence that leaves it, and the sequence is the more specific statement.
-        if (model.ChangesTransportMode)
+        //
+        // And a diffusive model with a sequence that STAYS diffusive goes the same way,
+        // because the plain diffusive path reads the field through the time-free
+        // interface and steps a snapshot of it - so a TIMS elution ramp declared on such
+        // a model ran with the ramp silently ignored, the sixth time here a time-varying
+        // quantity reached through a time-free interface has answered at an arbitrary
+        // instant rather than failing. A trajectory model needs no such routing: its
+        // integrator asks the field for the instant it is at.
+        if (model.ChangesTransportMode
+            || (model.Phases.Count > 0 && model.TransportMode == "diffusion"))
         {
             return (
                 Sequenced(model, field, fieldWarnings, validation, project, timestampUtc),

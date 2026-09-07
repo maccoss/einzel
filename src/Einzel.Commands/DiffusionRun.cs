@@ -336,7 +336,12 @@ public static class DiffusionRun
         Mobility mobility,
         BackgroundGas gas)
     {
-        if (field is not ITimeVaryingField driven)
+        // Gated on HAVING A DRIVE rather than on implementing the time-varying interface,
+        // and the difference is a DC ramp. A ramped solved geometry is time-varying with
+        // no oscillation in it, and its shortest period is infinite; averaging it over a
+        // cycle would produce NaN, silently, in the diffusive leg of every ramped
+        // sequence. What a slow ion feels from a ramp is the field at this instant.
+        if (field is not ITimeVaryingField driven || !double.IsFinite(driven.ShortestPeriodSeconds))
         {
             return field as Transport.Diffusion.PonderomotiveField;
         }
@@ -560,7 +565,7 @@ public static class DiffusionRun
     /// mistake this makes visible rather than one it commits.
     /// </para>
     /// </remarks>
-    private static List<ValidityWarning> EffectiveFieldWarnings(
+    internal static List<ValidityWarning> EffectiveFieldWarnings(
         Transport.Diffusion.PonderomotiveField field, Grid2D grid)
     {
         var warnings = new List<ValidityWarning>();

@@ -175,6 +175,12 @@ public static class DriftDiffusion
     /// Instants to record the density at, in seconds and in order, or null for none.
     /// Each is taken at the first step at or after it, and reports both times.
     /// </param>
+    /// <param name="fieldAt">
+    /// The field as a function of the simulated time, for a phase during which it changes -
+    /// a ramp. Null for the ordinary run, where the field is fixed and the operator is
+    /// assembled once. When given, the drift is re-sampled and the face operator rebuilt at
+    /// every step, and the stability limit recomputed with it.
+    /// </param>
     /// <returns>What happened.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The duration is not positive.</exception>
@@ -190,7 +196,8 @@ public static class DriftDiffusion
         int maximumSteps = 2_000_000,
         StepScheme scheme = StepScheme.Explicit,
         double stepGain = 1.0,
-        IReadOnlyList<double>? snapshotSeconds = null)
+        IReadOnlyList<double>? snapshotSeconds = null,
+        Func<double, IElectrostaticField>? fieldAt = null)
     {
         ArgumentNullException.ThrowIfNull(initial);
         ArgumentNullException.ThrowIfNull(field);
@@ -210,10 +217,13 @@ public static class DriftDiffusion
         // is the reference the scaling is against rather than the value used.
         var number = gas.NumberDensitySi;
 
-        // Sampled once. The field does not change during a diffusive run - a
-        // sequenced one would need this inside the loop, and does not exist yet.
+        // Sampled once when the field is fixed, which it is for every run except a
+        // ramped phase of a sequence. When `fieldAt` is given the field is a function of
+        // time and these are re-sampled every step inside the loop below - the comment
+        // that stood here said a sequenced run "would need this inside the loop, and does
+        // not exist yet", and a TIMS elution ramp is that run.
         var (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
-            grid, field, gas, mobility, species, sign, number, initial.Cylindrical);
+            grid, fieldAt?.Invoke(0.0) ?? field, gas, mobility, species, sign, number, initial.Cylindrical);
 
         // The thermal voltage, which is what turns a potential difference across a
         // face into the exponent Scharfetter-Gummel needs.
@@ -269,6 +279,27 @@ public static class DriftDiffusion
 
         while (time < untilSeconds && steps < maximumSteps)
         {
+            // A time-varying field: re-sample the drift at THIS instant and rebuild the
+            // face operator on it. The step is recomputed too, because a rising ramp
+            // shortens the drift-limited step and a step chosen at t = 0 would then be
+            // unstable - a falling ramp only ever loosens it, which is why this was not
+            // noticed on the first ramp tried. The cost is one assembly per step, which
+            // is what the assemble-once path was built to avoid; here it is the price of
+            // the field actually changing, and it is paid only when it does.
+            if (fieldAt is not null && steps > 0)
+            {
+                (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
+                    grid, fieldAt(time), gas, mobility, species, sign, number, initial.Cylindrical);
+
+                stable = StableStep(
+                    grid, driftX, driftY, gasX, gasY, diffusion, density.LargestRadialWeight());
+                step = stable * stepGain;
+
+                faces = FaceCoefficients.Assemble(
+                    density, grid, driftX, driftY, gasX, gasY, diffusion, potential, thermal,
+                    edges, absorbers);
+            }
+
             var dt = Math.Min(step, untilSeconds - time);
 
             var leaving = DensityStepper.Advance(
