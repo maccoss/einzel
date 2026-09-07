@@ -29,6 +29,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
+| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K` |
 | `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
 They **share no code at all**. They name the same electrode primitives in
@@ -670,6 +671,91 @@ about 11 per cent, and the alternative is worse.
 The narrative of how this was reached, including several attributions that turned out to be
 wrong, is `docs/astral-log.md`. The published record it is compared against is
 `docs/literature-targets.md`.
+
+## `tims-analyzer` — an ion held still against a moving gas
+
+The separating tunnel of a trapped ion mobility spectrometer, which is the analyser of the
+Bruker timsTOF. It inverts the drift tube: rather than pushing ions through a still gas, it
+holds them stationary against a moving one, so what a measurement returns is *where a
+population parks* rather than how fast it transits.
+
+**That makes it the sharpest available test of the diffusive mode**, because the balance it
+computes — drift against drag — *is* the device's operating principle rather than something
+downstream of it. Every other target at these pressures has been a transmission question.
+
+Twenty-seven ring electrodes on a 1.725 mm pitch through an 8 mm bore over 46 mm, with the
+axial gradient a resistor divider produces and nitrogen flowing entrance to exit at 50 m/s.
+The ring potentials go as the square of position, so the field is linear in position and the
+parking point has a closed form: `v_g L^2 / (2 mu V_exit)`.
+
+### The two questions are asked separately, and that is the point
+
+**Does the ring stack produce the field its potentials imply?** That is geometry, and the
+answer is 21.1036 mm against a closed-form 21.1169 — **0.063 per cent**. A ring stack does not
+reproduce its own electrode potentials on the axis exactly: the bore is 8 mm across and the
+pitch 1.725 mm, so the axis sees a smoothed version, and this is how much.
+
+**Does the density settle where that field balances the gas?** That is physics, and it is
+asked against the *solved* field's own balance point rather than the closed form, so a
+discretisation error in the first cannot hide inside the second:
+
+| | |
+| --- | --- |
+| where the solved field balances 50 m/s | 21.1036 mm |
+| where the density centroid sits after 1 ms | **21.1041 mm** |
+| disagreement | **1 micrometre, 0.0025 per cent** |
+| axial spread of the held population | 0.686 mm |
+| reached the detector | 1.2e-130 of 100,000 - it is a trap |
+
+**And the separation, which is what one number cannot show.** The parking position goes as
+one over the mobility, because the field is linear in position:
+
+| K relative to the reference | parks at | 1/K predicts | |
+| --- | --- | --- | --- |
+| 1.50 | 14.0792 mm | 14.0691 | 0.072 % |
+| 1.25 | 16.9121 mm | 16.8829 | 0.173 % |
+| 0.75 | 28.1671 mm | 28.1382 | 0.103 % |
+
+That is the elution relation `E_e = v_g / K` written the other way round, and a model that
+lands on one parking point by chance cannot land on three in inverse proportion.
+
+### Two things the geometry taught
+
+**The solve's own grounded boundary reversed the field gradient over the last eight
+millimetres**, which turned the downstream half of the trap into a slope where an ion
+displaced downstream keeps going. The tunnel now ends in an entrance and an exit element at
+the two end potentials, standing in for the funnels either side. Their *length* is
+load-bearing rather than cosmetic: a tube shields its bore over about one diameter, so an
+exit element shorter than the 8 mm bore lets the grounded plane reach down the axis anyway.
+At the published 15 mm it does not. This is the fourth device here to meet the rule that a
+grounded domain edge is a third electrode.
+
+**The field stops rising about five millimetres before the tunnel ends** — it peaks at
+41.20 mm of 46.6, so **88.5 per cent** of the analyser is usable and the widest mobility it
+can hold is set by the field at that peak rather than at the last ring. That is a property of
+the device rather than of the solve: the exit funnel is at a single potential and flattens the
+gradient as it is approached. It is measured rather than asserted at a chosen place, because
+where it falls is the answer and not the question.
+
+### What this stage does not carry
+
+**No RF.** The real tunnel confines radially with a quadrupolar field alternating between
+adjacent *segments* of each ring, and without it the density diffuses to the bore wall — 65
+per cent of it over the first millisecond. That does not move the parking point, which is an
+axial balance, and Hernandez is explicit that the elution voltage is independent of the ramp
+while the peak **width** is what the radial confinement sets. So transmission and resolving
+power are not modelled here and the parking point is.
+
+**No elution ramp.** The field is held rather than scanned, so this reproduces where ions sit
+and not the spectrum they make when the field is walked down. The engine has the machinery —
+a sequence phase can ramp a parameter linearly, which is what the instrument does — and
+nothing has yet driven a diffusive phase whose purpose is to hold a population still.
+
+**And the operating point is deliberately not the commercial one.** 18.6 Td at the parking
+point, inside the `E/p < 10 V/cm/torr` Hernandez states, rather than the 45-150 Td Ridgeway
+gives as the optimum — where a low-field mobility is not valid and this model would be
+describing a different regime from the one its mobility was measured in.
+`docs/literature-targets.md` section 6 carries the register and the remaining targets.
 
 ## What is missing
 
