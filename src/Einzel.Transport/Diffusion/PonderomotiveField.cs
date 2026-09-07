@@ -247,6 +247,12 @@ public sealed class PonderomotiveField : IElectrostaticField
     /// <inheritdoc/>
     public double ResolutionLength => _driven.ResolutionLength;
 
+    /// <summary>
+    /// The mesh the oscillating part of the wrapped field is known on, which is what the
+    /// quiver has to be compared against; infinite where the drive is analytic.
+    /// </summary>
+    public double OscillatingResolutionLength => _driven.OscillatingResolutionLength;
+
     /// <inheritdoc/>
     public double SignedDistanceToDiscontinuity(in Vec3 position) =>
         _driven.SignedDistanceToDiscontinuity(in position);

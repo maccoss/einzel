@@ -728,6 +728,24 @@ public static class ModelValidator
         // different instrument rather than a different setting of one.
         var region = CompileRegion(field, path, p, errors);
 
+        // An axis means one thing on one element kind. On any other it would be a
+        // declared property that nothing reads, which is the shape of `transverseWidth`
+        // being accepted in place of `transverseSpread` and running a point source.
+        if (field.Axis is not null && field.Type != "idealQuadrupoleRf")
+        {
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/axis",
+                Constraint = $"only an idealQuadrupoleRf element has an axis; a {field.Type} "
+                    + "element is oriented by its own coordinates or its normal",
+                Observed = new ObservedValue(0.0, field.Axis),
+                Suggestion = "remove axis, or make the element an idealQuadrupoleRf",
+            });
+
+            return null;
+        }
+
         var baseline = CompileOnce(field, path, p, timeline, errors);
 
         if (baseline is null)
@@ -902,6 +920,7 @@ public static class ModelValidator
         && a.DriveAmplitudeSi.Equals(b.DriveAmplitudeSi)
         && a.DriveFrequencySi.Equals(b.DriveFrequencySi)
         && a.InscribedRadiusSi.Equals(b.InscribedRadiusSi)
+        && a.Axis == b.Axis
         && a.CurvatureSi.Equals(b.CurvatureSi)
         && a.CharacteristicRadiusSi.Equals(b.CharacteristicRadiusSi)
         && a.Centre == b.Centre;
@@ -1031,6 +1050,33 @@ public static class ModelValidator
                     }
                 }
 
+                // The axis the quadrupole is invariant along; z unless declared, so every
+                // document written before the attribute existed compiles to the same field.
+                var axis = field.Axis?.ToLowerInvariant() switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (axis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/axis",
+                        Constraint = "an axis must be 'x', 'y' or 'z': the axis the quadrupole "
+                            + "is invariant along, the transverse plane being the other two",
+                        Observed = new ObservedValue(0.0, field.Axis ?? "(none)"),
+                        Suggestion = "'z' when omitted, which puts the quadrupole across x-y; "
+                            + "an axisymmetric tunnel solved in the half-plane has its axis "
+                            + "along x and wants 'x'",
+                    });
+
+                    return null;
+                }
+
                 return new CompiledField
                 {
                     Kind = CompiledFieldKind.IdealQuadrupoleRf,
@@ -1038,6 +1084,7 @@ public static class ModelValidator
                     DriveAmplitudeSi = amplitude.Value.In("V"),
                     DriveFrequencySi = frequency.Value.In("Hz"),
                     InscribedRadiusSi = inscribed.Value.In("m"),
+                    Axis = axis.Value,
                 };
             }
 

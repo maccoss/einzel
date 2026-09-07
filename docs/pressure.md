@@ -377,6 +377,16 @@ So the collisionless pseudopotential overstates this funnel's confining well by
 excursion only describes something if the field is roughly linear across it, and
 at 100 V it is not.
 
+**The mesh compared is the one the oscillating field is known on**, not the density
+grid's. The check is about representation: a solved RF sampled on a mesh coarser
+than the excursion is being averaged over interpolation, and this funnel's RF is
+solved on that 0.312 mm cell. An analytic RF has no mesh and reports an infinite
+resolution, so a purely analytic drive never trips it — its validity is the
+adiabatic one, quiver against the scale the field itself varies on — and a solved
+DC gradient summed with an analytic RF does not lend the RF its cell. The density
+grid used to stand in here, and the TIMS tunnel's exact quadrupolar confinement
+then read as unresolved because its radial density cell was fine.
+
 ### The damping rate is the momentum-transfer rate
 
 nu = q/(m mu), from the mobility the solve already has, rather than from the

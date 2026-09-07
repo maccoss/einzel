@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.10",
+  "schemaVersion": "0.11",
   "name": "tims-analyzer",
   "description": "The 46 mm analyser tunnel of a trapped ion mobility spectrometer - the separating section of the Bruker timsTOF - at the low-field operating point Hernandez 2014 describes rather than the 45-150 Td the commercial instrument optimises at. Twenty-seven ring electrodes on a 1.725 mm pitch through an 8 mm bore carry an axial field gradient a resistor divider produces, and nitrogen flows from entrance to exit. AN ION IS HELD WHERE THE ELECTRIC FORCE BALANCES THE GAS DRAG, so each mobility parks at its own position: that is the elution relation E_e = v_g / K written the other way round, and it is what this template exists to reproduce. The ring potentials go as the square of position, so the field is linear in x and the parking point is v_g L^2 / (2 mu V_exit) in closed form. Measured against the SOLVED field's own balance point the density parks to 0.03 per cent at three mobilities, and the parking position goes as 1/K to 0.26 per cent - which is the separation, and is the device working rather than one number agreeing. WHAT THIS STAGE DOES NOT CARRY IS THE RF. The real tunnel confines radially with a quadrupolar field between adjacent segments of each ring; without it the density diffuses to the bore wall, and about 99 per cent is lost over three milliseconds. That does not move the parking point, which is an axial balance, but it does mean transmission and peak width are not modelled here - Hernandez is explicit that the elution voltage is independent of the ramp while the peak WIDTH is set by the radial confinement. Nor is the elution ramp itself: the field is held, not scanned. Both are the next stage. The tunnel is bounded by an entrance and an exit element at the two end potentials, which stand in for the funnels either side; without them the solve's own grounded boundary reverses the field gradient over the last eight millimetres of the tunnel and the trap loses its downstream half.",
   "parameters": {
@@ -121,6 +121,32 @@
       "maximum": 60,
       "description": "How far the entrance element runs before the tunnel. The published entrance funnel is 50 mm; this is a shorter stand-in at a single potential, long enough to shield the bore.",
       "provenance": "chosen"
+    },
+    "rfFrequency": {
+      "value": 850.0,
+      "unit": "kHz",
+      "minimum": 100,
+      "maximum": 5000,
+      "description": "Frequency of the quadrupolar RF on the ring segments.",
+      "provenance": "published",
+      "source": "Ridgeway et al., IJMS 2018;425:22 - 850 kHz as the stated example; the 2011 prototype ran near 880 kHz"
+    },
+    "rfAmplitude": {
+      "value": 100.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 400,
+      "description": "Zero-to-peak RF on each segment about its DC. Ridgeway's 200 Vpp is read as each segment swinging +-100 V with its neighbours in antiphase, so adjacent segments differ by 200 V zero to peak; the other reading - 200 Vpp between neighbours - is half this and a quarter of the well depth. Zero switches the confinement off.",
+      "provenance": "chosen"
+    },
+    "rfQuadrupoleFraction": {
+      "value": 1.2696,
+      "unit": "1",
+      "minimum": 0.5,
+      "maximum": 1.5,
+      "description": "The quadrupole term four 90-degree segments at +-V produce on an 8 mm bore, relative to the hyperbolic ideal at the same electrode potential. 4/pi = 1.273 for segments meeting with no gap - a square wave's fundamental exceeds the square wave - less by what the gaps take.",
+      "provenance": "fitted",
+      "source": "TimsRfCrossSectionStudy: the quadrupole coefficient of the solved four-segment cross-section with 0.5 mm gaps, sampled at half the bore radius"
     }
   },
   "ion": {
@@ -345,6 +371,52 @@
             }
           }
         ]
+      }
+    },
+    {
+      "type": "idealQuadrupoleRf",
+      "axis": "x",
+      "directPotential": {
+        "value": 0.0,
+        "unit": "V"
+      },
+      "driveAmplitude": {
+        "expression": "rfAmplitude * rfQuadrupoleFraction",
+        "unit": "V"
+      },
+      "driveFrequency": {
+        "expression": "rfFrequency",
+        "unit": "kHz"
+      },
+      "inscribedRadius": {
+        "expression": "boreRadius",
+        "unit": "mm"
+      },
+      "region": {
+        "minX": {
+          "value": -2.0,
+          "unit": "mm"
+        },
+        "maxX": {
+          "expression": "tunnelLength + domainPad",
+          "unit": "mm"
+        },
+        "minY": {
+          "expression": "-outerRadius",
+          "unit": "mm"
+        },
+        "maxY": {
+          "expression": "outerRadius",
+          "unit": "mm"
+        },
+        "minZ": {
+          "expression": "-outerRadius",
+          "unit": "mm"
+        },
+        "maxZ": {
+          "expression": "outerRadius",
+          "unit": "mm"
+        }
       }
     }
   ]

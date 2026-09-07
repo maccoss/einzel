@@ -1,4 +1,5 @@
 using Einzel.Core.Geometry;
+using Einzel.Core.Model;
 using Einzel.Core.Units;
 
 namespace Einzel.Fields.Analytic;
@@ -21,9 +22,12 @@ namespace Einzel.Fields.Analytic;
 /// that test about the integrator rather than about a mesh.
 /// </para>
 /// <para>
-/// Two dimensional and infinite along z, which is what a mass filter's
+/// Two dimensional and infinite along one axis, which is what a mass filter's
 /// cross-section is. An ion drifts along the axis at whatever speed it was given
-/// and the transverse motion does not care.
+/// and the transverse motion does not care. The axis is z unless another is
+/// given; a device whose beam runs along x - every axisymmetric tunnel here - puts
+/// the quadrupole across x, and the transverse pair follows the cyclic order so
+/// the potential is always <c>drive (u^2 - v^2) / r0^2</c> in that pair.
 /// </para>
 /// </remarks>
 public sealed class IdealQuadrupoleRf : ITimeVaryingField
@@ -35,13 +39,15 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
         double amplitudeVolts,
         double angularFrequency,
         double inscribedRadius,
-        RfWaveform waveform)
+        RfWaveform waveform,
+        CylinderAxis axis)
     {
         DirectVolts = directVolts;
         AmplitudeVolts = amplitudeVolts;
         AngularFrequency = angularFrequency;
         InscribedRadiusM = inscribedRadius;
         Waveform = waveform;
+        Axis = axis;
         _inscribedRadiusSquared = inscribedRadius * inscribedRadius;
     }
 
@@ -54,6 +60,7 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// <param name="frequency">The drive frequency.</param>
     /// <param name="inscribedRadius">Axis to nearest electrode surface, conventionally r0.</param>
     /// <param name="waveform">The drive shape. A sinusoid when omitted.</param>
+    /// <param name="axis">The axis the field is invariant along. Z when omitted.</param>
     /// <returns>The field.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The frequency or the radius is not positive.</exception>
     public static IdealQuadrupoleRf Create(
@@ -61,7 +68,8 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
         Quantity amplitude,
         Quantity frequency,
         Quantity inscribedRadius,
-        RfWaveform? waveform = null)
+        RfWaveform? waveform = null,
+        CylinderAxis axis = CylinderAxis.Z)
     {
         var hertz = frequency.In("Hz");
         var radius = inscribedRadius.In("m");
@@ -74,7 +82,8 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
             amplitude.In("V"),
             2.0 * Math.PI * hertz,
             radius,
-            waveform ?? new RfWaveform.Sinusoid());
+            waveform ?? new RfWaveform.Sinusoid(),
+            axis);
     }
 
     /// <summary>
@@ -88,6 +97,7 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// <param name="frequency">The drive frequency.</param>
     /// <param name="inscribedRadius">Axis to nearest electrode surface.</param>
     /// <param name="waveform">The drive shape. A sinusoid when omitted.</param>
+    /// <param name="axis">The axis the field is invariant along. Z when omitted.</param>
     /// <returns>The field.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The frequency or the radius is not positive.</exception>
     /// <remarks>
@@ -110,7 +120,8 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
         Quantity charge,
         Quantity frequency,
         Quantity inscribedRadius,
-        RfWaveform? waveform = null)
+        RfWaveform? waveform = null,
+        CylinderAxis axis = CylinderAxis.Z)
     {
         var hertz = frequency.In("Hz");
         var radius = inscribedRadius.In("m");
@@ -125,7 +136,7 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
         var scale = mass.In("kg") * omega * omega * radius * radius / Math.Abs(charge.In("C"));
 
         return new IdealQuadrupoleRf(
-            a * scale / 8.0, q * scale / 4.0, omega, radius, waveform ?? new RfWaveform.Sinusoid());
+            a * scale / 8.0, q * scale / 4.0, omega, radius, waveform ?? new RfWaveform.Sinusoid(), axis);
     }
 
     /// <summary>The DC component on the x pair, in volts.</summary>
@@ -139,6 +150,30 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
 
     /// <summary>Axis to nearest electrode surface, in metres.</summary>
     public double InscribedRadiusM { get; }
+
+    /// <summary>The axis the field is invariant along.</summary>
+    public CylinderAxis Axis { get; }
+
+    /// <summary>The transverse pair (u, v) at a point, in the cyclic order after the axis.</summary>
+    /// <remarks>
+    /// z gives (x, y), so an undeclared axis computes exactly what it did before; x gives
+    /// (y, z); y gives (z, x). A permutation rather than a rotation, so nothing is lost to
+    /// rounding: a point on the axis has u = v = 0 to the bit.
+    /// </remarks>
+    private (double U, double V) Transverse(in Vec3 position) => Axis switch
+    {
+        CylinderAxis.X => (position.Y, position.Z),
+        CylinderAxis.Y => (position.Z, position.X),
+        _ => (position.X, position.Y),
+    };
+
+    /// <summary>A transverse field (E_u, E_v) put back into world coordinates; nothing along the axis.</summary>
+    private Vec3 FromTransverse(double u, double v) => Axis switch
+    {
+        CylinderAxis.X => new Vec3(0.0, u, v),
+        CylinderAxis.Y => new Vec3(v, 0.0, u),
+        _ => new Vec3(u, v, 0.0),
+    };
 
     /// <inheritdoc/>
     public double ShortestPeriodSeconds => 2.0 * Math.PI / AngularFrequency;
@@ -193,16 +228,18 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     /// <inheritdoc/>
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
     {
-        // E = -grad Phi, and Phi = drive (x^2 - y^2) / r0^2.
+        // E = -grad Phi, and Phi = drive (u^2 - v^2) / r0^2 in the transverse pair.
+        var (u, v) = Transverse(in position);
         var scale = 2.0 * DriveAt(timeSeconds) / _inscribedRadiusSquared;
-        return new Vec3(-scale * position.X, scale * position.Y, 0.0);
+        return FromTransverse(-scale * u, scale * v);
     }
 
     /// <inheritdoc/>
-    public double PotentialAt(in Vec3 position, double timeSeconds) =>
-        DriveAt(timeSeconds)
-        * ((position.X * position.X) - (position.Y * position.Y))
-        / _inscribedRadiusSquared;
+    public double PotentialAt(in Vec3 position, double timeSeconds)
+    {
+        var (u, v) = Transverse(in position);
+        return DriveAt(timeSeconds) * ((u * u) - (v * v)) / _inscribedRadiusSquared;
+    }
 
     /// <inheritdoc/>
     /// <remarks>The instantaneous field at the start of the cycle.</remarks>

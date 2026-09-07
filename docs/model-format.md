@@ -703,7 +703,8 @@ appear below the template library.
   "directPotential":  { "value": 0,   "unit": "V" },
   "driveAmplitude":   { "value": 200, "unit": "V" },
   "driveFrequency":   { "value": 1,   "unit": "MHz" },
-  "inscribedRadius":  { "value": 4,   "unit": "mm" } }
+  "inscribedRadius":  { "value": 4,   "unit": "mm" },
+  "axis": "x" }
 ```
 
 `idealQuadrupoleRf` is **the only analytic driven field**, and it exists for the
@@ -723,6 +724,18 @@ Note the field amplitude convention when writing closed forms against it:
 `E0(r) = 2 V r / r0^2`, because the potential is `V(x^2 - y^2)/r0^2` and its
 gradient carries the factor of two. Dropping it makes a pseudopotential exactly
 four times too small.
+
+`axis` (schema 0.11) names the axis the field is invariant along — `x`, `y` or `z`,
+with `z` when absent so every earlier document compiles to the same field. The
+transverse pair follows the cyclic order (`z`: x-y, `x`: y-z, `y`: z-x) and the
+potential is `V(u^2 - v^2)/r0^2` in that pair, as a permutation rather than a
+rotation so a point on the axis is at zero field to the bit. It exists because every
+axisymmetric tunnel here is solved in a half-plane whose axis of rotation is x, and
+the confining RF of a trapped-ion-mobility analyser — a quadrupole alternating
+between the four segments of each ring — has to lie *across* that axis. The
+quadrupole is not axisymmetric, but its pseudopotential is (the field magnitude
+depends on radius alone), which is what lets it enter the r-z density solve. An
+`axis` on any other element kind is refused rather than ignored.
 
 ### Solved fields
 
@@ -1082,14 +1095,15 @@ here.
 
 ## Versioning
 
-Schema 0.1 through 0.9 all load, and a test reads a document at every version the
+Schema 0.1 through 0.11 all load, and a test reads a document at every version the
 build claims. Every bump ships a migration and a test that the prior corpus still
 loads. Codes and field names are a compatibility surface that agent workflows bind
 to: they are added, never reworded or repurposed.
 
 0.3 adds the source cloud, 0.4 the gas, 0.5 the mutual Coulomb force, 0.6 the
 model-level sequence, 0.7 parametric directions, 0.8 a tilt on a cross-section's
-extrusion axis and 0.9 the polygon electrode. All purely additive, so every earlier
+extrusion axis, 0.9 the polygon electrode, 0.10 parameter provenance and 0.11 an
+`axis` on the analytic RF quadrupole. All purely additive, so every earlier
 document still reads — but a document whose ions push on each other genuinely is
 not a 0.4 document, and saying so is cheaper than an older build reading it,
 ignoring the field it does not know, and reporting a different flight with nothing

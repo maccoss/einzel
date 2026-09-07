@@ -3047,6 +3047,29 @@ without a detector: electrically nothing, since the edge was grounded anyway, bu
 surface a loss can be charged to. A model whose ions can leave the solved box must say
 what they meet there, or the ledger reports a physical impossibility as an outcome.
 
+## A validity check written on a proxy fires on the proxy
+
+The pseudopotential's mesh check asked whether the ion's quiver was larger than the cell
+the effective potential was resolved on, and took the density grid's cell for that. The
+argument behind the check is about the *field*: an average over an excursion describes
+something only if the oscillating field is roughly linear across it, and a solved RF
+sampled on a mesh coarser than the excursion is being averaged over interpolation. The
+density grid was a stand-in for the field's mesh, and on every model so far the two were
+about the same size.
+
+The TIMS tunnel's confinement is an analytic quadrupole — exactly linear, so the cycle
+average is exact whatever the quiver — solved beside a DC gradient on a 0.25 mm cell and
+stepped on a density grid with a 0.125 mm radial cell. At the bore the quiver is 0.29 mm.
+The check fired as a non-suppressible violation on a field for which the thing it guards
+against cannot happen, and would have put that violation on every run of the template.
+
+**When a check is written against a proxy, name the quantity the proxy stands for and ask
+that instead.** Here the quantity is the resolution of the *oscillating* members of the
+field — infinite for an analytic drive, the solve cell for a solved one, and not the DC
+gradient's cell however fine or coarse — so it is now a member of the time-varying field
+interface with the conservative default. The funnel, whose RF is solved on the cell the old
+check happened to use, warns exactly as before.
+
 ## A fast scan must run through the stability edge
 
 At 200 kDa/s the ramp passes from the excitation's resonance to the stability edge in

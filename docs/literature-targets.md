@@ -928,10 +928,17 @@ an axial profile from 75 to 130 m/s, a parabolic radial profile over an 8 mm bor
 pressure ramp from 2.61 to 2.30 mbar. That is an imported field with **every number cited**,
 which is a better position than the Astral started from.
 
-**Segment-level RF phasing is expressible but unexercised.** Every stack shipped so far
-alternates by plate. Four segments per ring alternating in pairs is a quadrupole, and
-adjacent segments being exact negatives means it still costs one basis solve — but nothing
-has driven a stack that way yet.
+**Segment-level RF phasing is exercised, as a cross-section and a pseudopotential.** Four
+segments per ring alternating in pairs is a quadrupole, and a quadrupole is not
+axisymmetric, so it cannot be electrodes in the tunnel's half-plane solve. What can be is its
+pseudopotential, which depends on radius alone. The four-segment cross-section is solved on
+its own (`TimsRfCrossSectionStudy`): **1.2696 of a hyperbolic quadrupole** at the same
+electrode potential with 0.5 mm gaps, against the square wave's 4/π = 1.2732 with none, the
+12-pole a third of the quadrupole on the bore and `(r/r0)^4` of that inward. The template
+carries that fraction on an analytic quadrupole across the tunnel axis (schema 0.11), and
+with it on the bore takes **0.0000 %** of the density in 600 µs against 26.0 % without, at a
+Boltzmann width of 0.34 mm in the collisional well — 21 % wider than the collisionless
+formula predicts, which is the check that the collisional form ran. `docs/device-templates.md`.
 
 **Mobility resolving power does not exist as a figure of merit.** The engine has
 arrival-time resolving power; this is `K/dK` off an elution profile against a ramped field.

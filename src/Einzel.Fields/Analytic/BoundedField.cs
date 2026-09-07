@@ -136,6 +136,9 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     public double ShortestPeriodSeconds => _driven.ShortestPeriodSeconds;
 
     /// <inheritdoc />
+    public double OscillatingResolutionLength => _driven.OscillatingResolutionLength;
+
+    /// <inheritdoc />
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) =>
         Region.Contains(in position)
             ? _driven.ElectricFieldAt(in position, timeSeconds)

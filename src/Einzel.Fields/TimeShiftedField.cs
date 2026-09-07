@@ -79,6 +79,9 @@ public sealed class TimeShiftedField : ITimeVaryingField
     public double ResolutionLength => _inner.ResolutionLength;
 
     /// <inheritdoc/>
+    public double OscillatingResolutionLength => _inner.OscillatingResolutionLength;
+
+    /// <inheritdoc/>
     public double ShortestPeriodSeconds => _inner.ShortestPeriodSeconds;
 
     /// <inheritdoc/>

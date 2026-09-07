@@ -2672,6 +2672,19 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     Hernandez's R of 100-250 and the `β^(-1/4) K^(-3/4)` law become reachable, at the
     register's operating point (75 → 130 m/s of gas) rather than the 50 m/s used so far.
 
+    **The confinement is built** (schema 0.11 adds `axis` to the analytic RF quadrupole).
+    The four-segment cross-section solves to **1.2696 of a hyperbolic quadrupole** with
+    0.5 mm gaps against the square wave's 4/π = 1.2732 with none, monotone in the gap; the
+    template carries that fraction as a `fitted` parameter with a test tying it to the
+    solve. With the RF on the bore takes **0.0000 %** of the density in 600 µs against
+    26.0 % without, the packet centre moves 0.4 µm, and the rms radius is **0.3406 mm
+    against 0.3423 for Boltzmann in the collisional well** — and 0.2805 for the
+    collisionless one, so the 0.685 suppression is measured rather than reported. One
+    check had to be corrected on the way: `rf.quiver-exceeds-mesh` compared the quiver to
+    the density grid's cell and fired on an exact analytic confinement; it now asks the
+    mesh the oscillating members are known on (`docs/lessons.md`). The confined elution and
+    the resolving-power figure are the remainder.
+
 ## Open decisions
 
 §23's list, with what has been settled since.

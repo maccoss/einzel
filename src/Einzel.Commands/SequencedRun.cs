@@ -354,6 +354,23 @@ public static class SequencedRun
     private static bool Changed(double before, double after) =>
         Math.Abs(after - before) > 1e-9 * Math.Max(1.0, Math.Abs(before));
 
+    /// <summary>
+    /// The potential a slow ion in the gas feels at a point at an instant: the cycle
+    /// average where the field is driven, the field itself where it is not.
+    /// </summary>
+    private static double Felt(
+        IElectrostaticField field,
+        double atSeconds,
+        in Vec3 probe,
+        IonSpecies species,
+        Mobility mobility,
+        BackgroundGas gas)
+    {
+        var at = Instant(field, atSeconds);
+        _ = DiffusionRun.Effective(ref at, species, mobility, gas);
+        return at.PotentialAt(in probe);
+    }
+
     private static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
             ? new TimeShiftedField(driven, atSeconds)
@@ -534,15 +551,23 @@ public static class SequencedRun
         // Asked at several points, because a phase can leave the packet's own centre
         // alone and move the field elsewhere; and to a tolerance, because two evaluations
         // of one unchanged field at different absolute times can differ in the last bits.
+        //
+        // And asked of what the density actually steps through - the cycle average where
+        // there is a drive - not of the instantaneous field. An RF that is merely held
+        // differs from itself at any two instants that are not a whole number of cycles
+        // apart, so the instantaneous potential would call every RF hold a change and the
+        // solver would re-assemble its operator every step: sixteen cycle samples at every
+        // node, for a ramp that does not exist. The density would be right and nothing
+        // would say what it cost.
         Func<double, IElectrostaticField>? fieldAt = null;
 
-        if (field is ITimeVaryingField varying)
+        if (field is ITimeVaryingField)
         {
             var inside = Math.BitDecrement(startedAt + phase.DurationSeconds);
 
             if (Probes(density, grid).Any(probe => Changed(
-                    varying.PotentialAt(in probe, startedAt),
-                    varying.PotentialAt(in probe, inside))))
+                    Felt(field, startedAt, in probe, species, mobility, gas),
+                    Felt(field, inside, in probe, species, mobility, gas))))
             {
                 fieldAt = elapsed =>
                 {

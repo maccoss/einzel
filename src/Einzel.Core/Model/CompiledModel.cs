@@ -300,6 +300,12 @@ public sealed record CompiledField
     /// <summary>Axis to nearest electrode surface, in metres.</summary>
     public double InscribedRadiusSi { get; init; }
 
+    /// <summary>
+    /// Ideal quadrupole only: the axis the field is invariant along. Z unless declared,
+    /// which keeps every document written before the attribute existed bit-identical.
+    /// </summary>
+    public CylinderAxis Axis { get; init; } = CylinderAxis.Z;
+
     /// <summary>Axial potential curvature, in volts per metre squared.</summary>
     /// <remarks>
     /// The one number an orbital analyser's frequency comes from: the axial motion is

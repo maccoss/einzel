@@ -535,7 +535,8 @@ public static class FieldAssembly
             Quantity.Si(element.DirectPotentialSi, Dimension.ElectricPotential),
             Quantity.Si(element.DriveAmplitudeSi, Dimension.ElectricPotential),
             Quantity.Si(element.DriveFrequencySi, Dimension.Frequency),
-            Quantity.Si(element.InscribedRadiusSi, Dimension.LengthDimension)),
+            Quantity.Si(element.InscribedRadiusSi, Dimension.LengthDimension),
+            axis: element.Axis),
 
         _ => throw new ArgumentOutOfRangeException(
             nameof(element),

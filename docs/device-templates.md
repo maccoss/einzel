@@ -29,7 +29,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
-| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order — without RF, though, most of the density reaches the bore before release |
+| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow while a quadrupolar RF on the ring segments — entering as its pseudopotential, 1.27 of a hyperbolic quadrupole by the solved cross-section — holds them off the bore. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order |
 | `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
 They **share no code at all**. They name the same electrode primitives in
@@ -737,13 +737,6 @@ the device rather than of the solve: the exit funnel is at a single potential an
 gradient as it is approached. It is measured rather than asserted at a chosen place, because
 where it falls is the answer and not the question.
 
-**No RF.** The real tunnel confines radially with a quadrupolar field alternating between
-adjacent *segments* of each ring, and without it the density diffuses to the bore wall — 65
-per cent of it over the first millisecond. That does not move the parking point, which is an
-axial balance, and Hernandez is explicit that the elution voltage is independent of the ramp
-while the peak **width** is what the radial confinement sets. So transmission and resolving
-power are not modelled here and the parking point is.
-
 ### The elution ramp, and what a scan without confinement shows
 
 Hold 300 µs at 60 V, then walk the exit potential to zero over 8 ms — a `sequence` of two
@@ -811,7 +804,98 @@ on, measured with no ramp in the model.
 be read as a quantile — the Scharfetter-Gummel flux moves 1e-100 of an ion across the
 collecting face from the first step, so the first non-empty bin is during the hold.
 
-### What this stage does not carry, still
+### The RF confinement, and how much of a quadrupole four flat segments are
+
+The real tunnel holds ions off the bore with a quadrupolar RF alternating between the four
+segments of each ring — 850 kHz and 200 Vpp in Ridgeway's example — the same on every
+ring, so it has essentially no axial component. A quadrupole is not axisymmetric and cannot
+be electrodes in the half-plane solve. **Its pseudopotential is**: the field magnitude of a
+quadrupole depends on radius alone, so the well a slow ion feels is a harmonic bowl about
+the axis, which the r-z density solve can carry exactly. The template therefore carries the
+RF as the analytic `idealQuadrupoleRf` element lying *across* the tunnel axis (schema 0.11's
+`axis`), bounded to the solve domain and superposed on the solved DC gradient, and the
+collisional pseudopotential the funnel already measured carries it into the density solve.
+`rfAmplitude` at zero is the unconfined tunnel the sections above were measured on.
+
+**How much of a quadrupole the segments are is solved, not assumed.** The RF is the same on
+every ring, so a cross-section is the right solve for it rather than an approximation: four
+annular sectors round the 8 mm bore, adjacent ones at ±V, in a plane solve
+(`TimsRfCrossSectionStudy`). There is a closed form to hold it against — with no gaps the
+potential on the bore is a square wave in angle, whose interior series is
+`(4V/π) Σ (−1)^k (r/r0)^n cos(nθ) / (n/2)` over n = 2, 6, 10, … — so the quadrupole term is
+**4/π = 1.273 of the hyperbolic ideal** at the same electrode potential (a square wave's
+fundamental is larger than the square wave), and the first unwanted term is a 12-pole at a
+third of it on the bore, falling as `(r/r0)^4` inward.
+
+| gap between segments | quadrupole fraction of the ideal | from 4/π |
+| --- | --- | --- |
+| 1.00 mm | 1.2577 | −1.22 % |
+| **0.50 mm** | **1.2696** | −0.29 % |
+| 0.25 mm | 1.2727 | −0.04 % |
+
+Monotone in the gap and closing on 4/π as it closes, which a fit could not do; the same
+number at 1 mm and 2 mm radius to 0.01 %, which is what makes it *one* number the template
+can carry (`rfQuadrupoleFraction`, provenance `fitted`, and a test that the template and the
+solve agree). The 12-pole is `A6/A2` = 0.00127 / 0.02027 / 0.1027 at 1 / 2 / 3 mm against
+`(r/r0)^4/3` = 0.00130 / 0.02083 / 0.1055, every forbidden order at 1e-15, and the field
+magnitude — what the pseudopotential is built from — varies round the circle by **0.012 %
+at r = 0.3 mm**, where the confined cloud sits, 1.5 % at 1 mm, and 92 % at 3.5 mm, where the
+axisymmetric treatment is an approximation and there are no ions to notice.
+
+**With it on, measured at the parking point over 600 µs** (`TimsConfinementTests`):
+
+| | RF on (±100 V per segment) | RF off |
+| --- | --- | --- |
+| density reaching the bore | **0.0000 %** | 26.0 % |
+| packet centre | 21.1040 mm | — |
+| balance point of the solved field | 21.1036 mm | 21.1036 mm |
+| rms radius, measured | **0.3406 mm** | — |
+| rms radius, Boltzmann in the collisional well | 0.3423 mm (−0.5 %) | |
+| rms radius, Boltzmann in the collisionless well | 0.2805 mm (+21 %) | |
+| suppression Ω²/(Ω²+ν²) | 0.685 | |
+
+**The width is the sharp check.** The well is exactly harmonic by construction and the
+density solver's zero-flux state is exactly Boltzmann, so the radial profile is a Gaussian
+whose second moment is a closed form: `<r²> = kT / (q c)` with
+`c = q E0'² / (4 m (Ω² + ν²)) − V/(2L²)`, the first term the collisional well at the field
+gradient `E0' = 2 κV / r0²` and the second the solved DC gradient's own radial defocusing
+(an x²-shaped axial potential is −r²/2-shaped across the bore by Laplace, a few per cent of
+the well and pushing outward). At 2.6 mbar the momentum-transfer rate `q/(mK)` = 3.62e6 /s
+against a drive of 5.34e6 rad/s, so the well is 0.685 of the collisionless one and the
+textbook formula predicts a width **21 % too narrow** — measurably wrong, which is the control
+that says the collisional form is what ran. The RF has no axial component and the packet
+centre moves 0.4 µm. The Mathieu q of the confinement is 0.17, comfortably adiabatic.
+
+**Two conventions are stated as choices, not facts.** Ridgeway's "200 Vpp" is read as each
+segment swinging ±100 V about its DC with its neighbours in antiphase, so adjacent segments
+differ by 200 V zero to peak; the other reading — 200 Vpp *between* neighbours — is half the
+amplitude and a quarter of the well. And the 0.5 mm gap between segments is a guess about a
+PC-board routing gap the papers do not give; the table above says what it is worth.
+
+**A validity check fired on its proxy rather than on the physics, and was corrected.**
+`rf.quiver-exceeds-mesh` compared the largest quiver anywhere on the grid with the *density*
+grid's cell. At the bore the ion is swept 0.29 mm by the RF, and the radial density cell is
+0.125 mm, so the confinement tripped a non-suppressible violation — on a field that is
+analytic and exactly linear, where the cycle average is exact whatever the quiver. What the
+check is about is the *representation* of the oscillating field: a solved RF sampled on a
+mesh coarser than the excursion is being averaged over interpolation. So the comparison is
+now against the mesh the **oscillating** members are known on (`OscillatingResolutionLength`,
+infinite for an analytic drive), and a solved DC gradient summed with an analytic RF no
+longer lends the RF its cell. The funnel, whose RF is solved, warns exactly as before.
+
+### What this stage still does not carry
+
+**The gas is one stream at 50 m/s.** Ridgeway's fig. 2 has it at 75 m/s at the entrance
+rising to about 130 m/s at 45 mm, with a parabolic profile across the bore; the register
+records it and the engine imports such a field, and this template has not been given one.
+The parking positions and the elution order do not depend on it; the release voltages and
+the widths do.
+
+**Ring-to-ring structure of the RF.** The axisymmetric pseudopotential is smooth along the
+axis, while real segmented rings on a 1.725 mm pitch modulate the RF near the bore at that
+pitch. The modulation decays inward as `exp(−2πr/pitch)` from the wall and is nothing at the
+0.3 mm the cloud occupies, which is why it is left out; it would matter for what happens to
+ions that reach the bore, which with the RF on is none.
 
 **And the operating point is deliberately not the commercial one.** 18.6 Td at the parking
 point, inside the `E/p < 10 V/cm/torr` Hernandez states, rather than the 45-150 Td Ridgeway

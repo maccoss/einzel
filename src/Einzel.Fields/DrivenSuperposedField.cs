@@ -101,6 +101,30 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
+    /// Over the members that oscillate, and only those: a solved DC gradient summed with
+    /// an analytic RF has a finite cell and nothing oscillating on it, and reporting its
+    /// cell here made an exact confinement read as unresolved.
+    /// </remarks>
+    public double OscillatingResolutionLength
+    {
+        get
+        {
+            var finest = double.PositiveInfinity;
+
+            foreach (var element in _elements)
+            {
+                if (element is ITimeVaryingField driven && double.IsFinite(driven.ShortestPeriodSeconds))
+                {
+                    finest = Math.Min(finest, driven.OscillatingResolutionLength);
+                }
+            }
+
+            return finest;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The earliest switch any member declares. A sequenced element and a
     /// continuously driven one can coexist, and the continuous one returns infinity,
     /// so the minimum is the answer without a special case.

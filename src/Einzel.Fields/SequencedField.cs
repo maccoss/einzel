@@ -119,6 +119,15 @@ public sealed class SequencedField : ITimeVaryingField
     public double ResolutionLength => _states.Min(s => s.ResolutionLength);
 
     /// <inheritdoc/>
+    /// <remarks>A sequence of static states has nothing oscillating in it, and says so.</remarks>
+    public double OscillatingResolutionLength => _states
+        .OfType<ITimeVaryingField>()
+        .Where(s => double.IsFinite(s.ShortestPeriodSeconds))
+        .Select(s => s.OscillatingResolutionLength)
+        .DefaultIfEmpty(double.PositiveInfinity)
+        .Min();
+
+    /// <inheritdoc/>
     /// <remarks>
     /// A sequence is not periodic, so there is no shortest period to report. The step
     /// control that matters here is landing on the switches, which is what

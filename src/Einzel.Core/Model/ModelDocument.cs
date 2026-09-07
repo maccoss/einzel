@@ -181,7 +181,7 @@ public static class ModelSchema
     /// case in a sharper form: an older build would solve the untilted cross-section and
     /// report a converging analyser as a parallel one.
     /// </remarks>
-    public const string CurrentVersion = "0.10";
+    public const string CurrentVersion = "0.11";
 
     /// <summary>Versions this build can read.</summary>
     /// <remarks>
@@ -190,7 +190,7 @@ public static class ModelSchema
     /// though it sorts before it as text, and nothing here compares two versions.
     /// </remarks>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -466,6 +466,19 @@ public sealed record FieldDocument
     /// so this is the one length the working point is most sensitive to.
     /// </remarks>
     public QuantityValue? InscribedRadius { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: the axis the field is invariant along, <c>x</c>, <c>y</c> or
+    /// <c>z</c>. Absent means <c>z</c>, the transverse plane being x-y as it always was.
+    /// </summary>
+    /// <remarks>
+    /// A mass filter's cross-section lies across z by convention, but a device whose beam
+    /// axis is x - every axisymmetric tunnel here, since the half-plane solve puts the axis
+    /// of rotation along x - needs the quadrupole across x. The transverse pair follows the
+    /// cyclic order: z gives (x, y), x gives (y, z), y gives (z, x), so the potential is
+    /// always <c>drive (u^2 - v^2) / r0^2</c> in that pair.
+    /// </remarks>
+    public string? Axis { get; init; }
 
     /// <summary>
     /// Quadro-logarithmic only: the axial potential curvature, of dimension volts per

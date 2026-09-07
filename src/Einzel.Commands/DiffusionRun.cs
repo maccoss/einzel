@@ -584,7 +584,19 @@ public static class DiffusionRun
             }
         }
 
-        var cell = Math.Min(grid.SpacingX, grid.SpacingY);
+        // The mesh that represents the FIELD, not the density grid. The average over an
+        // excursion describes something if the field is roughly linear across it, and what
+        // sets how finely the field is known is the solve it came from: a quiver larger than
+        // a solve cell is being averaged over interpolation. An analytic field has no mesh
+        // and reports an infinite resolution, so a purely analytic drive never trips this -
+        // its validity is the adiabatic one, quiver against the scale the field itself varies
+        // on, which for a quadrupole is a Mathieu q and is reported by the field. The density
+        // grid used to stand in here, and a fine density grid then reported an RF as
+        // unresolved when nothing about the field had changed.
+        var cell = field.OscillatingResolutionLength;
+        var mesh = double.IsFinite(cell)
+            ? $"against the {cell * 1e3:G3} mm cell the oscillating field is resolved on"
+            : "and the oscillating field is analytic, so there is no mesh it could exceed";
 
         warnings.Add(new ValidityWarning(
             "rf.effective-potential",
@@ -593,8 +605,7 @@ public static class DiffusionRun
             + $"by a factor of {field.Suppression:G4} against the collisionless "
             + $"q^2 E^2 / (4 m Omega^2) that is usually quoted, at a momentum-transfer rate of "
             + $"{field.CollisionRateSi:G4} /s against a drive of {field.AngularFrequencySi:G4} rad/s. "
-            + $"The largest quiver on this grid is {worst * 1e3:G3} mm, against a cell of "
-            + $"{cell * 1e3:G3} mm",
+            + $"The largest quiver on this grid is {worst * 1e3:G3} mm, {mesh}",
             WarningSeverity.Provenance));
 
         if (worst > cell)
@@ -602,7 +613,7 @@ public static class DiffusionRun
             warnings.Add(new ValidityWarning(
                 "rf.quiver-exceeds-mesh",
                 $"the ion is swept {worst * 1e3:G3} mm back and forth by the drive, which is further "
-                + $"than the {cell * 1e3:G3} mm cell the effective potential is resolved on. Averaging "
+                + $"than the {cell * 1e3:G3} mm cell the oscillating field is resolved on. Averaging "
                 + "over an excursion only describes something if the field is roughly linear across "
                 + "it, and here the excursion is larger than the mesh that represents the field. "
                 + "Refine the density grid, or raise the drive frequency, or accept that the ion's "

@@ -1417,6 +1417,46 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   Scharfetter-Gummel moves 1e-100 of an ion across the collecting face from the first step;
   an onset is a quantile. All three in `docs/lessons.md`.
 
+- **The TIMS tunnel confines, and four flat segments are 1.27 of a quadrupole.** The real
+  tunnel holds ions off the bore with a quadrupolar RF alternating between the four segments
+  of each ring (850 kHz, 200 Vpp in Ridgeway's example), the same on every ring. A quadrupole
+  is not axisymmetric and cannot be electrodes in the half-plane solve; **its pseudopotential
+  is** — the field magnitude depends on radius alone — so the template carries it as the
+  analytic `idealQuadrupoleRf` lying *across* the tunnel axis, superposed on the solved DC
+  gradient, and the collisional pseudopotential the funnel already measured carries it into
+  the density solve. That needed one attribute below the library, `axis` on the analytic RF
+  element (schema 0.11): the sixth time a device has asked for a change there and the sixth
+  time it was attribute-sized. Default z, so every earlier document computes what it did to
+  the bit; a permutation rather than a rotation, so a point on the axis is at zero field to
+  the bit.
+
+  **How much of a quadrupole the segments are is solved, not assumed** — the RF is the same
+  on every ring, so a cross-section is the right solve for it. Four sectors round the 8 mm
+  bore at ±V give a quadrupole term of **1.2577 / 1.2696 / 1.2727** of the hyperbolic ideal
+  at 1.0 / 0.5 / 0.25 mm gaps, closing on the square wave's **4/π = 1.2732** with none — a
+  square wave's fundamental is larger than the square wave, so flat segments are *more* of a
+  quadrupole than hyperbolae at the same voltage. The 12-pole is `(r/r0)^4/3` of it, as the
+  series says, and the field magnitude varies round the circle by 0.012 % at the 0.3 mm the
+  cloud occupies, which is what licenses the axisymmetric treatment. The template carries
+  the 0.5 mm-gap fraction as a `fitted` parameter with a test tying it to the solve.
+
+  **With it on, measured over a 600 µs hold**: the bore takes **0.0000 %** of the density
+  against 26.0 % without; the packet centre moves 0.4 µm, since the RF has no axial
+  component; and the rms radius is **0.3406 mm against 0.3423** for Boltzmann in the
+  collisional well — and **0.2805** for the collisionless one. The well is exactly harmonic
+  and Scharfetter-Gummel's equilibrium is exactly Boltzmann, so the width is a closed form
+  with the engine's suppression factor (0.685 at 2.6 mbar, the damping rate two thirds of
+  the drive) in it, and the textbook formula is 21 % wrong — measurably, which is the control.
+
+  **A validity check fired on its proxy.** `rf.quiver-exceeds-mesh` compared the largest
+  quiver to the *density* grid's cell, and at the bore the RF sweeps an ion 0.29 mm against
+  a 0.125 mm radial cell — a non-suppressible violation on a field that is exact whatever the
+  quiver. The check is about the representation of the *oscillating* field, so it now asks
+  `OscillatingResolutionLength`: infinite for an analytic drive, the solve cell for a solved
+  one, and never the DC gradient's. The funnel warns as before. Two conventions are stated
+  as choices: "200 Vpp" read as ±100 V per segment with neighbours in antiphase, and a 0.5 mm
+  segment gap the papers do not give. Details in `docs/device-templates.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
