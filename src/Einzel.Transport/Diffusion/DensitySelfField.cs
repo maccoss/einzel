@@ -255,4 +255,163 @@ public sealed class DensitySelfField
         Solves++;
         return true;
     }
+
+    /// <summary>
+    /// Refreshes the self-potential from several species at once, whose charge densities add.
+    /// </summary>
+    /// <param name="densities">One density per species, all on this grid.</param>
+    /// <param name="chargesSi">Each species' charge, in coulombs, signed.</param>
+    /// <returns>Whether the potential was re-solved.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what makes a mixture a mixture rather than several runs.</b> Every other
+    /// coefficient a species needs - its mobility, its diffusion, its thermal voltage - is its
+    /// own, and if the field were its own too then N species would be N independent problems
+    /// and could simply be run one after another. They interact through exactly one quantity:
+    /// the potential raised by the total charge, which every species then drifts in. So the
+    /// source here is the sum of q_s n_s over species, signed, and a negative cloud sitting in
+    /// a positive one really does cancel its field.
+    /// </para>
+    /// <para>
+    /// <b>The two halves of the refresh test are deliberately different sums.</b> What decides
+    /// whether the potential has moved is the change in the <em>net</em> charge density, since
+    /// that is what the solve is a function of - two species that swap places while their sum
+    /// holds have not changed the field and must not force a solve. What that change is
+    /// measured against is the total charge <em>magnitude</em> present, because a signed total
+    /// passes through zero for anything near quasineutral, and a tolerance against a vanishing
+    /// denominator would re-solve on every step for the rest of the run.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately not shared with the single-species overload above</b>, which is left
+    /// exactly as it was. That path carries every self-field number this engine has published -
+    /// the capacity saturation, the line-charge comparison against the literature - and
+    /// routing it through this arithmetic would change its rounding: the difference of two
+    /// products is not the product of a difference to the last bit, so a refresh decision
+    /// could flip at a knife edge and move a step sequence. The duplication is the cheaper
+    /// price, and the two are pinned together by a test asserting they agree.
+    /// </para>
+    /// </remarks>
+    public bool Refresh(IReadOnlyList<DensityField> densities, IReadOnlyList<double> chargesSi)
+    {
+        ArgumentNullException.ThrowIfNull(densities);
+        ArgumentNullException.ThrowIfNull(chargesSi);
+
+        if (densities.Count == 0)
+        {
+            throw new ArgumentException("a mixture needs at least one species", nameof(densities));
+        }
+
+        if (densities.Count != chargesSi.Count)
+        {
+            throw new ArgumentException(
+                $"{densities.Count} densities against {chargesSi.Count} charges: every species needs "
+                + "exactly one of each",
+                nameof(chargesSi));
+        }
+
+        foreach (var density in densities)
+        {
+            ArgumentNullException.ThrowIfNull(density);
+
+            if (density.Grid.CountX != _grid.CountX || density.Grid.CountY != _grid.CountY)
+            {
+                throw new ArgumentException(
+                    "every species in a mixture shares one grid, because they share one potential",
+                    nameof(densities));
+            }
+        }
+
+        var cells = _grid.CountX * _grid.CountY;
+        var rho = new double[cells];
+
+        // The net charge density, and the magnitude present, in one pass.
+        var magnitude = 0.0;
+
+        for (var j = 0; j < _grid.CountY; j++)
+        {
+            var volume = densities[0].CellVolume(j);
+
+            for (var i = 0; i < _grid.CountX; i++)
+            {
+                var k = (j * _grid.CountX) + i;
+                var net = 0.0;
+                var absolute = 0.0;
+
+                for (var s = 0; s < densities.Count; s++)
+                {
+                    var contribution = chargesSi[s] * densities[s][i, j];
+                    net += contribution;
+                    absolute += Math.Abs(contribution);
+                }
+
+                rho[k] = net;
+                magnitude += absolute * volume;
+            }
+        }
+
+        if (_solvedFor is null)
+        {
+            _solvedFor = new double[cells];
+        }
+        else
+        {
+            var change = 0.0;
+
+            for (var j = 0; j < _grid.CountY; j++)
+            {
+                var volume = densities[0].CellVolume(j);
+
+                for (var i = 0; i < _grid.CountX; i++)
+                {
+                    var k = (j * _grid.CountX) + i;
+                    change += Math.Abs(rho[k] - _solvedFor[k]) * volume;
+                }
+            }
+
+            if (magnitude <= 0.0 || change <= _tolerance * magnitude)
+            {
+                return false;
+            }
+        }
+
+        var source = new ScalarField2D(_grid);
+
+        for (var j = 0; j < _grid.CountY; j++)
+        {
+            for (var i = 0; i < _grid.CountX; i++)
+            {
+                var k = (j * _grid.CountX) + i;
+                _solvedFor[k] = rho[k];
+
+                // grad^2 phi = -rho / epsilon0, the convention the solver's residual fixes.
+                source[i, j] = -rho[k] / VacuumPermittivitySi;
+            }
+        }
+
+        var (solved, report) = PoissonSolver2D.Solve(
+            _mask, tolerance: 1e-10, maximumCycles: 200, source: source);
+
+        Report = report;
+
+        var peak = 0.0;
+        var charge = 0.0;
+
+        for (var j = 0; j < _grid.CountY; j++)
+        {
+            var volume = densities[0].CellVolume(j);
+
+            for (var i = 0; i < _grid.CountX; i++)
+            {
+                var value = solved[i, j];
+                _potential[(j * _grid.CountX) + i] = value;
+                peak = Math.Max(peak, Math.Abs(value));
+                charge += rho[(j * _grid.CountX) + i] * volume;
+            }
+        }
+
+        PeakVolts = peak;
+        _solvedCharge = charge;
+        Solves++;
+        return true;
+    }
 }

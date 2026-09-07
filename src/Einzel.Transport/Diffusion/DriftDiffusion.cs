@@ -559,7 +559,7 @@ public static class DriftDiffusion
             : (StabilityMargin * byDrift, "drift");
     }
 
-    private static double StableStep(
+    internal static double StableStep(
         Fields.Solved.Grid2D grid,
         double[] driftX,
         double[] driftY,
@@ -632,7 +632,7 @@ public static class DriftDiffusion
             0.0);
     }
 
-    private static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential, double[] GasX, double[] GasY) SampleCoefficients(
+    internal static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential, double[] GasX, double[] GasY) SampleCoefficients(
         Fields.Solved.Grid2D grid,
         IElectrostaticField field,
         BackgroundGas gas,
