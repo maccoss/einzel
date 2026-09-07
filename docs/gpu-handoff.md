@@ -195,6 +195,31 @@ The OpenCL path is not theoretical here: the probe already ran both kernels on t
 
 Nothing above is asserted from a specification sheet. Run the probe.
 
+### Newer is not uniformly better, and it goes opposite ways by vendor
+
+Both devices measured here are old — a 2019 GTX 1650 and a 2017-era UHD 630 — and it is
+worth being explicit about which direction that biases each result, because the two are
+**not the same direction**.
+
+**For NVIDIA, newer is better in absolute terms despite a worse ratio.** Consumer cards have
+been drifting from 1:32 toward 1:64 while their single-precision base grew by more than an
+order of magnitude, and the base wins: a current high-end part is roughly fourteen times this
+card in FP64. So the 1.45x here is close to a floor for NVIDIA, and a modern card would be a
+real gain.
+
+**For Intel consumer parts, newer is reported to be worse — possibly much worse.** The 1:3.9
+measured here is characteristic of the Gen9 architecture, which had genuinely capable double
+precision at a quarter rate. Intel's later discrete consumer line is reported to have dropped
+*native* FP64 in favour of a software path, which is not a factor slower but orders. If that
+holds, **this ageing integrated GPU is the favourable case for Intel consumer silicon rather
+than the unfavourable one**, and a newer Intel desktop part would measure worse. Intel's
+data-centre line is a separate matter and has strong FP64.
+
+That is reported rather than measured, and it is exactly what the probe settles in thirty
+seconds: an emulated device lands orders below its own FP32 rather than a factor of tens, so
+the ratio column makes it unmistakable. **Do not infer a device's double-precision behaviour
+from its release date or its gaming performance.**
+
 ---
 
 ## 7. What done looks like
