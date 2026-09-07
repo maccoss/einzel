@@ -561,9 +561,19 @@ public static class SequencedRun
         // would say what it cost.
         Func<double, IElectrostaticField>? fieldAt = null;
 
-        if (field is ITimeVaryingField)
+        if (field is ITimeVaryingField varying)
         {
-            var inside = Math.BitDecrement(startedAt + phase.DurationSeconds);
+            // One PERIOD inside the end where there is a drive, not one ulp: the cycle
+            // average taken at an instant samples the period that follows it, so a probe an
+            // ulp inside the phase would average across the boundary into the next phase
+            // and call a held RF a change - which is exactly what happened, at 7 assemblies
+            // for a 7-step hold, when the test that guards this ran on the RF template. A
+            // phase shorter than a period is probed at its start against its last ulp.
+            var end = startedAt + phase.DurationSeconds;
+            var period = varying.ShortestPeriodSeconds;
+            var inside = double.IsFinite(period) && end - period > startedAt
+                ? end - period
+                : Math.BitDecrement(end);
 
             if (Probes(density, grid).Any(probe => Changed(
                     Felt(field, startedAt, in probe, species, mobility, gas),
