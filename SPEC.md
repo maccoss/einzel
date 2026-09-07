@@ -1961,7 +1961,26 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
 Everything struck through was on this list and is now done; it is kept because *why*
 each turned out to be cheap or expensive is worth more than the fact of it.
 
-1. ~~**Wire particle-in-cell to the packet integrator (SC-1)**~~ — **done, and it
+1. **Say how much of a mixture's coupling is worth having, on a device that separates
+   ions.** The machinery is built and checked (Amendment 41): several populations step
+   together through one field, coupled by the potential their total charge raises, and
+   a diffusive model can declare them. What is not yet established is the *number* a
+   designer wants — at what stored population a trapped-mobility analyser's peaks stop
+   being separated by mobility and start being separated by charge. Silveira's own
+   free-space estimate puts it at 10^6 to 10^7; this engine can now ask the geometry.
+   The study exists and the first run of it was made on binaries carrying the
+   stale-buffer defect fixed in the same session, so its numbers are withdrawn rather
+   than reported.
+
+   Two things it needs before its numbers mean anything. **The comparison is only as
+   good as the seed**: the packet's declared spread sets its density, so "how many
+   ions" is really "how many ions in what volume", and a study that varies one without
+   stating the other is not measuring a capacity. And a **driven** mean-field run is
+   expensive in a way worth understanding rather than tolerating — the self-field
+   forces a coefficient re-sample, and although the cycle-averaged well now survives
+   one, a mean-field configuration still costs about seven times an uncharged one.
+
+2. ~~**Wire particle-in-cell to the packet integrator (SC-1)**~~ — **done, and it
    found something.** Both methods are now `ISelfField` peers, so they can be handed
    the same configuration and differenced. The grid is the packet's own and lives in
    the packet's frame, which makes uniform translation **exact** (1e-11 across
@@ -2016,7 +2035,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    solve is a full multigrid V-cycle from scratch at every refresh rather than a few
    cycles from the previous answer.
 
-2. ~~**Make a driven diffusive run affordable**~~ — **done, with a trade that has to
+3. ~~**Make a driven diffusive run affordable**~~ — **done, with a trade that has to
    be stated both ways.** `"densityStep": { "scheme": "implicit", "gain": 64 }` is
    backward Euler on the same Scharfetter-Gummel coefficients, solved by red-black
    Gauss-Seidel. **21.1× the speed for 0.057% error** on the shipped funnel at 2 mbar
@@ -2067,7 +2086,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. ~~**A region on an analytic field element, so an exact analyser can join a
+4. ~~**A region on an analytic field element, so an exact analyser can join a
    beamline.**~~ — **built, and one measurement corrected my account of what it
    costs.** Amendment 32. An analytic element may declare a box outside which it
    contributes nothing: an ordinary 1 kV/m section 75 mm from an orbital analyser
@@ -2116,7 +2135,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    4.220 ns turn-around against a 55.9366 µs analyser period, crossing the mirror's own
    aberration limit at 48 oscillations.
 
-4. ~~**Finish the examples corpus (EX-1).**~~ — **met.** 37 against the thirty §5 asks
+5. ~~**Finish the examples corpus (EX-1).**~~ — **met.** 37 against the thirty §5 asks
    for, and the gate (EX-2) is built and green at about 51 s. What the first seventeen
    cost was mostly *deciding what can honestly be asserted*, and that work is done. The
    three named as remaining are all shipped: `mr-tof-oscillations`, `thermalisation` and
@@ -2237,7 +2256,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    defects that no test written from inside the project would have caught**, because
    both were about a model that validates and answers a different question.
 
-5. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
+6. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
    restores the property multigrid is supposed to have.** `A_coarse = R A_fine P`: the
    coarse levels are built from the fine operator rather than from the geometry, so they
    cannot lose it. The finest level is untouched — it keeps its cut cells and its
@@ -2289,7 +2308,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `docs/numerics.md` were being compared across geometries as though a cycle were a
    unit of work.
 
-6. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
+7. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
    **density** was a single number for the whole model, so a differentially pumped
    instrument was not expressible: an imported field gave the neutrals a velocity
    everywhere and the same number of them everywhere. `pressureField` closes it — see
@@ -2309,7 +2328,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    same proportions collapse to **one** basis solve carrying two weights on two clocks,
    and two distinct spatial patterns give **two**.
 
-7. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
+8. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
    transmission-against-resolution curve closes onto the tabulated apex (Phase 3
    acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
    characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
@@ -2317,7 +2336,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `RfWaveform.Harmonic` comb that independently recovers the published digital
    cut-off at q = 0.712.
 
-8. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
+9. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
    declares `drives` and each electrode `taps` them by name. The travelling-wave
    guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
    confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
@@ -2326,7 +2345,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    zero — the usable amplitude window is narrow at both ends and finding a working
    point is a design study; see Amendment 24.
 
-9. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
+10. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps; and the event-driven models no longer refuse it — the ion's
    position is carried into the neutral draw, so a collision samples the gas where
@@ -2335,7 +2354,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
    seed.
 
-10. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
+11. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
    last quantity about a gas here that was a single number for a whole model, so an
    imported flow gave the neutrals a velocity everywhere and *the same number of them
    everywhere*. `pressureField` on the gas block, VTK ImageData like the velocity
@@ -2426,7 +2445,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    already made by there being one `temperature` in the document, but it is now the
    only thing about the gas that cannot vary from place to place.
 
-11. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
+12. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
     `journal`, `undo` and `attribution` existed only in the `Einzel.Commands`
     assembly *description string* - the same "named in a csproj and nowhere else"
     state `ITransportMode` was in before its seam was built. So "build MCP" was
@@ -2481,7 +2500,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
-12. **The shell (§16).** **Seven of the eleven views exist** — the table in
+13. **The shell (§16).** **Seven of the eleven views exist** — the table in
     [the shell section](#the-shell-and-the-rest-of-16) is the current one; this entry
     said three for a while after it stopped being true. The window opens on a model, and
     what remains divides into three kinds rather than one:
@@ -2576,7 +2595,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
 
-13. **The Astral inverse problem: the mirror is reproduced, and one published number is
+14. **The Astral inverse problem: the mirror is reproduced, and one published number is
     not.** This item has now been rewritten four times, and the rewriting is the point rather
     than an embarrassment - every earlier version attributed the gap between this model and
     the published instrument to something that turned out not to be it. The chronology, with
@@ -2621,7 +2640,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
       avoids that and costs no flights, but is floored by adiabaticity. The two floors are
       independent, which is why the methods agree on ranking and disagree on values.
 
-14. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
+15. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
     cross-section reproduces the paper's resonance ejection and its unit resolution at
     5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
     that stand between that and the dual-pressure device the Stellar front end actually is.
@@ -2679,7 +2698,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
-15. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
+16. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
     elution ramp runs (`tims-analyzer` with a `sequence` whose diffusive phase ramps
     `exitPotential` 60 → 0 V over 8 ms) and the first thing it measured is the reason
     this item is next rather than a refinement: **45 of 97,770 reference ions reached the
@@ -2740,7 +2759,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     The remainder is the front end: the entrance funnel and the gate the operating
     sequence opens and closes (see item 16).
 
-16. **The TIMS front end, and the fringe it needed.** `tims-front-end` puts Hernandez's
+17. **The TIMS front end, and the fringe it needed.** `tims-front-end` puts Hernandez's
     50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, plate-alternating
     RF, a DC drop) and an entrance gate in front of the analyser, with fill / trap / ramp as
     phases. The funnel delivers **99.993 %** of a 2 mm-wide packet against 65.28 % with its
