@@ -172,6 +172,85 @@ public sealed class MixtureDiffusionTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// And with a self-field it still tracks the single-species path, which the bit-identity
+    /// control above cannot see.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The control above runs with no charge, so nothing in it exercises the self-field at all.
+    /// That left a real defect invisible: the mixture's list of densities was captured once,
+    /// while every step swaps each species' density with its scratch buffer - so from the second
+    /// step the self-potential was solved from whichever buffer the walker was <em>not</em>
+    /// using, alternating between the current density and the previous one.
+    /// </para>
+    /// <para>
+    /// <b>None of the other tests here could see it.</b> The bit-identity control has no
+    /// self-field; the blind half of the coupling test has none by construction; and the charged
+    /// half asserts a direction and a magnitude, both of which a one-step-stale field still gets
+    /// right. What discriminates is running the same single species down both paths <em>with</em>
+    /// charge, where the single-species path passes its current density by variable and cannot
+    /// go stale.
+    /// </para>
+    /// <para>
+    /// Not bit-equality: the two refresh overloads are deliberately separate arithmetic, so that
+    /// the single-species one - which carries every self-field number this engine has published -
+    /// is left exactly as it was. What is asserted is that they agree far more closely than a
+    /// stale field would allow.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AChargedOneSpeciesMixtureTracksTheSingleSpeciesPath()
+    {
+        var grid = Grid2D.OverBox(-0.01, -0.003, 0.01, 0.003, 128, 32);
+        var gas = Nitrogen(100.0);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var mobility = Mobility.FromCrossSection(gas, species);
+        var field = UniformField.Create(new Vec3(150.0, 0.0, 0.0));
+        var seconds = 3e-5;
+        var ions = 4e8;
+
+        DensitySelfField Charged() => new(
+            grid, cylindrical: false, AbsorbingCells.None, Bore, species.ChargeSi);
+
+        var single = DriftDiffusion.Run(
+            Blob(grid, -0.004, 6e-4, ions), field, gas, mobility, species, seconds, Bore,
+            selfField: Charged());
+
+        var mixed = MixtureDiffusion.Run(
+            [new MixtureMember("only", species, mobility, Blob(grid, -0.004, 6e-4, ions))],
+            field, gas, seconds, Bore, selfField: Charged());
+
+        Assert.Equal(single.Steps, mixed.Steps);
+
+        var worst = 0.0;
+        var peak = 0.0;
+
+        for (var j = 0; j < grid.CountY; j++)
+        {
+            for (var i = 0; i < grid.CountX; i++)
+            {
+                peak = Math.Max(peak, single.Density[i, j]);
+                worst = Math.Max(worst, Math.Abs(single.Density[i, j] - mixed.Species[0].Density[i, j]));
+            }
+        }
+
+        var relative = peak > 0.0 ? worst / peak : 0.0;
+
+        output.WriteLine($"{single.Steps} steps, {single.SelfFieldSolves} self-field solves against "
+            + $"{mixed.SelfFieldSolves}, peak {single.PeakSelfPotentialVolts:G4} V against "
+            + $"{mixed.PeakSelfPotentialVolts:G4} V");
+        output.WriteLine($"worst node disagreement {relative:E2} of the peak density");
+
+        Assert.Equal(single.SelfFieldSolves, mixed.SelfFieldSolves);
+
+        Assert.True(
+            relative < 1e-9,
+            $"the two paths disagree by {relative:E2} of the peak density, which is far more than "
+            + "two spellings of the same sum should, and is what a self-field solved from a stale "
+            + "buffer looks like");
+    }
+
+    /// <summary>
     /// Two mobilities in one gas come to rest at their own balance points, not at an average.
     /// </summary>
     /// <remarks>

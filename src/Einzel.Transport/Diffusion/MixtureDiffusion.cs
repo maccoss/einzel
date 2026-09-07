@@ -234,8 +234,26 @@ public static class MixtureDiffusion
         }
 
         var state = members.Select(m => new Walker(m, gas, cylindrical)).ToArray();
-        var densities = state.Select(w => w.Density).ToArray();
         var charges = state.Select(w => w.Member.Species.ChargeSi).ToArray();
+
+        // Re-read from the walkers every time rather than captured once. `Commit` swaps each
+        // walker's density with its scratch buffer, so a list of the ORIGINAL references holds
+        // whichever buffer the walker is not currently using - which after the first swap is
+        // the previous step's density. It would alternate between right and one step stale,
+        // and every test here would still pass: the bit-identity control has no self-field,
+        // the blind control has none by construction, and the charged one asserts a direction
+        // that a one-step-stale field still gets right.
+        var densities = new DensityField[state.Length];
+
+        void Rebind()
+        {
+            for (var s = 0; s < state.Length; s++)
+            {
+                densities[s] = state[s].Density;
+            }
+        }
+
+        Rebind();
 
         // The total charge before anything is sampled, so that every species' drift, its
         // Scharfetter-Gummel potential and its stability limit all come from one field rather
@@ -266,6 +284,8 @@ public static class MixtureDiffusion
             // re-sample even with a fixed applied field: a population dense enough to matter
             // changes the field every species is stepped through as it goes, including the
             // others'. That cross term is the whole point of running them together.
+            Rebind();
+
             var selfMoved = steps > 0 && (selfField?.Refresh(densities, charges) ?? false);
 
             if ((fieldAt is not null || selfMoved) && steps > 0)
@@ -301,12 +321,6 @@ public static class MixtureDiffusion
 
             time += dt;
             steps++;
-        }
-
-        // Re-bound to whatever the last swap left, since Commit exchanges the buffers.
-        for (var s = 0; s < state.Length; s++)
-        {
-            densities[s] = state[s].Density;
         }
 
         return new MixtureResult(
