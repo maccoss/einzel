@@ -789,8 +789,28 @@ public static class DiffusionRun
 
         var perCell = occupied > 0 ? result.Remaining / occupied : 0.0;
 
-        return
-        [
+        var warnings = new List<ValidityWarning>();
+
+        // `DensitySelfField` keeps its SolveReport with a comment saying it must not be
+        // discarded, and until now nothing read it - so a self-potential that stopped short of
+        // its tolerance was indistinguishable from one that met it. That is the seam this
+        // project has dropped evidence at four times before, met a fifth, and in my own code
+        // written the same night. A validity violation rather than provenance because an
+        // unconverged self-field taints everything downstream of it: the drift, the exponent
+        // the flux is built from, and the stability limit the step comes from are all built
+        // from a potential that is not the one the charge actually raises.
+        if (selfField.Report is { Converged: false } report)
+        {
+            warnings.Add(new ValidityWarning(
+                "spacecharge.self-field-unconverged",
+                $"the density's own potential stopped after {report.Cycles} V-cycles at a residual "
+                + $"of {report.FinalResidual:E2} against an initial {report.InitialResidual:E2} - a "
+                + $"convergence factor of {report.ConvergenceFactor:F3} - rather than reaching its "
+                + "tolerance. Every quantity built from that potential carries the shortfall",
+                WarningSeverity.ValidityViolation));
+        }
+
+        warnings.Add(
             new ValidityWarning(
                 "spacecharge.mean-field",
                 $"the density's own charge was solved as a potential on the tracked grid and added to the "
@@ -802,8 +822,9 @@ public static class DiffusionRun
                 + "the field is being built from lumps rather than from a density, which is the same limit "
                 + "the particle-in-cell deposit has. No bound is asserted on it, because none has been "
                 + "measured",
-                WarningSeverity.Provenance),
-        ];
+                WarningSeverity.Provenance));
+
+        return warnings;
     }
 
     internal static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)

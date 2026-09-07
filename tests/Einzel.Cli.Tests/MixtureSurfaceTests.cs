@@ -167,6 +167,54 @@ public sealed class MixtureSurfaceTests(ITestOutputHelper output) : IDisposable
     }
 
     /// <summary>
+    /// A mixture writes one volume per population, and a result document like every other run.
+    /// </summary>
+    /// <remarks>
+    /// Both were missing when the mixture path was first written. `--vtu` asked for a file and
+    /// got silence, which this project has already recorded as the worst of the three options
+    /// for exactly this flag on exactly this mode; and no result document meant a mixture run
+    /// was regenerable but not verifiable, which is half of what PRJ-3 is for. One volume per
+    /// species rather than one called "the density", because a mixture has no single density
+    /// and a single file would be a picture of whichever population happened to be first.
+    /// </remarks>
+    [Fact]
+    public void AMixtureWritesAVolumePerPopulationAndAResultDocument()
+    {
+        var model = Model(TwoSpecies);
+        var (exit, stdout, stderr) = Run("run", model, "--vtu", "--json");
+        Assert.True(exit == 0, stdout + stderr);
+
+        using var document = JsonDocument.Parse(stdout);
+
+        var artifacts = document.RootElement.GetProperty("artifacts")
+            .EnumerateArray().Select(a => a.GetString()!).ToArray();
+
+        foreach (var artifact in artifacts)
+        {
+            output.WriteLine(artifact);
+        }
+
+        Assert.Contains(artifacts, a => a.EndsWith(".fast.density.vti", StringComparison.Ordinal));
+        Assert.Contains(artifacts, a => a.EndsWith(".slow.density.vti", StringComparison.Ordinal));
+        Assert.Contains(artifacts, a => a.EndsWith(".result.json", StringComparison.Ordinal));
+        Assert.Contains(artifacts, a => a.EndsWith(".manifest.json", StringComparison.Ordinal));
+
+        // Every one of them exists, since an artifact list naming a file nobody wrote is worse
+        // than one that is short.
+        foreach (var artifact in artifacts)
+        {
+            Assert.True(File.Exists(Path.Combine(_root, artifact)), $"{artifact} was named and not written");
+        }
+
+        // And the warnings travel with the volume (GRD-2), including which population it is.
+        var volume = File.ReadAllText(
+            Path.Combine(_root, artifacts.First(a => a.EndsWith(".fast.density.vti", StringComparison.Ordinal))));
+
+        Assert.Contains("species: fast", volume, StringComparison.Ordinal);
+        Assert.Contains("space charge:", volume, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Saying it twice is refused, whichever way round, rather than one silently winning.
     /// </summary>
     [Theory]

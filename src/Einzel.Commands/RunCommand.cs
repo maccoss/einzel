@@ -1392,7 +1392,8 @@ public static class RunCommand
         IReadOnlyList<ValidityWarning> fieldWarnings,
         ValidateOutcome validation,
         ProjectLayout project,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        bool exportVtu)
     {
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
@@ -1462,7 +1463,52 @@ public static class RunCommand
         var regime = Transport.Collisions.RegimeDiagnostics.Measure(
             gas, IonSpecies.FromModel(model), 1.0, result.ElapsedSeconds, SmallestAperture(model));
 
-        return new RunOutcome
+        var artifacts = new List<string> { Path.GetRelativePath(project.Root, manifestPath) };
+
+        // One volume per population, named by it. A mixture has no single density, so a single
+        // file called the density would be a picture of whichever species happened to be first
+        // - and writing nothing at all, which is what this did before the flag was threaded
+        // through, is the worst of the three: `--vtu` asked for a file and got silence.
+        if (exportVtu)
+        {
+            Directory.CreateDirectory(project.Scratch);
+
+            foreach (var member in result.Species)
+            {
+                var densityPath = Path.Combine(project.Scratch, $"{stem}.{member.Name}.density.vti");
+
+                // GRD-2: the warnings travel with the file, because a volume is the artifact
+                // most likely to be looked at by someone who never saw the result envelope.
+                var provenance = new List<string>
+                {
+                    $"engine: {EngineBuild.Version}",
+                    $"model: {validation.ModelHash}",
+                    $"species: {member.Name}",
+                    $"transport: diffusion, {result.Steps} shared steps over "
+                        + $"{result.ElapsedSeconds:G6} s, step set by '{result.StepSetBy}'",
+                    $"ions: {member.Collected:G6} collected, {member.Population:G6} still in the domain",
+                    "units: ions per cubic metre, at grid nodes",
+                };
+
+                // Named, because a mixture's whole point is that the populations differ and a
+                // reader opening one file needs to know which of them raised the field.
+                provenance.Add(
+                    result.SelfFieldSolves > 0
+                        ? $"space charge: the potential of ALL populations, {result.SelfFieldSolves} "
+                          + $"solve(s), peak {result.PeakSelfPotentialVolts:G4} V"
+                        : "space charge: not modelled; the populations did not feel one another");
+
+                provenance.AddRange(outcome.Warnings.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+                File.WriteAllText(
+                    densityPath,
+                    VtuWriter.WriteDensityField(member.Density, "density_per_m3", provenance));
+
+                artifacts.Add(Path.GetRelativePath(project.Root, densityPath));
+            }
+        }
+
+        var run = new RunOutcome
         {
             Manifest = manifest,
 
@@ -1491,7 +1537,7 @@ public static class RunCommand
             MaximumRelativeEnergyDrift = double.NaN,
             AcceptedSteps = result.Steps,
             AnalyticDriftDistanceM = 0.0,
-            Artifacts = [Path.GetRelativePath(project.Root, manifestPath)],
+            Artifacts = artifacts,
             HasFlightTime = false, // several densities: no ions to arrive, and no single one of them if there were
 
             Regime = gas.IsPresent
@@ -1516,6 +1562,18 @@ public static class RunCommand
                 model.ModelsMeanField ? result.PeakSelfPotentialVolts : null,
                 model.ModelsMeanField ? result.NetChargeSi : null),
         };
+
+        // Written like every other run's, so `einzel verify` has something to check this
+        // against. A path that produced no result document would be regenerable and
+        // unverifiable, which is half of PRJ-3.
+        var resultPath = Path.Combine(project.Results, $"{stem}.result.json");
+
+        File.WriteAllText(resultPath, CommandJson.Write(run));
+
+        return run with
+        {
+            Artifacts = [.. run.Artifacts, Path.GetRelativePath(project.Root, resultPath)],
+        };
     }
 
     private static RunOutcome Diffusive(
@@ -1531,7 +1589,7 @@ public static class RunCommand
         // and a fork the caller had to remember is one a caller will forget.
         if (model.IsMixture)
         {
-            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc);
+            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu);
         }
 
         // The one place that knows where the model file is, so the one place that can
