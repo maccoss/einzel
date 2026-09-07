@@ -840,3 +840,125 @@ ends. And the cutoff is a breakdown of the averaged-field picture — a low-mass
 into a ring within one RF cycle — so the diffusive mode cannot see it by construction, and
 the measurement is a test of the collision-by-collision mode at a pressure above the band
 it claims, which is REG-3's overlap-band comparison made on a published instrument.
+
+---
+
+## 6. Trapped ion mobility — the Bruker timsTOF analyser
+
+> Hernandez, DeBord, Ridgeway, Kaplan, Park, Fernandez-Lima, *Ion dynamics in a trapped ion
+> mobility spectrometer*, Analyst 2014;139:1913. <https://doi.org/10.1039/c3an02174b>
+> (open access, PMC4144823)  **[H]**
+>
+> Ridgeway, Lubeck, Jordens, Mann, Park, *Trapped ion mobility spectrometry: a short
+> review*, Int. J. Mass Spectrom. 2018;425:22.  **[R]**
+>
+> Michelmann, Silveira, Ridgeway, Park, *Fundamentals of Trapped Ion Mobility Spectrometry*,
+> J. Am. Soc. Mass Spectrom. 2015;26:14.  **[M]**
+>
+> Silveira, Ridgeway, Laukien, Mann, Park, *Parallel accumulation for 100% duty cycle
+> trapped ion mobility-mass spectrometry*, Int. J. Mass Spectrom. 2017;413:168.  **[S]**
+
+Paraphrased and cited rather than reproduced; the copies are in `papers/`, which is not
+tracked. **[H]** is open access and was read through the PubMed tools; the rest are
+image-only owner-password-protected scans read by rendering their pages.
+
+**Why this device.** TIMS holds ions stationary against a moving gas rather than pushing
+them through a still one, so the answer is *where a population parks* rather than how fast
+it transits — which is exactly the balance the drift-diffusion solver computes. Every other
+target at these pressures has been a transmission question.
+
+### The published register
+
+| | | |
+| --- | --- | --- |
+| sections | entrance funnel, tunnel, exit funnel | H |
+| lengths | 50 mm, **46 mm**, 15 mm (sequential); **96 mm** tunnel for parallel accumulation | H, R |
+| bore | 26 → 8 mm, then **8 mm constant**, then 8 → 1 mm | H |
+| electrodes | segmented rings on PC board, 1.6 mm thick, **four isolated segments each** | H |
+| spacing | 1.5 mm in the funnels; **0.125 mm kapton** in the tunnel, gas-tight | H |
+| RF phasing | funnels alternate between adjacent **plates** (dipolar); the tunnel alternates between adjacent **segments** (quadrupolar) | H |
+| RF | **850 kHz, 200 Vpp** as the stated example; the 2011 prototype was ~880 kHz | R |
+| axial RF component | "essentially no axial component", so it does not interfere with the measurement | R |
+| pressure | entrance 1.0-2.6 mbar, exit 1.0 mbar; ~3 mbar as operated | H, R |
+| gas | N2 at 300 K, cylindrically symmetric, **parabolic** radially | H |
+| axial gas velocity | **75 m/s at the tunnel entrance rising to ~130 m/s at 45 mm** on axis; ~115 at r = 1.4 mm | R fig 2c |
+| axial pressure | **2.61 mbar at z = 0 falling to 2.30 at 45 mm** | R fig 2d |
+| temperature | 297.5 K falling to ~294 K on axis — a 6 K variation | R fig 2e |
+| radial profile | parabolic, peak ~127 m/s at z = 43 mm and ~95 at z = 7 mm, over an 8 mm bore | R fig 2f |
+| axial field | up to **~70 V/cm** from **under 300 V** across the tunnel | R |
+| EFG | DC superimposed per electrode through a **resistor divider**; fixed at the exit, **ramped at the entrance** | R |
+| operating E/N | **45-150 Td** at the optimum ~140 m/s flow | R |
+| resolving power | 100-250 (H); ~200 singly and ~300 multiply charged routine, 400 achieved (R) | H, R |
+| operating sequence | **fill, trap, ramp, wait**, with three traces: the deflector plate, the entrance potential, and the ramp | H fig 2 |
+| named electrodes | deflector plate, entrance, ramp, out; P1 measured at the entrance funnel and P2 at the exit | H fig 1 |
+| fill time | ~10 ms typical; trap times to a few seconds for kinetics | H, R |
+
+Two numbers are derived here rather than published. The tunnel holds about **27 plates**,
+from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit at
+**23-41 mm** along the tunnel, read off [R] fig. 1a.
+
+### The regression targets
+
+| target | published | status |
+| --- | --- | --- |
+| elution field | `E_e = v_g / K` | not yet run |
+| plateau transit | `t_p = sqrt(2 L_p / (K beta))`, beta the field scan rate | not yet run |
+| resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | not yet run |
+| R against scan rate | R goes as `beta^(-1/4)` | not yet run |
+| R against mobility | R goes as `K^(-3/4)` | not yet run |
+| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | not yet run |
+
+**The resolving-power law is the target that matters**, because it is a *shape* over two
+independent variables rather than a single number: R must fall as the fourth root of the
+scan rate and as the three-quarter power of the mobility. A model that lands on one point
+by tuning cannot land on that surface.
+
+### What this needs from the engine
+
+Most of it exists. The diffusive mode is built for 1-10 mbar; the collisional
+pseudopotential is measured on the shipped funnel at 2 mbar; gas **velocity** and
+**pressure** fields both import; mobility comes from a cross section by Mason-Schamp; and a
+sequence phase can **ramp** a parameter linearly, which is the elution ramp itself.
+
+Four things are new.
+
+**The gas field has to be written, and it can be.** Einzel consumes a velocity field and
+deliberately does not compute one. [R] fig. 2 quantifies it well enough to author directly:
+an axial profile from 75 to 130 m/s, a parabolic radial profile over an 8 mm bore, and a
+pressure ramp from 2.61 to 2.30 mbar. That is an imported field with **every number cited**,
+which is a better position than the Astral started from.
+
+**Segment-level RF phasing is expressible but unexercised.** Every stack shipped so far
+alternates by plate. Four segments per ring alternating in pairs is a quadrupole, and
+adjacent segments being exact negatives means it still costs one basis solve — but nothing
+has driven a stack that way yet.
+
+**Mobility resolving power does not exist as a figure of merit.** The engine has
+arrival-time resolving power; this is `K/dK` off an elution profile against a ramped field.
+
+**And the operating point straddles the low-field limit, which the two sources do not
+agree about.** [H] states it as `E/p < 10 V cm^-1 torr^-1` **at all times**, which at 300 K
+is about **28 to 31 Td**. [R] says optimum performance is reached at E/N of **45 to 150 Td**.
+Those are different regimes, and both are probably true of what they describe: [H] is a 2014
+prototype run deliberately in the low-field limit so that drift-tube calibration transfers,
+and [R] is the commercial instrument tuned for resolving power. **The model has to declare
+which one it is**, and at the commercial operating point a low-field mobility is not valid.
+
+Einzel already refuses to pretend here — `Mobility.IsWithinFit` returns false and
+`mobility.outside-fit` rides on the result — so a faithful commercial model needs a
+**field-dependent mobility**, which is what TRN-1's "stated field dependence" exists for and
+which no shipped model has yet declared. **Start at [H]'s low-field point**, where the
+existing machinery is valid and the calibration is checkable, and treat the commercial
+operating point as the second step rather than the first.
+
+### The sequence maps onto the engine directly
+
+[H] fig. 2 gives the timing as four phases — **fill, trap, ramp, wait** — driving three
+potentials: the deflector plate, the entrance, and the ramp. Schema 0.6's model-level
+`sequence` with a `ramp` on a phase expresses that as written, and the ramp is linear in the
+parameter, which is exactly what [R] says the instrument does ("ramping the potential at the
+entrance in a linear manner ramps the field strength at the plateau in a linear manner").
+
+That is a pleasing fit and it should be treated with suspicion until it runs: the sequencer
+has never driven a diffusive phase whose *purpose* is to hold a population stationary, and
+"the density stops moving" is not a thing any existing test asserts.
