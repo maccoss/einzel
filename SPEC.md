@@ -1961,45 +1961,44 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
 Everything struck through was on this list and is now done; it is kept because *why*
 each turned out to be cheap or expensive is worth more than the fact of it.
 
-1. **Settle the well jitter, because it is what stops the cache paying on the one
-   device it was built for.** The caching this entry used to ask for is built
-   (`793f4e2`): a ramped diffusive phase keeps the cycle-averaged well across steps and
-   recomputes only the direct term, with `PotentialAt` asserted bit-for-bit equal to
-   `DirectPotentialAt + WellAt` over 324 points across four RF phases. It works where it
-   is meant to - on a synthetic DC ramp the driven field's evaluations fall from
-   9,609,600 to 490,208, **0 of 2,145 density nodes differ**, the collected count is
-   equal to the last digit, and the well rebuilds once in sixteen steps.
+1. ~~**Settle the well jitter, because it is what stops the cache paying on the one
+   device it was built for.**~~ - **explained, and it was the ramp after all.** The
+   cycle average asks what an ion feels from a field that *repeats*; a ramp does not,
+   and it was still advancing inside the averaging window, so its drift entered the mean
+   square of the "oscillating" field where nothing can tell it from quiver.
 
-   **On the shipped TIMS analyser it rebuilds 30 of 30 and saves nothing.** The well
-   genuinely moves **1.8e-5** between successive instants of the ramped field -
-   deterministically, over exactly one drive period - and the guard that re-probes
-   sixteen points every step correctly throws the cache away each time. So the front-end
-   study is still blocked, and it is blocked by this rather than by the absence of a
-   cache.
+   **The covariance carries the phase the window opens at**, which is what made it a
+   jitter rather than only a bias: `2cov = (A r T/N)[-cos(phi0) + cot(pi/N) sin(phi0)]`,
+   because `sum s cos(2 pi s/N) = -N/2` while `sum s sin(2 pi s/N) = -(N/2) cot(pi/N)`,
+   five times larger at N = 16. A diffusive step is set by a stability limit and never
+   lands on the drive, so every assembly opens somewhere else in the cycle. Closed form
+   for the swing, `4rT/(N A sin(pi/N))`, matched to every digit across a hundredfold in
+   rate and a sixteenfold in amplitude - and it predicts the shipped analyser's measured
+   1.8e-5 as **1.94e-5**.
 
-   **The obvious explanation is already refuted by its own control.** The hypothesis was
-   the ramp advancing inside the averaging window, which predicts a slower ramp gives
-   less; a hundredfold slower ramp gave **3.6e-5, larger**. What it does scale with is
-   the inverse amplitude - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100 / 400 V - which is the
-   signature of an additive contamination cross-multiplied with the drive. Recorded as
-   measured rather than explained.
+   **Fixed by holding the operating point**, which is what a pseudopotential is defined
+   at: `ITimeVaryingField.AtOperatingPoint(t)` holds non-oscillatory time dependence at
+   `t` and leaves the drive oscillating, defaulting to `this` so an unsequenced model is
+   untouched by construction. On the shipped analyser the well's movement across a cycle
+   goes from **3.15e-6 to 6.53e-14**, with the unfrozen path measured in the same run as
+   the control. 1,346 tests pass.
 
-   **The tolerance is deliberately not loosened, and that is the load-bearing decision.**
-   A tolerance chosen larger than a variation nobody has explained is caching over that
-   variation, which converts an accuracy question into a silent one. And the same number
-   is an accuracy statement in its own right: **a ramped driven diffusive well is not the
-   well to better than about 1e-5**, which bears on every driven diffusive result and not
-   only on the cost of this one.
+   Three things worth keeping. **Two obvious alternatives are rejected by arithmetic
+   rather than by building them** - sampling the cycle more finely does not converge it
+   away, since `cot(pi/N) -> N/pi` and the swing tends to `4rT/(pi A)` independent of N;
+   and detrending the window instead of de-meaning it removes `6/(N^2-1)` of the well,
+   2.4 per cent at N = 16. **The guarding test passed and never exercised it**: its
+   harness builds a fresh field per instant, so it was holding the operating point by
+   hand and asserting the intended design rather than the implementation. And **the two
+   recorded controls each measured a quantity the hypothesis did not predict a change
+   in** - one a step-to-step difference, the other my own sampling at whole periods,
+   which pins the phase and is stroboscopic.
 
-   So there are two prizes and they are the same investigation - the front-end study
-   becomes runnable, and a bound that is currently a mystery becomes either a real
-   physical term or a defect that is removed.
-
-   One correction the cache commit already made to this entry's earlier arithmetic: "about
-   a sixteenth per step" was half right. The direct term *is* the cycle mean of the
-   potential, so what the cache removes is every field evaluation and no potential
-   evaluation - **2.72x** on total evaluations and 3.7x of wall clock on an analytic
-   drive, not sixteen.
+   **Still open, and it is small**: the recorded slow-ramp control gave 3.6e-5 at a
+   hundredth of the rate, which the closed form cannot produce since the swing is linear
+   in rate and bounded. Either that run was not at a hundredth of the rate or a second
+   term exists. And the payoff - whether the front-end sequence now finishes - is
+   measured at the field level and not yet at the run level.
 
 2. ~~**Say how much of a mixture's coupling is worth having, on a device that separates
    ions.**~~ - **answered, and it agrees with the published estimate by an independent

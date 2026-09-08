@@ -580,6 +580,44 @@ swing is bounded above by `4rT/(N·A·sin(π/N))`. Either the slower-ramp run wa
 at a hundredth of the rate, or a second term is present. It is now a sharp test
 rather than an open puzzle, because there is a prediction to compare against.
 
+### Fixed: the operating point is held while the cycle is averaged
+
+A pseudopotential asks what an ion feels from a field that **repeats**. A ramp does
+not repeat, so it has no business inside the window being averaged over; what it
+does is set the operating point the average is taken *at*.
+
+`ITimeVaryingField.AtOperatingPoint(t)` returns the field with its non-oscillatory
+time dependence held at `t`, leaving the drive oscillating. The default is `this`,
+so only a sequenced solve and the four wrappers between it and the solver do
+anything, and an unsequenced model is untouched by construction rather than by
+tolerance. It is applied in `DiffusionRun.Effective`, the single place a
+`PonderomotiveField` is built, and the instant is a **required** parameter: a
+caller that does not know which operating point it means has no safe guess.
+
+Measured on the shipped analyser with an elution ramp, with the unfrozen path in
+the same run as its control — because "the well no longer moves" is also what a
+field nobody sampled would report:
+
+| | movement in the well across a cycle |
+| --- | --- |
+| ramp still running in the window | 3.15e-6 |
+| **operating point held** | **6.53e-14** |
+
+**Both halves of the operating point are held, the stage and the ramp fraction.**
+A window straddling a phase boundary was averaging two operating points, which is
+the same error — and is the reason `SequencedRun` probes a period *inside* a
+phase's end rather than at it. So this changes a **held** sequenced diffusive run
+as well as a ramped one, which is stated rather than buried; the full suite is
+green, so nothing crossed a tolerance.
+
+**The test that has guarded this passes and never exercised it.**
+`AnAmplitudeRampRebuildsTheWellAndADirectRampDoesNot` asserts a DC ramp rebuilds
+the well once, and its harness builds a *fresh field per instant*, baking the DC
+in as a constant. It was holding the operating point by hand. That is why it said
+"once" while the shipped analyser said thirty of thirty: it asserted the intended
+design and not the implementation, and the fix makes production do what it had
+always assumed.
+
 The tolerance is deliberately **not** loosened to cover it. A tolerance chosen
 larger than a variation nobody has explained is caching over that variation, and
 the same measurement says something a reader should know anyway: a ramped driven

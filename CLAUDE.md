@@ -1539,10 +1539,32 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   **3.6e-5, larger**. It scales as 1/amplitude instead - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100
   / 400 V - the signature of an additive contamination cross-multiplied with the drive.
 
-  So the sequence is still blocked, **by the jitter rather than by the absence of a cache**,
-  and the tolerance is deliberately not loosened to cover it: a tolerance chosen larger than
-  an unexplained variation is caching over that variation. The same 1.8e-5 is also an accuracy
-  statement - a ramped driven diffusive well is not the well to better than about 1e-5.
+  **And the jitter was the ramp too.** The covariance carries the RF phase the averaging
+  window opens at - `2cov = (A r T/N)[-cos(phi0) + cot(pi/N) sin(phi0)]`, because
+  `sum s cos(2 pi s/N) = -N/2` while `sum s sin(2 pi s/N) = -(N/2) cot(pi/N)`, five times
+  larger at N = 16 - and a diffusive step is set by a stability limit, so every assembly opens
+  somewhere else in the cycle. The closed form for the swing predicts the measured 1.8e-5 as
+  **1.94e-5**.
+
+  **Fixed by holding the operating point, which is what a pseudopotential is defined at.**
+  `AtOperatingPoint(t)` holds non-oscillatory time dependence and leaves the drive
+  oscillating, defaulting to `this` so an unsequenced model is untouched by construction. On
+  the shipped analyser the well's movement across a cycle falls from **3.15e-6 to 6.53e-14**,
+  with the unfrozen path in the same run as the control. Both halves of the operating point
+  are held - stage and ramp fraction - so a window straddling a phase boundary no longer
+  averages two operating points either, which changes a *held* sequenced run as well as a
+  ramped one. 1,346 tests pass.
+
+  Three things worth keeping. **Two obvious alternatives are rejected by arithmetic** rather
+  than by building them: sampling the cycle more finely does not converge it away, since
+  `cot(pi/N) -> N/pi` and the swing tends to `4rT/(pi A)` independent of N, and detrending the
+  window instead of de-meaning it removes `6/(N^2-1)` of the well - 2.4 per cent at N = 16.
+  **The guarding test passed and never exercised it**, because its harness builds a fresh
+  field per instant and so was holding the operating point by hand: it asserted the intended
+  design rather than the implementation, which is why it said "rebuilds once" while the
+  shipped analyser said thirty of thirty. And **both recorded controls measured a quantity the
+  hypothesis predicted no change in** - one a step-to-step difference, the other my own
+  sampling at whole drive periods, which pins the phase and is stroboscopic.
 
   The study's own question stays open:
   whether the arrival width is the analyser's own or whether the delivery leaves an axial
