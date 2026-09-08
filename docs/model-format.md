@@ -703,7 +703,8 @@ appear below the template library.
   "directPotential":  { "value": 0,   "unit": "V" },
   "driveAmplitude":   { "value": 200, "unit": "V" },
   "driveFrequency":   { "value": 1,   "unit": "MHz" },
-  "inscribedRadius":  { "value": 4,   "unit": "mm" } }
+  "inscribedRadius":  { "value": 4,   "unit": "mm" },
+  "axis": "x" }
 ```
 
 `idealQuadrupoleRf` is **the only analytic driven field**, and it exists for the
@@ -723,6 +724,18 @@ Note the field amplitude convention when writing closed forms against it:
 `E0(r) = 2 V r / r0^2`, because the potential is `V(x^2 - y^2)/r0^2` and its
 gradient carries the factor of two. Dropping it makes a pseudopotential exactly
 four times too small.
+
+`axis` (schema 0.11) names the axis the field is invariant along — `x`, `y` or `z`,
+with `z` when absent so every earlier document compiles to the same field. The
+transverse pair follows the cyclic order (`z`: x-y, `x`: y-z, `y`: z-x) and the
+potential is `V(u^2 - v^2)/r0^2` in that pair, as a permutation rather than a
+rotation so a point on the axis is at zero field to the bit. It exists because every
+axisymmetric tunnel here is solved in a half-plane whose axis of rotation is x, and
+the confining RF of a trapped-ion-mobility analyser — a quadrupole alternating
+between the four segments of each ring — has to lie *across* that axis. The
+quadrupole is not axisymmetric, but its pseudopotential is (the field magnitude
+depends on radius alone), which is what lets it enter the r-z density solve. An
+`axis` on any other element kind is refused rather than ignored.
 
 ### Solved fields
 
@@ -1082,14 +1095,16 @@ here.
 
 ## Versioning
 
-Schema 0.1 through 0.9 all load, and a test reads a document at every version the
+Schema 0.1 through 0.12 all load, and a test reads a document at every version the
 build claims. Every bump ships a migration and a test that the prior corpus still
 loads. Codes and field names are a compatibility surface that agent workflows bind
 to: they are added, never reworded or repurposed.
 
 0.3 adds the source cloud, 0.4 the gas, 0.5 the mutual Coulomb force, 0.6 the
 model-level sequence, 0.7 parametric directions, 0.8 a tilt on a cross-section's
-extrusion axis and 0.9 the polygon electrode. All purely additive, so every earlier
+extrusion axis, 0.9 the polygon electrode, 0.10 parameter provenance, 0.11 an
+`axis` on the analytic RF quadrupole and 0.12 a `fringe` on a bounded element's
+region. All purely additive, so every earlier
 document still reads — but a document whose ions push on each other genuinely is
 not a 0.4 document, and saying so is cheaper than an older build reading it,
 ignoring the field it does not know, and reporting a different flight with nothing
@@ -1288,3 +1303,61 @@ change in a cut length. What is established is the measurement and the cure.
 **The modelling rule:** do not place a conductor face exactly on a cell boundary when the
 quantity of interest is a small geometric perturbation. Same shape as the parallel-plate
 example's two mistakes — the geometry, not the discretisation, was what needed fixing.
+
+## Several ion populations (schema 0.13)
+
+A model declares either one `ion` or a list of `species`, never both.
+
+```json
+"species": [
+  { "name": "peptide-2+",
+    "massToCharge": { "value": 622.0, "unit": "Da" },
+    "chargeNumber": 2,
+    "mobility": { "zeroField": { "value": 0.0428, "unit": "m^2/(V s)" } },
+    "population": 3e6 },
+  { "name": "peptide-1+",
+    "massToCharge": { "value": 1244.0, "unit": "Da" },
+    "chargeNumber": 1,
+    "population": 1e6 }
+]
+```
+
+**The mobility lives on the species, and that is the substantive choice.** Mass, charge
+and mobility are one ion's three properties. Leaving the mobility under `transport` would
+make a document say which ions are present in one place and how each of them moves in
+another, with nothing tying the two lists together — so `transport.mobility` beside
+`species` is refused rather than treated as a default. A species that declares none, like
+`peptide-1+` above, derives its own from the gas cross section, and that derivation is
+Mason–Schamp for **that species' mass** rather than a number shared across the mixture. A
+shared derived mobility would separate nothing while looking like a converged answer.
+
+`population` is required per species. What a mixture is *for* is that the populations act
+on one another, and a population defaulted to zero would be present in the separation and
+absent from the space charge — the two halves of one run disagreeing about whether it is
+there.
+
+### What is refused, and why each is a document saying two things
+
+| Declared together | Why it is refused |
+| --- | --- |
+| `ion` and `species` | two different statements about what is being transported |
+| `transport.mobility` and `species` | how "the" ion moves, when there is no "the" ion |
+| `source.cloud.population` and species populations | how many ions there are, twice |
+| a `species` list of one | that is an ion, and the document should say so |
+| `species` on a trajectory-only run | no mode in this build steps several trajectory species |
+
+None of these has a reading under which one is a default for the other, so none is merged —
+the same rule that refuses a geometry declaring both `drive` and `drives`.
+
+The cloud's spatial spreads still shape every species' seed. That is geometry rather than
+identity, and one source really does emit them all from one place; only its `population`
+is refused, because that is the singular form of what each species now declares.
+
+### What a mixture run reports
+
+Under `mixture` rather than `diffusion`, because a mixture has no single mobility, no
+single transit and no single density — filling that block from the first population would
+report one species wearing the name of the run. Per species: the mobility it actually ran
+with and whether it was derived, launched / collected / remaining ions, named losses,
+transit, final centroid, and the step that species alone would have taken. Shared: the
+step actually used, which species set it, and what the self-field solved.

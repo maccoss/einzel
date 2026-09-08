@@ -191,6 +191,7 @@ public static class FiguresOfMerit
         new("confined", "1", "Fraction of launched ions still inside at the end of the run: neither struck on a surface nor escaped past the detector. What a trap is measured by, since a trapped ion by definition never arrives anywhere.", true, AccuracyClass.Statistical, FlightBasis.Ensemble),
         new("transitTime", "us", "Mean time for a diffusive run's density to reach the collecting boundary, weighted by how much arrived in each bin. What a density has instead of a flight time.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
         new("radialSpread", "mm", "Population-weighted standard deviation of a diffusive run's density across the direction of travel, about the packet's own centroid - radial in an axisymmetric solve, transverse in a cross-section. What confinement is measured by: a guide that holds its ions keeps this bounded, and one that does not lets it grow as the square root of time. Lower is tighter, but a floor set by the temperature and the well depth means zero is not the target.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
+        new("mobilityResolvingPower", "1", "Mobility resolving power K/dK of a trapped ion mobility analyser's elution scan, read as V/dV: the ramped parameter's value at the peak of the arrival-time distribution, over how far that parameter moves during the peak's full width at half maximum. The peak is the ion-weighted mean arrival and the width is the Gaussian-equivalent 2 sqrt(2 ln 2) sigma, because the arrivals are binned at the density solver's own step and a literal half-maximum of that histogram is lumpy. Equals K/dK on the assumption that the release parameter goes as 1/K, which holds when it scales a field linear in position - a tunnel's exit potential does. Needs a diffusive model whose sequence ramps exactly one parameter; a held field releases nothing and has no scan to resolve against.", true, AccuracyClass.Boundary, FlightBasis.Cloud),
         new("meanKineticEnergy", "eV", "Mean kinetic energy of the ions still in flight at the end, over the source cloud. The survivors rather than the arrivals, because a thermalised packet has no preferred direction and selecting on arrival would select the fast ones. Against a gas this is what equipartition fixes at (3/2)kT, which is the sharpest check the collision models have - and it is a target rather than something to maximise.", false, AccuracyClass.Statistical, FlightBasis.Cloud),
         new("focusingC1", "1", "Magnitude of the first-order time-energy coefficient c1 in T/T0 = 1 + c1 d + c2 d^2 + ..., where d is the fractional energy offset. Zero is a first-order energy focus, which is what a multi-reflection analyser is tuned to; a mirror with c1 uncancelled has a resolving power falling as one over the energy spread rather than as its square. Reported as a magnitude because the target is zero from either side, and because an optimiser minimising a signed coefficient would drive it to minus infinity. Measured from a deterministic energy scan, never from a declared cloud - the scan is designed rather than drawn.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
         new("focusingC2", "1", "The same for the second-order coefficient c2. A single-stage mirror at its first-order focus has c2 of order one half; a two-stage mirror cancels it too and its resolving power falls only as the cube of the energy spread. Minimise this AFTER c1, or combine the two in a Python objective - a weighted sum of the two is a design choice rather than a figure this build should pick for you.", false, AccuracyClass.Trajectory, FlightBasis.Ensemble),
@@ -508,6 +509,7 @@ public static class FiguresOfMerit
             "meanKineticEnergy" => model => MeanKineticEnergy(model, report),
             "transitTime" => model => Transit(model, report),
             "radialSpread" => model => RadialSpread(model, report),
+            "mobilityResolvingPower" => model => MobilityResolvingPower(model, report),
             "oscillationFrequencyX" => model => Oscillation(model, 0, report),
             "oscillationFrequencyY" => model => Oscillation(model, 1, report),
             "oscillationFrequencyZ" => model => Oscillation(model, 2, report),
@@ -1231,38 +1233,350 @@ public static class FiguresOfMerit
     private static double? Transit(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
-        if (!string.Equals(model.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
-        {
-            // Not a failure to measure - a wrong question. A trajectory run has a
-            // flight time, which is a different quantity computed a different way,
-            // and quietly returning it here would let a test pass against the mode
-            // it was not written for.
-            throw new EinzelException(new EinzelError
-            {
-                Code = ErrorCodes.SchemaInvalid,
-                Path = "/transport/mode",
-                Constraint = "'transitTime' is the transit of a density, and this model declares "
-                    + $"'{model.TransportMode}' transport",
-                Suggestion = "use 'flightTime' for a trajectory run, or set "
-                    + "\"transport\": { \"mode\": \"diffusion\" }",
-            });
-        }
+        // Not a failure to measure - a wrong question. A trajectory run has a
+        // flight time, which is a different quantity computed a different way,
+        // and quietly returning it here would let a test pass against the mode
+        // it was not written for.
+        RefuseUnlessDiffusive(
+            model, "transitTime", "the transit of a density", "use 'flightTime' for a trajectory run");
 
-        var (field, warnings) = Fields.FieldAssembly.BuildReported(model);
-        var outcome = DiffusionRun.Execute(model, field, warnings);
+        var run = DiffusiveRun(model, report);
 
-        Forward(outcome.Warnings, report);
-
-        var result = outcome.Result;
-
-        if (result.Arrivals.Count == 0 || result.Collected <= 0.0)
+        if (run.Arrivals.Count == 0 || run.Collected <= 0.0)
         {
             // Nothing arrived, so there is no transit to average. Null rather than
             // zero: zero is a real answer and a caller cannot tell the two apart.
             return null;
         }
 
-        return result.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / result.Collected;
+        return MeanArrival(run);
+    }
+
+    /// <summary>What a diffusive run hands the figures that read it.</summary>
+    /// <param name="Arrivals">
+    /// When density reached the collecting boundary, on the instrument's clock, one entry
+    /// per step that collected anything, in ions.
+    /// </param>
+    /// <param name="Collected">The ions those arrivals sum to.</param>
+    /// <param name="Final">
+    /// The density the run ended with, where the run has one to give; null on the sequenced
+    /// path, whose outcome does not carry it.
+    /// </param>
+    private sealed record DiffusiveArrivals(
+        IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals,
+        double Collected,
+        Transport.Diffusion.DensityField? Final);
+
+    /// <summary>The ion-weighted mean arrival of a diffusive run, in seconds.</summary>
+    /// <remarks>
+    /// Weighted by how many ions arrived in each bin, because an unweighted mean over bins
+    /// is a mean over the solver's step schedule rather than over the ions. The same
+    /// arithmetic <c>einzel run</c> reports as <c>meanArrivalUs</c>, so the two agree.
+    /// </remarks>
+    private static double MeanArrival(DiffusiveArrivals run) =>
+        run.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / run.Collected;
+
+    /// <summary>Refuses a diffusive figure asked of a model that is not diffusive.</summary>
+    /// <remarks>
+    /// One refusal for the three figures that read a density, so the wording cannot drift
+    /// between them. The path is the transport mode, because that is the value in the
+    /// document that makes the question the wrong one.
+    /// </remarks>
+    private static void RefuseUnlessDiffusive(
+        CompiledModel model, string figure, string whatItIs, string alternative)
+    {
+        if (string.Equals(model.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        throw new EinzelException(new EinzelError
+        {
+            Code = ErrorCodes.SchemaInvalid,
+            Path = "/transport/mode",
+            Constraint = $"'{figure}' is {whatItIs}, and this model declares "
+                + $"'{model.TransportMode}' transport",
+            Suggestion = $"{alternative}, or set \"transport\": {{ \"mode\": \"diffusion\" }}",
+        });
+    }
+
+    /// <summary>Runs a diffusive model the way <c>einzel run</c> would, and returns its arrivals.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A sequenced model takes the sequenced path, and that is the whole reason this
+    /// helper exists.</b> <see cref="DiffusionRun.Execute"/> reads the field through the
+    /// time-free interface, and for a model with a <c>sequence</c> that is a snapshot of the
+    /// field at one instant: an elution ramp declared on such a model ran with the ramp
+    /// silently ignored - exit 0, a density, no warning. <c>einzel run</c> was routed to
+    /// <see cref="SequencedRun"/> for exactly that reason, and the figures of merit were
+    /// not, so <c>run</c> and <c>test</c> disagreed on every sequenced diffusive model. The
+    /// same seam has now split three times (a flight time, then a gas, now a sequence), each
+    /// time by one path gaining a capability the other did not. See "A single-mode sequence
+    /// took the path that steps a snapshot" in <c>docs/lessons.md</c>.
+    /// </para>
+    /// <para>
+    /// The gas is resolved through <see cref="DiffusionRun.GasFor"/>, which is what the
+    /// plain path already did through <c>DiffusionRun.Execute</c>'s own default, so an
+    /// imported gas field reaches a sequenced figure exactly as it reaches a plain one.
+    /// </para>
+    /// <para>
+    /// Every warning the run produces is forwarded - the field's and the run's, both
+    /// paths. The sequenced outcome does not fold the field's warnings into its own, where
+    /// the plain one does, so they are sent separately there rather than dropped at the
+    /// seam this file has already dropped evidence at once.
+    /// </para>
+    /// </remarks>
+    private static DiffusiveArrivals DiffusiveRun(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report)
+    {
+        // Neither path below knows about `species`, and neither fails when handed one:
+        // they would run the FIRST population's mass against a mobility derived from the
+        // gas cross section and report a number about an ion the document never declared.
+        // A project test pinning that number would pass while measuring the wrong thing,
+        // which is worse than a refusal by exactly the margin that makes it believable.
+        if (model.IsMixture)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a figure of merit is one number and a mixture has one per "
+                    + "population, so this build cannot compute one for a mixture",
+                Suggestion = "measure a single \"ion\" model, or read the per-population "
+                    + "results from `einzel run --json` under 'mixture'",
+            });
+        }
+
+        var (field, fieldWarnings) = Fields.FieldAssembly.BuildReported(model);
+
+        if (model.Phases.Count > 0)
+        {
+            var sequenced = SequencedRun.Execute(model, field, DiffusionRun.GasFor(model));
+
+            Forward(fieldWarnings, report);
+            Forward(sequenced.Warnings, report);
+
+            return new DiffusiveArrivals(
+                sequenced.Arrivals, sequenced.Arrivals.Sum(a => a.Ions), null);
+        }
+
+        var plain = DiffusionRun.Execute(model, field, fieldWarnings);
+
+        Forward(plain.Warnings, report);
+
+        return new DiffusiveArrivals(
+            plain.Result.Arrivals, plain.Result.Collected, plain.Result.Density);
+    }
+
+    /// <summary>
+    /// The mobility resolving power of an elution scan: how far apart two mobilities must
+    /// be for a trapped ion mobility analyser to release them as separate peaks.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The definition.</b> A trapped ion mobility analyser holds ions against a gas flow
+    /// and releases them by ramping a parameter - here the tunnel's exit potential, which
+    /// scales the axial field - linearly downward. An ion of mobility <c>K</c> is released
+    /// when the field can no longer hold it, at a parameter value <c>V_e</c> proportional to
+    /// <c>1/K</c>. So <c>R = K/dK = V/dV</c>, where <c>V</c> is the ramped parameter's value
+    /// at the peak of the arrival-time distribution and <c>dV</c> is how far it moves during
+    /// the peak's full width at half maximum: <c>dV = beta * FWHM_t</c> with
+    /// <c>beta = |p_end - p_start| / ramp duration</c>. Hence
+    /// <c>R = |p(t_peak)| / (beta * FWHM_t)</c>.
+    /// </para>
+    /// <para>
+    /// <b>The peak is the ion-weighted mean and the width is Gaussian-equivalent</b> -
+    /// <c>FWHM_t = 2 sqrt(2 ln 2) sigma_t</c> with <c>sigma_t</c> the ion-weighted standard
+    /// deviation of the arrival instants. The arrivals are binned at the density solver's
+    /// own step, which under an implicit scheme is coarse, and a literal half-maximum read
+    /// off that histogram would be a property of the step rather than of the peak. The
+    /// Gaussian-equivalent width is the honest estimate from a stepped record, and the
+    /// provenance warning says that is what was used.
+    /// </para>
+    /// <para>
+    /// <b>What it assumes, stated on every result.</b> <c>K</c> proportional to
+    /// <c>1/parameter</c> holds when the parameter scales a field that is linear in
+    /// position, which the tunnel's quadratic ring profile gives. A parameter that moved the
+    /// field some other way would still produce a number here, and the number would be
+    /// <c>V/dV</c> and not <c>K/dK</c>; the <c>mobility.resolving-power-definition</c>
+    /// warning is how a reader tells which they have.
+    /// </para>
+    /// <para>
+    /// <b>Refused, not measured</b>, where the question is the wrong one: a model that is not
+    /// diffusive, one with no sequence, a sequence in which nothing ramps, or one ramping
+    /// more than one parameter - the figure would not know which of them sets <c>K</c>. A
+    /// ramp cut into several phases is refused too, because each has its own slope and the
+    /// figure is defined against one. Null, never zero, where nothing arrived, and null with
+    /// <c>mobility.peak-outside-ramp</c> where the peak fell before the ramp began or after it
+    /// ended, since there the release parameter is undefined - a peak during the drain is
+    /// ions that were released at the ramp's end and took that long to arrive, and reading
+    /// the drain's held value as their release voltage would be wrong in a way the number
+    /// cannot show.
+    /// </para>
+    /// </remarks>
+    private static double? MobilityResolvingPower(
+        CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
+    {
+        RefuseUnlessDiffusive(
+            model,
+            "mobilityResolvingPower",
+            "the resolving power of a density's elution against a ramp",
+            "use 'resolvingPower' for a trajectory run's arrival-time peak");
+
+        if (model.Phases.Count == 0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = "'mobilityResolvingPower' is read against a ramped parameter, and "
+                    + "this model declares no sequence",
+                Suggestion = "add a \"sequence\" with a phase that ramps the parameter the "
+                    + "release depends on - for a tunnel, its exit potential walked to zero",
+            });
+        }
+
+        var ramping = model.Phases.Where(p => p.Ramps.Count > 0).ToList();
+
+        if (ramping.Count == 0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = "'mobilityResolvingPower' is read against a ramped parameter, and "
+                    + $"no phase of this {model.Phases.Count}-phase sequence ramps anything - "
+                    + "every phase holds",
+                Suggestion = "give one phase a \"ramp\" naming where the release parameter "
+                    + "ends. A held field releases nothing and has no scan to resolve against",
+            });
+        }
+
+        var parameters = ramping
+            .SelectMany(p => p.Ramps.Select(r => r.Parameter))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (parameters.Count > 1)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = "'mobilityResolvingPower' needs one ramped parameter to read the "
+                    + $"release against, and this sequence ramps {parameters.Count}: "
+                    + string.Join(", ", parameters),
+                Suggestion = "ramp only the parameter that sets which mobility is released. "
+                    + "With two ramping at once the figure has no way to know which one the "
+                    + "peak is a function of",
+            });
+        }
+
+        if (ramping.Count > 1)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = "'mobilityResolvingPower' is defined against one linear ramp, and "
+                    + $"this sequence ramps '{parameters[0]}' in {ramping.Count} phases: "
+                    + string.Join(", ", ramping.Select(p => $"'{p.Name}'")),
+                Suggestion = "write the scan as one ramp phase. A ramp in segments has a slope "
+                    + "per segment, and the figure would be a different resolving power in each",
+            });
+        }
+
+        var phase = ramping[0];
+        var ramp = phase.Ramps[0];
+        var rampStart = phase.EndsAtSeconds - phase.DurationSeconds;
+        var rampEnd = phase.EndsAtSeconds;
+        var travel = ramp.End.SiValue - ramp.Start.SiValue;
+        var beta = Math.Abs(travel) / phase.DurationSeconds;
+
+        if (!(beta > 0.0))
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/sequence",
+                Constraint = $"phase '{phase.Name}' ramps '{ramp.Parameter}' from "
+                    + $"{ramp.Start} to {ramp.End}, so the parameter does not move and "
+                    + "there is no scan to read a resolving power against",
+                Suggestion = "end the ramp somewhere other than where it starts",
+            });
+        }
+
+        var run = DiffusiveRun(model, report);
+
+        if (run.Arrivals.Count == 0 || run.Collected <= 0.0)
+        {
+            // Nothing arrived, so there is no peak. Null rather than zero: zero is a real
+            // answer here (a ramp that reached nought exactly at the peak) and a caller
+            // cannot tell the two apart.
+            return null;
+        }
+
+        var peak = MeanArrival(run);
+        var variance = run.Arrivals.Sum(
+            a => a.Ions * (a.TimeSeconds - peak) * (a.TimeSeconds - peak)) / run.Collected;
+        var fwhm = 2.0 * Math.Sqrt(2.0 * Math.Log(2.0)) * Math.Sqrt(Math.Max(0.0, variance));
+
+        var inside = peak >= rampStart && peak <= rampEnd;
+        var at = inside
+            ? ramp.Start.SiValue + (travel * (peak - rampStart) / phase.DurationSeconds)
+            : double.NaN;
+
+        var unit = ramp.Start.Dimension.IsDimensionless ? string.Empty : $" {ramp.Start.Dimension}";
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+
+        // Provenance rather than a caveat: the definition is a choice, and the number cannot
+        // carry it. Reported whether or not the peak landed inside the ramp, so the reader
+        // who gets a null below still sees the numbers that produced it.
+        report?.Invoke(new Core.Results.ValidityWarning(
+            "mobility.resolving-power-definition",
+            $"mobility resolving power is read as V/dV against the ramp of '{ramp.Parameter}' in "
+            + $"phase '{phase.Name}': R = |p(t_peak)| / (beta * FWHM_t), with t_peak the "
+            + $"ion-weighted mean arrival ({peak * 1e6:F1} us), FWHM_t the Gaussian-equivalent "
+            + $"width 2 sqrt(2 ln 2) sigma_t of the arrivals ({fwhm * 1e6:F1} us) rather than a "
+            + "literal half-maximum of the stepped histogram, beta = |p_end - p_start| / ramp "
+            + $"duration ({beta.ToString("G4", culture)}{unit}/s), and p(t_peak) = "
+            + $"{(inside ? at.ToString("G4", culture) + unit : "undefined, the peak being outside the ramp")}. "
+            + "It equals K/dK on the assumption that the release parameter goes as 1/K, which "
+            + "holds when the parameter scales a field that is linear in position",
+            Core.Results.WarningSeverity.Provenance));
+
+        if (!inside)
+        {
+            report?.Invoke(new Core.Results.ValidityWarning(
+                "mobility.peak-outside-ramp",
+                $"the arrival peak at {peak * 1e6:F1} us fell "
+                + (peak < rampStart
+                    ? $"before the ramp began at {rampStart * 1e6:F1} us"
+                    : $"after the ramp ended at {rampEnd * 1e6:F1} us")
+                + $", so the value of '{ramp.Parameter}' that released those ions is "
+                + "undefined and no resolving power is reported. Ions arriving after the "
+                + "ramp were released at its end and took that long to reach the detector; "
+                + "lengthen the ramp, or slow it, so the release falls inside it",
+                Core.Results.WarningSeverity.Qualified));
+
+            return null;
+        }
+
+        if (!(fwhm > 0.0))
+        {
+            // Every arrival fell in one step, so the peak has no width to read a resolving
+            // power off - which is a width below the step, not an infinite resolving power.
+            report?.Invoke(new Core.Results.ValidityWarning(
+                "mobility.peak-unresolved",
+                "every arrival fell within one step of the density solver, so the peak has no "
+                + "measurable width and no resolving power is reported. Refine the density "
+                + "step - a smaller implicit gain - so the peak spans several steps",
+                Core.Results.WarningSeverity.Qualified));
+
+            return null;
+        }
+
+        return Math.Abs(at) / (beta * fwhm);
     }
 
     /// <summary>
@@ -1296,29 +1610,42 @@ public static class FiguresOfMerit
     private static double? RadialSpread(
         CompiledModel model, Action<Core.Results.ValidityWarning>? report = null)
     {
-        if (!string.Equals(model.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        // The same refusal `transitTime` makes, for the same reason: a trajectory run
+        // has a packet width too, computed a different way over particles, and quietly
+        // returning that here would let a test pass against the mode it was not
+        // written for.
+        RefuseUnlessDiffusive(
+            model, "radialSpread", "the width of a density",
+            "use 'emittance' for a trajectory run's packet");
+
+        if (model.Phases.Count > 0)
         {
-            // The same refusal `transitTime` makes, for the same reason: a trajectory run
-            // has a packet width too, computed a different way over particles, and quietly
-            // returning that here would let a test pass against the mode it was not
-            // written for.
+            // Refused rather than run, and refused rather than run the wrong way. The
+            // sequenced path is the right one for a model with a sequence, and its outcome
+            // carries the arrivals and not the density it ended with, so there is nothing
+            // here to take a width of. The alternative - stepping a snapshot of the field
+            // through the plain path - would report a width of a run the document does not
+            // describe, which is the defect that sent every other sequenced figure through
+            // SequencedRun.
             throw new EinzelException(new EinzelError
             {
                 Code = ErrorCodes.SchemaInvalid,
-                Path = "/transport/mode",
-                Constraint = "'radialSpread' is the width of a density, and this model declares "
-                    + $"'{model.TransportMode}' transport",
-                Suggestion = "use 'emittance' for a trajectory run's packet, or set "
-                    + "\"transport\": { \"mode\": \"diffusion\" }",
+                Path = "/sequence",
+                Constraint = "'radialSpread' is the width of the density a run ends with, and a "
+                    + "sequenced run does not hand its final density out - so this figure "
+                    + "cannot yet be read off a model with a sequence",
+                Suggestion = "remove the sequence to measure the width of a held run, or use "
+                    + "'transitTime' or 'mobilityResolvingPower', which read the sequenced "
+                    + "run's arrivals",
             });
         }
 
-        var (field, warnings) = Fields.FieldAssembly.BuildReported(model);
-        var outcome = DiffusionRun.Execute(model, field, warnings);
+        var run = DiffusiveRun(model, report);
 
-        Forward(outcome.Warnings, report);
-
-        var density = outcome.Result.Density;
+        // The plain path always ends with a density; only the sequenced path, refused
+        // above, does not.
+        var density = run.Final
+            ?? throw new InvalidOperationException("a plain diffusive run ends with a density");
 
         if (!(density.Population() > 0.0))
         {

@@ -2,6 +2,7 @@ using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
 using Einzel.Core.Model;
 using Einzel.Core.Results;
+using Einzel.Core.Units;
 using Einzel.Fields;
 using Einzel.Fields.Solved;
 using Einzel.Transport;
@@ -21,6 +22,24 @@ public sealed record DiffusiveOutcome(
     CompiledMobility Mobility,
     Grid2D Grid,
     double Launched,
+    IReadOnlyList<ValidityWarning> Warnings);
+
+
+/// <summary>What a mixture run of a model document did, per population and overall.</summary>
+/// <param name="Result">The mixture solver's own result.</param>
+/// <param name="Mobilities">
+/// The mobility each species actually ran with, in the order declared - the derived value where
+/// the document left it to be derived, so a report can say what was used rather than what was
+/// asked for.
+/// </param>
+/// <param name="Grid">The region the densities were tracked over, shared.</param>
+/// <param name="Launched">How many real ions of each species were seeded, in the same order.</param>
+/// <param name="Warnings">Everything qualifying the run.</param>
+public sealed record MixtureOutcome(
+    MixtureResult Result,
+    IReadOnlyList<CompiledMobility> Mobilities,
+    Grid2D Grid,
+    IReadOnlyList<double> Launched,
     IReadOnlyList<ValidityWarning> Warnings);
 
 /// <summary>
@@ -131,9 +150,16 @@ public static class DiffusionRun
             gain = model.DensityStep.Gain;
         }
 
+        var selfField = SelfFieldFor(model, grid, absorbers, edges, species);
+
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
-            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds);
+            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds, selfField: selfField);
+
+        if (selfField is not null)
+        {
+            warnings.AddRange(SelfFieldWarnings(selfField, result, gas));
+        }
 
         // The seed's overlap with metal joins the same ledger the run fills, so the
         // itemisation adds back up to the launched population.
@@ -158,6 +184,176 @@ public static class DiffusionRun
         }
 
         return new DiffusiveOutcome(result, used, grid, launched, warnings);
+    }
+
+
+    /// <summary>Runs a model that declares several ion populations.</summary>
+    /// <param name="model">The validated model, which must declare a mixture.</param>
+    /// <param name="field">The applied field.</param>
+    /// <param name="fieldWarnings">Whatever building that field had to say.</param>
+    /// <param name="resolved">A gas already resolved against the model's directory, if there is one.</param>
+    /// <param name="scheme">Explicit or implicit, overriding the document's own choice.</param>
+    /// <param name="stepGain">The implicit gain, overriding the document's.</param>
+    /// <returns>What became of each population.</returns>
+    /// <exception cref="EinzelException">The model does not declare a mixture.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Every shared piece is the same function the single-species path calls</b> - the grid,
+    /// the seed shape, the absorbers, the edges, the gas, the self-field. Only what is genuinely
+    /// per species is computed per species: the mobility, and the cycle-averaged well, which
+    /// depends on mass and damping and so differs between populations in the same RF.
+    /// </para>
+    /// <para>
+    /// <b>Every species is seeded from the one source, scaled to its own population.</b> That is
+    /// what a real source does - one packet of mixed ions enters the instrument - and it means
+    /// a mixture needs no per-species geometry in the document. What separates them afterwards
+    /// is their mobility, which is the point.
+    /// </para>
+    /// </remarks>
+    public static MixtureOutcome ExecuteMixture(
+        CompiledModel model,
+        IElectrostaticField field,
+        IReadOnlyList<ValidityWarning> fieldWarnings,
+        BackgroundGas? resolved = null,
+        Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
+        double stepGain = 1.0)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(field);
+
+        if (!model.IsMixture)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/species",
+                Constraint = "a mixture run needs a model that declares several ion populations",
+                Suggestion = "declare a \"species\" list, or run this model through the "
+                    + "single-species path",
+            });
+        }
+
+        var gas = resolved ?? GasFor(model);
+
+        var grid = GridFor(model);
+        var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
+
+        // The shape every species is seeded with. Taken once and scaled per population, because
+        // one source emits them all: a mixture that seeded each species from its own geometry
+        // would be a model of several instruments.
+        var shape = Seed(model, grid, cylindrical);
+        var shapePopulation = shape.Population();
+
+        if (shapePopulation <= 0.0)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/source",
+                Constraint = "the source seeded no density, so there is nothing to scale per species",
+                Suggestion = "check the source position lies inside the tracked region",
+            });
+        }
+
+        var (absorbers, seedLoss) = Absorb(model, grid, shape);
+        var edges = EdgesFor(model, grid);
+
+        var warnings = new List<ValidityWarning>(fieldWarnings);
+
+        var members = new List<MixtureMember>(model.Species.Count);
+        var mobilities = new List<CompiledMobility>(model.Species.Count);
+        var launched = new List<double>(model.Species.Count);
+
+        foreach (var declared in model.Species)
+        {
+            var species = IonSpecies.Create(
+                Quantity.Si(declared.MassSi, Dimension.MassDimension),
+                Quantity.Si(declared.ChargeSi, Dimension.Charge));
+
+            // Mason-Schamp for THIS species' mass where the document left it to be derived, not
+            // a number shared across the mixture: a derived mobility that ignored the mass would
+            // separate nothing and would look like a converged answer.
+            var mobility = declared.Mobility.Derived
+                ? Mobility.FromCrossSection(gas, species)
+                : new Mobility(
+                    declared.Mobility.ZeroFieldSi,
+                    declared.Mobility.Alpha,
+                    declared.Mobility.ValidToTownsend);
+
+            mobilities.Add(declared.Mobility with { ZeroFieldSi = mobility.ZeroFieldSi });
+
+            var seeded = shape.Clone();
+            var scale = declared.Population / shapePopulation;
+
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    seeded[i, j] *= scale;
+                }
+            }
+
+            launched.Add(seeded.Population());
+
+            // The well this species feels, where the field is driven. Its own, because the
+            // pseudopotential is built from charge, mass and momentum-transfer rate - which is
+            // why MixtureDiffusion refuses a shared one.
+            var seen = field;
+            var effective = Effective(ref seen, species, mobility, gas);
+
+            if (effective is not null)
+            {
+                warnings.AddRange(EffectiveFieldWarnings(effective, grid));
+            }
+
+            members.Add(new MixtureMember(declared.Name, species, mobility, seeded, seen));
+        }
+
+        var chosen = scheme;
+        var gain = stepGain;
+
+        if (scheme == Transport.Diffusion.StepScheme.Explicit && stepGain == 1.0)
+        {
+            chosen = model.DensityStep.IsImplicit
+                ? Transport.Diffusion.StepScheme.Implicit
+                : Transport.Diffusion.StepScheme.Explicit;
+
+            gain = model.DensityStep.Gain;
+        }
+
+        // One self-field over the sum of q_s n_s, which is the whole reason these run together.
+        // Built with the first species' charge, which it uses only as a default the mixture
+        // overload never reads.
+        var selfField = SelfFieldFor(model, grid, absorbers, edges, members[0].Species);
+
+        var result = MixtureDiffusion.Run(
+            members, field, gas, model.MaximumFlightTimeSi, edges, absorbers,
+            scheme: chosen, stepGain: gain, selfField: selfField);
+
+        if (seedLoss.Count > 0)
+        {
+            warnings.Add(new ValidityWarning(
+                "mixture.seed-overlaps-metal",
+                $"the source overlaps a conductor, so every species lost part of its seed to it "
+                + $"before the run began: {string.Join(", ", seedLoss.Select(l => $"{l.Key} {l.Value / shapePopulation:P2}"))} "
+                + "of each population",
+                WarningSeverity.ValidityViolation));
+        }
+
+        warnings.Add(new ValidityWarning(
+            "mixture.populations",
+            $"{model.Species.Count} ion populations were stepped together, sharing one field and "
+            + $"one step of {result.StepSeconds * 1e9:F3} ns set by '{result.StepSetBy}'. They are "
+            + "coupled through the potential their total charge raises and through nothing else, "
+            + (selfField is null
+                ? "and no mean field was asked for - so on this run they are independent, and the "
+                  + "result is what several separate runs would give"
+                : $"and that field was solved {result.SelfFieldSolves} time(s), peaking at "
+                  + $"{result.PeakSelfPotentialVolts:G4} V over a net "
+                  + $"{result.NetChargeSi:G4} C"),
+            WarningSeverity.Provenance));
+
+        return new MixtureOutcome(result, mobilities, grid, launched, warnings);
     }
 
     /// <summary>
@@ -524,6 +720,113 @@ public static class DiffusionRun
     /// absorbs. Reflecting where the instrument has a wall would make ions bounce
     /// off vacuum.
     /// </remarks>
+
+    /// <summary>
+    /// The density's own self-field, where the model asks for one, or null where it does not.
+    /// </summary>
+    /// <param name="model">The validated model.</param>
+    /// <param name="grid">The tracked region.</param>
+    /// <param name="absorbers">The conductors inside it, which screen the self-potential.</param>
+    /// <param name="edges">What each domain edge does, which decides its condition here.</param>
+    /// <param name="species">The ion, for its charge.</param>
+    /// <returns>The solver, or null.</returns>
+    /// <remarks>
+    /// Shared between the wholly diffusive path and a sequenced run's diffusive legs, because
+    /// this is the seam that has been dropped four times in this project: a capability wired
+    /// into one of the two and not the other gives a model that runs, answers, and quietly
+    /// leaves out the physics it was asked for.
+    /// </remarks>
+    internal static Transport.Diffusion.DensitySelfField? SelfFieldFor(
+        CompiledModel model,
+        Grid2D grid,
+        AbsorbingCells absorbers,
+        DriftDiffusion.DomainEdges edges,
+        IonSpecies species) =>
+        model.ModelsMeanField
+            ? new Transport.Diffusion.DensitySelfField(
+                grid,
+                model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical),
+                absorbers,
+                edges,
+                species.ChargeSi)
+            : null;
+
+    /// <summary>What a mean-field run has to say about the charge it modelled.</summary>
+    /// <param name="selfField">The solver the run used.</param>
+    /// <param name="result">What the run produced.</param>
+    /// <param name="gas">The gas, for its temperature.</param>
+    /// <returns>The warnings, which is one.</returns>
+    /// <remarks>
+    /// Reported whether or not it crosses a threshold, per REG-2: a reader who sees a peak
+    /// self-potential of a millivolt against a thermal 26 mV knows the packet's own charge was
+    /// asked about and did not matter, and one who sees nothing cannot tell that from its
+    /// never having been modelled. The comparison is against kT/q rather than against the
+    /// applied field, because what the self-potential competes with in setting a held cloud's
+    /// width is the thermal energy - a well is only as sharp as the temperature lets it be.
+    /// </remarks>
+    internal static List<ValidityWarning> SelfFieldWarnings(
+        Transport.Diffusion.DensitySelfField selfField,
+        DiffusionResult result,
+        BackgroundGas gas)
+    {
+        const double Boltzmann = 1.380649e-23;
+        const double Charge = 1.602176634e-19;
+
+        var thermal = Boltzmann * gas.TemperatureK / Charge;
+        var occupied = 0;
+        var density = result.Density;
+
+        for (var j = 0; j < density.Grid.CountY; j++)
+        {
+            for (var i = 0; i < density.Grid.CountX; i++)
+            {
+                if (density[i, j] > 0.0)
+                {
+                    occupied++;
+                }
+            }
+        }
+
+        var perCell = occupied > 0 ? result.Remaining / occupied : 0.0;
+
+        var warnings = new List<ValidityWarning>();
+
+        // `DensitySelfField` keeps its SolveReport with a comment saying it must not be
+        // discarded, and until now nothing read it - so a self-potential that stopped short of
+        // its tolerance was indistinguishable from one that met it. That is the seam this
+        // project has dropped evidence at four times before, met a fifth, and in my own code
+        // written the same night. A validity violation rather than provenance because an
+        // unconverged self-field taints everything downstream of it: the drift, the exponent
+        // the flux is built from, and the stability limit the step comes from are all built
+        // from a potential that is not the one the charge actually raises.
+        if (selfField.Report is { Converged: false } report)
+        {
+            warnings.Add(new ValidityWarning(
+                "spacecharge.self-field-unconverged",
+                $"the density's own potential stopped after {report.Cycles} V-cycles at a residual "
+                + $"of {report.FinalResidual:E2} against an initial {report.InitialResidual:E2} - a "
+                + $"convergence factor of {report.ConvergenceFactor:F3} - rather than reaching its "
+                + "tolerance. Every quantity built from that potential carries the shortfall",
+                WarningSeverity.ValidityViolation));
+        }
+
+        warnings.Add(
+            new ValidityWarning(
+                "spacecharge.mean-field",
+                $"the density's own charge was solved as a potential on the tracked grid and added to the "
+                + $"applied one: {result.SelfFieldSolves} solve(s), peak {result.PeakSelfPotentialVolts:G4} V "
+                + $"against a thermal kT/q of {thermal:G4} V, so the packet's own charge is "
+                + $"{result.PeakSelfPotentialVolts / thermal:G3} times the energy scale that sets a held "
+                + $"cloud's width. The continuum treatment holds while a cell holds many ions, and here it "
+                + $"holds about {perCell:G3} over {occupied} occupied cell(s) - where that falls below one "
+                + "the field is being built from lumps rather than from a density, which is the same limit "
+                + "the particle-in-cell deposit has. No bound is asserted on it, because none has been "
+                + "measured",
+                WarningSeverity.Provenance));
+
+        return warnings;
+    }
+
     internal static DriftDiffusion.DomainEdges EdgesFor(CompiledModel model, Grid2D grid)
     {
         var cylindrical = model.Fields.Any(f => f.Solve?.Symmetry == SolveSymmetry.Cylindrical);
@@ -584,7 +887,19 @@ public static class DiffusionRun
             }
         }
 
-        var cell = Math.Min(grid.SpacingX, grid.SpacingY);
+        // The mesh that represents the FIELD, not the density grid. The average over an
+        // excursion describes something if the field is roughly linear across it, and what
+        // sets how finely the field is known is the solve it came from: a quiver larger than
+        // a solve cell is being averaged over interpolation. An analytic field has no mesh
+        // and reports an infinite resolution, so a purely analytic drive never trips this -
+        // its validity is the adiabatic one, quiver against the scale the field itself varies
+        // on, which for a quadrupole is a Mathieu q and is reported by the field. The density
+        // grid used to stand in here, and a fine density grid then reported an RF as
+        // unresolved when nothing about the field had changed.
+        var cell = field.OscillatingResolutionLength;
+        var mesh = double.IsFinite(cell)
+            ? $"against the {cell * 1e3:G3} mm cell the oscillating field is resolved on"
+            : "and the oscillating field is analytic, so there is no mesh it could exceed";
 
         warnings.Add(new ValidityWarning(
             "rf.effective-potential",
@@ -593,8 +908,7 @@ public static class DiffusionRun
             + $"by a factor of {field.Suppression:G4} against the collisionless "
             + $"q^2 E^2 / (4 m Omega^2) that is usually quoted, at a momentum-transfer rate of "
             + $"{field.CollisionRateSi:G4} /s against a drive of {field.AngularFrequencySi:G4} rad/s. "
-            + $"The largest quiver on this grid is {worst * 1e3:G3} mm, against a cell of "
-            + $"{cell * 1e3:G3} mm",
+            + $"The largest quiver on this grid is {worst * 1e3:G3} mm, {mesh}",
             WarningSeverity.Provenance));
 
         if (worst > cell)
@@ -602,7 +916,7 @@ public static class DiffusionRun
             warnings.Add(new ValidityWarning(
                 "rf.quiver-exceeds-mesh",
                 $"the ion is swept {worst * 1e3:G3} mm back and forth by the drive, which is further "
-                + $"than the {cell * 1e3:G3} mm cell the effective potential is resolved on. Averaging "
+                + $"than the {cell * 1e3:G3} mm cell the oscillating field is resolved on. Averaging "
                 + "over an excursion only describes something if the field is roughly linear across "
                 + "it, and here the excursion is larger than the mesh that represents the field. "
                 + "Refine the density grid, or raise the drive frequency, or accept that the ion's "

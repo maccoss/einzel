@@ -36,6 +36,26 @@ namespace Einzel.Commands;
 /// a trajectory phase, which has no operator. Reported because the cost of a ramp is
 /// otherwise invisible, and so is the cost of a hold mistaken for one.
 /// </param>
+/// <param name="WellRebuilds">
+/// How many of those assemblies computed the ponderomotive well over the whole grid
+/// rather than reusing the one before. Zero where nothing is driven; one where a ramp
+/// moved only DC, which is what an elution scan does; one per assembly where it moved an
+/// RF amplitude. The well is the expensive half of a cycle average, so this is the number
+/// that says what the ramp actually cost.
+/// </param>
+/// <param name="SelfFieldSolves">
+/// In a diffusive phase asked for a mean field, how many times the density's own charge was
+/// solved as a potential. <c>null</c> where none was asked for, and in a trajectory phase,
+/// because a count of zero is a real answer - a solver that ran and never needed to refresh -
+/// and a reader cannot tell that from its never having been asked.
+/// </param>
+/// <param name="PeakSelfPotentialVolts">
+/// The largest self-potential anywhere on the grid over the phase, or <c>null</c> on the same
+/// terms. Reported per phase rather than once for the run because a sequence is where the
+/// packet is compressed: a hold and the pulse that follows it hold the same ions at very
+/// different densities, and one number for the run would be the larger of the two with
+/// nothing saying which phase it belonged to.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>Every trajectory is accounted for within a phase</b>, which ACC-5 requires and
@@ -64,7 +84,10 @@ public sealed record PhaseOutcome(
     bool Converted,
     int Arrived,
     IReadOnlyList<LossChannel> Losses,
-    int Assemblies = 0);
+    int Assemblies = 0,
+    int WellRebuilds = 0,
+    int? SelfFieldSolves = null,
+    double? PeakSelfPotentialVolts = null);
 
 /// <summary>What a run across a changing transport mode did.</summary>
 /// <param name="Phases">Each phase, in order.</param>
@@ -298,7 +321,14 @@ public static class SequencedRun
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
                     density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, [],
-                    diffused.Assemblies));
+                    diffused.Assemblies, diffused.WellRebuilds,
+                    // Asked of the model rather than inferred from the result, and the same
+                    // predicate the wholly diffusive path uses. A count of zero is a real
+                    // answer - a field that never needed refreshing - so "was one asked for"
+                    // is the question, and reading it off a value of zero would answer a
+                    // different one.
+                    model.ModelsMeanField ? diffused.SelfFieldSolves : null,
+                    model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null));
             }
 
             started = phase.EndsAtSeconds;
@@ -353,6 +383,23 @@ public static class SequencedRun
     /// <summary>Whether two potentials differ by more than round-off.</summary>
     private static bool Changed(double before, double after) =>
         Math.Abs(after - before) > 1e-9 * Math.Max(1.0, Math.Abs(before));
+
+    /// <summary>
+    /// The potential a slow ion in the gas feels at a point at an instant: the cycle
+    /// average where the field is driven, the field itself where it is not.
+    /// </summary>
+    private static double Felt(
+        IElectrostaticField field,
+        double atSeconds,
+        in Vec3 probe,
+        IonSpecies species,
+        Mobility mobility,
+        BackgroundGas gas)
+    {
+        var at = Instant(field, atSeconds);
+        _ = DiffusionRun.Effective(ref at, species, mobility, gas);
+        return at.PotentialAt(in probe);
+    }
 
     private static IElectrostaticField Instant(IElectrostaticField field, double atSeconds) =>
         field is ITimeVaryingField driven && atSeconds > 0.0
@@ -534,15 +581,33 @@ public static class SequencedRun
         // Asked at several points, because a phase can leave the packet's own centre
         // alone and move the field elsewhere; and to a tolerance, because two evaluations
         // of one unchanged field at different absolute times can differ in the last bits.
+        //
+        // And asked of what the density actually steps through - the cycle average where
+        // there is a drive - not of the instantaneous field. An RF that is merely held
+        // differs from itself at any two instants that are not a whole number of cycles
+        // apart, so the instantaneous potential would call every RF hold a change and the
+        // solver would re-assemble its operator every step: sixteen cycle samples at every
+        // node, for a ramp that does not exist. The density would be right and nothing
+        // would say what it cost.
         Func<double, IElectrostaticField>? fieldAt = null;
 
         if (field is ITimeVaryingField varying)
         {
-            var inside = Math.BitDecrement(startedAt + phase.DurationSeconds);
+            // One PERIOD inside the end where there is a drive, not one ulp: the cycle
+            // average taken at an instant samples the period that follows it, so a probe an
+            // ulp inside the phase would average across the boundary into the next phase
+            // and call a held RF a change - which is exactly what happened, at 7 assemblies
+            // for a 7-step hold, when the test that guards this ran on the RF template. A
+            // phase shorter than a period is probed at its start against its last ulp.
+            var end = startedAt + phase.DurationSeconds;
+            var period = varying.ShortestPeriodSeconds;
+            var inside = double.IsFinite(period) && end - period > startedAt
+                ? end - period
+                : Math.BitDecrement(end);
 
             if (Probes(density, grid).Any(probe => Changed(
-                    varying.PotentialAt(in probe, startedAt),
-                    varying.PotentialAt(in probe, inside))))
+                    Felt(field, startedAt, in probe, species, mobility, gas),
+                    Felt(field, inside, in probe, species, mobility, gas))))
             {
                 fieldAt = elapsed =>
                 {
@@ -560,17 +625,38 @@ public static class SequencedRun
             ? StepScheme.Implicit
             : StepScheme.Explicit;
 
-        return DriftDiffusion.Run(
+        // The same self-field the wholly diffusive path builds, from the same helper. A
+        // capability wired into one of the two paths and not the other is how this project
+        // has four times produced a run that answers while leaving out the physics it was
+        // asked for.
+        var edges = DiffusionRun.EdgesFor(model, grid);
+        var selfField = DiffusionRun.SelfFieldFor(model, grid, absorbers, edges, species);
+
+        var result = DriftDiffusion.Run(
             density,
             seen,
             gas,
             mobility,
             species,
             phase.DurationSeconds,
-            DiffusionRun.EdgesFor(model, grid),
+            edges,
             absorbers,
             scheme: scheme,
             stepGain: model.DensityStep.IsImplicit ? model.DensityStep.Gain : 1.0,
-            fieldAt: fieldAt);
+            fieldAt: fieldAt,
+            selfField: selfField);
+
+        if (selfField is not null)
+        {
+            foreach (var warning in DiffusionRun.SelfFieldWarnings(selfField, result, gas))
+            {
+                if (!warnings.Any(w => w.Code == warning.Code))
+                {
+                    warnings.Add(warning);
+                }
+            }
+        }
+
+        return result;
     }
 }

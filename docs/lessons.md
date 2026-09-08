@@ -3047,6 +3047,48 @@ without a detector: electrically nothing, since the edge was grounded anyway, bu
 surface a loss can be charged to. A model whose ions can leave the solved box must say
 what they meet there, or the ledger reports a physical impossibility as an outcome.
 
+## A bounded field's edge is a wall, and the instrument has no wall there
+
+A region bounds an analytic element with a step: full strength inside, nothing outside. For a
+DC element that costs a potential step, which the run reports. For a confining RF it is worse,
+and it took a funnel to show it: a packet delivered to the tunnel entrance at radii up to a
+few millimetres met the whole pseudopotential well at once at the region's face — `Ψ(r)` for
+whatever r it happened to arrive at — and 42 per cent of it stopped in the last two
+millimetres before the RF began. Pushing harder made it worse, 54 per cent at 50 V of funnel
+drop and 71 at 100 V, which is what identified it: a barrier, not a push too weak.
+
+The real ring stack's field decays over about a bore radius, and across that fringe the well's
+radial gradient squeezes an ion toward the axis while its axial gradient is still small. The
+hard edge has the axial gradient infinite and the radial one absent until it is too late.
+
+**A boundary the model has and the instrument does not is a force the instrument does not
+have.** Where a modelling boundary stands in for a real electrode's fringe, give it the
+fringe's shape — here a declared ramp over a bore radius — and say in the run that it is
+declared rather than solved.
+
+## A validity check written on a proxy fires on the proxy
+
+The pseudopotential's mesh check asked whether the ion's quiver was larger than the cell
+the effective potential was resolved on, and took the density grid's cell for that. The
+argument behind the check is about the *field*: an average over an excursion describes
+something only if the oscillating field is roughly linear across it, and a solved RF
+sampled on a mesh coarser than the excursion is being averaged over interpolation. The
+density grid was a stand-in for the field's mesh, and on every model so far the two were
+about the same size.
+
+The TIMS tunnel's confinement is an analytic quadrupole — exactly linear, so the cycle
+average is exact whatever the quiver — solved beside a DC gradient on a 0.25 mm cell and
+stepped on a density grid with a 0.125 mm radial cell. At the bore the quiver is 0.29 mm.
+The check fired as a non-suppressible violation on a field for which the thing it guards
+against cannot happen, and would have put that violation on every run of the template.
+
+**When a check is written against a proxy, name the quantity the proxy stands for and ask
+that instead.** Here the quantity is the resolution of the *oscillating* members of the
+field — infinite for an analytic drive, the solve cell for a solved one, and not the DC
+gradient's cell however fine or coarse — so it is now a member of the time-varying field
+interface with the conservative default. The funnel, whose RF is solved on the cell the old
+check happened to use, warns exactly as before.
+
 ## A fast scan must run through the stability edge
 
 At 200 kDa/s the ramp passes from the excitation's resonance to the stability edge in
@@ -3056,3 +3098,107 @@ the end of the run and reported them held; extending it to 0.94 ejected them and
 in the tail of the peak, which is where the instrument has them too. What the scan window
 covers is part of the measurement, and a window chosen for a slow scan is not a window for
 a fast one.
+
+## Positivity is not the failure mode I expected, and my test had no teeth
+
+The explicit Scharfetter-Gummel step is bounded by a stability limit, and the textbook
+consequence of exceeding it is a **negative density** — the thing exponential fitting exists
+to prevent in the first place. So when the mixture solver gained a shared step, taken as the
+shortest any species needs, the obvious test was that no species goes negative when a fast
+one is stepped at a sluggish one's rate.
+
+It passed with the wrong-step mutation restored. Told to take the first member's step —
+seven times too long for the quick member — the lowest density anywhere stayed at exactly
+zero, and the run looked fine.
+
+What actually happened is that the quick species finished with **1.0376% more ions than were
+launched**. The scheme did not go negative; it created matter. The test now asserts the
+conservation ledger, which is the sharper claim anyway: a population that grew has no
+defensible reading, where a small negative density can always be argued as round-off.
+Positivity is still checked, because it costs one pass over the grid, but it is not what
+carries the test.
+
+The general form: **the failure mode a scheme is famous for is not necessarily the one it
+exhibits at the parameters you are at.** Run the mutation before believing the test, and if
+the assertion survives, find the quantity that does move.
+
+## A convenience the schema forces on you is worth measuring before working around it
+
+A study of the tandem tunnel varied two things across eight runs — how many ions each
+population held, and whether their charge was modelled — and re-solved fifty-five rings and
+two funnels for every one of them, because the obvious spelling builds the field from the
+model inside the loop. It ran for over an hour without reaching its first line of output.
+
+Neither varied quantity touches an electrode. `ExecuteMixture` takes the field as an
+argument precisely so a caller can hoist it, and hoisting it is the whole difference between
+a study that finishes and one that does not. The same shape as the energy-sweep loop that
+built a field per ion: **a per-iteration cost that does not fall as the iteration count
+rises is a fixed cost in the wrong place**, and it is invisible to a suite that only checks
+answers.
+
+## The printer kept asking which mode this was, when the question was whether there is a number
+
+`einzel run`'s terminal output decided whether to print a flight time with
+`run.Diffusion is null`. A sequenced run then walked into `flight time NaN +/- NaN`, so the
+line became `run.Diffusion is null && run.Sequence is null`. A mixture would have been the
+third addition to that list, and the comment above the line already said so in as many
+words.
+
+A list of the modes known when a line was written is not the question the line is asking.
+The question is **did this run produce a single arrival time for an ion**, which is a
+property of the result: false for a density, which has no ions; false for a sequence, which
+ends on its own clock rather than on an arrival; false for a mixture, for both reasons at
+once. It is now a **required** member of `RunOutcome`, set at each construction site with
+its reason, so a fifth kind of run fails to compile until somebody decides which it is —
+the same device as the outcome switch that throws on an unrecognised case.
+
+This is at least the fourth quantity here to be fixed by widening a list and then have to be
+fixed again by replacing the list with the question. The others were the success set of
+outcome names, twice, and the diffusive requirement gate.
+
+## A capability is wired into every path or refused by the ones it is not
+
+Mixtures landed and were wired into `einzel run` for a plain diffusive model and into
+`render section`. A review of the branch found three other paths that took a mixture, did not
+fail, and answered about an ion the document never declared.
+
+The mechanism is the same in all three. A mixture declares its mobilities per species and is
+refused a `transport.mobility`, so the compiled mobility falls back to one **derived from the
+gas cross section**; and `MassSi`/`ChargeSi` are documented as the first population's, "enough
+for the diagnostics that need AN ion". Together those two make the single-species path *work*
+on a mixture rather than throw — it runs a fifth, invented ion.
+
+- **A sequenced mixture.** The run fork tests for a sequence before it tests for a mixture, so
+  a mixture with an elution ramp — the configuration the feature was built for — took the
+  sequenced path, which steps one density.
+- **Every diffusive figure of merit.** `einzel test`, `sweep`, `scan`, `optimise` and
+  `boundary` computed `transitTime` and the rest from that invented ion. A project test
+  pinning the number would pass while measuring the wrong thing, which is worse than a failure
+  by exactly the margin that makes it believable.
+- **`render section --at-us`.** Accepted and discarded, because the mixture stepper records no
+  intermediate densities.
+
+All three are now refused or reported by name. Refusing is the right first move rather than
+wiring: stepping several populations through a timeline needs the sequenced path to take the
+mixture stepper, and a refusal that says what is missing is honest where a plausible
+single-population answer is not.
+
+**The rule that generalises: when a new capability makes an existing type polymorphic, the
+paths that consumed the old singular form do not fail — they read the fallback.** After adding
+one, grep for every consumer of the fields the new form leaves at a default, and make each one
+either handle it or refuse it. `IsMixture` was honoured in three places out of six.
+
+## A test whose fixture is wrong reports the refusal it was not testing
+
+The test for the figure-of-merit refusal wrote its own project test file, guessing
+`"model": "models/x.json"` and `"figure": "transitTime"`. The scaffold uses
+`"../models/reflectron.json"` — relative to the *tests* directory — and `"figureOfMerit"`.
+
+So the run was refused for a **missing model**, which is a refusal, from the right command,
+with a non-zero exit. Only the message gave it away. A test asserting merely "this is refused"
+would have passed while exercising nothing, and the guess that produced it was mine twice over
+— I had made the same relative-path assumption about a render spec an hour earlier and
+corrected it the same way.
+
+**Assert on the refusal's own text, not on the fact of one.** Every guard in this project
+carries a constraint sentence for exactly this reason.

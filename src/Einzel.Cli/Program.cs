@@ -2067,16 +2067,17 @@ public static class Program
         // the final position by indexing an empty list, which threw and reported a
         // diffusive run as a defect in einzel.
         //
-        // Absent rather than not-a-number, which is the rule the rest of this
-        // surface already follows: a reader cannot tell a missing measurement from
-        // a failed one if both print the same way.
-        // A sequenced run has no single flight time either, and for the same reason a
-        // diffusive one does not: it ends when its sequence ends rather than when an ion
-        // arrives. Printing NaN here is the exact defect already fixed for the diffusive
-        // mode - a reader cannot tell a missing measurement from a failed one when both
-        // print the same way - and the fix was gated on `Diffusion` alone, so a third
-        // kind of run walked straight back into it.
-        var trajectory = run.Diffusion is null && run.Sequence is null;
+        // Absent rather than not-a-number, which is the rule the rest of this surface
+        // already follows: a reader cannot tell a missing measurement from a failed one
+        // if both print the same way.
+        //
+        // Asked of the run rather than derived from which blocks it filled. This line was
+        // `run.Diffusion is null`, then `run.Diffusion is null && run.Sequence is null` -
+        // each revision adding the mode that had just been caught printing
+        // `flight time NaN +/- NaN`, and a mixture would have been the third addition. A
+        // list of the modes known when the line was written is not the question it is
+        // asking, so the run answers the question instead.
+        var trajectory = run.HasFlightTime;
 
         if (trajectory)
         {
@@ -2167,6 +2168,50 @@ public static class Program
                 Console.Out.WriteLine(string.Create(
                     invariant, $"  lost on {loss.Surface}: {loss.Ions:G6} ions"));
             }
+        }
+
+        if (run.Mixture is { } mixture)
+        {
+            Console.Out.WriteLine();
+
+            // Per species, because that is the whole of what a mixture run has to say: one
+            // line of totals would be a report of the sum of two populations that were kept
+            // apart on purpose.
+            foreach (var member in mixture.Species)
+            {
+                var derived = member.MobilityDerived ? " (derived)" : string.Empty;
+
+                Console.Out.WriteLine(string.Create(
+                    invariant,
+                    $"  {member.Name,-14} K {member.MobilitySi:G6} m2/(V s){derived,-10}  "
+                    + $"{member.Remaining:G6} of {member.Launched:G6} ions held, "
+                    + $"{member.Transmission:P1} through, x {member.CentroidMm:F3} mm"));
+
+                foreach (var loss in member.Losses)
+                {
+                    Console.Out.WriteLine(string.Create(
+                        invariant, $"                 lost on {loss.Surface}: {loss.Ions} ions"));
+                }
+            }
+
+            Console.Out.WriteLine();
+
+            Console.Out.WriteLine(string.Create(
+                invariant,
+                $"mixture       {mixture.Species.Count} populations, {mixture.Steps} shared steps of "
+                + $"{mixture.StepUs * 1e3:F3} ns set by '{mixture.StepSetBy}'"));
+
+            // Absent rather than zero: a run that did not model the populations' charge and one
+            // that modelled it and found none are different runs, and the second is worth
+            // knowing about.
+            Console.Out.WriteLine(
+                mixture.SelfFieldSolves is { } solves
+                    ? string.Create(
+                        invariant,
+                        $"space charge  {solves} solve(s), peak {mixture.PeakSelfPotentialVolts:G4} V "
+                        + $"over a net {mixture.NetChargeSi:G4} C")
+                    : "space charge  not modelled: the populations do not feel one another, so this "
+                      + "is what separate runs would give");
         }
 
         if (run.Ensemble is { } ensemble)

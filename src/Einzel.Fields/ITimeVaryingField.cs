@@ -82,4 +82,28 @@ public interface ITimeVaryingField : IElectrostaticField
     /// </para>
     /// </remarks>
     double NextSwitchAfter(double timeSeconds) => double.PositiveInfinity;
+
+    /// <summary>
+    /// The mesh the <em>oscillating</em> part of the field is known on: the finest
+    /// resolution among the members that vary in time, or infinity where every oscillating
+    /// member is analytic.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A pseudopotential averages the oscillating field over the ion's quiver, and that
+    /// average describes something only if the oscillating field is roughly linear across
+    /// the excursion. For a solved RF that is a question about its cell; for an analytic
+    /// one there is no mesh to exceed and the validity is the adiabatic one instead. A
+    /// static member superposed with the RF does not enter: a DC field averaged over a
+    /// small excursion is the DC field at the mean position, whatever cell it was solved
+    /// on. Asking the whole field's <see cref="IElectrostaticField.ResolutionLength"/>
+    /// reported a solved DC gradient's cell as the RF's, and an analytic confinement as
+    /// unresolved.
+    /// </para>
+    /// <para>
+    /// Defaults to the field's own resolution, which is the conservative reading: a
+    /// wrapper that does not say otherwise is taken to be as coarse as it says it is.
+    /// </para>
+    /// </remarks>
+    double OscillatingResolutionLength => ResolutionLength;
 }

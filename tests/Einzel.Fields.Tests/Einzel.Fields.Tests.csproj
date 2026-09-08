@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Einzel.Fields\Einzel.Fields.csproj" />
+    <ProjectReference Include="..\..\src\Einzel.Io\Einzel.Io.csproj" />
     <ProjectReference Include="..\..\src\Einzel.Transport\Einzel.Transport.csproj" />
   </ItemGroup>
 

@@ -266,13 +266,25 @@ public static class ExpressionEvaluator
         private Quantity ParseCall(string name)
         {
             var arguments = new List<Quantity>();
+
+            // Whether each argument was *written* as a literal zero, which `min` and `max`
+            // need in order to accept one against a dimensioned operand. The text and not
+            // the value, which is the rule placements already follow and for the reason
+            // given there: a value test would make dimensional validity depend on a number,
+            // so a document naming a dimensionless parameter that happened to be zero would
+            // validate at nominal and fail with a units error partway through a sweep.
+            var literalZero = new List<bool>();
+
             SkipWhitespace();
 
             if (!Match(')'))
             {
                 do
                 {
+                    SkipWhitespace();
+                    var from = _position;
                     arguments.Add(ParseExpression());
+                    literalZero.Add(IsWrittenZero(text.AsSpan(from, _position - from)));
                     SkipWhitespace();
                 }
                 while (Match(','));
@@ -283,10 +295,68 @@ public static class ExpressionEvaluator
                 }
             }
 
-            return Apply(name, arguments);
+            return Apply(name, arguments, literalZero);
         }
 
-        private Quantity Apply(string name, List<Quantity> arguments)
+        /// <summary>
+        /// The two operands of a comparison, with a literal zero given the other's dimension.
+        /// </summary>
+        /// <remarks>
+        /// A clamp is written <c>max(x - start, 0)</c>, and the grammar has no unit literals,
+        /// so the zero is dimensionless and would not compare against a length. The same
+        /// argument that lets a placement write <c>0</c> for "on axis" applies here, and with
+        /// the same restriction: only a zero <em>written</em> as a literal qualifies, never a
+        /// parameter that happens to hold zero, because dimensions must not change under a
+        /// parameter override. Two literal zeros compare as they always did.
+        /// </remarks>
+        private static (Quantity Left, Quantity Right) Comparable(
+            List<Quantity> arguments, List<bool> literalZero)
+        {
+            var left = arguments[0];
+            var right = arguments[1];
+
+            if (left.Dimension == right.Dimension || literalZero.Count < 2)
+            {
+                return (left, right);
+            }
+
+            if (literalZero[0] && !literalZero[1])
+            {
+                return (Quantity.Si(0.0, right.Dimension), right);
+            }
+
+            if (literalZero[1] && !literalZero[0])
+            {
+                return (left, Quantity.Si(0.0, left.Dimension));
+            }
+
+            return (left, right);
+        }
+
+        /// <summary>Whether a span of expression text is a zero literal and nothing else.</summary>
+        private static bool IsWrittenZero(ReadOnlySpan<char> written)
+        {
+            var trimmed = written.Trim();
+
+            if (trimmed.IsEmpty)
+            {
+                return false;
+            }
+
+            foreach (var c in trimmed)
+            {
+                if (c is not ('0' or '.'))
+                {
+                    return false;
+                }
+            }
+
+            // "0", "0.0", "00" and ".0" all qualify; "." alone does not, and neither does
+            // anything carrying a digit, a parameter name or an operator.
+            return trimmed.IndexOf('0') >= 0;
+        }
+
+        private Quantity Apply(string name, List<Quantity> arguments, List<bool> literalZero)
         {
             switch (name)
             {
@@ -457,10 +527,16 @@ public static class ExpressionEvaluator
                 }
 
                 case "min" when arguments.Count == 2:
-                    return arguments[0] <= arguments[1] ? arguments[0] : arguments[1];
+                {
+                    var (a, b) = Comparable(arguments, literalZero);
+                    return a <= b ? a : b;
+                }
 
                 case "max" when arguments.Count == 2:
-                    return arguments[0] >= arguments[1] ? arguments[0] : arguments[1];
+                {
+                    var (a, b) = Comparable(arguments, literalZero);
+                    return a >= b ? a : b;
+                }
 
                 default:
                     throw Failure(

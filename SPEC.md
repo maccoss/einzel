@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,256 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,285 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -142,6 +142,42 @@ not merely a note about what is unbuilt.
 
 [Spec findings](docs/spec-findings.md) carries the long form of most of these with
 the measurements attached; what follows is the register of them.
+
+### 41 - A model could describe one ion, and an instrument that separates ions holds several
+
+**r06 §9** gives a model an `ion`: one mass-to-charge, one charge number, and under
+`transport` one mobility. Every device in §1's table that exists to *separate* ions is
+therefore modellable only one ion at a time — a mobility analyser, a mass filter, a funnel
+with a mixed beam through it. That is fine while the ions are independent, and they stop
+being independent at exactly the populations those devices run at.
+
+**The coupling is one quantity and nothing else.** Every coefficient a species needs is its
+own — its mobility sets its drift, its charge and the gas temperature set its diffusion
+through the Einstein relation, its charge sets its Scharfetter–Gummel thermal voltage, and in
+a driven structure its mass and momentum-transfer rate set the cycle-averaged well it feels.
+If the field were its own as well, N species would be N independent runs and could be done
+one after another with no new machinery. What ties them together is the potential their
+**total** charge raises, which no sequence of separate runs computes.
+
+So the amendment is narrow: a model may declare `species` in place of `ion`, each entry
+carrying its own mobility, and a diffusive run steps them together over one shared step
+through one shared self-potential. Measured: a one-species mixture is **bit-identical** to
+the single-species path; a second population with the mean field switched off leaves the
+first **bit-identical**, which is what says the field is the only coupling; and with it on the
+first is displaced 91.6 µm away from its neighbour.
+
+**Two things r06 does not anticipate fall out of it.** The mobility has to move onto the
+species — mass, charge and mobility are one ion's three properties, and leaving the mobility
+under `transport` would make a document say which ions are present in one place and how each
+of them moves in another. And a driven mixture needs **one pseudopotential per species**,
+because that well is built from charge, mass and damping: measured at 30.55 V for m/z 200
+against 3.055 V for m/z 2000 at the same point in the same RF. A shared one is refused,
+because it would give every population the well built for whichever ion it came from and
+would look exactly like a correct answer.
+
+Schema 0.13. Trajectory mixtures are refused by name rather than run as the first population:
+the packet integrator flies one species at a time and there is no mode in this build that
+steps several trajectory species. See `docs/model-format.md` and `docs/pressure.md`.
 
 ### 40 - A parameter could not say where its number came from
 
@@ -1453,7 +1489,7 @@ Every view §16 requires:
 | Animation timeline, per-phase playback rates, scrubbing, frame export | **Partial** | Per-phase playback rates and frame export are built: `einzel render animation` on a declared mapping, with the rate stamped on every frame and a `frames.json` schedule beside them. Scrubbing is a shell interaction and needs the window |
 | Model tree with parameter editing, live validation, units on every field | **Built** | `einzel outline` returns the declared surface - value, unit, bounds, description, what it resolves to in SI, and whether it is editable - because UI-1 forbids the shell from parsing the document to build a tree. A verb rather than a shell method (AGT-2), so an agent gets the same service. Every edit goes through the shared journal, so a change in the window is undoable by an agent on the same session. **Delivering it reversed a guard**: `SessionJournal` refused any edit that did not validate, which makes live validation impossible - a person typing 500 into a parameter bounded at 50 must see the tree with the complaint on it, and refusing every invalid document forbids any edit *sequence* that passes through one. Narrowed to refusing what does not *parse*, which is taint-never-block applied to input. `docs/lessons.md` |
 | Sequence editor | **Partial** | `SequenceCommand` reports the declared timeline: phases in order, the transport mode of each, and what every electrode holds - marked against the phase before, because a sequenced instrument repeats most of its state and a table repeating every setting buries the rows that change. Bars proportional to duration, since a 2 us hold beside a 100 us flight is the shape of a pulsed extraction. Two things a reader would otherwise assume wrongly are stated: the last phase **holds** after the sequence ends, and a phase changing the mode is SEQ-1's conversion boundary. **It shows rather than edits** - a sequence is a block in the document, so editing one goes through the same journal every other change does, and what is missing is the input surface rather than the path underneath it |
-| Results by accuracy class, uncertainty and warnings never behind a disclosure control | **Built** | §12's taxonomy was recorded nowhere in the code and is now on the figure registry - six Class T, four Class S, three Class B, and two deliberately in none, since `flightTime` is the raw arrival quantity the Class T figures are computed *from* and `energyDrift` says in its own description that it is a diagnostic. Every part of the envelope is a line rather than a tooltip, which is the requirement. **Building it found the GRD-1 hole below**, and closing that took the figures carrying an envelope from 1 of 14 to 5 |
+| Results by accuracy class, uncertainty and warnings never behind a disclosure control | **Built** | §12's taxonomy was recorded nowhere in the code and is now on the figure registry - six Class T, four Class S, seven Class B, and two deliberately in none, since `flightTime` is the raw arrival quantity the Class T figures are computed *from* and `energyDrift` says in its own description that it is a diagnostic. Every part of the envelope is a line rather than a tooltip, which is the requirement. **Building it found the GRD-1 hole below**, and closing that took the figures carrying an envelope from 1 of 14 to 5 |
 | Regime inspector | **Built** | REG-2's numbers *along the path*, which is what §16's word "along" asks for and what a run does not give - a run reports the worst point anywhere in the gas, right for a warning and useless for deciding what to change. Violations are located as stretches in millimetres rather than counted. On a hundredfold density ramp the two ends differ by Kn **4.17 against 0.042** - free-molecular at one end, a continuum at the other, in the same instrument |
 | Project view with model-drift and engine-drift state | **Built** | `einzel project` - the models, studies, figures, tests and extensions, with each model in one of four states. The drift itself is `einzel verify`'s, which already separates what invalidates a result from what merely annotates it; **what verify cannot answer is what has never been run**, since it walks the manifests and a model with no result is reported by neither its success nor its failure. That is the state most models in a working project are in. Building it found a defect in verify - see Amendment 30. |
 | Extension manager | Not built | **Its engine half is done.** The manifest now carries `licence` beside trust level, versions and compatible range, and `einzel ext list` surfaces it - so what the view needs from below it exists, and building it is presentation. LIC-2's remaining half is the pane itself. An SPDX identifier by convention rather than by validation: a checker that recognised some spellings and not others would report an unrecognised licence as no licence, which is the failure the field exists to prevent |
@@ -1753,7 +1789,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `TRN-1` | Mobility is an explicit input with stated field dependence. | **Met** | Mobility is a declared input; a derived one is marked `mobility.derived`, and `IsWithinFit` refuses to leave the caller to work out whether the field dependence still holds. |
+| `TRN-1` | Mobility is an explicit input with stated field dependence. | **Met** | Mobility is a declared input; a derived one is marked `mobility.derived`, and `IsWithinFit` refuses to leave the caller to work out whether the field dependence still holds. **And it is now per ion population** (schema 0.13, Amendment 41): a model may declare `species` in place of `ion`, each carrying its own mobility, because mass, charge and mobility are one ion's three properties and a list of populations in one place with a list of mobilities in another has nothing tying the two together. A species that declares none derives its own by Mason-Schamp for **that species' mass** rather than sharing a number, which would separate nothing while looking like a converged answer; `transport.mobility` beside `species` is refused rather than treated as a default. |
 | `TRN-2` | Diffusive transport emits a time-resolved density field rather than trajectories, because that is what it computes. This is what §17 renders for a funnel. ... | **Met** | A density field, now with somewhere to go: exported as `.vti`, drawn as contours, and assertable through the `transitTime` figure of merit - which did not exist, so the mode's principal scalar could not be pinned by a project test or ranked by a study. |
 
 ### Test (§19)
@@ -1925,7 +1961,26 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
 Everything struck through was on this list and is now done; it is kept because *why*
 each turned out to be cheap or expensive is worth more than the fact of it.
 
-1. ~~**Wire particle-in-cell to the packet integrator (SC-1)**~~ — **done, and it
+1. **Say how much of a mixture's coupling is worth having, on a device that separates
+   ions.** The machinery is built and checked (Amendment 41): several populations step
+   together through one field, coupled by the potential their total charge raises, and
+   a diffusive model can declare them. What is not yet established is the *number* a
+   designer wants — at what stored population a trapped-mobility analyser's peaks stop
+   being separated by mobility and start being separated by charge. Silveira's own
+   free-space estimate puts it at 10^6 to 10^7; this engine can now ask the geometry.
+   The study exists and the first run of it was made on binaries carrying the
+   stale-buffer defect fixed in the same session, so its numbers are withdrawn rather
+   than reported.
+
+   Two things it needs before its numbers mean anything. **The comparison is only as
+   good as the seed**: the packet's declared spread sets its density, so "how many
+   ions" is really "how many ions in what volume", and a study that varies one without
+   stating the other is not measuring a capacity. And a **driven** mean-field run is
+   expensive in a way worth understanding rather than tolerating — the self-field
+   forces a coefficient re-sample, and although the cycle-averaged well now survives
+   one, a mean-field configuration still costs about seven times an uncharged one.
+
+2. ~~**Wire particle-in-cell to the packet integrator (SC-1)**~~ — **done, and it
    found something.** Both methods are now `ISelfField` peers, so they can be handed
    the same configuration and differenced. The grid is the packet's own and lives in
    the packet's frame, which makes uniform translation **exact** (1e-11 across
@@ -1980,7 +2035,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    solve is a full multigrid V-cycle from scratch at every refresh rather than a few
    cycles from the previous answer.
 
-2. ~~**Make a driven diffusive run affordable**~~ — **done, with a trade that has to
+3. ~~**Make a driven diffusive run affordable**~~ — **done, with a trade that has to
    be stated both ways.** `"densityStep": { "scheme": "implicit", "gain": 64 }` is
    backward Euler on the same Scharfetter-Gummel coefficients, solved by red-black
    Gauss-Seidel. **21.1× the speed for 0.057% error** on the shipped funnel at 2 mbar
@@ -2031,7 +2086,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    operator-split step is the fix.~~ This is the last thing standing between the funnel
    benchmark and a number.
 
-3. ~~**A region on an analytic field element, so an exact analyser can join a
+4. ~~**A region on an analytic field element, so an exact analyser can join a
    beamline.**~~ — **built, and one measurement corrected my account of what it
    costs.** Amendment 32. An analytic element may declare a box outside which it
    contributes nothing: an ordinary 1 kV/m section 75 mm from an orbital analyser
@@ -2080,7 +2135,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    4.220 ns turn-around against a 55.9366 µs analyser period, crossing the mirror's own
    aberration limit at 48 oscillations.
 
-4. ~~**Finish the examples corpus (EX-1).**~~ — **met.** 37 against the thirty §5 asks
+5. ~~**Finish the examples corpus (EX-1).**~~ — **met.** 37 against the thirty §5 asks
    for, and the gate (EX-2) is built and green at about 51 s. What the first seventeen
    cost was mostly *deciding what can honestly be asserted*, and that work is done. The
    three named as remaining are all shipped: `mr-tof-oscillations`, `thermalisation` and
@@ -2201,7 +2256,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    defects that no test written from inside the project would have caught**, because
    both were about a model that validates and answers a different question.
 
-5. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
+6. ~~**Galerkin coarsening, or operator-dependent interpolation**~~ — **built, and it
    restores the property multigrid is supposed to have.** `A_coarse = R A_fine P`: the
    coarse levels are built from the fine operator rather than from the geometry, so they
    cannot lose it. The finest level is untouched — it keeps its cut cells and its
@@ -2253,7 +2308,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `docs/numerics.md` were being compared across geometries as though a cycle were a
    unit of work.
 
-6. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
+7. ~~**Two narrower gaps, both stated where they bite.**~~ — **both closed.** The gas
    **density** was a single number for the whole model, so a differentially pumped
    instrument was not expressible: an imported field gave the neutrals a velocity
    everywhere and the same number of them everywhere. `pressureField` closes it — see
@@ -2273,7 +2328,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    same proportions collapse to **one** basis solve carrying two weights on two clocks,
    and two distinct spatial patterns give **two**.
 
-7. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
+8. ~~**Class B analysis**~~ — **done.** `einzel boundary` bisects to ACC-6, the
    transmission-against-resolution curve closes onto the tabulated apex (Phase 3
    acceptance criterion 3), the **secular frequency spectrum** matches the Mathieu
    characteristic exponent to 0.007–0.144 per cent with both sidebands in place, and
@@ -2281,7 +2336,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    `RfWaveform.Harmonic` comb that independently recovers the published digital
    cut-off at q = 0.712.
 
-8. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
+9. ~~**A drive per supply rather than per solve**~~ — **done for 2-D.** A `solve`
    declares `drives` and each electrode `taps` them by name. The travelling-wave
    guide now carries both of its generators: 24 rings on a wave at 0.5 MHz and a
    confinement at 3 MHz reduce to **3 basis solves**, and the field reports the
@@ -2290,7 +2345,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    zero — the usable amplitude window is narrow at both ends and finding a working
    point is a design study; see Amendment 24.
 
-9. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
+10. ~~**A gas velocity field (GAS-1)**~~ — **both modes see one now.** VTK ImageData,
    sampled trilinearly, conserved at the face, agreeing with a declared uniform
    vector to two ulps; and the event-driven models no longer refuse it — the ion's
    position is carried into the neutral draw, so a collision samples the gas where
@@ -2299,7 +2354,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    and a flow field agrees with an equivalent `driftVelocity` to **1e-9** on the same
    seed.
 
-10. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
+11. ~~**A gas pressure field (GAS-1's last gap)**~~ — **done.** The density was the
    last quantity about a gas here that was a single number for a whole model, so an
    imported flow gave the neutrals a velocity everywhere and *the same number of them
    everywhere*. `pressureField` on the gas block, VTK ImageData like the velocity
@@ -2390,7 +2445,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
    already made by there being one `temperature` in the document, but it is now the
    only thing about the gas that cannot vary from place to place.
 
-11. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
+12. ~~**The live session (MCP-1)**~~ - **done, and the work was not the protocol.**
     `journal`, `undo` and `attribution` existed only in the `Einzel.Commands`
     assembly *description string* - the same "named in a csproj and nowhere else"
     state `ITransportMode` was in before its seam was built. So "build MCP" was
@@ -2445,7 +2500,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     declares Apache-2.0 as an SPDX expression in its own nuspec, and its whole
     transitive closure is ten `Microsoft.Extensions.*` packages, all MIT. LIC-1 clear.
 
-12. **The shell (§16).** **Seven of the eleven views exist** — the table in
+13. **The shell (§16).** **Seven of the eleven views exist** — the table in
     [the shell section](#the-shell-and-the-rest-of-16) is the current one; this entry
     said three for a while after it stopped being true. The window opens on a model, and
     what remains divides into three kinds rather than one:
@@ -2540,7 +2595,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
 
-13. **The Astral inverse problem: the mirror is reproduced, and one published number is
+14. **The Astral inverse problem: the mirror is reproduced, and one published number is
     not.** This item has now been rewritten four times, and the rewriting is the point rather
     than an embarrassment - every earlier version attributed the gap between this model and
     the published instrument to something that turned out not to be it. The chronology, with
@@ -2585,7 +2640,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
       avoids that and costs no flights, but is floored by adiabaticity. The two floors are
       independent, which is why the methods agree on ranking and disagree on values.
 
-14. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
+15. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
     cross-section reproduces the paper's resonance ejection and its unit resolution at
     5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
     that stand between that and the dual-pressure device the Stellar front end actually is.
@@ -2643,7 +2698,7 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
-15. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
+16. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
     elution ramp runs (`tims-analyzer` with a `sequence` whose diffusive phase ramps
     `exitPotential` 60 → 0 V over 8 ms) and the first thing it measured is the reason
     this item is next rather than a refinement: **45 of 97,770 reference ions reached the
@@ -2671,6 +2726,69 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     off the arrivals profile as a figure of merit — the register names its absence — and
     Hernandez's R of 100-250 and the `β^(-1/4) K^(-3/4)` law become reachable, at the
     register's operating point (75 → 130 m/s of gas) rather than the 50 m/s used so far.
+
+    **The confinement is built** (schema 0.11 adds `axis` to the analytic RF quadrupole).
+    The four-segment cross-section solves to **1.2696 of a hyperbolic quadrupole** with
+    0.5 mm gaps against the square wave's 4/π = 1.2732 with none, monotone in the gap; the
+    template carries that fraction as a `fitted` parameter with a test tying it to the
+    solve. With the RF on the bore takes **0.0000 %** of the density in 600 µs against
+    26.0 % without, the packet centre moves 0.4 µm, and the rms radius is **0.3406 mm
+    against 0.3423 for Boltzmann in the collisional well** — and 0.2805 for the
+    collisionless one, so the 0.685 suppression is measured rather than reported. One
+    check had to be corrected on the way: `rf.quiver-exceeds-mesh` compared the quiver to
+    the density grid's cell and fired on an exact analytic confinement; it now asks the
+    mesh the oscillating members are known on (`docs/lessons.md`).
+
+    **The confined scan runs, and every ion arrives**: 100,000 of 100,000 for each of three
+    mobilities, in TIMS order, at medians within 25 µs of what the unconfined survivors
+    gave — so the wall selected ions and did not move the peak. First resolving power
+    **R = 11 / 8 / 5** for K × 0.75 / 1.0 / 1.5 against the register's law's 24 / 19 / 14
+    at this operating point, with the `K^(-3/4)` trend present; elution voltage linear in
+    1/K to 2 per cent with a −8.5 V intercept that is the release lag in volts; the lag
+    itself 0.75-0.9 of the plateau-transit formula.
+
+    **The scan-rate law's exponent is recovered asymptotically**, and the gas-speed
+    scaling with it. Six ramps from 4 to 128 ms give R = 3.3 → 25.7 with the ratio per
+    halving of β falling 2.52 → 1.15 onto the law's 2^(1/4) = 1.19; fast ramps fall short
+    because the release lags the sliding balance and the exit potential at the peak has
+    fallen below the release value. At Ridgeway's gas profile — imported velocity and
+    pressure fields authored from the register's numbers — R doubles (21.6 at 8 ms, 37.2
+    at 32 ms), as `R ∝ v_g`. The gap to Hernandez's 100-250 is now arithmetic: his ramps
+    (×1.3-1.8), his flow (×1.3), and an accumulation plateau this tunnel lacks, leaving
+    ~1.5 unresolved in the width. `mobilityResolvingPower` is a Class B figure of merit.
+    The remainder is the front end: the entrance funnel and the gate the operating
+    sequence opens and closes (see item 16).
+
+17. **The TIMS front end, and the fringe it needed.** `tims-front-end` puts Hernandez's
+    50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, plate-alternating
+    RF, a DC drop) and an entrance gate in front of the analyser, with fill / trap / ramp as
+    phases. The funnel delivers **99.993 %** of a 2 mm-wide packet against 65.28 % with its
+    RF off (the rest on the last three plates and the gate, every loss named), and it parks
+    at **21.09 mm at r = 0.29 mm** — the analyser's own balance point and its own confined
+    radius, which is what makes the delivery figure mean something.
+
+    **It also found a defect in the field model.** The first version stopped 42 % of the
+    packet at the tunnel entrance, worse with a steeper funnel gradient, because a bounded
+    analytic element's edge is a step and a step in a pseudopotential is a wall: an ion
+    arriving at radius r meets the whole well at once. Schema **0.12** adds `fringe` to a
+    region — a linear rise from nothing at the face to full strength a declared distance
+    inside, with the field the gradient of the fringed potential and no fringe bit-identical
+    to what a bounded element was. `docs/lessons.md`.
+
+    The gate at 30 V lets nothing in and loses everything held against it on the last plate,
+    which is why the instrument also diverts the beam during the trap.
+
+    **Left open, and it points at an optimisation.** The whole sequence end to end did not
+    finish: 4.75 CPU-hours at 512 × 64 over 18 ms, then 40 minutes at 256 × 32 over 12 ms.
+    A ramped diffusive phase re-assembles its operator every step, and here each assembly
+    samples the *solved* funnel RF at sixteen instants per node to take its cycle mean and
+    mean square. **But the ramp moves only DC** — the RF amplitudes are constant through the
+    scan — so the mean-square field, the expensive half, does not change step to step.
+    Caching it per node and re-sampling only the direct term should take the per-step cost to
+    about a sixteenth for every elution scan; the per-phase assembly counts make that
+    measurable directly. The study's own question stays open: whether the arrival width is
+    the analyser's or whether delivery adds an axial spread the ramp reads as mobility. Not
+    carried: a deflector plate, a continuous fill, the funnel's own gas, an exit funnel.
 
 ## Open decisions
 

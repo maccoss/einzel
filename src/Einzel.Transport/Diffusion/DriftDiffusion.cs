@@ -46,6 +46,33 @@ public sealed record DiffusionResult(
     IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals)
 {
     /// <summary>
+    /// How many times the density's own self-potential was solved, or zero where space
+    /// charge was not modelled.
+    /// </summary>
+    /// <remarks>
+    /// Reported for the same reason the assembly count is. A held packet's self-field is the
+    /// same field however long it is held and costs one solve; an eluting one changes as it
+    /// goes. A reader deciding whether to believe a long run needs to know how often the
+    /// field was actually brought up to date rather than carried.
+    /// </remarks>
+    public int SelfFieldSolves { get; init; }
+
+    /// <summary>
+    /// The largest self-potential anywhere in the tracked region, in volts, or zero where
+    /// space charge was not modelled.
+    /// </summary>
+    /// <remarks>
+    /// Against the potential the applied field drops across the same region, this is what says
+    /// whether the packet's own charge matters at all - which is a question worth answering
+    /// on every run rather than only where it is large, since a reader who sees a number knows
+    /// it was asked.
+    /// </remarks>
+    public double PeakSelfPotentialVolts { get; init; }
+
+    /// <summary>The charge present in the tracked region at the last self-field solve, in coulombs.</summary>
+    public double SelfFieldChargeSi { get; init; }
+
+    /// <summary>
     /// How many times the face operator was assembled: once for a field that holds, once
     /// per step for one that changes.
     /// </summary>
@@ -56,6 +83,26 @@ public sealed record DiffusionResult(
     /// would say so.
     /// </remarks>
     public int Assemblies { get; init; } = 1;
+
+    /// <summary>
+    /// How many of those assemblies computed the ponderomotive well over the whole grid,
+    /// rather than reusing the one before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Zero where there is no drive and so no well to compute; one where the field is
+    /// fixed, or where a ramp moved only DC and left the oscillating field alone; one
+    /// per assembly where the ramp really did move an RF amplitude.
+    /// </para>
+    /// <para>
+    /// Reported for the same reason <see cref="Assemblies"/> is: the well is the
+    /// expensive half of a cycle average - two passes over the field at every node
+    /// against one pass over the potential - and a saving nothing reports is a saving
+    /// nobody can check. It is also the only place a reader can see that the cache did
+    /// its job, since by construction the density is unmoved either way.
+    /// </para>
+    /// </remarks>
+    public int WellRebuilds { get; init; }
 
     /// <summary>The density at each requested instant, in order.</summary>
     /// <remarks>
@@ -193,6 +240,10 @@ public static class DriftDiffusion
     /// assembled once. When given, the drift is re-sampled and the face operator rebuilt at
     /// every step, and the stability limit recomputed with it.
     /// </param>
+    /// <param name="selfField">
+    /// The density's own charge, coupled back into the field it is stepped through, or null
+    /// for a run in which the ions do not push on each other.
+    /// </param>
     /// <returns>What happened.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The duration is not positive.</exception>
@@ -209,7 +260,8 @@ public static class DriftDiffusion
         StepScheme scheme = StepScheme.Explicit,
         double stepGain = 1.0,
         IReadOnlyList<double>? snapshotSeconds = null,
-        Func<double, IElectrostaticField>? fieldAt = null)
+        Func<double, IElectrostaticField>? fieldAt = null,
+        DensitySelfField? selfField = null)
     {
         ArgumentNullException.ThrowIfNull(initial);
         ArgumentNullException.ThrowIfNull(field);
@@ -229,13 +281,42 @@ public static class DriftDiffusion
         // is the reference the scaling is against rather than the value used.
         var number = gas.NumberDensitySi;
 
+        var at = fieldAt?.Invoke(0.0) ?? field;
+
+        // The well is the expensive half of a cycle average and, in an elution scan, the
+        // half that cannot have changed: the ramp walks the DC gradient down and holds
+        // every RF amplitude. Kept per node across the steps of a ramp and checked at a
+        // spread of probes at each one, so a document that really does ramp an amplitude
+        // gets the right answer without the saving. Only on the ramped path - a fixed
+        // field assembles once and has nothing to save.
+        // Built whenever the field is a cycle average, not only when it is ramped. The reason
+        // it was gated on `fieldAt` is that a fixed field assembles once and has nothing to
+        // save - which stopped being true when the density's own charge started forcing
+        // re-samples. A self-field re-sample leaves the APPLIED field exactly where it was, so
+        // the well is unchanged by construction and rebuilding it is pure waste: at sixteen
+        // samples per node over the whole grid, per species, it is the dominant cost of a
+        // driven mean-field run and it buys nothing.
+        var wellCache = at is PonderomotiveField effective
+            ? new PonderomotiveWellCache(grid, effective)
+            : null;
+
+        // One well computation for a fixed driven field, none where there is no drive.
+        var wellRebuilds = wellCache?.Rebuilds ?? (at is PonderomotiveField ? 1 : 0);
+
         // Sampled once when the field is fixed, which it is for every run except a
         // ramped phase of a sequence. When `fieldAt` is given the field is a function of
         // time and these are re-sampled every step inside the loop below - the comment
         // that stood here said a sequenced run "would need this inside the loop, and does
         // not exist yet", and a TIMS elution ramp is that run.
+        // The density's own charge, before anything is sampled from the field: the applied
+        // field and the self-field are added into one total per node, so that the drift, the
+        // potential the flux is built from and the stability limit all come from the same
+        // field rather than from two that agree by construction.
+        selfField?.Refresh(density);
+
         var (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
-            grid, fieldAt?.Invoke(0.0) ?? field, gas, mobility, species, sign, number, initial.Cylindrical);
+            grid, at, gas, mobility, species, sign, number, initial.Cylindrical, wellCache,
+            selfField);
 
         // The thermal voltage, which is what turns a potential difference across a
         // face into the exponent Scharfetter-Gummel needs.
@@ -299,10 +380,40 @@ public static class DriftDiffusion
             // noticed on the first ramp tried. The cost is one assembly per step, which
             // is what the assemble-once path was built to avoid; here it is the price of
             // the field actually changing, and it is paid only when it does.
-            if (fieldAt is not null && steps > 0)
+            // Either the applied field has moved, or the density has moved far enough that
+            // its own field has. The second is a re-sample even when the applied field is
+            // fixed, which is why this is not simply the ramped path: a packet whose charge
+            // matters changes the field it is stepped through as it goes.
+            var selfMoved = steps > 0 && (selfField?.Refresh(density) ?? false);
+
+            if ((fieldAt is not null || selfMoved) && steps > 0)
             {
+                var now = fieldAt?.Invoke(time) ?? at;
+
+                // The cache holds the well and the field of the moment supplies the
+                // direct term, so it has to be pointed at this step's field before
+                // anything is read through it. `Refresh` probes first and rebuilds only
+                // if the well has moved.
+                if (wellCache is not null && now is PonderomotiveField pondered)
+                {
+                    wellCache.Refresh(pondered);
+                    wellRebuilds = wellCache.Rebuilds;
+                }
+                else if (fieldAt is not null)
+                {
+                    // A field that stopped being a cycle average part way through a
+                    // phase cannot happen today, and dropping the cache rather than
+                    // reading a well through a field it was not built from is the
+                    // reading that stays correct if it ever does. Only where the APPLIED
+                    // field moved: a re-sample driven by the density's own charge leaves
+                    // the drive exactly where it was, so the well it holds is still the
+                    // well of the field being read.
+                    wellCache = null;
+                }
+
                 (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
-                    grid, fieldAt(time), gas, mobility, species, sign, number, initial.Cylindrical);
+                    grid, now, gas, mobility, species, sign, number, initial.Cylindrical,
+                    wellCache, selfField);
 
                 stable = StableStep(
                     grid, driftX, driftY, gasX, gasY, diffusion, density.LargestRadialWeight());
@@ -359,7 +470,11 @@ public static class DriftDiffusion
             StepGain = stepGain,
             Sweeps = sweeps,
             WorstSweepChange = worstChange,
+            SelfFieldSolves = selfField?.Solves ?? 0,
+            PeakSelfPotentialVolts = selfField?.PeakVolts ?? 0.0,
+            SelfFieldChargeSi = selfField?.ChargeSi ?? 0.0,
             Assemblies = assemblies,
+            WellRebuilds = wellRebuilds,
         };
     }
 
@@ -451,7 +566,7 @@ public static class DriftDiffusion
             : (StabilityMargin * byDrift, "drift");
     }
 
-    private static double StableStep(
+    internal static double StableStep(
         Fields.Solved.Grid2D grid,
         double[] driftX,
         double[] driftY,
@@ -495,7 +610,36 @@ public static class DriftDiffusion
         return (Math.Abs(driftXSi) / grid.SpacingX) + (Math.Abs(driftYSi) / grid.SpacingY);
     }
 
-    private static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential, double[] GasX, double[] GasY) SampleCoefficients(
+    /// <summary>
+    /// Minus the gradient of a per-node potential, by central differences on the grid, with
+    /// one-sided differences at an edge.
+    /// </summary>
+    /// <remarks>
+    /// One-sided rather than reflected at the edges: what the edge condition is belongs to the
+    /// solve that produced the potential, and guessing at it here would be a second, quieter
+    /// statement of it. A one-sided difference is first-order where a central one is second,
+    /// which at the wall of a bore is where the density is smallest.
+    /// </remarks>
+    private static Vec3 SelfGradient(
+        Fields.Solved.Grid2D grid, ReadOnlySpan<double> potential, int i, int j)
+    {
+        var k = (j * grid.CountX) + i;
+
+        var left = i > 0 ? potential[k - 1] : potential[k];
+        var right = i + 1 < grid.CountX ? potential[k + 1] : potential[k];
+        var spanX = ((i > 0 ? 1 : 0) + (i + 1 < grid.CountX ? 1 : 0)) * grid.SpacingX;
+
+        var below = j > 0 ? potential[k - grid.CountX] : potential[k];
+        var above = j + 1 < grid.CountY ? potential[k + grid.CountX] : potential[k];
+        var spanY = ((j > 0 ? 1 : 0) + (j + 1 < grid.CountY ? 1 : 0)) * grid.SpacingY;
+
+        return new Vec3(
+            spanX > 0.0 ? -(right - left) / spanX : 0.0,
+            spanY > 0.0 ? -(above - below) / spanY : 0.0,
+            0.0);
+    }
+
+    internal static (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential, double[] GasX, double[] GasY) SampleCoefficients(
         Fields.Solved.Grid2D grid,
         IElectrostaticField field,
         BackgroundGas gas,
@@ -503,7 +647,9 @@ public static class DriftDiffusion
         IonSpecies species,
         int sign,
         double number,
-        bool cylindrical)
+        bool cylindrical,
+        PonderomotiveWellCache? well = null,
+        DensitySelfField? selfField = null)
     {
         var count = grid.CountX * grid.CountY;
 
@@ -518,8 +664,27 @@ public static class DriftDiffusion
         {
             for (var i = 0; i < grid.CountX; i++)
             {
+                var k = (j * grid.CountX) + i;
+
                 var point = new Vec3(grid.X(i), grid.Y(j), 0.0);
-                var electric = field.ElectricFieldAt(in point);
+
+                // Through the cache where there is one, which reads the well it already
+                // holds and recomputes only the direct term. The arithmetic is the
+                // field's own, in the field's own order, so a run with a cache and a run
+                // without one are the same numbers to the bit.
+                var electric = well is null
+                    ? field.ElectricFieldAt(in point)
+                    : well.ElectricFieldAt(k, in point);
+
+                // The density's own contribution, added to the applied field before the
+                // mobility is taken so both come from one total field. Its gradient is a
+                // central difference on the density's own grid, which is the mesh the
+                // self-potential was solved on - differencing it any finer would be
+                // differencing the interpolation between nodes rather than the field.
+                if (selfField is not null)
+                {
+                    electric += SelfGradient(grid, selfField.Potential, i, j);
+                }
 
                 var strength = Math.Sqrt((electric.X * electric.X) + (electric.Y * electric.Y));
 
@@ -532,13 +697,22 @@ public static class DriftDiffusion
                 var here = gas.NumberDensityAt(in point);
                 var local = mobility.At(strength, here, number);
 
-                var k = (j * grid.CountX) + i;
-
                 driftX[k] = sign * local * electric.X;
                 driftY[k] = sign * local * electric.Y;
 
                 diffusion[k] = Mobility.DiffusionSi(gas.TemperatureK, species.ChargeSi, local);
-                potential[k] = field.PotentialAt(in point);
+
+                potential[k] = well is null
+                    ? field.PotentialAt(in point)
+                    : well.PotentialAt(k, in point);
+
+                // And into the potential the flux is built from. Scharfetter-Gummel takes a
+                // difference across a face, so a per-node scalar added here keeps the flux
+                // antisymmetric between two cells and the scheme exactly conservative.
+                if (selfField is not null)
+                {
+                    potential[k] += selfField.Potential[k];
+                }
 
                 // Sampled per node rather than taken once, even though only a
                 // uniform flow can be declared today. A flow field is what GAS-1

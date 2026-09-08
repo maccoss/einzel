@@ -503,8 +503,13 @@ public static class GeometryBuilder3D
 
         var (_, _, quadrature) = Clocks(geometry.Drives);
 
-        return DriveChannels.Decompose(
-            [.. states.SelectMany(e => e).Select(Excited)], quadrature);
+        // One state at a time, never the states flattened together: a supply's coefficients
+        // are keyed by electrode name, so a flattened decomposition lets the same electrode
+        // in two states collide and leaves a pattern belonging to no stage. See
+        // DriveChannels.DecomposeStates.
+        return DriveChannels.DecomposeStates(
+            [.. states.Select(state => (IReadOnlyList<Excitation>)[.. state.Select(Excited)])],
+            quadrature);
     }
 
     private static List<ChannelSolve> SolveGroups(

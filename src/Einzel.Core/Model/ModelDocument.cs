@@ -45,6 +45,18 @@ public sealed record ModelDocument
     /// <summary>The ion being tracked.</summary>
     public IonDocument? Ion { get; init; }
 
+    /// <summary>
+    /// Several ion populations, where the model is of a mixture rather than of one ion.
+    /// </summary>
+    /// <remarks>
+    /// Mutually exclusive with <see cref="Ion"/>: a document that declared both would be saying
+    /// two things about what is being transported, and there is no reading under which one of
+    /// them is a default for the other. Refused rather than merged, which is the same rule that
+    /// refuses a geometry declaring both <c>drive</c> and <c>drives</c>.
+    /// </remarks>
+    public IReadOnlyList<SpeciesDocument>? Species { get; init; }
+
+
     /// <summary>Where the ion starts, and with what energy.</summary>
     public SourceDocument? Source { get; init; }
 
@@ -107,6 +119,8 @@ public sealed record ModelDocument
         && string.Equals(Name, other.Name, StringComparison.Ordinal)
         && string.Equals(Description, other.Description, StringComparison.Ordinal)
         && Equals(Ion, other.Ion)
+        && (ReferenceEquals(Species, other.Species)
+            || (Species is not null && other.Species is not null && Species.SequenceEqual(other.Species)))
         && Equals(Source, other.Source)
         && Equals(Detector, other.Detector)
         && Equals(Transport, other.Transport)
@@ -121,6 +135,12 @@ public sealed record ModelDocument
         hash.Add(Name, StringComparer.Ordinal);
         hash.Add(Description, StringComparer.Ordinal);
         hash.Add(Ion);
+
+        foreach (var member in Species ?? [])
+        {
+            hash.Add(member);
+        }
+
         hash.Add(Source);
         hash.Add(Detector);
         hash.Add(Transport);
@@ -181,7 +201,7 @@ public static class ModelSchema
     /// case in a sharper form: an older build would solve the untilted cross-section and
     /// report a converging analyser as a parallel one.
     /// </remarks>
-    public const string CurrentVersion = "0.10";
+    public const string CurrentVersion = "0.13";
 
     /// <summary>Versions this build can read.</summary>
     /// <remarks>
@@ -190,7 +210,8 @@ public static class ModelSchema
     /// though it sorts before it as text, and nothing here compares two versions.
     /// </remarks>
     public static IReadOnlyList<string> SupportedVersions { get; } =
-        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10"];
+        ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11", "0.12",
+         "0.13"];
 }
 
 /// <summary>The ion being tracked.</summary>
@@ -206,6 +227,53 @@ public sealed record IonDocument
     /// Charge number. Positive for cations, negative for anions, never zero.
     /// </summary>
     public int ChargeNumber { get; init; } = 1;
+}
+
+
+/// <summary>
+/// One ion population in a mixture: the plural of <see cref="IonDocument"/>, carrying what it
+/// is, how it moves and how much of it there is.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A model declares either <c>ion</c> or <c>species</c>, never both. One ion is the case almost
+/// every model is, and a list of one would be a worse way to say it; a mixture is what a real
+/// source produces and what a mobility analyser exists to separate, and it cannot be said at
+/// all with a singular field.
+/// </para>
+/// <para>
+/// <b>The mobility lives here rather than under <c>transport</c>.</b> Mass, charge and mobility
+/// are one ion's three properties and a mixture needs a set of them per population; leaving the
+/// mobility where it was would make a document say which ions are present in one place and how
+/// each of them moves in another, with nothing tying the two lists together. So
+/// <c>transport.mobility</c> beside <c>species</c> is refused rather than treated as a default.
+/// </para>
+/// </remarks>
+public sealed record SpeciesDocument
+{
+    /// <summary>
+    /// What to call this population. Results are reported by it, so it must be distinct.
+    /// </summary>
+    public string? Name { get; init; }
+
+    /// <summary>Mass-to-charge ratio, in daltons per elementary charge.</summary>
+    public QuantityValue? MassToCharge { get; init; }
+
+    /// <summary>Charge number. Positive for cations, negative for anions, never zero.</summary>
+    public int ChargeNumber { get; init; } = 1;
+
+    /// <summary>
+    /// This population's mobility. Omit it to derive one from the gas cross section, which is
+    /// then Mason-Schamp for <em>this</em> species' mass rather than a number shared with the
+    /// others.
+    /// </summary>
+    public MobilityDocument? Mobility { get; init; }
+
+    /// <summary>
+    /// How many real ions of this population there are. Required, because what a mixture is
+    /// for is that the populations push on one another, and a population with no size cannot.
+    /// </summary>
+    public double Population { get; init; }
 }
 
 /// <summary>Where the ion starts, and with what energy.</summary>
@@ -468,6 +536,19 @@ public sealed record FieldDocument
     public QuantityValue? InscribedRadius { get; init; }
 
     /// <summary>
+    /// Ideal quadrupole only: the axis the field is invariant along, <c>x</c>, <c>y</c> or
+    /// <c>z</c>. Absent means <c>z</c>, the transverse plane being x-y as it always was.
+    /// </summary>
+    /// <remarks>
+    /// A mass filter's cross-section lies across z by convention, but a device whose beam
+    /// axis is x - every axisymmetric tunnel here, since the half-plane solve puts the axis
+    /// of rotation along x - needs the quadrupole across x. The transverse pair follows the
+    /// cyclic order: z gives (x, y), x gives (y, z), y gives (z, x), so the potential is
+    /// always <c>drive (u^2 - v^2) / r0^2</c> in that pair.
+    /// </remarks>
+    public string? Axis { get; init; }
+
+    /// <summary>
     /// Quadro-logarithmic only: the axial potential curvature, of dimension volts per
     /// metre squared.
     /// </summary>
@@ -538,6 +619,21 @@ public sealed record RegionDocument
 
     /// <summary>Upper bound along z.</summary>
     public QuantityValue? MaxZ { get; init; }
+
+    /// <summary>
+    /// Optional: a distance inside every face over which the element rises linearly from
+    /// nothing to full strength, so the potential is continuous across the face instead of
+    /// stepping. Absent means a hard edge, which is what every earlier document had.
+    /// </summary>
+    /// <remarks>
+    /// It stands in for the decay of a real electrode's field over about a bore radius, and
+    /// is a modelling choice rather than anything solved - the run says so. For a confining
+    /// RF it is the difference between a wall and an entrance: at a hard edge an ion at any
+    /// radius meets the whole pseudopotential well at once and is held against it, while a
+    /// fringe squeezes it toward the axis as the well grows under it. Must not exceed half
+    /// the region's smallest extent, or the element never reaches full strength anywhere.
+    /// </remarks>
+    public QuantityValue? Fringe { get; init; }
 }
 
 /// <summary>The surface that ends the flight.</summary>

@@ -29,7 +29,8 @@ physics or the abstraction is wrong, and almost always the second.
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
-| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order — without RF, though, most of the density reaches the bore before release |
+| `tims-front-end` | The analyser with Hernandez's entrance funnel and gate in front of it: a 50 mm funnel tapering 26 to 8 mm with plate-alternating RF delivers a wide packet to the tunnel's own balance point at 99.8 per cent, and the fill-trap-ramp sequence runs as phases |
+| `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow while a quadrupolar RF on the ring segments — entering as its pseudopotential, 1.27 of a hyperbolic quadrupole by the solved cross-section — holds them off the bore. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order |
 | `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
 
 They **share no code at all**. They name the same electrode primitives in
@@ -737,13 +738,6 @@ the device rather than of the solve: the exit funnel is at a single potential an
 gradient as it is approached. It is measured rather than asserted at a chosen place, because
 where it falls is the answer and not the question.
 
-**No RF.** The real tunnel confines radially with a quadrupolar field alternating between
-adjacent *segments* of each ring, and without it the density diffuses to the bore wall — 65
-per cent of it over the first millisecond. That does not move the parking point, which is an
-axial balance, and Hernandez is explicit that the elution voltage is independent of the ramp
-while the peak **width** is what the radial confinement sets. So transmission and resolving
-power are not modelled here and the parking point is.
-
 ### The elution ramp, and what a scan without confinement shows
 
 Hold 300 µs at 60 V, then walk the exit potential to zero over 8 ms — a `sequence` of two
@@ -811,13 +805,303 @@ on, measured with no ramp in the model.
 be read as a quantile — the Scharfetter-Gummel flux moves 1e-100 of an ion across the
 collecting face from the first step, so the first non-empty bin is during the hold.
 
-### What this stage does not carry, still
+### The RF confinement, and how much of a quadrupole four flat segments are
+
+The real tunnel holds ions off the bore with a quadrupolar RF alternating between the four
+segments of each ring — 850 kHz and 200 Vpp in Ridgeway's example — the same on every
+ring, so it has essentially no axial component. A quadrupole is not axisymmetric and cannot
+be electrodes in the half-plane solve. **Its pseudopotential is**: the field magnitude of a
+quadrupole depends on radius alone, so the well a slow ion feels is a harmonic bowl about
+the axis, which the r-z density solve can carry exactly. The template therefore carries the
+RF as the analytic `idealQuadrupoleRf` element lying *across* the tunnel axis (schema 0.11's
+`axis`), bounded to the solve domain and superposed on the solved DC gradient, and the
+collisional pseudopotential the funnel already measured carries it into the density solve.
+`rfAmplitude` at zero is the unconfined tunnel the sections above were measured on.
+
+**How much of a quadrupole the segments are is solved, not assumed.** The RF is the same on
+every ring, so a cross-section is the right solve for it rather than an approximation: four
+annular sectors round the 8 mm bore, adjacent ones at ±V, in a plane solve
+(`TimsRfCrossSectionStudy`). There is a closed form to hold it against — with no gaps the
+potential on the bore is a square wave in angle, whose interior series is
+`(4V/π) Σ (−1)^k (r/r0)^n cos(nθ) / (n/2)` over n = 2, 6, 10, … — so the quadrupole term is
+**4/π = 1.273 of the hyperbolic ideal** at the same electrode potential (a square wave's
+fundamental is larger than the square wave), and the first unwanted term is a 12-pole at a
+third of it on the bore, falling as `(r/r0)^4` inward.
+
+| gap between segments | quadrupole fraction of the ideal | from 4/π |
+| --- | --- | --- |
+| 1.00 mm | 1.2577 | −1.22 % |
+| **0.50 mm** | **1.2696** | −0.29 % |
+| 0.25 mm | 1.2727 | −0.04 % |
+
+Monotone in the gap and closing on 4/π as it closes, which a fit could not do; the same
+number at 1 mm and 2 mm radius to 0.01 %, which is what makes it *one* number the template
+can carry (`rfQuadrupoleFraction`, provenance `fitted`, and a test that the template and the
+solve agree). The 12-pole is `A6/A2` = 0.00127 / 0.02027 / 0.1027 at 1 / 2 / 3 mm against
+`(r/r0)^4/3` = 0.00130 / 0.02083 / 0.1055, every forbidden order at 1e-15, and the field
+magnitude — what the pseudopotential is built from — varies round the circle by **0.012 %
+at r = 0.3 mm**, where the confined cloud sits, 1.5 % at 1 mm, and 92 % at 3.5 mm, where the
+axisymmetric treatment is an approximation and there are no ions to notice.
+
+**With it on, measured at the parking point over 600 µs** (`TimsConfinementTests`):
+
+| | RF on (±100 V per segment) | RF off |
+| --- | --- | --- |
+| density reaching the bore | **0.0000 %** | 26.0 % |
+| packet centre | 21.1040 mm | — |
+| balance point of the solved field | 21.1036 mm | 21.1036 mm |
+| rms radius, measured | **0.3406 mm** | — |
+| rms radius, Boltzmann in the collisional well | 0.3423 mm (−0.5 %) | |
+| rms radius, Boltzmann in the collisionless well | 0.2805 mm (+21 %) | |
+| suppression Ω²/(Ω²+ν²) | 0.685 | |
+
+**The width is the sharp check.** The well is exactly harmonic by construction and the
+density solver's zero-flux state is exactly Boltzmann, so the radial profile is a Gaussian
+whose second moment is a closed form: `<r²> = kT / (q c)` with
+`c = q E0'² / (4 m (Ω² + ν²)) − V/(2L²)`, the first term the collisional well at the field
+gradient `E0' = 2 κV / r0²` and the second the solved DC gradient's own radial defocusing
+(an x²-shaped axial potential is −r²/2-shaped across the bore by Laplace, a few per cent of
+the well and pushing outward). At 2.6 mbar the momentum-transfer rate `q/(mK)` = 3.62e6 /s
+against a drive of 5.34e6 rad/s, so the well is 0.685 of the collisionless one and the
+textbook formula predicts a width **21 % too narrow** — measurably wrong, which is the control
+that says the collisional form is what ran. The RF has no axial component and the packet
+centre moves 0.4 µm. The Mathieu q of the confinement is 0.17, comfortably adiabatic.
+
+**Two conventions are stated as choices, not facts.** Ridgeway's "200 Vpp" is read as each
+segment swinging ±100 V about its DC with its neighbours in antiphase, so adjacent segments
+differ by 200 V zero to peak; the other reading — 200 Vpp *between* neighbours — is half the
+amplitude and a quarter of the well. And the 0.5 mm gap between segments is a guess about a
+PC-board routing gap the papers do not give; the table above says what it is worth.
+
+**A validity check fired on its proxy rather than on the physics, and was corrected.**
+`rf.quiver-exceeds-mesh` compared the largest quiver anywhere on the grid with the *density*
+grid's cell. At the bore the ion is swept 0.29 mm by the RF, and the radial density cell is
+0.125 mm, so the confinement tripped a non-suppressible violation — on a field that is
+analytic and exactly linear, where the cycle average is exact whatever the quiver. What the
+check is about is the *representation* of the oscillating field: a solved RF sampled on a
+mesh coarser than the excursion is being averaged over interpolation. So the comparison is
+now against the mesh the **oscillating** members are known on (`OscillatingResolutionLength`,
+infinite for an analytic drive), and a solved DC gradient summed with an analytic RF no
+longer lends the RF its cell. The funnel, whose RF is solved, warns exactly as before.
+
+### The confined scan: every ion arrives, and a first resolving power
+
+The same ramp as above — hold 300 µs at 60 V, walk the exit potential to zero over 8 ms —
+with the RF on, three mobilities each released at its own parking point, on a 256 × 16
+density grid stepped implicitly at 64 times the explicit limit (about nine minutes a run):
+
+| K relative to the reference | reached the detector | median arrival | exit potential then | quasi-static release | peak σ | FWHM (2.355 σ) | R = V / (β · FWHM) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0.75 | **100.00 %** | 4.201 ms | 30.7 V | 42.7 V at 2.61 ms | 157 µs | 370 µs | **11** |
+| 1.00 | **100.00 %** | 5.513 ms | 20.9 V | 32.0 V at 4.03 ms | 143 µs | 337 µs | **8** |
+| 1.50 | **100.00 %** | 6.797 ms | 11.3 V | 21.3 V at 5.45 ms | 128 µs | 301 µs | **5** |
+
+**The wall was selecting ions, not moving the peak.** The unconfined runs delivered 1,684 and
+45 ions with medians at 4.225 and 5.526 ms; confined, 100,000 arrive at 4.201 and 5.513 —
+within 25 µs. So the release lag reported above was a property of the scan and not of the
+survivors, and the third ion, which the bore had taken entirely, arrives last as it should.
+With every ion collected the arrival distribution is the instrument's, and two things can be
+read off it that the unconfined runs could not give.
+
+**The lag is the plateau transit.** In the TIMS theory the time from release to arrival is
+`t_p = sqrt(2 L_p / (K β))`, the distance the ion has to cover against a field that is only
+just failing to hold it. There is no plateau in a linear-gradient tunnel; taking `L_p` as the
+distance from the parking point to the field's peak (20 mm for the reference ion) and β as
+the rate the peak field falls (2.74 × 10⁵ V/m/s) gives **2.13 / 1.85 / 1.51 ms** for the
+three ions, against the measured medians' lag past the quasi-static instant of
+**1.59 / 1.48 / 1.35 ms** — the same ordering, the same `K^(-1/2)` trend, 0.75-0.9 of the
+formula, whose `L_p` was a guess.
+
+**Elution voltage against 1/K is linear to 2 per cent, with an offset.** The exit potential
+at the median, 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667 relative, has a slope
+of 29.4 V per unit and an intercept of −8.5 V — the register's "one instrument constant".
+The intercept is the lag turned into volts: a packet that lets go later than the
+quasi-static instant is read at a lower potential by β × lag, and the lag scales the same way
+the calibration does. A real instrument calibrates that constant away; here it is measured.
+
+**The resolving power is low, and it says which knob.** `R = K/ΔK` with `ΔK/K = ΔV/V =
+β Δt / V(t_peak)`, the FWHM taken as 2.355 σ of the arrival times because the histogram at a
+64× implicit step is too lumpy for a half-maximum to be read off it. The register's law
+`R = v_g (2L_p/β)^(1/4) K^(-3/4) sqrt(q / (16 ln2 kT))` gives **24 / 19 / 14** for the
+three ions at this operating point with the same `L_p` guess, so the measurement sits at
+0.4-0.5 of it — and the `K^(-3/4)` trend is there, 1.34 : 1 : 0.60 measured against
+1.24 : 1 : 0.74. Hernandez's 100-250 is at a gas speed 1.5-2.6 times this one and with a
+plateau; R goes as `v_g` directly and as the fourth root of a slower ramp, so the gap is
+where the operating point is rather than where the physics is. Two things the measurement
+does not yet separate: how much of the width is the axial thermal spread in the restoring
+gradient (0.686 mm at hold, `sqrt(kT L² / (2 q V))`, growing as `V^(-1/2)` down the ramp)
+and how much is the release itself. The scan-rate dependence is a study over β, not run.
+
+**And the review's bug is in these numbers.** The hold phase assembled its operator 130, 171
+and 253 times — every step — for a field that did not change, because the probe that asks
+whether a phase changes the field sampled the phase boundary (which a staged field already
+reads as the next phase) and the instantaneous RF (which differs from itself at any two
+instants). Both are fixed and counted: a held phase now reports one assembly.
+
+### The scan-rate law, recovered where it should hold and broken where it should not
+
+The register's law for a trapped-ion-mobility analyser is `R = v_g (2L_p/β)^(1/4) K^(-3/4)
+sqrt(q / 16 ln2 kT)`: resolving power rises as the fourth root of a slower ramp and in
+proportion to the gas speed. Six ramps on the reference ion at 50 m/s, RF on, every ion
+collected in every run:
+
+| ramp | β | median arrival | exit potential then | peak σ | FWHM | **R** | R ratio per halving of β |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4 ms | 15.0 V/ms | 3.43 ms | 13.1 V | 112 µs | 264 µs | **3.3** | |
+| 8 ms | 7.5 | 5.51 | 20.9 | 143 | 336 | **8.3** | 2.52 |
+| 16 ms | 3.75 | 9.53 | 25.4 | 213 | 501 | **13.5** | 1.63 |
+| 32 ms | 1.88 | 17.36 | 28.0 | 349 | 823 | **18.2** | 1.35 |
+| 64 ms | 0.94 | 32.71 | 29.6 | 602 | 1418 | **22.3** | 1.23 |
+| 128 ms | 0.47 | 62.97 | 30.6 | 1081 | 2546 | **25.7** | 1.15 |
+
+**The law's exponent is recovered asymptotically.** Halving β should raise R by
+2^(1/4) = **1.19**. The measured ratio falls 2.52 → 1.63 → 1.35 → 1.23 → 1.15 and closes on it
+from above, so the law holds where the ramp is slow against the packet's settling time and
+fails where it is not — and the failure is the release lag: at a fast ramp the exit potential
+has fallen far below the quasi-static release value by the time the peak arrives (13.1 V
+against 32 V at 4 ms; 30.6 against 32 at 128 ms), while the arrival width in *time* hardly
+moves, so `V/(β Δt)` collapses as `V(t_peak)`. A 2 ms ramp is faster than the lag itself and
+the peak arrives after the field is off. **This is the same time constant as everything
+else in this section**: the lag in volts `β × lag` is 18.9 / 11.1 / 6.6 / 4.0 / 2.4 / 1.4 V
+down the table, so the release converges on the quasi-static 32 V exactly as the ramp slows.
+
+**The absolute level sits at 0.4-0.7 of the law**, with the fraction rising as the ramp slows
+(8.3 against 19.4 at 8 ms; 25.7 against 38.8 at 128 ms, with `L_p` taken as the 20 mm from the
+parking point to the field's peak, since a linear-gradient tunnel has no plateau). What the
+remaining factor is made of is not separated here — the axial thermal spread of the held
+packet in the restoring gradient (0.68 mm at 60 V, growing as `V^(-1/2)` down the ramp) and
+the definition's reading of the ramp at arrival rather than at release are the two
+candidates.
+
+**At Ridgeway's operating point the resolving power doubles, as `R ∝ v_g` says.** The
+register's gas profile — 75 m/s at the entrance rising to 130 m/s at 45 mm on the axis,
+parabolic across the bore, 2.61 falling to 2.30 mbar — authored as imported velocity and
+pressure fields from the numbers the register cites, with 100 V across the tunnel so it can
+hold against the faster gas:
+
+| ramp | parked | collected | median arrival | exit potential then | FWHM | **R** | at 50 m/s |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8 ms | 24.92 mm | 100.00 % | 3.49 ms | 60.2 V | 223 µs | **21.6** | 8.3 |
+| 32 ms | 24.92 mm | 100.00 % | 10.76 ms | 67.3 V | 580 µs | **37.2** | 18.2 |
+
+The parking point is where the local gas speed and the local mobility — both now varying
+along the tunnel, the mobility as `1/n` — balance the field: predicted 25.2 mm by hand from
+the profile, measured 24.92. The gas at that point is 105 m/s, 2.1× the uniform stream,
+and R is 2.6× and 2.0× the 50 m/s values at the same ramp; the ramp is also 1.67× steeper in
+volts per millisecond because the well is deeper, which the law charges at the fourth root.
+
+**So the gap to Hernandez's 100-250 is now a quantitative one rather than a missing
+mechanism.** From 37 at 32 ms and Ridgeway's gas: his ramps are 100-300 ms (`β^(-1/4)`:
+×1.3-1.8), the optimum flow is ~140 m/s rather than the 105 at this parking point (`v_g`:
+×1.3), and the instrument accumulates on a plateau this tunnel does not have, which enters
+the law as `L_p^(1/4)` and is not modelled. Those account for a factor of 2-3 of the
+remaining 3-7, which leaves about 1.5 for the width's own composition — the same unresolved
+factor as at 50 m/s. What is *not* in the gap: the transmission (every ion arrives), the
+order (least mobile first), the parking (to 1 µm), or the exponent.
+
+### What this stage still does not carry
+
+**The shipped template's gas is one stream at 50 m/s.** Ridgeway's profile has been run
+against it as imported fields (above) and doubles the resolving power; it is not the
+template's default because a template is a single file and the profile is two data files
+beside it. The parking positions and the elution order do not depend on it; the release
+voltages and the widths do.
+
+**Ring-to-ring structure of the RF.** The axisymmetric pseudopotential is smooth along the
+axis, while real segmented rings on a 1.725 mm pitch modulate the RF near the bore at that
+pitch. The modulation decays inward as `exp(−2πr/pitch)` from the wall and is nothing at the
+0.3 mm the cloud occupies, which is why it is left out; it would matter for what happens to
+ions that reach the bore, which with the RF on is none.
 
 **And the operating point is deliberately not the commercial one.** 18.6 Td at the parking
 point, inside the `E/p < 10 V/cm/torr` Hernandez states, rather than the 45-150 Td Ridgeway
 gives as the optimum — where a low-field mobility is not valid and this model would be
 describing a different regime from the one its mobility was measured in.
 `docs/literature-targets.md` section 6 carries the register and the remaining targets.
+
+## `tims-front-end` — the funnel and the gate in front of the analyser
+
+The analyser template starts its packet inside the tunnel. The instrument does not: Hernandez
+draws a **50 mm entrance funnel** whose bore tapers from 26 mm to the tunnel's 8 mm — sixteen
+plates 1.6 mm thick on a 1.5 mm spacing, the RF alternating plate to plate as a funnel's does,
+where the tunnel's alternates segment to segment — then the tunnel, and an operating sequence
+of **fill, trap, ramp** driven through the entrance potential. This template is that front end
+in front of the analyser: the funnel, an entrance gate electrode, the tunnel with its own RF
+and gradient, and the sequence as phases. Everything the analyser template measures holds here
+unchanged; what it adds is the delivery of a wide, low-field packet into the tunnel, and the
+gate that decides whether it gets in.
+
+**The funnel delivers because of its RF, and the tunnel accepts because of its fringe.** A
+packet 2 mm wide released 40 mm up the funnel, gas at 50 m/s and a 25 V DC drop pushing it in
+(`TimsFrontEndTests`, 4 ms, 256 × 32):
+
+| | funnel RF on | funnel RF off |
+| --- | --- | --- |
+| survives the funnel | **99.993 %** | 65.28 % |
+| where the rest went | six ions of a hundred thousand | the last three plates (18,428 / 3,800 / 3,759) and the gate (6,873) |
+| inside the tunnel after 4 ms | **99.80 %** | |
+| packet centre | **21.09 mm**, the analyser's own balance point | |
+| mean radius | **0.29 mm**, the tunnel RF's own Boltzmann radius | |
+
+The funnel's plate-alternating RF is a wall that decays inward as `exp(−2πr/pitch)` — nothing
+on the axis, everything at the plates — and without it a third of the packet ends on the
+narrow end of the taper. What makes the delivery figure meaningful is that the packet arrives
+at the analyser's *own* numbers: the same parking point the analyser template measures to a
+micrometre, at the same radius its confinement holds a packet to.
+
+**The first version delivered the packet to the tunnel entrance and stopped it there.** 42 per
+cent sat in the last two millimetres before the tunnel, and a *steeper* funnel gradient made
+it worse — 54 per cent at 50 V of drop, 71 at 100 V, which is the signature of a barrier
+rather than of a push that is too weak. The cause was the model: the tunnel's quadrupolar RF
+is an analytic element bounded to the tunnel, and a bounded element's edge was a **step**, so
+an ion arriving at radius r met the whole pseudopotential well `Ψ(r)` at once and was held
+against it with nothing to squeeze it inward first. A real segmented ring's field decays over
+about a bore radius, and across that fringe the well's radial gradient acts on the ion while
+its axial gradient is still small. Schema 0.12 adds `fringe` to a region — the element rises
+linearly from nothing at the face to full strength that far inside, the potential is
+continuous, and the field is the gradient of the fringed potential — and with a 4 mm fringe
+the packet goes straight through to the balance point. The fringe is a declared shape and the
+run says so (`field.region-fringe`); its length is a guess of one bore radius, and the
+delivery does not depend on it finely.
+
+**The gate gates, and what it holds back it loses.** With the entrance gate at 30 V from the
+start, nothing reaches the tunnel — and nothing survives either: the whole packet, pressed
+against the closed gate by the gas and the funnel's gradient, ends on the last funnel plate.
+That is what a funnel's effective wall is worth against a steady axial push, and it is why
+Hernandez's sequence closes the gate *and* diverts the beam upstream with a deflector plate
+during the trap. A gate alone is a beam dump.
+
+**The whole sequence end to end is a study rather than a test, and it did not finish** — 4.75
+CPU-hours at 512 × 64 over 18 ms, and then 40 minutes at 256 × 32 over 12 ms, both killed.
+What the pieces already say is that it should hold no surprises: the funnel delivers to the
+analyser's own parking point and radius, and from there the elution is the analyser's,
+measured above. The number worth having from it is whether the arrival width is the
+analyser's too, or whether the delivery leaves an axial spread the ramp then reads as
+mobility.
+
+**Why it costs what it does, and the fix it points at.** A ramped diffusive phase re-assembles
+its face operator every step, which is what a changing field requires. Here the field is
+`funnelPlate`'s *solved* RF wrapped in a pseudopotential, and each assembly samples the
+oscillating field at **sixteen instants per node** to take its cycle mean and mean square —
+sixteen bicubic interpolations over the solved channels, per node, per step. The analyser's own
+ramps are cheap by comparison because their RF is analytic.
+
+But **the ramp moves only DC.** The sequence ramps `exitPotential`; `funnelRfAmplitude` and
+`rfAmplitude` are constant throughout, so the oscillating part of the field — and therefore
+its cycle mean square, the expensive half — does not change from step to step. Only the direct
+term does, and that is one field evaluation per node rather than sixteen. Caching the
+mean-square field per node on the first assembly and re-sampling only the DC part would take
+the per-step cost to about a sixteenth where the drive is held, which is every elution scan
+this instrument runs. **Stated as an inference from the code path rather than a measurement**:
+the assembly counts and the ramp/hold cost ratio are reported per phase, so it can be
+measured directly by holding the drive and re-running.
+
+**What this template does not carry.** No deflector plate, so a continuous beam cannot be
+diverted during the trap and the fill is a single released packet rather than ten milliseconds
+of arrivals. The gas is the analyser's uniform 50 m/s stream through funnel and tunnel alike,
+where the real funnel sits at a higher pressure with a slower, wider flow. No exit funnel. And
+three plates of the geometry are guesswork the papers do not give: the DC drop (an ordinary
+5 V/cm), the gate's thickness and its gaps, and the RF amplitude on the funnel plates.
 
 ## What is missing
 
@@ -2053,3 +2337,89 @@ in, past the jet disrupter, with a 3 mm spread), the extraction electrode's pote
 at 300 K (the inlet capillary is heated), no gas jet, no space charge. The template's own
 description lists them, and the trajectory-file fix that this device found - `--vtu` of a
 collisional run was a vacuum flight - is in the working notes, section 76.
+
+## Two populations in `tims-tandem`, and the capacity that falls out
+
+The question a trapped-mobility analyser is designed around: how much charge can it hold
+before the ions stop being separated by their mobility and start being separated by their own
+space charge. Two populations of m/z 622 differing only in mobility — the second ten per cent
+slower — released together into the storage region and held for 2.5 ms at 5000 V/m, with and
+without their own charge in the field.
+
+Holding everything but the mobility fixed is what makes the separation attributable: two
+species differing in mass would also differ in their diffusion and, in this driven tunnel, in
+the well they feel.
+
+| launched | charge | fast (mm) | slow (mm) | gap (mm) | width (mm) | held |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10^5 | off | 26.991 | 33.286 | 6.295 | 0.652 | 8.07e4 |
+| 10^5 | on | 26.995 | 33.350 | 6.355 | 0.910 | 8.07e4 |
+| 10^7 | off | 26.991 | 33.286 | 6.295 | 0.652 | 8.07e6 |
+| 10^7 | on | 26.113 | 34.539 | 8.426 | 2.314 | 7.51e6 |
+| 10^8 | off | 26.991 | 33.286 | 6.295 | 0.652 | 8.07e7 |
+| 10^8 | on | 25.997 | 35.033 | 9.036 | 2.564 | **1.39e7** |
+
+**The tunnel has a capacity, and it is the published one.** Launching ten times more than
+10^7 holds only 1.8 times more, so it stops accepting between 8 × 10^6 and 1.4 × 10^7 ions.
+Silveira and colleagues put the storable population at 10^6 to 10^7 from a free-space
+line-charge argument that neglects the electrodes entirely; this is the same answer from
+solving the geometry with two populations pushing on one another, which is about as
+independent as two routes to a number get.
+
+**The uncharged column is what makes it a measurement.** With no charge the tunnel holds
+81 per cent of whatever it is given at every population, and the widths and positions are
+identical to the digit — so what saturates is the charge rather than the geometry, and the
+run really did vary what it says it varied.
+
+Where the other 19 per cent goes is **not established**: the study sums each population's
+density and does not read its itemised losses, so the figure is a retention fraction and not
+an attribution. It is the same at every population and in both columns, which is why it does
+not confound the comparison, and it is worth itemising before anything is concluded from it.
+
+**The degradation has a shape a designer could misread.** Their own charge pushes the two
+populations *further apart* — 6.3 mm to 9.0 mm — and the separation still gets worse, because
+the peaks widen faster than their centres move. Watch only the peak spacing and space charge
+looks like it is helping.
+
+**And the broadening starts far below the capacity**: 1.4× wider at 10^5 ions. That is not a
+contradiction with the published estimate, because the two are about different quantities.
+Their criterion is the packet's own field against the analysing field, which is of order a
+per cent. What sets a *held* packet's width is its own potential against the thermal energy
+`kT/q`, 25.85 mV at 300 K — and these packets settle to well under a millimetre, so their
+self-potential passes that scale at a much lower count:
+
+| launched | peak self-potential | against kT/q | broadening |
+| --- | --- | --- | --- |
+| 10^5 | 0.105 V | 4.1× | 1.40× |
+| 10^7 | 1.783 V | 69.0× | 3.55× |
+| 10^8 | 2.519 V | 97.5× | 3.93× |
+
+At the lowest population the packet's own potential is already four times the energy that
+would otherwise set its width, which is the whole of why it broadens there. And the
+self-potential saturates too — 1.78 V to 2.52 V for ten times the charge — for the same
+reason the width does: past the capacity the extra ions are not there.
+
+### Two things this measurement is not
+
+**Its ratio is spatial, not a resolving power.** The gap and the width are both millimetres,
+measured at an equilibrium reached long before the run ends. A real analyser's resolving
+power is measured in the time domain after an elution ramp, and the ramp is most of where it
+comes from — so the number here is one to two orders below a published one by construction
+and must never be set beside one. What it is good for is a ratio against itself.
+
+**Its ion counts are not comparable with the published ones.** Their reference spreads 10^6
+charges over 23 mm; these packets sit in under a millimetre. Per unit length per population,
+the 10^5 row is 0.6 times their reference density rather than a hundredth of it, which is the
+comparison that has to be made.
+
+The eluted version is what would produce a mobility resolving power comparable with a
+published one, and `mobilityResolvingPower` already computes it.
+
+### Cost
+
+14 minutes for six configurations at 256 × 16 over 2.5 ms. An uncharged configuration is
+30 seconds; a mean-field one is 220 to 330. The difference is that the density's own charge
+forces a coefficient re-sample whenever it moves, and although the cycle-averaged well now
+survives one, everything else about the operator is rebuilt. The geometry is solved **once**
+for the whole study and reused: re-solving 55 rings and two funnels per configuration ran for
+over an hour without reaching its first line of output.

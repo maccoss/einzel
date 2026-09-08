@@ -16,10 +16,61 @@ public sealed class ExpressionTests
         ["gap"] = Quantity.From(30.0, "mm"),
         ["volts"] = Quantity.From(4800.0, "V"),
         ["ratio"] = Quantity.Number(0.35),
+        ["zero"] = Quantity.Number(0.0),
     };
 
     private static Quantity Evaluate(string expression) =>
         ExpressionEvaluator.Evaluate(expression, Parameters, "/test");
+
+    /// <summary>
+    /// A clamp is `max(x - start, 0)`, and the grammar has no unit literals - so a literal
+    /// zero has to compare against a dimensioned operand, which is the rule placements
+    /// already follow.
+    /// </summary>
+    /// <remarks>
+    /// Needed by any piecewise profile: a trapped-ion-mobility tunnel's rising edge and
+    /// plateau are written as one expression over a ring's position, clamped at each end.
+    /// Before this, `max(depth - gap, 0)` was refused as comparing metres with a number, and
+    /// a document had to declare a zero-length parameter to get round it.
+    /// </remarks>
+    [Theory]
+    [InlineData("max(depth - gap, 0)", 0.060)]
+    [InlineData("max(gap - depth, 0)", 0.0)]
+    [InlineData("min(depth, 0)", 0.0)]
+    [InlineData("min(0, depth)", 0.0)]
+    [InlineData("max(0, gap)", 0.030)]
+    [InlineData("min(max(depth - gap, 0), gap)", 0.030)]
+    [InlineData("max(depth - gap, 0.0)", 0.060)]
+    public void AWrittenZeroComparesAgainstAnyDimension(string expression, double expectedMetres)
+    {
+        var value = Evaluate(expression);
+
+        Assert.Equal(expectedMetres, value.SiValue, 1e-15);
+
+        // And it keeps the dimensioned operand's dimension, so the clamp can be added to a
+        // length rather than becoming a number the next operator refuses.
+        Assert.Equal(Quantity.From(1.0, "mm").Dimension, value.Dimension);
+    }
+
+    /// <summary>
+    /// The control, and the whole reason the test is on the text: a *parameter* that happens
+    /// to hold zero is still refused.
+    /// </summary>
+    /// <remarks>
+    /// A value test would make dimensional validity depend on a number, so a document naming
+    /// a dimensionless parameter that happened to be zero would validate at nominal and then
+    /// fail with a units error partway through a sweep when an optimiser moved it off zero.
+    /// Dimensions are a property of what was written.
+    /// </remarks>
+    [Theory]
+    [InlineData("max(depth, zero)")]
+    [InlineData("min(zero, gap)")]
+    [InlineData("max(depth - gap, ratio - ratio)")]
+    public void ADimensionlessParameterHoldingZeroIsStillRefused(string expression)
+    {
+        var refused = Assert.Throws<EinzelException>(() => Evaluate(expression));
+        Assert.Equal(ErrorCodes.UnitsIncompatible, refused.Error.Code);
+    }
 
     [Theory]
     [InlineData("depth", 0.090)]

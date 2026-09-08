@@ -230,6 +230,53 @@ public static class DriveChannels
         IReadOnlyList<Excitation> excitations, bool quadrature = false) =>
         Decompose(excitations, [quadrature]);
 
+    /// <summary>
+    /// The channels a whole sequence needs: every state decomposed on its own, and a pattern
+    /// that recurs across states solved once.
+    /// </summary>
+    /// <param name="states">What each electrode holds, one list per stage state.</param>
+    /// <param name="quadrature">Per drive, whether it is a sinusoid.</param>
+    /// <returns>The distinct channels, in the order the states first reach them.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="states"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>One state at a time, and that is the whole point.</b> A supply's coefficients are
+    /// keyed by electrode name, so handing the concatenation of every state to
+    /// <see cref="Decompose(IReadOnlyList{Excitation}, IReadOnlyList{bool})"/> makes the same
+    /// electrode appearing in two states collide, and the state written last wins. What comes
+    /// out is then one pattern that belongs to no stage: a stage whose own pattern is a
+    /// uniform scaling of it still weighs correctly, which is why a sequence that scales its
+    /// whole electrode set was right and one that <em>reshapes</em> it was silently
+    /// field-free.
+    /// </para>
+    /// <para>
+    /// The sharing the flattened version was reaching for is kept, and is what the union does:
+    /// a trap that fills and then extracts holds most of its electrodes at the same potentials
+    /// in both, so those patterns appear once and carry a weight each, and only the patterns
+    /// that genuinely differ cost a solve.
+    /// </para>
+    /// </remarks>
+    public static List<DriveChannel> DecomposeStates(
+        IReadOnlyList<IReadOnlyList<Excitation>> states, IReadOnlyList<bool> quadrature)
+    {
+        ArgumentNullException.ThrowIfNull(states);
+
+        var channels = new List<DriveChannel>();
+
+        foreach (var state in states)
+        {
+            foreach (var group in Decompose(state, quadrature))
+            {
+                if (!channels.Any(existing => SamePattern(existing.Pattern, group.Pattern)))
+                {
+                    channels.Add(group);
+                }
+            }
+        }
+
+        return channels;
+    }
+
     /// <summary>The weight each already-solved channel carries for a given set of excitations.</summary>
     /// <param name="channels">The channels the whole sequence was decomposed into.</param>
     /// <param name="excitations">What each electrode holds during this stage.</param>
@@ -260,11 +307,23 @@ public static class DriveChannels
 
             if (index < 0)
             {
-                // Cannot happen: the patterns were gathered from every stage. Left
-                // to contribute nothing rather than throwing, because a stage that
-                // silently lost a supply is a defect worth finding in a test rather
-                // than an exception in a user's run.
-                continue;
+                // This used to `continue`, on the strength of a comment saying it could
+                // not happen because the patterns were gathered from every stage. They
+                // were gathered from every stage *flattened together*, which is not the
+                // same thing, and the case did happen: a stage that reshaped its electrode
+                // potentials rather than scaling them found no channel and ran with no
+                // field at all. Silence is what made that expensive to find, so a lost
+                // supply now says so. After DecomposeStates it cannot happen, and if it
+                // ever does again the run stops instead of quietly describing a different
+                // instrument.
+                throw new InvalidOperationException(
+                    "a stage holds a supply pattern that is not among the channels the "
+                    + "sequence was decomposed into, so its field would be incomplete. "
+                    + "The channels must be built with DecomposeStates, one state at a "
+                    + $"time, rather than from every state flattened together. Pattern over "
+                    + $"{group.Pattern.Count} electrode(s): "
+                    + string.Join(", ", group.Pattern.OrderBy(p => p.Key, StringComparer.Ordinal)
+                        .Take(6).Select(p => $"{p.Key} {p.Value:G6}")));
             }
 
             direct[index] += group.Direct;

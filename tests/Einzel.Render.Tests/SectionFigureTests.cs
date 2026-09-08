@@ -295,7 +295,7 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
 
         var spec = new RenderSpec { WidthMm = 160.0, Equipotentials = 6, DensityContours = 5 };
 
-        var figure = SectionRenderer.Render(validation.Model!, spec, null, Blob());
+        var figure = SectionRenderer.Render(validation.Model!, spec, null, [Blob()]);
 
         foreach (var layer in figure.Scene.Paths.Select(p => p.Layer).Distinct().Order())
         {
@@ -335,7 +335,7 @@ public sealed class SectionFigureTests(ITestOutputHelper output)
         var empty = new Transport.Diffusion.DensityField(grid);
 
         var figure = SectionRenderer.Render(
-            validation.Model!, new RenderSpec { DensityContours = 5 }, null, empty);
+            validation.Model!, new RenderSpec { DensityContours = 5 }, null, [empty]);
 
         Assert.DoesNotContain(figure.Scene.Paths, p => p.Layer == "density");
         Assert.Contains(figure.Warnings, w => w.Code == "render.density-empty");

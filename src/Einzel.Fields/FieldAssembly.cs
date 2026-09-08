@@ -281,7 +281,20 @@ public static class FieldAssembly
 
             if (element.Region is { } bounded)
             {
-                warnings.Add(RegionStep(element, bounded, index, model.AccelerationPotentialSi));
+                // A hard edge steps the potential at the face, and the step is reported.
+                // A fringe makes the potential continuous there, so there is no step to
+                // measure - what is reported instead is that a fringe is a modelling choice.
+                warnings.Add(bounded.FringeSi > 0.0
+                    ? new Core.Results.ValidityWarning(
+                        "field.region-fringe",
+                        $"field element {index} is bounded by a region whose faces carry a fringe of "
+                        + $"{bounded.FringeSi * 1e3:G4} mm: the element rises linearly from nothing at the "
+                        + "face to full strength that far inside, so its potential is continuous across the "
+                        + "face and the field there is the gradient of that ramp rather than a step. The "
+                        + "fringe stands in for a real electrode's field decaying over about a bore radius; "
+                        + "it is a declared shape, not the solved fringe of any geometry",
+                        Core.Results.WarningSeverity.Provenance)
+                    : RegionStep(element, bounded, index, model.AccelerationPotentialSi));
             }
 
             switch (element.Kind)
@@ -535,7 +548,8 @@ public static class FieldAssembly
             Quantity.Si(element.DirectPotentialSi, Dimension.ElectricPotential),
             Quantity.Si(element.DriveAmplitudeSi, Dimension.ElectricPotential),
             Quantity.Si(element.DriveFrequencySi, Dimension.Frequency),
-            Quantity.Si(element.InscribedRadiusSi, Dimension.LengthDimension)),
+            Quantity.Si(element.InscribedRadiusSi, Dimension.LengthDimension),
+            axis: element.Axis),
 
         _ => throw new ArgumentOutOfRangeException(
             nameof(element),

@@ -75,12 +75,34 @@ public class BoundedField : IElectrostaticField
             : new BoundedField(inner, region);
 
     /// <inheritdoc />
-    public Vec3 ElectricFieldAt(in Vec3 position) =>
-        Region.Contains(in position) ? _inner.ElectricFieldAt(in position) : Vec3.Zero;
+    public Vec3 ElectricFieldAt(in Vec3 position)
+    {
+        var scale = Region.Scale(in position);
+
+        if (scale <= 0.0)
+        {
+            return Vec3.Zero;
+        }
+
+        var field = _inner.ElectricFieldAt(in position);
+
+        if (scale >= 1.0)
+        {
+            // Deep inside, or no fringe: the element itself, to the bit.
+            return field;
+        }
+
+        // E = -grad(s phi) = s E - phi grad s: the potential's own gradient through the
+        // fringe, so the bounded field is the gradient of the bounded potential.
+        return (field * scale) - (Region.ScaleGradient(in position) * _inner.PotentialAt(in position));
+    }
 
     /// <inheritdoc />
-    public double PotentialAt(in Vec3 position) =>
-        Region.Contains(in position) ? _inner.PotentialAt(in position) : 0.0;
+    public double PotentialAt(in Vec3 position)
+    {
+        var scale = Region.Scale(in position);
+        return scale <= 0.0 ? 0.0 : scale * _inner.PotentialAt(in position);
+    }
 
     /// <inheritdoc />
     /// <remarks>
@@ -136,12 +158,32 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     public double ShortestPeriodSeconds => _driven.ShortestPeriodSeconds;
 
     /// <inheritdoc />
-    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds) =>
-        Region.Contains(in position)
-            ? _driven.ElectricFieldAt(in position, timeSeconds)
-            : Vec3.Zero;
+    public double OscillatingResolutionLength => _driven.OscillatingResolutionLength;
 
     /// <inheritdoc />
-    public double PotentialAt(in Vec3 position, double timeSeconds) =>
-        Region.Contains(in position) ? _driven.PotentialAt(in position, timeSeconds) : 0.0;
+    public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
+    {
+        var scale = Region.Scale(in position);
+
+        if (scale <= 0.0)
+        {
+            return Vec3.Zero;
+        }
+
+        var field = _driven.ElectricFieldAt(in position, timeSeconds);
+
+        if (scale >= 1.0)
+        {
+            return field;
+        }
+
+        return (field * scale) - (Region.ScaleGradient(in position) * _driven.PotentialAt(in position, timeSeconds));
+    }
+
+    /// <inheritdoc />
+    public double PotentialAt(in Vec3 position, double timeSeconds)
+    {
+        var scale = Region.Scale(in position);
+        return scale <= 0.0 ? 0.0 : scale * _driven.PotentialAt(in position, timeSeconds);
+    }
 }

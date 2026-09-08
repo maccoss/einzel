@@ -1,4 +1,5 @@
 using Einzel.Core.Geometry;
+using Einzel.Core.Units;
 
 namespace Einzel.Core.Model;
 
@@ -116,6 +117,21 @@ public sealed record CompiledModel
     /// <summary>Ion mobility, for the diffusive mode. Null when none applies.</summary>
     public CompiledMobility? Mobility { get; init; }
 
+    /// <summary>
+    /// The ion populations, where the model declared a mixture; empty where it declared one ion.
+    /// </summary>
+    /// <remarks>
+    /// Empty rather than a list of one for the single-ion case, so that "is this a mixture" is a
+    /// question with one answer. A caller wanting the ion regardless asks
+    /// <see cref="MassSi"/>/<see cref="ChargeSi"/>, which a mixture leaves at the first
+    /// population's values - enough for the diagnostics that need <em>an</em> ion, and never
+    /// enough to be mistaken for all of them.
+    /// </remarks>
+    public IReadOnlyList<CompiledSpecies> Species { get; init; } = [];
+
+    /// <summary>Whether the model describes several ion populations at once.</summary>
+    public bool IsMixture => Species.Count > 1;
+
     /// <summary>The density grid, for the diffusive mode. Null when none applies.</summary>
     public CompiledDensityGrid? DensityGrid { get; init; }
 
@@ -139,6 +155,19 @@ public sealed record CompiledModel
     public bool ModelsSpaceCharge =>
         string.Equals(SpaceChargeMode, "direct", StringComparison.Ordinal)
         || string.Equals(SpaceChargeMode, "pic", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether the density's own charge enters its field: the diffusive mode's method.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="ModelsSpaceCharge"/> deliberately, and neither is the
+    /// general question. That property is the predicate the <em>trajectory</em> path uses to
+    /// reach for a packet integrator, and a mean field has no packet to integrate: widening
+    /// it to mean "space charge of any kind" would send a diffusive model down a path with no
+    /// method for it. A reader wanting "does this run model charge at all" wants both.
+    /// </remarks>
+    public bool ModelsMeanField =>
+        string.Equals(SpaceChargeMode, "meanField", StringComparison.Ordinal);
 
     /// <summary>
     /// The grid a particle-in-cell solve uses, or null where the method is not it.
@@ -215,6 +244,10 @@ public enum CompiledFieldKind
 /// <param name="DurationSeconds">How long it lasts.</param>
 /// <param name="Mode">The transport mode it runs in.</param>
 /// <param name="EndsAtSeconds">When it ends, cumulative from zero.</param>
+/// <param name="Ramps">
+/// The parameters this phase ramps, with where each starts and ends; empty for a phase
+/// that holds.
+/// </param>
 /// <remarks>
 /// <para>
 /// The elements each carry their own per-phase states, which is what the field
@@ -226,9 +259,32 @@ public enum CompiledFieldKind
 /// Two elements naming different modes for one instant is not something a superposition
 /// can resolve, the way it resolves two fields.
 /// </para>
+/// <para>
+/// The ramps are here for the same reason: a figure of merit read against a scan - a
+/// mobility resolving power against an elution ramp - needs to know what the instrument
+/// was doing at the instant an ion arrived, and the elements only know their own
+/// weights. A reader that wants the ramped parameter's value at an instant interpolates
+/// linearly between <see cref="CompiledRamp.Start"/> and <see cref="CompiledRamp.End"/>
+/// across the phase, which is exactly what the field does.
+/// </para>
 /// </remarks>
 public sealed record CompiledPhase(
-    string Name, double DurationSeconds, string Mode, double EndsAtSeconds);
+    string Name,
+    double DurationSeconds,
+    string Mode,
+    double EndsAtSeconds,
+    IReadOnlyList<CompiledRamp> Ramps);
+
+/// <summary>One parameter a phase ramps linearly from where it stands to a declared end.</summary>
+/// <param name="Parameter">The parameter's name, as the document declares it.</param>
+/// <param name="Start">Its value when the phase begins, in SI.</param>
+/// <param name="End">Its value when the phase ends, in SI.</param>
+/// <remarks>
+/// The start is whatever was in force - the phase's own <c>set</c>, or the value
+/// inherited from the phase before - so a document ramping "from wherever it was" and
+/// one setting the start explicitly compile to the same record.
+/// </remarks>
+public sealed record CompiledRamp(string Parameter, Quantity Start, Quantity End);
 
 /// <summary>An axis-aligned box in metres, outside which a field element is silent.</summary>
 /// <param name="MinX">Lower bound along x.</param>
@@ -237,14 +293,88 @@ public sealed record CompiledPhase(
 /// <param name="MaxY">Upper bound along y.</param>
 /// <param name="MinZ">Lower bound along z.</param>
 /// <param name="MaxZ">Upper bound along z.</param>
+/// <param name="FringeSi">
+/// Depth inside every face over which the element rises from nothing to full strength, in
+/// metres; zero for a hard edge.
+/// </param>
 public sealed record FieldRegion(
     double MinX,
     double MaxX,
     double MinY,
     double MaxY,
     double MinZ,
-    double MaxZ)
+    double MaxZ,
+    double FringeSi = 0.0)
 {
+    /// <summary>
+    /// How much of the element applies at a point: one deep inside, nothing outside, and
+    /// rising linearly through a band <see cref="FringeSi"/> deep inside every face.
+    /// </summary>
+    /// <param name="position">Where to evaluate, in metres.</param>
+    /// <returns>A factor between zero and one.</returns>
+    /// <remarks>
+    /// A region with no fringe is a step, and a step in the potential at the face is what a
+    /// bounded element has always cost (the <c>field.region-potential-step</c> warning). A
+    /// fringe makes the potential continuous - zero at the face, the element's own a fringe
+    /// inside - and gives the field there a gradient it can act through, which for a
+    /// confining RF is the difference between a wall and an entrance: an ion approaching
+    /// the hard edge of a pseudopotential well at any radius meets the whole well at once
+    /// and is held there, while one approaching a ramp is squeezed toward the axis as the
+    /// well grows under it. It stands in for the decay of a real electrode's field over
+    /// about a bore radius, and is a modelling choice rather than anything solved.
+    /// </remarks>
+    public double Scale(in Vec3 position)
+    {
+        var depth = -SignedDistance(in position);
+
+        if (depth < 0.0)
+        {
+            return 0.0;
+        }
+
+        return FringeSi <= 0.0 ? 1.0 : Math.Min(1.0, depth / FringeSi);
+    }
+
+    /// <summary>
+    /// The gradient of <see cref="Scale"/>: zero outside and deep inside, and one over the
+    /// fringe along the inward normal of the nearest face across the fringe band.
+    /// </summary>
+    /// <param name="position">Where to evaluate, in metres.</param>
+    /// <returns>The gradient, in inverse metres.</returns>
+    public Vec3 ScaleGradient(in Vec3 position)
+    {
+        if (FringeSi <= 0.0)
+        {
+            return Vec3.Zero;
+        }
+
+        var depth = -SignedDistance(in position);
+
+        if (depth < 0.0 || depth >= FringeSi)
+        {
+            return Vec3.Zero;
+        }
+
+        // The depth is the distance to the nearest face, so its gradient is that face's
+        // inward normal. Ties at an edge take the first axis, which is a measure-zero set.
+        var toMinX = position.X - MinX;
+        var toMaxX = MaxX - position.X;
+        var toMinY = position.Y - MinY;
+        var toMaxY = MaxY - position.Y;
+        var toMinZ = position.Z - MinZ;
+        var toMaxZ = MaxZ - position.Z;
+        var nearest = Math.Min(Math.Min(Math.Min(toMinX, toMaxX), Math.Min(toMinY, toMaxY)), Math.Min(toMinZ, toMaxZ));
+        var inward =
+            nearest == toMinX ? new Vec3(1.0, 0.0, 0.0)
+            : nearest == toMaxX ? new Vec3(-1.0, 0.0, 0.0)
+            : nearest == toMinY ? new Vec3(0.0, 1.0, 0.0)
+            : nearest == toMaxY ? new Vec3(0.0, -1.0, 0.0)
+            : nearest == toMinZ ? new Vec3(0.0, 0.0, 1.0)
+            : new Vec3(0.0, 0.0, -1.0);
+
+        return inward * (1.0 / FringeSi);
+    }
+
     /// <summary>Signed distance to the boundary: negative inside, positive outside.</summary>
     /// <param name="position">Where to evaluate, in metres.</param>
     /// <returns>The signed distance in metres.</returns>
@@ -299,6 +429,12 @@ public sealed record CompiledField
 
     /// <summary>Axis to nearest electrode surface, in metres.</summary>
     public double InscribedRadiusSi { get; init; }
+
+    /// <summary>
+    /// Ideal quadrupole only: the axis the field is invariant along. Z unless declared,
+    /// which keeps every document written before the attribute existed bit-identical.
+    /// </summary>
+    public CylinderAxis Axis { get; init; } = CylinderAxis.Z;
 
     /// <summary>Axial potential curvature, in volts per metre squared.</summary>
     /// <remarks>
@@ -465,6 +601,23 @@ public sealed record CompiledMobility(
     double Alpha,
     double ValidToTownsend,
     bool Derived);
+
+/// <summary>One ion population of a mixture, validated and in SI.</summary>
+/// <param name="Name">What it is called, and what its results are reported under.</param>
+/// <param name="MassSi">Mass, in kilograms.</param>
+/// <param name="ChargeSi">Charge, in coulombs, signed.</param>
+/// <param name="Mobility">
+/// Its mobility, or a derived marker: Mason-Schamp needs the ion assembled and validation does
+/// not have it, so the derivation happens where the run does.
+/// </param>
+/// <param name="Population">How many real ions of it there are.</param>
+public sealed record CompiledSpecies(
+    string Name,
+    double MassSi,
+    double ChargeSi,
+    CompiledMobility Mobility,
+    double Population);
+
 
 /// <summary>The region a density is tracked over, compiled to SI.</summary>
 /// <param name="MinX">Lower x, in metres.</param>

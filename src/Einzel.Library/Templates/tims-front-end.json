@@ -1,7 +1,7 @@
 {
-  "schemaVersion": "0.11",
-  "name": "tims-analyzer",
-  "description": "The 46 mm analyser tunnel of a trapped ion mobility spectrometer - the separating section of the Bruker timsTOF - at the low-field operating point Hernandez 2014 describes rather than the 45-150 Td the commercial instrument optimises at. Twenty-seven ring electrodes on a 1.725 mm pitch through an 8 mm bore carry an axial field gradient a resistor divider produces, and nitrogen flows from entrance to exit. AN ION IS HELD WHERE THE ELECTRIC FORCE BALANCES THE GAS DRAG, so each mobility parks at its own position: that is the elution relation E_e = v_g / K written the other way round, and it is what this template exists to reproduce. The ring potentials go as the square of position, so the field is linear in x and the parking point is v_g L^2 / (2 mu V_exit) in closed form. Measured against the SOLVED field's own balance point the density parks to 0.03 per cent at three mobilities, and the parking position goes as 1/K to 0.26 per cent - which is the separation, and is the device working rather than one number agreeing. WHAT THIS STAGE DOES NOT CARRY IS THE RF. The real tunnel confines radially with a quadrupolar field between adjacent segments of each ring; without it the density diffuses to the bore wall, and about 99 per cent is lost over three milliseconds. That does not move the parking point, which is an axial balance, but it does mean transmission and peak width are not modelled here - Hernandez is explicit that the elution voltage is independent of the ramp while the peak WIDTH is set by the radial confinement. Nor is the elution ramp itself: the field is held, not scanned. Both are the next stage. The tunnel is bounded by an entrance and an exit element at the two end potentials, which stand in for the funnels either side; without them the solve's own grounded boundary reverses the field gradient over the last eight millimetres of the tunnel and the trap loses its downstream half.",
+  "schemaVersion": "0.12",
+  "name": "tims-front-end",
+  "description": "The timsTOF analyser with its entrance funnel and gate in front of it, as Hernandez 2014 draws them: a 50 mm funnel tapering from a 26 mm bore to the tunnel's 8 mm, plates 1.6 mm thick spaced 1.5 mm apart with the RF alternating plate to plate and a DC gradient pushing ions into the tunnel, then an entrance gate electrode, then the 46 mm tunnel with its quadrupolar RF and axial gradient. The operating sequence is the published one - fill, trap, ramp - written as phases: the gate is open while a packet released in the funnel is carried into the tunnel and parks against the gas, raised to hold what is inside, and the exit potential is then walked down to elute. Everything the analyser template measures still holds here; what this adds is the delivery of a wide, low-field packet into the tunnel through the funnel's effective wall.",
   "parameters": {
     "ringCount": {
       "value": 27,
@@ -78,11 +78,11 @@
       "source": "Hernandez et al., Analyst 2014;139:1913 - P1 = 1.0 to 2.6 mbar"
     },
     "sourceX": {
-      "value": 5.0,
+      "value": -40.0,
       "unit": "mm",
-      "minimum": 0,
+      "minimum": -60,
       "maximum": 40,
-      "description": "Where the packet enters the tunnel, upstream of the parking point so it has to drift to find it. Set it to the parking point instead to measure the equilibrium without the approach transient, which is how the agreement above was measured: started upstream, the time-integrated loss profile is skewed toward the entrance by the ions still on their way in, and its centroid is not the parking point."
+      "description": "Where the packet is released: in the funnel, well upstream of the gate, so it has to be delivered."
     },
     "cellSize": {
       "value": 0.25,
@@ -147,6 +147,118 @@
       "description": "The quadrupole term four 90-degree segments at +-V produce on an 8 mm bore, relative to the hyperbolic ideal at the same electrode potential. 4/pi = 1.273 for segments meeting with no gap - a square wave's fundamental exceeds the square wave - less by what the gaps take.",
       "provenance": "fitted",
       "source": "TimsRfCrossSectionStudy: the quadrupole coefficient of the solved four-segment cross-section with 0.5 mm gaps, sampled at half the bore radius"
+    },
+    "funnelLength": {
+      "value": 50.0,
+      "unit": "mm",
+      "minimum": 10,
+      "maximum": 200,
+      "description": "Length of the entrance funnel.",
+      "provenance": "published",
+      "source": "Hernandez et al., Analyst 2014;139:1913 - 50 mm entrance funnel"
+    },
+    "funnelPlateThickness": {
+      "value": 1.6,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 5,
+      "description": "Funnel plate thickness, the same board as the tunnel rings.",
+      "provenance": "published",
+      "source": "Hernandez et al., Analyst 2014;139:1913"
+    },
+    "funnelSpacing": {
+      "value": 1.5,
+      "unit": "mm",
+      "minimum": 0.1,
+      "maximum": 10,
+      "description": "Gap between funnel plates.",
+      "provenance": "published",
+      "source": "Hernandez et al., Analyst 2014;139:1913 - 1.5 mm spacing in the funnels"
+    },
+    "funnelPitch": {
+      "expression": "funnelPlateThickness + funnelSpacing",
+      "unit": "mm",
+      "description": "Plate to plate."
+    },
+    "funnelPlates": {
+      "expression": "floor(funnelLength / funnelPitch)",
+      "unit": "1",
+      "description": "Plates in the funnel: 16 at the published length and pitch."
+    },
+    "funnelEntranceRadius": {
+      "value": 13.0,
+      "unit": "mm",
+      "minimum": 4,
+      "maximum": 50,
+      "description": "Half the 26 mm bore at the funnel entrance; the funnel tapers linearly to the tunnel bore.",
+      "provenance": "published",
+      "source": "Hernandez et al., Analyst 2014;139:1913 - 26 to 8 mm"
+    },
+    "funnelTaper": {
+      "expression": "(funnelEntranceRadius - boreRadius) / (funnelPlates - 1)",
+      "unit": "mm",
+      "description": "How much the inner radius shrinks per plate."
+    },
+    "funnelOuterRadius": {
+      "value": 18.0,
+      "unit": "mm",
+      "minimum": 14,
+      "maximum": 80,
+      "description": "Outer edge of the funnel plates. Not published; wide enough that the solve is insensitive to it.",
+      "provenance": "guess"
+    },
+    "funnelRfAmplitude": {
+      "value": 100.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 400,
+      "description": "Zero-to-peak RF on each funnel plate, adjacent plates in antiphase. Hernandez gives the phasing and not the amplitude; the tunnel's own 200 Vpp is taken as the funnel's too.",
+      "provenance": "chosen"
+    },
+    "funnelDrop": {
+      "value": 25.0,
+      "unit": "V",
+      "minimum": 0,
+      "maximum": 300,
+      "description": "DC dropped along the funnel from its entrance plate to its last plate, pushing positive ions toward the tunnel with the gas: 5 V/cm over 50 mm. Not published for this funnel; an ordinary funnel gradient.",
+      "provenance": "guess"
+    },
+    "gateThickness": {
+      "value": 1.6,
+      "unit": "mm",
+      "minimum": 0.2,
+      "maximum": 5,
+      "description": "The entrance gate electrode, a ring the same board as the rest.",
+      "provenance": "guess"
+    },
+    "gateGap": {
+      "value": 1.5,
+      "unit": "mm",
+      "minimum": 0.1,
+      "maximum": 10,
+      "description": "Gap either side of the gate.",
+      "provenance": "guess"
+    },
+    "gatePotential": {
+      "value": 0.0,
+      "unit": "V",
+      "minimum": -100,
+      "maximum": 300,
+      "description": "The entrance gate: zero lets the funnel's ions through, raised holds what is in the tunnel and blocks what is not. Hernandez's sequence traces this as the entrance potential.",
+      "provenance": "chosen"
+    },
+    "funnelStart": {
+      "expression": "funnelLength + gateGap + gateThickness + gateGap",
+      "unit": "mm",
+      "description": "Distance from the tunnel entrance back to the funnel's first plate."
+    },
+    "rfFringe": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0,
+      "maximum": 20,
+      "description": "Over what distance the tunnel's quadrupolar RF rises from nothing at the tunnel entrance to full strength inside. A hard edge held 42 per cent of the delivered packet against the well; a real segmented ring's field decays over about a bore radius, and that is the value taken.",
+      "provenance": "guess"
     }
   },
   "ion": {
@@ -180,11 +292,11 @@
       "ions": 1,
       "population": 100000,
       "transverseSpread": {
-        "value": 0.5,
+        "value": 2.0,
         "unit": "mm"
       },
       "longitudinalSpread": {
-        "value": 1.0,
+        "value": 2.0,
         "unit": "mm"
       }
     }
@@ -209,7 +321,7 @@
   "transport": {
     "mode": "diffusion",
     "maximumFlightTime": {
-      "value": 1000,
+      "value": 18300,
       "unit": "us"
     },
     "mobility": {
@@ -220,7 +332,7 @@
     },
     "densityGrid": {
       "minX": {
-        "expression": "-entranceLength",
+        "expression": "-(funnelStart + domainPad)",
         "unit": "mm"
       },
       "maxX": {
@@ -232,11 +344,11 @@
         "unit": "mm"
       },
       "maxY": {
-        "expression": "boreRadius",
+        "expression": "funnelEntranceRadius",
         "unit": "mm"
       },
       "intervalsX": 512,
-      "intervalsY": 32
+      "intervalsY": 64
     },
     "gas": {
       "model": "hardSphere",
@@ -264,6 +376,10 @@
         ],
         "unit": "m/s"
       }
+    },
+    "densityStep": {
+      "scheme": "implicit",
+      "gain": 64
     }
   },
   "fields": [
@@ -272,7 +388,7 @@
       "solve": {
         "symmetry": "cylindrical",
         "minX": {
-          "expression": "-entranceLength - domainPad",
+          "expression": "-(funnelStart + domainPad)",
           "unit": "mm"
         },
         "maxX": {
@@ -284,7 +400,7 @@
           "unit": "mm"
         },
         "maxY": {
-          "expression": "outerRadius",
+          "expression": "funnelOuterRadius",
           "unit": "mm"
         },
         "cellSize": {
@@ -347,14 +463,14 @@
             }
           },
           {
-            "name": "entranceElement",
+            "name": "gate",
             "shape": "rectangle",
             "minX": {
-              "expression": "-entranceLength",
+              "expression": "-(gateGap + gateThickness)",
               "unit": "mm"
             },
             "maxX": {
-              "value": 0.0,
+              "expression": "-gateGap",
               "unit": "mm"
             },
             "minY": {
@@ -366,11 +482,52 @@
               "unit": "mm"
             },
             "potential": {
-              "value": 0.0,
+              "expression": "gatePotential",
+              "unit": "V"
+            }
+          },
+          {
+            "name": "funnelPlate",
+            "shape": "rectangle",
+            "repeat": {
+              "count": {
+                "expression": "funnelPlates"
+              },
+              "index": "plate"
+            },
+            "minX": {
+              "expression": "-funnelStart + plate * funnelPitch",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "-funnelStart + plate * funnelPitch + funnelPlateThickness",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "funnelEntranceRadius - plate * funnelTaper",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "funnelOuterRadius",
+              "unit": "mm"
+            },
+            "potential": {
+              "expression": "funnelDrop * (1 - plate / (funnelPlates - 1))",
+              "unit": "V"
+            },
+            "driveAmplitude": {
+              "expression": "funnelRfAmplitude * (1 - 2 * mod(plate, 2))",
               "unit": "V"
             }
           }
-        ]
+        ],
+        "drive": {
+          "frequency": {
+            "expression": "rfFrequency",
+            "unit": "kHz"
+          },
+          "waveform": "sinusoid"
+        }
       }
     },
     {
@@ -394,7 +551,7 @@
       },
       "region": {
         "minX": {
-          "value": -2.0,
+          "value": 0.0,
           "unit": "mm"
         },
         "maxX": {
@@ -402,20 +559,83 @@
           "unit": "mm"
         },
         "minY": {
-          "expression": "-outerRadius",
+          "expression": "-funnelOuterRadius",
           "unit": "mm"
         },
         "maxY": {
-          "expression": "outerRadius",
+          "expression": "funnelOuterRadius",
           "unit": "mm"
         },
         "minZ": {
-          "expression": "-outerRadius",
+          "expression": "-funnelOuterRadius",
           "unit": "mm"
         },
         "maxZ": {
-          "expression": "outerRadius",
+          "expression": "funnelOuterRadius",
           "unit": "mm"
+        },
+        "fringe": {
+          "expression": "rfFringe",
+          "unit": "mm"
+        }
+      }
+    }
+  ],
+  "sequence": [
+    {
+      "name": "fill",
+      "duration": {
+        "value": 10000,
+        "unit": "us"
+      },
+      "set": {
+        "gatePotential": {
+          "value": 0.0,
+          "unit": "V"
+        },
+        "exitPotential": {
+          "value": 60.0,
+          "unit": "V"
+        }
+      }
+    },
+    {
+      "name": "trap",
+      "duration": {
+        "value": 300,
+        "unit": "us"
+      },
+      "set": {
+        "gatePotential": {
+          "value": 30.0,
+          "unit": "V"
+        },
+        "exitPotential": {
+          "value": 60.0,
+          "unit": "V"
+        }
+      }
+    },
+    {
+      "name": "ramp",
+      "duration": {
+        "value": 8000,
+        "unit": "us"
+      },
+      "set": {
+        "gatePotential": {
+          "value": 30.0,
+          "unit": "V"
+        },
+        "exitPotential": {
+          "value": 60.0,
+          "unit": "V"
+        }
+      },
+      "ramp": {
+        "exitPotential": {
+          "value": 0.0,
+          "unit": "V"
         }
       }
     }

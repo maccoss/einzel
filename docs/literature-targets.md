@@ -871,7 +871,7 @@ target at these pressures has been a transmission question.
 
 | | | |
 | --- | --- | --- |
-| sections | entrance funnel, tunnel, exit funnel | H |
+| sections | entrance funnel, tunnel, exit funnel — the first two are `tims-front-end` | H |
 | lengths | 50 mm, **46 mm**, 15 mm (sequential); **96 mm** tunnel for parallel accumulation | H, R |
 | bore | 26 → 8 mm, then **8 mm constant**, then 8 → 1 mm | H |
 | electrodes | segmented rings on PC board, 1.6 mm thick, **four isolated segments each** | H |
@@ -902,11 +902,11 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 | target | published | status |
 | --- | --- | --- |
 | elution field | `E_e = v_g / K` | **Met on the 46 mm tunnel.** The density parks where the solved field balances the gas to **1 micrometre**, and the position goes as 1/K to 0.17 per cent across three mobilities. `tims-analyzer`; `docs/device-templates.md` |
-| plateau transit | `t_p = sqrt(2 L_p / (K beta))`, beta the field scan rate | not yet run |
-| resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | not yet run |
-| R against scan rate | R goes as `beta^(-1/4)` | not yet run |
-| R against mobility | R goes as `K^(-3/4)` | not yet run |
-| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Partly run, and not yet a calibration.** Two mobilities eluted in the right order under an 8 ms ramp (K × 0.75 at 32.8 V, K × 1.0 at 22.8 V, read at the first per cent of arrivals); the third was lost to the bore before its release. Both released about 10 V below the quasi-static `v_g / (K E_peak)`, because the settling time `L²/2KV` (0.4-0.8 ms) is not small against the ramp — a lag a calibration constant would absorb, and whose statistics confinement will change. Needs RF first. `docs/device-templates.md` |
+| plateau transit | `t_p = sqrt(2 L_p / (K beta))`, beta the field scan rate | **Measured as the release lag**, with `L_p` taken as parking point to field peak since a linear-gradient tunnel has no plateau: 1.59 / 1.48 / 1.35 ms for K × 0.75 / 1.0 / 1.5 against the formula's 2.13 / 1.85 / 1.51 — same ordering, same `K^(-1/2)`, 0.75-0.9 of it. `docs/device-templates.md` |
+| resolving power | `R = v_g (2L_p/beta)^(1/4) K^(-3/4) sqrt(q / 16 ln2 kT)` — same form as Hill's drift-tube law with the effective path `v_g t_p` in place of the tube length | **Measured across ramps and gas speeds; the shape holds, the level is 0.4-0.7 of the law.** At 50 m/s and 7.5 V/ms R = 11 / 8 / 5 for K × 0.75 / 1.0 / 1.5 (law: 24 / 19 / 14 with `L_p` as parking point to field peak); slowing the ramp to 128 ms takes the reference ion to 25.7 (law 38.8). At Ridgeway's gas profile, imported as velocity and pressure fields, **R = 21.6 at 8 ms and 37.2 at 32 ms** — 2.6× and 2.0× the 50 m/s values, as `R ∝ v_g`. The remaining factor to 100-250 is his 100-300 ms ramps, the 140 m/s optimum flow, and an accumulation plateau this tunnel lacks — about 2-3 — leaving ~1.5 in the width's composition, unresolved |
+| R against scan rate | R goes as `beta^(-1/4)` | **Recovered asymptotically.** Six ramps from 4 to 128 ms: R = 3.3 / 8.3 / 13.5 / 18.2 / 22.3 / 25.7, the ratio per halving of beta falling 2.52 → 1.63 → 1.35 → 1.23 → 1.15 onto the law's 1.19. Fast ramps fall short because the peak arrives after the exit potential has dropped well below the release value — the same settling lag as the parking runs, converging on the quasi-static release as the ramp slows. `docs/device-templates.md` |
+| R against mobility | R goes as `K^(-3/4)` | **Trend present**: 1.34 : 1 : 0.60 measured against 1.24 : 1 : 0.74, three mobilities |
+| mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Linear to 2 per cent over three mobilities**, confined: exit potential at the median 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667, slope 29.4 V, intercept −8.5 V. The intercept is the release lag in volts — the settling time `L²/2KV` is not small against the ramp — which is what the instrument constant absorbs. `docs/device-templates.md` |
 
 **The resolving-power law is the target that matters**, because it is a *shape* over two
 independent variables rather than a single number: R must fall as the fourth root of the
@@ -928,15 +928,37 @@ an axial profile from 75 to 130 m/s, a parabolic radial profile over an 8 mm bor
 pressure ramp from 2.61 to 2.30 mbar. That is an imported field with **every number cited**,
 which is a better position than the Astral started from.
 
-**Segment-level RF phasing is expressible but unexercised.** Every stack shipped so far
-alternates by plate. Four segments per ring alternating in pairs is a quadrupole, and
-adjacent segments being exact negatives means it still costs one basis solve — but nothing
-has driven a stack that way yet.
+**Segment-level RF phasing is exercised, as a cross-section and a pseudopotential.** Four
+segments per ring alternating in pairs is a quadrupole, and a quadrupole is not
+axisymmetric, so it cannot be electrodes in the tunnel's half-plane solve. What can be is its
+pseudopotential, which depends on radius alone. The four-segment cross-section is solved on
+its own (`TimsRfCrossSectionStudy`): **1.2696 of a hyperbolic quadrupole** at the same
+electrode potential with 0.5 mm gaps, against the square wave's 4/π = 1.2732 with none, the
+12-pole a third of the quadrupole on the bore and `(r/r0)^4` of that inward. The template
+carries that fraction on an analytic quadrupole across the tunnel axis (schema 0.11), and
+with it on the bore takes **0.0000 %** of the density in 600 µs against 26.0 % without, at a
+Boltzmann width of 0.34 mm in the collisional well — 21 % wider than the collisionless
+formula predicts, which is the check that the collisional form ran. `docs/device-templates.md`.
 
-**Mobility resolving power does not exist as a figure of merit.** The engine has
-arrival-time resolving power; this is `K/dK` off an elution profile against a ramped field.
-The elution run now writes the profile itself (`<name>.arrivals.csv`), so the figure has
-something to be computed from.
+**Mobility resolving power now exists as a figure of merit**, `mobilityResolvingPower`,
+beside the arrival-time one the engine already had. It is `K/dK` read as `V/dV` against the
+ramp: the ramped parameter's value at the peak of the arrival-time distribution, over how
+far that parameter moves during the peak's full width at half maximum —
+`R = |p(t_peak)| / (beta · FWHM_t)`, with `beta = |p_end − p_start| / ramp duration`. The
+peak is the ion-weighted mean arrival and the width is the Gaussian-equivalent
+`2 sqrt(2 ln 2) sigma_t`, because the arrivals are binned at the density solver's own step
+and a literal half-maximum of that histogram would measure the step. What it assumes is
+stated on every result (`mobility.resolving-power-definition`): the release parameter goes
+as `1/K`, which holds when it scales a field linear in position — the tunnel's quadratic
+ring profile gives exactly that, so ramping `exitPotential` qualifies. A peak arriving
+before the ramp begins or after it ends has no defined release value and the figure is null
+with `mobility.peak-outside-ramp` rather than an extrapolation; on a millisecond ramp the
+transit from the release point to the detector can put it there, and did on the first coarse
+model it was tried on. It runs a sequenced model through the sequencer, as `einzel run`
+does — the figures of merit had been taking the plain diffusive path, which steps a snapshot
+of the field with the ramp ignored, so `run` and `test` disagreed on every sequenced
+diffusive model until they were made to share one path. The elution run also writes the
+profile itself (`<name>.arrivals.csv`), so the shape the figure summarises is there to look at.
 
 **The ramp runs, and the first thing it measured is why confinement comes before any of
 the resolving-power rows.** Without RF the density reaches the bore wall in the millisecond
@@ -971,3 +993,75 @@ entrance in a linear manner ramps the field strength at the plateau in a linear 
 That is a pleasing fit and it should be treated with suspicion until it runs: the sequencer
 has never driven a diffusive phase whose *purpose* is to hold a population stationary, and
 "the density stops moving" is not a thing any existing test asserts.
+
+## Silveira's space-charge estimate, and what the electrodes are worth
+
+Silveira and colleagues bound the field a stored population exerts on itself by treating it
+as a uniformly charged line **in free space**, explicitly neglecting the electrodes, and
+quote the radial field 2 mm from the axis of 10^6 charges on a 23 mm line as roughly
+0.6 V/cm — about two orders below the analytical field, which is the basis of their
+conclusion that 10^6 to 10^7 charges can be stored without harming performance.
+
+Their closed form gives **61.68 V/m = 0.617 V/cm**, so their own arithmetic checks out. The
+solver, in the real 4 mm grounded bore, gives **62.28 V/m — 1.010 of theirs**.
+
+**I predicted the bore would screen it and it does not.** The expectation was that a grounded
+wall two millimetres away would pull the field well below the free-space value, making their
+estimate conservative by a computable factor. Moving the wall out over an eightfold range:
+
+| wall radius | field at 2 mm | of theirs | potential at 2 mm |
+| --- | --- | --- | --- |
+| 4 mm | 62.28 V/m | 1.010 | 0.0862 V |
+| 8 mm | 61.89 V/m | 1.003 | 0.1681 V |
+| 16 mm | 61.53 V/m | 0.998 | 0.2302 V |
+| 32 mm | 61.42 V/m | 0.996 | 0.2644 V |
+
+The field moves **1.4%** across that range; the potential *at the same node* moves **3.07×**,
+against **3.12×** predicted by the free-space closed form. Both are read at one point, and the
+pair is the point: a field that did not move could mean the wall never entered the solve, and
+a potential that trebles says it did.
+
+**Gauss's law is why.** The induced charge on an axisymmetric bore sits at larger radius than
+the point being read, and a cylindrical shell of charge contributes exactly nothing inside
+itself — so the wall cannot alter the radial field at any smaller radius, however close it is.
+For a finite line the induced distribution is only nearly axisymmetric, which is the residual
+per cent. **Their neglect of the electrodes is therefore not an approximation for this
+quantity at all**, rather than being conservative.
+
+Which boundary condition applies is not a free choice, and swapping it is what shows the wall
+is doing anything: made no-flux instead of earthed — a mirror rather than a wall — the same
+bore takes **31%** out of the field at 2 mm, because a mirror *images* the line charge and an
+image is not a shell.
+
+Two things about the measurement rather than the physics. A first version of the wall study
+reported a **non-monotone** approach that read as physics and was my own grid: at a fixed
+interval count the cells coarsen as the domain grows, so the four cases were not the same
+discretisation. And two mutations — solving the same problem as a plane, and unearthing the
+wall — each fail both tests, which is what makes them tests rather than assertions that a
+file exists.
+
+### And the storable population, from the geometry rather than the estimate
+
+Their line-charge argument concludes that 10^6 to 10^7 charges can be stored without harming
+performance. That conclusion can now be checked directly, by holding two populations in the
+solved tunnel with their own charge in the field and asking how many stay.
+
+| launched | held, charge off | held, charge on |
+| --- | --- | --- |
+| 10^5 | 8.07e4 | 8.07e4 |
+| 10^7 | 8.07e6 | 7.51e6 |
+| 10^8 | 8.07e7 | **1.39e7** |
+
+Launching ten times more than 10^7 holds only 1.8 times more. **The tunnel stops accepting
+between 8 × 10^6 and 1.4 × 10^7 ions**, which is the top of their stated range — reached by
+solving the geometry rather than by bounding a free-space line charge, and therefore about as
+independent as two routes to a number get.
+
+The uncharged column is the control: with no charge the tunnel holds the same 81 per cent of
+whatever it is given at every population, so what saturates is the charge and not the
+geometry. Where that 19 per cent goes is not established and is recorded as not established.
+
+**What this does not do is compare a resolving power.** The packets here are held, not
+eluted, so the ratio of their separation to their width is a millimetre ratio at equilibrium
+and is one to two orders below a published resolving power by construction. Nothing in this
+comparison should be set beside their 100 to 250.

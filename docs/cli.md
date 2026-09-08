@@ -338,9 +338,25 @@ Python objectives will register into the same place when extensions land.
 | `normalisedEmittance` | µm | The same area against transverse momentum, so acceleration does not change it |
 | `confined` | 1 | Fraction still inside when the run ends: struck nothing, reached no detector. What a trap is measured by |
 | `transitTime` | µs | Mean time for a diffusive run's density to reach the collecting boundary. What a density has instead of a flight time |
+| `mobilityResolvingPower` | 1 | K/dK of a trapped ion mobility analyser's elution scan, read as V/dV: the ramped parameter at the arrival peak over how far it moves during the peak's Gaussian-equivalent FWHM. Needs a diffusive model whose sequence ramps exactly one parameter |
 | `secularFrequencyX` | kHz | Strongest line below the drive in the ion's motion along x — the slow oscillation in the effective RF well |
 | `secularFrequencyY` | kHz | The same along y |
 | `secularFrequencyZ` | kHz | The same along z |
+
+**`mobilityResolvingPower` is read against the ramp, not off a peak alone.** The peak
+is the ion-weighted mean arrival and the width is `2 sqrt(2 ln 2) sigma_t`, because the
+arrivals are binned at the density solver's own step and a literal half-maximum of that
+histogram would be a property of the step. It equals K/dK only where the ramped
+parameter scales a field linear in position, so the release parameter goes as 1/K;
+`mobility.resolving-power-definition` states that assumption with the numbers on every
+result. A peak that arrives before the ramp begins or after it ends has no defined
+release value and the figure is null with `mobility.peak-outside-ramp` — on a short ramp
+the transit from the release point to the detector can put it there. A model with no
+sequence, a sequence in which nothing ramps, or one ramping more than one parameter is
+refused rather than measured. **`transitTime` and this figure run a sequenced model
+through the sequencer**, exactly as `einzel run` does; `radialSpread` refuses a sequenced
+model, because the sequenced run does not hand its final density out and stepping a
+snapshot of the field instead would measure a run the document does not describe.
 
 **The secular frequencies need a driven field** and return nothing for a static one,
 with `secular.no-drive` saying why: a secular frequency is the slow oscillation an

@@ -377,6 +377,16 @@ So the collisionless pseudopotential overstates this funnel's confining well by
 excursion only describes something if the field is roughly linear across it, and
 at 100 V it is not.
 
+**The mesh compared is the one the oscillating field is known on**, not the density
+grid's. The check is about representation: a solved RF sampled on a mesh coarser
+than the excursion is being averaged over interpolation, and this funnel's RF is
+solved on that 0.312 mm cell. An analytic RF has no mesh and reports an infinite
+resolution, so a purely analytic drive never trips it — its validity is the
+adiabatic one, quiver against the scale the field itself varies on — and a solved
+DC gradient summed with an analytic RF does not lend the RF its cell. The density
+grid used to stand in here, and the TIMS tunnel's exact quadrupolar confinement
+then read as unresolved because its radial density cell was fine.
+
 ### The damping rate is the momentum-transfer rate
 
 nu = q/(m mu), from the mobility the solve already has, rather than from the
@@ -418,6 +428,82 @@ has no resolution limit rather than an enormous one. Reading it as a differencin
 step gave a step of infinity, a difference of infinity minus infinity, and an
 effective field of NaN — while every potential stayed correct, so only the
 gradient was wrong.
+
+### The well, kept across the steps of a ramp
+
+A ramped diffusive phase re-samples its coefficients and rebuilds its face
+operator at every step, and where the field is driven every sample is a cycle
+average: **one pass over the potential for the direct term and two passes over
+the field for the well**, at each of seven points per node — the node itself and
+the two ends of the central difference on each axis. An elution scan holds every
+RF amplitude and walks only the DC, so the *oscillating* field is the same at
+every step and so is its mean square. Only the direct term moves.
+
+So `PotentialAt` is now exactly the sum of `DirectPotentialAt` and `WellAt`,
+asserted bit-for-bit over a spread of points and four RF phases, and a ramped
+run keeps the well per node and recomputes only the direct term. It is
+**verified rather than assumed**: sixteen nodes on a four-by-four lattice are
+recomputed from scratch at every step, and one disagreement past a relative 1e-12
+throws the whole cache away. So a document that really does ramp an RF amplitude
+gets the right answer, just without the saving. `DiffusionResult.WellRebuilds`
+rides out beside `Assemblies`, per phase in `einzel run --json`, because a saving
+nothing reports is a saving nobody can check.
+
+**Seven points, not one**, and that is what makes the saving free of consequence.
+Caching only the node value would force the central difference to be split into a
+direct part and a well part, and `(D+ + W+) - (D- + W-)` is not bit-identically
+`(D+ - D-) + (W+ - W-)`. Holding the well at all seven lets the difference be
+taken exactly as the field takes it.
+
+| Synthetic DC ramp, 129 x 33 nodes, 20 steps | cached | reference |
+| --- | --- | --- |
+| Well rebuilds | **1** | 0 (no cache) |
+| Driven-field evaluations | 490,208 | 9,609,600 |
+| Driven-potential evaluations | 4,804,800 | 4,804,800 |
+| Nodes of the final density that differ | **0 of 2,145** | — |
+| Collected ions | 3.46411859447254722 | 3.46411859447254722 |
+| Wall clock, analytic drive | 576 ms | 2,119 ms |
+
+The reference path is reached with a **pass-through wrapper** rather than a
+switch: the cache engages on the concrete `PonderomotiveField` type, so a
+forwarding `IElectrostaticField` around one gives the arithmetic the solver did
+before, with no knob in the engine and none in the model format.
+
+**Field evaluations fall 19.6x and potential evaluations not at all**, which is
+the half of the original inference that was wrong. It read "about a sixteenth per
+step"; the direct term is the *cycle mean of the potential* and needs its sixteen
+samples whatever the ramp moves. Total evaluations fall 2.72x, and the wall clock
+3.7x on an analytic drive — more than the count ratio, because a field evaluation
+costs more than a potential lookup, and more still where the field is solved.
+
+**And on the shipped TIMS analyser the cache does not hold, for a reason that is
+not the cache's.** Its `walk` phase rebuilt the well at **30 of 30** assemblies,
+because the well at a fixed point genuinely moves between successive instants of
+the ramped field — by a relative 1.8e-5 at the median. Deterministic (asking the
+same field twice reproduces the well to the bit) and over exactly one drive
+period (1/850 kHz, checked). Two controls:
+
+| | median step-to-step change in the well |
+| --- | --- |
+| ramp rate cut 100x (40 → 39.8 V instead of 40 → 20 V) | 3.6e-5 — **not smaller** |
+| RF amplitude 25 V | 7.0e-5 |
+| RF amplitude 100 V (shipped) | 1.8e-5 |
+| RF amplitude 400 V | 1.2e-6 |
+
+So it scales as **1/amplitude** and not with the ramp rate, which is the
+signature of an additive absolute contamination cross-multiplied with the drive:
+something that is not the drive is entering the mean square of the *oscillating*
+field. The obvious candidate — the ramp advancing inside the averaging window, so
+a slow drift is averaged as though it were a quiver — is **refuted by its own
+control**, since a hundredfold slower ramp did not reduce it. Recorded as
+measured rather than explained.
+
+The tolerance is deliberately **not** loosened to cover it. A tolerance chosen
+larger than a variation nobody has explained is caching over that variation, and
+the same measurement says something a reader should know anyway: a ramped driven
+diffusive run's well is not the well to better than about 1e-5, so the number to
+settle is the jitter and not the tolerance. Until it is settled the saving is
+realised on ramps whose well is genuinely held and not on that model.
 
 
 ## Electrodes absorb for the whole run, not only the seed
@@ -1418,3 +1504,84 @@ or Langevin, the same Maxwellian draw about the local gas velocity, the same gra
 that cooling and the mutual push act on the same packet in the same run, which is what a
 space-charge-limited cloud needs to form. The caveat that travels with every such run is
 that a macroparticle scatters as one ion while carrying many; see `docs/numerics.md`.
+
+## The density's own charge, and several populations at once
+
+A diffusive model may declare `"spaceCharge": "meanField"`. The charge density is `q·n` on
+the grid the density is already tracked on, one Poisson solve gives the potential it raises,
+and that potential is added per node to the applied one — so the drift, the
+Scharfetter–Gummel exponent and the stability limit all come from **one** field rather than
+from two that agree by construction. Conductors screen it exactly, because the self-potential
+is held at zero on their cells; reflecting edges are Neumann and open ones earthed.
+
+Re-solved only when the density has moved, against a declared tolerance, and the solve count
+and peak potential are reported on every such run — REG-2's rule applied to a new quantity.
+A reader who sees a peak of a millivolt against a thermal `kT/q` of 26 mV knows the packet's
+own charge was asked about and did not matter; one who sees nothing cannot tell that from its
+never having been modelled. Both numbers are **absent rather than zero** where none was asked
+for, and a sequenced run reports them per phase, because a hold and the pulse after it carry
+the same ions at very different densities.
+
+A method that cannot act is refused rather than ignored, both ways round: `direct` and `pic`
+push trajectories on one another and a density has none; `meanField` solves the charge of a
+continuum and a set of trajectories is not one. The test is against the modes the run
+actually reaches rather than the declared one, since a sequenced model may legitimately use
+both.
+
+### A mixture is one problem, not several runs
+
+`MixtureDiffusion.Run` steps N populations together. Every coefficient a species needs is its
+own — its mobility sets its drift, its charge and the gas temperature set its diffusion
+through the Einstein relation, its charge sets its thermal voltage, and in a driven structure
+its mass and momentum-transfer rate set the well it feels. **If the field were its own too,
+N species would be N independent runs and could be done one after another.** They are coupled
+by exactly one quantity, the potential their total charge raises, and that is why this exists.
+
+| Check | Result |
+| --- | --- |
+| one species through the mixture path against `DriftDiffusion.Run` | **0 of 8385 nodes differ**, same steps, population equal to 17 digits |
+| two mobilities parking, against `v_gas / (K·slope)` | 3.19 mm against 3.19, 6.38 against 6.38 |
+| the position ratio, against the mobility ratio | **2.000 against 2.000** |
+| a second population present, mean field **off** | **0 of 4257 nodes** of the first differ |
+| the same, mean field **on** | first displaced **−91.6 µm**, away from its neighbour |
+| equal and opposite polarities | **exactly 0 V and 0 C**, against 0.652 V for one alone |
+| the shared step | 1.509 ns, set by the quicker species, **10.0×** shorter than the sluggish one needed |
+
+Three of those are controls and they carry the weight. Bit-equality against the
+single-species path is what stops the two drifting apart later; the numerics are literally
+the same functions, and only the loop around them is new. A second species being *unfelt*
+with the mean field off is what says the field is the **only** coupling — a run that merely
+differs proves something changed, and one that does not proves only that nothing was wired
+up. And exact cancellation of opposite polarities says the source is a signed sum: two
+bit-identical densities carrying `q` and `−q` contribute exact negatives, so a version that
+solved each species separately and added the potentials would land *near* zero with solver
+round-off rather than *on* it.
+
+### The step is shared, and it has to be
+
+A mutual field between densities evaluated at different times is not a field between
+anything: if a light species ran ahead on its own longer step, the potential the heavy one
+drifted in would be the potential of a distribution that no longer existed. This is the same
+argument `PacketIntegrator` makes for a space-charged packet of trajectories, met again in
+the continuum. So a mixture costs what its most demanding member costs, and both the step and
+the species that set it are reported rather than left to be inferred.
+
+What goes wrong without it is **not** what the textbook says. An overlong explicit
+Scharfetter–Gummel step here does not produce a negative density — it produces 1.04% more
+ions than were launched. See `lessons.md`.
+
+### A driven mixture needs one well per species
+
+`PonderomotiveField` is built from charge, mass and momentum-transfer rate, so one RF
+structure presents a **different** effective potential to every species in it — measured at
+30.55 V for m/z 200 against 3.055 V for m/z 2000 at the same point, a factor of 10.0, which
+is the 1/m dependence exactly. That is the mechanism by which a driven guide is
+mass-selective at all. A mixture handed one wrapper would give every species the well built
+for whichever ion it came from, silently, so that case is refused by name.
+
+### Not built
+
+Nothing chooses the refresh tolerance, and a driven mixture with a mean field recomputes the
+cycle-averaged well over the whole grid at every re-sample: the well cache exists only on the
+ramped path, so a re-sample driven by the density's own charge rebuilds it from scratch. That
+is the dominant cost of a driven mean-field run and the obvious next optimisation.

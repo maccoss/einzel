@@ -767,3 +767,43 @@ et al. ran with an unrelated code. The plateau's absolute height (65 % in the in
 deliberately not compared: it is set by space charge and the inlet, neither modelled. So the
 one device both transport modes claim a share of has one published curve reproduced in each,
 which is the REG-1 seam earning its keep on an instrument rather than in a test.
+
+## Several ion populations, and what is not yet checked about them
+
+The mixture solver is checked against closed forms and against itself, and the table is in
+`docs/pressure.md`. What belongs here is the shape of the evidence and, more usefully, its
+gaps.
+
+**What is checked.** Two mobilities park where `v_gas / (K·slope)` says, with the ratio of
+their positions equal to the ratio of their mobilities to four figures. One species through
+the mixture path is bit-identical to the single-species path with charge off, and identical
+at every node with charge on. A second population is *unfelt* with the mean field off and
+displaces the first by 91.6 µm with it on, in the predicted direction. Equal and opposite
+polarities cancel to exactly zero volts. A driven structure gives m/z 200 ten times the well
+it gives m/z 2000, which is 1/m exactly.
+
+**What is not checked, and it is the important one: there is no literature regression for a
+mixture.** Every check above is a closed form or an internal control. The published
+comparison that exists — Silveira's line-charge estimate — is about a *single* stored
+population and is checked separately; nothing here has been compared with a measured
+separation of two real species at a stated population.
+
+**Two things that make such a comparison harder than it looks.**
+
+A packet's ion count is not a comparable quantity. The published estimate is 10^6 charges
+spread over 23 mm, and the packets in the tandem tunnel park at well under a millimetre, so
+the same count is a far denser line. Any comparison has to be in charge per unit length, per
+population, and a study that varies the count without stating the volume is not measuring a
+capacity.
+
+And a **held** packet's spatial separation is not an instrument's resolving power. Holding
+two populations and measuring how far apart their centres sit against how wide each is gives
+a millimetre ratio at an equilibrium; a real analyser's resolving power is measured in the
+time domain after an elution ramp, and the ramp is most of where it comes from. The two
+differ by one to two orders by construction. What the held measurement is good for is a
+ratio against itself — the same geometry and the same two mobilities, with and without the
+populations' own charge — and it should never be quoted beside a published resolving power.
+
+**The next step is the eluted version**, which produces a mobility resolving power the
+`mobilityResolvingPower` figure already knows how to compute, and which can then be compared
+with a published one.

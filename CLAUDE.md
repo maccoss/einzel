@@ -1417,6 +1417,236 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   Scharfetter-Gummel moves 1e-100 of an ion across the collecting face from the first step;
   an onset is a quantile. All three in `docs/lessons.md`.
 
+- **The TIMS tunnel confines, and four flat segments are 1.27 of a quadrupole.** The real
+  tunnel holds ions off the bore with a quadrupolar RF alternating between the four segments
+  of each ring (850 kHz, 200 Vpp in Ridgeway's example), the same on every ring. A quadrupole
+  is not axisymmetric and cannot be electrodes in the half-plane solve; **its pseudopotential
+  is** — the field magnitude depends on radius alone — so the template carries it as the
+  analytic `idealQuadrupoleRf` lying *across* the tunnel axis, superposed on the solved DC
+  gradient, and the collisional pseudopotential the funnel already measured carries it into
+  the density solve. That needed one attribute below the library, `axis` on the analytic RF
+  element (schema 0.11): the sixth time a device has asked for a change there and the sixth
+  time it was attribute-sized. Default z, so every earlier document computes what it did to
+  the bit; a permutation rather than a rotation, so a point on the axis is at zero field to
+  the bit.
+
+  **How much of a quadrupole the segments are is solved, not assumed** — the RF is the same
+  on every ring, so a cross-section is the right solve for it. Four sectors round the 8 mm
+  bore at ±V give a quadrupole term of **1.2577 / 1.2696 / 1.2727** of the hyperbolic ideal
+  at 1.0 / 0.5 / 0.25 mm gaps, closing on the square wave's **4/π = 1.2732** with none — a
+  square wave's fundamental is larger than the square wave, so flat segments are *more* of a
+  quadrupole than hyperbolae at the same voltage. The 12-pole is `(r/r0)^4/3` of it, as the
+  series says, and the field magnitude varies round the circle by 0.012 % at the 0.3 mm the
+  cloud occupies, which is what licenses the axisymmetric treatment. The template carries
+  the 0.5 mm-gap fraction as a `fitted` parameter with a test tying it to the solve.
+
+  **With it on, measured over a 600 µs hold**: the bore takes **0.0000 %** of the density
+  against 26.0 % without; the packet centre moves 0.4 µm, since the RF has no axial
+  component; and the rms radius is **0.3406 mm against 0.3423** for Boltzmann in the
+  collisional well — and **0.2805** for the collisionless one. The well is exactly harmonic
+  and Scharfetter-Gummel's equilibrium is exactly Boltzmann, so the width is a closed form
+  with the engine's suppression factor (0.685 at 2.6 mbar, the damping rate two thirds of
+  the drive) in it, and the textbook formula is 21 % wrong — measurably, which is the control.
+
+  **A validity check fired on its proxy.** `rf.quiver-exceeds-mesh` compared the largest
+  quiver to the *density* grid's cell, and at the bore the RF sweeps an ion 0.29 mm against
+  a 0.125 mm radial cell — a non-suppressible violation on a field that is exact whatever the
+  quiver. The check is about the representation of the *oscillating* field, so it now asks
+  `OscillatingResolutionLength`: infinite for an analytic drive, the solve cell for a solved
+  one, and never the DC gradient's. The funnel warns as before. Two conventions are stated
+  as choices: "200 Vpp" read as ±100 V per segment with neighbours in antiphase, and a 0.5 mm
+  segment gap the papers do not give.
+
+  **Confined, the scan delivers every ion, and the wall was never moving the peak.** The
+  same hold-and-ramp with the RF on: **100,000 of 100,000** arrive for each of three
+  mobilities, in TIMS order, at medians within 25 µs of the unconfined survivors' — the bore
+  had been selecting ions, not shifting them. First resolving power **R = 11 / 8 / 5** for
+  K × 0.75 / 1.0 / 1.5 at 50 m/s of gas and 7.5 V/ms, against the register's law's
+  24 / 19 / 14 with a guessed plateau length, the `K^(-3/4)` trend present; Hernandez's
+  100-250 is at 1.5-2.6× the gas speed and R goes as v_g. Elution voltage is linear in 1/K
+  to 2 per cent with a −8.5 V intercept that is the release lag turned into volts, and the
+  lag is 0.75-0.9 of the plateau-transit formula. **And a review comment on the elution PR
+  was right, and these runs show it in numbers**: the hold phase assembled its operator
+  130-253 times for a field that never changed, because the phase-change probe sampled the
+  boundary (already the next phase for a staged field) and the instantaneous RF (which
+  differs from itself at any two instants). Fixed - inside the phase, on the cycle-averaged
+  field, to a tolerance - and now counted per phase in the JSON, so a hold reports one.
+
+  **The scan-rate law is recovered where it should hold and broken where it should not.**
+  Six ramps from 4 to 128 ms on the reference ion at 50 m/s: **R = 3.3 / 8.3 / 13.5 / 18.2 /
+  22.3 / 25.7**, every ion collected. The law says halving β raises R by 2^(1/4) = 1.19; the
+  measured ratio falls 2.52 → 1.63 → 1.35 → 1.23 → 1.15 and closes on it from above. The
+  fast-ramp shortfall is the release lag — the exit potential at the peak is 13.1 V at 4 ms
+  against the quasi-static 32 V, 30.6 V at 128 ms — so `V/(β Δt)` collapses as `V(t_peak)`
+  while the width in time barely moves. **At Ridgeway's gas profile R doubles** (21.6 at
+  8 ms, 37.2 at 32 ms), the profile authored as imported velocity and pressure fields from
+  the register's own numbers, the parking point moving to 24.92 mm against 25.2 predicted
+  by hand from the local gas speed and the `1/n` mobility. The gap to Hernandez's 100-250
+  is arithmetic now - his 100-300 ms ramps, his 140 m/s optimum, an accumulation plateau -
+  with about 1.5 left in the width's own composition. `mobilityResolvingPower` (V/ΔV off
+  the arrivals against the ramped parameter) is a Class B figure of merit, and every
+  diffusive figure takes the sequenced path for a sequenced model. Details in
+  `docs/device-templates.md`.
+
+- **`tims-front-end` — the funnel and the gate, and the fringe a bounded field needed.**
+  Hernandez's 50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, the RF
+  alternating plate to plate, a 25 V DC drop) and an entrance gate in front of the analyser,
+  with his fill / trap / ramp as phases. A 2 mm-wide packet released 40 mm up the funnel:
+  **99.993 per cent survives with the funnel RF on against 65.28 with it off** — the rest on
+  the last three plates and the gate, every loss named — and it parks at **21.09 mm at a mean
+  radius of 0.29 mm**, which are the analyser template's own balance point and its own
+  confined radius. That coincidence is what makes the delivery figure mean something.
+
+  **The first version stopped 42 per cent of it two millimetres short of the tunnel, and a
+  steeper funnel gradient made that worse** (54 per cent at 50 V of drop, 71 at 100 V) — the
+  signature of a barrier rather than of a push too weak. Not the instrument: the tunnel's RF
+  is an analytic element bounded to the tunnel, and a region's edge was a step, so an ion
+  arriving at radius r met the whole pseudopotential well at once with nothing to squeeze it
+  inward first. A real ring's field decays over about a bore radius, and across that fringe
+  the radial gradient acts before the axial one bites. Schema **0.12** adds `fringe` to a
+  region: a linear rise from nothing at the face to full strength that far inside, the
+  potential continuous, the field the gradient of the fringed potential (checked by central
+  differences), and **no fringe bit-identical** to what a bounded element was. The
+  region-step warning gives way to a note that a fringe is a declared shape, not a solved
+  one. **A boundary the model has and the instrument does not is a force the instrument does
+  not have** — `docs/lessons.md`.
+
+  **The gate gates, and what it holds back it loses**: at 30 V nothing enters the tunnel and
+  the whole packet, pressed against the gate by the gas and the funnel's gradient, ends on
+  the last plate — which is why the instrument also diverts the beam with a deflector plate
+  during the trap. A gate alone is a beam dump.
+
+  **Left open, and it points at an optimisation.** The whole sequence end to end did not
+  finish — 4.75 CPU-hours at 512 x 64 over 18 ms, then 40 minutes at 256 x 32 over 12 ms. A
+  ramped diffusive phase re-assembles its operator every step, and here every assembly samples
+  the **solved** funnel RF at sixteen instants per node for its cycle mean and mean square,
+  which is sixteen bicubic interpolations per node per step; the analyser's own ramps are cheap
+  because their RF is analytic. **But the ramp moves only DC** - `exitPotential` moves and the
+  RF amplitudes do not - so the mean-square field, the expensive half, is the same at every
+  step. Caching it per node and re-sampling only the direct term should cost about a sixteenth
+  per step for every elution scan there is. Stated as an inference from the code path, and the
+  per-phase assembly counts make it measurable directly. The study's own question stays open:
+  whether the arrival width is the analyser's own or whether the delivery leaves an axial
+  spread the ramp then reads as mobility. Not carried: a deflector plate, a continuous fill,
+  the funnel's own higher-pressure gas, an exit funnel. Details in
+  `docs/device-templates.md`.
+
+- **Several ion populations at once, and the one thing that couples them.** A model may
+  declare `species` in place of `ion` (schema **0.13**), each entry carrying its own
+  mass-to-charge, charge number, mobility and population, and a diffusive run steps them all
+  through one field. **Every coefficient a species needs is its own** — mobility sets its
+  drift, charge and gas temperature set its diffusion through the Einstein relation, charge
+  sets its Scharfetter–Gummel thermal voltage, and in a driven structure mass and
+  momentum-transfer rate set the well it feels. If the field were its own too, N species would
+  be N independent runs. They are coupled by **exactly one quantity, the potential their total
+  charge raises**, which no sequence of separate runs computes.
+
+  | | |
+  | --- | --- |
+  | one species through the mixture path vs `DriftDiffusion.Run` | **0 of 8385 nodes differ**, same steps, population equal to 17 digits |
+  | two mobilities parking vs `v_gas / (K·slope)` | 3.19 vs 3.19 mm, 6.38 vs 6.38; **position ratio 2.000 against a mobility ratio of 2.000** |
+  | a second population, mean field **off** | **0 of 4257 nodes** of the first differ |
+  | the same, **on** | first displaced **−91.6 µm**, away from its neighbour |
+  | equal and opposite polarities | **exactly 0 V and 0 C** against 0.652 V alone |
+  | the shared step | set by the quicker species, **10.0×** shorter than the sluggish one needed |
+
+  **Three of those are controls and they carry the weight.** Bit-equality against the
+  single-species path is what keeps the two from drifting; the numerics are literally the same
+  functions and only the loop is new. A second population being *unfelt* with the mean field
+  off says the field is the **only** coupling — a run that merely differs proves something
+  changed. Exact cancellation says the source is a **signed** sum: an implementation that
+  solved each species and added the potentials would land *near* zero with solver round-off
+  rather than *on* it.
+
+  **`"spaceCharge": "meanField"` is the diffusive mode's method**, wired to both diffusive
+  paths through one shared helper — `q·n` on the tracked grid, one Poisson solve, added per
+  node so drift, the SG exponent and the stability limit all come from one field. Conductors
+  screen it exactly. Reported per phase in a sequence, **absent rather than zero** where none
+  was asked for. A method that cannot act is refused rather than ignored, both ways round.
+
+  **The step is shared and has to be** — a mutual field between densities at different times is
+  not a field between anything, the same argument `PacketIntegrator` makes in the discrete
+  case. **What goes wrong without it is not what the textbook says**: an overlong explicit
+  Scharfetter–Gummel step here does not go negative, it **creates ions** — 1.0376% more than
+  were launched, with the lowest density anywhere still exactly zero. My positivity test passed
+  with the bug restored; the conservation test kills it.
+
+  **A driven mixture needs one well per species.** The pseudopotential is built from charge,
+  mass and momentum-transfer rate, so one RF structure is worth **30.55 V to m/z 200 and
+  3.055 V to m/z 2000** at the same point — a factor of 10.0, exactly 1/m, and the mechanism by
+  which a driven guide is mass-selective at all. A shared one is refused by name.
+
+  **Every way of saying it twice is refused**: `ion` beside `species`, `transport.mobility`
+  beside `species`, a cloud population beside species populations, a list of one, and a
+  trajectory-only run. `einzel schema` carries the lot **by reflection with no schema edit**.
+
+  **And the well cache stopped being gated on the ramped path.** It was built only when the
+  field was a function of time — true when written, false the moment the density's own charge
+  started forcing re-samples. A self-field re-sample leaves the *applied* field untouched, so
+  the well is unchanged by construction, and rebuilding it at sixteen samples a node over the
+  whole grid per species per refresh was the dominant cost of a driven mean-field run.
+  Verified to change no answer against 259 transport and 27 corpus tests.
+
+  **Also fixed, and it is the fourth time**: the terminal decided whether to print a flight
+  time by listing the modes that have none (`Diffusion is null`, then `&& Sequence is null`).
+  It asks `run.HasFlightTime` now, a **required** member set at each of four construction sites
+  with its reason, so a fifth kind of run fails to compile until somebody decides which it is.
+  SPEC.md Amendment 41; details in `docs/model-format.md`, `docs/pressure.md`, `docs/lessons.md`.
+
+- **The tandem TIMS tunnel holds about 10^7 ions, which is the published figure by another
+  route.** Two populations of m/z 622 differing only in mobility, held together in the storage
+  region for 2.5 ms with and without their own charge:
+
+  | launched | held, charge off | held, charge on | width | gap |
+  | --- | --- | --- | --- | --- |
+  | 10^5 | 8.07e4 | 8.07e4 | 0.65 → 0.91 mm | 6.30 → 6.36 mm |
+  | 10^7 | 8.07e6 | 7.51e6 | 0.65 → 2.31 mm | 6.30 → 8.43 mm |
+  | 10^8 | 8.07e7 | **1.39e7** | 0.65 → 2.56 mm | 6.30 → 9.04 mm |
+
+  **Launching ten times more than 10^7 holds only 1.8 times more** — the tunnel stops
+  accepting between **8e6 and 1.4e7**, the top of Silveira's stated 10^6 to 10^7, which they
+  reached by bounding a free-space line charge that neglects the electrodes entirely. The
+  uncharged column is the control: with no charge the tunnel holds the same 81 per cent at
+  every population, so what saturates is the charge and not the geometry. Where that 19 per
+  cent goes is **not established** and is recorded as not established.
+
+  **The degradation has a shape a designer could misread**: the charge pushes the populations
+  *further apart* (6.3 → 9.0 mm) and the separation still gets worse, because the peaks widen
+  faster than their centres move. And broadening starts far below the capacity — 1.4× at 10^5
+  ions — which does not contradict the published estimate because the two are about different
+  quantities: theirs is the packet's field against the analysing field, of order a per cent,
+  while what sets a *held* packet's width is its own potential against kT/q. Measured: **0.105
+  V = 4.1x thermal** at 10^5, 1.783 V = 69x at 10^7, 2.519 V = 97x at 10^8. Already four times
+  the energy that would otherwise set the width, at the lowest population tried.
+
+  **Two things it is not, both recorded with the measurement.** Its ratio is spatial — gap
+  over width in millimetres, at equilibrium, with no elution ramp — so it is one to two orders
+  below a published resolving power by construction and must never be set beside one. And its
+  ion counts are not comparable with theirs without converting to charge per unit length:
+  their reference spreads 10^6 over 23 mm, these packets sit in under a millimetre, so the
+  10^5 row is **0.29x** their line density rather than a hundredth of it.
+
+  **Cost**: 14 minutes for six configurations; an uncharged one is 30 s against a mean-field
+  one at 220-330. The geometry is solved **once** for the study — re-solving 55 rings and two
+  funnels per configuration ran over an hour without reaching its first line of output.
+
+- **The published TIMS space-charge estimate reproduces, and my prediction about it was
+  wrong.** Silveira's Eq. 4 for a million charges on a 23 mm line gives 61.68 V/m at 2 mm,
+  matching their quoted "roughly 0.6 V/cm"; the solver gives **62.28 V/m in the real 4 mm
+  bore, 1.010 of theirs**. I predicted the bore would screen that and make their free-space
+  estimate conservative by a computable factor. **It does not screen it at all** — moving the
+  wall from 4 to 32 mm moves the field at 2 mm by **1.4%**, monotonically, while moving the
+  potential at that very same node by **3.07× against 3.12× predicted** from the closed form.
+
+  **Gauss's law is why, and it means their neglect of the electrodes is not an approximation
+  for this quantity.** Induced charge on an axisymmetric bore sits at larger radius than the
+  point being read, and a cylindrical shell contributes exactly nothing inside itself. Which
+  boundary condition applies is not a free choice: made no-flux instead of earthed — a mirror
+  rather than a wall — the same bore takes **31%** out of the field, because a mirror images
+  the line charge and an image is not a shell. My first wall study also reported a
+  *non-monotone* approach that read as physics and was my own grid: at a fixed interval count
+  the cells coarsen as the domain grows.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
