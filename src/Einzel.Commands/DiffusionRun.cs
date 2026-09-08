@@ -134,7 +134,7 @@ public static class DiffusionRun
 
         var warnings = new List<ValidityWarning>(fieldWarnings);
 
-        var effective = Effective(ref field, species, mobility, gas);
+        var effective = Effective(ref field, species, mobility, gas, atSeconds: 0.0);
 
         // The model's own choice, unless a caller overrode it - which is how a study
         // measuring the two schemes against each other on one document works.
@@ -299,7 +299,7 @@ public static class DiffusionRun
             // pseudopotential is built from charge, mass and momentum-transfer rate - which is
             // why MixtureDiffusion refuses a shared one.
             var seen = field;
-            var effective = Effective(ref seen, species, mobility, gas);
+            var effective = Effective(ref seen, species, mobility, gas, atSeconds: 0.0);
 
             if (effective is not null)
             {
@@ -526,11 +526,19 @@ public static class DiffusionRun
     /// being a sixth.
     /// </para>
     /// </remarks>
+    /// <param name="atSeconds">
+    /// The instant on the instrument's timeline whose operating point the cycle average is
+    /// taken at. A sequenced geometry holds its stage and its ramp fraction here while the
+    /// drive keeps oscillating; one with no sequence has a single operating point already
+    /// and is untouched. Required rather than defaulted, because a caller that does not
+    /// know which operating point it means has no safe guess available to it.
+    /// </param>
     internal static Transport.Diffusion.PonderomotiveField? Effective(
         ref Fields.IElectrostaticField field,
         IonSpecies species,
         Mobility mobility,
-        BackgroundGas gas)
+        BackgroundGas gas,
+        double atSeconds)
     {
         // Gated on HAVING A DRIVE rather than on implementing the time-varying interface,
         // and the difference is a DC ramp. A ramped solved geometry is time-varying with
@@ -541,6 +549,21 @@ public static class DiffusionRun
         {
             return field as Transport.Diffusion.PonderomotiveField;
         }
+
+        // THE OPERATING POINT IS HELD BEFORE THE CYCLE IS AVERAGED. A pseudopotential
+        // asks what an ion feels from a field that repeats; a ramp does not repeat, so a
+        // ramp still advancing inside the averaging window puts a drift into the mean
+        // square of the oscillation, where it is indistinguishable from quiver. The
+        // comment above already says this for a field whose ONLY time dependence is a
+        // ramp - "what a slow ion feels from a ramp is the field at this instant" - and
+        // the case it did not cover is a ramp superposed WITH a drive, which is every
+        // elution scan. Measured before the fix at 1.9e-5 of the well per step on the
+        // shipped TIMS analyser, and it is why the well cache saved nothing there.
+        //
+        // The instant is required rather than defaulted: a caller that does not know
+        // which operating point it means cannot be given a safe guess, and for a field
+        // with no sequence in it this is `this` and costs nothing.
+        driven = driven.AtOperatingPoint(atSeconds);
 
         var rate = Transport.Diffusion.PonderomotiveField.CollisionRateFromMobility(
             species.ChargeSi, species.MassSi, mobility.ZeroFieldSi);

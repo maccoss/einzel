@@ -61,6 +61,39 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
+    /// Held member by member, because a superposition is exactly where this matters: the
+    /// shipped TIMS analyser is a ramped SOLVED gradient plus an analytic quadrupole RF, so
+    /// one member carries the operating point and the other carries the oscillation. Returns
+    /// this instance when no member had anything to hold, so an unsequenced beamline is
+    /// bit-identical.
+    /// </remarks>
+    public ITimeVaryingField AtOperatingPoint(double timeSeconds)
+    {
+        IElectrostaticField[]? held = null;
+
+        for (var i = 0; i < _elements.Length; i++)
+        {
+            if (_elements[i] is not ITimeVaryingField driven)
+            {
+                continue;
+            }
+
+            var one = driven.AtOperatingPoint(timeSeconds);
+
+            if (ReferenceEquals(one, driven))
+            {
+                continue;
+            }
+
+            held ??= [.. _elements];
+            held[i] = one;
+        }
+
+        return held is null ? this : new DrivenSuperposedField(held);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The shortest period any member declares: the sum carries information on the
     /// fastest timescale present in it, so a step long enough to skip that member's
     /// cycle skips it in the sum too.

@@ -53,6 +53,30 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     private readonly double[]?[] _stageEndDirect;
     private readonly WeightTerm[][]?[] _stageEndHarmonics;
 
+    // Where the sequence has got to, held. Null means "read it from the sample time",
+    // which is what an integrator wants; a value means "this is the operating point",
+    // which is what a cycle average wants. See <see cref="AtOperatingPoint"/>.
+    private readonly double? _operatingPoint;
+
+    /// <summary>The same field with its operating point held at an instant.</summary>
+    private DrivenSolvedField(DrivenSolvedField source, double operatingPoint)
+    {
+        // The arrays are never mutated after construction, so they are shared rather
+        // than copied: this is built once per assembly of a ramped diffusive step and
+        // copying a solved channel set per step would cost more than the saving.
+        _channels = source._channels;
+        _direct = source._direct;
+        _harmonics = source._harmonics;
+        _frequencies = source._frequencies;
+        _waveforms = source._waveforms;
+        _boundaries = source._boundaries;
+        _stageDirect = source._stageDirect;
+        _stageHarmonics = source._stageHarmonics;
+        _stageEndDirect = source._stageEndDirect;
+        _stageEndHarmonics = source._stageEndHarmonics;
+        _operatingPoint = operatingPoint;
+    }
+
     internal DrivenSolvedField(
         IReadOnlyList<IElectrostaticField> channels,
         IReadOnlyList<double> direct,
@@ -88,6 +112,22 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
 
     /// <summary>Whether any stage ramps rather than holds.</summary>
     public bool HasRamp => _stageEndDirect.Any(d => d is not null);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// A geometry with no sequence has one operating point already and returns itself, so
+    /// every unsequenced model is bit-identical to what it was.
+    /// </para>
+    /// <para>
+    /// A sequenced one holds both the stage and the ramp fraction, and keeps the waveform
+    /// phases on real time. Both halves matter: a window straddling a stage boundary would
+    /// otherwise average two operating points, which is the reason
+    /// <c>SequencedRun</c> probes a period inside a phase's end rather than at it.
+    /// </para>
+    /// </remarks>
+    public ITimeVaryingField AtOperatingPoint(double timeSeconds) =>
+        _boundaries.Length == 0 ? this : new DrivenSolvedField(this, timeSeconds);
 
     /// <summary>How many stages the sequence has. Zero for a geometry held in one state.</summary>
     public int StageCount => _boundaries.Length;
@@ -214,7 +254,13 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
 
     private double Weight(int channel, double timeSeconds)
     {
-        var stage = _boundaries.Length == 0 ? -1 : StageAt(timeSeconds);
+        // WHICH state the geometry is in, as against WHERE IN THE CYCLE the drive is.
+        // Those are the same instant for an integrator and must not be for a cycle
+        // average: see the remarks on `AtOperatingPoint`. The waveform phases below stay
+        // on `timeSeconds`.
+        var setting = _operatingPoint ?? timeSeconds;
+
+        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);
 
         var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
         var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
@@ -225,7 +271,7 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
             // Past the last boundary the fraction is clamped to one, so the last stage
             // holds the value its ramp reached, as a held last stage holds its value.
             var start = stage == 0 ? 0.0 : _boundaries[stage - 1];
-            var fraction = Math.Clamp((timeSeconds - start) / (_boundaries[stage] - start), 0.0, 1.0);
+            var fraction = Math.Clamp((setting - start) / (_boundaries[stage] - start), 0.0, 1.0);
             var endHarmonics = _stageEndHarmonics[stage]![channel];
 
             var ramped = direct + ((endDirect[channel] - direct) * fraction);

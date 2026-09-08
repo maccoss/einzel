@@ -397,7 +397,7 @@ public static class SequencedRun
         BackgroundGas gas)
     {
         var at = Instant(field, atSeconds);
-        _ = DiffusionRun.Effective(ref at, species, mobility, gas);
+        _ = DiffusionRun.Effective(ref at, species, mobility, gas, atSeconds);
         return at.PotentialAt(in probe);
     }
 
@@ -551,7 +551,7 @@ public static class SequencedRun
         // in this project a time-varying quantity reached through a time-free interface
         // has answered at an arbitrary instant rather than failing.
         var seen = Instant(field, startedAt);
-        var effective = DiffusionRun.Effective(ref seen, species, mobility, gas);
+        var effective = DiffusionRun.Effective(ref seen, species, mobility, gas, startedAt);
 
         // What the wrapper did rides out on the result, as it does on a wholly diffusive
         // run. This leg discarded it - the return of Effective was assigned to nothing -
@@ -612,7 +612,7 @@ public static class SequencedRun
                 fieldAt = elapsed =>
                 {
                     var now = Instant(field, startedAt + elapsed);
-                    _ = DiffusionRun.Effective(ref now, species, mobility, gas);
+                    _ = DiffusionRun.Effective(ref now, species, mobility, gas, startedAt + elapsed);
                     return now;
                 };
             }

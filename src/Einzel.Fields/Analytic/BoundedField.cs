@@ -160,6 +160,18 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     /// <inheritdoc />
     public double OscillatingResolutionLength => _driven.OscillatingResolutionLength;
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A region is a shape and holds nothing of its own, so this is the inner field's answer
+    /// re-wrapped - and this instance where the inner field had nothing to hold.
+    /// </remarks>
+    public ITimeVaryingField AtOperatingPoint(double timeSeconds)
+    {
+        var held = _driven.AtOperatingPoint(timeSeconds);
+
+        return ReferenceEquals(held, _driven) ? this : new DrivenBoundedField(held, Region);
+    }
+
     /// <inheritdoc />
     public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
     {

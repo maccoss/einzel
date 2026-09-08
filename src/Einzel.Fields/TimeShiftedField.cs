@@ -86,6 +86,19 @@ public sealed class TimeShiftedField : ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The instant is on the instrument's timeline, the same one this wrapper's offset is
+    /// measured on, so it passes through unshifted. Returns this instance where the inner
+    /// field has nothing to hold, which keeps an unsequenced leg bit-identical.
+    /// </remarks>
+    public ITimeVaryingField AtOperatingPoint(double timeSeconds)
+    {
+        var held = _inner.AtOperatingPoint(timeSeconds);
+
+        return ReferenceEquals(held, _inner) ? this : new TimeShiftedField(held, _offsetSeconds);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Shifted back into this leg's own clock, and never negative: a switch already
     /// behind the offset is not a switch this leg will meet. The integrator refuses to
     /// step past what this returns, so reporting a past instant would stall it.

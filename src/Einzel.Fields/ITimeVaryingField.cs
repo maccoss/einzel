@@ -106,4 +106,42 @@ public interface ITimeVaryingField : IElectrostaticField
     /// </para>
     /// </remarks>
     double OscillatingResolutionLength => ResolutionLength;
+
+    /// <summary>
+    /// The same field with any NON-OSCILLATORY time dependence held at the given instant,
+    /// leaving the oscillation a function of time as before.
+    /// </summary>
+    /// <param name="timeSeconds">The instant to hold the operating point at.</param>
+    /// <returns>The field at that operating point; the same instance where nothing varies.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A pseudopotential is defined at an operating point.</b> Averaging over a cycle asks
+    /// what an ion feels from a field that repeats, and a ramp does not repeat - so if a
+    /// ramp is still advancing inside the averaging window, the drift enters the mean square
+    /// of the "oscillating" field and is indistinguishable there from quiver.
+    /// </para>
+    /// <para>
+    /// It is not small and it is not only a bias. The covariance between a linear drift of
+    /// rate r and a sinusoid of amplitude A sampled N times across a period is
+    /// <c>(A r T/N)[-cos(phi0) + cot(pi/N) sin(phi0)]</c>, so it carries the phase the window
+    /// opens at - and a diffusive step is set by a stability limit, never by the drive, so
+    /// every assembly opens somewhere else in the cycle. On the shipped TIMS analyser that
+    /// swing is 1.9e-5, which is what made its well cache rebuild at every one of thirty
+    /// assemblies and save nothing. Measured against its closed form in
+    /// <c>PonderomotiveRampLeakTests</c>.
+    /// </para>
+    /// <para>
+    /// Neither obvious alternative works, and both are rejected by arithmetic rather than by
+    /// trying them. Sampling the cycle more finely does not converge it away: as N grows
+    /// <c>cot(pi/N) -&gt; N/pi</c>, so the swing tends to <c>4rT/(pi A)</c> and stops depending
+    /// on N. And detrending the window rather than de-meaning it removes <c>6/(N^2-1)</c> of
+    /// the well - 2.4 per cent at N = 16 - because the least-squares slope of a sinusoid
+    /// sampled over one period is not zero.
+    /// </para>
+    /// <para>
+    /// The default returns <c>this</c>, which is right for every field whose time dependence
+    /// IS the oscillation. Only a wrapper or a sequenced solve needs to do anything.
+    /// </para>
+    /// </remarks>
+    ITimeVaryingField AtOperatingPoint(double timeSeconds) => this;
 }
