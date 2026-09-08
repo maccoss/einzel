@@ -3352,3 +3352,44 @@ is not to be averaged". That argument is correct and it fires only when the fiel
 and *nothing else*. A field that is a ramp **and** a drive passes the guard, and every elution
 scan is one. A guard whose stated rationale is broader than its condition is worth re-reading
 when a new configuration arrives.
+
+## A control built to be exact can remove the variation it was built to find
+
+Hunting a 1.8e-5 step-to-step wobble in a ramped diffusive run's cycle-averaged well, I wrote
+a synthetic field carrying the suspected mechanism and sampled it at instants **exactly one
+drive period apart**. That made the no-ramp control bit-exact, which felt like the right thing
+to want: any residue is then unambiguously the ramp's.
+
+**It also pinned the RF phase at which the averaging window opens, and the phase was the whole
+effect.** The covariance between a linear drift and a sampled sinusoid is
+`(A r T/N)[-cos(phi0) + cot(pi/N) sin(phi0)]`, because the two sampling identities differ -
+`sum s cos(2 pi s/N) = -N/2` but `sum s sin(2 pi s/N) = -(N/2) cot(pi/N)`, five times larger at
+N = 16. Sampling at whole periods holds `phi0` at zero, which keeps only the small
+phase-independent term and reports the phase-dependent one, five times bigger, as absent. The
+conclusion drawn was "the ramp produces a bias and no jitter", and it was wrong for the same
+reason the earlier recorded control was wrong: the measurement could not see the thing.
+
+Re-sampled at offsets that are not whole periods - which is what a real run does, since a
+diffusive step is set by a stability limit and never lands on the drive - the swing matches its
+closed form to every digit, and predicts the real device's 1.8e-5 as 1.94e-5.
+
+**The general form: an exactness you engineer into a control is a constraint you have imposed
+on the system.** Ask what it holds fixed, and whether the hypothesis predicts variation in
+exactly that. Here "sample a periodic system at its own period" is the natural way to make a
+comparison clean, and it is stroboscopic - it is guaranteed to hide anything whose signature is
+phase.
+
+Two smaller ones from the same afternoon.
+
+**Three samples of a sinusoid under-read its range by 13 to 25 per cent.** The first version of
+the corrected test used offsets a third of a period apart, which gives only three distinct
+phases, and reported 0.85 of the closed form. That reads as the model being imperfect rather
+than the sampling being coarse - and 0.85 is a plausible-looking number, which is what makes it
+expensive. Sixty-four offsets across a period give 1.0000.
+
+**Two obvious fixes were arithmetic away from being wrong.** Averaging more finely does not
+help: `cot(pi/N) -> N/pi`, so the swing tends to `4rT/(pi A)` and stops depending on N. And
+detrending the window rather than de-meaning it removes `6/(N^2-1)` of the well - 2.4 per cent
+at N = 16, five thousand times the jitter it would remove - because the least-squares slope of
+a sinusoid sampled over one period is not zero. Both took one line of algebra to reject and
+both would have taken a day to discover by implementing.

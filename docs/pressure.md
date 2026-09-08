@@ -539,10 +539,46 @@ orthogonal and there is no bias at all, and off-axis only the DC's radial
 component couples — which puts the shipped analyser's bias at **2e-6 or below**,
 and that figure is an upper bound assuming full parallelism.
 
-So the step-to-step jitter of 1.8e-5 **remains unexplained**, and it is now known
-not to be this. What has been gained is that the mechanism everyone suspected is
-characterised to the digit and can be set aside on evidence rather than on a
-control that was pointed at the wrong quantity.
+### And the jitter is the same term, carrying the phase the window opens at
+
+The bias above is only the part of the covariance that survives averaging. The
+full discrete covariance carries the RF phase `φ₀` at which the averaging window
+opens, because the two sampling identities are not the same size:
+`Σ s·cos(2πs/N) = −N/2` while `Σ s·sin(2πs/N) = −(N/2)·cot(π/N)`. So
+
+`2cov = (A·r·T/N)·[−cos φ₀ + cot(π/N)·sin φ₀]`
+
+and with N = 16 the cotangent is 5.03: **the phase-dependent part is five times the
+constant one.** Its peak-to-peak relative swing is `4rT / (N·A·sin(π/N))`, measured
+against that closed form to every digit at 25, 100 and 400 V/m.
+
+A diffusive step is set by a stability limit, not by the drive, so it is never a
+whole number of RF periods and every assembly opens its window somewhere else in
+the cycle. **That is the jitter.** For the shipped analyser — 60 V over 46.6 mm in
+8 ms, 850 kHz, and the quadrupole field about a millimetre off axis — the closed
+form gives **1.94e-5 against the measured 1.8e-5**.
+
+**Refining the cycle sampling does not fix it.** As N grows `cot(π/N) → N/π`, so
+the swing tends to `4rT/(πA)` and stops depending on N at all. That is a real
+property of averaging a ramp across a window rather than an under-sampled
+integral, and it says the fix is to keep the ramp out of the average rather than
+to average harder. Detrending the window instead of de-meaning it is also wrong:
+the least-squares slope of a sinusoid sampled over one period is not zero, so
+detrending removes `6/(N²−1)` of the well — 2.4 per cent at N = 16, five thousand
+times the jitter it would remove.
+
+What the pseudopotential is defined at is an *operating point*. The ramp sets the
+operating point and does not belong inside the cycle it is averaged over, which is
+what `Effective`'s own comment already says for the case where a ramp is the only
+time dependence: "what a slow ion feels from a ramp is the field at this instant".
+
+**One recorded observation this does not reproduce**, and it is the control that
+prompted the original refusal: the jitter is linear in the ramp rate, so a
+hundredfold slower ramp must give a hundredfold smaller swing, and the recorded
+figure is 3.6e-5 — larger. That cannot be this mechanism at that rate, since the
+swing is bounded above by `4rT/(N·A·sin(π/N))`. Either the slower-ramp run was not
+at a hundredth of the rate, or a second term is present. It is now a sharp test
+rather than an open puzzle, because there is a prediction to compare against.
 
 The tolerance is deliberately **not** loosened to cover it. A tolerance chosen
 larger than a variation nobody has explained is caching over that variation, and

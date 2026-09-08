@@ -237,6 +237,75 @@ public sealed class PonderomotiveRampLeakTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// And the jitter is the RF phase the averaging window happens to start at, which is what
+    /// a step-to-step comparison sees once the steps are not whole periods apart.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The test above hides this, deliberately and wrongly.</b> It samples at instants that
+    /// are whole periods apart, so the window always opens at the same RF phase - which is
+    /// what makes its held control exact, and is exactly what removes the variation being
+    /// looked for. A real diffusive step is set by a stability limit and is not a whole number
+    /// of RF periods, so every assembly opens its window somewhere else in the cycle.
+    /// </para>
+    /// <para>
+    /// The covariance carries that phase: `2cov = (A*r*T/N)*[-cos(phi0) + cot(pi/N)*sin(phi0)]`,
+    /// because `sum s*sin(2*pi*s/N) = -(N/2)*cot(pi/N)` where the cosine sum is only `-N/2`.
+    /// With N = 16 the cotangent is 5.03, so the phase-dependent part is five times the
+    /// constant one, and the peak-to-peak relative swing is
+    /// <b>4*r*T / (N*A*sin(pi/N))</b>.
+    /// </para>
+    /// <para>
+    /// <b>Refining the cycle sampling does not fix it.</b> As N grows, cot(pi/N) tends to
+    /// N/pi, so the swing tends to 4*r*T/(pi*A) and stops depending on N at all. That is the
+    /// signature of a real property of averaging a ramp over a window rather than of an
+    /// under-sampled integral, and it says the fix has to be to keep the ramp out of the
+    /// average - not to average harder.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheJitterIsTheRfPhaseTheWindowOpensAt()
+    {
+        const double rate = 1.61e5;
+
+        double[] amplitudes = [25.0, 100.0, 400.0];
+
+        output.WriteLine("amplitude (V/m)   measured swing   closed form   ratio");
+
+        foreach (var amplitude in amplitudes)
+        {
+            var lowest = double.MaxValue;
+            var highest = double.MinValue;
+
+            // Deliberately NOT whole periods, so the window opens somewhere else in the
+            // cycle every time, the way an ordinary stability-limited step does. Sixty-four
+            // offsets across one period rather than a handful: the swing is a sinusoid in
+            // phi0, and three evenly-spaced samples of a sinusoid under-read its range by
+            // 13 to 25 per cent depending where they land - a first version at a third of a
+            // period reported 0.85 of the closed form for exactly that reason, which reads
+            // as the model being wrong rather than as the sampling being coarse.
+            for (var s = 1; s <= 64; s++)
+            {
+                var well = WellAt(amplitude, rate, AlongTheDrive, s * PeriodSeconds / 64.0);
+
+                lowest = Math.Min(lowest, well);
+                highest = Math.Max(highest, well);
+            }
+
+            var held = WellAt(amplitude, 0.0, AlongTheDrive);
+            var measured = (highest - lowest) / Math.Abs(held);
+
+            var predicted = 4.0 * rate * PeriodSeconds
+                / (Samples * amplitude * Math.Sin(Math.PI / Samples));
+
+            output.WriteLine(
+                $"{amplitude,15:F0}   {measured,14:G6}   {predicted,11:G6}   {measured / predicted:F4}");
+
+            Assert.InRange(measured / predicted, 0.99, 1.01);
+        }
+    }
+
+    /// <summary>
     /// The bias is invisible to a step-to-step comparison, which is what the cache's guard
     /// makes and what the recorded control measured.
     /// </summary>
