@@ -140,8 +140,41 @@ public interface ITimeVaryingField : IElectrostaticField
     /// </para>
     /// <para>
     /// The default returns <c>this</c>, which is right for every field whose time dependence
-    /// IS the oscillation. Only a wrapper or a sequenced solve needs to do anything.
+    /// IS the oscillation. <b>Every implementer is listed here because the default decides
+    /// for all of them at once, and the one that needed to disagree got no compiler error:</b>
+    /// <c>DrivenSolvedField</c> holds its stage and ramp fraction;
+    /// <c>SequencedField</c> holds its state selection (it was missed on the first pass, and
+    /// a staged analytic element inside a driven superposition kept blending two states);
+    /// <c>TimeShiftedField</c>, <c>DrivenBoundedField</c> and <c>DrivenSuperposedField</c>
+    /// pass it to what they wrap; <c>OscillatingUniformField</c> and
+    /// <c>IdealQuadrupoleRf</c> are pure oscillations and take the default.
+    /// </para>
+    /// <para>
+    /// A new implementer belongs in that list, with its reason. A new member on this
+    /// interface should be added without a default, or with the same enumeration done first.
     /// </para>
     /// </remarks>
-    ITimeVaryingField AtOperatingPoint(double timeSeconds) => this;
+    ITimeVaryingField AtOperatingPoint(double timeSeconds)
+    {
+        // THE GUARD LIVES IN THE DEFAULT, which is the only place that reaches every
+        // composition. Put in the two implementations that STORE the instant, it missed the
+        // ordinary case: an unsequenced model's solved element carries no drive, so it is not
+        // time-varying at all, and the composition is made entirely of implementations that
+        // pass the instant along or ignore it. Nothing validated, and a caller's NaN was
+        // caught or not depending on whether the model happened to have a sequence in it.
+        //
+        // Here it covers everything, because an implementer either validates for itself -
+        // SequencedField and DrivenSolvedField do, since they hold the value - or delegates
+        // to something that eventually reaches a leaf, and every leaf takes this default.
+        if (!double.IsFinite(timeSeconds))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeSeconds),
+                timeSeconds,
+                "an operating point is an instant on the instrument's timeline and must be "
+                + "finite");
+        }
+
+        return this;
+    }
 }

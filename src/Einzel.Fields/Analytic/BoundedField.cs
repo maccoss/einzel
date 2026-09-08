@@ -169,7 +169,13 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     {
         var held = _driven.AtOperatingPoint(timeSeconds);
 
-        return ReferenceEquals(held, _driven) ? this : new DrivenBoundedField(held, Region);
+        // Through `Around` rather than the constructor, because this class's own remarks
+        // say the wrapper kind is chosen by inspecting the inner field and that the choice
+        // lives in one place. Equivalent today - `held` is always time-varying, so `Around`
+        // picks this type - and it stays equivalent if `Around` ever gains a case.
+        return ReferenceEquals(held, _driven)
+            ? this
+            : (ITimeVaryingField)Around(held, Region);
     }
 
     /// <inheritdoc />

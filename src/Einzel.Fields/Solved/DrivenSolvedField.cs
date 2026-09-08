@@ -61,6 +61,21 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     /// <summary>The same field with its operating point held at an instant.</summary>
     private DrivenSolvedField(DrivenSolvedField source, double operatingPoint)
     {
+        // FINITE, not merely non-negative. `Math.Clamp(NaN, 0, 1)` is NaN, so a non-finite
+        // operating point makes the ramp fraction NaN, every channel weight NaN, and every
+        // potential and field this returns NaN - with nothing thrown and nothing warned.
+        // This project has four times watched a non-finite double reach a result silently,
+        // and once taken a whole --json document down at the serialiser after the run had
+        // succeeded, which is why the public constructors here validate their arguments.
+        if (!double.IsFinite(operatingPoint))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(operatingPoint),
+                operatingPoint,
+                "an operating point is an instant on the instrument's timeline and must be "
+                + "finite. A non-finite one would carry NaN into every channel weight");
+        }
+
         // The arrays are never mutated after construction, so they are shared rather
         // than copied: this is built once per assembly of a ramped diffusive step and
         // copying a solved channel set per step would cost more than the saving.
@@ -126,8 +141,23 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     /// <c>SequencedRun</c> probes a period inside a phase's end rather than at it.
     /// </para>
     /// </remarks>
-    public ITimeVaryingField AtOperatingPoint(double timeSeconds) =>
-        _boundaries.Length == 0 ? this : new DrivenSolvedField(this, timeSeconds);
+    public ITimeVaryingField AtOperatingPoint(double timeSeconds)
+    {
+        // VALIDATED BEFORE THE FAST PATH, not in the constructor the fast path skips.
+        // Raised by review: an instant is an instant whether or not this field has anything
+        // to hold with it, and a guard that fires only on the path that allocates makes
+        // whether a caller's NaN is caught depend on the shape of the model. A geometry with no sequence took the fast path and never reached it.
+        if (!double.IsFinite(timeSeconds))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeSeconds),
+                timeSeconds,
+                "an operating point is an instant on the instrument's timeline and must be "
+                + "finite");
+        }
+
+        return _boundaries.Length == 0 ? this : new DrivenSolvedField(this, timeSeconds);
+    }
 
     /// <summary>How many stages the sequence has. Zero for a geometry held in one state.</summary>
     public int StageCount => _boundaries.Length;
