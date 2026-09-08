@@ -61,6 +61,21 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     /// <summary>The same field with its operating point held at an instant.</summary>
     private DrivenSolvedField(DrivenSolvedField source, double operatingPoint)
     {
+        // FINITE, not merely non-negative. `Math.Clamp(NaN, 0, 1)` is NaN, so a non-finite
+        // operating point makes the ramp fraction NaN, every channel weight NaN, and every
+        // potential and field this returns NaN - with nothing thrown and nothing warned.
+        // This project has four times watched a non-finite double reach a result silently,
+        // and once taken a whole --json document down at the serialiser after the run had
+        // succeeded, which is why the public constructors here validate their arguments.
+        if (!double.IsFinite(operatingPoint))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(operatingPoint),
+                operatingPoint,
+                "an operating point is an instant on the instrument's timeline and must be "
+                + "finite. A non-finite one would carry NaN into every channel weight");
+        }
+
         // The arrays are never mutated after construction, so they are shared rather
         // than copied: this is built once per assembly of a ramped diffusive step and
         // copying a solved channel set per step would cost more than the saving.

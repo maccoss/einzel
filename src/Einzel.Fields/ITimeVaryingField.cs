@@ -140,7 +140,18 @@ public interface ITimeVaryingField : IElectrostaticField
     /// </para>
     /// <para>
     /// The default returns <c>this</c>, which is right for every field whose time dependence
-    /// IS the oscillation. Only a wrapper or a sequenced solve needs to do anything.
+    /// IS the oscillation. <b>Every implementer is listed here because the default decides
+    /// for all of them at once, and the one that needed to disagree got no compiler error:</b>
+    /// <c>DrivenSolvedField</c> holds its stage and ramp fraction;
+    /// <c>SequencedField</c> holds its state selection (it was missed on the first pass, and
+    /// a staged analytic element inside a driven superposition kept blending two states);
+    /// <c>TimeShiftedField</c>, <c>DrivenBoundedField</c> and <c>DrivenSuperposedField</c>
+    /// pass it to what they wrap; <c>OscillatingUniformField</c> and
+    /// <c>IdealQuadrupoleRf</c> are pure oscillations and take the default.
+    /// </para>
+    /// <para>
+    /// A new implementer belongs in that list, with its reason. A new member on this
+    /// interface should be added without a default, or with the same enumeration done first.
     /// </para>
     /// </remarks>
     ITimeVaryingField AtOperatingPoint(double timeSeconds) => this;

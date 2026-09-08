@@ -591,19 +591,26 @@ public static class SequencedRun
         // would say what it cost.
         Func<double, IElectrostaticField>? fieldAt = null;
 
-        if (field is ITimeVaryingField varying)
+        if (field is ITimeVaryingField)
         {
-            // One PERIOD inside the end where there is a drive, not one ulp: the cycle
-            // average taken at an instant samples the period that follows it, so a probe an
-            // ulp inside the phase would average across the boundary into the next phase
-            // and call a held RF a change - which is exactly what happened, at 7 assemblies
-            // for a 7-step hold, when the test that guards this ran on the RF template. A
-            // phase shorter than a period is probed at its start against its last ulp.
+            // ONE ULP inside the end, which is now all that is needed. The period-wide
+            // step-back was here because a cycle average taken an ulp inside a phase used
+            // to sample the period that FOLLOWS it and so averaged across the boundary
+            // into the next phase, calling a held RF a change - 7 assemblies for a 7-step
+            // hold when the guarding test ran on the RF template. Holding the operating
+            // point fixes that at the root: the average now samples one state whatever
+            // window it opens, so there is nothing to step back from.
+            //
+            // Stepping back a whole period is not merely redundant, it is wrong in a way
+            // that got worse the faster the ramp: it probes a DIFFERENT operating point
+            // from the phase's end, so on an elution scan the comparison was against a
+            // point short of the end and under-detected the change it exists to find.
+            //
+            // The ulp is still needed, and for a different reason: `StageAt(end)` selects
+            // the state that BEGINS at that boundary, so probing exactly at the end asks
+            // about the next phase.
             var end = startedAt + phase.DurationSeconds;
-            var period = varying.ShortestPeriodSeconds;
-            var inside = double.IsFinite(period) && end - period > startedAt
-                ? end - period
-                : Math.BitDecrement(end);
+            var inside = Math.BitDecrement(end);
 
             if (Probes(density, grid).Any(probe => Changed(
                     Felt(field, startedAt, in probe, species, mobility, gas),

@@ -3393,3 +3393,62 @@ detrending the window rather than de-meaning it removes `6/(N^2-1)` of the well 
 at N = 16, five thousand times the jitter it would remove - because the least-squares slope of
 a sinusoid sampled over one period is not zero. Both took one line of algebra to reject and
 both would have taken a day to discover by implementing.
+
+## An interface default decides for every implementer, once, invisibly
+
+Adding `AtOperatingPoint` to `ITimeVaryingField` needed five of its seven implementers to do
+something and two to do nothing, so it was given a default of `return this` - correct for every
+field whose time dependence *is* the oscillation, and correct for the two that needed nothing.
+
+**It was also silently wrong for one of the five, and a review of my own change is what found
+it.** `SequencedField` implements the interface, needed to hold its state selection, and did
+not override. It compiled, every test passed, and the result was that a staged *analytic*
+element inside a driven superposition kept averaging across phase boundaries while the solved
+half of the same model was held - the two element kinds disagreeing about which instant they
+were describing, which is the exact defect the change existed to remove.
+
+**The default is what hid it.** A member with no default fails to compile until every
+implementer decides; a member with a safe-looking default decides for all of them at the moment
+it is written, and the implementer that needed to disagree gets no compiler error, no test
+failure and no reason to be looked at. Both properties that made the default the right call -
+that it is correct for most implementers and cheap for the rest - are what made the omission
+undetectable.
+
+The rule: **when adding a member with a default, enumerate the implementers and say, for each,
+why the default is right.** Seven names is a two-minute list, and it is the only step that
+distinguishes "the default suits this one" from "this one was never considered".
+
+### Two more bugs one line away, and the assumption that carried them
+
+Tracing that omission through `SequencedField` found two others in the same class, both older
+than this work and both of the shape this file already records repeatedly.
+
+**It discarded the time when delegating to its state.** `ElectricFieldAt(pos, t)` selected the
+state by `t` and then called the state's *time-free* accessor, so a driven state's oscillation
+was pinned at whatever that answers. That is the eighth appearance here of a time-varying
+quantity reached through a time-free interface answering at an arbitrary instant, and unlike
+the previous seven it bit in **both** transport modes: an integrator flying through a sequenced
+driven analytic element saw its RF standing still.
+
+**And its shortest period was unconditionally infinite.** Two consequences, both silent - the
+diffusive path takes an early return on a non-finite period, so such a field was never
+cycle-averaged; and step control had no drive period to cap against.
+
+**The assumption was written down, which is why it is worth keeping.** The property's own
+remark said "a sequence of static states has nothing oscillating in it" - true of every
+sequence anyone had built, and not a property of the class, because `FieldAssembly.Sequenced`
+wraps whatever the per-phase build returns. A remark that states an assumption about a class's
+inputs is a note to check it against what actually constructs the class; here the constructor
+call site was one file away and had been able to supply a driven state all along. The sibling
+property `OscillatingResolutionLength` asked the states rather than assuming, so the class
+already contained the correct pattern beside the incorrect one.
+
+### And a floor is measured, not asserted
+
+The test for the fix asserted the residual movement was below `1e-13` against a measured
+6.5e-14 - one and a half times of headroom on a floating-point floor that depends on the
+machine, the JIT and the solver's iteration count. It now measures the floor in the same test,
+on the same geometry with a phase that holds instead of ramping, and asserts the same order
+against that. The two come out at **6.53e-14 and 6.57e-14**: the held result *is* the
+arithmetic floor, which is a stronger statement than any absolute bound, and it cannot fail on
+another runner for a reason that has nothing to do with the fix.

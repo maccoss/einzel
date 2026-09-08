@@ -588,9 +588,13 @@ does is set the operating point the average is taken *at*.
 
 `ITimeVaryingField.AtOperatingPoint(t)` returns the field with its non-oscillatory
 time dependence held at `t`, leaving the drive oscillating. The default is `this`,
-so only a sequenced solve and the four wrappers between it and the solver do
-anything, and an unsequenced model is untouched by construction rather than by
-tolerance. It is applied in `DiffusionRun.Effective`, the single place a
+so an unsequenced model is untouched by construction rather than by tolerance.
+Five of the seven implementers do something: a sequenced solve holds its stage and
+ramp fraction, a sequenced analytic element holds its state selection, and the three
+wrappers pass the instant to what they wrap; a bare oscillation takes the default.
+The sequenced analytic case was missed on the first pass and found by review — the
+interface member carries the enumeration now, because a default decides for every
+implementer at once and the one that needs to disagree gets no compiler error. It is applied in `DiffusionRun.Effective`, the single place a
 `PonderomotiveField` is built, and the instant is a **required** parameter: a
 caller that does not know which operating point it means has no safe guess.
 
