@@ -3243,3 +3243,33 @@ flakiness. Effort already spent is not a reason to ship.
 negative share was pre-existing on the bare baseline too. It is not: the bare comparison
 reports +5.8 ms, 1.18×, positive and small. The claim was written from the shape of the
 argument rather than from a measurement that was one command away.
+
+## A sign change recovers a geometric quantity that a magnitude only fits
+
+Stranded on `astral-foil-energised` and rescued before that branch was deleted. The
+configuration it was measured on - a single foil bias, one number for the whole drift - has
+since been superseded by sixteen independently-biased stripes, so **the numbers below describe
+a model this project no longer ships**. The method is what survives.
+
+The question was whether a foil modelled as a centred potential well was really acting as one,
+or whether its parameters had simply been tuned until the ion turned round in the published
+place. With two free parameters, matching a published distance proves very little.
+
+**The discriminating measurement is where the effect changes sign.** Energising the well pulls
+the turning point inward when the ion turns beyond the well's centre, and pushes it outward
+when the ion turns near the centre - because an ion turning just past mid-drift was accelerated
+over almost its whole outbound path. So the crossover, where energising the foil makes no
+difference at all, must sit at **twice the well centre**, and that is a geometric quantity
+nothing in the dynamics was told.
+
+The well was centred at 175 mm by construction, predicting a crossover at 350; the measured
+crossover interpolated to 334.8 mm, 4.3 per cent out, with nothing fitted to it.
+
+**Matching the published distance could be a coincidence of two free parameters. Recovering the
+well centre could not** - it is a number the tuning had no access to. Where a model is fitted
+to a magnitude, look for a quantity of the model that shows up as a *zero* or a *sign change*
+rather than as a size: a fit can be dragged onto any magnitude, and it cannot manufacture the
+location of a crossing.
+
+Not re-measured against the sixteen-stripe foil, and it should be before it is relied on: the
+argument assumes a single centred well, and a graded stripe law need not have one.
