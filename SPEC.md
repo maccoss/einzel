@@ -1961,33 +1961,45 @@ Ordered by what unblocks the most, with the reasoning rather than just the list.
 Everything struck through was on this list and is now done; it is kept because *why*
 each turned out to be cheap or expensive is worth more than the fact of it.
 
-1. **Make a ramped diffusive phase affordable, and finish the front-end study it
-   blocks.** `tims-front-end` puts Hernandez's entrance funnel and gate in front of the
-   analyser, and the whole fill / trap / ramp sequence **does not finish** - 4.75
-   CPU-hours at 512 x 64 over 18 ms, then forty minutes at 256 x 32 over 12 ms, neither
-   reaching the end. So the study's own question is unanswered: whether the arrival width
-   the analyser reports is the analyser's own, or whether delivery leaves an axial spread
-   the ramp then reads as mobility. Settling that is what the front end is for, and it is
-   the last thing between this tunnel and a resolving power that means something.
+1. **Settle the well jitter, because it is what stops the cache paying on the one
+   device it was built for.** The caching this entry used to ask for is built
+   (`793f4e2`): a ramped diffusive phase keeps the cycle-averaged well across steps and
+   recomputes only the direct term, with `PotentialAt` asserted bit-for-bit equal to
+   `DirectPotentialAt + WellAt` over 324 points across four RF phases. It works where it
+   is meant to - on a synthetic DC ramp the driven field's evaluations fall from
+   9,609,600 to 490,208, **0 of 2,145 density nodes differ**, the collected count is
+   equal to the last digit, and the well rebuilds once in sixteen steps.
 
-   **The cost is named and the fix is arithmetic rather than a new method.** A ramped
-   diffusive phase re-assembles its operator every step, and each assembly samples the
-   *solved* funnel RF at sixteen instants per node to take its cycle mean and mean square.
-   But the ramp moves only DC - `exitPotential` moves and the RF amplitudes do not - so the
-   mean-square field, which is the expensive half, is identical at every step of the phase.
-   Caching it per node and re-sampling only the direct term should take the per-step cost to
-   about a sixteenth, for **every** elution scan rather than only this one.
+   **On the shipped TIMS analyser it rebuilds 30 of 30 and saves nothing.** The well
+   genuinely moves **1.8e-5** between successive instants of the ramped field -
+   deterministically, over exactly one drive period - and the guard that re-probes
+   sixteen points every step correctly throws the cache away each time. So the front-end
+   study is still blocked, and it is blocked by this rather than by the absence of a
+   cache.
 
-   **It is checkable without a stopwatch**, which matters because the alternative evidence is
-   a wall-clock comparison on a shared machine. The per-phase assembly counts are already in
-   `run --json` - added when a hold was found assembling its operator 130 to 253 times for a
-   field that never changed - so a working cache shows up as a count as well as a duration,
-   and a count cannot be explained by the machine being quiet.
+   **The obvious explanation is already refuted by its own control.** The hypothesis was
+   the ramp advancing inside the averaging window, which predicts a slower ramp gives
+   less; a hundredfold slower ramp gave **3.6e-5, larger**. What it does scale with is
+   the inverse amplitude - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100 / 400 V - which is the
+   signature of an additive contamination cross-multiplied with the drive. Recorded as
+   measured rather than explained.
 
-   Stated as an inference from the code path rather than a measurement: sixteenfold is what
-   the sampling count implies, and the assembly counts are what would confirm it. The
-   analyser's own ramps are already cheap because their RF is analytic, so this is
-   specifically the cost of a *solved* driven geometry inside a ramped diffusive phase.
+   **The tolerance is deliberately not loosened, and that is the load-bearing decision.**
+   A tolerance chosen larger than a variation nobody has explained is caching over that
+   variation, which converts an accuracy question into a silent one. And the same number
+   is an accuracy statement in its own right: **a ramped driven diffusive well is not the
+   well to better than about 1e-5**, which bears on every driven diffusive result and not
+   only on the cost of this one.
+
+   So there are two prizes and they are the same investigation - the front-end study
+   becomes runnable, and a bound that is currently a mystery becomes either a real
+   physical term or a defect that is removed.
+
+   One correction the cache commit already made to this entry's earlier arithmetic: "about
+   a sixteenth per step" was half right. The direct term *is* the cycle mean of the
+   potential, so what the cache removes is every field evaluation and no potential
+   evaluation - **2.72x** on total evaluations and 3.7x of wall clock on an analytic
+   drive, not sixteen.
 
 2. ~~**Say how much of a mixture's coupling is worth having, on a device that separates
    ions.**~~ - **answered, and it agrees with the published estimate by an independent
@@ -2828,9 +2840,28 @@ each turned out to be cheap or expensive is worth more than the fact of it.
     samples the *solved* funnel RF at sixteen instants per node to take its cycle mean and
     mean square. **But the ramp moves only DC** — the RF amplitudes are constant through the
     scan — so the mean-square field, the expensive half, does not change step to step.
-    Caching it per node and re-sampling only the direct term should take the per-step cost to
-    about a sixteenth for every elution scan; the per-phase assembly counts make that
-    measurable directly. The study's own question stays open: whether the arrival width is
+    **That cache is now built, and the measurement both corrected the arithmetic and
+    refused to pay here.** "About a sixteenth" was half right: the direct term *is* the cycle
+    mean of the potential, so what the cache removes is every field evaluation and no potential
+    evaluation - **2.72x** on total evaluations and 3.7x of wall clock on an analytic drive. On
+    a synthetic DC ramp it works exactly as intended: 9,609,600 field evaluations become
+    490,208, **0 of 2,145 density nodes differ**, the collected count is equal to the last
+    digit, and the well rebuilds once in sixteen steps.
+
+    **On the shipped analyser it rebuilds 30 of 30 and saves nothing.** The well genuinely
+    moves **1.8e-5** between successive instants of the ramped field - deterministically, over
+    exactly one drive period - so the sixteen-probe guard correctly throws the cache away every
+    step. The obvious explanation is refuted by its own control: the ramp advancing inside the
+    averaging window predicts that a slower ramp gives less, and a hundredfold slower ramp gave
+    **3.6e-5, larger**. It scales as 1/amplitude instead - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100
+    / 400 V - the signature of an additive contamination cross-multiplied with the drive.
+
+    So the sequence is still blocked, **by the jitter rather than by the absence of a cache**,
+    and the tolerance is deliberately not loosened to cover it: a tolerance chosen larger than
+    an unexplained variation is caching over that variation. The same 1.8e-5 is also an accuracy
+    statement - a ramped driven diffusive well is not the well to better than about 1e-5.
+
+    The study's own question stays open: whether the arrival width is
     the analyser's or whether delivery adds an axial spread the ramp reads as mobility. Not
     carried: a deflector plate, a continuous fill, the funnel's own gas, an exit funnel.
 

@@ -1089,12 +1089,28 @@ ramps are cheap by comparison because their RF is analytic.
 But **the ramp moves only DC.** The sequence ramps `exitPotential`; `funnelRfAmplitude` and
 `rfAmplitude` are constant throughout, so the oscillating part of the field — and therefore
 its cycle mean square, the expensive half — does not change from step to step. Only the direct
-term does, and that is one field evaluation per node rather than sixteen. Caching the
-mean-square field per node on the first assembly and re-sampling only the DC part would take
-the per-step cost to about a sixteenth where the drive is held, which is every elution scan
-this instrument runs. **Stated as an inference from the code path rather than a measurement**:
-the assembly counts and the ramp/hold cost ratio are reported per phase, so it can be
-measured directly by holding the drive and re-running.
+term does, and that is one field evaluation per node rather than sixteen.
+
+**That cache is now built, and the measurement both corrected the arithmetic and
+refused to pay here.** "About a sixteenth" was half right: the direct term *is* the cycle
+mean of the potential, so what the cache removes is every field evaluation and no potential
+evaluation - **2.72x** on total evaluations and 3.7x of wall clock on an analytic drive. On
+a synthetic DC ramp it works exactly as intended: 9,609,600 field evaluations become
+490,208, **0 of 2,145 density nodes differ**, the collected count is equal to the last
+digit, and the well rebuilds once in sixteen steps.
+
+**On the shipped analyser it rebuilds 30 of 30 and saves nothing.** The well genuinely
+moves **1.8e-5** between successive instants of the ramped field - deterministically, over
+exactly one drive period - so the sixteen-probe guard correctly throws the cache away every
+step. The obvious explanation is refuted by its own control: the ramp advancing inside the
+averaging window predicts that a slower ramp gives less, and a hundredfold slower ramp gave
+**3.6e-5, larger**. It scales as 1/amplitude instead - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100
+/ 400 V - the signature of an additive contamination cross-multiplied with the drive.
+
+So the sequence is still blocked, **by the jitter rather than by the absence of a cache**,
+and the tolerance is deliberately not loosened to cover it: a tolerance chosen larger than
+an unexplained variation is caching over that variation. The same 1.8e-5 is also an accuracy
+statement - a ramped driven diffusive well is not the well to better than about 1e-5.
 
 **What this template does not carry.** No deflector plate, so a continuous beam cannot be
 diverted during the trap and the fill is a single released packet rather than ten milliseconds

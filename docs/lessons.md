@@ -3273,3 +3273,35 @@ location of a crossing.
 
 Not re-measured against the sixteen-stripe foil, and it should be before it is relied on: the
 argument assumes a single centred well, and a graded stripe law need not have one.
+
+## Fixing a stale list means checking the item you promote, not only the one you strike
+
+The ranked *What to do next* list had its item 1 pointing at a study that four later commits
+had already answered, so it was struck with its result and the next open entry was promoted to
+the top - by reading that entry's prose rather than the code it describes.
+
+**The promoted entry was stale too, and by an hour.** It asked for a per-node cache of a
+ramped diffusive phase's cycle-averaged well, written at 06:31; the cache landed at 07:29 the
+same morning, in a commit that *also* corrected the entry's arithmetic ("about a sixteenth"
+is really 2.72x, because the direct term is itself a cycle mean of the potential) and reported
+the thing that actually matters - that on the shipped analyser the cache rebuilds 30 of 30 and
+saves nothing, because the well moves 1.8e-5 between successive instants for a reason nobody
+has explained. So the new item 1 asked for work that was done, and buried the open question it
+should have named.
+
+**A stale entry is evidence the list is stale, not that one entry is.** The completed item and
+the entry below it went stale by the same mechanism at the same time: someone finished a piece
+of work and updated the code, the changelog and the register, and not the ranked list. Striking
+the top one and promoting its neighbour untouched promotes a note of the same vintage - and the
+promotion carries more authority than the entry ever had, because it now reads as *the next
+thing to do*.
+
+The check is cheap and it is the same one that catches a stranded branch: take a distinctive
+phrase from the entry and run `git log -S` on it. That finds the commit that wrote the entry
+*and* anything that superseded it, in one command. Here it returned the two commits an hour
+apart, which is the whole story.
+
+The same applies to the copies. This claim lived in three places - the changelog, the ranked
+list, and the device write-up - and correcting one would have left two documents disagreeing
+with the code and with each other. When a claim is worth repeating in three documents it is
+worth grepping for in all three before it is repeated a fourth time.
