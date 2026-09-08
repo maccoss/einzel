@@ -460,14 +460,22 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
     }
 
     /// <summary>How many times a timing floor is sampled before its minimum is taken.</summary>
+    /// <remarks>
+    /// Both floors in this file, deliberately. It governed only the interleaved ratio while
+    /// <see cref="Cheapest"/> - which is literally "a timing floor, sampled, minimum taken" -
+    /// sat directly beneath it with a 5 of its own, so tuning the constant moved one
+    /// measurement and silently left the other where it was. Nothing was wrong: each loop did
+    /// what its own comment said, which is why it survived. What was wrong is that adjacency
+    /// asserted a relationship the code did not have.
+    /// </remarks>
     private const int Samples = 7;
 
-    /// <summary>The cheapest of five measurements, in milliseconds.</summary>
+    /// <summary>The cheapest of <see cref="Samples"/> measurements, in milliseconds.</summary>
     private static double Cheapest(Func<double> measure)
     {
         var best = double.MaxValue;
 
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < Samples; i++)
         {
             best = Math.Min(best, measure());
         }
