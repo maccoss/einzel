@@ -82,13 +82,22 @@ public sealed class TimsMixtureTests(ITestOutputHelper output)
         // what is isolated here is what two populations do to each other once they are parked.
         document["parameters"]!["sourceX"]!["value"] = 10.0;
 
-        // One phase, holding, so nothing is eluting while the packets settle.
-        document["sequence"] = new JsonArray(
-            JsonNode.Parse("""
-                { "name": "hold", "duration": { "value": 2500, "unit": "us" },
-                  "set": { "storagePeakField": { "value": 5000, "unit": "V/m" },
-                           "analysisPeakField": { "value": 5000, "unit": "V/m" } } }
-                """));
+        // The template's own fill / accumulateAndElute / transfer sequence goes with it. A
+        // sequenced mixture is refused outright - the sequenced path steps ONE density and
+        // would run the first population against a derived mobility - and what this study
+        // measures is what two parked populations do to each other, which needs no timeline.
+        document.AsObject().Remove("sequence");
+
+        // The operating point, set on the parameter surface where it takes effect.
+        //
+        // This was a one-phase `sequence` whose `set` carried the same two values, which was
+        // decorative twice over: `ExecuteMixture` steps no timeline, so the phase was never
+        // applied, and the run used the template's defaults - which happen to be these
+        // numbers. Had they differed, the study would have run at an operating point other
+        // than the one it declared and nothing would have said so. A sequenced mixture is now
+        // refused outright, which is what surfaced it.
+        document["parameters"]!["storagePeakField"]!["value"] = 5000.0;
+        document["parameters"]!["analysisPeakField"]!["value"] = 5000.0;
 
         return document.ToJsonString();
     }
@@ -107,8 +116,19 @@ public sealed class TimsMixtureTests(ITestOutputHelper output)
     private static readonly Lazy<(IElectrostaticField Field, IReadOnlyList<ValidityWarning> Warnings)> Tunnel =
         new(() =>
         {
-            var reference = ModelValidator.Validate(ModelJson.Parse(Document(1e6, "none"))).Model!;
-            var built = FieldAssembly.BuildReported(reference);
+            var validation = ModelValidator.Validate(ModelJson.Parse(Document(1e6, "none")));
+
+            // Asserted rather than `!`. A refused model reached `BuildReported` as a null and
+            // came back as "Value cannot be null. (Parameter 'model')" from four frames down,
+            // which says nothing about the document - and the refusal it was hiding was the
+            // useful message.
+            Assert.True(
+                validation.IsValid,
+                validation.IsValid
+                    ? string.Empty
+                    : string.Join("; ", validation.Errors.Select(e => $"{e.Path}: {e.Constraint}")));
+
+            var built = FieldAssembly.BuildReported(validation.Model!);
 
             return (built.Field, built.Warnings);
         });
