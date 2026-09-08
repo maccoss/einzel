@@ -173,6 +173,19 @@ public sealed class SequencedField : ITimeVaryingField
     /// </remarks>
     public ITimeVaryingField AtOperatingPoint(double timeSeconds)
     {
+        // VALIDATED BEFORE THE FAST PATH, not in the constructor the fast path skips.
+        // Raised by review: an instant is an instant whether or not this field has anything
+        // to hold with it, and a guard that fires only on the path that allocates makes
+        // whether a caller's NaN is caught depend on the shape of the model. A single-state sequence took the fast path and never reached it.
+        if (!double.IsFinite(timeSeconds))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeSeconds),
+                timeSeconds,
+                "an operating point is an instant on the instrument's timeline and must be "
+                + "finite");
+        }
+
         IElectrostaticField[]? held = null;
 
         for (var i = 0; i < _states.Count; i++)

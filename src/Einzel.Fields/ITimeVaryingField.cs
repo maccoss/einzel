@@ -154,5 +154,27 @@ public interface ITimeVaryingField : IElectrostaticField
     /// interface should be added without a default, or with the same enumeration done first.
     /// </para>
     /// </remarks>
-    ITimeVaryingField AtOperatingPoint(double timeSeconds) => this;
+    ITimeVaryingField AtOperatingPoint(double timeSeconds)
+    {
+        // THE GUARD LIVES IN THE DEFAULT, which is the only place that reaches every
+        // composition. Put in the two implementations that STORE the instant, it missed the
+        // ordinary case: an unsequenced model's solved element carries no drive, so it is not
+        // time-varying at all, and the composition is made entirely of implementations that
+        // pass the instant along or ignore it. Nothing validated, and a caller's NaN was
+        // caught or not depending on whether the model happened to have a sequence in it.
+        //
+        // Here it covers everything, because an implementer either validates for itself -
+        // SequencedField and DrivenSolvedField do, since they hold the value - or delegates
+        // to something that eventually reaches a leaf, and every leaf takes this default.
+        if (!double.IsFinite(timeSeconds))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeSeconds),
+                timeSeconds,
+                "an operating point is an instant on the instrument's timeline and must be "
+                + "finite");
+        }
+
+        return this;
+    }
 }

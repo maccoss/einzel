@@ -227,6 +227,16 @@ public sealed class RampedWellOperatingPointTests(ITestOutputHelper output)
         {
             Assert.Same(field, field.AtOperatingPoint(atSeconds));
         }
+
+        // AND IT STILL REFUSES A NON-FINITE INSTANT. Returning the same instance is a
+        // shortcut past work, not past validation - a guard that fires only where the field
+        // has something to hold makes whether a caller's NaN is caught depend on the shape
+        // of the model. Raised by review, on the sequenced class; the same hole was in the
+        // solved one, and it is reachable only through a composition like this.
+        var refused = Assert.Throws<ArgumentOutOfRangeException>(
+            () => field.AtOperatingPoint(double.NaN));
+
+        Assert.Contains("finite", refused.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -3217,6 +3217,24 @@ was busy — so it now takes the fastest of seven and prints them all, exactly a
 widening a bound**: if every sample is late the minimum is late and the test still fails,
 where widening admits the failure permanently.
 
+**Correction, from a later CI failure: the change went on the wrong term.** The paragraph
+above says the timeout test "now takes the fastest of seven". What took the fastest of seven
+was `Bare` - the interpreter-start *baseline* - while the kill it is subtracted from stayed a
+single measurement. The assertion is about `elapsed - bare`, and on the Windows agent that
+failed it next, bare was **61 ms against an elapsed of 13,674**: the sampling had been applied
+to the term contributing 0.4 per cent of the answer and not to the one contributing the rest.
+
+Both terms sit in the same expression two lines apart, and the write-up describes the
+reasoning correctly and the code inaccurately - so re-reading either the code or the lesson
+alone would not have caught it. **When a statistical fix is applied to a difference, name
+which term was sampled**, because "it now takes the fastest of seven" reads as a statement
+about the measurement and was a statement about its baseline.
+
+The kill is sampled now, three times rather than seven because each sample has to wait out
+the declared timeout. On an unloaded machine the three come out at 1244 / 1236 / 1231 ms
+against a 1200 ms declared timeout, so the enforcement genuinely is a tight bound and what
+the old single sample measured on CI was the agent.
+
 **The other was a baseline problem and is not fixed.** The round-trip test already took the
 cheapest of seven interleaved pairs and still failed on CI, so contention was not the cause.
 The diagnosis is that its ratio is not scale-free: it compares "start Python" against "start

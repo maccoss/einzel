@@ -228,17 +228,50 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
 
         var bare = Cheapest(Bare);
 
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        var failure = Assert.Throws<EinzelException>(() => Run(folder, new JsonObject()));
-        clock.Stop();
+        // THE KILL IS SAMPLED, because the kill is what the assertion is about.
+        //
+        // docs/lessons.md says of this test: "The timeout test measured a single kill. A
+        // floor sampled once is not a floor ... so it now takes the fastest of seven." The
+        // reasoning was right and the change went on the wrong term. What took the fastest
+        // of seven was `Bare` - the interpreter-start BASELINE - while the kill stayed a
+        // single measurement. The assertion is about `elapsed - bare`, and on the Windows
+        // agent that failed it, bare was 61 ms against an elapsed of 13,674: the sampling
+        // was applied to the term contributing 0.4 per cent and not to the one contributing
+        // the rest.
+        //
+        // Three rather than seven, and the reason is cost rather than principle: each
+        // sample has to let the runaway actually run to its declared timeout, so seven
+        // would be eight seconds of deliberate waiting. Three is enough for a minimum to
+        // stop describing one busy moment.
+        //
+        // Taking a minimum is still not widening the bound. If the enforcement is genuinely
+        // late every sample is late, the minimum is late, and the test fails - which is the
+        // property that separates this from raising the ceiling to admit the failure.
+        var kills = new List<double>(KillSamples);
+        EinzelException? failure = null;
 
-        var elapsed = clock.Elapsed.TotalMilliseconds;
+        for (var i = 0; i < KillSamples; i++)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            failure = Assert.Throws<EinzelException>(() => Run(folder, new JsonObject()));
+            clock.Stop();
+
+            kills.Add(clock.Elapsed.TotalMilliseconds);
+        }
+
+        var elapsed = kills.Min();
 
         output.WriteLine($"interpreter start alone   {bare,8:F0} ms");
         output.WriteLine($"runaway killed after      {elapsed,8:F0} ms");
         output.WriteLine($"enforcement's own share   {elapsed - bare,8:F0} ms  "
             + $"against {TimeoutMs} declared");
 
+        // Every sample, so a failure says whether one was hit or all of them were - the
+        // same reason the round-trip test below prints all of its pairs.
+        output.WriteLine(
+            "every kill: " + string.Join(", ", kills.Select(k => $"{k:F0} ms")));
+
+        Assert.NotNull(failure);
         Assert.Equal(ErrorCodes.CostGateRefused, failure.Error.Code);
 
         // It waited. This catches a run that failed early for some other reason and
@@ -458,6 +491,14 @@ public sealed class SubprocessRunnerTests(ITestOutputHelper output) : IDisposabl
 
         return started.Elapsed.TotalMilliseconds;
     }
+
+    /// <summary>How many kills are timed before the fastest is taken.</summary>
+    /// <remarks>
+    /// Fewer than <see cref="Samples"/> because each one waits out the declared timeout, so
+    /// the cost is seconds rather than milliseconds. Enough for a minimum to stop being one
+    /// busy moment, which is all that is asked of it.
+    /// </remarks>
+    private const int KillSamples = 3;
 
     /// <summary>How many times a timing floor is sampled before its minimum is taken.</summary>
     /// <remarks>

@@ -191,12 +191,22 @@ public sealed class SequencedDrivenFieldTests(ITestOutputHelper output)
     {
         var field = TwoDriven();
 
+        // BOTH PATHS, because the guard used to live in the constructor and the fast path
+        // returns before reaching it. Raised by review, and my two tests each covered half
+        // the matrix without crossing: the single-state fast path was exercised with a
+        // valid instant and NaN was only ever handed to the path that allocates. Where a
+        // guard sits behind a fast path, the refusal has to be asserted on both sides of it.
+        var single = new SequencedField([Static(100.0)], [BoundarySeconds]);
+
         foreach (var bad in (double[])[double.NaN, double.PositiveInfinity, double.NegativeInfinity])
         {
-            var thrown = Assert.Throws<ArgumentOutOfRangeException>(
-                () => field.AtOperatingPoint(bad));
+            foreach (var subject in (SequencedField[])[field, single])
+            {
+                var thrown = Assert.Throws<ArgumentOutOfRangeException>(
+                    () => subject.AtOperatingPoint(bad));
 
-            Assert.Contains("finite", thrown.Message, StringComparison.Ordinal);
+                Assert.Contains("finite", thrown.Message, StringComparison.Ordinal);
+            }
         }
     }
 }
