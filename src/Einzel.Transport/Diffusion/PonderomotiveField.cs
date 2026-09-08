@@ -293,14 +293,12 @@ public sealed class PonderomotiveField : IElectrostaticField
     /// </remarks>
     public double DirectPotentialAt(in Vec3 position)
     {
-        var direct = 0.0;
-
-        for (var s = 0; s < _samples; s++)
-        {
-            direct += _driven.PotentialAt(in position, PeriodSeconds * s / _samples);
-        }
-
-        return direct / _samples;
+        // Asked for rather than sampled here. Where the field can give its window mean in
+        // closed form this is one evaluation per channel instead of `_samples` evaluations of
+        // the whole composite, and on a driven diffusive run that is the dominant cost: this
+        // is called once per density node per step. Fields that cannot fall back to the same
+        // sampling loop, so the answer is unchanged either way.
+        return _driven.CycleMeanPotentialAt(in position, 0.0, PeriodSeconds, _samples);
     }
 
     /// <summary>The ponderomotive well at a point, as a potential in volts.</summary>

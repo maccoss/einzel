@@ -61,6 +61,27 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
 
     /// <inheritdoc/>
     /// <remarks>
+    /// Member by member, so a composite gets whatever saving each member can offer: an
+    /// average is linear, so the mean of the sum is the sum of the means, and a member that
+    /// does not vary in time contributes its potential once.
+    /// </remarks>
+    public double CycleMeanPotentialAt(
+        in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    {
+        var total = 0.0;
+
+        foreach (var element in _elements)
+        {
+            total += element is ITimeVaryingField driven
+                ? driven.CycleMeanPotentialAt(in position, fromSeconds, periodSeconds, samples)
+                : element.PotentialAt(in position);
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Held member by member, because a superposition is exactly where this matters: the
     /// shipped TIMS analyser is a ramped SOLVED gradient plus an analytic quadrupole RF, so
     /// one member carries the operating point and the other carries the oscillation. Returns

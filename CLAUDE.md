@@ -1566,6 +1566,37 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   hypothesis predicted no change in** - one a step-to-step difference, the other my own
   sampling at whole drive periods, which pins the phase and is stroboscopic.
 
+  **And the cost is now decomposed, so the study is affordable.** Measured on a probe that is
+  the shipped model with every phase scaled to a thousandth - the step is set by the field and
+  the mesh, not by the window, so step count scales with duration and the solve is a one-off:
+  **199 s as found, 26 s with the cycle mean in closed form, 15 s with the coefficient sweep
+  across cores**, which is 55 hours down to about **4**. Cross-checked at 1 %: 1,842 s measured
+  against 1,990 predicted, and ten times the assemblies. The answer moved 1.2e-15 across the
+  whole of it.
+
+  **The cycle mean needed no samples.** `DirectPotentialAt` evaluated the composite potential at
+  sixteen instants per density node every step; a solved field's potential is linear in its
+  channel weights, so the window mean is `sum_k mean(w_k) phi_k(x)` - one evaluation per channel
+  and no time sampling, with `RfWaveform.Mean` in closed form. **7.7x**, guarded on every drive
+  completing a whole number of cycles in the window and falling back to sampling where it
+  cannot. It corrects a claim recorded above: the direct term needing "its sixteen samples
+  whatever the ramp moves" is true of the composite and false of the parts.
+
+  **The coefficient sweep threads 5x and the Gauss-Seidel sweep 1.09x**, on the same nodes,
+  three runs each - so the second was rejected rather than kept. **The memory-bandwidth ceiling
+  is a property of a loop, not of a subsystem**: bicubic superpositions are compute-bound and
+  cache-resident, a Gauss-Seidel cell is a few flops against several array touches plus an
+  integer division per face. Bit-identical either way, since nothing is summed across nodes, and
+  verified by forcing the threshold to 1 so every diffusive test takes the parallel path.
+
+  **What is left is the step count.** 56 ns a step where the diffusion limit allows 1.26e-4 s -
+  a factor of 2,236, the drift limit binding - so the window is ~142,000 steps whatever the
+  per-step cost. The implicit scheme gains against the diffusion limit and buys nothing here.
+  **And `einzel estimate` says 8 s against 197,000**, four orders low, with its basis line
+  stating why in prose: the drift limit needs a field the estimate has not solved. A runtime
+  pilot of a few microseconds would return the real step; the estimate already measures its
+  solve and flight rates that way. Not built.
+
   The study's own question stays open:
   whether the arrival width is the analyser's own or whether the delivery leaves an axial
   spread the ramp then reads as mobility. Not carried: a deflector plate, a continuous fill,

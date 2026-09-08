@@ -3470,3 +3470,81 @@ on the same geometry with a phase that holds instead of ramping, and asserts the
 against that. The two come out at **6.53e-14 and 6.57e-14**: the held result *is* the
 arithmetic floor, which is a stronger statement than any absolute bound, and it cannot fail on
 another runner for a reason that has nothing to do with the fix.
+
+## Two loops in one file, and one threads five times better than the other
+
+A driven diffusive step has two expensive loops over the density grid: the coefficient sweep,
+which evaluates the field at every node, and the red-black Gauss-Seidel sweep that advances the
+density. Both are over the same 33,345 nodes, both write only their own slots, and both are
+bit-identical however the rows are divided. **One goes 5x on sixteen cores and the other goes
+1.09x**, measured three runs each with no run-to-run spread at all.
+
+| loop | serial | threaded |
+| --- | --- | --- |
+| coefficient sweep (the ramped probe) | 26 s | **15 s** |
+| red-black sweep (the held probe) | 12 s | 11 s |
+
+**And the difference is readable in the source rather than mysterious.** The coefficient sweep
+does seven cycle-mean potential evaluations per node, each a superposition of bicubic
+interpolations over the solved channels - arithmetic-heavy, and its working set is a couple of
+megabytes, so it is cache-resident. The Gauss-Seidel sweep does a handful of floating-point
+operations per cell against several array touches plus an **integer division and modulo per
+face per cell**, from decoding a neighbour index. That is indexing- and memory-bound, and
+threading it competes for a bus that is already the limit.
+
+CLAUDE.md records the ceiling from the other side: parallelising studies peaked at 5.25x on the
+solve and lost ground past eight physical cores, while the arithmetic control reached 6.74x and
+gained from hyperthreading, and the note ends "expect a threaded smoother to disappoint for the
+same reason". That was right about the smoother and **wrong about the loop next to it**, which
+is the whole lesson: the memory-bandwidth ceiling is a property of a loop, not of a subsystem,
+so a loop is measured rather than classified by what it sits beside.
+
+**The 1.09x was rejected, and that is the other half.** It cost a lock, a thread-local
+reduction, a second code path and thirty-eight lines lifted out of their loop, for eight per
+cent. A change whose measured return does not justify its complexity should not be kept just
+because it works - and the measurement is worth more than the change would have been.
+
+### Three smaller things from the same afternoon
+
+**A reduction can be threaded when it is a maximum and not when it is a sum.** The sweep
+accumulates `Math.Max` over cells, which is associative and commutative, so a per-partition
+maximum combined at the end is bit-identical to the serial one. A *sum* is not: the rounding
+would depend on how the work was divided, which is why `PacketIntegrator` threads its
+applied-field loop and deliberately leaves its symmetric pair sum serial.
+
+**A lambda in a branch allocates on the path that does not take it.** The parallel loop lives
+in its own method, because a lambda's captures are hoisted when the method is *entered* rather
+than when its branch is taken - the 504-bytes-a-step finding this file already records. Writing
+`if (parallel) Parallel.For(...) else for (...)` in one method would have put that allocation
+in the serial path of a per-step loop, which is exactly where CMP-1 forbids it.
+
+**And the body was moved out verbatim.** The row methods take sixteen parameters, named as the
+enclosing locals were, so not one line of the arithmetic was retyped. A long signature is the
+cheaper price in a numerical core - the same trade the 3-D solver made by being written beside
+the 2-D one rather than by generalising it.
+
+### The comparison the project's own conventions would not allow
+
+The check I most wanted was the same grid through both paths in one process, compared to the
+bit. Reaching it needs the threshold and the sweep to be visible to a test, and **this
+repository has no `InternalsVisibleTo` anywhere** - `internal` here means "for the sibling
+class in the same assembly", not "for tests". Widening that for one test would have traded a
+convention for an assertion.
+
+What replaced it is stronger. Setting the threshold to **1** takes every diffusive test in the
+suite through the parallel path, so the Boltzmann equilibrium still has to hold to 8.9e-16, the
+ion ledger to 100.0000%, and the corpus drift tube to `L/(mu E)` - closed forms this engine had
+no part in, over 1,355 tests. A bespoke equality assertion of mine would have been weaker than
+that and would have looked more thorough.
+
+**And it found something, which a bespoke assertion would not have.** One test failed:
+`TheCacheRemovesEveryFieldEvaluationAndNoPotentialEvaluation` reported **8,337,733 field
+evaluations against a true 9,609,600**. Not the physics - every closed-form test passed - but
+the test's own `Counting` wrapper, whose `Fields++` is a read, an add and a write, so concurrent
+increments lose counts. **A test's own instrumentation is part of what has to be thread-safe
+once the code it counts is**, and an `Interlocked.Increment` fixes it.
+
+The part worth keeping is how nearly it hid. At the shipping threshold that test's grid is 561
+nodes, below the cut, so it takes the serial path and passes - the defect only exists on a
+configuration nobody ships. It would have waited there until somebody lowered the threshold or
+grew the grid, and then presented as the well cache having regressed.

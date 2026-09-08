@@ -165,6 +165,21 @@ public sealed class SequencedField : ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The state is chosen at the operating point, as everywhere else here, and then asked
+    /// for its own window mean. A static state contributes its potential once.
+    /// </remarks>
+    public double CycleMeanPotentialAt(
+        in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    {
+        var state = At(fromSeconds);
+
+        return state is ITimeVaryingField driven
+            ? driven.CycleMeanPotentialAt(in position, fromSeconds, periodSeconds, samples)
+            : state.PotentialAt(in position);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Held state by state as well as at the top: the selection is pinned so a window
     /// near a phase boundary cannot blend two states, and each state is asked to hold its
     /// own operating point so a ramped solve nested inside a sequence is held too.
