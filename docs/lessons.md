@@ -3305,3 +3305,50 @@ The same applies to the copies. This claim lived in three places - the changelog
 list, and the device write-up - and correcting one would have left two documents disagreeing
 with the code and with each other. When a claim is worth repeating in three documents it is
 worth grepping for in all three before it is repeated a fourth time.
+
+## A control that measures a different quantity neither confirms nor refutes the hypothesis
+
+A ramped diffusive phase's cycle-averaged well moves 1.8e-5 between successive steps on the
+shipped TIMS analyser, so the cache that exists to keep it rebuilds every step and saves
+nothing. The obvious candidate was the ramp advancing inside the averaging window, so that a
+slow drift is averaged as though it were part of the quiver. It was written down as **refuted
+by its own control**: a hundredfold slower ramp did not reduce the jitter.
+
+**The mechanism is real.** `SequencedRun.Instant` returns a shifted *view* of a still-varying
+field rather than a frozen snapshot, so the ramp does keep moving inside the window, and the
+term it injects has a closed form that reproduces every measured digit across a hundredfold
+in rate and a sixteenfold in amplitude.
+
+**What it produces is a bias, and the control measured a jitter.** A linear ramp's slope is
+constant, so the injected term is identical at every instant: the well is offset by the same
+amount every step, and differencing successive steps cancels it exactly - at the 1e-15
+floating-point floor for every rate, including the one where the bias is 2.4e-4. So the ramp
+contributes no step-to-step change at all, and slowing it could not have moved the number the
+control was watching, whatever the mechanism.
+
+The hypothesis was therefore never tested. It was neither confirmed nor refuted, and the
+refutation went into three documents.
+
+**The check that would have caught it is one sentence**: before running a control, say which
+quantity the hypothesis predicts a change in, and confirm the control measures that quantity.
+Here the hypothesis predicts a change in *the well*, and the control measured a change in
+*the difference between successive wells* - a derivative, which annihilates exactly the
+constant the hypothesis predicts. A control on a derivative is blind to every hypothesis
+whose prediction is constant, and that is a large class.
+
+Two smaller things from the same investigation.
+
+**A first-order closed form failed where it should have been checked hardest.** The bias is
+`-2rT/(NA)` to first order plus the drift's own variance, and the variance term is 1 per cent
+of the answer at the smallest amplitude tried. Asserting the first-order form gave ratios of
+1.0000, 1.0000, 0.9899 - and the one that missed is at the extreme of the sweep, exactly where
+an eye reads a discrepancy as the model beginning to fail rather than as a term left out.
+Keeping the second-order term makes it exact everywhere.
+
+**And the guard that exists says the right thing about the wrong case.**
+`PonderomotiveField`'s constructor refuses a field whose shortest period is not finite,
+arguing that "a field that varies in time because a parameter ramps is not an oscillation and
+is not to be averaged". That argument is correct and it fires only when the field is a ramp
+and *nothing else*. A field that is a ramp **and** a drive passes the guard, and every elution
+scan is one. A guard whose stated rationale is broader than its condition is worth re-reading
+when a new configuration arrives.

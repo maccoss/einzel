@@ -493,10 +493,56 @@ period (1/850 kHz, checked). Two controls:
 So it scales as **1/amplitude** and not with the ramp rate, which is the
 signature of an additive absolute contamination cross-multiplied with the drive:
 something that is not the drive is entering the mean square of the *oscillating*
-field. The obvious candidate — the ramp advancing inside the averaging window, so
-a slow drift is averaged as though it were a quiver — is **refuted by its own
-control**, since a hundredfold slower ramp did not reduce it. Recorded as
-measured rather than explained.
+field.
+
+### The obvious candidate is real, exactly quantified, and not this
+
+The candidate was the ramp advancing inside the averaging window, so that a slow
+drift is averaged as though it were part of the quiver. It was recorded as
+**refuted by its own control**, since a hundredfold slower ramp did not reduce
+the jitter. That reading was wrong, and the mistake is worth more than the
+number: **the hypothesis is about a bias and the control measured a jitter.**
+
+The mechanism is real and structural. `SequencedRun.Instant` returns
+`new TimeShiftedField(driven, atSeconds)` — a shifted *view* of a field that is
+still varying, not a frozen snapshot — so the ramp genuinely does keep moving
+inside the averaging window. Writing the window average of
+`|osc + drift − mean|²` as `var(osc) + var(drift) + 2cov`, the identity
+`Σ s·cos(2πs/N) = −N/2` evaluates the covariance at `−A·r·T/(2N)`, so to first
+order the relative bias is **−2rT/(NA)**. Keeping the drift's own variance makes
+the form exact:
+
+| | rate (V/m/s) | measured | closed form |
+| --- | --- | --- | --- |
+| | 1.61e3 | −2.36759e-6 | −2.36759e-6 |
+| | 1.61e4 | −2.36705e-5 | −2.36705e-5 |
+| | 1.61e5 | −2.36169e-4 | −2.36169e-4 |
+
+Every digit, across a hundredfold in rate and a sixteenfold in amplitude
+(`PonderomotiveRampLeakTests`).
+
+**And a linear ramp has a constant slope, so the term it injects is the same at
+every instant.** The well is *offset*, identically at every step, and
+differencing successive steps cancels it exactly — measured at the 1e-15
+floating-point floor for every rate including the fastest, while the bias at that
+rate is 2.4e-4. The cache's guard compares steps, so it is blind to this by
+construction; and the control that slowed the ramp was watching the same
+difference, so it could not have moved whatever the mechanism. **A control that
+measures a different quantity from the hypothesis neither confirms nor refutes
+it.**
+
+Two consequences. The bias is a **geometry** effect, not a ramp effect alone: a
+ramp perpendicular to the drive has no covariance to enter through and biases
+nothing (5.96e-7 against 2.36e-4, four hundredfold). In this tunnel the DC
+gradient is axial and the quadrupole RF transverse, so on the axis they are
+orthogonal and there is no bias at all, and off-axis only the DC's radial
+component couples — which puts the shipped analyser's bias at **2e-6 or below**,
+and that figure is an upper bound assuming full parallelism.
+
+So the step-to-step jitter of 1.8e-5 **remains unexplained**, and it is now known
+not to be this. What has been gained is that the mechanism everyone suspected is
+characterised to the digit and can be set aside on evidence rather than on a
+control that was pointed at the wrong quantity.
 
 The tolerance is deliberately **not** loosened to cover it. A tolerance chosen
 larger than a variation nobody has explained is caching over that variation, and
