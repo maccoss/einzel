@@ -1,5 +1,7 @@
 # Unreleased
 
+- Reuse diffusion coefficient and face-operator buffers, separately per species. A 513 x 65 rebuild allocates about 3.4 kB instead of 7.47 MB in a warmed probe; operator values remain bit-identical. This is an allocation reduction, not a claimed end-to-end speedup.
+
 - Record imported gas files and study files in run manifests. `verify` detects changed, missing or retargeted inputs and no longer certifies legacy manifests that did not record them.
 
 - Apply collisions and direct/PIC space charge during trajectory legs of mixed-mode sequences. Preserve conductor detection through time shifts, propagate collision diagnostics, and handle empty packets without reseeding or crashing the printer.

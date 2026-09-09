@@ -413,7 +413,7 @@ public static class DriftDiffusion
 
                 (driftX, driftY, diffusion, potential, gasX, gasY) = SampleCoefficients(
                     grid, now, gas, mobility, species, sign, number, initial.Cylindrical,
-                    wellCache, selfField);
+                    wellCache, selfField, (driftX, driftY, diffusion, potential, gasX, gasY));
 
                 stable = StableStep(
                     grid, driftX, driftY, gasX, gasY, diffusion, density.LargestRadialWeight());
@@ -421,7 +421,7 @@ public static class DriftDiffusion
 
                 faces = FaceCoefficients.Assemble(
                     density, grid, driftX, driftY, gasX, gasY, diffusion, potential, thermal,
-                    edges, absorbers);
+                    edges, absorbers, reuse: faces);
                 assemblies++;
             }
 
@@ -649,16 +649,17 @@ public static class DriftDiffusion
         double number,
         bool cylindrical,
         PonderomotiveWellCache? well = null,
-        DensitySelfField? selfField = null)
+        DensitySelfField? selfField = null,
+        (double[] DriftX, double[] DriftY, double[] Diffusion, double[] Potential, double[] GasX, double[] GasY)? reuse = null)
     {
         var count = grid.CountX * grid.CountY;
 
-        var driftX = new double[count];
-        var driftY = new double[count];
-        var diffusion = new double[count];
-        var potential = new double[count];
-        var gasX = new double[count];
-        var gasY = new double[count];
+        var driftX = reuse?.DriftX ?? new double[count];
+        var driftY = reuse?.DriftY ?? new double[count];
+        var diffusion = reuse?.Diffusion ?? new double[count];
+        var potential = reuse?.Potential ?? new double[count];
+        var gasX = reuse?.GasX ?? new double[count];
+        var gasY = reuse?.GasY ?? new double[count];
 
         // SPREAD ACROSS CORES, and the results do not depend on how many.
         //

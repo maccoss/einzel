@@ -1742,6 +1742,20 @@ is the dominant cost of a driven mean-field run and the obvious next optimisatio
 
 ## What a driven diffusive step costs, decomposed
 
+**Coefficient rebuilds reuse their storage.** Each run/species owns six coefficient
+arrays and one face operator. A rebuild overwrites them, retaining the original
+floating-point operation order; skipped faces are cleared so old boundary flags and
+coefficients cannot survive. `CoefficientReuseTests` compares reused and fresh
+operators bit for bit on Cartesian and cylindrical grids, including a change from
+open to reflecting faces.
+
+A warmed Release probe at 513 x 65 nodes measured **7,473,016 bytes per fresh rebuild
+against 3,432 with reuse** (including the probe's reflection/timing overhead). Across
+142,000 rebuilds this is about 1.06 TB against 0.49 GB of cumulative allocation, not
+simultaneously resident memory. Minimum rebuild times were 19.81 and 19.07 ms: this
+removes allocation pressure, not the cost of evaluating the field, and is not an
+end-to-end speedup claim.
+
 The TIMS front-end sequence had never run to completion, and the recorded diagnosis named the
 well assembly. That diagnosis was right about a real inefficiency and wrong about which term
 dominates. Measured on a probe that is the shipped model with every phase duration scaled to a

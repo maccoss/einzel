@@ -136,6 +136,22 @@ are the update mechanism and distribution. Nobody can install this.
 
 ## Amendments to the specification
 
+### 45 - Rebuilding an operator does not require reallocating it
+
+**CMP-1:** a ramped diffusive run allocated its six coefficient arrays and face-operator
+storage at every rebuild. At 513 x 65 nodes, a warmed Release probe measured
+**7,473,016 bytes per rebuild**. Reusing one workspace per run and species reduced
+this to **3,432 bytes**, including probe overhead, without changing the numerical
+operation order. Over 142,000 rebuilds the cumulative allocation is about 1.06 TB
+versus 0.49 GB; this is not peak memory. Measured minimum rebuild times were 19.81
+and 19.07 ms, so no substantial computational speedup is claimed.
+
+`CoefficientReuseTests` compares fresh and reused operators exactly, on both plane
+and cylindrical grids and across a boundary-kind change. The storage is cleared
+before assembly so a skipped face cannot retain an old coefficient or loss flag.
+The single-species and mixture loops retain separate workspaces for each species.
+No interpolation, flux formula or time-stepping rule changes.
+
 ### 44 - A model's content hash does not include the files it reads
 
 **PRJ-3 / GRD-7:** doubling an imported pressure doubled the measured transit from
@@ -1680,7 +1696,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `CMP-1` | The scalar reference implementation is never deleted or allowed to rot. Collisions and space charge Model Regime Used for Mobility-based, no discrete ... | **Partly met** | The pair sum has two paths, and the scalar one is **selectable** rather than merely retained (`CoulombInteraction.Kernel`), which is what "never allowed to rot" has to mean: a reference nothing can run is a reference nobody can check. They are compared over every size that exercises a different part of the loop, with members inactive, with a pre-loaded accumulator, and against Newton's third law, agreeing to 3e-15 of the acceleration scale - and a deliberate mutation fails 10 of 16. The vectorised path runs at 434 Mpair/s against 140 scalar at 240 macroparticles. The packet inner loop now allocates **nothing** (504 bytes/step before). `Einzel.Compute` still does not exist: one kernel does not need a dispatch layer, and the GPU path PERF-5 needs is what would justify one. See Amendment 38. |
+| `CMP-1` | The scalar reference implementation is never deleted or allowed to rot. Collisions and space charge Model Regime Used for Mobility-based, no discrete ... | **Partly met** | The pair sum has two paths, and the scalar one is **selectable** rather than merely retained (`CoulombInteraction.Kernel`), which is what "never allowed to rot" has to mean: a reference nothing can run is a reference nobody can check. They are compared over every size that exercises a different part of the loop, with members inactive, with a pre-loaded accumulator, and against Newton's third law, agreeing to 3e-15 of the acceleration scale - and a deliberate mutation fails 10 of 16. The vectorised path runs at 434 Mpair/s against 140 scalar at 240 macroparticles. The packet inner loop now allocates **nothing** (504 bytes/step before). `Einzel.Compute` still does not exist: one kernel does not need a dispatch layer, and the GPU path PERF-5 needs is what would justify one. See Amendment 38. Diffusive coefficient/face buffers are now reused too: `CoefficientReuseTests` checks exact agreement with fresh assembly, with measured allocation reduced from 7.47 MB to 3.4 kB per 513 x 65 rebuild (Amendment 45). |
 
 ### Collisions (§11)
 

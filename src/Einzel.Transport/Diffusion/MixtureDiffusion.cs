@@ -439,7 +439,8 @@ public static class MixtureDiffusion
 
             (_driftX, _driftY, _diffusion, _potential, _gasX, _gasY) = DriftDiffusion.SampleCoefficients(
                 grid, seen, gas, Member.Mobility, Member.Species, _sign, _number, cylindrical,
-                well: _well, selfField: selfField);
+                well: _well, selfField: selfField,
+                reuse: _driftX.Length == 0 ? null : (_driftX, _driftY, _diffusion, _potential, _gasX, _gasY));
 
             Stable = DriftDiffusion.StableStep(
                 grid, _driftX, _driftY, _gasX, _gasY, _diffusion, Density.LargestRadialWeight());
@@ -448,7 +449,7 @@ public static class MixtureDiffusion
         internal void AssembleFaces(Grid2D grid, DriftDiffusion.DomainEdges edges, AbsorbingCells absorbers) =>
             _faces = FaceCoefficients.Assemble(
                 Density, grid, _driftX, _driftY, _gasX, _gasY, _diffusion, _potential, _thermal,
-                edges, absorbers);
+                edges, absorbers, reuse: _faces);
 
         internal void Advance(AbsorbingCells absorbers, StepScheme scheme, double dt, double endsAt)
         {
