@@ -54,7 +54,7 @@ that is the lever worth being deliberate about.
 
 ### A function in the expression grammar
 
-**Where**: `Einzel.Core/Model/ExpressionEvaluator.cs`, in the `switch` on function name.
+**Where**: `src/Einzel.Core/Model/ExpressionEvaluator.cs`, in the `switch` on function name.
 
 **The pattern.** A function is added when a placement cannot otherwise be written — not when it
 would be tidier. `log` exists because a Kingdon trap's potential is logarithmic in radius;
@@ -79,11 +79,13 @@ geometry — a function is best tested through something that would visibly brea
 **Where**: three places, and missing the third is a real bug rather than an omission.
 
 - The **geometry** — a closed-form signed distance and first entry — in
-  `Einzel.Core/Model/SolvedFieldDocument.cs` for a cross-section and `Electrode3D.cs` for a
-  volume, consumed by `Einzel.Fields/Solved/GeometryBuilder{,3D}.cs`.
+  `src/Einzel.Core/Model/SolvedFieldDocument.cs` for a cross-section and
+  `src/Einzel.Core/Model/Electrode3D.cs` for a volume, consumed by
+  `src/Einzel.Fields/Solved/GeometryBuilder.cs` and
+  `src/Einzel.Fields/Solved/GeometryBuilder3D.cs`.
 - The **validation** cases in `ModelValidator`, which is where a malformed one is refused by
   name.
-- The **pairwise overlap check**, `Einzel.Core/Model/ElectrodeOverlap.cs`. Two conductors
+- The **pairwise overlap check**, `src/Einzel.Core/Model/ElectrodeOverlap.cs`. Two conductors
   occupying the same space at different potentials give a field of a geometry nobody described
   — the Dirichlet mask is written electrode by electrode, so the last one wins — and that check
   exists to refuse it. It switches on a *pair* of shapes, so a new shape adds a row of cases
@@ -141,11 +143,11 @@ Rarer, larger, and each is a genuine design decision rather than vocabulary.
 
 | seam | where | what implementing one means |
 | --- | --- | --- |
-| `ITransportMode` | `Einzel.Transport` | a third way to move ions. Declare `IsAvailable` and `ProducesTrajectories`; `REG-2` will ask about validity |
-| `IElectrostaticField` / `ITimeVaryingField` | `Einzel.Fields` | a new kind of field. See below — the time-free interface is a trap |
-| `RfWaveform` | `Einzel.Fields/Analytic` | a new excitation shape. Needs a `Mean`, which the cycle average now asks for in closed form |
-| the figure-of-merit catalogue | `Einzel.Commands/FiguresOfMerit.cs` | a new measurable. Carries a unit, an accuracy class per §12, and a `FlightBasis` the cost gate asks |
-| `ISelfField` | `Einzel.Transport/Interaction` | a space-charge method. The direct sum is the reference it is validated against |
+| `ITransportMode` | `src/Einzel.Transport/ITransportMode.cs` | a third way to move ions. Declare `IsAvailable` and `ProducesTrajectories`; `REG-2` will ask about validity |
+| `IElectrostaticField` / `ITimeVaryingField` | `src/Einzel.Fields/ITimeVaryingField.cs` | a new kind of field. See below — the time-free interface is a trap |
+| `RfWaveform` | `src/Einzel.Fields/Analytic/RfWaveform.cs` | a new excitation shape. Needs a `Mean`, which the cycle average now asks for in closed form |
+| the figure-of-merit catalogue | `src/Einzel.Commands/FiguresOfMerit.cs` | a new measurable. Carries a unit, an accuracy class per §12, and a `FlightBasis` the cost gate asks |
+| `ISelfField` | `src/Einzel.Transport/Interaction/ISelfField.cs` | a space-charge method. The direct sum is the reference it is validated against |
 
 **One trap on the field seam is worth stating on its own, because this project has met it eight
 times.** `ITimeVaryingField` also implements the time-free `IElectrostaticField`, and **a
