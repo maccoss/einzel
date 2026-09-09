@@ -1243,7 +1243,8 @@ public static class RunCommand
         IReadOnlyList<ValidityWarning> fieldWarnings,
         ValidateOutcome validation,
         ProjectLayout project,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes)
     {
         // The one place that knows where the model file is, so the one place that can
         // resolve a declared gas field.
@@ -1255,6 +1256,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // Which model, as distinct from which content. Without it verify has to find
             // the model by searching for one that still hashes to the recorded value, and
@@ -1393,6 +1395,7 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes,
         bool exportVtu)
     {
         var resolved = Io.GasFlowImport.Resolve(
@@ -1404,6 +1407,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
             ModelPath = RunManifest.Portable(
                 Path.GetRelativePath(project.Root, validation.ModelPath)),
             SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
@@ -1583,13 +1587,14 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes,
         bool exportVtu)
     {
         // Asked of the model rather than of the caller: a mixture is a property of the document,
         // and a fork the caller had to remember is one a caller will forget.
         if (model.IsMixture)
         {
-            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu);
+            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc, inputHashes, exportVtu);
         }
 
         // The one place that knows where the model file is, so the one place that can
@@ -1623,6 +1628,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // Which model, as distinct from which content. Without it verify has to find
             // the model by searching for one that still hashes to the recorded value, and
@@ -1933,6 +1939,7 @@ public static class RunCommand
         }
 
         var document = ModelJson.Parse(File.ReadAllText(validation.ModelPath));
+        var inputHashes = RunInputs.Capture(document, validation.ModelPath, project.Root);
         var model = ModelValidator.Validate(
             document, null, Path.GetDirectoryName(validation.ModelPath)).Model!;
 
@@ -1957,7 +1964,7 @@ public static class RunCommand
             || (model.Phases.Count > 0 && model.TransportMode == "diffusion"))
         {
             return (
-                Sequenced(model, field, fieldWarnings, validation, project, timestampUtc),
+                Sequenced(model, field, fieldWarnings, validation, project, timestampUtc, inputHashes),
                 validation);
         }
 
@@ -1968,7 +1975,7 @@ public static class RunCommand
         if (model.TransportMode == "diffusion")
         {
             return (
-                Diffusive(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu),
+                Diffusive(model, field, fieldWarnings, validation, project, timestampUtc, inputHashes, exportVtu),
                 validation);
         }
 
@@ -2061,6 +2068,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // Which model, as distinct from which content. Without it verify has to find
             // the model by searching for one that still hashes to the recorded value, and

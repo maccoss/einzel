@@ -235,12 +235,20 @@ and asserting the stronger reading in the message would repeat it in words.
 ### What `verify` checks, and what it does not
 
 A manifest fully determines its run (PRJ-3), so a stored result carries enough to
-say whether the world has moved out from under it. Two ways it stops being the
+say whether the world has moved out from under it. Three ways it stops being the
 answer, and they fail differently:
 
 - **The model moved on.** Someone edited the geometry after the run, and the
   number in `results/` answers a question about a geometry that no longer exists.
   The content hash catches it exactly.
+- **An external input moved on.** `inputHashes` records project-relative paths and
+  SHA-256 hashes of imported gas velocity/pressure files and, for a study, the study
+  file itself. These are raw-byte hashes. They are captured before computation and
+  checked again before the manifest is written; inputs must remain unchanged during
+  a run. A changed, missing or unreadable file invalidates the result. Moving a model
+  cannot silently retarget its relative imports either. Older manifests without these
+  hashes cannot certify an imported-data run or a study: rerun to establish provenance.
+  This covers those declared files, not a general dependency graph.
 - **The solver moved on.** The model is untouched but numerical behaviour changed.
   FLD-3 keeps the solver-behaviour version separate from the engine version for
   exactly this: "after an engine update a cache computed by the previous solver is

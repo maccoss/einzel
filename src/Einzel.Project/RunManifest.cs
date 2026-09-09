@@ -60,6 +60,10 @@ public sealed record RunManifest
     /// </remarks>
     public string? ModelPath { get; init; }
 
+    /// <summary>SHA-256 hashes of imported data and the study file, keyed by project-relative path.</summary>
+    /// <remarks>Null denotes a legacy manifest with no dependency inventory; an empty map means none were consumed.</remarks>
+    public IReadOnlyDictionary<string, string>? InputHashes { get; init; }
+
     /// <summary>A relative path as a manifest should carry it.</summary>
     /// <param name="path">The path, in whatever the platform uses.</param>
     /// <returns>The same path with forward slashes.</returns>
@@ -170,6 +174,15 @@ public sealed record RunManifest
 /// </remarks>
 public static class ContentHash
 {
+    /// <summary>Hashes file bytes without loading the whole file into memory.</summary>
+    /// <param name="path">The input file.</param>
+    /// <returns>A SHA-256 content hash.</returns>
+    public static string OfFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return "sha256:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(stream));
+    }
+
     /// <summary>Hashes text as UTF-8, ignoring line-ending style.</summary>
     /// <param name="text">The text to hash.</param>
     /// <returns>The hash, as <c>sha256:</c> followed by 64 lowercase hex characters.</returns>

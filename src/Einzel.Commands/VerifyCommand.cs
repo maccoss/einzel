@@ -99,6 +99,9 @@ public sealed record VerifyOutcome
 /// </remarks>
 public static class VerifyCommand
 {
+    private static readonly string[] StudyManifestSuffixes =
+        [".sweep.manifest.json", ".scan.manifest.json", ".boundary.manifest.json", ".optimise.manifest.json"];
+
     /// <summary>Verifies every stored result in a project.</summary>
     /// <param name="root">The project root.</param>
     /// <returns>The outcome.</returns>
@@ -245,6 +248,39 @@ public static class VerifyCommand
         {
             drift.Add("the model has been edited since this result was computed, so it answers a question "
                 + "about a geometry that no longer exists");
+        }
+
+        if (manifest.InputHashes is { } inputs)
+        {
+            if (modelMatches)
+            {
+                var document = Io.ModelJson.Parse(File.ReadAllText(modelPath!));
+                foreach (var reference in RunInputs.ImportedPaths(document))
+                {
+                    var resolved = Path.GetFullPath(reference, Path.GetDirectoryName(modelPath!)!);
+                    var relativeInput = RunManifest.Portable(Path.GetRelativePath(layout.Root, resolved));
+                    if (!inputs.ContainsKey(relativeInput))
+                        drift.Add($"the model resolves an input not recorded by this run: '{relativeInput}'");
+                }
+            }
+            foreach (var (input, expected) in inputs.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                var path = Path.GetFullPath(RunManifest.Local(input), layout.Root);
+                try
+                {
+                    if (!File.Exists(path)) drift.Add($"input file is missing: '{input}'");
+                    else if (ContentHash.OfFile(path) != expected) drift.Add($"input file has changed: '{input}'");
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+                {
+                    drift.Add($"input file cannot be verified: '{input}': {error.Message}");
+                }
+            }
+        }
+        else if ((modelMatches && RunInputs.ImportedPaths(Io.ModelJson.Parse(File.ReadAllText(modelPath!))).Any())
+            || StudyManifestSuffixes.Any(suffix => relative.EndsWith(suffix, StringComparison.Ordinal)))
+        {
+            drift.Add("this legacy manifest does not record the study/imported inputs; rerun to establish their provenance");
         }
 
         if (!solverMatches)
