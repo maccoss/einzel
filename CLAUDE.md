@@ -1719,6 +1719,82 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   *non-monotone* approach that read as physics and was my own grid: at a fixed interval count
   the cells coarsen as the domain grows.
 
+- **`einzel report`, and the two defects reading a result document found.** An account of a
+  project's runs that a person can read: one self-contained HTML page - per run, the model and
+  its hash, the engine and solver-behaviour versions, the numbers with their units and
+  intervals, the warnings by severity, what it wrote - with `--json` carrying the same account
+  so AGT-2 holds. **Every input existed and nothing rendered them**, so following a stretch of
+  engine work meant reading terminal scrollback or a git log.
+
+  **A view, not a recorder, and that is now a property rather than a claim.** PRJ-4 puts the
+  durable record in the model document and its history, with `results/` regenerable; the report
+  reads what is already there and holds no state. Two tests hold it: nothing is added to
+  `results/`, and two reports over the same runs are the same page but for the instant each was
+  rendered at - **a recorder passes the first and fails the second**. Drift comes from `einzel
+  verify` rather than a second implementation of a distinction that took thought to get right.
+
+  **It is the first thing here that ever read a result document back** - `verify` walks
+  manifests and never opens one, `test` re-flies the model - so a producer with no consumer had
+  been unchecked however many tests it had. Both defects it found had been true of every run
+  this project has stored:
+
+  - **The sequenced run path wrote a manifest and no result.** Three of the four run paths
+    stored one; that path stored provenance and no answer, and it is the path every TIMS study
+    takes, so the runs whose answers were missing were the ones most worth reading. Found on a
+    real project holding four manifests and no results. The recurring "capability wired into
+    N-1 of N paths" shape - found by *writing the consumer* rather than by a failing test.
+    It was also the one path storing **absolute** artifact paths, so its manifest named files
+    by where they sat on the machine that wrote them.
+  - **A result document did not read back into the record that wrote it.** The emittance fields
+    are `required double?` - this surface's way of saying the construction site must decide and
+    the answer may be nothing - and `WhenWritingNull` omits a null on the way out while C#'s
+    `required` demands it on the way in. So a document was unreadable exactly when a value was
+    *absent*, which is a trap or a run where nothing arrived: PRJ-3's "regenerate and compare"
+    was impossible for every such run, and nothing said so because **writing succeeded**.
+
+    **And my first fix was the wrong one of the two, caught by a test written months earlier.**
+    Writing every required property including its nulls round-trips just as well - and changed
+    the published document for every ensemble run, against this surface's own recorded policy
+    that an undefined measurement is *absent*, with a test spelling out that "a consumer
+    distinguishes 'no orientation' from 'zero' by the key not being there". Both fixes satisfy
+    the rule as I had written it, and one breaks something else, so **the rule as written was
+    underdetermined**. The precise version is which requirement is which: absence of
+    `required int Launched` is a malformed document, absence of `required double?
+    EmittanceMmMrad` is the encoding of *no value* - so it is fixed on the **reading** side and
+    the document does not change at all. Type level rather than per property, because the next
+    `required` nullable would be declared without an attribute and go unnoticed until something
+    read it back.
+
+  **The test for the second had to straddle the switch.** A packet that arrives writes every
+  field and round-trips fine, so the four-path test cannot see it at all; the discriminating
+  case is a run whose ensemble measured *nothing*. Same rule this project has recorded three
+  times for dimensionless numbers, met here on an absence.
+
+  **And I made the same defect I had just written the command to expose.** `results/` holds
+  *two* kinds of answer - a run writes `X.result.json` beside its manifest and a **study**
+  writes `X.json` - and the first version looked for the first only, so every sweep, scan,
+  optimisation and boundary search in a project was reported as a run that had stored
+  nothing, loudest on the projects with the most work in them. What would have caught it is
+  enumerating the *writers* into `results/`; I enumerated the run paths I was already
+  reading. Fixed by a rule rather than a list of kinds - **the answer sits beside the
+  manifest under the manifest's own stem** - and the three empty states are now separate
+  fields, because "nothing was stored", "a study's answer is there and this page does not
+  draw it" and "a document is there and this build cannot load it" each call for something
+  different from the reader.
+
+  **And two presentation defects of my own, both "plausible wrong value".** A fraction was
+  scaled to a percentage and its interval was not - one quantity in two units side by side,
+  which is the ambiguity §9 refuses a model document for - reporting a transmission a hundred
+  times small and reading as exactly what a trap reports. And the hatched band that marks a
+  tainted result was keyed on `IsSuppressible`, false for everything above advisory, so the
+  mark that exists for the one class GRD-3 says must never be skimmed landed on a note about a
+  convergence floor and on almost every warning there is. **A mark on everything marks
+  nothing** - the same teaching GRD-3 warns about, from the other direction. Four severities,
+  four levels, the hatch for `ValidityViolation` alone. Also: `F2` turns a 99.9976 %
+  transmission into `100.00 %`, which claims every ion arrived when 0.24 of ten thousand did
+  not, so the format widens only where rounding would land on nothing or everything without
+  being there. Details in `docs/cli.md`, `docs/lessons.md`, SPEC.md Amendment 43.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

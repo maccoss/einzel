@@ -152,7 +152,14 @@ public sealed class TimsElutionTests(ITestOutputHelper output) : IDisposable
         // The spectrum is written whole, because a mean and a width have lost its shape.
         var artifacts = rampedDoc.RootElement.GetProperty("artifacts").EnumerateArray()
             .Select(a => a.GetString()!).ToList();
-        var spectrum = Assert.Single(artifacts, a => a.EndsWith(".arrivals.csv", StringComparison.Ordinal));
+        // Resolved against the project root, because that is what a manifest's artifact
+        // paths are relative to. The sequenced path used to store them absolute - the one
+        // path of four that did - so this read them straight off the document and worked
+        // by accident, and a manifest naming files by where they sat on the machine that
+        // wrote them cannot travel, which is half of what PRJ-3 is for.
+        var spectrum = Path.Combine(
+            _root,
+            Assert.Single(artifacts, a => a.EndsWith(".arrivals.csv", StringComparison.Ordinal)));
 
         Assert.True(File.Exists(spectrum), $"the arrivals file {spectrum} was not written");
         Assert.True(File.ReadLines(spectrum).Skip(1).Any(), "the arrivals file has a header and no rows");

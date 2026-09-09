@@ -20,6 +20,7 @@ einzel validate demo/models/q.json           # instant
 einzel estimate demo/models/q.json           # what it will cost
 einzel solve demo/models/q.json              # the field, and how it went
 einzel run demo/models/q.json --vtu          # run, and write a ParaView trajectory
+einzel report demo                           # what has been run here, as one page
 ```
 
 ## What one model contains
@@ -98,6 +99,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel preview <model.json>` | A fast, deliberately inexact look, marked as such (GRD-5) |
 | `einzel test [dir]` | Run the project's tests |
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
+| `einzel report [dir]` | An account of what has been run, as one self-contained page (Amendment 43) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
@@ -255,6 +257,156 @@ matters: filing them together would train a reader to ignore both.
 
 Nothing is recomputed. A check that cost as much as the run it checks would not
 get run.
+
+### `einzel report`, and the two defects writing it found
+
+`verify` says whether a stored result is still the answer; `project` says what state each
+model is in. Neither says **what came out**. Every input for that existed - `results/*.result.json`
+carries the numbers with their GRD-1 envelopes and the manifests carry the provenance PRJ-3
+says determines a run - and nothing rendered them, so following a stretch of work meant
+reading terminal scrollback or a git log. `einzel report` writes one self-contained HTML
+page: per run, the model and its hash, the engine and solver-behaviour versions, the
+numbers with their units and intervals, the warnings by severity, and what the run wrote.
+
+```
+einzel report [dir] [--out <file>] [--json] [--dry-run]
+```
+
+**A view, not a recorder, and that is the load-bearing decision.** PRJ-4 puts the durable
+record of a design in the model document and its history, with `results/` regenerable and
+discardable. So the report holds no state: it reads the documents that are already there
+and *cannot* disagree with what ran. A recorder would be a second account of the same
+events, and the two would part company - the failure the generated half of `AGENTS.md`
+exists to prevent, one level up. Two tests hold it: nothing is added to `results/`, and two
+reports over the same runs are the same page but for the instant each was rendered at. A
+recorder passes the first and fails the second.
+
+Drift is not recomputed either. `verify` already separates an edited model from a changed
+engine build, and a second implementation of that distinction would eventually disagree
+with the first. The page goes at the project root rather than into `results/`, because
+`results/` is what this reads - a report written there would become an input to the next
+one.
+
+**The page is written and not opened.** Launching a browser would make this the one verb
+with a side effect outside the project, and a report generated over ssh is exactly the case
+that wants the file rather than the window.
+
+#### Reading a result document is what found the defects
+
+Nothing here had ever read one back. `verify` walks manifests; `test` re-flies the model.
+So the first reader found two things at once, both of which had been true for every run
+this project has ever stored.
+
+**The generated `AGENTS.md` had been promising the thing that was not true.** Its loop section
+says, in words, `einzel run models/<name>.json    # writes results/<name>.result.json` - which
+held for three of the four run paths. The one document in a project written *by* the platform to
+tell an agent what the platform does was stating a guarantee one path did not keep, which is the
+exact failure the generated layer exists to prevent, met from the inside.
+
+**The sequenced run path wrote a manifest and no result.** Three of the four run paths
+stored one and this one did not - and a sequenced run is what every TIMS study here is, so
+the runs whose answers were missing were the ones most worth reading. Found on a real
+project holding four manifests and no results. PRJ-3's claim that a manifest determines its
+run stands either way; what was missing is the stored answer the determination is *for*, so
+nothing could be regenerated and compared. This is the recurring "a capability wired into
+N-1 of N paths" shape, and the fix is guarded by a test that runs one model down each of
+the four paths and a crude count of the writes in `RunCommand` - the only thing that fails
+when a *fifth* path is added rather than an existing one changed.
+
+**A result document did not read back into the record that wrote it.** The emittance fields
+are `required double?` - this surface's way of saying the construction site must decide and
+the answer may be nothing - and `WhenWritingNull` omits a null while C#'s `required` demands
+it on the way in. So a document was unreadable exactly when one of those values was
+*absent*, which is when no ion arrived with a measurable spread: a trap, or a total loss.
+Every ensemble run of that kind had stored a result this build could not load, which makes
+"regenerate and compare" impossible, and nothing said so because *writing* succeeded.
+
+**The first fix was the other one and a test caught what it cost.** Writing every required
+property including its nulls also round-trips - and this surface states, in its own words,
+that "an undefined measurement is absent, not zero", with a test asserting that a consumer
+tells "no orientation" from "zero" by the key not being there. That fix changed the published
+document for every ensemble run and would have broken any consumer using key presence the way
+the surface told it to.
+
+The precise statement is about which requirement is which. Absence of `required int Launched`
+really is a malformed document; absence of `required double? EmittanceMmMrad` is this
+surface's own encoding of no value, so demanding it on the way in was demanding that the
+encoding not be used. So it is fixed on the **reading** side - a required property whose
+declaration admits null is not required on the wire - and **the document does not change at
+all**. Type level rather than per property, because the next `required` nullable would be
+declared without an attribute and nobody would notice until something read it back.
+
+**And the test for it had to straddle the switch.** A packet that *arrives* writes every
+field and round-trips fine, so the four-path test above cannot see this at all; the case
+that discriminates is a run whose ensemble measured nothing. That is the shape this
+repository keeps recording: a test whose parameter sits on one side of the value the
+behaviour switches at is a test of a different regime.
+
+#### `results/` holds two kinds of answer, and the first version knew one
+
+A run writes `X.result.json` beside `X.manifest.json`. A **study** writes `X.json` beside
+it - a sweep, a scan, an optimisation or a boundary search, each with its own record shape
+rather than a `RunOutcome`. Looking only for the first reported every study in a project as
+a run that had stored nothing, warning and all: **the same "wired into N-1 of N paths"
+mistake this command was written to expose, made in the command itself**, and loudest on the
+projects with the most work in them.
+
+The rule that generalises is the one the stem already follows: **the answer sits beside the
+manifest under the manifest's own stem**, as `.result.json` for a run and as `.json` for a
+study. No list of study kinds is needed and a fifth kind would be found the same way.
+
+**Named rather than drawn**, and the two are separate states on the page. Reading four more
+record types to render a distribution or a bisection bracket is a real extension of this
+report, not a line of plumbing, so what the page says is that the answer is there and it
+does not draw that kind yet - which is a different statement from an answer that was never
+stored, and calls for something different from the reader. There are five states for that
+reason: nothing to do, re-run it, run it to store an answer, read it another way, and report
+a defect.
+
+Three of them look alike from a list of numbers and all three are empty, so they are fields
+rather than inferences: `result` absent means nothing was stored; `notRendered` means a
+study's answer is there; `unreadable` means a document is there and this build cannot load
+it, which is a defect in the surface rather than in the project. The first version counted
+the first and the third together, and told the reader the wrong one.
+
+#### What the page does with a number it was given
+
+Nothing is computed and nothing is inferred. Every entry is a field of the stored result,
+and a figure the run did not produce is **absent rather than zero** - so a diffusive run
+has no flight time here, which is a statement rather than a gap. Whether there is one at
+all is read from `HasFlightTime`, a required member set at each construction site with its
+reason, rather than from the transport mode: that proxy stopped being equivalent the moment
+a third mode existed, and it has had to be widened three times.
+
+Three presentation decisions that are about not lying rather than about taste:
+
+- **A zero-width interval prints as no interval**, not as `+- 0`. A residual of zero is not
+  "no uncertainty", it is one smaller than a comparison of two doubles can see - the
+  distinction that made an agent refuse to publish `10.180506 +- 0 us` and go and measure
+  its own tolerance ladder instead.
+- **A transmission of `100.00 %` has to mean all of them.** Two decimals is right for
+  reading and turns 99.9976 % into `100.00 %`, which says every ion arrived when 0.24 of ten
+  thousand did not - and for a diffusive run the density's tail is exactly where the loss
+  is. The format widens only where rounding would land on nothing or on everything without
+  being there. (`einzel run` prints one decimal and has the same rounding; matching it would
+  be matching the wrong thing.)
+- **A fraction and its interval are scaled together, or neither.** They are stored in the
+  same units, so scaling the value alone prints `0.00 %, 0 to 1` - two numbers about one
+  quantity in two different units, side by side, which is the ambiguity section 9 refuses a
+  model document for. The first version of this page did that and reported a transmission a
+  hundred times smaller than the run measured.
+
+**Warnings get four levels because the enum has four.** The first version keyed the hatched
+band - the device `Einzel.Render` puts across a tainted figure - on `IsSuppressible`, which
+is false for everything above advisory. So the band that exists to mark the one class GRD-3
+says must never be skimmed appeared on a housekeeping note about a convergence floor, and on
+almost every warning there is. A mark on everything marks nothing, which is GRD-3's own
+argument met from the other direction. The hatch is now for `ValidityViolation` alone.
+
+The masthead's headline count moved for the same reason: "runs carrying an unsuppressible
+warning" is nearly every run there is - eleven of this project's thirty-nine corpus examples
+carry one while behaving exactly as designed - so what is counted is runs computed *outside
+validity*.
 
 ## Studies
 

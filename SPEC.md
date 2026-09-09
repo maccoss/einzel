@@ -189,9 +189,37 @@ and discardable; a report is a *view* over the results and manifests that alread
 carries no state of its own and cannot drift from what actually ran. A recorder would be a
 second account of the same events, and the two would part company.
 
-**Status: not built.** The design is above; nothing implements it. What exists is that the
-inputs are all present and complete, which is why this is a view rather than a feature needing
-new bookkeeping.
+**Status: built.** `einzel report` writes one self-contained HTML page over a project's
+manifests and results, with `--json` carrying the same account so `AGT-2` holds. It reuses
+`einzel verify` for drift rather than recomputing it, holds no state, and is guarded by the two
+tests that make "view" a property rather than a claim: nothing is added to `results/`, and two
+reports over the same runs are the same page but for the instant each was rendered at - a
+recorder passes the first and fails the second.
+
+**And building it found two defects, because it is the first thing here that ever read a result
+document back.** `verify` walks the manifests and never opens a result; `test` re-flies the
+model. So a producer with no consumer had been unchecked however many tests it had.
+
+- **The sequenced run path wrote a manifest and no result.** Three of the four run paths stored
+  one; that path stored provenance and no answer, and it is the path every TIMS study takes -
+  so the runs whose answers were missing were the ones most worth reading. `PRJ-3`'s claim that
+  a manifest determines its run stood either way; what was missing is the stored answer the
+  determination is *for*. It was also the one path storing **absolute** artifact paths, so its
+  manifest named files by where they sat on the machine that wrote them.
+- **A result document did not read back into the record that wrote it.** The emittance fields
+  are `required double?`, `WhenWritingNull` omits a null on the way out, and C#'s `required`
+  demands the property on the way in - so a document was unreadable exactly when a value was
+  *absent*, which is a trap or a run where nothing arrived. Every ensemble run of that kind had
+  stored a result this build could not load, and nothing said so because writing succeeded.
+  "Regenerate and compare" was impossible for all of them. **My first fix was the wrong one of
+  two**: writing every required property including its nulls round-trips and *changes the
+  published document*, against this surface's own recorded policy that an undefined measurement
+  is absent - caught by a test written months earlier that pins that encoding. Fixed on the
+  reading side instead, so the document is byte-for-byte what it always was.
+
+Both are fixed and both are guarded, the second by a test that straddles the switch: a packet
+that arrives writes every field and round-trips fine, so the discriminating case is a run whose
+ensemble measured nothing.
 
 ### 42 - Agents must extend the platform, and only one of the two ways to extend it is specified
 
@@ -2111,23 +2139,7 @@ project's author needs to run it and more than any physics the moment one does.
    still open: whether the arrival width the analyser reports is its own, or delivery spread the
    ramp reads as mobility.
 
-2. **The run report nobody can read (Amendment 43).** Every input exists and nothing
-   renders them. `results/*.json` carries the numbers with their GRD-1 envelopes, the manifests
-   carry model hash, engine version, seeds, solver-behaviour version and machine; what does not
-   exist is an account a person can read of what was run, what came out, and which caveats rode
-   along. Following a stretch of engine work means reading scrollback or a git log.
-
-   **A view, not a recorder**, and that is the load-bearing decision. `PRJ-4` says the durable
-   record of a design is the document and its history, with `.einzel/` regenerable; a report is
-   a view over results and manifests that already exist, so it holds no state and *cannot* drift
-   from what actually ran. A recorder would be a second account of the same events and the two
-   would part company - the failure the generated half of `AGENTS.md` exists to prevent.
-
-   Reachable from the CLI so `AGT-2` holds: an agent gets the same report. A self-contained page,
-   because the two design documents already are, and `Einzel.Render` already emits SVG that can
-   sit inside one.
-
-3. **The extension surface, now that it is written down (Amendment 42).** `docs/extending.md`
+2. **The extension surface, now that it is written down (Amendment 42).** `docs/extending.md`
    names the three kinds of change a device has ever needed below `Einzel.Library` - a grammar
    function, a geometry primitive, an attribute on an existing element - with the eleven
    instances as evidence, where each goes, and the traps each has already sprung.
@@ -2142,7 +2154,7 @@ project's author needs to run it and more than any physics the moment one does.
    toolchain and a compile, so the extending agent has the source; a package-shaped surface
    waits on distribution.
 
-4. **The TIMS front end, and the fringe it needed.** `tims-front-end` puts Hernandez's
+3. **The TIMS front end, and the fringe it needed.** `tims-front-end` puts Hernandez's
     50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, plate-alternating
     RF, a DC drop) and an entrance gate in front of the analyser, with fill / trap / ramp as
     phases. The funnel delivers **99.993 %** of a 2 mm-wide packet against 65.28 % with its
@@ -2192,7 +2204,7 @@ project's author needs to run it and more than any physics the moment one does.
     the analyser's or whether delivery adds an axial spread the ramp reads as mobility. Not
     carried: a deflector plate, a continuous fill, the funnel's own gas, an exit funnel.
 
-5. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
+4. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
     elution ramp runs (`tims-analyzer` with a `sequence` whose diffusive phase ramps
     `exitPotential` 60 → 0 V over 8 ms) and the first thing it measured is the reason
     this item is next rather than a refinement: **45 of 97,770 reference ions reached the
@@ -2253,7 +2265,7 @@ project's author needs to run it and more than any physics the moment one does.
     The remainder is the front end: the entrance funnel and the gate the operating
     sequence opens and closes (see the TIMS front-end entry).
 
-6. **The shell (§16).** **Seven of the eleven views exist** — the table in
+5. **The shell (§16).** **Seven of the eleven views exist** — the table in
     [the shell section](#the-shell-and-the-rest-of-16) is the current one; this entry
     said three for a while after it stopped being true. The window opens on a model, and
     what remains divides into three kinds rather than one:
@@ -2348,7 +2360,7 @@ project's author needs to run it and more than any physics the moment one does.
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
 
-7. **The Astral inverse problem: the mirror is reproduced, and one published number is
+6. **The Astral inverse problem: the mirror is reproduced, and one published number is
     not.** This item has now been rewritten four times, and the rewriting is the point rather
     than an embarrassment - every earlier version attributed the gap between this model and
     the published instrument to something that turned out not to be it. The chronology, with
@@ -2393,7 +2405,7 @@ project's author needs to run it and more than any physics the moment one does.
       avoids that and costs no flights, but is floored by adiabaticity. The two floors are
       independent, which is why the methods agree on ranking and disagree on values.
 
-8. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
+7. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
     cross-section reproduces the paper's resonance ejection and its unit resolution at
     5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
     that stand between that and the dual-pressure device the Stellar front end actually is.
@@ -2451,7 +2463,7 @@ project's author needs to run it and more than any physics the moment one does.
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
-9. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
+8. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -
    and SPEC's own summary is blunt about the consequence: **nobody can install this**.
 
@@ -2467,6 +2479,47 @@ project's author needs to run it and more than any physics the moment one does.
 
 
 ### Done, and what each taught
+
+9. ~~**The run report nobody can read (Amendment 43).**~~ - **built, and writing it
+   found two defects that had been true of every run this project has stored.** `einzel report`
+   is a view over a project's manifests and results: one self-contained HTML page per project,
+   with `--json` carrying the same account so `AGT-2` holds. Drift comes from `einzel verify`
+   rather than a second implementation of a distinction that took thought to get right.
+
+   **"A view" is now a property rather than a claim.** Two tests hold it: nothing is added to
+   `results/`, and two reports over the same runs are the same page but for the instant each
+   was rendered at. A recorder passes the first and fails the second.
+
+   **It is the first thing here that ever read a result document back** - `verify` walks
+   manifests and never opens one, `test` re-flies the model - so a producer with no consumer
+   had been unchecked however many tests it had. What that found:
+
+   - **The sequenced run path wrote a manifest and no result.** Three of the four paths stored
+     one; that path stored provenance and no answer, and it is the path every TIMS study takes.
+     The recurring "capability wired into N-1 of N paths" shape, found by writing the consumer
+     rather than by a failing test.
+   - **A result document did not read back into the record that wrote it.** `required double?`
+     plus `WhenWritingNull` means the document is unreadable exactly when a value is *absent*,
+     which is a trap or a run where nothing arrived - so `PRJ-3`'s "regenerate and compare" was
+     impossible for every such run, and nothing said so because writing succeeded. Fixed at the
+     type level: `CommandJson` now writes every required property, null included.
+
+   **And I made the same defect the command exists to expose.** `results/` holds two kinds of
+answer - a run writes `X.result.json` beside its manifest, a **study** writes `X.json` - and
+the first version knew one, so every sweep, scan, optimisation and boundary search in a
+project read as a run that had stored nothing. Enumerating the run paths found the original
+gap; enumerating the *writers* into `results/` is what would have found this one. Fixed by a
+rule rather than a list of kinds, and the three empty states are separate fields now, since
+"nothing stored", "a study's answer this page does not draw" and "a document this build
+cannot load" call for three different things from a reader.
+
+**And two presentation defects of my own, both in the "plausible wrong value" class.** A
+   fraction was scaled to a percentage and its interval was not - one quantity in two units
+   side by side, reporting a transmission a hundred times small, and reading as exactly what a
+   trap reports. And the hatched band that marks a validity violation was keyed on
+   `IsSuppressible`, which is false for everything above advisory, so the mark that exists for
+   the one class `GRD-3` says must never be skimmed landed on almost every warning there is. A
+   mark on everything marks nothing.
 
 10. ~~**Settle the well jitter, because it is what stops the cache paying on the one
    device it was built for.**~~ - **explained, and it was the ramp after all.** The

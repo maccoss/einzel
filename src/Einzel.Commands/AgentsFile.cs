@@ -76,6 +76,7 @@ public static class AgentsFile
         einzel validate models/<name>.json     # instant; units, bounds, regime validity
         einzel run models/<name>.json          # writes results/<name>.result.json
         einzel run models/<name>.json --vtu    # also writes a trajectory for ParaView
+        einzel report                          # what has been run here, and what came out
         ```
 
         Add `--json` to any command for machine-readable output. Results go to

@@ -1289,7 +1289,13 @@ public static class RunCommand
         // the spectrum. Written whole as an artifact - one line per step that collected
         // anything - because a spectrum reduced to a mean and a width has lost its shape,
         // and the shape is what a resolving power is read off.
-        var artifacts = new List<string> { manifestPath };
+        //
+        // RELATIVE TO THE PROJECT ROOT, like the other three paths. This one stored
+        // absolute paths, so its manifest named files by where they sat on the machine
+        // that wrote them - which a result document PRJ-3 says should determine its run
+        // cannot do, and which a report reading a project from anywhere else cannot
+        // resolve.
+        var artifacts = new List<string> { Path.GetRelativePath(project.Root, manifestPath) };
         double? meanArrivalUs = null;
         double? arrivalSpreadUs = null;
 
@@ -1309,10 +1315,10 @@ public static class RunCommand
             lines.AddRange(outcome.Arrivals.Select(a => string.Create(
                 System.Globalization.CultureInfo.InvariantCulture, $"{a.TimeSeconds * 1e6:R},{a.Ions:R}")));
             File.WriteAllLines(arrivalsPath, lines);
-            artifacts.Add(arrivalsPath);
+            artifacts.Add(Path.GetRelativePath(project.Root, arrivalsPath));
         }
 
-        return new RunOutcome
+        var run = new RunOutcome
         {
             Manifest = manifest,
 
@@ -1373,6 +1379,28 @@ public static class RunCommand
                 MeanArrivalUs = meanArrivalUs,
                 ArrivalSpreadUs = arrivalSpreadUs,
             },
+        };
+
+        // WRITTEN LIKE EVERY OTHER RUN'S. Three of the four run paths wrote a result
+        // document beside their manifest; this one wrote the manifest and no result, so a
+        // sequenced run left behind provenance and no answer - and a sequenced run is what
+        // every TIMS study is. PRJ-3's claim is that a manifest determines its run, which
+        // stands either way; what was missing is the stored answer that determination is
+        // *for*, so nothing could be regenerated and compared, and no reader downstream had
+        // numbers to read for exactly the runs most worth reading.
+        //
+        // `einzel verify` was not the thing broken, and the first version of this comment
+        // said it was. Verify enumerates manifests and checks the model hash and the
+        // solver-behaviour version without reading a result at all, so it reported a
+        // sequenced run as current all along - correctly, about drift, over an answer that
+        // was not there. Found while building the report Amendment 43 asks for, which does
+        // read these files, on a project holding four manifests and no results.
+        var resultPath = Path.Combine(project.Results, $"{stem}.result.json");
+        File.WriteAllText(resultPath, CommandJson.Write(run));
+
+        return run with
+        {
+            Artifacts = [.. run.Artifacts, Path.GetRelativePath(project.Root, resultPath)],
         };
     }
 

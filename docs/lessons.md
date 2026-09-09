@@ -3582,3 +3582,142 @@ step rule and not of the field it was handed.
 **The check that says the two now measure one thing** is not the agreement itself but its
 independence: the estimate finds a 58.5 ns step, and counting the probe's assemblies - one per
 step in a ramped phase - gives 56 ns from a completely separate route.
+
+## Nothing had ever read a result document back, and both halves of the round trip were broken
+
+`einzel report` reads `results/*.result.json`. It is the first thing here that ever has:
+`verify` walks the manifests and checks hashes without opening a result, and `test` re-flies
+the model rather than reading a stored answer. So the first reader found two defects on its
+first run against a real project, and both had been true for every run this project has
+stored.
+
+**The sequenced run path wrote a manifest and no result.** Three of the four paths wrote one;
+this one wrote provenance and no answer. It is the path every TIMS study takes, so the runs
+whose answers were missing were exactly the ones most worth reading. This is the recurring
+"a capability wired into N-1 of N paths" shape, and what is new is *how* it was found: not by
+a failing test, but by writing the first consumer. **A producer with no consumer is unchecked
+however many tests it has**, because every test written from inside the project asserts what
+was computed rather than what was stored.
+
+**And a result document did not read back into the record that wrote it.** The emittance
+fields are `required double?` - the surface's way of saying the construction site must decide
+and the answer may be nothing. `WhenWritingNull` omits a null on the way out and C#'s
+`required` demands the property on the way in, so one keyword carried two meanings and they
+disagreed. The document was unreadable exactly when a value was *absent* - a trap, or a run
+where nothing arrived - so PRJ-3's "regenerate and compare" was impossible for every ensemble
+run of that kind, and nothing said so because **writing succeeded**.
+
+The general statement: **`required` on a serialised record is a claim about the document as
+well as about the constructor**, and a default that omits nulls turns the two into a
+contradiction.
+
+### And my first fix was the wrong one of the two, which a test written months earlier caught
+
+Writing every required property including its nulls round-trips just as well. It also
+**changed the published document** for every ensemble run - and this surface's own policy,
+recorded in four places, is that an undefined measurement is *absent*, with a test spelling
+out why: "a consumer distinguishes 'no orientation' from 'zero' by the key not being there."
+Any consumer that had believed the surface would have started reading a null where it expected
+absence.
+
+Both fixes satisfy the rule as I had written it down, and one of them breaks something else,
+so the rule as written was not precise enough. **The precise version is about which
+requirement is which**: absence of `required int Launched` is a malformed document, and
+absence of `required double? EmittanceMmMrad` is this surface's own encoding of *no value*, so
+demanding it on read was demanding that the encoding not be used. Relaxing the requirement on
+the reading side fixes the round trip and changes no byte of output.
+
+**What generalises: when two fixes both satisfy the rule you wrote down, the rule is
+underdetermined, and one of them is probably changing something the rule was not about.** The
+tell here was that one fix touched the output and the other did not - and the thing being
+fixed was an input.
+
+The other half is worth keeping too. The test that caught it was not mine and not new: it
+existed because a NaN Twiss angle had taken the serialiser down long before, and it asserted
+the *encoding* rather than only the absence of a crash. **A test that pins a wire format is
+what makes a compatibility break visible as a failure instead of as a support question.**
+
+**My first version of the test could not have caught it.** A packet that arrives writes every
+field and round-trips fine; the case that discriminates is a run whose ensemble measured
+nothing. That is the straddling rule this page already carries in three other places - a test
+whose parameter sits on one side of the value the behaviour switches at is a test of a
+different regime - met here on an *absence* rather than on a dimensionless number.
+
+### The corrected claim, and my first version of it was wrong
+
+I wrote, in the code and in the commit I was drafting, that `einzel verify` "had nothing to
+check a sequenced run against". **It did not need one.** Verify enumerates manifests and
+compares the model hash and the solver-behaviour version; it never opens a result. So it had
+been reporting sequenced runs as current all along - correctly, about drift, over an answer
+that was not there. The defect is real and its consequence was one step further away than I
+first wrote it: not that verification was broken, but that there was nothing stored for a
+*reader* to read.
+
+**Worth keeping because the wrong version is more satisfying.** "The verifier was blind" is a
+sharper story than "a document nobody read was absent", and it was the version I reached for
+before checking what verify actually opens.
+
+## A mark on everything marks nothing
+
+The report gives an unsuppressible warning a hatched band - the device `Einzel.Render` puts
+across a tainted figure, so the vocabulary is already this project's. Keyed on
+`IsSuppressible`, which is false for **everything above advisory**, so it landed on a
+housekeeping note about a convergence floor and on almost every warning there is.
+
+GRD-3's argument is that a validity violation must never be skimmed. The failure mode it
+warns about is a false alarm on that class teaching readers to ignore it; **the same
+teaching happens when the mark is true of nearly everything**, which is the other direction
+and is not written down anywhere in the requirement. Four severities exist and they mean
+different things, so the page has four levels and the hatch is for `ValidityViolation` alone.
+
+The headline count moved for the same reason. "Runs carrying an unsuppressible warning" is
+almost every run - eleven of this project's own thirty-nine corpus examples carry one while
+behaving exactly as designed, which was measured when the exit code was being decided and
+already written down. Counting them in a masthead would have been the same mistake in the
+same file twice.
+
+## A fraction and its interval live in the same units
+
+The page printed `transmission 0.00 %, interval 0 to 1`. Both are correct; only one had been
+scaled. Two numbers about one quantity in two different units, side by side - which is the
+ambiguity section 9 refuses a model document for (`{"energy": 4000}` is a validation error on
+purpose), met on the output side where nothing refuses it.
+
+The value was a hundred times smaller than the run measured, and it read as plausible: a
+transmission of 0.00 % is exactly what a trap reports. **A unit error is worst where the wrong
+answer is a legitimate value of the same quantity.**
+
+The second half is rounding. `F2` turns 99.9976 % into `100.00 %`, which claims every ion
+arrived when 0.24 of ten thousand did not - and for a diffusive run the density's tail is
+precisely where the loss lives. The format now widens only where rounding would land on
+nothing or on everything without being there, so an ordinary figure stays short and the two
+values that carry a claim of completeness are never claimed falsely.
+
+## I made the defect I had just written a command to expose
+
+`einzel report` exists because the sequenced run path stored a manifest and no result - one
+of four paths missing a capability the other three had. The first version of the report
+looked in `results/` for `X.result.json` and nothing else.
+
+**A study writes `X.json`, not `X.result.json`.** So every sweep, scan, optimisation and
+boundary search in a project was reported as a run that had stored nothing, with the warning
+about it attached - and the projects with the most work in them would have said it loudest.
+The same "wired into N-1 of N" shape, in the command written to expose that shape, inside an
+hour.
+
+**What would have caught it is enumerating the writers, and I enumerated the readers.** I
+checked which run paths wrote a result and found the gap; I did not ask which *commands*
+write into `results/` at all. `grep` for the directory would have given two answers in one
+line. **When fixing an "N-1 of N" defect, the N is the set of writers, and the count you
+arrive at by reading the code you are already in is a count of the ones you were looking
+at.**
+
+The fix generalises rather than listing kinds: **the answer sits beside the manifest under
+the manifest's own stem** - `.result.json` for a run, `.json` for a study - so a fifth kind
+of study would be found by the same rule.
+
+**And the three empty states had to be separated.** A run with no stored answer, a study's
+answer this page does not draw, and a document this build cannot load all show an empty
+table, and each calls for something different: run it, read it another way, report a defect.
+The first version filed the first and third together under one count and told the reader to
+do the wrong thing.

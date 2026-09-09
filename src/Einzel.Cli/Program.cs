@@ -120,6 +120,7 @@ public static class Program
             "preview" => Preview(options),
             "test" => Test(options),
             "verify" => Verify(options),
+            "report" => Report(options),
             "export" => Export(options),
             "render" => Render(args, options),
             "ext" => Ext(args, options),
@@ -1288,6 +1289,103 @@ public static class Program
         return (int)(outcome.AllCurrent ? ExitCode.Success : ExitCode.ValidationFailure);
     }
 
+    /// <summary>An account of a project's runs, for a person to read (Amendment 43).</summary>
+    /// <remarks>
+    /// <para>
+    /// A verb rather than a shell view, so AGT-2 holds: nothing exists only in the window,
+    /// and an agent asking what a night of runs produced gets the same account through
+    /// <c>--json</c> that a person gets as a page.
+    /// </para>
+    /// <para>
+    /// <b>The page is written and not opened.</b> Launching a browser would make this the
+    /// one verb with a side effect outside the project, and a report generated on a
+    /// headless machine over ssh is exactly the case that wants the file and not the
+    /// window.
+    /// </para>
+    /// </remarks>
+    private static int Report(CommandLine options)
+    {
+        var root = options.Value("project")
+            ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+
+        var outcome = ReportCommand.Execute(root);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        // The page goes at the project root rather than into results/, and that is not
+        // cosmetic: results/ is what `verify` walks and what this reads, so a report
+        // written there would become an input to the next one.
+        var target = options.Value("out")
+            ?? Path.Combine(outcome.Root, "report.html");
+
+        var page = ReportPage.Write(outcome, Path.GetFileName(outcome.Root.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+
+        if (options.Has("dry-run"))
+        {
+            Console.Out.WriteLine(
+                $"would write {target} ({outcome.Runs.Count} run(s), {page.Length:N0} bytes)");
+
+            return (int)ExitCode.Success;
+        }
+
+        // A named directory is created rather than refused, since `--out reports/tonight.html`
+        // is the obvious way to keep a series of them and failing on the first is a poor
+        // answer. The default target's directory is the project root and always exists.
+        if (Path.GetDirectoryName(Path.GetFullPath(target)) is { } directory)
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(target, page);
+
+        foreach (var run in outcome.Runs)
+        {
+            var mark = run.Unreadable is not null ? "BROKEN"
+                : run.NotRendered is not null ? "study"
+                : run.Result is null ? "NOANSWER"
+                : run.Current ? "ok" : "STALE";
+
+            // A study's answer is not a fault, so it does not go to stderr with the ones
+            // that need doing something about.
+            var stream = mark is "ok" or "study" ? Console.Out : Console.Error;
+
+            stream.WriteLine(
+                $"{mark,-9}{run.Manifest,-46}{run.Numbers.Count,3} number(s), "
+                + $"{run.Warnings.Count} warning(s)");
+        }
+
+        // Diagnostics on stderr and the result on stdout (CLI-2), so a caller piping this
+        // gets the path and nothing else.
+        if (outcome.Runs.Count > 0)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine(
+                $"{outcome.Current} of {outcome.Runs.Count} run(s) still stand"
+                + (outcome.WithoutResult > 0
+                    ? $"; {outcome.WithoutResult} stored no result document"
+                    : "")
+                + (outcome.Unreadable > 0
+                    ? $"; {outcome.Unreadable} stored one this build cannot read"
+                    : "")
+                + (outcome.NotRendered > 0
+                    ? $"; {outcome.NotRendered} study answer(s) this page does not draw"
+                    : ""));
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        Console.Out.WriteLine(target);
+
+        return (int)ExitCode.Success;
+    }
+
     private static int Export(CommandLine options)
     {
         if (options.Positional.Count == 0)
@@ -2434,6 +2532,7 @@ public static class Program
           test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
           project [dir]                 what the project holds, and the state of each model
+          report [dir] [--out <f>]      an account of what has been run, as one HTML page
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           scan <study.json>             one parameter across a range, one row per point
           boundary <study.json>         bisect onto a stability boundary (Class B, ACC-6)
