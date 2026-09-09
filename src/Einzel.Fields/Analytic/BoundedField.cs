@@ -162,6 +162,22 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The region scales a potential by a factor of position alone, so it commutes with an
+    /// average over time and can be applied to the mean rather than to every sample.
+    /// </remarks>
+    public double CycleMeanPotentialAt(
+        in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    {
+        var scale = Region.Scale(in position);
+
+        return scale <= 0.0
+            ? 0.0
+            : scale * _driven.CycleMeanPotentialAt(
+                in position, fromSeconds, periodSeconds, samples);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// A region is a shape and holds nothing of its own, so this is the inner field's answer
     /// re-wrapped - and this instance where the inner field had nothing to hold.
     /// </remarks>

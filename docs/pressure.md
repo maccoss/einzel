@@ -1709,3 +1709,83 @@ Nothing chooses the refresh tolerance, and a driven mixture with a mean field re
 cycle-averaged well over the whole grid at every re-sample: the well cache exists only on the
 ramped path, so a re-sample driven by the density's own charge rebuilds it from scratch. That
 is the dominant cost of a driven mean-field run and the obvious next optimisation.
+
+
+## What a driven diffusive step costs, decomposed
+
+The TIMS front-end sequence had never run to completion, and the recorded diagnosis named the
+well assembly. That diagnosis was right about a real inefficiency and wrong about which term
+dominates. Measured on a probe that is the shipped model with every phase duration scaled to a
+thousandth - the step size is set by the field and the mesh rather than by the window, so step
+*count* scales with duration and the solve is a one-off, which makes the probe a rate
+measurement rather than a shortened experiment:
+
+| | 0.1 % probe | implied full 18.3 ms run |
+| --- | --- | --- |
+| as found | 199 s | **55 hours** |
+| cycle mean in closed form | 26 s | 7.2 h |
+| coefficient sweep across cores | **15 s** | **4.1 h** |
+
+Cross-checked at 1 %: 1,842 s measured against 1,990 predicted by scaling the 0.1 % probe, and
+1,420 ramp assemblies against 142 - exactly ten times, which is what says the extrapolation is
+sound rather than lucky. The answer moved by **1.2e-15** across the whole of it, all of that
+from the closed form replacing a sixteen-sample sum; the threading contributed nothing, being
+bit-identical.
+
+### The cycle mean needs no samples where the weights are known
+
+`DirectPotentialAt` evaluated the composite potential at sixteen instants **per density node,
+every step** - on this geometry about half a million field evaluations per step, each a
+superposition of bicubic interpolations across the funnel's channels.
+
+It does not have to be sampled at all. A solved field's potential is `sum_k w_k(t) phi_k(x)` -
+linear in the weights, which is what basis superposition means - so its mean over a window is
+`sum_k mean(w_k) phi_k(x)`: **one evaluation per channel and no time sampling**, with
+`RfWaveform.Mean` giving each weight's cycle mean in closed form (zero for a sinusoid,
+`2*duty - 1` for a rectangular wave). `ITimeVaryingField.CycleMeanPotentialAt` asks for it and
+falls back to the old sampling loop where it cannot be had, so the answer is unchanged either
+way.
+
+**The condition is that every drive completes a whole number of cycles in the window.** The
+window is one period of the shortest period present, so that holds when every generator shares
+a frequency and fails when one is slower - and where it fails, the sampled average is itself
+only an approximation of the slower generator's mean. The front end has one generator at
+850 kHz, so `f T = 1` exactly and the shortcut is exact.
+
+**The recorded claim it corrects** is that "the direct term IS the cycle mean of the potential
+and needs its sixteen samples whatever the ramp moves". True of the composite, false of the
+parts, and the same shape as the earlier mistake in this file's story: a statement about a sum
+where the terms are separable.
+
+**And an allocation had to come out of it.** The first version held the channel means in a
+`new double[_channels.Length]` so it could bail out before evaluating any channel potential -
+called seven times per node per step, which is billions of allocations over a run, against
+CMP-1's "the inner loop allocates nothing". Bailing out mid-accumulation costs at most a few
+wasted channel evaluations on a path that re-evaluates everything anyway. Bit-identical.
+
+### The coefficient sweep threads and the Gauss-Seidel sweep does not
+
+Both loops are over the same nodes, both write only their own slots, and both are bit-identical
+however the rows are divided. The coefficient sweep goes **5x**; the red-black sweep goes
+**1.09x** and was rejected. The reason is in the arithmetic rather than in the machinery, and
+`docs/lessons.md` carries it: bicubic superpositions are compute-bound and cache-resident,
+while a Gauss-Seidel cell is a few flops against several array touches plus an integer division
+and modulo per face.
+
+Verified by forcing it: with the node threshold set to **1** every diffusive test in the suite
+takes the parallel path, so the Boltzmann equilibrium still holds to 8.9e-16, the ion ledger to
+100.0000 % and the corpus drift tube to `L/(mu E)`.
+
+### What still dominates, and it is the step count
+
+The ramped phase takes about **56 ns** a step where the diffusion limit alone would allow
+1.26e-4 s - a factor of **2,236**, which is the drift limit binding. The implicit scheme's gain
+is measured against the *diffusion* limit and buys nothing when drift is what binds, so 18.3 ms
+is roughly 142,000 steps whatever the per-step cost is.
+
+**So `einzel estimate` is still four orders low on this class of model** - 8 s against 197,000 -
+and its own basis line says why in words: "the drift limit is NOT included, because it needs a
+field this has not solved, so the real step can only be smaller and this is a lower bound." The
+caveat is honest and the *number* is what a machine consumer reads. A runtime pilot would fix
+it - the estimate already measures its solve and flight rates that way, and a probe of a few
+microseconds of the real sequence would return the actual step. Not built.

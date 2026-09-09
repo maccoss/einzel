@@ -108,6 +108,70 @@ public interface ITimeVaryingField : IElectrostaticField
     double OscillatingResolutionLength => ResolutionLength;
 
     /// <summary>
+    /// The mean of the potential over one window, which is what a slow ion in a gas feels.
+    /// </summary>
+    /// <param name="position">Where to evaluate.</param>
+    /// <param name="fromSeconds">When the window opens, on this field's own clock.</param>
+    /// <param name="periodSeconds">How long the window is.</param>
+    /// <param name="samples">How many samples the fallback takes.</param>
+    /// <returns>The mean potential over that window, in volts.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This exists because sampling it is the dominant cost of a driven diffusive run.</b>
+    /// The mean was taken by evaluating the composite potential at <paramref name="samples"/>
+    /// instants for every node of the density grid, every step - on the shipped TIMS front end
+    /// that is sixteen superpositions of bicubic interpolations across 33,345 nodes, about
+    /// half a million field evaluations per step.
+    /// </para>
+    /// <para>
+    /// It does not have to be sampled at all where the weights are known. A solved field's
+    /// potential is <c>sum_k w_k(t) * phi_k(x)</c> - linear in the weights, which is what
+    /// basis superposition means - so its mean over a window is
+    /// <c>sum_k mean(w_k) * phi_k(x)</c>: <b>one evaluation per channel, and no time
+    /// sampling</b>. Each weight is a constant plus harmonic terms, and
+    /// <c>RfWaveform.Mean</c> gives a waveform's own cycle mean in closed form - zero
+    /// for a sinusoid, <c>2*duty - 1</c> for a rectangular wave.
+    /// </para>
+    /// <para>
+    /// <b>The condition is that every drive completes a whole number of cycles in the
+    /// window.</b> The window is one period of the SHORTEST period present, so that holds
+    /// when every generator shares a frequency and fails when one is slower - and where it
+    /// fails, the sampled average is itself only an approximation of that generator's mean.
+    /// An implementation that cannot satisfy it falls back to
+    /// <see cref="SampledCycleMean"/>, which is what every implementation did before.
+    /// </para>
+    /// </remarks>
+    double CycleMeanPotentialAt(
+        in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
+        SampledCycleMean(this, in position, fromSeconds, periodSeconds, samples);
+
+    /// <summary>The sampled window mean: what every implementation used to do.</summary>
+    /// <param name="field">The field to sample.</param>
+    /// <param name="position">Where to evaluate.</param>
+    /// <param name="fromSeconds">When the window opens.</param>
+    /// <param name="periodSeconds">How long the window is.</param>
+    /// <param name="samples">How many samples to take across it.</param>
+    /// <returns>The mean potential over the window, in volts.</returns>
+    static double SampledCycleMean(
+        ITimeVaryingField field,
+        in Vec3 position,
+        double fromSeconds,
+        double periodSeconds,
+        int samples)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+
+        var total = 0.0;
+
+        for (var s = 0; s < samples; s++)
+        {
+            total += field.PotentialAt(in position, fromSeconds + (periodSeconds * s / samples));
+        }
+
+        return total / samples;
+    }
+
+    /// <summary>
     /// The same field with any NON-OSCILLATORY time dependence held at the given instant,
     /// leaving the oscillation a function of time as before.
     /// </summary>

@@ -86,6 +86,17 @@ public sealed class TimeShiftedField : ITimeVaryingField
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The window opens at this leg's own instant, so the offset is added and the inner
+    /// field answers on the instrument's clock. Delegating rather than sampling is what
+    /// lets the saving survive a sequenced leg, which is every ramped diffusive phase.
+    /// </remarks>
+    public double CycleMeanPotentialAt(
+        in Vec3 position, double fromSeconds, double periodSeconds, int samples) =>
+        _inner.CycleMeanPotentialAt(
+            in position, fromSeconds + _offsetSeconds, periodSeconds, samples);
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The instant is on the instrument's timeline, the same one this wrapper's offset is
     /// measured on, so it passes through unshifted. Returns this instance where the inner
     /// field has nothing to hold, which keeps an unsequenced leg bit-identical.

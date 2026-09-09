@@ -295,6 +295,14 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
         // And neither saves a single potential evaluation, which is the half of the
         // inference that prompted this that was wrong: the direct term is the cycle mean
         // of the potential and is exactly what a DC ramp moves.
+        //
+        // TRUE OF THE SAMPLED FALLBACK, WHICH IS WHAT THIS WRAPPER EXERCISES. `Counting`
+        // does not implement `CycleMeanPotentialAt`, so it takes the interface default and
+        // the mean really is sixteen samples. A SOLVED field now answers it in closed form -
+        // one evaluation per channel and no time sampling, since the potential is linear in
+        // the weights - so on the shipped front end the direct term's cost fell 7.7x. The
+        // counts below are the fallback's, and are still the right thing to pin here because
+        // what this test is about is the WELL cache rather than the direct term.
         Assert.Equal(referenceCounter.Potentials, cachedCounter.Potentials);
         Assert.Equal(7 * 16 * nodes * reference.Assemblies, cachedCounter.Potentials);
     }
@@ -415,9 +423,19 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
     {
         public ITimeVaryingField Inner { get; set; } = inner;
 
-        public long Fields { get; private set; }
+        // ATOMIC, because the loop this wraps is spread across cores. A plain `Fields++`
+        // is a read, an add and a write, so concurrent increments lose counts - this test
+        // reported 8,337,733 against a true 9,609,600 when the coefficient sweep was first
+        // threaded and every diffusive test was forced onto the parallel path. The physics
+        // was untouched; the instrumentation was wrong. A test's own counters are part of
+        // what has to be thread-safe once the code they count is.
+        private long _fields;
 
-        public long Potentials { get; private set; }
+        private long _potentials;
+
+        public long Fields => Interlocked.Read(ref _fields);
+
+        public long Potentials => Interlocked.Read(ref _potentials);
 
         public double ShortestPeriodSeconds => Inner.ShortestPeriodSeconds;
 
@@ -427,28 +445,28 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
 
         public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
         {
-            Fields++;
+            Interlocked.Increment(ref _fields);
 
             return Inner.ElectricFieldAt(in position, timeSeconds);
         }
 
         public double PotentialAt(in Vec3 position, double timeSeconds)
         {
-            Potentials++;
+            Interlocked.Increment(ref _potentials);
 
             return Inner.PotentialAt(in position, timeSeconds);
         }
 
         public Vec3 ElectricFieldAt(in Vec3 position)
         {
-            Fields++;
+            Interlocked.Increment(ref _fields);
 
             return Inner.ElectricFieldAt(in position);
         }
 
         public double PotentialAt(in Vec3 position)
         {
-            Potentials++;
+            Interlocked.Increment(ref _potentials);
 
             return Inner.PotentialAt(in position);
         }

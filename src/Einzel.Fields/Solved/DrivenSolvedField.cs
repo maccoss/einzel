@@ -362,6 +362,107 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     }
 
     /// <inheritdoc/>
+    /// <inheritdoc/>
+    public double CycleMeanPotentialAt(
+        in Vec3 position, double fromSeconds, double periodSeconds, int samples)
+    {
+        // The stage and the ramp fraction have to be constant across the window, or the mean
+        // of the weights is not a function of one setting. They are when the operating point
+        // is held - which is what the diffusive path does - and trivially when there are no
+        // stages at all. Otherwise sample, as before.
+        if (_operatingPoint is null && _boundaries.Length > 0)
+        {
+            return ITimeVaryingField.SampledCycleMean(
+                this, in position, fromSeconds, periodSeconds, samples);
+        }
+
+        // ONE PASS AND NO ARRAY. A first version held the channel means in a
+        // `new double[_channels.Length]` so it could bail out before evaluating any channel
+        // potential - and this is called seven times per density node per step (once for the
+        // potential, six for the central differences of the field), which on the shipped
+        // front end is billions of allocations over a run, against CMP-1's "the inner loop
+        // allocates nothing". Bailing out mid-accumulation costs at most a few wasted
+        // channel evaluations on a path that re-evaluates everything anyway, and in practice
+        // nothing: the condition is a property of the frequencies and the window, so it is
+        // the same answer for every channel.
+        var total = 0.0;
+
+        for (var k = 0; k < _channels.Length; k++)
+        {
+            if (CycleMeanWeight(k, fromSeconds, periodSeconds) is not { } mean)
+            {
+                return ITimeVaryingField.SampledCycleMean(
+                    this, in position, fromSeconds, periodSeconds, samples);
+            }
+
+            // Skipped at zero, in channel order, so the sum is the same arithmetic in the
+            // same sequence as `PotentialAt` does it - which is what keeps an unsequenced
+            // model bit-identical.
+            if (mean != 0.0)
+            {
+                total += _channels[k].PotentialAt(in position) * mean;
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// The mean of a channel's weight over a window, in closed form, or null where the
+    /// window is not a whole number of cycles for every drive the channel taps.
+    /// </summary>
+    private double? CycleMeanWeight(int channel, double fromSeconds, double periodSeconds)
+    {
+        var setting = _operatingPoint ?? fromSeconds;
+
+        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);
+
+        var direct = stage < 0 ? _direct[channel] : _stageDirect[stage][channel];
+        var harmonics = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
+
+        var fraction = 0.0;
+        WeightTerm[]? endHarmonics = null;
+
+        if (stage >= 0 && _stageEndDirect[stage] is { } endDirect)
+        {
+            var start = stage == 0 ? 0.0 : _boundaries[stage - 1];
+            fraction = Math.Clamp((setting - start) / (_boundaries[stage] - start), 0.0, 1.0);
+            endHarmonics = _stageEndHarmonics[stage]![channel];
+            direct += (endDirect[channel] - direct) * fraction;
+        }
+
+        var total = direct;
+
+        for (var k = 0; k < harmonics.Length; k++)
+        {
+            var term = harmonics[k];
+            var drive = term.Drive;
+
+            if (drive < 0 || drive >= _frequencies.Length)
+            {
+                continue;
+            }
+
+            // A whole number of cycles, or the waveform's own mean is not this window's mean.
+            var cycles = _frequencies[drive] * periodSeconds;
+            var whole = Math.Round(cycles);
+
+            if (whole < 1.0 || Math.Abs(cycles - whole) > 1e-9 * Math.Max(1.0, whole))
+            {
+                return null;
+            }
+
+            var amplitude = endHarmonics is null
+                ? term.Amplitude
+                : term.Amplitude + ((endHarmonics[k].Amplitude - term.Amplitude) * fraction);
+
+            total += amplitude * _waveforms[drive].Mean;
+        }
+
+        return total;
+    }
+
+    /// <inheritdoc/>
     public double PotentialAt(in Vec3 position, double timeSeconds)
     {
         var total = 0.0;
