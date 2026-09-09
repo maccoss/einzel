@@ -1795,6 +1795,79 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   not, so the format widens only where rounding would land on nothing or everything without
   being there. Details in `docs/cli.md`, `docs/lessons.md`, SPEC.md Amendment 43.
 
+- **The TIMS analyser's resolution floor is a closed form, and the mobility cancels out of
+  it.** The front-end study's open question was whether the arrival width is the analyser's
+  own or whether the delivery leaves an axial spread the ramp reads as mobility. Answered -
+  and the closed form came first, on paper, before any run.
+
+  Near the balance point the net axial drift is linear in displacement, so the stationary
+  state of drift against diffusion is a Gaussian with `sigma_z^2 = D/(K|dE/dx|)`, and the
+  **Einstein relation cancels the mobility**: `sigma_z^2 = (kT/q)/|dE/dx|`. So the floor
+  depends on the gas temperature and the axial field gradient and on **nothing else** - not
+  the ion, not the gas speed, not the pressure. Those set *where* a mobility parks, which is
+  what separates species; they do not set how wide either one is. The knobs that narrow a
+  packet are a steeper gradient and a colder gas, which this project had not identified.
+
+  | | \|dE/dx\| at the parking point | sigma_z |
+  | --- | --- | --- |
+  | nominal `2V/L^2` | 55,319 V/m^2 | 0.6836 mm |
+  | **solved field, differenced off the exported potential** | **50,667**, 0.916 of nominal | **0.7143 mm** |
+  | **measured, parked** | - | **0.7119 mm** |
+
+  **0.34 % once the gradient comes from the solved field**, and the 8 % shortfall is the exit
+  element flattening the gradient - already recorded as the field peaking at 41.2 mm of 46.6.
+  The mirror's four-penetration-depth rule again: the formula is right and the number fed into
+  it is not. Two free checks: the solved axial field at the parking point is **-1170.03 V/m**
+  against `v_gas/K` = 1168.2 (**0.16 %**, the elution relation confirmed with no ion
+  involved), and the width is **mesh-independent** - 0.7119 mm at both a 0.47 mm and a 0.23 mm
+  cell, identical to four decimals, because Scharfetter-Gummel's zero-flux state *is* the
+  Boltzmann factor. The **radial** width does move with the mesh (0.2043 to 0.1643 mm), which
+  is the control that makes the axial claim mean something.
+
+  **And the answer to the question is the trap duration rather than the delivery.** A matched
+  pair differing in one parameter - where the packet is released - both stopped at the end of
+  the trap, because the width the ramp reads is the width the packet has when the ramp starts:
+
+  | at the end of the trap | axial sigma | radial |
+  | --- | --- | --- |
+  | delivered, 40 mm up the funnel | **1.7057 mm** | 0.6541 mm |
+  | parked at the balance point | **0.7118 mm** | 0.1643 mm |
+
+  2.4x wider - but the parked packet is **settled** (0.7119 then 0.7118, so it has forgotten
+  its 2 mm launch) and the delivered one is **still narrowing** (1.9318 then 1.7057). So
+  delivery does not imprint a width; the delivered packet arrives wide and has not finished
+  relaxing in the 300 us the shipped sequence gives it. Prediction on record for the run that
+  was killed before it landed: the variance relaxes with `1/(2K|E'|)` = 231 us and the
+  delivered packet implies 1019 us, **4.4x slower**, which is either a tail dominating a
+  second moment (sharp with a shoulder, not broad) or the linearisation failing over a
+  +-2 mm packet.
+
+  **`MobilityBalanceWidthTests` pins the closed form**, exact to every printed digit on an
+  analytic linear field, mesh-independent to 0.00 um across a fourfold refinement, with the
+  mobility cancelling measured as a width ratio of **1.00000**. **And running the mutations
+  refuted the test's own comment**: I wrote that a broken drift-to-diffusion ratio would move
+  the width with the mobility. It does not - `D` x 1.44 moves the *parking point* by 1/1.44
+  and leaves the width alone, while `kT` in the flux x 1.44 moves the width by sqrt(1.44).
+  The equilibrium is `exp(-q phi/kT)`, which contains `kT` and not `D`, so **the parking
+  point is the Einstein check and the width is the Boltzmann check** and I had them
+  backwards. The mesh-independence test passes under both mutations, reporting a consistent
+  and absolutely wrong 1.2000 mm at every mesh.
+
+  **The per-phase packet width now reaches the report**, which is what made any of this
+  askable - `DensityField.Spread()` has existed since the diffusive mode was built and the
+  sequenced phase record carried only the centroid, the recurring "a thing the mode computed
+  that nothing downstream could see" shape. One field on **both** sides of a conversion, since
+  SEQ-1's own subject is that position is the one thing both descriptions carry.
+
+  **And the full sequence has now failed to finish three times** - 4.75 CPU-hours, then 40
+  minutes, then 7.6 wall-hours against a 4.17 h estimate before a Windows update rebooted the
+  machine - **with no output on any attempt**, so whether the estimate is low or the run does
+  not terminate has never been observed. Two rules in `docs/lessons.md`: a run measured in
+  hours must emit something before it ends, and **ask which phase the number lives in before
+  paying for the whole pipeline** - the matched pair cost 39 and 122 minutes and removed a
+  second claim (that the ramp is modelled right) from the answer. Details in
+  `docs/device-templates.md`, `docs/literature-targets.md` section 6, `docs/lessons.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

@@ -201,6 +201,69 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
             "transport.velocity-assumed", Run("run", model).Stderr, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Every phase reports how wide the packet was, in one field on both sides of a
+    /// conversion.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The density solver computed this and the report dropped it</b> - `DensityField`
+    /// has had `Spread()` since the mode was built, and a sequenced phase carried only the
+    /// centroid. That is the recurring shape here: a thing the mode computed that nothing
+    /// downstream could see. Found because the TIMS front-end study's open question is
+    /// exactly "how wide is the packet when the ramp starts", and there was no way to ask.
+    /// </para>
+    /// <para>
+    /// <b>One field on both sides, which is SEQ-1's own subject.</b> Position is the one
+    /// thing both descriptions carry - a conversion to a density discards the velocities
+    /// entirely - so a width is comparable across a phase boundary where almost nothing
+    /// else is. Reporting it in two differently-named fields would make the comparison
+    /// somebody's arithmetic instead of the report's.
+    /// </para>
+    /// <para>
+    /// The physics is checked elsewhere, against a closed form, in
+    /// <c>MobilityBalanceWidthTests</c>: a packet held against a moving gas settles to
+    /// <c>sqrt((kT/q)/|dE/dx|)</c>. What this checks is that the number reaches a reader.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EveryPhaseReportsHowWideThePacketWas()
+    {
+        var json = JsonDocument.Parse(Run("run", Project(), "--json").Stdout).RootElement;
+        var phases = json.GetProperty("sequence").GetProperty("phases").EnumerateArray().ToArray();
+
+        Assert.Equal(2, phases.Length);
+
+        foreach (var phase in phases)
+        {
+            var spread = phase.GetProperty("spreadMm").EnumerateArray()
+                .Select(v => v.GetDouble())
+                .ToArray();
+
+            output.WriteLine(
+                $"{phase.GetProperty("name").GetString(),-8} "
+                + $"{phase.GetProperty("mode").GetString(),-11} "
+                + $"x {phase.GetProperty("centroidMm")[0].GetDouble(),8:F3} "
+                + $"+- {spread[0]:F4}, {spread[1]:F4} mm");
+
+            // A width, not a placeholder: this cloud is declared with a 0.5 mm spread on
+            // both axes, so a phase reporting zero would be reporting a point source.
+            Assert.Equal(2, spread.Length);
+            Assert.True(spread[0] > 0.0, "the axial width is not positive");
+            Assert.True(spread[1] > 0.0, "the radial width is not positive");
+        }
+
+        // The diffusive phase comes first and the trajectory phase second, so the field is
+        // filled from both descriptions in one run - which is what makes it one quantity
+        // rather than two that happen to share a name.
+        Assert.Equal("diffusion", phases[0].GetProperty("mode").GetString());
+        Assert.Equal("trajectory", phases[1].GetProperty("mode").GetString());
+
+        // And the terminal shows it beside the centre, because for a mobility analyser the
+        // two together are the measurement.
+        Assert.Contains("+-", Run("run", Project()).Stdout, StringComparison.Ordinal);
+    }
+
     /// <summary>The manifest records every mode the run used (PRJ-3).</summary>
     /// <remarks>
     /// A manifest fully determines its run. Recording one mode for a run that used two

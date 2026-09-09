@@ -23,6 +23,11 @@ namespace Einzel.Commands;
 /// How many trajectories carried them, or zero in a diffusive phase where there are none.
 /// </param>
 /// <param name="CentroidMm">Where the packet was when the phase ended, in millimetres.</param>
+/// <param name="SpreadMm">
+/// How wide the packet was when the phase ended - one standard deviation of position along
+/// each axis, in millimetres. Absent where there is nothing to take a width over: a single
+/// trajectory, or a phase that lost everything.
+/// </param>
 /// <param name="Converted">
 /// Whether the packet was converted into this phase's description at its start.
 /// </param>
@@ -81,6 +86,7 @@ public sealed record PhaseOutcome(
     double Population,
     int Trajectories,
     IReadOnlyList<double> CentroidMm,
+    IReadOnlyList<double>? SpreadMm,
     bool Converted,
     int Arrived,
     IReadOnlyList<LossChannel> Losses,
@@ -284,7 +290,7 @@ public static class SequencedRun
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
                     states.Length * perTrajectory, states.Length,
-                    Centroid(states), converted,
+                    Centroid(states), Spread(states), converted,
                     arrived,
                     [.. lost.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                         .Select(pair => new LossChannel(pair.Key, pair.Value))]));
@@ -313,6 +319,7 @@ public static class SequencedRun
                 }
 
                 var (cx, cy) = density.Centroid();
+                var (sx, sy) = density.Spread();
 
                 // A density's losses are the solver's own ledger, in ions rather than
                 // in counts, and folding them into a trajectory tally would add two
@@ -320,7 +327,9 @@ public static class SequencedRun
                 // phase instead, which is what the next conversion will carry.
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
-                    density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, [],
+                    density.Population(), 0, [cx * 1e3, cy * 1e3],
+                    density.Population() > 0.0 ? [sx * 1e3, sy * 1e3] : null,
+                    converted, 0, [],
                     diffused.Assemblies, diffused.WellRebuilds,
                     // Asked of the model rather than inferred from the result, and the same
                     // predicate the wholly diffusive path uses. A count of zero is a real
@@ -448,6 +457,40 @@ public static class SequencedRun
         var y = states.Average(s => s.Position.Y);
 
         return [x * 1e3, y * 1e3];
+    }
+
+    /// <summary>
+    /// How wide the packet is, as one standard deviation of position along each axis.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The same quantity the density solver reports, computed from the other
+    /// description.</b> SEQ-1's own subject is that position is the one thing both
+    /// descriptions carry, so a width is comparable across a conversion boundary where a
+    /// velocity distribution is not - which is what makes it worth reporting in one field
+    /// on both sides rather than in two fields named differently.
+    /// </para>
+    /// <para>
+    /// <b>Absent below two members</b>, because a standard deviation over one point is
+    /// zero and zero is a real width. The rule the rest of this surface reached after four
+    /// non-finite doubles took a serialiser down: an undefined measurement is missing
+    /// rather than nought.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<double>? Spread(PhaseState[] states)
+    {
+        if (states.Length < 2)
+        {
+            return null;
+        }
+
+        var meanX = states.Average(s => s.Position.X);
+        var meanY = states.Average(s => s.Position.Y);
+
+        var varianceX = states.Average(s => (s.Position.X - meanX) * (s.Position.X - meanX));
+        var varianceY = states.Average(s => (s.Position.Y - meanY) * (s.Position.Y - meanY));
+
+        return [Math.Sqrt(varianceX) * 1e3, Math.Sqrt(varianceY) * 1e3];
     }
 
     /// <summary>Flies the packet for one phase, and keeps whatever is still in flight.</summary>

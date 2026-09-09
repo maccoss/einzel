@@ -352,6 +352,11 @@ public sealed record MixtureJson(
 /// How many trajectories carried them, or zero in a diffusive phase where there are none.
 /// </param>
 /// <param name="CentroidMm">Where the packet was when the phase ended.</param>
+/// <param name="SpreadMm">
+/// How wide it was, as one standard deviation of position along each axis in millimetres.
+/// Absent where there is nothing to take a width over - a single trajectory, or a phase that
+/// lost everything - because zero is a real width.
+/// </param>
 /// <param name="Converted">Whether the packet was converted into this description.</param>
 /// <param name="Assemblies">
 /// In a diffusive phase, how many times the density solver assembled its operator: once for
@@ -381,6 +386,7 @@ public sealed record SequencePhaseJson(
     double Population,
     int Trajectories,
     IReadOnlyList<double> CentroidMm,
+    IReadOnlyList<double>? SpreadMm,
     bool Converted,
     int Assemblies,
     int WellRebuilds,
@@ -1367,6 +1373,7 @@ public static class RunCommand
                     phase.Population,
                     phase.Trajectories,
                     phase.CentroidMm,
+                    phase.SpreadMm,
                     phase.Converted,
                     phase.Assemblies,
                     phase.WellRebuilds,

@@ -1071,13 +1071,93 @@ That is what a funnel's effective wall is worth against a steady axial push, and
 Hernandez's sequence closes the gate *and* diverts the beam upstream with a deflector plate
 during the trap. A gate alone is a beam dump.
 
-**The whole sequence end to end is a study rather than a test, and it did not finish** — 4.75
-CPU-hours at 512 × 64 over 18 ms, and then 40 minutes at 256 × 32 over 12 ms, both killed.
-What the pieces already say is that it should hold no surprises: the funnel delivers to the
-analyser's own parking point and radius, and from there the elution is the analyser's,
-measured above. The number worth having from it is whether the arrival width is the
-analyser's too, or whether the delivery leaves an axial spread the ramp then reads as
-mobility.
+**The whole sequence end to end is a study rather than a test, and it has now failed to
+finish three times** — 4.75 CPU-hours at 512 × 64 over 18 ms, 40 minutes at 256 × 32 over
+12 ms, and 7.6 wall-hours at 512 × 64 against a predicted 4.17 before a Windows update
+rebooted the machine under it. It has produced no output on any attempt. Two things follow.
+The estimate is **not** the reason to distrust the plan — it said 4.17 h and the run passed
+that by 81 % with nothing else on the machine — so either the estimate is low for this
+model or the run does not terminate, and **which of those it is has never been established
+because no run has ever ended.** And a study measured in hours needs to survive an
+interruption: there is no checkpoint, so seven hours of a killed run is worth exactly
+nothing.
+
+### The open question is answered, by a matched pair rather than by the whole sequence
+
+The question was whether the arrival width is the analyser's own resolution or whether the
+delivery leaves an axial spread the ramp reads as mobility. It did not need the 18 ms
+sequence: it needed **two runs differing in one thing**, both stopped at the end of the
+trap, because the width the ramp will read is the width the packet has when the ramp
+starts.
+
+| at the end of the trap | axial σ | radial σ |
+| --- | --- | --- |
+| **delivered** — released 40 mm up the funnel, the shipped sequence | **1.7057 mm** | 0.6541 mm |
+| **parked** — released at the balance point, everything else identical | **0.7118 mm** | 0.1643 mm |
+
+**The delivered packet is 2.4× wider, so the width is mostly delivery** — but the sharper
+reading is in the two phases of each run. The parked packet is *settled*: 0.7119 mm at the
+end of its fill and 0.7118 at the end of the trap, so it has forgotten its 2 mm launch
+width. The delivered one is **still narrowing** — 1.9318 mm then 1.7057 mm. So delivery does
+not imprint a permanent width; the delivered packet **arrives wide and has not finished
+relaxing** in the 300 µs the shipped sequence gives it, which is a statement about the trap
+duration and therefore about a knob.
+
+**The analyser's own floor is a closed form, and the mobility cancels out of it.** Near the
+balance point the net axial drift is linear in displacement — `v(x) = K E(x) − u`, zero at
+`x₀` — so the stationary state of drift against diffusion is a Gaussian with
+
+```
+σ_z² = D / (K |dE/dx|) = (kT/q) / |dE/dx|
+```
+
+by the Einstein relation. **The width depends on the gas temperature and the axial field
+gradient and on nothing else** — not the ion, not the gas speed, not the pressure. Those set
+*where* the packet parks and not how wide it is, which makes the floor a property of the
+analyser rather than of what is in it. Measured against it:
+
+| | \|dE/dx\| at the parking point | σ_z |
+| --- | --- | --- |
+| nominal `2V/L²` | 55,319 V/m² | 0.6836 mm |
+| **solved field, differenced off the exported potential** | **50,667 V/m²**, 0.916 of nominal | **0.7143 mm** |
+| implied by the measured width | 51,010 V/m², 0.922 of nominal | — |
+| **measured, parked** | — | **0.7119 mm** |
+
+**0.34 % against the closed form once the gradient comes from the solved field**, and the
+8 % gradient shortfall is the exit element flattening the gradient toward the exit — already
+recorded above as the field peaking at 41.2 mm of 46.6. Same shape as the mirror's
+four-penetration-depth rule being 10 mm out: the formula is right and the number fed into it
+is not.
+
+Two checks came free. The solved axial field at the parking point is **−1170.03 V/m** against
+`v_gas/K` = 1168.2 — **0.16 %**, so the elution relation is confirmed off the exported field
+with no ion involved. And the width is **mesh-independent**: 0.7119 mm at both a 0.47 mm and
+a 0.23 mm axial cell, identical to four decimals, because Scharfetter–Gummel's zero-flux
+state *is* the Boltzmann factor and the equilibrium width is the scheme's exact answer rather
+than something converging to one. The **radial** width does move with the mesh (0.2043 →
+0.1643 mm), which is the control that makes the axial claim mean something: 0.406 mm cells
+are wider than a 0.16 mm width and 0.203 mm ones are not. The settled radial 0.1643 mm is
+also consistent to 4 % with the analyser template's validated 0.3406 mm rms radius, through
+the geometry of a 2-D Gaussian (std of r = σ√(2−π/2), rms r = σ√2).
+
+**What the two loss figures say, since they look backwards.** The parked run lost 14 % and the
+delivered one 0.3 %. A 2 mm-σ packet released *inside* a 4 mm bore has exp(−2) = 13.5 % of
+itself inside the metal at t = 0 — the seed's own overlap, deleted and counted — while the
+delivered packet starts where the funnel is 26 mm wide and the RF squeezes it in. Equilibrium
+is memoryless, so which ions were lost at t = 0 does not bias the settled width, and the
+0.34 % agreement with the closed form is what says so.
+
+**Left open, with the prediction on record.** The width relaxation should follow
+`σ²(t) = σ²_eq + (σ²_0 − σ²_eq)exp(−2K|E'|t)`, a time constant of `1/(2K|E'|)` = **231 µs**
+here. The delivered packet's 1.9318 → 1.7057 mm over 300 µs implies **1019 µs, 4.4× slower**.
+Two readings, and the run that discriminates them was killed by the reboot: either the
+relaxation is as predicted and the delivered packet's slowness is about its **shape** — a
+standard deviation is tail-dominated, so a tail of late arrivals reports a wide σ over an
+already-narrow core, which for a spectrum means *sharp with a shoulder* rather than broad —
+or the linearisation fails at these widths, since a 2 mm packet samples the gradient over
+±2 mm and it is not constant there. The models are written (`parked-curve`, splitting a hold
+into geometrically doubling phases so one run gives the whole curve) and cost 76 min and
+195 min.
 
 **Why it costs what it does, and the fix it points at.** A ramped diffusive phase re-assembles
 its face operator every step, which is what a changing field requires. Here the field is

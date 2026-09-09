@@ -913,6 +913,44 @@ independent variables rather than a single number: R must fall as the fourth roo
 scan rate and as the three-quarter power of the mobility. A model that lands on one point
 by tuning cannot land on that surface.
 
+### The analyser's own resolution floor, in closed form
+
+**The width a parked packet settles to is `sqrt((kT/q) / |dE/dx|)`, and the mobility cancels
+out of it.** Near the balance point the net axial drift is linear in displacement -
+`v(x) = K E(x) - u`, zero at `x0` - so the stationary state of drift against diffusion is a
+Gaussian with `sigma^2 = D / (K |dE/dx|)`, and the Einstein relation turns `D/K` into `kT/q`.
+
+So the floor on a TIMS analyser's resolution depends on **the gas temperature and the axial
+field gradient and on nothing else**: not the ion, not the gas speed, not the pressure. Those
+set *where* each mobility parks, which is what separates two species; they do not set how wide
+either one is. The two knobs that narrow a packet are therefore a steeper gradient - more volts
+over a shorter tunnel - and a colder gas, and neither is a knob this register had identified.
+
+Not a published relation, so it is recorded here as this project's own derivation, with what
+it was checked against:
+
+| | |
+| --- | --- |
+| closed form with the **solved** gradient at the parking point (50,667 V/m^2) | **0.7143 mm** |
+| measured, packet released at the balance point and held | **0.7119 mm**, 0.34 % |
+| closed form with the **nominal** `2V/L^2` (55,319 V/m^2) | 0.6836 mm, 4 % out |
+| solved axial field at the parking point vs `v_gas / K` = 1168.2 V/m | **-1170.03 V/m**, 0.16 % |
+| the same width at a 0.47 mm and a 0.23 mm axial cell | identical to four decimals |
+
+The 8 % gradient shortfall is the exit element flattening the field toward the exit, which
+`docs/device-templates.md` had already recorded as the field peaking at 41.2 mm of 46.6. The
+mesh-independence is not luck: Scharfetter-Gummel's zero-flux state *is* the Boltzmann factor,
+so the equilibrium width is the scheme's exact answer rather than an approximation converging
+to one. `MobilityBalanceWidthTests` asserts the closed form on an analytic linear field, where
+it is exact to every printed digit and the two-mobility width ratio is 1.00000.
+
+**What this is worth against the published resolving powers.** At the 60 V hold the width in
+volts is `sigma_z V / x0` = 1.945 V, so `R = V/(2.355 sigma_V)` = **13.1**, and at the 32 V
+quasi-static elution point 9.6. The engine's measured scan gives R = 8.3 at an 8 ms ramp, so
+the measured width sits close to the analyser's own thermal floor and there is little room in
+it for anything else - which is why Hernandez's 100-250 needs his 100-300 ms ramps and his
+140 m/s gas rather than a narrower packet.
+
 ### What this needs from the engine
 
 Most of it exists. The diffusive mode is built for 1-10 mbar; the collisional

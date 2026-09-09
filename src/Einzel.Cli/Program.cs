@@ -2246,11 +2246,20 @@ public static class Program
                     ? phase.Trajectories.ToString(invariant)
                     : "-";
 
+                // The width beside the centre, because for a mobility analyser the two
+                // together are the measurement: where a packet parks is which mobility it
+                // has, and how wide it is when the ramp releases it is the floor on the
+                // resolving power. A dash rather than a zero where there is nothing to take
+                // a width over, on the same argument as the trajectory count above.
+                var wide = phase.SpreadMm is { Count: > 0 } spread
+                    ? string.Create(invariant, $"{spread[0],7:F3}")
+                    : "      -";
+
                 Console.Out.WriteLine(string.Create(
                     invariant,
                     $"  {phase.Name,-12} {phase.Mode,-11} to {phase.EndsAtUs,8:F2} us  "
                     + $"{phase.Population,10:G6} ions in {carried,5} trajectories  "
-                    + $"x {phase.CentroidMm[0],8:F3} mm"
+                    + $"x {phase.CentroidMm[0],8:F3} +- {wide} mm"
                     + $"{(phase.Converted ? "  converted" : string.Empty)}"));
             }
 

@@ -3721,3 +3721,64 @@ answer this page does not draw, and a document this build cannot load all show a
 table, and each calls for something different: run it, read it another way, report a defect.
 The first version filed the first and third together under one count and told the reader to
 do the wrong thing.
+
+## Two assertions covering two failure modes, and I had which was which backwards
+
+A packet held against a moving gas settles to `sigma^2 = (kT/q)/|dE/dx|` - the Einstein
+relation cancels the mobility, so the width is a property of the analyser and not of the ion
+in it. The test asserts two things: where the packet parks, and how wide it is. I wrote down
+that the *width* was the discriminating one, on the argument that a broken drift-to-diffusion
+ratio would move it with the mobility.
+
+**Running the mutations said otherwise, exactly:**
+
+| mutation | parking point | width |
+| --- | --- | --- |
+| Einstein relation (`D`) x 1.44 | x 1/1.44 = 0.694 | **unchanged, 1.0000 mm** |
+| thermal voltage (`kT` in the flux) x 1.44 | x 1.44 | x sqrt(1.44) = 1.2000 mm |
+
+Scharfetter-Gummel's zero-flux state is `exp(-q phi / kT)`. The equilibrium involves `kT` and
+**not** `D`, so the width is invariant to the diffusion coefficient *by construction* and `D`
+sets only how fast the packet gets there. What the balance point tests is the identity
+`q dphi/kT == v h / D` between the field term of the exponent and the gas term - **which is
+the Einstein relation.** So the parking point is the Einstein check and the width is the
+Boltzmann check, and neither alone covers the other.
+
+**The rule: a test with two assertions is two tests, and which failure each catches is a
+measurement rather than a reading.** Both of mine were necessary and I could not have said
+which was which from the algebra I had in front of me. The habit that pays is running one
+mutation per suspected mechanism and writing the table down, rather than arguing from the
+formula about what a wrong implementation would do.
+
+### And a third assertion that catches neither
+
+The companion test asserts the width does not move with the mesh - 0.00 um across a fourfold
+refinement, which is a strong and tolerance-free property, because the discrete equilibrium
+*is* the continuous one. **It passes under both mutations**, reporting 1.2000 mm at every mesh:
+internally consistent and absolutely wrong. Mesh-independence is a claim about resolution and
+says nothing whatever about the value. It earns its place beside the closed-form comparison
+and would be worthless in place of it.
+
+## Seven hours of a study that has never once finished is worth nothing, and the reason is the absence of a checkpoint
+
+The TIMS front-end sequence has now failed to complete three times: 4.75 CPU-hours at
+512 x 64, 40 minutes at 256 x 32, and 7.6 wall-hours at 512 x 64 against an estimate of 4.17
+before a Windows update rebooted the machine. **It has produced no output on any attempt**, so
+the one thing that would settle whether the estimate is low or the run does not terminate has
+never been observed.
+
+Two rules, and the second is the one that cost this.
+
+**A run measured in hours needs to emit something before it ends.** The engine writes its
+result at the end, so an interrupted run leaves nothing at all - not a partial density, not a
+step count, not the per-phase widths it had already computed. A study whose output is
+all-or-nothing at hour seven is a study that cannot be run on a machine somebody else
+administers.
+
+**And the question did not need the long run.** The open question - is the arrival width the
+analyser's own or the delivery's - was answered by two runs of 39 and 122 minutes that differ
+in *one parameter*, both stopped at the end of the trap, because the width the ramp reads is
+the width the packet has when the ramp starts. Measuring the decisive quantity directly was
+about eight times cheaper than measuring it at the end of the pipeline that produces it, and
+it removed a second claim (that the ramp is modelled right) from the answer. **Before paying
+for the whole sequence, ask which phase the number actually lives in.**
