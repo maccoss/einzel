@@ -2020,7 +2020,7 @@ The two design documents remain the source of truth for *intent*. Tracked alongs
 
 Both are hand-authored, self-contained HTML documents: inline `<style>` blocks over an IBM Plex / CSS-variable palette, figures as inline `<svg>`. Edit the HTML directly; there is no generator and no markdown source. Revisions are new files with a bumped suffix (`-r06` → `-r07`), not in-place overwrites, and the change line at the top of the document records what the revision added.
 
-**Detailed documentation lives in `docs/`** — architecture and the four invariants, the model format in full, device templates, numerics with every measured figure, the lessons from bugs that presented as physics, the CLI contract, validation coverage *and its gaps*, and findings against the specification. Read the relevant page before changing something in that area; it records why things are the way they are, and several of the decisions cost real time to reach.
+**Detailed documentation lives in `docs/`** — architecture and the four invariants, the model format in full, device templates, numerics with every measured figure, the lessons from bugs that presented as physics, the CLI contract, validation coverage *and its gaps*, and findings against the specification. **`docs/extending.md` is the one to read before adding a capability**: it names the three kinds of change a device has ever needed below `Einzel.Library`, with the eleven instances as evidence, where each goes, and the traps each has already sprung. Read the relevant page before changing something in that area; it records why things are the way they are, and several of the decisions cost real time to reach.
 
 ## Commands
 

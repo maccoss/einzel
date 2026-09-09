@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,285 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,355 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -113,6 +113,25 @@ entry of *What to do next*). **What remains is distribution**: **82 of the 118
 requirements are met**, and fourteen of the twenty-one that are not built at all
 are the update mechanism and distribution. Nobody can install this.
 
+### The phase ORDER no longer describes the work, and that is deliberate
+
+The table below says how each phase's acceptance criteria stand, and they are largely met. What
+it does not say is that **the phases were not done in order**. r06 puts the installer and the
+update mechanism in Phase 2; they are the largest unbuilt block in the register, while Phases 3
+and 4 are substantially done and pieces of 5 are too.
+
+**The reason is that distribution is worth nothing until there is a second user.** Packaging an
+engine whose numbers are still being established would have spent Phase 2 on the one deliverable
+no one could yet use, and the sequencing principle r06 states for itself - seams first, the
+agent thesis de-risked early - is what actually governed. Fourteen of the twenty-one not-built
+requirements are `UPD-*` and `DST-*`, which is one assembly that does not exist rather than
+fourteen scattered gaps.
+
+**What this note is for.** A reader who takes the phase order literally concludes the project is
+behind on Phase 2 and goes to build an installer. It is not behind; it deferred one block on
+purpose, and the block moves to the front the moment somebody other than its author needs to run
+Einzel. **That, rather than a date, is the trigger.**
+
 ### Phase acceptance, checked
 
 | Phase | Acceptance criterion | State |
@@ -142,6 +161,71 @@ not merely a note about what is unbuilt.
 
 [Spec findings](docs/spec-findings.md) carries the long form of most of these with
 the measurements attached; what follows is the register of them.
+
+### 43 - A run's evidence is machine-readable and nothing renders it for a person
+
+**r06 is thorough about evidence travelling and silent about anybody reading it.** `GRD-1` puts
+an envelope on every quantity, `GRD-2` carries warnings through every surface, `PRJ-3` makes a
+manifest determine its run, and `CLI-1` puts `--json` on every verb. All of that is for a
+consumer that parses. **What no requirement asks for is an account a person can read** - what
+was run, what came out, and which caveats rode along - and §17's `RND-*` does not fill the gap,
+because it is about figures of the *instrument* rather than of the *work*.
+
+**The consequence, observed rather than predicted.** Following a stretch of engine work means
+reading terminal scrollback or a git log. A night's runs leave `results/*.json` and manifests
+that are complete, exact and unreadable; a person who wants to know what happened has to be
+told, which makes the account depend on somebody writing one. That is the same failure the
+generated platform layer of `AGENTS.md` exists to prevent, one level up.
+
+**What the specification should say.** A **report over a project's results and manifests is an
+engine capability**, reachable from the CLI so that `AGT-2` holds - an agent gets the same
+report - and producing a self-contained page: per run, the model and its hash, the engine
+version, the numbers with their envelopes, the warnings by severity, and any figures already
+rendered beside them.
+
+**And what it should not say.** Not a session recorder, and not new state. `PRJ-4`'s argument is
+that the durable record of a design is the document and its history, with `.einzel/` regenerable
+and discardable; a report is a *view* over the results and manifests that already exist, so it
+carries no state of its own and cannot drift from what actually ran. A recorder would be a
+second account of the same events, and the two would part company.
+
+**Status: not built.** The design is above; nothing implements it. What exists is that the
+inputs are all present and complete, which is why this is a view rather than a feature needing
+new bookkeeping.
+
+### 42 - Agents must extend the platform, and only one of the two ways to extend it is specified
+
+**r06 §5 argues that agents must extend the platform and not only drive it**, and `EXT-1` through
+`EXT-8` answer with a Python extension surface: a manifest, a schema, two runners, a registered
+figure of merit an optimiser can drive. That is real and it is built, and it answers **one** of
+the two ways this platform gets extended.
+
+**The other is the one that has actually recurred.** `LIB-1` has fired about eleven times - a
+device needing a change below `Einzel.Library` - and every instance was a **grammar function**
+(`log`, `cosPi`, `asinPi`, `floor`, `mod`), a **geometry primitive** (`polygon`, `prism`, a
+tilted box), or an **attribute on an existing element** (`axis`, `fringe`, a parametric
+`drivePhase`, `repeat`). **A Python extension can add none of those.** It computes a number from
+a finished model; it cannot give the model format a word it did not have.
+
+So the specification describes the objective-function case in detail and the vocabulary case not
+at all - and the vocabulary case is the one a new device keeps needing. There is no page saying
+where a shape goes, which switches must learn about it, or what a correct one owes.
+
+**What the specification should say.** The platform has **two extension surfaces**, and the
+second is the C# seams: the grammar's function table, the electrode geometry with its three
+switches, the attributes on existing elements, and the interfaces (`ITransportMode`,
+`IElectrostaticField`, `RfWaveform`, the figure-of-merit catalogue, `ISelfField`). It should be
+**documented as a surface** rather than left to be inferred from the source, for the same reason
+`AGT-7` generates the schema: a capability an agent cannot find is one it does not have.
+`docs/extending.md` is that page, and it is grounded in the eleven instances rather than in a
+listing of public members.
+
+**What it should not claim.** Not a packaged SDK. Extending needs a toolchain and a compile, so
+the extending agent is one with the source tree - and a NuGet-shaped surface waits on
+distribution (`UPD-*`, `DST-*`), which is deferred and stated as deferred. **An exhaustive API
+reference is also the wrong shape**: an agent with the source can read a signature, and what it
+cannot read off the source is which of three places a new shape must be taught about, or that
+a new attribute owes a default that leaves every existing document bit-identical.
 
 ### 41 - A model could describe one ion, and an instrument that separates ions holds several
 
