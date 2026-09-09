@@ -3548,3 +3548,37 @@ The part worth keeping is how nearly it hid. At the shipping threshold that test
 nodes, below the cut, so it takes the serial path and passes - the defect only exists on a
 configuration nobody ships. It would have waited there until somebody lowered the threshold or
 grew the grid, and then presented as the well cache having regressed.
+
+## A shortcut that trades accuracy for speed is only as good as the ratio it assumes
+
+`einzel estimate` omitted the drift limit for any model whose field had to be solved, and said
+so in the code:
+
+> solving the field to estimate the cost of the run defeats the purpose of estimating
+
+**That is sound in general and wrong by four orders for one mode.** For a trajectory model the
+solve really is most of the cost, so the argument holds. For a diffusive one the run solves the
+same field and then steps through it a hundred thousand times, so the solve is 1.81 s of
+197,000 - and omitting it left the gate reporting **8 s for a fifty-five-hour run**, on the one
+verb whose entire job is deciding whether to commit hours.
+
+**The assumption was never written down, which is why it outlived the case it was true for.**
+The comment gives the conclusion - solving defeats the purpose - and not the ratio the
+conclusion rests on, which is that a solve is comparable to a run. Where a shortcut trades
+accuracy for speed, **state the ratio it assumes**, because a second mode will arrive for which
+the ratio is different and the sentence will still read as true.
+
+The corrected form is structural rather than a threshold anybody has to defend: **a diffusive
+run cannot be cheaper than its own solve.** So solving to estimate costs at most the run's
+unavoidable floor, whatever the model, and the gate now reports what it spent. It is bounded
+too - the diffusive mode is two-dimensional, so this is never a volume solve.
+
+**And the same fix found the ninth instance of the recurring defect, in the cost gate itself.**
+The sampling loop read `field.ElectricFieldAt(point)` - the time-free arm - so for a driven
+geometry it took the RF at an arbitrary instant rather than the cycle average the run drifts
+through. `GRD-8`'s claim is that estimate and run *call the same function*; that was true of the
+step rule and not of the field it was handed.
+
+**The check that says the two now measure one thing** is not the agreement itself but its
+independence: the estimate finds a 58.5 ns step, and counting the probe's assemblies - one per
+step in a ramped phase - gives 56 ns from a completely separate route.
