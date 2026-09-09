@@ -47,6 +47,21 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
         }
     }
 
+    [Fact]
+    public void TheHumanPrinterHandlesAnExhaustedPacket()
+    {
+        Directory.CreateDirectory(_root);
+        var path = Path.Combine(_root, "empty.json");
+        File.WriteAllText(path, SequencedRunTests.Model
+            .Replace("[40, 0, 0]", "[20, 0, 0]", StringComparison.Ordinal)
+            .Replace("\"value\": 1, \"unit\": \"us\"", "\"value\": 10, \"unit\": \"us\"", StringComparison.Ordinal)
+            .Replace("\"value\": 1e-6, \"unit\": \"mbar\"", "\"value\": 1e-12, \"unit\": \"mbar\"", StringComparison.Ordinal));
+        var result = Run("run", path);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("packet empty", result.Stdout);
+        Assert.DoesNotContain("INTERNAL_ERROR", result.Stderr);
+    }
+
     private const string TrapThenExtract = """
     {
       "schemaVersion": "0.6",
@@ -70,7 +85,7 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
       ],
       "fields": [{ "type": "fieldFree" }],
       "detector": {
-        "planePoint": { "value": [60, 0, 0], "unit": "mm" },
+        "planePoint": { "value": [40, 0, 0], "unit": "mm" },
         "normal": { "value": [-1, 0, 0] }
       },
       "transport": {

@@ -1010,22 +1010,7 @@ public static class FiguresOfMerit
     {
         var population = model.Cloud.Population ?? model.Cloud.Ions;
 
-        Transport.Interaction.ISelfField interaction =
-            string.Equals(model.SpaceChargeMode, "pic", StringComparison.Ordinal)
-                ? new Transport.Interaction.ParticleInCell(
-                    population,
-                    cloud.Length,
-                    species.ChargeSi,
-                    species.MassSi,
-                    model.SpaceChargeGrid?.Nodes ?? 32,
-                    model.SpaceChargeGrid?.Padding ?? 4.0,
-                    model.SpaceChargeGrid?.RefreshTolerance ?? 0.05)
-                : new Transport.Interaction.CoulombInteraction(
-                    population,
-                    cloud.Length,
-                    species.ChargeSi,
-                    species.MassSi,
-                    RealisedSoftening(cloud));
+        var interaction = PacketInteraction(model, cloud, species, population);
 
         // The same gas, the same one-stream-per-ion seeding, as the independent path:
         // a run is reproducible from its manifest and raising the ion count does not
@@ -1107,15 +1092,19 @@ public static class FiguresOfMerit
         };
     }
 
-    /// <summary>The radius of the uniform sphere a drawn cloud actually fills.</summary>
-    /// <remarks>
-    /// Matched by root-mean-square radius, the same convention the screening
-    /// estimate uses, so the softening length and the screen describe one packet.
-    /// </remarks>
+    /// <summary>Constructs the declared interaction from the packet actually entering a leg.</summary>
+    internal static Transport.Interaction.ISelfField PacketInteraction(
+        CompiledModel model, PhaseState[] cloud, IonSpecies species, double population) =>
+        string.Equals(model.SpaceChargeMode, "pic", StringComparison.Ordinal)
+            ? new Transport.Interaction.ParticleInCell(population, cloud.Length,
+                species.ChargeSi, species.MassSi, model.SpaceChargeGrid?.Nodes ?? 32,
+                model.SpaceChargeGrid?.Padding ?? 4.0, model.SpaceChargeGrid?.RefreshTolerance ?? 0.05)
+            : new Transport.Interaction.CoulombInteraction(population, cloud.Length,
+                species.ChargeSi, species.MassSi, RealisedSoftening(cloud));
+
     /// <summary>
-    /// The direct sum's softening from the launched packet's own shape - its standard
-    /// deviation along each axis - so a long thin packet is softened at its thin
-    /// dimension's scale and not its length's.
+    /// Softening from the packet's standard deviation along each axis, rather than
+    /// from its longest dimension (SC-1).
     /// </summary>
     private static double RealisedSoftening(PhaseState[] cloud)
     {

@@ -255,6 +255,11 @@ leaving the caller to work it out.
 
 ## Diffusion from a model document
 
+**Detector limitation:** collection occurs on a density-grid face. The detector plane
+must coincide with that face and be normal to it; cylindrical grids support axial
+planes only. Internal and oblique planes are refused rather than silently relocated.
+Moving a detector therefore requires moving the corresponding grid boundary too.
+
 `"mode": "diffusion"` now runs. A source becomes an initial density — a Gaussian at
 the source position with the cloud's declared spreads, normalised to the declared
 population — a detector becomes a collecting boundary, and an electrode becomes a
@@ -871,6 +876,15 @@ true drift, so removing the cap makes the flux agree with the step rather than
 sitting conservatively under it.
 
 ## Crossing between the two modes (SEQ-1)
+
+Trajectory legs honour the declared gas with separate reproducible collision streams
+per member and phase. With `direct` or `pic` space charge, they advance collectively
+through `PacketIntegrator`, using the surviving population and the packet's actual
+positions. The self-field is rebuilt at a phase boundary; the result names this and
+the shared-step approximation. Collision-quality warnings survive the leg.
+A numerical failure cannot be passed into the next phase as a completed packet.
+If every ion has arrived or been lost, subsequent phases remain empty without
+conversion or reseeding; their centroid is absent.
 
 §9 says an instrument is a timed state machine of "ordered phases with durations,
 excitation overrides, **transport mode**, and transition conditions", and SEQ-1

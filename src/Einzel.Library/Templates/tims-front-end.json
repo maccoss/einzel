@@ -336,7 +336,7 @@
         "unit": "mm"
       },
       "maxX": {
-        "expression": "tunnelLength + exitLength",
+        "expression": "tunnelLength + detectorPad",
         "unit": "mm"
       },
       "minY": {

@@ -2144,15 +2144,18 @@ public static class Program
                 // a conversion re-samples the first while carrying the second - so both
                 // are shown, and a diffusive phase shows a dash rather than a zero,
                 // because it has no trajectories rather than none left.
-                var carried = phase.Trajectories > 0
+                var carried = phase.Mode == "trajectory"
                     ? phase.Trajectories.ToString(invariant)
                     : "-";
+                var centre = phase.CentroidMm.Count > 0
+                    ? string.Create(invariant, $"x {phase.CentroidMm[0],8:F3} mm")
+                    : "packet empty";
 
                 Console.Out.WriteLine(string.Create(
                     invariant,
                     $"  {phase.Name,-12} {phase.Mode,-11} to {phase.EndsAtUs,8:F2} us  "
                     + $"{phase.Population,10:G6} ions in {carried,5} trajectories  "
-                    + $"x {phase.CentroidMm[0],8:F3} mm"
+                    + $"{centre}"
                     + $"{(phase.Converted ? "  converted" : string.Empty)}"));
             }
 
