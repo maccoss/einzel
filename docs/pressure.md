@@ -349,6 +349,16 @@ The solver needs no change: it asks for a potential at a point and gets the
 effective one, which is the same thing `AxisymmetricField` does for a half-plane
 solve.
 
+**Supported spectrum:** one sinusoidal frequency at a held operating point (including
+one Fourier harmonic). A zero-amplitude generator contributes no frequency. Multiple
+active frequencies, rectangular waves and multi-harmonic drives are refused as
+`REGIME_INVALID` in the effective-field path; trajectory transport is unchanged.
+A shortest period is a step-control limit, not a frequency with which to weight every
+component of a spectrum. Same-frequency fields combine coherently before squaring.
+`RfValidityRegressionTests` checks an inert second clock, constructive/destructive
+interference, and refusal of two active frequencies. The quiver diagnostic uses the
+magnitude of charge, so changing polarity cannot hide an excessive excursion.
+
 ### The collisional well, and why it is not the textbook one
 
 An ion quivering in E0 cos(Omega t) and damped at rate nu obeys
@@ -442,10 +452,12 @@ every step and so is its mean square. Only the direct term moves.
 So `PotentialAt` is now exactly the sum of `DirectPotentialAt` and `WellAt`,
 asserted bit-for-bit over a spread of points and four RF phases, and a ramped
 run keeps the well per node and recomputes only the direct term. It is
-**verified rather than assumed**: sixteen nodes on a four-by-four lattice are
-recomputed from scratch at every step, and one disagreement past a relative 1e-12
-throws the whole cache away. So a document that really does ramp an RF amplitude
-gets the right answer, just without the saving. `DiffusionResult.WellRebuilds`
+**keyed to the RF definition**, not to agreement at a few spatial probes. A bounded
+drive can change entirely between probes: the former guard retained a well four times
+too shallow when its amplitude doubled. Reuse now requires the same immutable RF
+patterns, amplitudes, phases, species, damping and differencing settings. Unknown
+field implementations and position-dependent damping callbacks conservatively rebuild.
+A DC-only ramp can reuse the well; an RF change cannot. `DiffusionResult.WellRebuilds`
 rides out beside `Assemblies`, per phase in `einzel run --json`, because a saving
 nothing reports is a saving nobody can check.
 
@@ -454,6 +466,9 @@ Caching only the node value would force the central difference to be split into 
 direct part and a well part, and `(D+ + W+) - (D- + W-)` is not bit-identically
 `(D+ - D-) + (W+ - W-)`. Holding the well at all seven lets the difference be
 taken exactly as the field takes it.
+
+The following is the **historical benchmark with the former probe guard**, not a
+new timing claim for definition-based invalidation.
 
 | Synthetic DC ramp, 129 x 33 nodes, 20 steps | cached | reference |
 | --- | --- | --- |

@@ -179,6 +179,15 @@ public sealed class IdealQuadrupoleRf : ITimeVaryingField
     public double ShortestPeriodSeconds => 2.0 * Math.PI / AngularFrequency;
 
     /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds => AmplitudeVolts == 0.0
+        ? double.PositiveInfinity : ShortestPeriodSeconds / Waveform.SingleHarmonicOrder;
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other) => other is IdealQuadrupoleRf field
+        && AmplitudeVolts == field.AmplitudeVolts && AngularFrequency == field.AngularFrequency
+        && InscribedRadiusM == field.InscribedRadiusM && Waveform == field.Waveform && Axis == field.Axis;
+
+    /// <inheritdoc/>
     /// <remarks>Never: an analytic drive runs one way for the whole flight.</remarks>
     public double NextSwitchAfter(double timeSeconds) => double.PositiveInfinity;
 

@@ -136,6 +136,30 @@ are the update mechanism and distribution. Nobody can install this.
 
 ## Amendments to the specification
 
+### 42 - A cycle average needs the spectrum, and a cache needs its defining inputs
+
+**REG-2:** the ponderomotive denominator belongs to each frequency, not to the
+shortest period of the complete field. An audit found that adding a zero-amplitude
+2 MHz generator to a 1 MHz quadrupole reduced its computed well from 0.19094 V to
+0.04736 V and introduced a false DC contribution. More samples cannot correct the
+wrong denominator.
+
+The current effective-field path therefore requires a known, single sinusoidal
+frequency (a single Fourier harmonic qualifies). Inactive generators do not choose
+its period. Mixed frequencies, rectangular waves, multiple harmonics and unknown
+spectra are refused with `REGIME_INVALID`; time-domain trajectories remain supported.
+A frequency-resolved effective potential is still needed to lift this restriction.
+`RfValidityRegressionTests` checks the inactive-generator control and the refusal.
+
+The same audit placed a changing RF field between every spatial cache probe: doubling
+its amplitude left the cached well unchanged rather than quadrupling it. Reuse now
+requires equal oscillation definitions, operating-point amplitudes and species/sampling
+settings. Unknown fields or spatially varying damping rebuild conservatively.
+`LocalisedAmplitudeChangeInvalidatesTheCache` fails on the previous implementation.
+Quiver is an amplitude, so it now uses absolute charge; `QuiverIsAnAmplitudeForEitherChargeSign`
+checks both polarities without changing the sign of the effective potential.
+
+
 Places where building it showed the original to be wrong, incomplete, or right for
 a reason it did not give. Each is a change to what the specification *should say*,
 not merely a note about what is unbuilt.
@@ -1738,7 +1762,7 @@ in a table.
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
 | `REG-1` | Trajectory integration and statistical diffusion are peer implementations of ITransportMode . | **Met** | Both modes are `ITransportMode` implementations and both are available. `ProducesTrajectories` is on the interface so a renderer asks rather than infers. |
-| `REG-2` | The engine computes the governing dimensionless numbers along every path and raises a non-suppressible warning when the selected mode is outside validity. | **Met** | Knudsen, mean free path, collisions per flight and per RF cycle computed on every run and **reported whether or not anything crosses a threshold**. A regime violation gets its own exit code. |
+| `REG-2` | The engine computes the governing dimensionless numbers along every path and raises a non-suppressible warning when the selected mode is outside validity. | **Met** | Knudsen, mean free path, collisions per flight and per RF cycle computed on every run and **reported whether or not anything crosses a threshold**. A regime violation gets its own exit code. The effective-field path now refuses spectra it cannot average correctly, ignores inactive generators when choosing the period, and reports the same quiver for either charge sign (`RfValidityRegressionTests`, `QuiverIsAnAmplitudeForEitherChargeSign`; Amendment 42). |
 | `REG-3` | In the overlap band both modes run on the same model and the comparison is a supported operation with its own report. Accuracy classes Class T, timing. ... | **Met** | Trajectory 13.2555 +/- 1.3584 m/s against diffusion 13.8418 - 0.43 standard errors, between machineries sharing only a cross section. `einzel compare` is the supported operation. |
 
 ### Rendering (§17)

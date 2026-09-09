@@ -64,6 +64,18 @@ public interface ITimeVaryingField : IElectrostaticField
     double ShortestPeriodSeconds { get; }
 
     /// <summary>
+    /// Period of the single sinusoidal frequency at this operating point; infinity for
+    /// no oscillation, NaN for an unknown or non-monochromatic spectrum. Unlike the
+    /// shortest period, this licenses a single-frequency pseudopotential (REG-2).
+    /// </summary>
+    double MonochromaticPeriodSeconds => double.NaN;
+
+    /// <summary>Whether the immutable oscillating fields are identical, ignoring DC.</summary>
+    /// <param name="other">Another held operating point.</param>
+    /// <returns>True only when equality follows from the field's definition, not spatial probes.</returns>
+    bool HasSameOscillationAs(ITimeVaryingField other) => false;
+
+    /// <summary>
     /// When the field next changes discontinuously, after a given instant.
     /// </summary>
     /// <param name="timeSeconds">The instant to look forward from.</param>

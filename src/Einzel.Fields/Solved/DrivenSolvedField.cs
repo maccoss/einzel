@@ -128,6 +128,58 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     /// <summary>Whether any stage ramps rather than holds.</summary>
     public bool HasRamp => _stageEndDirect.Any(d => d is not null);
 
+    // The same weights used by Weight(), evaluated at the held operating point.
+    private WeightTerm[] RfTermsAt(int channel)
+    {
+        var setting = _operatingPoint ?? 0.0;
+        var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);
+        var terms = stage < 0 ? _harmonics[channel] : _stageHarmonics[stage][channel];
+        if (stage < 0 || _stageEndHarmonics[stage] is not { } ends) return terms;
+        var start = stage == 0 ? 0.0 : _boundaries[stage - 1];
+        var fraction = Math.Clamp((setting - start) / (_boundaries[stage] - start), 0.0, 1.0);
+        return [.. terms.Select((term, k) => term with
+        {
+            Amplitude = term.Amplitude + (ends[channel][k].Amplitude - term.Amplitude) * fraction,
+        })];
+    }
+
+    /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds
+    {
+        get
+        {
+            if (_boundaries.Length > 0 && _operatingPoint is null) return double.NaN;
+            var frequency = 0.0;
+            for (var c = 0; c < _channels.Length; c++)
+            {
+                foreach (var term in RfTermsAt(c))
+                {
+                    if (term.Amplitude == 0 || term.Drive < 0 || term.Drive >= _frequencies.Length) continue;
+                    var next = _frequencies[term.Drive] * _waveforms[term.Drive].SingleHarmonicOrder;
+                    if (next == 0) continue;
+                    if (double.IsNaN(next) || (frequency != 0 && frequency != next)) return double.NaN;
+                    frequency = next;
+                }
+            }
+            return frequency == 0 ? double.PositiveInfinity : 1.0 / frequency;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (other is not DrivenSolvedField field || !ReferenceEquals(_channels, field._channels)
+            || !ReferenceEquals(_frequencies, field._frequencies)
+            || !ReferenceEquals(_waveforms, field._waveforms)
+            || (_boundaries.Length > 0 && (_operatingPoint is null || field._operatingPoint is null))) return false;
+        for (var c = 0; c < _channels.Length; c++)
+        {
+            if (!RfTermsAt(c).AsSpan().SequenceEqual(field.RfTermsAt(c))) return false;
+        }
+        return true;
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// <para>

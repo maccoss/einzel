@@ -284,13 +284,10 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
                 / cachedWatch.Elapsed.TotalMilliseconds:F2}x on an analytic drive");
 
         // The reference pays two passes over the field at each of seven points per node
-        // per assembly. The cache pays them once, on the assembly that built it, plus the
-        // probes: sixteen nodes at each later step, which is what makes the check cheap
-        // and is pinned here so that a wider probe lattice cannot quietly stop it being.
+        // per assembly. The cache pays once; equality of the immutable RF definition
+        // replaces spatial probes, which could miss a changing localised drive.
         Assert.Equal(2 * 7 * 16 * nodes * reference.Assemblies, referenceCounter.Fields);
-        Assert.Equal(
-            (2 * 7 * 16 * nodes) + (2 * 16 * 16 * (cached.Assemblies - 1)),
-            cachedCounter.Fields);
+        Assert.Equal(2 * 7 * 16 * nodes, cachedCounter.Fields);
 
         // And neither saves a single potential evaluation, which is the half of the
         // inference that prompted this that was wrong: the direct term is the cycle mean
@@ -353,12 +350,11 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
         {
             ITimeVaryingField rf = Quadrupole(amplitudeVolts(elapsed));
 
-            // The same instance across every step where one is given, because it is
-            // counting the calls of a whole run and not of a step.
+            // Share the counter, not a mutable field: each operating point must keep
+            // its own immutable RF definition for comparison with the previous one.
             if (counter is not null)
             {
-                counter.Inner = rf;
-                rf = counter;
+                rf = new Counting(rf, counter);
             }
 
             var driven = new DrivenSuperposedField(
@@ -419,9 +415,9 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
     /// interface at an arbitrary instant is the defect this project has met six times, so
     /// it is worth having the count fail rather than absorb it.
     /// </remarks>
-    private sealed class Counting(ITimeVaryingField inner) : ITimeVaryingField
+    private sealed class Counting(ITimeVaryingField inner, Counting? sink = null) : ITimeVaryingField
     {
-        public ITimeVaryingField Inner { get; set; } = inner;
+        public ITimeVaryingField Inner { get; } = inner;
 
         // ATOMIC, because the loop this wraps is spread across cores. A plain `Fields++`
         // is a read, an add and a write, so concurrent increments lose counts - this test
@@ -438,6 +434,9 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
         public long Potentials => Interlocked.Read(ref _potentials);
 
         public double ShortestPeriodSeconds => Inner.ShortestPeriodSeconds;
+        public double MonochromaticPeriodSeconds => Inner.MonochromaticPeriodSeconds;
+        public bool HasSameOscillationAs(ITimeVaryingField other) =>
+            other is Counting counting && Inner.HasSameOscillationAs(counting.Inner);
 
         public double OscillatingResolutionLength => Inner.OscillatingResolutionLength;
 
@@ -445,28 +444,28 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
 
         public Vec3 ElectricFieldAt(in Vec3 position, double timeSeconds)
         {
-            Interlocked.Increment(ref _fields);
+            Interlocked.Increment(ref (sink ?? this)._fields);
 
             return Inner.ElectricFieldAt(in position, timeSeconds);
         }
 
         public double PotentialAt(in Vec3 position, double timeSeconds)
         {
-            Interlocked.Increment(ref _potentials);
+            Interlocked.Increment(ref (sink ?? this)._potentials);
 
             return Inner.PotentialAt(in position, timeSeconds);
         }
 
         public Vec3 ElectricFieldAt(in Vec3 position)
         {
-            Interlocked.Increment(ref _fields);
+            Interlocked.Increment(ref (sink ?? this)._fields);
 
             return Inner.ElectricFieldAt(in position);
         }
 
         public double PotentialAt(in Vec3 position)
         {
-            Interlocked.Increment(ref _potentials);
+            Interlocked.Increment(ref (sink ?? this)._potentials);
 
             return Inner.PotentialAt(in position);
         }

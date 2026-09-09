@@ -25,10 +25,9 @@ namespace Einzel.Library.Tests;
 /// reaches it through the three wrappers in between.
 /// </para>
 /// <para>
-/// <b>The controls are the whole file.</b> "The well no longer moves" is what a field nobody
-/// sampled would also report, so the unheld path is measured in the same run; and "it moves by
-/// less than 1e-13" is a claim about this machine's arithmetic, so the floor is measured too,
-/// on the same geometry with a phase that holds instead of ramping.
+/// The unheld path is explicitly refused. The held path is compared against the arithmetic
+/// floor measured on the same geometry with a phase that holds instead of ramping; an
+/// absolute 1e-13 threshold would instead test this machine's arithmetic.
 /// </para>
 /// </remarks>
 public sealed class RampedWellOperatingPointTests(ITestOutputHelper output)
@@ -152,7 +151,10 @@ public sealed class RampedWellOperatingPointTests(ITestOutputHelper output)
                 && rampedField.ShortestPeriodSeconds > 0.0,
             "the analyser reported no drive, so there is no cycle to average over");
 
-        var running = Spread(rampedField, ramped, held: false);
+        // An unheld sequence is no longer certified as monochromatic: averaging a
+        // ramp into the RF is refused rather than yielding the old contaminated well.
+        var running = Assert.Throws<Einzel.Core.Errors.EinzelException>(
+            () => Spread(rampedField, ramped, held: false));
         var frozen = Spread(rampedField, ramped, held: true);
 
         // THE FLOOR, MEASURED ON THIS MACHINE. The same geometry with a phase that holds
@@ -165,20 +167,14 @@ public sealed class RampedWellOperatingPointTests(ITestOutputHelper output)
         var heldField = Assert.IsAssignableFrom<ITimeVaryingField>(
             FieldAssembly.BuildReported(held).Field);
 
-        var floor = Spread(heldField, held, held: false);
+        var floor = Spread(heldField, held, held: true);
 
         output.WriteLine($"drive period                   {rampedField.ShortestPeriodSeconds * 1e9:F1} ns");
-        output.WriteLine($"ramp still running in window   {running:G6}");
+        output.WriteLine($"ramp still running in window   {running.Error.Code}");
         output.WriteLine($"operating point held           {frozen:G6}");
         output.WriteLine($"arithmetic floor (phase holds) {floor:G6}");
 
-        // The control: without holding, the well really does move, and by an amount that
-        // matters against the cache's 1e-12 tolerance. Without this the test would pass on a
-        // field nobody sampled.
-        Assert.True(
-            running > 1e-9,
-            $"the unheld well moved by only {running:G3}, so this configuration does not carry "
-            + "the defect and the comparison below asserts nothing");
+        Assert.Equal(Einzel.Core.Errors.ErrorCodes.RegimeInvalid, running.Error.Code);
 
         // And with the operating point held there is nothing left but that floor. Eight times
         // rather than exactly it, because the two runs sum different numbers and neither is

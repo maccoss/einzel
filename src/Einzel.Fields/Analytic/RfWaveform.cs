@@ -38,6 +38,26 @@ public abstract record RfWaveform
     /// </remarks>
     public abstract double Mean { get; }
 
+    /// <summary>The only non-zero harmonic order, zero for no drive, or NaN for a broad spectrum.</summary>
+    public double SingleHarmonicOrder => this switch
+    {
+        Sinusoid => 1.0,
+        Harmonic harmonic => SingleOrder(harmonic),
+        _ => double.NaN,
+    };
+
+    private static double SingleOrder(Harmonic harmonic)
+    {
+        var order = 0.0;
+        foreach (var term in harmonic.Terms)
+        {
+            if (term.Amplitude == 0.0) continue;
+            if (order != 0.0 && order != term.Order) return double.NaN;
+            order = term.Order;
+        }
+        return order;
+    }
+
     /// <summary>The sinusoid a resonant drive produces. Gives the Mathieu equation.</summary>
     public sealed record Sinusoid : RfWaveform
     {

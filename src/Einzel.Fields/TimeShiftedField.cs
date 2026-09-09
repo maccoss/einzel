@@ -26,7 +26,7 @@ namespace Einzel.Fields;
 /// and nothing inside the integrator knows a sequence exists.
 /// </para>
 /// </remarks>
-public sealed class TimeShiftedField : ITimeVaryingField
+public sealed class TimeShiftedField : ITimeVaryingField, IConductorBounded
 {
     private readonly ITimeVaryingField _inner;
     private readonly double _offsetSeconds;
@@ -83,6 +83,29 @@ public sealed class TimeShiftedField : ITimeVaryingField
 
     /// <inheritdoc/>
     public double ShortestPeriodSeconds => _inner.ShortestPeriodSeconds;
+
+    /// <inheritdoc/>
+    public double SignedDistanceToConductor(in Vec3 position) => _inner is IConductorBounded bounded
+        ? bounded.SignedDistanceToConductor(in position) : double.PositiveInfinity;
+
+    /// <inheritdoc/>
+    public string? ConductorAt(in Vec3 position) => _inner is IConductorBounded bounded
+        ? bounded.ConductorAt(in position) : null;
+
+    /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds => _inner.MonochromaticPeriodSeconds;
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other) =>
+        other is TimeShiftedField shifted && _offsetSeconds == shifted._offsetSeconds
+        && _inner.HasSameOscillationAs(shifted._inner);
+
+    /// <summary>Compares complete monochromatic cycles, allowing a common time shift.</summary>
+    /// <param name="other">The other complete field, not a member of a superposition.</param>
+    /// <returns>Whether a full-cycle mean square is unchanged.</returns>
+    public bool HasSameCycleAs(TimeShiftedField other) =>
+        double.IsFinite(MonochromaticPeriodSeconds)
+        && _inner.HasSameOscillationAs(other._inner);
 
     /// <inheritdoc/>
     /// <remarks>
