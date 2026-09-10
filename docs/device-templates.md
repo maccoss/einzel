@@ -1147,17 +1147,37 @@ delivered packet starts where the funnel is 26 mm wide and the RF squeezes it in
 is memoryless, so which ions were lost at t = 0 does not bias the settled width, and the
 0.34 % agreement with the closed form is what says so.
 
-**Left open, with the prediction on record.** The width relaxation should follow
-`σ²(t) = σ²_eq + (σ²_0 − σ²_eq)exp(−2K|E'|t)`, a time constant of `1/(2K|E'|)` = **231 µs**
-here. The delivered packet's 1.9318 → 1.7057 mm over 300 µs implies **1019 µs, 4.4× slower**.
-Two readings, and the run that discriminates them was killed by the reboot: either the
-relaxation is as predicted and the delivered packet's slowness is about its **shape** — a
-standard deviation is tail-dominated, so a tail of late arrivals reports a wide σ over an
-already-narrow core, which for a spectrum means *sharp with a shoulder* rather than broad —
-or the linearisation fails at these widths, since a 2 mm packet samples the gradient over
-±2 mm and it is not constant there. The models are written (`parked-curve`, splitting a hold
-into geometrically doubling phases so one run gives the whole curve) and cost 76 min and
-195 min.
+**And the relaxation time is measured, to about one per cent.** The same linearization gives
+the variance a single relaxation time — `σ²(t) = σ²_eq + (σ²_0 − σ²_eq)exp(−2K|E'|t)`, so
+`τ = 1/(2K|E'|)` = **231 µs** here, half the centroid's because a variance is a second moment.
+Measured by splitting one hold into phases that double in length, which needs no new
+capability at all now that every phase boundary reports a width:
+
+| interval | excess variance, mm² | implied τ |
+| --- | --- | --- |
+| 100 → 200 µs | 2.2696 → 1.4699 | **230.2 µs** |
+| 200 → 400 µs | 1.4699 → 0.6197 | **231.6 µs** |
+| 400 → 800 µs | 0.6197 → 0.1114 | **233.1 µs** |
+| 800 → 1600 µs | 0.1114 → 0.0037 | **234.5 µs** |
+
+A packet released 2 mm wide comes down to **0.7117 mm** and stays there — 1.6662, 1.4059,
+1.0613, 0.7861, 0.7143, 0.7117, 0.7117 mm across the seven holds — so the equilibrium the
+closed form predicts is reached from four times that width, and the excess over it decays as
+a plain exponential at the predicted rate across four octaves. The 2 % upward drift in τ from
+the wide end to the narrow end is recorded as measured rather than explained. Every hold
+assembled its operator **once**, which is the held-phase fix doing what it was for.
+
+**That refutes one of the two explanations the delivered packet's slowness had.** Its
+1.9318 → 1.7057 mm over 300 µs implies **1019 µs, 4.4× slower** than 231, and the two
+candidates were a tail dominating a second moment or the linearization failing over a packet
+several millimeters wide. **It is not the width.** The parked packet's first interval is
+measured at σ = 1.67 mm — ±5 mm at three sigma, sampling the gradient over more than twice the
+span the objection was about — and it relaxes at 230 µs there, the predicted rate, from the
+widest point on the curve. What is left is the delivered packet's own shape: a second moment
+carrying a shoulder, or a population still being carried in while the trap holds. Either way
+the reading for a spectrum is *sharp with a shoulder* rather than broad, and the run that
+separates them is the delivered packet given time to relax (`delivered-relax`, the same seven
+doubling holds after the shipped delivery).
 
 **Why it costs what it does, and the fix it points at.** A ramped diffusive phase re-assembles
 its face operator every step, which is what a changing field requires. Here the field is

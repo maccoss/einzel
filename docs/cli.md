@@ -91,7 +91,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel validate <model.json>` | Units, bounds, dimensions, regime validity. Instant |
 | `einzel estimate <model.json\|study.json>` | What a run or a whole study will cost, before starting it (GRD-8) |
 | `einzel solve <model.json>` | Solve the fields only, and report how they went |
-| `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud |
+| `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud, and says where it has got to every 30 s (`--progress`) |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel scan <study.json>` | One parameter across a range: one row per point, and a curve |
 | `einzel boundary <study.json>` | Bisect onto a stability boundary, to ACC-6 (Class B) |
@@ -395,6 +395,51 @@ Three presentation decisions that are about not lying rather than about taste:
   quantity in two different units, side by side, which is the ambiguity section 9 refuses a
   model document for. The first version of this page did that and reported a transmission a
   hundred times smaller than the run measured.
+
+### A sequenced run is a timeline, not a list of scalars
+
+**The width per phase is what the page exists to show for a mobility analyzer, and the
+first version of it showed five numbers.** A sequenced run reported phases, mode
+conversions, ions arrived, mean arrival and arrival spread - all properties of the whole
+run - and the per-phase packet width, which had been added to the result document the day
+before precisely because a TIMS study's open question is "how wide is the packet when the
+ramp starts", was not among them. Computed by the solver, carried through the document, and
+absent from the surface a person reads: the same shape the report command was written to
+expose, in code a day old.
+
+It is a table rather than more rows in the numbers list because a flat name and value has
+nowhere to put the instant a number belongs to, and how a quantity *moved through the
+phases* is the whole answer a sequenced run gives. That also makes it a measuring
+instrument with no new capability at all: **split a hold into phases of the same settings
+and the table is a relaxation curve**, one row per boundary, because every boundary reports
+a width. The 231 microsecond relaxation time in `docs/literature-targets.md` section 6 was
+measured exactly that way.
+
+| | |
+| --- | --- |
+| `phase`, `mode` | as the model author named it, and which description it ran in |
+| `ends at` | on the instrument's own clock |
+| `population`, `trajectories` | real ions, and how many trajectories carried them - **absent** for a diffusive phase, because a density is not a count of anything and a zero there reads as an instrument that lost everything |
+| `center`, `axial width`, `radial width` | one standard deviation along each axis, absent where there was nothing left to measure |
+| `converted` | marked on the phase the packet crossed descriptions at (SEQ-1), because the widths either side of that mark are two measurements of one packet by two machineries |
+
+One rendering, shared with a checkpoint's: a run that never finished carries its completed
+phases in the same record, so this table cannot describe a killed run's phase differently
+from a finished one's.
+
+### A run that did not finish says how far it got
+
+**Its own state is the sixth thing this page distinguishes**, and it earns that because it
+calls for something different from every other: not "nothing to do", not "re-run it", not
+"run it again to store an answer" - but give it longer, or a coarser mesh, or a machine
+nobody is going to reboot. A run interrupted after six hours and a run that was never
+started both leave `results/` without a result, and reporting them alike throws away the
+phases the first one finished.
+
+What it reads is the checkpoint described under **Files a run writes** below. The sentence
+names where it was, how many steps in, and how long it had been going; the phases that
+completed are drawn in the timeline table above, through the same rendering a finished
+run's go through.
 
 **Warnings get four levels because the enum has four.** The first version keyed the hatched
 band - the device `Einzel.Render` puts across a tainted figure - on `IsSuppressible`, which
@@ -852,6 +897,7 @@ is the whole list.
 | --- | --- |
 | `results/<name>.manifest.json` | Model hash, engine version, solver-behaviour version, transport mode, compute path, machine, timestamp |
 | `results/<name>.result.json` | The figures of merit, each as a full envelope |
+| `results/<name>.progress.json` | **Only while the run is going** - where it has got to, and the phases that finished. Removed when the run writes its answer, so finding one means the run did not |
 | `.einzel/<name>.trajectory.vtu` | The sampled trajectory, with provenance in a comment block |
 
 The manifest fully determines the run, which is what makes `.einzel/` safe to
@@ -859,6 +905,66 @@ delete and results regenerable rather than precious. It is also what lets drift 
 detected in both directions: a stored result can be checked against both the
 current model and the currently installed engine, in a plain folder, with no
 repository involved.
+
+### A run measured in hours says something before it ends
+
+**The gap this closes is an engineering one, and it made a study unrunnable.** A driven
+diffusive window is set by a Courant limit against a ponderomotive gradient, so it is
+hundreds of thousands of steps whatever each one costs - and the engine wrote its result at
+the end, so such a run produced its first byte of output when it finished. The TIMS
+front-end sequence failed to finish three times: 4.75 CPU-hours, then 40 minutes, then 7.6
+wall-hours against a 4.17 hour estimate before a Windows update rebooted the machine. **On
+none of the three was anything observed**, so the one question that would settle whether the
+estimate was low or the run does not terminate was never asked. `estimate` will tell you a
+run is going to take four hours; nothing then said a word for four hours.
+
+`einzel run --progress <seconds>` sets the interval, and it is **on by default at thirty
+seconds**. That is the decision rather than the plumbing: a flag somebody has to remember
+is a flag that is not set on the run that gets killed. `--progress 0` asks for silence, and
+leaves no file at all.
+
+Each report is one line on **stderr** (CLI-2 - progress is a diagnostic, so a caller piping
+`--json` still gets the result document and nothing else) and one rewrite of the checkpoint:
+
+```
+      27.8 s  phase 1/2 fill             17.0 of 3000.0     us        300 steps     85919 ions at x   21.090 +- 1.9395 mm  ~23 min left in this phase
+```
+
+Four things about it are load-bearing.
+
+**The projection is measured, not divided.** It comes from the step rate *between* reports,
+so the first report of a phase makes none and every one after it divides the microseconds
+gained by the wall clock spent gaining them. Dividing total elapsed time by the fraction
+simulated charges the solve - a one-off cost paid before the first step - to every remaining
+microsecond: measured at 82 minutes against an actual 23 on the shipped analyzer, and 17,576
+minutes on the very first report. Each phase times its own stepping, because a ramped phase
+and a held one differ by an order of magnitude in cost per microsecond and carrying a rate
+across a boundary projects the wrong phase's.
+
+**A finished phase is written whether or not the interval has come round.** That is the state
+a killed run should be found in: a study that splits a hold into phases to read a relaxation
+curve has most of its answer in the phases that completed, and before this they went with
+the process.
+
+**The checkpoint is written through a temporary file and moved into place**, so a reader
+never sees half a document and a process killed mid-write leaves the previous checkpoint
+rather than a broken one. A failed write is announced once and swallowed - a full disk must
+not end an eight-hour run at hour seven.
+
+**And watching does not change the answer.** The observer is handed the solver's own live
+density buffer rather than a copy, which is what makes reporting cheap enough to do at all,
+and *which* steps report is set by the wall clock - so if the answer depended on being
+watched it would not even be reproducible. Two runs of one seeded model, one silent and one
+reporting every step, are asserted equal to the last digit. The cost on the hot path is one
+call per step asking whether a report is wanted; the centroid and the width are full passes
+over the grid and are computed only when it is.
+
+**The solve is announced before it starts**, because with the projection fixed it became the
+longest silent stretch of a long run - 21 s on the TIMS front end's sixteen-plate funnel and
+twenty-seven-ring analyzer, and the first *step* on that geometry is another 26 s after it, so
+a watched run said nothing for three quarters of a minute and that reads like a hang. The wall
+clock goes with it, since the cycles and the convergence factor already on the result say how
+well the solve went rather than how long somebody waited.
 
 ## What `estimate` measures, and what it does not
 

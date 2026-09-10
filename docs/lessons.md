@@ -3782,3 +3782,88 @@ the width the packet has when the ramp starts. Measuring the decisive quantity d
 about eight times cheaper than measuring it at the end of the pipeline that produces it, and
 it removed a second claim (that the ramp is modelled right) from the answer. **Before paying
 for the whole sequence, ask which phase the number actually lives in.**
+
+**Both are now built, and the first one cost less than the argument for it.** `einzel run`
+reports on stderr every thirty seconds by default and rewrites a checkpoint beside its
+manifest, holding where it is, the phases that finished whole, and each population's center
+and width. The interval is a default rather than a flag because **a flag somebody has to
+remember is a flag that is not set on the run that gets killed**, and the file is removed when
+the run writes its answer, so finding one means the run did not finish - which needs no
+timestamp comparison to read. `docs/cli.md` carries the details.
+
+Three things it taught while being built.
+
+**A projection from total elapsed time is a projection of the solve.** The first version
+divided wall clock by the fraction of the phase simulated, which charges the one-off solve to
+every remaining microsecond: 82 minutes against an actual 23 on the shipped analyzer, and
+17,576 minutes on the very first report, where one step had been taken. Measuring the rate
+*between* reports fixed it and held at 23 minutes across three consecutive reports. Same rule
+`einzel estimate` reached when it started excluding process start: **a rate measured over a
+window containing a fixed cost is not a rate.**
+
+**An observer handed a live buffer has to be proved harmless.** Reporting is cheap only
+because the solver hands over its own density rather than a copy, and *which* steps report is
+set by the wall clock - so a consumer that wrote into what it was shown would produce numbers
+that still looked like measurements and were not even reproducible. Two runs of one seeded
+model, one silent and one reporting every step, are asserted equal to the last digit; the
+mutation that adds `1e-9` to one cell in the observer fails that test and nothing else.
+
+**And the run it was built for is the last thing that will be invisible.** The two relaxation
+runs launched before it existed were started from an older binary snapshot and emit nothing.
+The longer of the two was restarted from the new one at a cost of 32 minutes, which is the
+trade in its plainest form: half an hour of machine time to convert a 2.7-hour all-or-nothing
+run into one that banks each phase as it finishes.
+
+## A snapshot of a bin directory is the last build, and after a mutation test the last build is the mutation
+
+Long studies here run from a copy of the CLI in the scratchpad rather than from
+`src/Einzel.Cli/bin`, because editing source while a run holds those binaries blocks the
+build - which cost several hours over one night. The copy is made with `cp -r
+src/Einzel.Cli/bin/Debug/net10.0/*`.
+
+**Three mutations were run to check the new checkpoint's tests had teeth, the source was
+restored and verified byte-identical, and the snapshot was taken without rebuilding.** So the
+snapshot carried the third mutation - `Wants => false`, which disables progress reporting
+entirely - and the four-hour run started from it reported nothing at all. That reads exactly
+like the feature not working, and half an hour went into looking for the bug in code that was
+correct.
+
+What makes it worth writing down is how *plausible* the failure was. The mutated binary still
+announced each finished phase, because that path does not go through `Wants`; it still computed
+the right physics, because the observer is provably inert; and `--progress notanumber` was still
+refused with the right message, because the argument parsing is in a different assembly. Three
+checks that the feature was present all passed.
+
+**Two rules.** A binary snapshot is only as current as the last `dotnet build`, so **build
+immediately before copying, and stamp what was copied** - this project already learned the
+same thing when a snapshot came out labelled with the commit *before* the one whose code it
+contained. And **restoring the source after a mutation test is half the job**: the bin
+directory is still mutated until something rebuilds it, so a mutation test should end with a
+build, not with a `cp` of the backup.
+
+## A producer written without its reader, for the third time in three days
+
+`einzel report` exists because a night's runs left `results/*.json` that only a parser could
+read. Writing it found that the sequenced run path stored no result at all, and that a result
+document did not read back into the record that wrote it - both defects of the same shape,
+a thing produced with nothing downstream consuming it.
+
+Then the same shape twice more, in code hours old each time.
+
+**The per-phase packet width reached the result document and not the report.** It was added
+because a TIMS study's open question is "how wide is the packet when the ramp starts", and the
+report's sequenced arm yielded phases, conversions, arrived, mean arrival and arrival spread -
+every property of the whole run, and not the one quantity the study was about.
+
+**And the checkpoint above was very nearly written with nothing reading it.** A run that did
+not finish leaves a `.progress.json` and no result, and the report would have said only that
+"its answer is nowhere" - true, and it discards the phases that did finish, which for a
+relaxation study is most of the measurement. It now reads the checkpoint, says how far the run
+got, and draws the completed phases **through the same rendering a finished run's go through**,
+because a checkpoint and a result describe a phase in the same record.
+
+The rule that generalizes is not "write the reader too" - it is about where to look. Both
+report defects were found by *enumerating the writers into `results/`* rather than the readers
+of it; the run paths were enumerated first and that is what missed the studies. **After adding
+a producer, ask what reads it, and answer by enumerating consumers rather than by recalling
+one.**

@@ -159,11 +159,19 @@ public static class SequencedRun
     /// <param name="model">The model, whose phases carry the modes.</param>
     /// <param name="field">The assembled field.</param>
     /// <param name="gas">The gas, resolved so an imported field reaches both modes.</param>
+    /// <param name="progress">
+    /// Told which phase is running and what each finished one measured, or null to run
+    /// silently. A phase that has finished is a measurement, so handing it over is what
+    /// lets a killed run leave the phases that completed behind it.
+    /// </param>
     /// <returns>What each phase did, and what the conversions cost.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">The model cannot be run this way.</exception>
     public static SequencedOutcome Execute(
-        CompiledModel model, IElectrostaticField field, BackgroundGas gas)
+        CompiledModel model,
+        IElectrostaticField field,
+        BackgroundGas gas,
+        IRunProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -216,6 +224,11 @@ public static class SequencedRun
             var phase = model.Phases[i];
             var trajectory = string.Equals(phase.Mode, "trajectory", StringComparison.Ordinal);
             var converted = false;
+
+            // Which phase of how many, so a watcher can say "5 of 8" - a thing the
+            // transport stepping one leg has no way to know.
+            progress?.Entering(
+                phase.Name, i + 1, model.Phases.Count, phase.DurationSeconds);
 
             // Enter the phase in its own description, converting if the packet is in
             // the other one. The first phase has nothing to convert from: it starts
@@ -297,7 +310,8 @@ public static class SequencedRun
             }
             else
             {
-                var diffused = Diffuse(density!, model, field, gas, species, started, phase, warnings);
+                var diffused = Diffuse(
+                    density!, model, field, gas, species, started, phase, warnings, progress);
                 density = diffused.Density;
 
                 // The diffusive leg's own ledger used to be dropped here - `Diffuse`
@@ -339,6 +353,12 @@ public static class SequencedRun
                     model.ModelsMeanField ? diffused.SelfFieldSolves : null,
                     model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null));
             }
+
+            // A FINISHED PHASE IS A MEASUREMENT. Handed over whole, so a run killed in
+            // the sixth phase leaves the five that finished on disk rather than losing
+            // them with the process - which for a study that splits a hold into phases to
+            // read a relaxation curve is most of the answer.
+            progress?.Completed(outcomes[^1]);
 
             started = phase.EndsAtSeconds;
         }
@@ -572,7 +592,8 @@ public static class SequencedRun
         IonSpecies species,
         double startedAt,
         CompiledPhase phase,
-        List<ValidityWarning> warnings)
+        List<ValidityWarning> warnings,
+        IRunProgress? progress)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -694,7 +715,8 @@ public static class SequencedRun
             scheme: scheme,
             stepGain: model.DensityStep.IsImplicit ? model.DensityStep.Gain : 1.0,
             fieldAt: fieldAt,
-            selfField: selfField);
+            selfField: selfField,
+            progress: progress);
 
         if (selfField is not null)
         {

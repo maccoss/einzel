@@ -244,6 +244,12 @@ public static class DriftDiffusion
     /// The density's own charge, coupled back into the field it is stepped through, or null
     /// for a run in which the ions do not push on each other.
     /// </param>
+    /// <param name="progress">
+    /// Told how far the solve has got while it is still going, or null to run silently.
+    /// A run measured in hours has to be able to say something before it ends, which is
+    /// what this is for; nothing it is handed reaches the solve, so a watched run and an
+    /// unwatched one are bit-identical.
+    /// </param>
     /// <returns>What happened.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The duration is not positive.</exception>
@@ -261,7 +267,8 @@ public static class DriftDiffusion
         double stepGain = 1.0,
         IReadOnlyList<double>? snapshotSeconds = null,
         Func<double, IElectrostaticField>? fieldAt = null,
-        DensitySelfField? selfField = null)
+        DensitySelfField? selfField = null,
+        IDensityProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(initial);
         ArgumentNullException.ThrowIfNull(field);
@@ -458,6 +465,16 @@ public static class DriftDiffusion
             {
                 snapshots.Add(new DensitySnapshot(snapshotSeconds[pending], time, density.Clone()));
                 pending++;
+            }
+
+            // WHERE IT HAS GOT TO, WHILE IT IS STILL GOING. Read only: nothing here
+            // reaches the solve, so a run being watched and one not are bit-identical.
+            // The moments a consumer wants are full passes over the grid, which is why
+            // it is asked whether it wants them before they are computed.
+            if (progress is not null && progress.Wants(steps, time))
+            {
+                progress.Reached(new DensityProgressReport(
+                    steps, time, untilSeconds, dt, collected, [new DensityProgressSpecies(string.Empty, density)]));
             }
         }
 

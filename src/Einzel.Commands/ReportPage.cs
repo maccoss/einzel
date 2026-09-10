@@ -149,13 +149,16 @@ public static class ReportPage
 
     private static void Run(StringBuilder page, ReportedRun run)
     {
-        // The state a reader wants first, and there are five because they call for five
-        // different things: nothing to do, re-run it, run it again to store an answer, read
-        // it another way, and report a defect. Collapsing any pair would tell a reader to
-        // do the wrong one - a study whose answer this page does not draw is not broken,
-        // and a document this build cannot load is not a project that has moved on.
+        // The state a reader wants first, and there are six because they call for six
+        // different things: nothing to do, re-run it, run it again to store an answer,
+        // give it longer or a coarser mesh, read it another way, and report a defect.
+        // Collapsing any pair would tell a reader to do the wrong one - a study whose
+        // answer this page does not draw is not broken, a document this build cannot load
+        // is not a project that has moved on, and a run that was interrupted after six
+        // hours is not one that was never started.
         var (state, label) = run.Unreadable is not null ? ("broken", "unreadable")
             : run.NotRendered is not null ? ("study", "a study's answer")
+            : run.Unfinished is not null ? ("unfinished", "interrupted")
             : run.Result is null ? ("noanswer", "no result stored")
             : !run.Current ? ("drifted", "superseded")
             : ("current", "current");
@@ -205,7 +208,16 @@ public static class ReportPage
                     : ", and the engine did not finish")}.</p>\n");
         }
 
-        if (run.Result is null)
+        if (run.Result is null && run.Unfinished is { } unfinished)
+        {
+            // A RUN THAT DID NOT FINISH IS A DIFFERENT STATEMENT from one that has no
+            // answer stored, and only one of them is worth acting on the same way. Both
+            // leave results/ without a result; this one ran for hours and was interrupted,
+            // and the phases it got through are real measurements.
+            page.Append(CultureInfo.InvariantCulture,
+                $"<p class=\"unfinished\">{Escape(unfinished)}.</p>\n");
+        }
+        else if (run.Result is null)
         {
             page.Append("<p class=\"noanswer\">This run stored a manifest and no result "
                 + "document, so its provenance is complete and its answer is nowhere. Nothing "
@@ -240,6 +252,56 @@ public static class ReportPage
 
                 page.Append(CultureInfo.InvariantCulture,
                     $"<td class=\"ev\">{(number.Evidence is null ? "—" : Escape(number.Evidence))}</td>");
+                page.Append("</tr>\n");
+            }
+
+            page.Append("</tbody>\n</table>\n</div>\n");
+        }
+
+        // THE TIMELINE, WHERE THERE IS ONE. A sequenced run's answer is how the packet
+        // changed through the phases, and the width per phase is the whole subject of a
+        // mobility-analyzer study: split a hold into phases and this table is a
+        // relaxation curve. Below the scalars, because those describe the run and this
+        // describes the course it took.
+        if (run.Phases.Count > 0)
+        {
+            page.Append("<h4>The timeline it walked</h4>\n");
+            page.Append("<div class=\"scroll\">\n<table class=\"numbers phases\">\n");
+            page.Append("<thead><tr><th>phase</th><th>mode</th><th class=\"num\">ends at</th>"
+                + "<th class=\"num\">population</th><th class=\"num\">trajectories</th>"
+                + "<th class=\"num\">center</th><th class=\"num\">axial width</th>"
+                + "<th class=\"num\">radial width</th></tr></thead>\n<tbody>\n");
+
+            foreach (var phase in run.Phases)
+            {
+                page.Append("<tr>");
+
+                // THE CONVERSION IS MARKED ON THE PHASE IT HAPPENED AT. SEQ-1's own
+                // subject is that position is the one thing both descriptions carry, so
+                // the widths either side of that mark are two measurements of one packet
+                // by two machineries - and a reader comparing them has to know which
+                // boundary they straddle.
+                page.Append(CultureInfo.InvariantCulture,
+                    $"<td>{Escape(phase.Name)}{(phase.Converted ? Converted : "")}</td>");
+
+                page.Append(CultureInfo.InvariantCulture,
+                    $"<td class=\"unit\">{Escape(phase.Mode)}</td>");
+
+                page.Append(CultureInfo.InvariantCulture,
+                    $"<td class=\"num\">{Escape(phase.EndsAtUs)}<span class=\"unit\"> us</span></td>");
+
+                page.Append(CultureInfo.InvariantCulture,
+                    $"<td class=\"num\">{Escape(phase.Population)}</td>");
+
+                page.Append(CultureInfo.InvariantCulture,
+                    $"<td class=\"num\">{(phase.Trajectories is { } carried
+                        ? Escape(carried.ToString("N0", CultureInfo.InvariantCulture))
+                        : "—")}</td>");
+
+                Millimeters(page, phase.CentroidMm);
+                Millimeters(page, phase.AxialSpreadMm);
+                Millimeters(page, phase.RadialSpreadMm);
+
                 page.Append("</tr>\n");
             }
 
@@ -317,6 +379,28 @@ public static class ReportPage
     /// silenceable severity, is left plain.
     /// </para>
     /// </remarks>
+    /// <summary>The badge that marks the phase a packet changed description at.</summary>
+    private const string Converted =
+        " <span class=\"conv\" title=\"the packet was converted between transport "
+        + "descriptions here\">converted</span>";
+
+    /// <summary>
+    /// One length, in millimeters, or an em dash where there was none to measure.
+    /// </summary>
+    /// <param name="page">The page being built.</param>
+    /// <param name="value">The length, already formatted; null where there is none.</param>
+    /// <remarks>
+    /// <b>An absent width is an em dash rather than a zero</b>, for the same reason an
+    /// absent interval is: a packet one cell across reports a width of nearly zero and
+    /// that is a measurement, while a phase that ended with nothing left has no width at
+    /// all. Printing both as "0.0000" would make the second look like the first.
+    /// </remarks>
+    private static void Millimeters(StringBuilder page, string? value)
+        => page.Append(CultureInfo.InvariantCulture,
+            $"<td class=\"num\">{(value is null
+                ? "—"
+                : Escape(value) + "<span class=\"unit\"> mm</span>")}</td>");
+
     private static void Warning(StringBuilder page, ValidityWarning warning)
     {
         var kind = warning.Severity switch
@@ -417,21 +501,21 @@ public static class ReportPage
         :root{
           --paper:#F7F7F4; --ink:#12161A; --ink2:#525C64; --ink3:#7E888F;
           --rule:#C9CFD4; --hair:#DDE2E5; --panel:#FFFFFF;
-          --blue:#1D4E89; --verd:#0B7A6B; --amber:#9C6A0B; --plum:#5B4B8A;
+          --blue:#1D4E89; --verd:#0B7A6B; --amber:#9C6A0B; --plum:#5B4B8A; --rust:#A0522D;
           --tint:#E7EEF3; --tint2:#E4F0ED; --tint3:#F6EEDD;
         }
         @media (prefers-color-scheme: dark){
           :root:not([data-theme="light"]){
             --paper:#101315; --ink:#E7EAEC; --ink2:#A3ADB4; --ink3:#7E888F;
             --rule:#333B41; --hair:#252C31; --panel:#171B1E;
-            --blue:#7EA8D8; --verd:#5FBFAE; --amber:#D7A44A; --plum:#A798D0;
+            --blue:#7EA8D8; --verd:#5FBFAE; --amber:#D7A44A; --plum:#A798D0; --rust:#D08A5A;
             --tint:#1B2530; --tint2:#172624; --tint3:#2A2318;
           }
         }
         :root[data-theme="dark"]{
           --paper:#101315; --ink:#E7EAEC; --ink2:#A3ADB4; --ink3:#7E888F;
           --rule:#333B41; --hair:#252C31; --panel:#171B1E;
-          --blue:#7EA8D8; --verd:#5FBFAE; --amber:#D7A44A; --plum:#A798D0;
+          --blue:#7EA8D8; --verd:#5FBFAE; --amber:#D7A44A; --plum:#A798D0; --rust:#D08A5A;
           --tint:#1B2530; --tint2:#172624; --tint3:#2A2318;
         }
         *{box-sizing:border-box}
@@ -487,6 +571,7 @@ public static class ReportPage
         .run.current{border-left-color:var(--verd)}
         .run.drifted{border-left-color:var(--amber)}
         .run.noanswer{border-left-color:var(--plum)}
+        .run.unfinished{border-left-color:var(--rust)}
         .run.study{border-left-color:var(--blue)}
         .run.broken{border-left-color:#8A2B2B}
         .runhead{
@@ -505,6 +590,7 @@ public static class ReportPage
         .chip.current{color:var(--verd)}
         .chip.drifted{color:var(--amber)}
         .chip.noanswer{color:var(--plum)}
+        .chip.unfinished{color:var(--rust)}
         .chip.study{color:var(--blue)}
         .chip.broken{color:#8A2B2B}
 
@@ -549,6 +635,14 @@ public static class ReportPage
           font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink2);
         }
         table.numbers .ev{color:var(--ink3)}
+        p.unfinished{
+          margin:16px 0 0;font-size:14.5px;color:var(--rust);max-width:70ch}
+        table.phases td:first-child{white-space:nowrap}
+        table.phases .conv{
+          font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:9.5px;
+          font-weight:500;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--ink3);border:1px solid var(--rule);border-radius:2px;
+          padding:2px 4px;margin-left:7px}
 
         ul.drift,ul.notes,ul.files{margin:0;padding-left:20px;font-size:14.5px;color:var(--ink2)}
         ul.drift li,ul.notes li{margin-bottom:6px;max-width:74ch}

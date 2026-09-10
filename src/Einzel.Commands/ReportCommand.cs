@@ -23,6 +23,50 @@ public sealed record ReportedNumber(
     string? Interval,
     string? Evidence);
 
+/// <summary>One phase of a sequenced run, as the timeline a reader follows.</summary>
+/// <param name="Name">The phase, as the model author named it.</param>
+/// <param name="Mode">Which transport description it ran in.</param>
+/// <param name="EndsAtUs">When it ended, on the instrument's clock, in microseconds.</param>
+/// <param name="Population">Real ions still in the packet when it ended.</param>
+/// <param name="Trajectories">
+/// How many trajectories carried it, or absent for a diffusive phase - where a density is
+/// a field rather than a count of anything, and a zero there would read as an instrument
+/// that had lost every ion (RND-8's argument, met on a number rather than on a drawing).
+/// </param>
+/// <param name="CentroidMm">Where the packet was along the axis when the phase ended.</param>
+/// <param name="AxialSpreadMm">
+/// One standard deviation of position along the axis, or absent where there was nothing
+/// left to measure it on.
+/// </param>
+/// <param name="RadialSpreadMm">The same across it.</param>
+/// <param name="Converted">Whether the packet crossed between descriptions here (SEQ-1).</param>
+/// <remarks>
+/// <para>
+/// <b>A timeline rather than a list of scalars</b>, because a sequenced run's answer is how
+/// a quantity moved through the phases and a flat name/value list has nowhere to put the
+/// instant each number belongs to. The summary counts stay in <see cref="ReportedRun.Numbers"/>
+/// - those genuinely are scalars about the whole run.
+/// </para>
+/// <para>
+/// <b>The width is why this exists.</b> <c>DensityField.Spread</c> has been computed since
+/// the diffusive mode was built and the phase record carried only the centroid, so a study
+/// whose entire subject is how wide a packet is had no way to read one out - the recurring
+/// shape here where a quantity is computed and nothing downstream can see it. Splitting a
+/// hold into phases then turns this table into a relaxation curve with no new capability at
+/// all, which is what makes it worth carrying per phase rather than per run.
+/// </para>
+/// </remarks>
+public sealed record ReportedPhase(
+    string Name,
+    string Mode,
+    string EndsAtUs,
+    string Population,
+    int? Trajectories,
+    string CentroidMm,
+    string? AxialSpreadMm,
+    string? RadialSpreadMm,
+    bool Converted);
+
 /// <summary>One run, as an account of it rather than as a document.</summary>
 /// <param name="Manifest">The manifest, relative to the project root.</param>
 /// <param name="Result">The result document, relative to the root; absent where none.</param>
@@ -37,12 +81,24 @@ public sealed record ReportedNumber(
 /// <param name="Outcome">How it ended, as the engine named it.</param>
 /// <param name="Completed">Whether the engine finished what it was asked to do.</param>
 /// <param name="Numbers">What came out, each with its unit and interval.</param>
+/// <param name="Phases">
+/// The timeline, where the run had one, in order. Empty for every other kind of run rather
+/// than absent, since "this run was not sequenced" and "its phases could not be read" are
+/// not distinctions this record has to carry: a run with no sequence has no timeline to
+/// have failed at.
+/// </param>
 /// <param name="Warnings">What is active on it (GRD-2), by severity.</param>
 /// <param name="Artifacts">What it wrote, relative to the root.</param>
 /// <param name="Current">Whether it is still the answer for the model as it stands.</param>
 /// <param name="Drift">What makes it no longer the answer.</param>
 /// <param name="Notes">True of it and not invalidating.</param>
 /// <param name="Unreadable">Why nothing above could be established, where that is so.</param>
+/// <param name="Unfinished">
+/// How far a run that never finished had got, from the checkpoint it left, where it left
+/// one. Distinct from <paramref name="Result"/> being absent: both mean there is no answer,
+/// and "this run has not been run" and "this run ran for six hours and was killed in its
+/// fifth phase" call for entirely different things from the reader.
+/// </param>
 /// <param name="NotRendered">
 /// Why this page shows no numbers although an answer is stored - which is a study's
 /// result, whose record shape is not a run's. Kept apart from <paramref name="Unreadable"/>
@@ -64,13 +120,15 @@ public sealed record ReportedRun(
     string? Outcome,
     bool? Completed,
     IReadOnlyList<ReportedNumber> Numbers,
+    IReadOnlyList<ReportedPhase> Phases,
     IReadOnlyList<ValidityWarning> Warnings,
     IReadOnlyList<string> Artifacts,
     bool Current,
     IReadOnlyList<string> Drift,
     IReadOnlyList<string> Notes,
     string? Unreadable,
-    string? NotRendered);
+    string? NotRendered,
+    string? Unfinished);
 
 /// <summary>An account of what a project has run.</summary>
 /// <param name="Root">The project root, absolute.</param>
@@ -217,6 +275,13 @@ public static class ReportCommand
             runs.Add(Describe(layout, result));
         }
 
+        // A RUN THAT WAS KILLED HAS NO MANIFEST, because the manifest is written after the
+        // run returns - it records the modes the run actually used. So `verify` cannot see
+        // one and neither could this, which would have made the account of an interrupted
+        // run unreachable for exactly the case it was written for. The checkpoint carries
+        // what a manifest would (PRJ-3) and is listed here on its own.
+        runs.AddRange(Interrupted(layout, runs));
+
         // Newest first, and ordinally within an instant. A report is read for what
         // happened last, which a path ordering buries; CLI-5 needs the ordering to be
         // deterministic rather than chronological, and a tie broken by path is both.
@@ -336,10 +401,11 @@ public static class ReportCommand
         {
             return new ReportedRun(
                 verified.Manifest, null, verified.Model, verified.RecordedModel,
-                "", "", 0, "", "", "", null, null, [], [], [],
+                "", "", 0, "", "", "", null, null, [], [], [], [],
                 false, verified.Drift, verified.Notes,
                 "this manifest cannot be read, so nothing about the run it describes can "
                 + "be established",
+                null,
                 null);
         }
 
@@ -357,6 +423,8 @@ public static class ReportCommand
         RunOutcome? stored = null;
         string? unreadable = null;
         string? notRendered = null;
+        string? unfinished = null;
+        IReadOnlyList<ReportedPhase> phases = [];
 
         if (File.Exists(resultPath))
         {
@@ -377,6 +445,16 @@ public static class ReportCommand
                     $"'{resultRelative}' is there and does not read back as a run result: "
                     + exception.Message;
             }
+        }
+        else if (File.Exists(Path.Combine(layout.Root, stem + ".progress.json")))
+        {
+            // A RUN THAT DID NOT FINISH, AND ITS OWN ACCOUNT OF HOW FAR IT GOT. The
+            // checkpoint exists because a diffusive window can be hundreds of thousands of
+            // steps and a machine nobody controls reboots; reporting such a run as "its
+            // answer is nowhere" is true and discards the phases that DID finish, which for
+            // a study that splits a hold into phases is most of the measurement.
+            unfinished = Unfinished(
+                Path.Combine(layout.Root, stem + ".progress.json"), out phases, out _);
         }
         else if (File.Exists(Path.Combine(layout.Root, stem + ".json")))
         {
@@ -417,6 +495,7 @@ public static class ReportCommand
             stored?.Outcome,
             stored?.Completed,
             stored is null ? [] : [.. Numbers(stored)],
+            stored is null ? phases : Phases(stored),
             stored is null ? [] : [.. Warnings(stored)],
             // THE RESULT DOCUMENT IS ADDED IF THE STORED LIST OMITS IT, AND IT ALWAYS DOES.
             // A run appends the result path to its artifacts *after* serialising, because a
@@ -434,8 +513,183 @@ public static class ReportCommand
             verified.Drift,
             verified.Notes,
             unreadable,
-            notRendered);
+            notRendered,
+            unfinished);
     }
+
+    /// <summary>Runs that left a checkpoint and no manifest, because they were killed.</summary>
+    /// <param name="layout">The project.</param>
+    /// <param name="described">The runs already accounted for, by manifest.</param>
+    /// <returns>One per orphan checkpoint, newest first is applied by the caller.</returns>
+    /// <remarks>
+    /// <b>Only the orphans.</b> A checkpoint beside a manifest is already reported through
+    /// that manifest, and a run that finished has no checkpoint at all - it is removed when
+    /// the answer is written. So this is the narrow case that nothing else can see, which is
+    /// also the commonest way a long run ends on a machine nobody controls.
+    /// </remarks>
+    private static IEnumerable<ReportedRun> Interrupted(
+        ProjectLayout layout, IReadOnlyList<ReportedRun> described)
+    {
+        if (!Directory.Exists(layout.Results))
+        {
+            yield break;
+        }
+
+        var accounted = described
+            .Select(run => run.Manifest.EndsWith(".manifest.json", StringComparison.Ordinal)
+                ? run.Manifest[..^".manifest.json".Length]
+                : Path.ChangeExtension(run.Manifest, null))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var checkpoints = Directory
+            .EnumerateFiles(layout.Results, "*.progress.json", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.Ordinal);
+
+        foreach (var path in checkpoints)
+        {
+            var relative = RunManifest.Portable(Path.GetRelativePath(layout.Root, path));
+            var stem = relative[..^".progress.json".Length];
+
+            if (accounted.Contains(stem))
+            {
+                continue;
+            }
+
+            var sentence = Unfinished(path, out var phases, out var run);
+
+            if (sentence is null || run is null)
+            {
+                continue;
+            }
+
+            yield return new ReportedRun(
+                relative,
+                null,
+                File.Exists(Path.Combine(layout.Root, run.Model)) ? run.Model : null,
+                run.Model,
+                run.ModelHash,
+                run.EngineVersion,
+                run.SolverBehaviourVersion,
+
+                // From the phases it got through, since nothing recorded the intent. Empty
+                // where it was killed before the first one finished, which is honest: the
+                // modes a run *used* are not knowable from a run that has not used them.
+                string.Join(
+                    " -> ", phases.Select(p => p.Mode).Distinct(StringComparer.Ordinal)),
+                run.Machine,
+                run.StartedUtc,
+                null,
+                false,
+                [],
+                phases,
+                [],
+                [relative],
+
+                // NEVER CURRENT, whatever the model hash says. `verify`'s question is
+                // whether a stored answer still stands, and there is no stored answer -
+                // reporting an interrupted run as current would be the shape of answer that
+                // stops an investigation.
+                false,
+                [],
+                [],
+                null,
+                null,
+                sentence);
+        }
+    }
+
+    /// <summary>How far a run that never finished had got, from its own checkpoint.</summary>
+    /// <param name="path">The checkpoint.</param>
+    /// <param name="phases">The phases that finished, whole, in the shape the page draws.</param>
+    /// <param name="run">Which run it belongs to, as a manifest would say it.</param>
+    /// <returns>A sentence, or null where the checkpoint cannot be read.</returns>
+    /// <remarks>
+    /// <b>The completed phases go through the same rendering a finished run's do</b>, because
+    /// they are the same record - a checkpoint and a result describe a phase through one
+    /// conversion. So the timeline table on this page does not know or care whether the run
+    /// that produced it lived to write an answer, which is what makes a killed run's five
+    /// finished phases worth as much as a finished run's.
+    /// </remarks>
+    private static string? Unfinished(
+        string path,
+        out IReadOnlyList<ReportedPhase> phases,
+        out RunCheckpointProvenance? run)
+    {
+        phases = [];
+        run = null;
+
+        RunCheckpointJson? checkpoint;
+
+        try
+        {
+            checkpoint = CommandJson.Read<RunCheckpointJson>(File.ReadAllText(path));
+        }
+        catch (Exception exception)
+            when (exception is System.Text.Json.JsonException or NotSupportedException
+                or IOException or UnauthorizedAccessException)
+        {
+            // The commonest reason to be reading a project is that something is still
+            // running in it, so a checkpoint half written is the ordinary case rather than
+            // an exotic one - and it is not worth a diagnostic of its own, since the run it
+            // belongs to will overwrite it within the interval.
+            return null;
+        }
+
+        if (checkpoint is null)
+        {
+            return null;
+        }
+
+        phases = [.. checkpoint.Completed.Select(Rendered)];
+        run = checkpoint.Run;
+
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+
+        var where = checkpoint.PhaseCount > 1
+            ? string.Format(
+                culture,
+                "phase {0} of {1}, '{2}', ",
+                checkpoint.PhaseIndex,
+                checkpoint.PhaseCount,
+                checkpoint.Phase)
+            : "";
+
+        return string.Format(
+            culture,
+            "this run did not finish. Its own checkpoint has it {0}{1:G6} us into {2:G6}, "
+            + "after {3:N0} step(s) and {4:F0} s of wall clock, with {5} phase(s) complete. "
+            + "Re-running the model replaces this with an answer",
+            where,
+            checkpoint.AtUs,
+            checkpoint.OfUs,
+            checkpoint.Steps,
+            checkpoint.ElapsedSeconds,
+            checkpoint.Completed.Count);
+    }
+
+    /// <summary>One stored phase, in the shape the page draws.</summary>
+    private static ReportedPhase Rendered(SequencePhaseJson phase)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+
+        return new ReportedPhase(
+            phase.Name,
+            phase.Mode,
+            phase.EndsAtUs.ToString("G6", culture),
+            phase.Population.ToString("G6", culture),
+            phase.Mode == "diffusion" ? null : phase.Trajectories,
+            Axis(phase.CentroidMm, 0) ?? "—",
+            Axis(phase.SpreadMm, 0),
+            Axis(phase.SpreadMm, 1),
+            phase.Converted);
+    }
+
+    /// <summary>One component of a length, formatted, or null where there is none.</summary>
+    private static string? Axis(IReadOnlyList<double>? components, int axis)
+        => components is not null && components.Count > axis
+            ? components[axis].ToString(
+                "F4", System.Globalization.CultureInfo.InvariantCulture)
+            : null;
 
     /// <summary>
     /// The numbers a run produced, in the order a reader wants them.
@@ -580,6 +834,32 @@ public static class ReportCommand
                 "ACC-4 budget 1e-6");
         }
     }
+
+    /// <summary>
+    /// The timeline a sequenced run walked, one entry per phase, in order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Read from the stored phases and nothing else.</b> A phase's width is what the
+    /// transport reported at that boundary - the density solver's second moment on a
+    /// diffusive leg and the same quantity over the trajectories on the other side of a
+    /// conversion - so this is a rendering of the document rather than a second computation
+    /// of the packet.
+    /// </para>
+    /// <para>
+    /// <b>A missing width is absent, not zero.</b> A phase that ends with nothing left has
+    /// no width, and zero is a real answer for a width: a packet one cell across reports one
+    /// and it is a measurement. The two must not print alike, which is the rule the rest of
+    /// this surface reached after an undefined Twiss orientation went out as a NaN.
+    /// </para>
+    /// <para>
+    /// <b>One rendering, shared with a checkpoint's.</b> A run that never finished carries
+    /// its completed phases in the same record, so both go through <see cref="Rendered"/>
+    /// and the page cannot describe a killed run's phase differently from a finished one's.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<ReportedPhase> Phases(RunOutcome run)
+        => run.Sequence is { } sequence ? [.. sequence.Phases.Select(Rendered)] : [];
 
     private static ReportedNumber Count(string name, int value)
         => new(

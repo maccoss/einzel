@@ -1243,20 +1243,58 @@ public static class RunCommand
     /// platform.
     /// </para>
     /// </remarks>
+    /// <summary>One phase of a sequenced run, on the wire.</summary>
+    /// <param name="phase">What the phase measured.</param>
+    /// <returns>The same, in the shape a document carries.</returns>
+    /// <remarks>
+    /// One conversion, because a checkpoint written mid-run and the result written at the
+    /// end have to describe a phase the same way - a reader comparing a killed run's
+    /// checkpoint against a finished run's result is the whole point of the checkpoint,
+    /// and two spellings of one record is how this project made `run` and `test` disagree
+    /// about a flight time twice.
+    /// </remarks>
+    internal static SequencePhaseJson Phase(PhaseOutcome phase)
+    {
+        ArgumentNullException.ThrowIfNull(phase);
+
+        return new SequencePhaseJson(
+            phase.Name,
+            phase.Mode,
+            phase.EndsAtSeconds * 1e6,
+            phase.Population,
+            phase.Trajectories,
+            phase.CentroidMm,
+            phase.SpreadMm,
+            phase.Converted,
+            phase.Assemblies,
+            phase.WellRebuilds,
+            phase.SelfFieldSolves,
+            phase.PeakSelfPotentialVolts);
+    }
+
     private static RunOutcome Sequenced(
         CompiledModel model,
         Fields.IElectrostaticField field,
         IReadOnlyList<ValidityWarning> fieldWarnings,
         ValidateOutcome validation,
         ProjectLayout project,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        RunProgress? progress)
     {
         // The one place that knows where the model file is, so the one place that can
         // resolve a declared gas field.
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
-        var outcome = SequencedRun.Execute(model, field, resolved);
+        // THE CHECKPOINT, IF ANYBODY IS WATCHING. Created before the run rather than after
+        // it, which is the whole point: this is the path a TIMS study takes, and it is the
+        // one that has failed to finish three times with nothing on disk to say how far it
+        // got. Removed on success, so its presence means the run did not finish.
+        var watcher = Watch(progress, project, validation);
+
+        var outcome = SequencedRun.Execute(model, field, resolved, watcher);
+
+        watcher?.Discard();
 
         var manifest = new RunManifest
         {
@@ -1366,19 +1404,7 @@ public static class RunCommand
             HasFlightTime = false, // a sequence ends on its own clock rather than on an arrival
 
             Sequence = new SequenceJson(
-                [.. outcome.Phases.Select(phase => new SequencePhaseJson(
-                    phase.Name,
-                    phase.Mode,
-                    phase.EndsAtSeconds * 1e6,
-                    phase.Population,
-                    phase.Trajectories,
-                    phase.CentroidMm,
-                    phase.SpreadMm,
-                    phase.Converted,
-                    phase.Assemblies,
-                    phase.WellRebuilds,
-                    phase.SelfFieldSolves,
-                    phase.PeakSelfPotentialVolts))],
+                [.. outcome.Phases.Select(Phase)],
                 outcome.Conversions,
                 outcome.Arrived,
                 outcome.Losses)
@@ -1428,12 +1454,18 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
-        bool exportVtu)
+        bool exportVtu,
+        RunProgress? progress)
     {
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
-        var outcome = DiffusionRun.ExecuteMixture(model, field, fieldWarnings, resolved);
+        var watcher = Watch(progress, project, validation);
+
+        var outcome = DiffusionRun.ExecuteMixture(
+            model, field, fieldWarnings, resolved, progress: watcher);
+
+        watcher?.Discard();
         var result = outcome.Result;
 
         var manifest = new RunManifest
@@ -1611,6 +1643,43 @@ public static class RunCommand
         };
     }
 
+    /// <summary>The checkpoint for this run, or null where nobody asked to watch.</summary>
+    /// <remarks>
+    /// <b>Beside the manifest, under the manifest's own stem</b>, which is the rule the
+    /// report reached for finding a stored answer - a checkpoint somewhere else would be a
+    /// fourth convention in one directory.
+    /// </remarks>
+    private static RunCheckpointWriter? Watch(
+        RunProgress? progress, ProjectLayout project, ValidateOutcome validation)
+    {
+        if (progress is null || progress.IntervalSeconds <= 0.0)
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(project.Results);
+
+        var stem = Path.GetFileNameWithoutExtension(validation.ModelPath);
+
+        return new RunCheckpointWriter(
+            Path.Combine(project.Results, $"{stem}.progress.json"),
+            progress,
+
+            // WHAT A MANIFEST WOULD SAY, written before the first step. The manifest itself
+            // is written after the run returns - it records the modes the run actually used
+            // - so an interrupted run has none, and every consumer here enumerates
+            // manifests. None of this is derived from the outcome, which is what makes it
+            // available this early.
+            new RunCheckpointProvenance(
+                RunManifest.Portable(
+                    Path.GetRelativePath(project.Root, validation.ModelPath)),
+                validation.ModelHash,
+                EngineBuild.Version,
+                EngineBuild.SolverBehaviourVersion,
+                Environment.MachineName,
+                DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
     private static RunOutcome Diffusive(
         CompiledModel model,
         Fields.IElectrostaticField field,
@@ -1618,13 +1687,16 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
-        bool exportVtu)
+        bool exportVtu,
+        RunProgress? progress)
     {
         // Asked of the model rather than of the caller: a mixture is a property of the document,
         // and a fork the caller had to remember is one a caller will forget.
         if (model.IsMixture)
         {
-            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu);
+            return Mixture(
+                model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
+                progress);
         }
 
         // The one place that knows where the model file is, so the one place that can
@@ -1632,7 +1704,13 @@ public static class RunCommand
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
-        var outcome = DiffusionRun.Execute(model, field, fieldWarnings, resolved);
+        var watcher = Watch(progress, project, validation);
+
+        var outcome = DiffusionRun.Execute(
+            model, field, fieldWarnings, resolved, progress: watcher);
+
+        watcher?.Discard();
+
         var result = outcome.Result;
 
         var left = result.Collected + result.Lost.Values.Sum();
@@ -1950,13 +2028,20 @@ public static class RunCommand
     /// <param name="project">The project the outputs belong to.</param>
     /// <param name="exportVtu">Whether to write the trajectory for ParaView.</param>
     /// <param name="timestampUtc">The run timestamp, supplied so the caller owns the clock.</param>
+    /// <param name="progress">
+    /// How often the run should say where it has got to, and who to tell, or null to run
+    /// silently until it finishes. A run measured in hours has to be able to say something
+    /// before it ends - and one that stores nothing until then loses everything to a
+    /// reboot, which is how three attempts at the TIMS front-end sequence were lost.
+    /// </param>
     /// <returns>The run outcome, or the validation failure that prevented it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="project"/> is null.</exception>
     public static (RunOutcome? Run, ValidateOutcome Validation) Execute(
         string modelPath,
         ProjectLayout project,
         bool exportVtu,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        RunProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(project);
 
@@ -1971,11 +2056,29 @@ public static class RunCommand
         var model = ModelValidator.Validate(
             document, null, Path.GetDirectoryName(validation.ModelPath)).Model!;
 
+        // THE SOLVE IS THE LONGEST SILENT STRETCH OF A LONG RUN, so it is announced
+        // before it starts rather than after. On the TIMS front end - a sixteen-plate
+        // funnel and a twenty-seven-ring analyzer - it is minutes on its own, and until
+        // this line existed a watched run said nothing at all until its first step, which
+        // reads exactly like a run that has hung. The wall clock is reported with it,
+        // because the cycles and the convergence factor already on the result say how
+        // well the solve went and not how long a person waited for it.
+        var announce = progress?.Announce;
+        var solving = System.Diagnostics.Stopwatch.StartNew();
+
+        announce?.Invoke("  solving the field, which for a large geometry is the "
+            + "longest single step of a run");
+
         // Reported, not bare. A solve that missed its tolerance produces a field
         // indistinguishable from one that met it, so the evidence has to travel
         // alongside and land on every number computed through it (GRD-2).
         var (field, built) = FieldAssembly.BuildReported(model);
         var fieldWarnings = built;
+
+        announce?.Invoke(string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "  the field is solved in {0:F1} s; stepping now",
+            solving.Elapsed.TotalSeconds));
 
         // A run whose phases are not all in one description is a third case, and it
         // comes first: a model may declare "diffusion" as its own mode and still have a
@@ -1992,7 +2095,8 @@ public static class RunCommand
             || (model.Phases.Count > 0 && model.TransportMode == "diffusion"))
         {
             return (
-                Sequenced(model, field, fieldWarnings, validation, project, timestampUtc),
+                Sequenced(
+                    model, field, fieldWarnings, validation, project, timestampUtc, progress),
                 validation);
         }
 
@@ -2003,7 +2107,9 @@ public static class RunCommand
         if (model.TransportMode == "diffusion")
         {
             return (
-                Diffusive(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu),
+                Diffusive(
+                    model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
+                    progress),
                 validation);
         }
 

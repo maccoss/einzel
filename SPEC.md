@@ -162,6 +162,58 @@ not merely a note about what is unbuilt.
 [Spec findings](docs/spec-findings.md) carries the long form of most of these with
 the measurements attached; what follows is the register of them.
 
+### 44 - A run may take hours and nothing requires it to say so
+
+**The specification is careful about cost before the work and silent about the work itself.**
+`GRD-8` gates an operation above a cost threshold, so the platform will tell you a run is going
+to take four hours; `PERF-8` sets the *only* timing requirement in the document at the opposite
+end of the scale, cold start to first output under 500 ms; and `CLI-1..6` cover `--json`, the
+stream split, `--dry-run`, exit codes and ordering. **Nothing asks a long-running operation to
+report while it runs**, and nothing asks it to leave anything on disk before it finishes. §16
+assumes a progress surface for the shell and the shell is not where studies are run.
+
+**The consequence, observed three times rather than predicted.** The TIMS front-end sequence
+failed to complete at 4.75 CPU-hours, then at 40 minutes, then at 7.6 wall-hours against a 4.17
+hour estimate, the last of them because a Windows update rebooted the machine. **It produced no
+output on any attempt** - not a step count, not a partial density, not the per-phase widths it
+had already computed - so the one question that would settle whether the estimate is low or the
+run does not terminate was never asked. Nor is this exotic: a diffusive window in a driven
+structure is set by a Courant limit against a ponderomotive gradient, which is hundreds of
+thousands of steps whatever each one costs, and the estimate for that case is itself four orders
+low because the drift limit needs a field it has not solved.
+
+**What the specification should say.** An operation whose cost estimate exceeds some small
+multiple of `PERF-8`'s budget must, by default, (a) report where it has got to at intervals, on
+the diagnostic stream, and (b) leave a durable record of that progress that survives the process
+- including any work already complete in units the operation itself defines. Both by default
+rather than on request: **a flag somebody has to remember is a flag that is not set on the run
+that gets killed**, which is the whole failure being fixed. And the reporting must be provably
+free of effect on the answer, since the cheap way to report is to hand an observer the solver's
+own live state.
+
+**What it should not say.** Not that progress belongs to the shell (§16), which is where the
+argument would naturally have gone: the operations that take hours are studies, and studies are
+run from the CLI. Not a new file format either - the durable record is the same records the
+result document already carries, so a checkpoint and a result describe a phase identically and
+one rendering serves both.
+
+**Status: built.** `einzel run --progress <seconds>`, thirty seconds by default, writes
+`results/<name>.progress.json` and one line per interval on stderr. The file is **removed when
+the run writes its answer**, so its presence means the run did not finish - which needs no
+timestamp comparison to read - and `einzel report` reads it, says how far the run got, and draws
+the phases that completed through the same rendering a finished run's go through. The interval
+is wall clock, so which steps report is not deterministic; nothing reported reaches the solve,
+and a silent run and one reporting every step are asserted equal to the last digit, with the
+mutation that perturbs one cell from the observer failing that test and nothing else.
+
+Two things measured while building it, both recorded in `docs/lessons.md`. **A projection from
+total elapsed time is a projection of the solve** - dividing wall clock by the fraction
+simulated charged a one-off solve to every remaining microsecond and read 82 minutes against an
+actual 23, and 17,576 minutes on the first report of all; the rate is now measured between
+reports, which is the same correction `einzel estimate` made when it started excluding process
+start. And **the solve is now the longest silent stretch**, minutes on a large geometry, so it
+is announced before it starts rather than after.
+
 ### 43 - A run's evidence is machine-readable and nothing renders it for a person
 
 **r06 is thorough about evidence travelling and silent about anybody reading it.** `GRD-1` puts
@@ -1793,7 +1845,7 @@ in a table.
 | `GRD-5` | Preview results are labelled and cannot be promoted Tagged permanently; cannot be quoted, exported, fed to an optimizer, or rendered without visible ... | **Met** | The taint rides on the number, and a preview writes nothing - a tainted result in `results/` would be reported as current by `verify`. |
 | `GRD-6` | Extension results are attributed Carries the extension identity and version; cannot present itself as first-party. | **Met** | Extension results carry the extension identity and interpreter; the manifest records `null` where no interpreter took part. |
 | `GRD-7` | Results are immutable and traceable Every result references a manifest. Every rendered artifact references a result. | **Met** | Every result references a manifest. Studies wrote none at all until recently; sweeps, optimisations and scans all write one now. |
-| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyser at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. **`members` is what one evaluation of the named figure flies, not the study's ion count** - the registry carries a `FlightBasis` per figure and the estimate asks it, so `flightTime` costs its three-rung convergence ladder rather than a 21-ion ensemble. Billing every figure the ion count put a 2000-draw reflectron sweep at **29 s against a measured 1.08 s**, and an agent in the acceptance run shrank its study to get past it; an unrecognised figure falls back to the ensemble count, the conservative direction. **The threshold is now configurable** (`--threshold <seconds>`), which the requirement asked for and which was a constant, and the refusal says in its first clause that the study is not blocked - only `estimate` exits 3. See Amendment 33. |
+| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyzer at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. **`members` is what one evaluation of the named figure flies, not the study's ion count** - the registry carries a `FlightBasis` per figure and the estimate asks it, so `flightTime` costs its three-rung convergence ladder rather than a 21-ion ensemble. Billing every figure the ion count put a 2000-draw reflectron sweep at **29 s against a measured 1.08 s**, and an agent in the acceptance run shrank its study to get past it; an unrecognized figure falls back to the ensemble count, the conservative direction. **The threshold is now configurable** (`--threshold <seconds>`), which the requirement asked for and which was a constant, and the refusal says in its first clause that the study is not blocked - only `estimate` exits 3. **And an operation past the gate now reports while it runs**: the requirement covers deciding whether to start and said nothing about the hours after, so a run the gate priced at four hours then went silent for four hours. `einzel run --progress` says where it is every thirty seconds by default and leaves a checkpoint that survives the process; see Amendment 44. See Amendment 33. |
 | `GRD-9` | Human work is never silently lost Where an agent and a human share a live model, mutations are attributed in a shared linear journal. | **Met** | `SessionJournal`, served by `Einzel.Mcp`. The attribution and the shared linear stack are MCP-1's row. What this row adds is the *never silently lost* half, and building MCP-1 did **not** deliver it: the journal knew only about mutations made through it, so a person editing the model in their own editor had their change overwritten by the agent's next whole-document edit with nothing anywhere to say so. **The sharper consequence was to undo** - an unrecorded change breaks the chain, so walking back landed on a document predating the person's edit and discarded it as a *side effect of reversing something else*. `Reconcile` now records an outside change as an entry attributed to `outside` (not to the person: another tool, another session and a git checkout look identical from here), refuses an edit written against the document as it was, and makes the refusal recoverable by having `model_read` take the change up. Checked by mutation - a no-op `Reconcile` fails three of nine journal tests. `docs/live-session.md` |
 | `GRD-10` | Drift is detectable, in both directions A stored result can be checked against both the current model and the currently installed engine. | **Met** | `einzel verify` separates drift from notes: an edited model or a changed solver-behaviour version invalidates; a different engine build with identical numerics does not. |
 | `GRD-11` | Known-defective versions taint their output A result produced by a version below the published floor (§18) carries a non-suppressible defect warning. The ... | Partial | The taint mechanism exists and rides in the warning list. There is no published defect floor to compare against, because there are no releases. |
@@ -2100,9 +2152,22 @@ project's author needs to run it and more than any physics the moment one does.
    rather than only at zero. **8 s becomes 3.6 h against a measured 4.1**, and the step it finds
    - 58.5 ns - matches the 56 ns counted independently from the probe's assembly count.
 
-   **What is left is the study itself**, which is running, and its own question: whether the
-   arrival width the analyser reports is the analyser's own, or delivery spread the ramp reads
-   as mobility.
+   **Its own question is answered, and not by this study.** Whether the arrival width is the
+   analyzer's own or delivery spread the ramp reads as mobility was settled by a matched pair
+   of runs costing 39 and 122 minutes, differing in one parameter and both stopped at the end
+   of the trap - because the width the ramp reads is the width the packet has when the ramp
+   starts. The analyzer's own floor turns out to be a closed form with the mobility cancelled
+   out of it, `sigma_z^2 = (kT/q)/|dE/dx|`, confirmed to **0.34 %**; its relaxation time
+   `1/(2K|E'|)` = 231 us is confirmed to **1 %** over four octaves of hold; and the delivered
+   packet is 2.4x wider because it **has not finished relaxing** in the 300 us the shipped
+   sequence gives it, which is a statement about the trap duration and therefore about a knob.
+   `docs/literature-targets.md` section 6 carries the register entry. **Before paying for the
+   whole sequence, ask which phase the number lives in** - that was about eight times cheaper
+   and removed a second claim (that the ramp is modelled right) from the answer.
+
+   **What is left is the sequence end to end**, which is now watchable: it reports where it has
+   got to and leaves a checkpoint that survives the process (Amendment 44), so an attempt ended
+   by a reboot no longer loses everything it had computed.
 
    The three changes that made it affordable are worth stating separately, because two are
    arithmetic and one is machinery.

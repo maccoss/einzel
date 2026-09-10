@@ -944,6 +944,38 @@ so the equilibrium width is the scheme's exact answer rather than an approximati
 to one. `MobilityBalanceWidthTests` asserts the closed form on an analytic linear field, where
 it is exact to every printed digit and the two-mobility width ratio is 1.00000.
 
+**And the width's own relaxation time is confirmed to about one per cent.** The same
+linearization gives the variance a single relaxation time, `tau = 1/(2 K |dE/dx|)`, which is
+half the centroid's - a variance relaxes at twice the rate of a first moment because it is a
+second one. For this analyzer at the 60 V hold that is **231 us**, and it is measured by
+splitting a hold into phases that double in length, so one run gives the whole curve (the
+per-phase width added for this study is the instrument):
+
+| interval | excess variance, mm^2 | implied tau |
+| --- | --- | --- |
+| 100 to 200 us | 2.2696 to 1.4699 | **230.2 us** |
+| 200 to 400 us | 1.4699 to 0.6197 | **231.6 us** |
+| 400 to 800 us | 0.6197 to 0.1114 | **233.1 us** |
+| 800 to 1600 us | 0.1114 to 0.0037 | **234.5 us** |
+
+A packet released 2 mm wide reaches **0.7117 mm** and stays there - the same equilibrium the
+closed form predicts, reached from four times that width - and the excess over it decays as a
+plain exponential at the predicted rate across four octaves of hold. The 2 per cent upward
+drift in tau from the wide end to the narrow end is recorded as measured rather than
+explained.
+
+**That result refutes one of the two explanations this register carried for a slower
+measurement.** The delivered packet - released 40 mm up the entrance funnel rather than at the
+balance point - ends the shipped 300 us trap at 1.706 mm and still narrowing, implying a
+relaxation about 4.4 times slower than 231 us, and the two candidate explanations were a tail
+dominating a second moment or the linearization failing over a packet several millimeters wide.
+**It is not the width**: the parked packet's first interval is measured at sigma = 1.67 mm, so
+plus or minus five millimeters at three sigma, and it relaxes at 230 us there - the predicted
+rate, from the widest point on the curve. What is left is the shape of the delivered packet
+itself: a second moment carrying a shoulder, or a population still being carried in while the
+trap holds. Discriminating those needs the delivered packet given time to relax, which is a
+longer run of the same shape.
+
 **What this is worth against the published resolving powers.** At the 60 V hold the width in
 volts is `sigma_z V / x0` = 1.945 V, so `R = V/(2.355 sigma_V)` = **13.1**, and at the 32 V
 quasi-static elution point 9.6. The engine's measured scan gives R = 8.3 at an 8 ms ramp, so

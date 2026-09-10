@@ -264,6 +264,102 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("+-", Run("run", Project()).Stdout, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The width at every phase reaches the report, as the timeline rather than as a
+    /// scalar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The seam dropped it a second time, one level up.</b> The phase record gained a
+    /// width and <c>einzel report</c> - written the day before - showed a sequenced run as
+    /// five scalars: phases, conversions, arrived, mean arrival, arrival spread. So the
+    /// study's whole subject was computed by the solver, carried through the result
+    /// document, and absent from the page a person reads. The same shape twice in two days,
+    /// which is why this asserts the reader's surface and not the record's.
+    /// </para>
+    /// <para>
+    /// <b>A timeline, not more scalars.</b> A flat name/value list has nowhere to put the
+    /// instant a number belongs to, and what a sequenced run answers is how a quantity
+    /// moved through the phases - so a hold split into phases turns this table into a
+    /// relaxation curve with no new capability at all. That is the whole reason it is worth
+    /// carrying per phase.
+    /// </para>
+    /// <para>
+    /// <b>Equality against the run's own numbers is what makes this a view.</b> A report
+    /// that recomputed the packet, or rounded to its own taste, would pass a test that only
+    /// asked for a positive number here.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheWidthAtEveryPhaseReachesTheReport()
+    {
+        var run = JsonDocument.Parse(Run("run", Project(), "--json").Stdout).RootElement;
+        var ran = run.GetProperty("sequence").GetProperty("phases").EnumerateArray().ToArray();
+
+        var (exit, stdout, _) = Run("report", _root, "--json");
+
+        Assert.Equal(0, exit);
+
+        var reported = JsonDocument.Parse(stdout).RootElement
+            .GetProperty("runs").EnumerateArray().Single()
+            .GetProperty("phases").EnumerateArray().ToArray();
+
+        Assert.Equal(ran.Length, reported.Length);
+
+        for (var i = 0; i < ran.Length; i++)
+        {
+            var widths = ran[i].GetProperty("spreadMm");
+
+            output.WriteLine(
+                $"{reported[i].GetProperty("name").GetString(),-8} "
+                + $"{reported[i].GetProperty("mode").GetString(),-11} "
+                + $"ends {reported[i].GetProperty("endsAtUs").GetString(),8} us  "
+                + $"x {reported[i].GetProperty("centroidMm").GetString(),9} "
+                + $"+- {reported[i].GetProperty("axialSpreadMm").GetString()}, "
+                + $"{reported[i].GetProperty("radialSpreadMm").GetString()} mm");
+
+            Assert.Equal(
+                ran[i].GetProperty("name").GetString(),
+                reported[i].GetProperty("name").GetString());
+
+            // The same number the run reported, to the four decimals the page shows. Not
+            // "a positive width": this command's one property is that it cannot say
+            // something the stored document does not.
+            Assert.Equal(
+                widths[0].GetDouble().ToString("F4", System.Globalization.CultureInfo.InvariantCulture),
+                reported[i].GetProperty("axialSpreadMm").GetString());
+
+            Assert.Equal(
+                widths[1].GetDouble().ToString("F4", System.Globalization.CultureInfo.InvariantCulture),
+                reported[i].GetProperty("radialSpreadMm").GetString());
+        }
+
+        // A DENSITY IS NOT A COUNT OF TRAJECTORIES, so the diffusive phase carries none -
+        // absent rather than zero, which is this surface's rule for a quantity that has no
+        // value. Zero beside a population of tens of thousands reads as an instrument that
+        // lost everything, and that is RND-8's argument met on a number instead of on a
+        // drawing.
+        Assert.False(reported[0].TryGetProperty("trajectories", out _));
+        Assert.True(reported[1].GetProperty("trajectories").GetInt32() > 0);
+
+        // The conversion is marked on the phase it happened at, because the widths either
+        // side of it are two measurements of one packet by two machineries.
+        Assert.False(reported[0].GetProperty("converted").GetBoolean());
+        Assert.True(reported[1].GetProperty("converted").GetBoolean());
+
+        // And it reaches the page, which is the surface a person actually reads.
+        Assert.Equal(0, Run("report", _root).ExitCode);
+
+        var page = File.ReadAllText(Path.Combine(_root, "report.html"));
+
+        Assert.Contains("The timeline it walked", page, StringComparison.Ordinal);
+        Assert.Contains("axial width", page, StringComparison.Ordinal);
+        Assert.Contains(
+            reported[0].GetProperty("axialSpreadMm").GetString()!,
+            page,
+            StringComparison.Ordinal);
+    }
+
     /// <summary>The manifest records every mode the run used (PRJ-3).</summary>
     /// <remarks>
     /// A manifest fully determines its run. Recording one mode for a run that used two

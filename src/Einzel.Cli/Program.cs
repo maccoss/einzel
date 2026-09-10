@@ -1355,7 +1355,11 @@ public static class Program
 
             stream.WriteLine(
                 $"{mark,-9}{run.Manifest,-46}{run.Numbers.Count,3} number(s), "
-                + $"{run.Warnings.Count} warning(s)");
+                + $"{run.Warnings.Count} warning(s)"
+                // Only where there is a timeline, since a beamline has none and a count of
+                // zero phases on every ordinary run is the kind of line a reader learns to
+                // skip past - taking the ones that mean something with it.
+                + (run.Phases.Count > 0 ? $", {run.Phases.Count} phase(s)" : ""));
         }
 
         // Diagnostics on stderr and the result on stdout (CLI-2), so a caller piping this
@@ -2082,7 +2086,9 @@ public static class Program
     {
         if (options.Positional.Count == 0)
         {
-            Console.Error.WriteLine("usage: einzel run <model.json> [--vtu] [--json] [--project <dir>]");
+            Console.Error.WriteLine(
+                "usage: einzel run <model.json> [--vtu] [--json] [--project <dir>] "
+                + "[--progress <seconds>]");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -2090,8 +2096,36 @@ public static class Program
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
         var project = new ProjectLayout(root);
 
+        // WATCHED BY DEFAULT, and that is the decision rather than the plumbing. A flag
+        // somebody has to remember is a flag that is not set on the run that gets killed -
+        // and three attempts at the TIMS front-end sequence were lost with nothing on disk
+        // to say how far they had got, the last of them to a Windows update. Thirty
+        // seconds, so a run of a few seconds says one thing and an eight-hour run says a
+        // thousand; `--progress 0` asks for silence.
+        var interval = 30.0;
+
+        if (options.Value("progress") is { } asked)
+        {
+            if (!double.TryParse(
+                    asked, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out interval))
+            {
+                Console.Error.WriteLine(
+                    $"--progress takes an interval in seconds, and '{asked}' is not one. "
+                    + "Use 0 to turn it off.");
+                return (int)ExitCode.ValidationFailure;
+            }
+        }
+
         var (run, validation) = RunCommand.Execute(
-            modelPath, project, exportVtu: options.Has("vtu"), timestampUtc: DateTimeOffset.UtcNow);
+            modelPath,
+            project,
+            exportVtu: options.Has("vtu"),
+            timestampUtc: DateTimeOffset.UtcNow,
+
+            // Diagnostics on stderr (CLI-2), so a caller piping `--json` gets the result
+            // document and nothing else however long the run took to produce it.
+            progress: new RunProgress(interval, Console.Error.WriteLine));
 
         if (run is null)
         {

@@ -1868,6 +1868,96 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   second claim (that the ramp is modelled right) from the answer. Details in
   `docs/device-templates.md`, `docs/literature-targets.md` section 6, `docs/lessons.md`.
 
+- **A run measured in hours now says where it is, and the width's relaxation time is measured
+  to one per cent.** Two things, and the first is what made the second cheap.
+
+  **A sequenced run reaches the report as a timeline rather than as five scalars.** The
+  per-phase packet width had been added to the result document the day before - because a
+  TIMS study's open question is *how wide is the packet when the ramp starts* - and
+  `einzel report`'s sequenced arm yielded phases, conversions, ions arrived, mean arrival and
+  arrival spread: every property of the whole run, and not the one quantity the study was
+  about. Computed by the solver, carried through the document, absent from the surface a
+  person reads. **The same shape the report command exists to expose, in code a day old.**
+
+  A table rather than more rows, because a flat name and value has nowhere to put the instant
+  a number belongs to. That makes it a measuring instrument with no new capability at all:
+  **split a hold into phases of identical settings and the table is a relaxation curve**, one
+  row per boundary. A diffusive phase's trajectory count is **absent** rather than zero, since
+  a density is not a count of anything and a zero beside a population of ten thousand reads as
+  an instrument that lost everything - RND-8's argument met on a number instead of a drawing.
+  One rendering, shared with a checkpoint's, so a killed run's phase cannot be described
+  differently from a finished one's.
+
+  **Measured that way: `tau = 1/(2K|E'|)` = 231 us, against 230.2 / 231.6 / 233.1 / 234.5 us**
+  over intervals of 100, 200, 400 and 800 us. A packet released 2 mm wide comes down through
+  1.6662, 1.4059, 1.0613, 0.7861, 0.7143, 0.7117 to 0.7117 mm and stays - so the equilibrium
+  the closed form predicts is reached from four times that width, and the excess over it decays
+  as a plain exponential at the predicted rate across four octaves. Every hold assembled its
+  operator **once**, which is the held-phase fix doing what it was for.
+
+  **And it refutes one of the two explanations on record for the delivered packet's 4.4x
+  slower relaxation.** The candidates were a tail dominating a second moment or the
+  linearization failing over a packet several millimeters wide. **It is not the width**: the
+  parked packet's first interval is measured at sigma = 1.67 mm - plus or minus five
+  millimeters at three sigma, more than twice the span the objection was about - and relaxes at
+  230 us there, the predicted rate, from the widest point on the curve. What is left is the
+  delivered packet's own shape, and the reading for a spectrum is *sharp with a shoulder*
+  rather than broad.
+
+  **The second thing is the engineering gap the night exposed. A run measured in hours emitted
+  nothing before it ended.** The TIMS front-end sequence failed to complete three times -
+  4.75 CPU-hours, then 40 minutes, then 7.6 wall-hours against a 4.17 hour estimate before a
+  Windows update rebooted the machine - and **nothing was observed on any attempt**, so whether
+  the estimate was low or the run does not terminate was never asked. GRD-8 gates on cost
+  *before* the work, so the platform will say a run is going to take four hours and then go
+  silent for four hours. SPEC.md Amendment 44.
+
+  `einzel run --progress <seconds>`, **thirty seconds by default**, writes
+  `results/<name>.progress.json` and one line per interval on stderr (CLI-2 - progress is a
+  diagnostic, so `--json` still gets a clean stdout). The default is the decision rather than
+  the plumbing: **a flag somebody has to remember is a flag that is not set on the run that
+  gets killed.** The file is **removed when the run writes its answer**, so finding one means
+  the run did not finish - which needs no timestamp comparison to read - and it is written
+  through a temporary file and moved into place, so a process killed mid-write leaves the
+  previous checkpoint rather than a broken one. A failed write is announced once and
+  swallowed: a full disk must not end an eight-hour run at hour seven.
+
+  **A finished phase is written whether or not the interval has come round**, because that is
+  the state a killed run should be found in - a study that splits a hold into phases has most
+  of its answer in the phases that completed, and before this they went with the process.
+
+  **Watching does not change the answer, and that is the claim that could have failed
+  quietly.** The observer is handed the solver's own live density buffer rather than a copy,
+  which is what makes reporting cheap enough to do at all, and *which* steps report is set by
+  the wall clock - so if the answer depended on being watched it would not even be
+  reproducible. Two runs of one seeded model, one silent and one reporting every step, are
+  asserted equal to the last digit; the mutation that adds `1e-9` to one cell from inside the
+  observer fails that test and nothing else. The hot-path cost is one call per step asking
+  whether a report is wanted; the centroid and the width are full grid passes and are computed
+  only when it is.
+
+  **A projection from total elapsed time is a projection of the solve.** The first version
+  divided wall clock by the fraction of the phase simulated, which charges the one-off solve to
+  every remaining microsecond: **82 minutes against an actual 23** on the shipped analyzer, and
+  17,576 minutes on the very first report, where one step had been taken. Measured between
+  reports instead, it held at 23 minutes across three consecutive reports. The same correction
+  `einzel estimate` made when it started excluding process start: **a rate measured over a
+  window containing a fixed cost is not a rate.** And with that fixed, **the solve became the
+  longest silent stretch** - minutes on a sixteen-plate funnel and a twenty-seven-ring analyzer
+  - so it is announced before it starts rather than after.
+
+  **The checkpoint was very nearly written with nothing reading it**, which would have been
+  the third instance in three days of the defect this report command exists to expose. A run
+  that did not finish leaves a `.progress.json` and no result, and the report would have said
+  only that "its answer is nowhere" - true, and it discards the phases that did finish. It now
+  reads the checkpoint, says how far the run got, and gives an interrupted run **its own state
+  on the page**, because it calls for something different from every other: not "nothing to
+  do", not "re-run it", not "run it again to store an answer", but give it longer, or a coarser
+  mesh, or a machine nobody is going to reboot. The rule, in `docs/lessons.md`: both report
+  defects were found by enumerating the *writers* into `results/` rather than its readers, so
+  **after adding a producer, ask what reads it, and answer by enumerating consumers rather than
+  by recalling one.**
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
