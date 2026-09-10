@@ -908,10 +908,24 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 | R against mobility | R goes as `K^(-3/4)` | **Trend present**: 1.34 : 1 : 0.60 measured against 1.24 : 1 : 0.74, three mobilities |
 | mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Linear to 2 per cent over three mobilities**, confined: exit potential at the median 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667, slope 29.4 V, intercept −8.5 V. The intercept is the release lag in volts — the settling time `L²/2KV` is not small against the ramp — which is what the instrument constant absorbs. `docs/device-templates.md` |
 
+| R through the front end | - | **7.48 with the entrance funnel and gate in the document**, against **8** for the analyser alone at the same 50 m/s and 7.5 V/ms - so the front-end geometry costs about 7 per cent of the analyser's own figure. Peak at 5799.4 us and **21.00 V**, FWHM 374.6 us = 2.810 V, 85,170 of 85,170 ions collected. The profile FWHM and the Gaussian-equivalent of the second moment agree to **0.2 per cent**, so this peak is not skew - unlike the arrival-time peaks the reflectron work reports. Packet seeded at the balance point; see the caveat below |
+
 **The resolving-power law is the target that matters**, because it is a *shape* over two
 independent variables rather than a single number: R must fall as the fourth root of the
 scan rate and as the three-quarter power of the mobility. A model that lands on one point
 by tuning cannot land on that surface.
+
+**And the front-end figure carries one caveat that is not about the analyser.** It is
+measured with the packet *seeded* at the balance point rather than delivered down the
+funnel, because the delivered run collects nothing - 7.74e-245 ions - for a reason not yet
+established. Four candidates are ruled out (the ramp spelling, the delivery itself, the late
+start on the timeline, and a stale operator: the failing ramp phase re-assembles 68,216
+times against 67,828 in the eluting one). What is left is the packet's own state where the
+ramp begins: sigma_z **0.954 mm** delivered against **0.712 mm** parked, the latter being
+the closed-form equilibrium, so the delivered packet has not finished relaxing in the
+300 us the shipped sequence gives it. So R = 7.48 is the analyser's figure measured through
+the front-end document, and **not yet** a figure for the front end as an instrument.
+`docs/device-templates.md` carries the 2 x 2.
 
 ### The analyser's own resolution floor, in closed form
 
