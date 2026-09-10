@@ -162,6 +162,9 @@ public sealed record ReportOutcome(
     /// <summary>How many stored a result this build cannot read.</summary>
     public int Unreadable => Runs.Count(StoredSomethingUnreadable);
 
+    /// <summary>How many were interrupted before they could store an answer.</summary>
+    public int Interrupted => Runs.Count(WasInterrupted);
+
     /// <summary>Whether a run stored no answer at all.</summary>
     /// <param name="run">The run.</param>
     /// <returns>Whether it stored nothing.</returns>
@@ -176,7 +179,23 @@ public sealed record ReportOutcome(
     public static bool StoredNothing(ReportedRun run) => run is not null
         && run.Result is null
         && run.Unreadable is null
-        && run.NotRendered is null;
+        && run.NotRendered is null
+        && run.Unfinished is null;
+
+    /// <summary>Whether a run was interrupted before it could store an answer.</summary>
+    /// <param name="run">The run.</param>
+    /// <returns>Whether its own checkpoint says it did not finish.</returns>
+    /// <remarks>
+    /// <b>The fourth state, and the predicate above had to learn about it.</b> That comment
+    /// describes a count and a warning disagreeing in one document because a third state
+    /// arrived and only one of the two was told; a fourth then arrived and the same thing
+    /// happened again - a run still in flight was counted as one that "stored a manifest and
+    /// no result document ... Re-running the model stores one", which is advice for an
+    /// entirely different problem and would have somebody restart a run that is working.
+    /// Found in real output rather than by a test, which is the third time on this command.
+    /// </remarks>
+    public static bool WasInterrupted(ReportedRun run)
+        => run is not null && run.Unfinished is not null;
 
     /// <summary>Whether a run stored an answer of a kind this page does not draw.</summary>
     /// <param name="run">The run.</param>
@@ -314,6 +333,23 @@ public static class ReportCommand
                 $"{withoutResult} run(s) here stored a manifest and no result document, so "
                 + "their provenance is complete and their answer is nowhere. Re-running the "
                 + "model stores one",
+                WarningSeverity.Qualified));
+        }
+
+        var interrupted = runs.Count(ReportOutcome.WasInterrupted);
+
+        if (interrupted > 0)
+        {
+            // Said rather than counted silently, and said differently from a run that
+            // stored nothing: this one ran, and what it wants is longer, a coarser mesh, or
+            // a machine nobody is going to reboot. It may also still be going, which is the
+            // commonest reason to be reading a report at all.
+            warnings.Add(new ValidityWarning(
+                "report.run-interrupted",
+                $"{interrupted} run(s) here left a checkpoint and no result, so they did not "
+                + "finish - or have not finished yet. Each says how far it got and carries "
+                + "the phases that completed; the checkpoint is removed when a run writes "
+                + "its answer",
                 WarningSeverity.Qualified));
         }
 

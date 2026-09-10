@@ -3867,3 +3867,27 @@ report defects were found by *enumerating the writers into `results/`* rather th
 of it; the run paths were enumerated first and that is what missed the studies. **After adding
 a producer, ask what reads it, and answer by enumerating consumers rather than by recalling
 one.**
+
+## A shared predicate stops a count and a diagnostic disagreeing only until the next state arrives
+
+`ReportOutcome.StoredNothing` exists because a count said "0 runs stored no result" in the
+same document as a warning that one had. The two were spelled out separately, a third state
+arrived, and only one of them learned about it - so they were collapsed into one named
+predicate with a comment saying why.
+
+**A fourth state then arrived and the predicate did not learn.** A run interrupted before it
+could write anything has no result, so it satisfied `StoredNothing` and was reported as a run
+that "stored a manifest and no result document ... Re-running the model stores one" - advice
+for a different problem, and following it would restart a run that was working. Found by
+reading a report of a project with a run *still going in it*, not by a test.
+
+So the shared predicate was the right fix and it is not a complete one: it makes the count and
+the warning agree with **each other**, and neither of them with reality when the set of states
+grows. What would have caught it is the property the report already implies one level up -
+that the counts partition the runs - which no test stated. It does now: an interrupted run is
+asserted absent from `withoutResult` and present in `interrupted`, and the mutation that
+removes the new clause fails it.
+
+**The rule: when a type gains a state, grep for every predicate that enumerates the others.**
+A predicate written as a conjunction of "not any of the ones I knew about" is a default case
+wearing a specific name, and it silently absorbs whatever arrives next.

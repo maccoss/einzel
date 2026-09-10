@@ -441,6 +441,14 @@ names where it was, how many steps in, and how long it had been going; the phase
 completed are drawn in the timeline table above, through the same rendering a finished
 run's go through.
 
+**And the count learned about it at the same time**, which it had not the first time round.
+`StoredNothing`'s own comment records a count and a warning disagreeing in one document
+because a third state arrived and only one of the two was told - and a fourth then arrived
+and the same thing happened, so a run still in flight was reported as one that "stored a
+manifest and no result document ... Re-running the model stores one". That is advice for a
+different problem, and following it would restart a run that is working. Found in real
+output rather than by a test, which is the third time on this command.
+
 **Warnings get four levels because the enum has four.** The first version keyed the hatched
 band - the device `Einzel.Render` puts across a tainted figure - on `IsSuppressible`, which
 is false for everything above advisory. So the band that exists to mark the one class GRD-3

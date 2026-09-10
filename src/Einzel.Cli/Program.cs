@@ -1377,6 +1377,9 @@ public static class Program
                     : "")
                 + (outcome.NotRendered > 0
                     ? $"; {outcome.NotRendered} study answer(s) this page does not draw"
+                    : "")
+                + (outcome.Interrupted > 0
+                    ? $"; {outcome.Interrupted} did not finish, or has not yet"
                     : ""));
         }
 

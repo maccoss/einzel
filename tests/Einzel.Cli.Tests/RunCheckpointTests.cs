@@ -326,13 +326,11 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
         Assert.True(File.Exists(Checkpoint));
         Assert.False(File.Exists(Path.Combine(_root, "results", "held.manifest.json")));
 
-        var (exit, stdout, stderr) = Run("report", _root, "--json");
+        var (exit, stdout, _) = Run("report", _root, "--json");
 
         Assert.Equal(0, exit);
 
         var report = JsonDocument.Parse(stdout).RootElement;
-
-        output.WriteLine(stderr.Trim());
 
         var run = Assert.Single(report.GetProperty("runs").EnumerateArray().ToArray());
 
@@ -354,8 +352,30 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("first", phase.GetProperty("name").GetString());
         Assert.Equal("0.7119", phase.GetProperty("axialSpreadMm").GetString());
 
-        // It reaches the page too, with its own state on it.
-        Assert.Equal(0, Run("report", _root).ExitCode);
+        // AND THE COUNTS AGREE WITH THE DIAGNOSTICS, which is where this command has now
+        // been wrong twice. An interrupted run is not one that "stored a manifest and no
+        // result document ... Re-running the model stores one" - that is advice for a
+        // different problem, and following it would restart a run that is working.
+        Assert.Equal(0, report.GetProperty("withoutResult").GetInt32());
+        Assert.Equal(1, report.GetProperty("interrupted").GetInt32());
+
+        var codes = report.GetProperty("warnings").EnumerateArray()
+            .Select(w => w.GetProperty("code").GetString())
+            .ToArray();
+
+        output.WriteLine(string.Join(", ", codes));
+
+        Assert.Contains("report.run-interrupted", codes);
+        Assert.DoesNotContain("report.manifest-without-result", codes);
+
+        // It reaches the page too, with its own state on it - and the terminal, which is
+        // where a person actually meets it (CLI-2 puts these on stderr).
+        var plain = Run("report", _root);
+
+        Assert.Equal(0, plain.ExitCode);
+        Assert.Contains("did not finish", plain.Stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "stored no result document", plain.Stderr, StringComparison.Ordinal);
 
         var page = File.ReadAllText(Path.Combine(_root, "report.html"));
 
