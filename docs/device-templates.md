@@ -1243,20 +1243,46 @@ all six printed digits.**
 | where they are | x = 21.14 mm, sigma_z 0.886 mm |
 
 The packet is delivered, held, and then sits at the balance point of the ramp's *opening*
-voltage while the ramp runs to zero underneath it. Three runs on the same document bound what
-is happening:
+voltage while the ramp runs to zero underneath it.
 
-| what the sweep is written as | result |
-| --- | --- |
-| `ramp` 60 V to 0 over 8 ms | frozen at 21.14 mm, nothing arrives |
-| a single `set` to 24 V, held 2 ms | 21.10 mm to **54.77 mm**, **81,049 of 85,170 arrive** |
-| sixteen `set` stages of 500 us, 60 V to 0 | eluting: 43.2 mm by the ninth, population falling |
+**The first version of this section called that "ramp against staircase" and it was two
+comparisons wearing one heading.** The runs behind it did not share a source: the eluting
+single-`set` run was seeded AT the balance point while the frozen ramp was delivered from
+40 mm up the funnel, so "the same sweep in two spellings" compared two different packets as
+well as two spellings. What survives the audit is a 2 x 2, of which three cells are measured:
 
-**And the ramp is not being ignored, which was my first reading and is wrong.** Probed at the
-parking point through a ramp phase, the potential falls 11.100 V to 0.720 V and the axial
-field from -1028.5 V/m to -65.9 V/m, linearly - `DrivenSolvedField` interpolates its channel
-weights exactly as designed. So a document whose sweep is written as stages elutes and the
-same sweep written as a ramp does not, with the field demonstrably moving in both. That is
+| the packet | how the sweep is written | ramp begins | result |
+| --- | --- | --- | --- |
+| delivered, x0 = -40 mm | `ramp` 60 V to 0 over 8 ms | 10.3 ms | **7.74e-245 arrive**, frozen at 21.14 mm |
+| delivered, x0 = -40 mm | sixteen `set` stages of 500 us | 10.3 ms | eluting: 43.2 mm by the ninth, population falling |
+| **parked**, x0 = 21.09 mm | `ramp` 60 V to 0 over 8 ms | 0.6 ms | **85,170 arrive**, mean 5805.2 us, spread 159.2 us |
+| **parked**, x0 = 21.09 mm | one `set` to 24 V, held 2 ms | 0.3 ms | 21.10 mm to **54.77 mm**, 81,049 of 85,170 arrive |
+
+So **a `ramp` does elute** - the third row is one, and it delivers every ion the seed kept -
+and the failing configuration is specifically the delivered packet's. A `ramp` per se is not
+the discriminator, which is what the confounded reading had concluded.
+
+**And the ramp is not being ignored.** That was my first reading, and it is wrong twice over
+by two independent routes. The direct route: probed at the parking point through a ramp phase,
+the potential falls 11.100 V to 0.720 V and the axial field from -1028.5 V/m to -65.9 V/m,
+linearly - `DrivenSolvedField` interpolates its channel weights exactly as designed. **That
+probe ran on a model scaled a thousandfold in time**, though, so its ramp began at 10.3 *us*
+rather than 10.3 ms and it says nothing about the real instant: a probe only probes what it
+holds constant, and this one moved the quantity the failing run differs in.
+
+The route that does cover the real instant is the **assembly count**, which rides out per
+phase for exactly this kind of question. The ramp phase re-assembles its operator **68,216
+times** in the delivered run and 67,828 times in the parked one - so both are re-sampling a
+moving field every step, and the delivered run's field is not frozen at its opening voltage
+however frozen the packet is. Whatever holds the packet, it is not a stale operator.
+
+Two further runs are what close the square: the parked packet with the delivered timeline
+(so the ramp begins at 10.3 ms), and the delivered packet with a single `set` instead of a
+ramp. Between them they say whether the cause is what the delivery brings with it or the late
+instant, and neither is yet in hand. Note against the second: a delivered *staircase* already
+begins at 10.3 ms and elutes, so a late start cannot be sufficient on its own.
+
+That is
 recorded as measured and unexplained rather than attributed.
 
 **One candidate, stated as a candidate.** The tunnel's RF is an analytic element bounded at

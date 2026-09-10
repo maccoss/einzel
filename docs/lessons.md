@@ -4015,3 +4015,76 @@ evidence about its own quality, discarding it must not be the shortest spelling 
 the carrier is not exemption from that. The place a caveat gets dropped is the place that
 enumerates caveats by hand. Ask which lists exist, not which ones come to mind, and put the
 answer somewhere both readers take it from.
+
+## Three runs, one heading, two comparisons
+
+The TIMS front end completes and elutes nothing. I bounded that with three runs and wrote the
+result up as a property of how the sweep is spelled: written as a `ramp` the packet freezes,
+written as a single `set` it travels and 81,049 of 85,170 arrive, written as sixteen `set`
+stages it elutes. A clean story with a named mechanism to go looking for.
+
+**The runs did not share a source.** The eluting single-`set` run seeded its packet AT the
+balance point; the frozen ramp delivered its packet from 40 mm up the entrance funnel. So the
+comparison moved the packet as well as the spelling, and every conclusion drawn from it was
+about an interaction I had not separated. Re-run parked, **a `ramp` elutes 85,170 ions** - the
+thing the write-up said a ramp does not do.
+
+**What made it look like one comparison was that all three ran from "the same document".** They
+did: one document, one parameter overridden per variant. `sourceX` was -40 mm in two of them and
+21.09 mm in the third, which is one line of a diff and the whole of the experiment. A variant
+set built by overriding a shared document reads as controlled *because* it is mostly shared, and
+the differing line is exactly the one nobody re-reads.
+
+What recovered it was tabulating every model in the study directory by the parameters that
+distinguish them - source, phase structure, flight-time limit - rather than by the name I had
+given each. The names encoded my intent; the table encoded what would run.
+
+**And the probe that cleared the ramp had the same shape of flaw.** It showed the potential at
+the parking point falling 11.100 V to 0.720 V through a ramp phase, which is the ramp working -
+on a model scaled a thousandfold in time, so its ramp began at 10.3 *microseconds* where the
+failing run's begins at 10.3 milliseconds. The absolute instant is the one quantity the two runs
+differ in and the probe moved it. That is this project's own rule, already written down, met a
+second time: a probe only probes what it holds constant.
+
+The route that did cover the real instant cost nothing, because it was already being recorded:
+the per-phase **assembly count**, added a day earlier to catch a held phase re-assembling for a
+ramp that was not there. The ramp phase re-assembles 68,216 times in the failing run and 67,828
+in the eluting one - so both re-sample a moving field every step, and "the field is frozen" is
+refuted without building anything. **A counter already in the output beats a probe you have to
+write**, and it beats it twice over because it was taken during the run in question rather than
+during a stand-in for it.
+
+**The rules.** Before drawing a conclusion from a set of variants, list them by the parameters
+that differ rather than by the names you gave them, and say out loud which single quantity each
+pair isolates - a set that shares a document is not thereby controlled. And when a cheap probe
+and an expensive run disagree, check what the probe scaled before believing it.
+
+## A study run out of `bin/Release` runs whatever was last built there
+
+Studies here are run from the Release tree, because Release is 3.27x faster and a diffusive
+sequence is measured in minutes either way. Development builds and tests Debug. Nothing links
+the two, so `bin/Release` holds whatever was last built into it - and after two days of work on
+the diffusive path, that was **two days old**.
+
+Both controls in a two-by-two went out on it. One of them was fine by luck: its phases are all
+holds, so the operator assembles once and the well rebuilds once, and the well-cache defect
+fixed in between could not bite. The other has a ramp, so on the stale binary it was rebuilding
+a six-second well every fourth step - the 28-hour behaviour the fix removed - and it sat there
+producing nothing while I read code.
+
+**The tell was a missing key, not a wrong number.** The phase records came back without
+`spreadMm`, which had been added to them the day before. A number that is absent is a much
+better signal than a number that is merely different, and it is only available because this
+surface writes an absent measurement as absent rather than as zero: had the width defaulted to
+0.0, the output would have been complete, plausible, and from the wrong engine.
+
+The worse outcome was the one narrowly avoided: the two cells of the comparison would have been
+measured on **different binaries**, days apart in behaviour, and the difference attributed to
+the physics being varied. That is the same error as timing a run against an estimate while the
+test suite is running, one level up - the confound is not in the machine's load but in which
+program was executed.
+
+**The rule: build the tree you are about to run, immediately before running it, and record what
+you built.** A manifest already carries the engine version for exactly this reason (`PRJ-3`),
+which means the check costs one line and I did not make it. And when a run produces less than
+you expect - a missing field, a shorter table - suspect the binary before the model.

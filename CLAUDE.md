@@ -1995,19 +1995,27 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   of one is not an answer at all. Below the bar the fields are absent and
   `sequence.nothing-eluted` says which and why. SPEC.md Amendment 45.
 
-  **Why it freezes is open, and the shape of the evidence is worth keeping.** Three runs on one
-  document: written as a `ramp` the packet is frozen; written as a single `set` to 24 V it
-  travels 21.10 to 54.77 mm and **81,049 of 85,170 arrive**; written as sixteen `set` stages
-  over the same sweep it elutes. **And the ramp is not being ignored** - probed at the parking
-  point through a ramp phase, the potential falls 11.100 to 0.720 V and the axial field from
-  -1028.5 to -65.9 V/m, linearly, so `DrivenSolvedField` interpolates its channel weights
-  exactly as designed. The same sweep in two spellings, two answers, the field measurably moving
-  in both: recorded as measured and unexplained rather than attributed. One candidate, with its
-  own counter-evidence: the tunnel's RF is bounded with a 4 mm fringe, so leaving means climbing
-  out of a well tens of volts deep and the DC the ramp collapses is what would push ions over it
-  - the mirror image of the entrance problem this template fixed by *adding* the fringe, and the
-  instrument has an exit funnel the model does not. It does not explain why the staircase elutes
-  through the same fringe.
+  **Why it freezes is open, and my first account of it was confounded.** I wrote it up as "the
+  same sweep in two spellings, two answers" - a `ramp` freezing where a staircase and a single
+  `set` elute. **The runs did not share a source.** The eluting single-`set` run was seeded AT
+  the balance point while the frozen ramp was delivered from 40 mm up the funnel, so the
+  comparison moved the packet as well as the spelling. Re-run parked, **a `ramp` elutes 85,170
+  ions, mean 5805.2 us, spread 159.2 us** - so a ramp is not the discriminator, and the failing
+  cell is the delivered packet's. `docs/device-templates.md` carries the 2 x 2.
+
+  **The ramp is still demonstrably not ignored, and now by a route that covers the real
+  instant.** The field probe that cleared it ran on a model scaled a thousandfold in time, so
+  its ramp began at 10.3 *us*: a probe only probes what it holds constant, and that one moved
+  the quantity the failing run differs in. The per-phase **assembly count** does cover it - the
+  ramp phase re-assembles its operator **68,216 times** delivered against 67,828 parked, so both
+  re-sample a moving field every step. Whatever holds the packet, it is not a stale operator.
+  That is also the second time in two days the assembly count has answered a question nothing
+  else could, having been added for the previous one.
+
+  What is left to test is what the delivered packet brings with it that a seeded one at the same
+  centroid and width does not; a delivered *staircase* already starts at 10.3 ms and elutes, so
+  a late start is not sufficient on its own. The exit fringe stays a candidate for the delivered
+  case, with the counter-evidence it always had: the staircase elutes through the same fringe.
 
   **A sequence whose phases all name a mode the model does not was flown in the model's, and the
   timeline ignored outright.** `ChangesTransportMode` asks whether two *adjacent* phases differ

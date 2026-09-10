@@ -2228,23 +2228,29 @@ project's author needs to run it and more than any physics the moment one does.
    99,893.6 of 99,971 sit at x = 21.14 mm with sigma_z 0.886 mm - the balance point of the
    ramp's *opening* voltage - while the ramp runs to zero underneath them. That is now
    *reported* as nothing rather than as a mean arrival over a Boltzmann tail (Amendment 45).
-   Three runs on one document bound it: written as a `ramp` the packet is frozen, written as a
-   single `set` to 24 V it travels 21.10 to 54.77 mm and **81,049 of 85,170 arrive**, and
-   written as sixteen `set` stages over the same sweep it elutes. **The ramp is not being
-   ignored** - probed through a ramp phase at the parking point, the potential falls 11.100 to
-   0.720 V and the axial field from -1028.5 to -65.9 V/m, linearly. So the same sweep in two
-   spellings gives two answers with the field measurably moving in both, which is recorded as
-   measured and unexplained rather than attributed. One candidate, stated as a candidate: the
-   tunnel's RF is bounded with a 4 mm fringe, so leaving the tunnel means climbing out of a well
-   tens of volts deep and the DC the ramp collapses is what would push ions over it - the mirror
-   image of the entrance problem this template fixed by *adding* the fringe, and the instrument
-   has an exit funnel the model does not. What it does not explain is why the staircase elutes
-   through the same fringe.
 
-   **So the open question is no longer whether the sequence finishes.** It is why the ramp
-   spelling freezes a packet the staircase releases; the discriminating experiment is a
-   staircase refined toward a ramp until the elution stops, which brackets whether this is the
-   fringe, the interpolation, or the step the ramp forces.
+   **What it is NOT is the ramp spelling, and the first account of this said it was.** Those
+   runs did not share a source: the eluting single-`set` run was seeded at the balance point
+   while the frozen ramp was delivered from 40 mm up the funnel, so "the same sweep written two
+   ways" compared two packets as well as two spellings. Re-run parked, **a `ramp` elutes 85,170
+   ions at a mean of 5805.2 us with a spread of 159.2 us** - so the failing cell is the
+   delivered packet's, not the ramp's. `docs/device-templates.md` carries the 2 x 2 with three
+   of its four cells measured.
+
+   **And the ramp is demonstrably not being ignored, by a route the first account did not
+   have.** The field probe that cleared it ran on a model scaled a thousandfold in time, so its
+   ramp began at 10.3 *us* rather than 10.3 ms - a probe only probes what it holds constant, and
+   that one moved the very quantity the failing run differs in. What does cover the real instant
+   is the per-phase **assembly count**: the ramp phase re-assembles its operator **68,216 times**
+   delivered and 67,828 parked, so both re-sample a moving field at every step and the delivered
+   field is not stale however frozen the packet is.
+
+   **So the open question is no longer whether the sequence finishes, nor how the sweep is
+   spelled.** It is what the delivered packet brings with it that a seeded one at the same
+   centroid and width does not. Two runs close the square - the parked packet on the delivered
+   timeline, and the delivered packet with a single `set` - and a delivered *staircase* already
+   begins at 10.3 ms and elutes, so a late start is not sufficient on its own. The exit fringe
+   stays a candidate for the delivered case, with the counter-evidence it always had.
 
    The three changes that made it affordable are worth stating separately, because two are
    arithmetic and one is machinery.
