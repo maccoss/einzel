@@ -416,6 +416,103 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
                 .GetRawText();
     }
 
+    /// <summary>
+    /// A checkpoint left beside a finished run does not make it two runs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The state this is about is ordinary rather than exotic: a re-run that was
+    /// abandoned.</b> The attempt that produced the answer removes its own checkpoint, so a
+    /// checkpoint sitting beside a result is almost always a LATER attempt somebody killed -
+    /// which is exactly what a study directory accumulates while a question is being chased.
+    /// </para>
+    /// <para>
+    /// <b>The guard for it existed, said so in its own comment, and could not fire.</b> A
+    /// checkpoint's stem was normalised to portable separators and a manifest's was taken
+    /// from the record as it stood, so on Windows the comparison was
+    /// `results/name` against `results\name` - equal under no string comparison there is.
+    /// The finished run was then reported twice, once as standing and once as a run that
+    /// "left a checkpoint and no result", said of a run that has one. Found in the output of
+    /// a real project, which is the fourth time on this command and the reason the counts
+    /// are asserted here rather than the page.
+    /// </para>
+    /// <para>
+    /// <b>What is asserted is the partition</b>, which is the property that keeps breaking:
+    /// every run falls in exactly one bucket. A test that only checked "the finished run is
+    /// listed" passes with the defect, because it was listed - twice.
+    /// </para>
+    /// <para>
+    /// The separator is what made this platform-specific, so the fix compares file names and
+    /// the comparison cannot see a separator at all. On Linux, where a relative path is
+    /// already portable, this test passes either way - stated rather than left for somebody
+    /// to discover from a green run on the wrong machine.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ACheckpointBesideAFinishedRunIsNotASecondRun()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        File.WriteAllText(Path.Combine(_root, "models", "held.json"), HeldInPhases);
+
+        // A run that finished, so there is a manifest and a result.
+        Assert.Equal(0, Run("run", Path.Combine(_root, "models", "held.json")).ExitCode);
+
+        var manifest = Path.Combine(_root, "results", "held.manifest.json");
+
+        Assert.True(File.Exists(manifest), $"no manifest at {manifest}");
+        Assert.True(File.Exists(Path.Combine(_root, "results", "held.result.json")));
+
+        // Its own checkpoint is gone, which is the invariant that makes one mean anything.
+        Assert.False(File.Exists(Checkpoint), "a finished run left its checkpoint behind");
+
+        // And now a LATER attempt on the same model, killed part way - so a checkpoint sits
+        // beside an answer that already stands.
+        var writer = new RunCheckpointWriter(Checkpoint, new RunProgress(0.0), Provenance);
+
+        writer.Entering("first", 1, 2, 30e-6);
+        writer.Completed(new PhaseOutcome(
+            "first", "diffusion", 30e-6, 30e-6, 9876.0, 0,
+            [21.09, 0.0], [0.7119, 0.1643], false, 0, [], 12, 1));
+
+        Assert.True(File.Exists(Checkpoint));
+
+        var (exit, stdout, _) = Run("report", _root, "--json");
+
+        Assert.Equal(0, exit);
+
+        var report = JsonDocument.Parse(stdout).RootElement;
+
+        // ONE run, not two. The stale checkpoint describes an attempt at a question that is
+        // already answered, and the page is for saying what stands.
+        var run = Assert.Single(report.GetProperty("runs").EnumerateArray().ToArray());
+
+        Assert.Equal(
+            "held.json",
+            Path.GetFileName(run.GetProperty("model").GetString()!));
+
+        // Reported through its manifest, so it has an answer and is not unfinished.
+        Assert.True(run.GetProperty("numbers").EnumerateArray().Any());
+        Assert.Equal(
+            JsonValueKind.Null,
+            run.TryGetProperty("unfinished", out var un) ? un.ValueKind : JsonValueKind.Null);
+
+        // THE PARTITION. Every count is about the same one run, and the diagnostics agree
+        // with the counts - the property this command has now been wrong about four times.
+        Assert.Equal(1, report.GetProperty("runs").GetArrayLength());
+        Assert.Equal(0, report.GetProperty("interrupted").GetInt32());
+        Assert.Equal(0, report.GetProperty("withoutResult").GetInt32());
+
+        var codes = report.GetProperty("warnings").EnumerateArray()
+            .Select(w => w.GetProperty("code").GetString())
+            .ToArray();
+
+        output.WriteLine(string.Join(", ", codes));
+
+        Assert.DoesNotContain("report.run-interrupted", codes);
+        Assert.DoesNotContain("report.manifest-without-result", codes);
+    }
+
     /// <summary>Asking for no progress writes nothing and says nothing.</summary>
     /// <remarks>
     /// A run of a few seconds does not want a checkpoint, and a caller scripting many of

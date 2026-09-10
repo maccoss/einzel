@@ -558,10 +558,34 @@ public static class ReportCommand
     /// <param name="described">The runs already accounted for, by manifest.</param>
     /// <returns>One per orphan checkpoint, newest first is applied by the caller.</returns>
     /// <remarks>
+    /// <para>
     /// <b>Only the orphans.</b> A checkpoint beside a manifest is already reported through
     /// that manifest, and a run that finished has no checkpoint at all - it is removed when
     /// the answer is written. So this is the narrow case that nothing else can see, which is
     /// also the commonest way a long run ends on a machine nobody controls.
+    /// </para>
+    /// <para>
+    /// <b>The guard is matched on the file name, because the two sides of it did not agree
+    /// about a separator.</b> A checkpoint's stem was normalised through
+    /// <see cref="RunManifest.Portable"/> and a manifest's was taken from the record as it
+    /// stood, which on Windows is `results\name.manifest.json` against
+    /// `results/name.progress.json` - equal under no string comparison there is. So the
+    /// guard never fired, and a finished run whose stem also had a checkpoint was reported
+    /// twice: once as standing, and once as a run that "left a checkpoint and no result",
+    /// which was said of a run that had one. The counts then did not partition the runs,
+    /// which is the property a lesson was written about the last time it broke here.
+    /// </para>
+    /// <para>
+    /// Matching on the file name rather than normalising both sides, because both
+    /// enumerations are over <c>layout.Results</c> itself - a flat directory, so a stem is
+    /// unique in it and a separator cannot enter the comparison at all.
+    /// </para>
+    /// <para>
+    /// <b>A checkpoint beside a result is usually a LATER attempt</b> that was abandoned -
+    /// the one that produced the result removed its own. It is skipped rather than reported,
+    /// because what the page is for is saying what stands, and an abandoned re-run of a
+    /// question already answered is not a state anybody has to act on.
+    /// </para>
     /// </remarks>
     private static IEnumerable<ReportedRun> Interrupted(
         ProjectLayout layout, IReadOnlyList<ReportedRun> described)
@@ -575,6 +599,7 @@ public static class ReportCommand
             .Select(run => run.Manifest.EndsWith(".manifest.json", StringComparison.Ordinal)
                 ? run.Manifest[..^".manifest.json".Length]
                 : Path.ChangeExtension(run.Manifest, null))
+            .Select(Path.GetFileName)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var checkpoints = Directory
@@ -586,7 +611,7 @@ public static class ReportCommand
             var relative = RunManifest.Portable(Path.GetRelativePath(layout.Root, path));
             var stem = relative[..^".progress.json".Length];
 
-            if (accounted.Contains(stem))
+            if (accounted.Contains(Path.GetFileName(stem)))
             {
                 continue;
             }
