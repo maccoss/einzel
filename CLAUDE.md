@@ -1980,42 +1980,31 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   explained. Bit-identical: 16 rebuilds became 1 and sigma_z is the same to all six printed
   digits, pinned from both sides by a test requiring 1e-11 to be held and 1e-5 to be caught.
 
-  **And the finding is that the front end does not elute.** 7.74e-245 ions reach the detector
-  while **99,893.6 of 99,971** sit at x = 21.14 mm, sigma_z 0.886 mm - the balance point of the
-  ramp's *opening* voltage - as the ramp runs to zero underneath them.
+  **And the finding is that it elutes, with a resolving power - my two earlier accounts of
+  this were both wrong.** Re-measured on one build, every configuration elutes. The delivered
+  packet collects **99,833.5 of 99,971** ions, mean 15,505.159 us, sigma 159.157, peak
+  elution potential **20.9878 V**, **R = 7.481** - against the analyser alone at 8, so the
+  funnel and gate cost about seven per cent and the delivery costs nothing measurable.
 
-  **An arrival mean over a Boltzmann tail is not a measurement, and it was being reported as
-  one**: `mean arrival 11366.06 us, spread 4024.20 us` over that 7.74e-245. That value is not
-  ions. **Scharfetter-Gummel's flux across a collecting face behind a barrier IS the Boltzmann
-  factor of the barrier**, and 60 V against 0.026 V thermal is `exp(-2300)`, so a held packet
-  emits values from its first step - the same tail that once put an elution onset during the
-  hold. `RunCommand.Eluted` is the decision, named and public so it can be tested without a
-  run: arrivals must reach a millionth of the launched population, a **fraction** rather than a
-  count because "less than one ion arrived" is a real answer for a low transmission while 1e-245
-  of one is not an answer at all. Below the bar the fields are absent and
-  `sequence.nothing-eluted` says which and why. SPEC.md Amendment 45.
+  **Which answers the template's standing question.** A delivered packet and one seeded at the
+  balance point enter the ramp 34 per cent apart in width (sigma_z 0.954 against 0.712 mm) and
+  elute at means agreeing to **eight significant figures**, sigma to six. The arrival width is
+  the **analyser's own**: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|` before
+  release, and that formula contains nothing about where the packet came from. Two ramps
+  beginning 9.7 ms apart land on the same potential to five figures; a *stepped* release is
+  **12 per cent wider** (sigma 178.0 / 179.9 against 159.16), so the release program reaches
+  the width where the history does not.
 
-  **Why it freezes is open, and my first account of it was confounded.** I wrote it up as "the
-  same sweep in two spellings, two answers" - a `ramp` freezing where a staircase and a single
-  `set` elute. **The runs did not share a source.** The eluting single-`set` run was seeded AT
-  the balance point while the frozen ramp was delivered from 40 mm up the funnel, so the
-  comparison moved the packet as well as the spelling. Re-run parked, **a `ramp` elutes 85,170
-  ions, mean 5805.2 us, spread 159.2 us** - so a ramp is not the discriminator, and the failing
-  cell is the delivered packet's. `docs/device-templates.md` carries the 2 x 2.
-
-  **The ramp is still demonstrably not ignored, and now by a route that covers the real
-  instant.** The field probe that cleared it ran on a model scaled a thousandfold in time, so
-  its ramp began at 10.3 *us*: a probe only probes what it holds constant, and that one moved
-  the quantity the failing run differs in. The per-phase **assembly count** does cover it - the
-  ramp phase re-assembles its operator **68,216 times** delivered against 67,828 parked, so both
-  re-sample a moving field every step. Whatever holds the packet, it is not a stale operator.
-  That is also the second time in two days the assembly count has answered a question nothing
-  else could, having been added for the previous one.
-
-  What is left to test is what the delivered packet brings with it that a seeded one at the same
-  centroid and width does not; a delivered *staircase* already starts at 10.3 ms and elutes, so
-  a late start is not sufficient on its own. The exit fringe stays a candidate for the delivered
-  case, with the counter-evidence it always had: the staircase elutes through the same fringe.
+  **The frozen result is unexplained and unreproducible, and the leading hypothesis was
+  refuted by its own control.** An earlier run collected 7.74e-245 ions. Excluded: the ramp
+  spelling, the delivery, the late start, a stale operator - and the **ponderomotive well
+  cache**, which was the obvious suspect since that commit is the only one between the two
+  engines touching a physics file. Reverting `PonderomotiveWellCache.cs` on the current build
+  gives **10,794 well rebuilds against 1 and the same answer to 13 significant figures**. So
+  the cache is excluded and its bit-identical claim is now measured on the front end rather
+  than on the analyser alone. **And its provenance is gone by my own hand**: `results/` is
+  keyed by stem, so each re-run overwrote the manifest carrying the model hash that would have
+  said whether the document itself had changed.
 
   **A sequence whose phases all name a mode the model does not was flown in the model's, and the
   timeline ignored outright.** `ChangesTransportMode` asks whether two *adjacent* phases differ

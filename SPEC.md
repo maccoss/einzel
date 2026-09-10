@@ -2224,33 +2224,33 @@ project's author needs to run it and more than any physics the moment one does.
    Bit-identical: 16 rebuilds became 1 and sigma_z is the same to all six printed digits, pinned
    from both sides by a test that requires 1e-11 to be held and 1e-5 to be caught.
 
-   **And the finding is that the front end does not elute.** 7.74e-245 ions reach the detector;
-   99,893.6 of 99,971 sit at x = 21.14 mm with sigma_z 0.886 mm - the balance point of the
-   ramp's *opening* voltage - while the ramp runs to zero underneath them. That is now
-   *reported* as nothing rather than as a mean arrival over a Boltzmann tail (Amendment 45).
+   **And the finding is that it elutes, with a resolving power.** Re-measured on one build,
+   every configuration of the document elutes: the delivered packet collects **99,833.5 of
+   99,971** ions at a mean of 15,505.159 us and sigma 159.157, giving a peak elution potential
+   of **20.9878 V** and **R = 7.481** against the analyser alone at 8 - so the funnel and gate
+   cost about seven per cent.
 
-   **What it is NOT is the ramp spelling, and the first account of this said it was.** Those
-   runs did not share a source: the eluting single-`set` run was seeded at the balance point
-   while the frozen ramp was delivered from 40 mm up the funnel, so "the same sweep written two
-   ways" compared two packets as well as two spellings. Re-run parked, **a `ramp` elutes 85,170
-   ions at a mean of 5805.2 us with a spread of 159.2 us** - so the failing cell is the
-   delivered packet's, not the ramp's. `docs/device-templates.md` carries the 2 x 2 with three
-   of its four cells measured.
+   **That answers this item's standing question.** A delivered packet and one seeded at the
+   balance point enter the ramp 34 per cent apart in width (sigma_z 0.954 against 0.712 mm,
+   the latter being the closed-form equilibrium) and elute at means agreeing to **eight
+   significant figures**. So the arrival width is the **analyser's own**, not delivery spread
+   the ramp reads as mobility: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|`
+   before release, which the closed form requires, since it contains nothing about the
+   packet's history. Two ramps beginning 9.7 ms apart on the instrument's clock land on the
+   same potential to five figures, and a *stepped* release comes out 12 per cent wider
+   (sigma 178.0 and 179.9 against 159.16) - the release program reaching the width where the
+   history does not.
 
-   **And the ramp is demonstrably not being ignored, by a route the first account did not
-   have.** The field probe that cleared it ran on a model scaled a thousandfold in time, so its
-   ramp began at 10.3 *us* rather than 10.3 ms - a probe only probes what it holds constant, and
-   that one moved the very quantity the failing run differs in. What does cover the real instant
-   is the per-phase **assembly count**: the ramp phase re-assembles its operator **68,216 times**
-   delivered and 67,828 parked, so both re-sample a moving field at every step and the delivered
-   field is not stale however frozen the packet is.
-
-   **So the open question is no longer whether the sequence finishes, nor how the sweep is
-   spelled.** It is what the delivered packet brings with it that a seeded one at the same
-   centroid and width does not. Two runs close the square - the parked packet on the delivered
-   timeline, and the delivered packet with a single `set` - and a delivered *staircase* already
-   begins at 10.3 ms and elutes, so a late start is not sufficient on its own. The exit fringe
-   stays a candidate for the delivered case, with the counter-evidence it always had.
+   **An earlier run of the same document collected 7.74e-245 ions and is recorded as
+   unexplained.** It does not reproduce on the current build. Excluded as causes: the ramp
+   spelling, the delivery, the late start, a stale operator (67,828-68,216 assemblies either
+   way), and - by direct control - the ponderomotive well cache, which was the leading
+   hypothesis because that commit is the only one between the two engines touching a physics
+   file. Reverting it gives 10,794 well rebuilds against 1 and the same answer to **13
+   significant figures**, which incidentally measures its bit-identical claim on the model
+   that motivated it rather than on the analyser alone. The frozen run's own provenance was
+   overwritten by the re-runs that investigated it, so the model hash cannot be compared;
+   `docs/device-templates.md` and `docs/lessons.md` carry both.
 
    The three changes that made it affordable are worth stating separately, because two are
    arithmetic and one is machinery.

@@ -4088,3 +4088,52 @@ program was executed.
 you built.** A manifest already carries the engine version for exactly this reason (`PRJ-3`),
 which means the check costs one line and I did not make it. And when a run produces less than
 you expect - a missing field, a shorter table - suspect the binary before the model.
+
+## Re-running a stem destroys the provenance of the run you are trying to explain
+
+`results/` is keyed by the model's stem: `delivered.json` writes `delivered.manifest.json` and
+`delivered.result.json`, and the next run of that document overwrites both. PRJ-4 licenses
+that deliberately - the durable record is the model and its history, and results are
+regenerable rather than precious.
+
+**An anomaly is exactly the case where that licence does not hold.** A run of the TIMS front
+end collected 7.74e-245 ions and did not move. Explaining it took five further runs of the
+same document, and each one overwrote the manifest of the one before - so by the time the
+question had narrowed to "was the document itself the same at the time?", the model hash that
+would have answered it had been written over four times. `PRJ-3` had recorded exactly the
+right thing and the file no longer held it.
+
+The checkpoint would have carried it too, and that was removed on schedule: a finished run
+deletes its own `.progress.json`, which is the invariant that makes finding one mean the run
+did not finish. Both mechanisms worked as designed and both destroyed the same evidence.
+
+**The rule: when a result is anomalous and you intend to investigate it, copy its manifest and
+result aside before re-running the stem.** It costs two file copies. The alternative is what
+happened here - a finding that is now recorded as unexplained partly because the evidence
+that would have settled it was overwritten by the investigation.
+
+## The leading hypothesis had one commit's worth of support and was wrong
+
+The frozen run was on engine `ab19163`; every eluting run was on `c135bc1` or later. Between
+those two commits exactly one file under `src/` changes any number:
+`PonderomotiveWellCache.cs`. The other changes were an elution *reporting* floor, tests and
+documentation. So the inference was short and looked airtight - the cache's tolerance moved
+from 1e-12 to 1e-9 and its probe went from sixteen lattice nodes to one, and that commit's
+bit-identical claim had been measured on the **analyser**, never on the front end, whose
+composite carries a solved funnel RF. A plausible mechanism, a clean bisection, an admitted
+gap in the evidence for the alternative.
+
+**The control killed it in one run.** Reverting that one file on the current build and running
+the same document gives **10,794 well rebuilds against 1** and the same answer to **13
+significant figures** - 99,833.4920418748 ions against 99,833.49204187385, mean
+15,505.159357357079 against 15,505.159357357172. The cache is excluded, and the side effect is
+worth as much as the result: its bit-identical claim is now measured on the model that
+motivated it.
+
+Two things worth keeping. **A bisection over commits is not a bisection over causes** - "one
+file changed" bounds where a cause could live and says nothing about whether it does, and the
+temptation is strongest when the diff is smallest. And **the control was cheap and I nearly
+skipped it**, because I had already written the hypothesis into four documents; reverting one
+file and re-running cost one build and one run, against a wrong entry in the living
+specification. Write the hypothesis down as a hypothesis, then run the thing that can refute
+it before it is written down as a finding.

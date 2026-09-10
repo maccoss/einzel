@@ -908,24 +908,23 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 | R against mobility | R goes as `K^(-3/4)` | **Trend present**: 1.34 : 1 : 0.60 measured against 1.24 : 1 : 0.74, three mobilities |
 | mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Linear to 2 per cent over three mobilities**, confined: exit potential at the median 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667, slope 29.4 V, intercept −8.5 V. The intercept is the release lag in volts — the settling time `L²/2KV` is not small against the ramp — which is what the instrument constant absorbs. `docs/device-templates.md` |
 
-| R through the front end | - | **7.48 with the entrance funnel and gate in the document**, against **8** for the analyser alone at the same 50 m/s and 7.5 V/ms - so the front-end geometry costs about 7 per cent of the analyser's own figure. Peak at 5799.4 us and **21.00 V**, FWHM 374.6 us = 2.810 V, 85,170 of 85,170 ions collected. The profile FWHM and the Gaussian-equivalent of the second moment agree to **0.2 per cent**, so this peak is not skew - unlike the arrival-time peaks the reflectron work reports. Packet seeded at the balance point; see the caveat below |
+| R through the front end | - | **7.481 delivered down the funnel**, against **8** for the analyser alone at the same 50 m/s and 7.5 V/ms - so the front-end geometry costs about 7 per cent and the delivery itself costs nothing measurable. **99,833.5 of 99,971 ions**, peak **20.9878 V**, FWHM 374.65 us = 2.810 V. Identical to five figures for a packet *seeded* at the balance point instead, and for a ramp beginning 9.7 ms earlier on the instrument's clock. The profile FWHM and the Gaussian-equivalent of the second moment agree to **0.04 per cent**, so this peak is not skew - unlike the arrival-time peaks the reflectron work reports |
+| arrival width, delivered vs parked | - | **The width is the analyser's, not the delivery's.** Entering the ramp 34 per cent apart (sigma_z 0.954 mm delivered against 0.712 parked, the latter the closed-form equilibrium), the two elute at means agreeing to **eight significant figures** and sigma to six. The packet re-equilibrates to `sigma_z^2 = (kT/q)/\|dE/dx\|` before release, which that closed form requires since it carries nothing about the packet's history. A *stepped* release is 12 per cent wider than a ramped one (sigma 178.0 / 179.9 against 159.16) |
 
 **The resolving-power law is the target that matters**, because it is a *shape* over two
 independent variables rather than a single number: R must fall as the fourth root of the
 scan rate and as the three-quarter power of the mobility. A model that lands on one point
 by tuning cannot land on that surface.
 
-**And the front-end figure carries one caveat that is not about the analyser.** It is
-measured with the packet *seeded* at the balance point rather than delivered down the
-funnel, because the delivered run collects nothing - 7.74e-245 ions - for a reason not yet
-established. Four candidates are ruled out (the ramp spelling, the delivery itself, the late
-start on the timeline, and a stale operator: the failing ramp phase re-assembles 68,216
-times against 67,828 in the eluting one). What is left is the packet's own state where the
-ramp begins: sigma_z **0.954 mm** delivered against **0.712 mm** parked, the latter being
-the closed-form equilibrium, so the delivered packet has not finished relaxing in the
-300 us the shipped sequence gives it. So R = 7.48 is the analyser's figure measured through
-the front-end document, and **not yet** a figure for the front end as an instrument.
-`docs/device-templates.md` carries the 2 x 2.
+**One earlier run of this document is recorded as unexplained.** It collected 7.74e-245
+ions and did not move, and it does not reproduce on the current build. Excluded as causes:
+the ramp spelling, the delivery, the late start, a stale operator, and - by direct control -
+the ponderomotive well cache, which was the leading hypothesis because that commit is the only
+one between the two engine builds touching a physics file. Reverting it gives 10,794 well
+rebuilds against 1 and the same answer to **13 significant figures**. Its own provenance was
+overwritten by the re-runs investigating it, so the model hash cannot be compared.
+`docs/device-templates.md` carries the five-run table and `docs/lessons.md` the two rules that
+came out of it.
 
 ### The analyser's own resolution floor, in closed form
 

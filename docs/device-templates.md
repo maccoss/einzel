@@ -1234,65 +1234,77 @@ call rather than all sixteen. Both are pinned by tests from each side: a change 
 be held and one of 1e-5 must be caught. **16 rebuilds became 1 and sigma_z is identical to
 all six printed digits.**
 
-### And the finding is that it does not elute
+### And the finding is that it elutes: R = 7.48 through the whole front end
 
-| | |
-| --- | --- |
-| ions reaching the detector | **7.74e-245** |
-| still in the tunnel at the end of the ramp | **99,893.6 of 99,971** |
-| where they are | x = 21.14 mm, sigma_z 0.886 mm |
+**Every configuration measured on one binary elutes.** The table below is the four-cell
+comparison that earlier appeared here with one cell reading "frozen"; re-measured on a single
+build, the frozen cell is gone. A packet released 40 mm up the funnel, carried in, held
+against the gate, and eluted by walking the exit potential 60 V to zero at 7.5 V/ms:
 
-The packet is delivered, held, and then sits at the balance point of the ramp's *opening*
-voltage while the ramp runs to zero underneath it.
+| the packet | how it is released | release begins | ions | mean / us | sigma / us | peak / V | R |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| delivered, x0 = -40 mm | `ramp` 60 to 0 V | 10.3 ms | **99,833.5 of 99,971** | 15,505.159 | 159.1574 | **20.9878** | **7.481** |
+| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 10.3 ms | 85,170.0 of 85,170 | 15,505.159 | 159.1574 | 20.9878 | 7.481 |
+| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 0.6 ms | 85,170.0 of 85,170 | 5,805.161 | 159.1573 | 20.9878 | 7.481 |
+| delivered, x0 = -40 mm | one `set` to 24 V | 10.3 ms | 95,243.8 of 99,920 | 11,922.343 | 178.0472 | - | - |
+| parked, x0 = 21.09 mm | one `set` to 24 V | 0.3 ms | 81,048.6 of 85,170 | 1,922.123 | 179.9054 | - | - |
 
-**The first version of this section called that "ramp against staircase" and it was two
-comparisons wearing one heading.** The runs behind it did not share a source: the eluting
-single-`set` run was seeded AT the balance point while the frozen ramp was delivered from
-40 mm up the funnel, so "the same sweep in two spellings" compared two different packets as
-well as two spellings. What survives the audit is a 2 x 2, of which three cells are measured:
+**The three ramped rows are the same measurement**, and that answers this template's standing
+open question. The delivered packet enters the ramp at sigma_z = 0.954 mm and the parked one
+at 0.712 mm - 34 per cent apart, the parked one being the closed-form equilibrium - and the
+two elute at means agreeing to **eight significant figures** (15,505.159357 against
+15,505.159346 us) with sigma agreeing to six. So **the arrival width is the analyser's own,
+not the delivery's**: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|` before the
+ramp releases it, which is exactly what that closed form says it must, since the formula
+contains nothing about where the packet came from.
 
-| the packet | how the sweep is written | ramp begins | result |
-| --- | --- | --- | --- |
-| delivered, x0 = -40 mm | `ramp` 60 V to 0 over 8 ms | 10.3 ms | **7.74e-245 arrive**, frozen at 21.14 mm |
-| delivered, x0 = -40 mm | sixteen `set` stages of 500 us | 10.3 ms | eluting: 43.2 mm by the ninth, population falling |
-| **parked**, x0 = 21.09 mm | `ramp` 60 V to 0 over 8 ms | 0.6 ms | **85,170 arrive**, mean 5805.2 us, spread 159.2 us |
-| **parked**, x0 = 21.09 mm | one `set` to 24 V, held 2 ms | 0.3 ms | 21.10 mm to **54.77 mm**, 81,049 of 85,170 arrive |
+**And the timeline does not reach the answer either.** Two of those ramps begin 9.7 ms apart
+on the instrument's clock and land on the same elution potential to five figures; on a
+release-relative axis their peaks coincide at 5,205 us. The two stepped releases coincide in
+turn at 1,622 us and are **12 per cent wider** - sigma 178.0 and 179.9 against 159.16 - which
+is the release program showing up as a width where the packet's history does not.
 
-So **a `ramp` does elute** - the third row is one, and it delivers every ion the seed kept -
-and the failing configuration is specifically the delivered packet's. A `ramp` per se is not
-the discriminator, which is what the confounded reading had concluded.
+**R = 7.481 against the analyser alone at 8** at the same gas speed and scan rate, so the
+funnel and the gate cost about seven per cent and the delivery itself costs nothing
+measurable. The profile's own FWHM (374.65 us) and the Gaussian equivalent of the second
+moment (374.78) agree to 0.04 per cent, so this peak is not skew - worth stating because the
+arrival-time peaks in the reflectron work here are (skew +3.27).
 
-**And the ramp is not being ignored.** That was my first reading, and it is wrong twice over
-by two independent routes. The direct route: probed at the parking point through a ramp phase,
-the potential falls 11.100 V to 0.720 V and the axial field from -1028.5 V/m to -65.9 V/m,
-linearly - `DrivenSolvedField` interpolates its channel weights exactly as designed. **That
-probe ran on a model scaled a thousandfold in time**, though, so its ramp began at 10.3 *us*
-rather than 10.3 ms and it says nothing about the real instant: a probe only probes what it
-holds constant, and this one moved the quantity the failing run differs in.
+### The frozen result, and why it is recorded as unexplained rather than explained
 
-The route that does cover the real instant is the **assembly count**, which rides out per
-phase for exactly this kind of question. The ramp phase re-assembles its operator **68,216
-times** in the delivered run and 67,828 times in the parked one - so both are re-sampling a
-moving field every step, and the delivered run's field is not frozen at its opening voltage
-however frozen the packet is. Whatever holds the packet, it is not a stale operator.
+An earlier run of the same document collected **7.74e-245** ions and sat at 21.14 mm. It is
+**not reproducible on the current build** and its cause is not established. What is
+established is what it was not:
 
-Two further runs are what close the square: the parked packet with the delivered timeline
-(so the ramp begins at 10.3 ms), and the delivered packet with a single `set` instead of a
-ramp. Between them they say whether the cause is what the delivery brings with it or the late
-instant, and neither is yet in hand. Note against the second: a delivered *staircase* already
-begins at 10.3 ms and elutes, so a late start cannot be sufficient on its own.
+- **Not the ramp spelling.** A ramp elutes in three of the rows above.
+- **Not the delivery.** The delivered rows elute, ramped and stepped.
+- **Not the late start.** A ramp beginning at 10.3 ms elutes, parked and delivered.
+- **Not a stale operator.** The ramp phase re-assembles 67,828-68,216 times either way, so
+  the field is re-sampled at every step in all of them.
+- **Not the well cache.** This was the leading hypothesis, because the frozen run is the only
+  one on an engine predating the cache's tolerance change and that commit is the only one
+  between them touching a physics file. Reverting `PonderomotiveWellCache.cs` to its earlier
+  form on the current build gives **10,794 well rebuilds against 1** and the same answer to
+  **13 significant figures** (99,833.4920418748 ions, mean 15,505.159357357079 us, against
+  99,833.49204187385 and 15,505.159357357172). So the cache is excluded, and as a side effect
+  its bit-identical claim is now measured on the model that motivated it rather than on the
+  analyser alone.
 
-That is
-recorded as measured and unexplained rather than attributed.
+**The probe that appeared to clear the ramp did not.** It showed the potential at the parking
+point falling 11.100 V to 0.720 V through a ramp phase - on a model scaled a thousandfold in
+time, so its ramp began at 10.3 *us* where the real one begins at 10.3 ms. A probe only probes
+what it holds constant, and that one moved the quantity the frozen run differs in. The
+assembly count is what covers the real instant, and it was already being recorded.
 
-**One candidate, stated as a candidate.** The tunnel's RF is an analytic element bounded at
-the tunnel end with a 4 mm fringe, so its pseudopotential well - tens of volts deep - shallows
-to nothing across that fringe, and leaving the tunnel means climbing out of the well. The DC
-the ramp collapses is exactly what would push ions over it. That is the mirror image of the
-entrance problem this template already fixed by *adding* the fringe, and it is the rule in
-`docs/lessons.md` verbatim: a boundary the model has and the instrument does not is a force
-the instrument does not have. The real front end has an exit funnel and this template does
-not. What the candidate does not explain is why the staircase elutes through the same fringe.
+**Its provenance is gone, and that is my doing.** `results/` is keyed by the model's stem, so
+each re-run of `delivered.json` overwrote the manifest of the run before it - including the
+model hash that would have said whether the *document* was the same at the time. PRJ-4's
+"results are regenerable rather than precious" holds while a run reproduces; an anomaly is
+precisely the case where it may not, and copying the manifest aside costs nothing. In
+`docs/lessons.md`.
+
+**The exit fringe is no longer a candidate for anything.** It was proposed to explain a
+barrier that is not there.
 
 **What this template does not carry.** No deflector plate, so a continuous beam cannot be
 diverted during the trap and the fill is a single released packet rather than ten milliseconds
