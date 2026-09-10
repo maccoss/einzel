@@ -162,6 +162,48 @@ not merely a note about what is unbuilt.
 [Spec findings](docs/spec-findings.md) carries the long form of most of these with
 the measurements attached; what follows is the register of them.
 
+### 45 - A density arriving is not a count, and "any" is not the test for whether it did
+
+**The specification counts ions.** `ACC-5` asks for transmission as a measured quantity with
+every loss itemised by the surface that took it, and every arrival figure in section 12 is a
+statistic over a set of arrivals. `TRN-2` makes a density field the diffusive mode's output. The
+two were never reconciled, and the gap is not presentational: a density does not arrive in ones,
+so what crosses a collecting face in a step is a real number and the guard on whether anything
+arrived cannot be a count being non-empty.
+
+**And that number is never zero.** Scharfetter-Gummel is built so its zero-flux state is exactly
+the Boltzmann factor `exp(-q phi/kT)` - which is what makes every equilibrium result in this
+engine the scheme's own answer rather than an approximation converging - and the corollary
+nobody had drawn is that the flux across a collecting face *behind a barrier* **is** that
+Boltzmann factor. A packet held by 60 V against a thermal 0.026 V therefore emits `exp(-2300)`
+of itself across the detector from its first step. A guard reading "did anything arrive" answers
+yes for a packet that has not moved.
+
+**The consequence, on the run this project most wanted.** The TIMS front-end sequence completed
+and reported `mean arrival 11366.06 us, spread 4024.20 us` over **7.74e-245 ions**, while
+99,893.6 of 99,971 were still in the tunnel. A weighted mean and a second moment, both plausible
+numbers in the right units, over a population that is not ions - and nothing anywhere saying
+they describe nothing. This project has been caught by the same tail once already, when an
+elution onset read as the first non-empty arrival bin came out during the hold rather than
+during the ramp.
+
+**What the specification should say.** Where a transport mode's population is continuous, a
+figure computed over arrivals requires a threshold on the arrived population, stated as a
+fraction of what was launched, and below it the figure is **absent with a named reason** rather
+than computed. A fraction rather than a count, because a model may launch few ions deliberately
+and "less than one ion arrived" is a real answer for a low transmission while 1e-245 of one is
+not an answer at all. Absent rather than zero is the rule the rest of this surface already
+follows for an undefined measurement, and it is sharper here than usual: the alternative is not
+a zero a reader might question but a plausible time in microseconds.
+
+**Status: built.** `RunCommand.Eluted` is the decision, named and public so it can be exercised
+without a run: arrivals must reach a millionth of the launched population.
+`sequence.nothing-eluted` is a `ValidityViolation` naming which numbers are missing and why,
+because "no mean arrival" and "this model does not elute" are the same fact and only one of them
+is actionable, and it says in the same breath that the sequence completed - so a reader does not
+read a missing number as a failed run. Eight cases pin the predicate, including both the shipped
+model produced: 7.74e-245 of 99,971 is a tail, 81,049 of 85,170 is an elution.
+
 ### 44 - A run may take hours and nothing requires it to say so
 
 **The specification is careful about cost before the work and silent about the work itself.**
@@ -1741,7 +1783,7 @@ in a table.
 | `ACC-2` | Same, high-resolution validation mode ≤ 0.25 ppm To reproduce published R = 80k results | Not built | No separate high-resolution validation mode exists. Analytic cases already clear 0.25 ppm; nothing selects a tighter tier. |
 | `ACC-3` | Field interpolation contribution ≤ 0.5 × | **Met** | Tricubic enforced; a forbidden interpolant is refused on a trajectory path. Bilinear measured at 9.4e-6 against bicubic 6.4e-8. |
 | `ACC-4` | Energy drift, static field ≤ 1 ppm Cheap conserved-quantity diagnostic | **Met** | 1e-9 to 1e-15 in static fields. Reports NaN in a driven field, where energy drift is not a diagnostic. |
-| `ACC-5` | Class S transmission interval ≤ 1% abs, 95% Drives minimum ensemble size per point | **Met** | Losses itemised by the surface name the author wrote; checked against erf for a slit at 0.95 sigma on 20,000 ions. A transmission of **zero** is now expressible - see Amendment 15, where it was not. |
+| `ACC-5` | Class S transmission interval ≤ 1% abs, 95% Drives minimum ensemble size per point | **Met** | Losses itemised by the surface name the author wrote; checked against erf for a slit at 0.95 sigma on 20,000 ions. A transmission of **zero** is now expressible - see Amendment 15, where it was not. **And where the population is continuous, "arrived" needed a floor** rather than being non-empty: Scharfetter-Gummel's flux across a collecting face behind a barrier *is* the Boltzmann factor of that barrier, so a held packet emits a stream of values hundreds of orders below one ion from its first step, and the TIMS front end reported a mean arrival and a spread in microseconds over 7.74e-245 of them. Arrivals must now reach a millionth of the launched population, or the arrival figures are absent with `sequence.nothing-eluted` saying which and why - a fraction rather than a count, because "less than one ion arrived" is a real answer for a low transmission while 1e-245 of one is not an answer at all. See Amendment 45. |
 | `ACC-6` | Class B boundary resolution ≤ 1/500 of scan Enough to resolve a mass filter peak shape | **Met** | `einzel boundary` bisects onto the crossing and reports it as an envelope whose interval **is** the bracket. Measured: a step at a known value bracketed to 1 part in 512 in 11 evaluations, against 501 for a grid; the quadrupole low-mass cut-off at **q = 0.90508 +/- 0.00039** against a tabulated 0.90804. The search now also **walks outward from its converged bracket** looking for the predicate flipping back, which is the one thing bisection structurally cannot see - every step of its own path is consistent with a single crossing by construction. `boundary.multiple-crossings` is a validity violation; the confirmation is reported whether or not anything was found. |
 | `ACC-7` | Rendered geometric tolerance ≤ 0.1% of extent Default decimation bound for vector output; recorded per | **Met** | Ramer-Douglas-Peucker measured tight against its bound: 4,000 points to 577 at a worst deviation of 0.010000 mm against 0.01. |
 
@@ -1954,7 +1996,7 @@ in a table.
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
 | `TRN-1` | Mobility is an explicit input with stated field dependence. | **Met** | Mobility is a declared input; a derived one is marked `mobility.derived`, and `IsWithinFit` refuses to leave the caller to work out whether the field dependence still holds. **And it is now per ion population** (schema 0.13, Amendment 41): a model may declare `species` in place of `ion`, each carrying its own mobility, because mass, charge and mobility are one ion's three properties and a list of populations in one place with a list of mobilities in another has nothing tying the two together. A species that declares none derives its own by Mason-Schamp for **that species' mass** rather than sharing a number, which would separate nothing while looking like a converged answer; `transport.mobility` beside `species` is refused rather than treated as a default. |
-| `TRN-2` | Diffusive transport emits a time-resolved density field rather than trajectories, because that is what it computes. This is what §17 renders for a funnel. ... | **Met** | A density field, now with somewhere to go: exported as `.vti`, drawn as contours, and assertable through the `transitTime` figure of merit - which did not exist, so the mode's principal scalar could not be pinned by a project test or ranked by a study. |
+| `TRN-2` | Diffusive transport emits a time-resolved density field rather than trajectories, because that is what it computes. This is what §17 renders for a funnel. ... | **Met** | A density field, now with somewhere to go: exported as `.vti`, drawn as contours, and assertable through the `transitTime` figure of merit - which did not exist, so the mode's principal scalar could not be pinned by a project test or ranked by a study. **And from a sequenced run too**, which wrote a manifest, an arrivals file and a result and no density - so a packet that crossed into the diffusive description could be summarised into a centroid and a width and looked at in no other form, the exact state the wholly diffusive path was in before this requirement was answered for it. The control is the half that makes it a statement: a sequence ending in the trajectory description has *no* density, which is a different fact from an empty one, so the same flag must write nothing there. The file carries the run's caveats and their severities (`GRD-2`), and building it found that it could not: the note saying a sequenced run has no flight time was constructed below the export, so the volume - the artifact most likely to be opened by somebody who never saw the envelope - came out with an empty caveat block on a run that had earned one. One list, two readers, and the mutation back to the hand-gathered version fails the test. |
 
 ### Test (§19)
 
@@ -2165,9 +2207,44 @@ project's author needs to run it and more than any physics the moment one does.
    whole sequence, ask which phase the number lives in** - that was about eight times cheaper
    and removed a second claim (that the ramp is modelled right) from the answer.
 
-   **What is left is the sequence end to end**, which is now watchable: it reports where it has
-   got to and leaves a checkpoint that survives the process (Amendment 44), so an attempt ended
-   by a reboot no longer loses everything it had computed.
+   **The sequence has now run end to end: 905 seconds for the whole 18.3 ms of fill, trap and
+   ramp at 256 x 32.** Four attempts had produced no output at all; what the fifth cost was one
+   line of a cache. The ponderomotive well is the cycle mean square of the *oscillating* field,
+   so a DC ramp cannot change it - and `PonderomotiveWellCache` decided every fourth step that
+   it had, rebuilt a six-second well, and would have done so around 17,000 times across the
+   ramp. Twenty-eight hours of establishing that nothing had moved.
+
+   What moves is round-off, and the tolerance sat below it: the well is a mean square taken
+   after removing the mean, and the mean here is a DC field the ramp walks from 60 V to zero, so
+   the noise floor of that subtraction is proportional to a quantity changing by everything
+   while the well changes by nothing. About 2.5e-13 of the deepest well per step, which crosses
+   1e-12 in four steps and then does so forever. The bar is 1e-9 - on a 30 V well, 3e-8 V
+   against a thermal `kT/q` of 0.026 V - and the probe visits one lattice node per call rather
+   than all sixteen, so the other half of a ramped step is spread across sixteen of them.
+   Bit-identical: 16 rebuilds became 1 and sigma_z is the same to all six printed digits, pinned
+   from both sides by a test that requires 1e-11 to be held and 1e-5 to be caught.
+
+   **And the finding is that the front end does not elute.** 7.74e-245 ions reach the detector;
+   99,893.6 of 99,971 sit at x = 21.14 mm with sigma_z 0.886 mm - the balance point of the
+   ramp's *opening* voltage - while the ramp runs to zero underneath them. That is now
+   *reported* as nothing rather than as a mean arrival over a Boltzmann tail (Amendment 45).
+   Three runs on one document bound it: written as a `ramp` the packet is frozen, written as a
+   single `set` to 24 V it travels 21.10 to 54.77 mm and **81,049 of 85,170 arrive**, and
+   written as sixteen `set` stages over the same sweep it elutes. **The ramp is not being
+   ignored** - probed through a ramp phase at the parking point, the potential falls 11.100 to
+   0.720 V and the axial field from -1028.5 to -65.9 V/m, linearly. So the same sweep in two
+   spellings gives two answers with the field measurably moving in both, which is recorded as
+   measured and unexplained rather than attributed. One candidate, stated as a candidate: the
+   tunnel's RF is bounded with a 4 mm fringe, so leaving the tunnel means climbing out of a well
+   tens of volts deep and the DC the ramp collapses is what would push ions over it - the mirror
+   image of the entrance problem this template fixed by *adding* the fringe, and the instrument
+   has an exit funnel the model does not. What it does not explain is why the staircase elutes
+   through the same fringe.
+
+   **So the open question is no longer whether the sequence finishes.** It is why the ramp
+   spelling freezes a packet the staircase releases; the discriminating experiment is a
+   staircase refined toward a ramp until the elution stops, which brackets whether this is the
+   fringe, the interpolation, or the step the ramp forces.
 
    The three changes that made it affordable are worth stating separately, because two are
    arithmetic and one is machinery.
@@ -2194,15 +2271,11 @@ project's author needs to run it and more than any physics the moment one does.
    implicit scheme gains against the *diffusion* limit and buys nothing here. Treating drift
    implicitly, or operator-splitting it, is the deeper fix and is its own piece of numerics.
 
-   **So the immediate item is the cost gate rather than the physics.** `einzel estimate` says
-   **8 s** against an actual 197,000 - four orders low - and its own basis line says why: the
-   drift limit is excluded because it needs a field the estimate has not solved. The caveat is
-   in prose and the number is what a machine consumer reads, which is the one verb whose entire
-   job is deciding whether to commit hours. The estimate already measures its solve and flight
-   rates with a runtime pilot; a probe of a few microseconds of the real sequence would return
-   the actual step and cost about twenty seconds. **Then run the study**, whose own question is
-   still open: whether the arrival width the analyser reports is its own, or delivery spread the
-   ramp reads as mobility.
+   **A stale paragraph stood here and is worth recording as such.** It said the immediate item
+   was the cost gate, quoting 8 s against an actual 197,000 - a number superseded higher up this
+   same item, where the gate now reads 3.6 h against a measured 4.1. A superseded number in a
+   planning document steers every session that loads it, which is the argument that moved the
+   Astral state out of `CLAUDE.md`, met again inside the document that argument is written in.
 
 2. **The extension surface, now that it is written down (Amendment 42).** `docs/extending.md`
    names the three kinds of change a device has ever needed below `Einzel.Library` - a grammar
@@ -2260,14 +2333,20 @@ project's author needs to run it and more than any physics the moment one does.
     **3.6e-5, larger**. It scales as 1/amplitude instead - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100
     / 400 V - the signature of an additive contamination cross-multiplied with the drive.
 
-    So the sequence is still blocked, **by the jitter rather than by the absence of a cache**,
-    and the tolerance is deliberately not loosened to cover it: a tolerance chosen larger than
-    an unexplained variation is caching over that variation. The same 1.8e-5 is also an accuracy
-    statement - a ramped driven diffusive well is not the well to better than about 1e-5.
+    **That jitter was fixed by holding the operating point** - `AtOperatingPoint(t)` freezes
+    non-oscillatory time dependence and leaves the drive oscillating, which took the well's
+    movement across a cycle from 3.15e-6 to **6.53e-14** - and the tolerance was deliberately
+    left at 1e-12, on the grounds that a tolerance chosen larger than an unexplained variation
+    is caching over that variation.
 
-    The study's own question stays open: whether the arrival width is
-    the analyser's or whether delivery adds an axial spread the ramp reads as mobility. Not
-    carried: a deflector plate, a continuous fill, the funnel's own gas, an exit funnel.
+    **The residual is now explained, and that is what licensed loosening it.** It is the
+    round-off floor of the mean subtraction, proportional to a DC field the ramp walks from
+    60 V to zero: about 2.5e-13 of the deepest well per step, crossing 1e-12 in four steps and
+    then forever. At 1e-9 the sequence completes in **905 seconds** and the answer is identical
+    to all six printed digits. See item 1 for what it then measured, which is that the front end
+    does not elute, and for the ramp-against-staircase discrepancy that is now the open
+    question. Not carried: a deflector plate, a continuous fill, the funnel's own gas, an exit
+    funnel - and the last of those is the standing candidate for the discrepancy.
 
 4. **RF confinement for the TIMS tunnel, then a mobility resolving power.** The
     elution ramp runs (`tims-analyzer` with a `sequence` whose diffusive phase ramps

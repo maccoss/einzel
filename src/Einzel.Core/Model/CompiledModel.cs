@@ -102,6 +102,47 @@ public sealed record CompiledModel
         && Phases.Zip(Phases.Skip(1)).Any(
             pair => !string.Equals(pair.First.Mode, pair.Second.Mode, StringComparison.Ordinal));
 
+    /// <summary>
+    /// Every transport mode this run uses: the model's own and every phase's.
+    /// </summary>
+    /// <remarks>
+    /// A phase that names no mode keeps the model's, which the compile has already
+    /// resolved, so the model's mode is always in the set. What this adds is the modes a
+    /// sequence introduces - the same set the validator gathers to make "the diffusive mode
+    /// needs a gas" a statement about the run rather than about one declaration in it.
+    /// </remarks>
+    public IReadOnlySet<string> Modes =>
+        new HashSet<string>(
+            Phases.Select(p => p.Mode).Append(TransportMode), StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether the run has to be walked phase by phase rather than flown in one mode.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The question the run fork actually needs, which is not
+    /// <see cref="ChangesTransportMode"/>.</b> That one asks whether two <em>adjacent</em>
+    /// phases differ, and needs at least two phases to ask it - so a single diffusive phase
+    /// on a model declaring `trajectory`, or a sequence every phase of which declares
+    /// `diffusion` on such a model, is not a change by that reading. Routing on it sent
+    /// those down the trajectory path and ignored the timeline outright: the model asked for
+    /// a density and got a single-ion flight, exit 0, with nothing saying the sequence had
+    /// been skipped.
+    /// </para>
+    /// <para>
+    /// <b>Any diffusive phase forces it</b>, because the trajectory path cannot step a
+    /// density - there is no ambiguity to trade off, only a description the other path does
+    /// not implement. A sequence that is trajectory throughout deliberately does NOT force
+    /// it: the integrator asks the field for the instant it is at, so a trap that holds and
+    /// then extracts is already correct there, and sending it through the sequenced path
+    /// would swap a working route for a new one to no purpose.
+    /// </para>
+    /// </remarks>
+    public bool NeedsSequencedTransport =>
+        Phases.Count > 0
+        && (ChangesTransportMode
+            || Modes.Contains("diffusion"));
+
     /// <summary>Relative tolerance for the integrator.</summary>
     public required double RelativeTolerance { get; init; }
 

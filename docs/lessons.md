@@ -3949,3 +3949,69 @@ removes the new clause fails it.
 **The rule: when a type gains a state, grep for every predicate that enumerates the others.**
 A predicate written as a conjunction of "not any of the ones I knew about" is a default case
 wearing a specific name, and it silently absorbs whatever arrives next.
+
+## A documented predicate can be exactly right and still be the wrong question to route on
+
+`CompiledModel.ChangesTransportMode` asks whether two **adjacent** phases name different modes,
+and needs at least two phases to ask it. That is what its name says, what its comment says, and
+what SEQ-1's conversion boundary is: a place where a packet has to be handed from one
+description to the other. Nothing about it is wrong.
+
+`einzel run` forked on it. So a sequence of one diffusive phase on a model declaring
+`trajectory`, or a sequence every phase of which declares `diffusion` on such a model, is not a
+"change" - and the run went down the **trajectory** path with the timeline ignored outright. The
+model asked for a density and got a single-ion flight, `TRAJECTORY_INCOMPLETE` and
+`collisions.single-ion-interval` on the result, **exit 0**, and nothing anywhere saying a
+sequence had been skipped.
+
+**The two questions are different and only one of them is the fork's.** "Does this run cross a
+boundary that needs a conversion" is about adjacent pairs. "Can this run be flown in one mode"
+is about the **set** of modes it uses, and a diffusive phase anywhere forces the sequenced path
+because the trajectory path cannot step a density at all - there is no trade-off, only a
+description the other path does not implement.
+
+**The validator had already asked the right one, and said why in a note.** Its own `Modes`
+gathers "every transport mode this run uses, the model's and every phase's", precisely so that
+"the diffusive mode needs a gas" attaches to the *run* rather than to one declaration in it -
+which is itself a defect fixed once before, when a trajectory model with a diffusive phase
+skipped every diffusive requirement and validated cleanly. So the answer was in the codebase, in
+a member written for the same reason, one assembly away.
+
+**The rule: a predicate whose name describes a property is not thereby the right predicate for
+a decision that sounds like it.** Before routing on one, write down the question the fork is
+actually asking and check it word for word against what the predicate computes. `Phases.Count >
+1` and "compares adjacent pairs" are both in `ChangesTransportMode`'s implementation and neither
+is in "can this be flown in one mode".
+
+## The evidence went missing inside the code written to carry it
+
+`--vtu` on a sequenced run wrote no density at all, which is the "capability wired into N-1 of N
+paths" shape this project has recorded several times. Fixing it meant writing the export - and
+GRD-2 says the caveats travel with the file, because a `.vti` is the artifact most likely to be
+opened by somebody who never saw the result envelope it came from. So the export gathers the
+run's warnings into the file's provenance header. That is the whole point of the block.
+
+**It gathered two of the three lists that hold them.** `fieldWarnings` - the solve's own
+caveats, the ones that say the numbers may not describe the document - were not in it. And the
+note saying a sequenced run has no single flight time is constructed *inline*, in the result's
+own envelope, about a hundred lines **below** the export, so the export could not have seen it
+however carefully it had been written.
+
+The consequence: on the shipped test model, which earns exactly one warning, the volume came out
+with an **empty caveat block on a run that had earned one**. Everything compiled, the file was
+written, the artifact was listed, and the assertion I had first written for it was about a
+warning code the model does not produce - so my own test's failure was the only thing that
+surfaced it, and my first two attempts at that test were both guesses at which code was missing
+rather than a look at the file.
+
+**Two things fixed it and only one is the list.** The warnings are now built into one local
+above both readers, so a caveat added later reaches the file and the document by being added
+once. And the severity is on each line rather than only the code, because a reader deciding
+whether to trust a volume needs to know which of these is a note about how the run was framed
+and which is the engine saying the numbers are suspect.
+
+**The rule, which is the fourth statement of one already here:** when a computation produces
+evidence about its own quality, discarding it must not be the shortest spelling - and *building*
+the carrier is not exemption from that. The place a caveat gets dropped is the place that
+enumerates caveats by hand. Ask which lists exist, not which ones come to mind, and put the
+answer somewhere both readers take it from.

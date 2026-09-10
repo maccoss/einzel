@@ -110,7 +110,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | --- | --- |
 | `--json` | Machine-readable output, including the full result envelope |
 | `--dry-run` | Say what would be written, and write nothing |
-| `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model |
+| `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
 | `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
@@ -774,9 +774,15 @@ agent trusts it and cannot see the drift.
 ## A run that changes transport mode
 
 A model whose phases do not all use one transport description runs through the same
-`einzel run`, and the fork tests that before it tests the model's own mode — a
-model may declare `diffusion` and still have a sequence that leaves it, and the
-sequence is the more specific statement.
+`einzel run`, and **the fork asks for the set of modes the run uses** rather than
+whether two adjacent phases differ. Both readings matter and they are not the same
+question: a *conversion* happens between adjacent phases that disagree, while
+*needing the sequenced path at all* is a property of the whole set, because the
+trajectory path cannot step a density. Asking the narrower one sent a sequence whose
+every phase said `diffusion`, on a model declaring `trajectory`, down the trajectory
+path with the timeline ignored — a density asked for, a single-ion flight delivered,
+exit 0. A model may equally declare `diffusion` and have a sequence that leaves it,
+and the sequence is the more specific statement either way.
 
 ```
 packet centre 9.999117 mm
@@ -798,6 +804,35 @@ ion whose final position it could be.
 every conversion warning on it. The manifest records `diffusion -> trajectory`
 rather than one mode, since a manifest that named one would claim to determine a run
 it does not describe.
+
+`--vtu` writes the density the sequence ended with, where it ended in the diffusive
+description. A sequence ending as trajectories has none — which is a different fact
+from having an empty one — so none is written, and the file carries the run's caveats
+and their severities in its own header, because a volume is the artifact most likely
+to be opened by somebody who never saw the envelope it came from.
+
+**And a mean arrival needs enough arrivals to be a mean of.** The diffusive
+population is continuous, and Scharfetter-Gummel's flux across a collecting face
+behind a barrier *is* the Boltzmann factor of that barrier — so a held packet emits a
+stream of values hundreds of orders below one ion from its first step. A run of the
+TIMS front end reported `mean arrival 11366.06 us, spread 4024.20 us` over
+**7.74e-245** of them, with 99,893.6 of 99,971 ions still in the tunnel. So the
+arrival figures now require the collected population to reach a millionth of what was
+launched — a fraction rather than a count, since "less than one ion arrived" is a real
+answer for a low transmission while 1e-245 of one is not an answer at all. Below that
+they are **absent**, with `sequence.nothing-eluted` naming which numbers are missing,
+why, and that the sequence itself completed:
+
+```
+sequence      0 mode conversion(s), 0 ions arrived
+  [ValidityViolation] sequence.nothing-eluted: 7.74132E-245 ions reached the detector
+  of 99971.0 launched, which is the collecting face's Boltzmann tail rather than a
+  transmitted packet - so there is no arrival time to report and none is. The sequence
+  completed; the packet is where the phase table's last row says it is
+```
+
+No `.arrivals.csv` is written in that case either, for the same reason: a profile of a
+tail is a profile of the barrier, not of an elution.
 
 Exit code 0: a run that finished what it was asked to do is a success, whichever
 descriptions it used on the way.
@@ -907,6 +942,8 @@ is the whole list.
 | `results/<name>.result.json` | The figures of merit, each as a full envelope |
 | `results/<name>.progress.json` | **Only while the run is going** - where it has got to, and the phases that finished. Removed when the run writes its answer, so finding one means the run did not |
 | `.einzel/<name>.trajectory.vtu` | The sampled trajectory, with provenance in a comment block |
+| `.einzel/<name>.density.vti` | The density on the tracked grid, with the run's caveats and their severities in a comment block. Written for a diffusive run, and for a **sequenced** run whose last phase was diffusive - a sequence ending as trajectories has no density, which is a different fact from an empty one, so none is written |
+| `results/<name>.arrivals.csv` | The arrival profile, where enough arrived to be one. See the note on `sequence.nothing-eluted` below |
 
 The manifest fully determines the run, which is what makes `.einzel/` safe to
 delete and results regenerable rather than precious. It is also what lets drift be

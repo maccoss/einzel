@@ -93,6 +93,57 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
     }
     """;
 
+    /// <summary>
+    /// The same instrument with only its diffusive phase, so the run ends as a density.
+    /// </summary>
+    /// <remarks>
+    /// A diffusive phase inside a model whose declared mode is trajectory is still a mode
+    /// change, so this takes the sequenced path exactly as the two-phase version does.
+    /// </remarks>
+    private const string HeldAsDensity = """
+    {
+      "schemaVersion": "0.6",
+      "name": "held-as-density",
+      "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
+      "source": {
+        "position": { "value": [10, 0, 0], "unit": "mm" },
+        "direction": { "value": [1, 0, 0] },
+        "accelerationPotential": { "value": 5, "unit": "V" },
+        "cloud": {
+          "ions": 100,
+          "seed": 7,
+          "temperature": { "value": 300, "unit": "K" },
+          "transverseSpread": { "value": 0.5, "unit": "mm" },
+          "longitudinalSpread": { "value": 0.5, "unit": "mm" }
+        }
+      },
+      "sequence": [
+        { "name": "trap", "duration": { "value": 20, "unit": "us" }, "mode": "diffusion" }
+      ],
+      "fields": [{ "type": "fieldFree" }],
+      "detector": {
+        "planePoint": { "value": [60, 0, 0], "unit": "mm" },
+        "normal": { "value": [-1, 0, 0] }
+      },
+      "transport": {
+        "mode": "trajectory",
+        "maximumFlightTime": { "value": 1, "unit": "ms" },
+        "mobility": { "zeroField": { "value": 0.09, "unit": "m^2/(V s)" } },
+        "densityGrid": {
+          "minX": { "value": 0, "unit": "mm" }, "maxX": { "value": 40, "unit": "mm" },
+          "minY": { "value": -10, "unit": "mm" }, "maxY": { "value": 10, "unit": "mm" },
+          "intervalsX": 64, "intervalsY": 32
+        },
+        "gas": {
+          "model": "hardSphere",
+          "pressure": { "value": 1, "unit": "mbar" },
+          "mass": { "value": 28.0134, "unit": "Da" },
+          "crossSection": { "value": 250, "unit": "Å^2" }
+        }
+      }
+    }
+    """;
+
     private string Project()
     {
         Assert.Equal(0, Run("init", _root).ExitCode);
@@ -403,6 +454,101 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
             + $"{(RunCommand.Eluted(collected, launched) ? "an elution" : "a tail")}");
 
         Assert.Equal(eluted, RunCommand.Eluted(collected, launched));
+    }
+
+    /// <summary>
+    /// A sequenced run that ends as a density writes one, and one that ends as
+    /// trajectories does not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>`--vtu` on a sequenced model wrote nothing at all.</b> A manifest, an arrivals
+    /// file and a result - and no density, so a sequenced packet could be summarised into a
+    /// centroid and a width and looked at in no other form. That is exactly the state the
+    /// wholly diffusive path was in before RND-8's argument was answered for it, and the
+    /// same "wired into N-1 of N paths" shape as this path lacking a result document and
+    /// storing absolute artifact paths.
+    /// </para>
+    /// <para>
+    /// <b>The control is what makes it a statement.</b> A sequence that finishes in the
+    /// trajectory description has no density, which is a different fact from having an
+    /// empty one - so the same flag on such a model must write nothing rather than a box
+    /// with nothing in it. Without both halves, "it writes a density" would be satisfied by
+    /// writing one always.
+    /// </para>
+    /// <para>
+    /// Found because the front-end sequence completes and elutes nothing, and what a
+    /// centroid and a second moment cannot say is what shape the packet is in.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ASequencedRunWritesItsDensityWhenThereIsOne()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+
+        // A model that ends as a density: the same instrument with only its trap phase.
+        // Written out rather than produced by editing the other one, because JSON surgery
+        // on an indented raw string is how two earlier attempts at this quietly produced a
+        // document that did not validate.
+        var held = Path.Combine(_root, "models", "held.json");
+
+        File.WriteAllText(held, HeldAsDensity);
+
+        var density = Path.Combine(_root, ".einzel", "held.density.vti");
+
+        // Without the flag, nothing - a run that wrote a volume nobody asked for would be
+        // writing megabytes into every project that ever ran a sequence.
+        Assert.Equal(0, Run("run", held).ExitCode);
+        Assert.False(File.Exists(density));
+
+        var (exit, stdout, _) = Run("run", held, "--vtu", "--json");
+
+        Assert.Equal(0, exit);
+        Assert.True(File.Exists(density), $"no density at {density}");
+
+        var artifacts = JsonDocument.Parse(stdout).RootElement
+            .GetProperty("artifacts").EnumerateArray()
+            .Select(a => a.GetString()!)
+            .ToArray();
+
+        output.WriteLine(string.Join("\n", artifacts));
+
+        Assert.Contains(artifacts, a => a.EndsWith(".density.vti", StringComparison.Ordinal));
+
+        // GRD-2: the caveats travel with the file, because a volume is the artifact most
+        // likely to be opened by somebody who never saw the result envelope it came from.
+        var written = File.ReadAllText(density);
+
+        Assert.Contains("density_per_m3", written, StringComparison.Ordinal);
+        Assert.Contains("ions per cubic metre", written, StringComparison.Ordinal);
+        Assert.Contains("engine:", written, StringComparison.Ordinal);
+
+        // Which phase left it there, because a sequenced density is one instant of a
+        // timeline and a file that did not say which would be a density of no time.
+        Assert.Contains("at the end of 'trap'", written, StringComparison.Ordinal);
+
+        // AND THE CAVEATS, WITH THEIR SEVERITIES (GRD-2). This model earns exactly one -
+        // a sequenced run has no single flight time - and the first version of the export
+        // carried it nowhere, because it gathered the run's warnings by hand from two of
+        // the three lists that hold them and this note was built further down the method
+        // than the export could see. So the volume came out with an empty caveat block on
+        // a run that had earned one. Asserting the code AND the severity, since a reader
+        // deciding whether to trust a file needs to know which kind of caveat this is.
+        Assert.Contains(
+            "Provenance: transport.sequenced-no-flight-time",
+            written,
+            StringComparison.Ordinal);
+
+        // AND THE CONTROL. The unmodified model ends as trajectories, so there is no
+        // density to write and the same flag must write none.
+        var crossing = Path.Combine(_root, "models", "crossing.json");
+
+        File.WriteAllText(crossing, TrapThenExtract);
+
+        Assert.Equal(0, Run("run", crossing, "--vtu").ExitCode);
+        Assert.False(
+            File.Exists(Path.Combine(_root, ".einzel", "crossing.density.vti")),
+            "a run that ended as trajectories wrote a density anyway");
     }
 
     /// <summary>The manifest records every mode the run used (PRJ-3).</summary>

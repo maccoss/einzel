@@ -1958,6 +1958,86 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   **after adding a producer, ask what reads it, and answer by enumerating consumers rather than
   by recalling one.**
 
+- **The front-end sequence runs end to end, and what stopped it was a cache checking its own
+  premise.** Four attempts had produced no output at all - 4.75 CPU-hours, then 40 minutes, then
+  7.6 wall-hours ended by a reboot, then 928 s at the 619th step of an 8 ms ramp projecting to
+  nine hours. The whole 18.3 ms of fill, trap and ramp now takes **905 seconds** at 256 x 32.
+
+  **The cost was one line.** The ponderomotive well is the cycle mean square of the
+  *oscillating* field, so a DC ramp cannot change it - and `PonderomotiveWellCache` decided
+  every fourth step that it had, rebuilt a six-second well, and would have done so about
+  **17,000 times** across the ramp. Twenty-eight hours of establishing that nothing had moved.
+
+  **What moves is round-off, and the tolerance sat below it.** The well is a mean square taken
+  after removing the mean, and the mean here is a DC field the ramp walks from 60 V to zero, so
+  the noise floor of that subtraction is proportional to a quantity that changes by everything
+  while the well changes by nothing: about **2.5e-13 of the deepest well per step**, which
+  crosses 1e-12 in four steps and then does so forever. The bar is 1e-9 now - on a 30 V well
+  that admits 3e-8 V against a thermal `kT/q` of 0.026 V - and the probe visits **one lattice
+  node per call** rather than all sixteen, so the other half of a ramped step is spread across
+  sixteen of them. `docs/device-templates.md` had recorded a deliberate decision *not* to loosen
+  the bar while the variation was unexplained, which was right; what changed is that it is
+  explained. Bit-identical: 16 rebuilds became 1 and sigma_z is the same to all six printed
+  digits, pinned from both sides by a test requiring 1e-11 to be held and 1e-5 to be caught.
+
+  **And the finding is that the front end does not elute.** 7.74e-245 ions reach the detector
+  while **99,893.6 of 99,971** sit at x = 21.14 mm, sigma_z 0.886 mm - the balance point of the
+  ramp's *opening* voltage - as the ramp runs to zero underneath them.
+
+  **An arrival mean over a Boltzmann tail is not a measurement, and it was being reported as
+  one**: `mean arrival 11366.06 us, spread 4024.20 us` over that 7.74e-245. That value is not
+  ions. **Scharfetter-Gummel's flux across a collecting face behind a barrier IS the Boltzmann
+  factor of the barrier**, and 60 V against 0.026 V thermal is `exp(-2300)`, so a held packet
+  emits values from its first step - the same tail that once put an elution onset during the
+  hold. `RunCommand.Eluted` is the decision, named and public so it can be tested without a
+  run: arrivals must reach a millionth of the launched population, a **fraction** rather than a
+  count because "less than one ion arrived" is a real answer for a low transmission while 1e-245
+  of one is not an answer at all. Below the bar the fields are absent and
+  `sequence.nothing-eluted` says which and why. SPEC.md Amendment 45.
+
+  **Why it freezes is open, and the shape of the evidence is worth keeping.** Three runs on one
+  document: written as a `ramp` the packet is frozen; written as a single `set` to 24 V it
+  travels 21.10 to 54.77 mm and **81,049 of 85,170 arrive**; written as sixteen `set` stages
+  over the same sweep it elutes. **And the ramp is not being ignored** - probed at the parking
+  point through a ramp phase, the potential falls 11.100 to 0.720 V and the axial field from
+  -1028.5 to -65.9 V/m, linearly, so `DrivenSolvedField` interpolates its channel weights
+  exactly as designed. The same sweep in two spellings, two answers, the field measurably moving
+  in both: recorded as measured and unexplained rather than attributed. One candidate, with its
+  own counter-evidence: the tunnel's RF is bounded with a 4 mm fringe, so leaving means climbing
+  out of a well tens of volts deep and the DC the ramp collapses is what would push ions over it
+  - the mirror image of the entrance problem this template fixed by *adding* the fringe, and the
+  instrument has an exit funnel the model does not. It does not explain why the staircase elutes
+  through the same fringe.
+
+  **A sequence whose phases all name a mode the model does not was flown in the model's, and the
+  timeline ignored outright.** `ChangesTransportMode` asks whether two *adjacent* phases differ
+  and needs at least two phases to ask it, so a single diffusive phase on a model declaring
+  `trajectory` - or a sequence every phase of which says `diffusion` on such a model - is not a
+  change by that reading, and the fork sent it down the trajectory path: the model asked for a
+  density and got a single-ion flight, **exit 0**, with nothing saying the sequence had been
+  skipped. The eighth sighting of one shape here and the second on this fork - a question
+  answered by a proxy that stops being equivalent when the set of cases grows. The validator
+  already asked the right question, and its own note says why; `CompiledModel.Modes` gathers
+  every mode the run uses and `NeedsSequencedTransport` routes on it.
+
+  **`--vtu` on a sequenced run wrote no density**, so a packet that crossed into the diffusive
+  description could be summarised into a centroid and a width and looked at in no other form -
+  the state the wholly diffusive path was in before RND-8's argument was answered for it, and
+  the same "wired into N-1 of N paths" shape as this path lacking a result document and storing
+  absolute artifact paths. The control is what makes it a statement: a sequence ending as
+  trajectories has *no* density, which is a different fact from an empty one, so the same flag
+  must write nothing there.
+
+  **And my own export dropped the evidence at the seam, which is what the file exists to
+  carry.** It gathered the run's warnings by hand from two of the three lists that hold them, so
+  the field's caveats travelled nowhere - and the note saying a sequenced run has no flight time
+  is constructed inside the result's own envelope a hundred lines *below* the export, so the
+  volume came out with an **empty caveat block on a run that had earned one**. GRD-2's whole
+  subject, on the artifact it is most about: a `.vti` is the thing most likely to be opened by
+  somebody who never saw the envelope it came from. One list built above both readers now, with
+  the severity on each line, and the mutation back to the hand-gathered version fails that test
+  and nothing else.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

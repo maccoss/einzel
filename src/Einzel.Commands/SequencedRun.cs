@@ -122,7 +122,29 @@ public sealed record SequencedOutcome(
     IReadOnlyList<ValidityWarning> Warnings,
     double Arrived,
     IReadOnlyList<WeightedLoss> Losses,
-    IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals);
+    IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals)
+{
+    /// <summary>
+    /// The density the run ended with, where its last phase was a diffusive one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>So that a sequenced packet can be looked at rather than only summarised.</b> A
+    /// centroid and a standard deviation are two numbers about a shape, and the questions a
+    /// sequenced diffusive run raises are about the shape: whether a packet that will not
+    /// elute is held against a barrier, or spread, or in two places. The wholly diffusive
+    /// path has written its density since RND-8's argument was answered for it, on the
+    /// grounds that a mode whose principal result cannot be looked at in any form is worse
+    /// served by silence than by a figure.
+    /// </para>
+    /// <para>
+    /// Null where the run ended in the trajectory description, because then there is no
+    /// density - which is a different statement from an empty one, and the two must not
+    /// both read as a box with nothing in it.
+    /// </para>
+    /// </remarks>
+    public DensityField? FinalDensity { get; init; }
+}
 
 /// <summary>Ions lost one way, in real ions rather than in trajectories.</summary>
 /// <param name="Surface">Where they went, named as the model author named it.</param>
@@ -381,7 +403,13 @@ public static class SequencedRun
             arrivedTotal,
             [.. lostTotal.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new WeightedLoss(pair.Key, pair.Value))],
-            arrivals);
+            arrivals)
+        {
+            // Whichever description the packet is in at the end. Exactly one of the two is
+            // live at a time - that is what a transport mode is - so a null here says the
+            // run finished as trajectories rather than that its density was empty.
+            FinalDensity = density,
+        };
     }
 
     /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>

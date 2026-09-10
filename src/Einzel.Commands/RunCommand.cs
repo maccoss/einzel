@@ -1311,6 +1311,7 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
+        bool exportVtu,
         RunProgress? progress)
     {
         // The one place that knows where the model file is, so the one place that can
@@ -1422,6 +1423,74 @@ public static class RunCommand
             artifacts.Add(Path.GetRelativePath(project.Root, arrivalsPath));
         }
 
+        // EVERY CAVEAT THIS RUN EARNED, in one list, built before anything reads it.
+        //
+        // THE DENSITY FILE AND THE RESULT DOCUMENT MUST NOT BE ABLE TO DISAGREE about
+        // what was wrong with a run, and the first version of the export below let them:
+        // it gathered `outcome.Warnings` and `sequenceWarnings` by hand and so carried
+        // the FIELD's warnings not at all, while the note saying a sequenced run has no
+        // flight time was constructed inline in the result's own envelope a hundred lines
+        // further down - below the export, and therefore invisible to it. So the volume
+        // came out with an empty caveat block on a run that had earned one, which is
+        // precisely GRD-2's subject and precisely the artifact it is most about: a `.vti`
+        // is the thing most likely to be opened by somebody who never saw the envelope it
+        // came from.
+        //
+        // One list, two readers. A caveat added in future reaches both by being added
+        // here, rather than by somebody remembering there are two places.
+        var sequencedNote = new ValidityWarning(
+            "transport.sequenced-no-flight-time",
+            "this run ends when its sequence ends, not when an ion arrives, so there is "
+            + "no single flight time. What each phase did is reported under 'sequence', "
+            + "and the ions that reached the detector are counted there",
+            WarningSeverity.Provenance);
+
+        List<ValidityWarning> runWarnings =
+            [.. fieldWarnings, .. outcome.Warnings, .. sequenceWarnings];
+
+        // WHAT --vtu MEANS FOR A SEQUENCED RUN, which until now was nothing at all: it
+        // wrote a manifest, an arrivals file and a result, and no density - so a sequenced
+        // packet could be summarised into a centroid and a width and looked at in no other
+        // form. That is the state the wholly diffusive path was in before RND-8's argument
+        // was answered for it, and this is the same answer: the file it writes is the thing
+        // it actually computed.
+        //
+        // Only where the run ended as a density. A sequence finishing in the trajectory
+        // description has none, which is a different statement from having an empty one.
+        if (exportVtu && outcome.FinalDensity is { } finalDensity)
+        {
+            Directory.CreateDirectory(project.Scratch);
+
+            var densityPath = Path.Combine(project.Scratch, $"{stem}.density.vti");
+
+            // GRD-2: the warnings travel with the file, because a volume is the artifact
+            // most likely to be opened by somebody who never saw the result envelope.
+            var provenance = new List<string>
+            {
+                $"engine: {EngineBuild.Version}",
+                $"model: {validation.ModelHash}",
+                $"transport: {manifest.TransportMode}, {outcome.Phases.Count} phase(s) over "
+                    + $"{last.EndsAtSeconds * 1e6:G6} us",
+                $"ions: {outcome.Arrived:G6} collected, {last.Population:G6} still tracked",
+                $"the density at the end of '{last.Name}', where the sequence left it",
+                "units: ions per cubic metre, at grid nodes",
+            };
+
+            // The severity is on the line, not only the code. A reader deciding whether
+            // to trust a volume needs to know which of these is a note about how the run
+            // was framed and which is the engine saying the numbers may not describe the
+            // document - and above advisory they cannot be suppressed anywhere (GRD-3).
+            provenance.AddRange(
+                runWarnings.Append(sequencedNote)
+                    .Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+            File.WriteAllText(
+                densityPath,
+                Io.VtuWriter.WriteDensityField(finalDensity, "density_per_m3", provenance));
+
+            artifacts.Add(Path.GetRelativePath(project.Root, densityPath));
+        }
+
         var run = new RunOutcome
         {
             Manifest = manifest,
@@ -1435,16 +1504,8 @@ public static class RunCommand
                             Quantity.Si(0.0, Dimension.TimeDimension),
                             1.0),
                         new Evidence.Convergence("sequenced transport", double.NaN, 0.0, double.NaN),
-                        [
-                            new ValidityWarning(
-                                "transport.sequenced-no-flight-time",
-                                "this run ends when its sequence ends, not when an ion "
-                                + "arrives, so there is no single flight time. What each "
-                                + "phase did is reported under 'sequence', and the ions that "
-                                + "reached the detector are counted there",
-                                WarningSeverity.Provenance),
-                        ]),
-                    [.. fieldWarnings, .. outcome.Warnings, .. sequenceWarnings]),
+                        [sequencedNote]),
+                    runWarnings),
                 "us"),
 
             Outcome = "SequenceCompleted",
@@ -2151,12 +2212,12 @@ public static class RunCommand
         // quantity reached through a time-free interface has answered at an arbitrary
         // instant rather than failing. A trajectory model needs no such routing: its
         // integrator asks the field for the instant it is at.
-        if (model.ChangesTransportMode
-            || (model.Phases.Count > 0 && model.TransportMode == "diffusion"))
+        if (model.NeedsSequencedTransport)
         {
             return (
                 Sequenced(
-                    model, field, fieldWarnings, validation, project, timestampUtc, progress),
+                    model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
+                    progress),
                 validation);
         }
 
