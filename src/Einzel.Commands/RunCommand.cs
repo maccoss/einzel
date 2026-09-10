@@ -1243,6 +1243,38 @@ public static class RunCommand
     /// platform.
     /// </para>
     /// </remarks>
+    /// <summary>Whether a collected population is a transmitted packet or a numerical tail.</summary>
+    /// <param name="collected">Real ions that reached the detector.</param>
+    /// <param name="launched">Real ions the packet started with.</param>
+    /// <returns>Whether there is an arrival time worth reporting.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A named function because the number it returns decides whether two numbers get
+    /// published.</b> The guard was <c>collected &gt; 0.0</c>, and the shipped TIMS
+    /// front-end sequence passed it with 7.74e-245 ions - reporting a mean arrival of
+    /// 11,366 us and a spread of 4,024 us for a run whose whole packet was still in the
+    /// tunnel. Two plausible numbers in microseconds, and nothing to tell a reader they
+    /// describe nothing.
+    /// </para>
+    /// <para>
+    /// <b>Scharfetter-Gummel's flux across a collecting face behind a barrier IS the
+    /// Boltzmann factor of that barrier</b>, so a held packet emits values from its first
+    /// step: 60 V against a thermal <c>kT/q</c> of 0.026 V is exp(-2300). This project has
+    /// been caught by the same tail once already, when an elution onset read as the first
+    /// non-empty bin came out during the hold; the answer there was a quantile and the
+    /// answer here is a floor.
+    /// </para>
+    /// <para>
+    /// <b>A fraction of the launched population rather than an absolute count</b>, because a
+    /// model may launch few ions deliberately and a density is continuous - "less than one
+    /// ion" is a real answer for a low transmission, while 1e-250 of one is not an answer at
+    /// all. The bar sits enormously above the tail and enormously below anything a reader
+    /// would call a transmission.
+    /// </para>
+    /// </remarks>
+    public static bool Eluted(double collected, double launched)
+        => collected >= 1e-6 * Math.Max(1.0, launched);
+
     /// <summary>One phase of a sequenced run, on the wire.</summary>
     /// <param name="phase">What the phase measured.</param>
     /// <returns>The same, in the shape a document carries.</returns>
@@ -1340,12 +1372,40 @@ public static class RunCommand
         // cannot do, and which a report reading a project from anywhere else cannot
         // resolve.
         var artifacts = new List<string> { Path.GetRelativePath(project.Root, manifestPath) };
+        var sequenceWarnings = new List<ValidityWarning>();
         double? meanArrivalUs = null;
         double? arrivalSpreadUs = null;
 
         var collected = outcome.Arrivals.Sum(a => a.Ions);
 
-        if (outcome.Arrivals.Count > 0 && collected > 0.0)
+        // WHAT COUNTS AS HAVING ARRIVED. The guard was `collected > 0.0`, and the shipped
+        // front-end sequence passed it with 7.74e-245 ions - reporting a mean arrival of
+        // 11366 us and a spread of 4024 us for a run whose whole packet was still in the
+        // tunnel at the end. A reader sees two numbers in microseconds and believes them.
+        //
+        // Scharfetter-Gummel's flux across a collecting face behind a barrier IS the
+        // Boltzmann factor of that barrier, so a held packet emits a stream of values
+        // hundreds of orders below one ion from its first step. The bar is a fraction of
+        // the launched population rather than an absolute count, because a model may launch
+        // few ions on purpose and 1e-6 of anything is still enormously above a tail that
+        // runs at 1e-245.
+        var launched = outcome.Phases.Count > 0 ? outcome.Phases[0].Population : 0.0;
+        var meaningful = Eluted(collected, launched);
+
+        if (outcome.Arrivals.Count > 0 && !meaningful)
+        {
+            // Said rather than left as an absence, because "no mean arrival" and "this
+            // model does not elute" are the same fact and only one of them is actionable.
+            sequenceWarnings.Add(new ValidityWarning(
+                "sequence.nothing-eluted",
+                $"{collected:G6} ions reached the detector of {launched:G6} launched, which "
+                + "is the collecting face's Boltzmann tail rather than a transmitted packet "
+                + "- so there is no arrival time to report and none is. The sequence "
+                + "completed; the packet is where the phase table's last row says it is",
+                WarningSeverity.ValidityViolation));
+        }
+
+        if (outcome.Arrivals.Count > 0 && meaningful)
         {
             var weighted = outcome.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / collected;
             var variance = outcome.Arrivals.Sum(
@@ -1384,7 +1444,7 @@ public static class RunCommand
                                 + "reached the detector are counted there",
                                 WarningSeverity.Provenance),
                         ]),
-                    [.. fieldWarnings, .. outcome.Warnings]),
+                    [.. fieldWarnings, .. outcome.Warnings, .. sequenceWarnings]),
                 "us"),
 
             Outcome = "SequenceCompleted",

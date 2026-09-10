@@ -1207,10 +1207,66 @@ averaging window predicts that a slower ramp gives less, and a hundredfold slowe
 **3.6e-5, larger**. It scales as 1/amplitude instead - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100
 / 400 V - the signature of an additive contamination cross-multiplied with the drive.
 
-So the sequence is still blocked, **by the jitter rather than by the absence of a cache**,
-and the tolerance is deliberately not loosened to cover it: a tolerance chosen larger than
-an unexplained variation is caching over that variation. The same 1.8e-5 is also an accuracy
-statement - a ramped driven diffusive well is not the well to better than about 1e-5.
+That was fixed by holding the operating point, which took the well's movement across a
+cycle to 6.53e-14, and the tolerance was deliberately left at 1e-12 - a tolerance chosen
+larger than an unexplained variation is caching over that variation.
+
+### The sequence runs end to end, and the cache's own check was what stopped it
+
+**905 seconds - fifteen minutes - for the whole 18.3 ms of fill, trap and ramp at 256 x 32.**
+It had failed to complete on four previous attempts, and the last of the cost was a cache
+establishing that a quantity it could not have changed had not changed.
+
+Split three ways on the elution ramp: the density step 0.005 s, the face assembly 0.0035 s,
+and 1.38 s in `Refresh`. Sixteen rebuilds over a 69-step ramp at about six seconds each, plus
+a sixteen-node probe on every step in between - so the full ramp is around 17,000 rebuilds,
+or **28 hours**, of recomputing the cycle mean square of an oscillation a DC ramp does not
+touch.
+
+**The residual movement is now explained, which is what licenses loosening the bar the
+paragraph above declined to loosen.** The well is a mean square taken after removing the
+mean, and the mean here is a DC field the ramp walks from 60 V to zero - so the noise floor
+of that subtraction is proportional to a quantity that changes by everything while the well
+changes by nothing. Measured at about 2.5e-13 of the deepest well per step, which crosses
+1e-12 in four steps and then does so forever. The bar is 1e-9 now, which on a 30 V well
+admits 3e-8 V against a thermal `kT/q` of 0.026 V, and the probe visits one lattice node per
+call rather than all sixteen. Both are pinned by tests from each side: a change of 1e-11 must
+be held and one of 1e-5 must be caught. **16 rebuilds became 1 and sigma_z is identical to
+all six printed digits.**
+
+### And the finding is that it does not elute
+
+| | |
+| --- | --- |
+| ions reaching the detector | **7.74e-245** |
+| still in the tunnel at the end of the ramp | **99,893.6 of 99,971** |
+| where they are | x = 21.14 mm, sigma_z 0.886 mm |
+
+The packet is delivered, held, and then sits at the balance point of the ramp's *opening*
+voltage while the ramp runs to zero underneath it. Three runs on the same document bound what
+is happening:
+
+| what the sweep is written as | result |
+| --- | --- |
+| `ramp` 60 V to 0 over 8 ms | frozen at 21.14 mm, nothing arrives |
+| a single `set` to 24 V, held 2 ms | 21.10 mm to **54.77 mm**, **81,049 of 85,170 arrive** |
+| sixteen `set` stages of 500 us, 60 V to 0 | eluting: 43.2 mm by the ninth, population falling |
+
+**And the ramp is not being ignored, which was my first reading and is wrong.** Probed at the
+parking point through a ramp phase, the potential falls 11.100 V to 0.720 V and the axial
+field from -1028.5 V/m to -65.9 V/m, linearly - `DrivenSolvedField` interpolates its channel
+weights exactly as designed. So a document whose sweep is written as stages elutes and the
+same sweep written as a ramp does not, with the field demonstrably moving in both. That is
+recorded as measured and unexplained rather than attributed.
+
+**One candidate, stated as a candidate.** The tunnel's RF is an analytic element bounded at
+the tunnel end with a 4 mm fringe, so its pseudopotential well - tens of volts deep - shallows
+to nothing across that fringe, and leaving the tunnel means climbing out of the well. The DC
+the ramp collapses is exactly what would push ions over it. That is the mirror image of the
+entrance problem this template already fixed by *adding* the fringe, and it is the rule in
+`docs/lessons.md` verbatim: a boundary the model has and the instrument does not is a force
+the instrument does not have. The real front end has an exit funnel and this template does
+not. What the candidate does not explain is why the staircase elutes through the same fringe.
 
 **What this template does not carry.** No deflector plate, so a continuous beam cannot be
 diverted during the trap and the fill is a single released packet rather than ten milliseconds

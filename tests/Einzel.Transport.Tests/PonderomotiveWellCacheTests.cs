@@ -112,6 +112,69 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The well is held only while it has not moved, and the bar is pinned from both sides.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why the tolerance moved, and what pins it now.</b> It was 1e-12, and on the
+    /// shipped TIMS front end that rebuilt the well about every fourth step of an elution
+    /// ramp - while a DC ramp changes no drive amplitude, frequency or phase, so the cycle
+    /// mean square of the oscillation is the same quantity throughout. What crossed the bar
+    /// was round-off: the well is a mean square taken after removing the mean, and the mean
+    /// there is a DC field the ramp walks from 60 V to zero, so the noise floor of the
+    /// subtraction is proportional to a quantity that changes by everything while the well
+    /// changes by nothing.
+    /// </para>
+    /// <para>
+    /// <b>A tolerance is only meaningful between two measurements.</b> One side is that a
+    /// change far below the arithmetic's floor is held, which is what buys the cache; the
+    /// other is that a change a real retuning would produce is still caught, which is what
+    /// stops the cache being a way to compute the wrong field quickly. Driven through
+    /// <c>DriftDiffusion.Run</c> rather than against the cache directly, because that is
+    /// the seam every number here comes through and the cache is not public API.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void WellIsHeldOnlyWhileItHasNotMoved()
+    {
+        var grid = Grid2D.OverBox(-0.02, -0.004, 0.02, 0.004, 32, 16);
+        var gas = Nitrogen(200.0);
+        var species = IonSpecies.FromMassToCharge(500.0, 1);
+        var mobility = Mobility.FromCrossSection(gas, species);
+
+        const double Seconds = 4e-5;
+
+        foreach (var (relative, held, why) in new[]
+        {
+            (1e-13, true, "below the arithmetic's own floor"),
+            (1e-11, true, "still below the bar"),
+            (1e-5, false, "what a retuning of the RF looks like"),
+            (1e-2, false, "unmistakable"),
+        })
+        {
+            var result = Run(
+                grid, gas, mobility, species, Seconds,
+                AmplitudeNudge(species, gas, relative, Seconds), plain: false);
+
+            output.WriteLine(
+                $"amplitude moved {relative:E0} over the phase -> "
+                + $"{result.WellRebuilds} rebuild(s) in {result.Assemblies} assemblies"
+                + $"   ({why})");
+
+            if (held)
+            {
+                Assert.Equal(1, result.WellRebuilds);
+            }
+            else
+            {
+                Assert.True(
+                    result.WellRebuilds > 1,
+                    $"a well moved by {relative:E0} was never noticed");
+            }
+        }
+    }
+
+    /// <summary>
     /// A ramping-DC run with the cache is the same run, to the bit.
     /// </summary>
     /// <remarks>
@@ -285,11 +348,18 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
 
         // The reference pays two passes over the field at each of seven points per node
         // per assembly. The cache pays them once, on the assembly that built it, plus the
-        // probes: sixteen nodes at each later step, which is what makes the check cheap
-        // and is pinned here so that a wider probe lattice cannot quietly stop it being.
+        // probes: ONE node at each later step, rotating through the lattice of sixteen, so
+        // the whole lattice is covered every sixteen steps.
+        //
+        // Pinned here so that neither a wider probe lattice nor a return to probing all of
+        // it every step can quietly stop the check being cheap - which is what this
+        // constant caught when the rotation was introduced. It was sixteen probes a step,
+        // and on the shipped TIMS front end that is 60 ms of every ramped step, over an
+        // hour across an elution ramp, spent establishing that a well a DC ramp cannot
+        // move had not moved.
         Assert.Equal(2 * 7 * 16 * nodes * reference.Assemblies, referenceCounter.Fields);
         Assert.Equal(
-            (2 * 7 * 16 * nodes) + (2 * 16 * 16 * (cached.Assemblies - 1)),
+            (2 * 7 * 16 * nodes) + (2 * 1 * 16 * (cached.Assemblies - 1)),
             cachedCounter.Fields);
 
         // And neither saves a single potential evaluation, which is the half of the
@@ -337,6 +407,18 @@ public sealed class PonderomotiveWellCacheTests(ITestOutputHelper output)
     private static Func<double, IElectrostaticField> AmplitudeRamp(
         IonSpecies species, BackgroundGas gas) =>
         Ramp(species, gas, _ => 6000.0, elapsed => AmplitudeVolts * (1.0 + (2000.0 * elapsed)));
+
+    /// <summary>
+    /// A ramp whose DC is fixed and whose amplitude moves by a given relative amount over
+    /// the phase, which is what the well is a function of.
+    /// </summary>
+    private static Func<double, IElectrostaticField> AmplitudeNudge(
+        IonSpecies species, BackgroundGas gas, double relative, double seconds) =>
+        Ramp(
+            species,
+            gas,
+            _ => 6000.0,
+            elapsed => AmplitudeVolts * (1.0 + (relative * elapsed / seconds)));
 
     private static Func<double, IElectrostaticField> Ramp(
         IonSpecies species,

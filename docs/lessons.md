@@ -3868,6 +3868,64 @@ of it; the run paths were enumerated first and that is what missed the studies. 
 a producer, ask what reads it, and answer by enumerating consumers rather than by recalling
 one.**
 
+## A cache's own invalidation check cost more than the work it was avoiding
+
+The ponderomotive well cache exists because computing the well is expensive: on the shipped
+TIMS front end it is 8,448 nodes times seven offsets times sixteen cycle samples, about six
+seconds. It holds the well across steps and rebuilds only when the well has moved, which it
+establishes by probing sixteen nodes and comparing against what it holds.
+
+**On the front end's elution ramp it cost 1.38 seconds per step and the well never moved.**
+Split three ways: the density step 0.005 s, the face assembly 0.0035 s, and everything else
+in `Refresh`. Sixteen rebuilds over a 69-step ramp at six seconds each, plus a sixteen-node
+probe at 60 ms on every step in between. Over the full 8 ms ramp that is around 17,000
+rebuilds - **28 hours** - to compute a quantity a DC ramp cannot change, because the well is
+the cycle mean square of the *oscillating* field and a DC ramp moves no amplitude, frequency
+or phase.
+
+**What moved was the round-off, and the tolerance was below it.** The well is a mean square
+taken after removing the mean; the mean is a DC field the ramp walks from 60 V to zero, so
+the noise floor of that subtraction is proportional to a quantity that changes by everything
+while the well changes by nothing. Measured at about 2.5e-13 of the deepest well per step,
+which accumulates past a 1e-12 tolerance in four steps and then does so forever.
+
+**A tolerance below the arithmetic's own floor is not a tight tolerance - it is a tolerance
+that has stopped testing anything but the last few bits.** It reads as caution and behaves as
+a cache that never caches. Two changes, and the error each admits is stated: the bar is now
+1e-9 of the deepest well, which on a 30 V well is 3e-8 V against a thermal `kT/q` of 0.026 V;
+and the probe visits one lattice node per call rather than all sixteen, so a well that really
+moves is noticed within sixteen steps rather than within one - a fraction of a microsecond of
+instrument time, over which a sequence cannot change an amplitude, because it changes them at
+phase boundaries and every boundary starts a new cache.
+
+Both are pinned by tests that fail if the bar moves either way: a change of 1e-11 must be
+held and one of 1e-5 must be caught, and the probe cost is pinned as an evaluation count so
+that neither a wider lattice nor a return to probing all of it can quietly restore the cost.
+
+**And the diagnosis took four wrong turns, all of them mine, all recorded here already.**
+
+**I optimized the half I assumed.** The first fix was to sample the coefficient arrays at a
+ramped phase's two ends and interpolate, since they are affine in the ramp fraction. It works
+- 149 affine samples, zero re-samples - and it bought nothing, because sampling was 0.008 s
+of a 1.38 s step. `docs/lessons.md` already says *measure which half is slow before optimizing
+the half you assumed*, from the space-charge work.
+
+**Then I measured on a loaded machine.** The first per-step figures came off a run sharing the
+box with a companion run and repeated solution builds, which is where an 86x turned into a
+1.5x once the machine was idle. This file already carries that rule about `einzel estimate`.
+
+**Then I built a probe that could not see the cost.** Scaling every phase to a thousandth
+scales the step count and not the state the fill leaves behind, so the probe's ramp ran on a
+density that had never been delivered - 0.01 s per step against the real 1.38. A probe is only
+a probe of what it holds constant.
+
+**And the affine fix was then reverted**, because it changes the stability step in its last
+bits and so the step sequence: `ARampingDcRunIsBitIdenticalWithTheCacheAndWithout` failed on
+a step count of 26 against 20. It is a real 2.4x on a ramped phase and it is available; what
+it costs is that every seeded diffusive result moves slightly, which this project has
+consistently refused to pay for speed. Recorded as measured and declined rather than as
+unexplored.
+
 ## A shared predicate stops a count and a diagnostic disagreeing only until the next state arrives
 
 `ReportOutcome.StoredNothing` exists because a count said "0 runs stored no result" in the

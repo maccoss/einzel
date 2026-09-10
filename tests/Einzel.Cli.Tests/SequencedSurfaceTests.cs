@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using Einzel.Cli;
+using Einzel.Commands;
 
 using Xunit.Abstractions;
 
@@ -358,6 +359,50 @@ public sealed class SequencedSurfaceTests(ITestOutputHelper output) : IDisposabl
             reported[0].GetProperty("axialSpreadMm").GetString()!,
             page,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A collecting face's Boltzmann tail is not an elution, and an arrival time is not
+    /// reported for one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The defect this pins produced two plausible numbers for a run in which nothing
+    /// happened.</b> The shipped TIMS front-end sequence completed all three phases and
+    /// reported <c>mean arrival 11,366 us, spread 4,024 us</c> - computed over 7.74e-245
+    /// ions, while 99,893.6 of 99,971 were still in the tunnel. The guard was
+    /// <c>collected &gt; 0.0</c>, and 7.74e-245 is greater than zero.
+    /// </para>
+    /// <para>
+    /// <b>Where that number comes from.</b> Scharfetter-Gummel's flux across a collecting
+    /// face behind a barrier is the Boltzmann factor of the barrier, so a held packet emits
+    /// values from its first step - 60 V against a thermal 0.026 V is exp(-2300). The same
+    /// tail already caught this project once, when an elution onset read as the first
+    /// non-empty bin came out during the hold.
+    /// </para>
+    /// <para>
+    /// <b>On the arithmetic rather than through a run</b>, because a run that leaks exactly
+    /// the wrong amount is a fixture nobody can build reliably - and the arithmetic IS the
+    /// decision. The wiring is exercised by the front-end model, which is where it was
+    /// found.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(7.74e-245, 99971.1, false)]   // what the front end actually reported
+    [InlineData(0.0, 100000.0, false)]        // nothing at all
+    [InlineData(1e-9, 100000.0, false)]       // still the tail
+    [InlineData(0.05, 100000.0, false)]       // below a millionth of the packet
+    [InlineData(0.2, 100000.0, true)]         // a real, terrible transmission
+    [InlineData(81048.6, 85170.1, true)]      // what the same model does when it elutes
+    [InlineData(0.5, 1.0, true)]              // one ion launched, half of it collected
+    [InlineData(1e-9, 1.0, false)]            // one ion launched, none of it
+    public void ABoltzmannTailIsNotAnElution(double collected, double launched, bool eluted)
+    {
+        output.WriteLine(
+            $"{collected:G6} of {launched:G6} -> "
+            + $"{(RunCommand.Eluted(collected, launched) ? "an elution" : "a tail")}");
+
+        Assert.Equal(eluted, RunCommand.Eluted(collected, launched));
     }
 
     /// <summary>The manifest records every mode the run used (PRJ-3).</summary>
