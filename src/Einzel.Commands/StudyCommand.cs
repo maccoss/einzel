@@ -389,11 +389,13 @@ public static class StudyCommand
         string transportMode,
         long seed,
         ExtensionObjective.Provenance? extension,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes)
     {
         var manifest = new RunManifest
         {
             ModelHash = ContentHash.OfText(modelText),
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // A study's result is about the model the study names. Recorded, so verify
             // identifies it by name and uses the hash only to decide whether it moved -
@@ -502,7 +504,8 @@ public static class StudyCommand
         var (study, modelPath, absolute) = Load(studyPath);
         var figure = Figure(Required(study.FigureOfMerit));
         var channels = StudyBinding.Channels(study);
-        var document = ModelJson.Parse(File.ReadAllText(modelPath));
+        var modelText = File.ReadAllText(modelPath);
+        var document = ModelJson.Parse(modelText);
 
         if (dryRun)
         {
@@ -519,6 +522,7 @@ public static class StudyCommand
             };
         }
 
+        var inputHashes = RunInputs.Capture(document, modelPath, project.Root, absolute);
         var ledger = new WarningLedger();
 
         var evaluate = Evaluate(
@@ -563,10 +567,10 @@ public static class StudyCommand
             [
                 Write(project, absolute, "sweep", outcome),
                 WriteManifest(
-                    project, absolute, "sweep", modelPath, File.ReadAllText(modelPath),
+                    project, absolute, "sweep", modelPath, modelText,
                     document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
-                    DateTimeOffset.UtcNow),
+                    DateTimeOffset.UtcNow, inputHashes),
             ],
         };
     }
@@ -592,7 +596,8 @@ public static class StudyCommand
         var (study, modelPath, absolute) = Load(studyPath);
         var figure = Figure(Required(study.FigureOfMerit));
         var axis = StudyBinding.Axis(study);
-        var document = ModelJson.Parse(File.ReadAllText(modelPath));
+        var modelText = File.ReadAllText(modelPath);
+        var document = ModelJson.Parse(modelText);
 
         var unit = study.Scan!.Unit!;
         var spacing = axis.Spacing.ToString().ToLowerInvariant();
@@ -613,6 +618,7 @@ public static class StudyCommand
             };
         }
 
+        var inputHashes = RunInputs.Capture(document, modelPath, project.Root, absolute);
         var ledger = new WarningLedger();
 
         var evaluate = Evaluate(
@@ -662,10 +668,10 @@ public static class StudyCommand
             [
                 Write(project, absolute, "scan", outcome),
                 WriteManifest(
-                    project, absolute, "scan", modelPath, File.ReadAllText(modelPath),
+                    project, absolute, "scan", modelPath, modelText,
                     document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
-                    DateTimeOffset.UtcNow),
+                    DateTimeOffset.UtcNow, inputHashes),
             ],
         };
     }
@@ -691,7 +697,8 @@ public static class StudyCommand
         var (study, modelPath, absolute) = Load(studyPath);
         var figure = Figure(Required(study.FigureOfMerit));
         var (axis, threshold, sense, resolution, budget) = StudyBinding.Boundary(study);
-        var document = ModelJson.Parse(File.ReadAllText(modelPath));
+        var modelText = File.ReadAllText(modelPath);
+        var document = ModelJson.Parse(modelText);
 
         var unit = study.Boundary!.Unit!;
         var inside = sense.ToString().ToLowerInvariant();
@@ -714,6 +721,7 @@ public static class StudyCommand
             };
         }
 
+        var inputHashes = RunInputs.Capture(document, modelPath, project.Root, absolute);
         var ledger = new WarningLedger();
 
         var evaluate = Evaluate(
@@ -754,10 +762,10 @@ public static class StudyCommand
             [
                 Write(project, absolute, "boundary", outcome),
                 WriteManifest(
-                    project, absolute, "boundary", modelPath, File.ReadAllText(modelPath),
+                    project, absolute, "boundary", modelPath, modelText,
                     document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
-                    DateTimeOffset.UtcNow),
+                    DateTimeOffset.UtcNow, inputHashes),
             ],
         };
     }
@@ -779,7 +787,8 @@ public static class StudyCommand
         var variables = StudyBinding.Variables(study);
         var algorithm = StudyBinding.Algorithm(study);
         var sense = StudyBinding.Sense(study, figure);
-        var document = ModelJson.Parse(File.ReadAllText(modelPath));
+        var modelText = File.ReadAllText(modelPath);
+        var document = ModelJson.Parse(modelText);
 
         if (dryRun)
         {
@@ -800,6 +809,7 @@ public static class StudyCommand
             };
         }
 
+        var inputHashes = RunInputs.Capture(document, modelPath, project.Root, absolute);
         var ledger = new WarningLedger();
 
         var result = Optimiser.Run(
@@ -851,10 +861,10 @@ public static class StudyCommand
             [
                 Write(project, absolute, "optimise", outcome),
                 WriteManifest(
-                    project, absolute, "optimise", modelPath, File.ReadAllText(modelPath),
+                    project, absolute, "optimise", modelPath, modelText,
                     document.SchemaVersion,
                     document.Transport?.Mode ?? "trajectory", study.Seed, extension,
-                    DateTimeOffset.UtcNow),
+                    DateTimeOffset.UtcNow, inputHashes),
             ],
         };
     }

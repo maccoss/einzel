@@ -64,6 +64,13 @@ public sealed class PonderomotiveField : IElectrostaticField
     /// </remarks>
     private const double DefaultStepM = 1e-6;
 
+    internal bool HasSameWellAs(PonderomotiveField other) =>
+        _massSi == other._massSi && _chargeSi == other._chargeSi
+        && CollisionRateSi == other.CollisionRateSi && ReferenceEquals(_rateAt, other._rateAt)
+        && _samples == other._samples && _step == other._step && PeriodSeconds == other.PeriodSeconds
+        && (_driven.HasSameOscillationAs(other._driven)
+            || (_driven is TimeShiftedField a && other._driven is TimeShiftedField b && a.HasSameCycleAs(b)));
+
     private readonly ITimeVaryingField _driven;
     private readonly double _massSi;
     private readonly Func<Vec3, double>? _rateAt;
@@ -108,7 +115,22 @@ public sealed class PonderomotiveField : IElectrostaticField
         ArgumentOutOfRangeException.ThrowIfNegative(collisionRateSi);
         ArgumentOutOfRangeException.ThrowIfLessThan(samplesPerCycle, 4);
 
-        var period = driven.ShortestPeriodSeconds;
+        if (!double.IsFinite(driven.ShortestPeriodSeconds) || driven.ShortestPeriodSeconds <= 0.0)
+            throw new ArgumentOutOfRangeException(nameof(driven), "an effective RF well requires an oscillating field; this field has no drive");
+        var period = driven.MonochromaticPeriodSeconds;
+        if (double.IsNaN(period))
+        {
+            throw new Einzel.Core.Errors.EinzelException(new Einzel.Core.Errors.EinzelError
+            {
+                Code = Einzel.Core.Errors.ErrorCodes.RegimeInvalid,
+                Path = "/transport/mode",
+                Constraint = "the single-frequency pseudopotential requires a known monochromatic RF spectrum at a held operating point",
+                Suggestion = "use one sinusoidal frequency (or a single Fourier harmonic), or trajectory transport where valid; multiple frequencies require a spectrally weighted effective field",
+            });
+        }
+        // A switched-off generator has no well, but retains a clock on which the
+        // constant potential can be sampled. It must not set another generator's period.
+        if (double.IsPositiveInfinity(period)) period = driven.ShortestPeriodSeconds;
 
         // Finite, not merely positive. A field that varies in time WITHOUT a drive - a DC
         // ramp - reports an infinite shortest period, and ThrowIfNegativeOrZero lets
@@ -411,7 +433,7 @@ public sealed class PonderomotiveField : IElectrostaticField
         // already in the scale, so q/m is 2 scale (Omega^2 + nu^2) / q.
         var chargeToMass = 2.0 * ScaleAt(in position) * damped * damped / _chargeSi;
 
-        return chargeToMass * amplitude / (AngularFrequencySi * damped);
+        return Math.Abs(chargeToMass) * amplitude / (AngularFrequencySi * damped);
     }
 
     /// <summary>

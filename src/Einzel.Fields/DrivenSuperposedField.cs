@@ -60,6 +60,39 @@ public sealed class DrivenSuperposedField : ITimeVaryingField, IConductorBounded
     public IReadOnlyList<IElectrostaticField> Elements => _elements;
 
     /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds
+    {
+        get
+        {
+            var period = double.PositiveInfinity;
+            foreach (var member in _elements.OfType<ITimeVaryingField>())
+            {
+                var next = member.MonochromaticPeriodSeconds;
+                if (double.IsPositiveInfinity(next)) continue;
+                if (double.IsNaN(next) || (double.IsFinite(period) && period != next)) return double.NaN;
+                period = next;
+            }
+            return period;
+        }
+    }
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other)
+    {
+        if (other is not DrivenSuperposedField sum || sum._elements.Length != _elements.Length) return false;
+        for (var i = 0; i < _elements.Length; i++)
+        {
+            var a = _elements[i] as ITimeVaryingField;
+            var b = sum._elements[i] as ITimeVaryingField;
+            var aStatic = a is null || double.IsPositiveInfinity(a.MonochromaticPeriodSeconds);
+            var bStatic = b is null || double.IsPositiveInfinity(b.MonochromaticPeriodSeconds);
+            if (aStatic && bStatic) continue;
+            if (a is null || b is null || !a.HasSameOscillationAs(b)) return false;
+        }
+        return true;
+    }
+
+    /// <inheritdoc/>
     /// <remarks>
     /// Member by member, so a composite gets whatever saving each member can offer: an
     /// average is linear, so the mean of the sum is the sum of the means, and a member that

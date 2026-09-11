@@ -108,6 +108,21 @@ public sealed class SequencedField : ITimeVaryingField
     /// which side of the comparison it falls on is a real decision rather than a
     /// tie-break. Starting is the right one: the switch has happened.
     /// </remarks>
+    /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds => _operatingPoint is null
+        ? (_states.All(s => s is not ITimeVaryingField) ? double.PositiveInfinity : double.NaN)
+        : (At(0) is ITimeVaryingField driven ? driven.MonochromaticPeriodSeconds : double.PositiveInfinity);
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other)
+    {
+        if (other is not SequencedField sequence || _operatingPoint is null || sequence._operatingPoint is null)
+            return ReferenceEquals(this, other);
+        var a = At(0) as ITimeVaryingField;
+        var b = sequence.At(0) as ITimeVaryingField;
+        return a is null ? b is null : b is not null && a.HasSameOscillationAs(b);
+    }
+
     private IElectrostaticField At(double timeSeconds)
     {
         timeSeconds = _operatingPoint ?? timeSeconds;

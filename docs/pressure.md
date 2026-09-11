@@ -255,6 +255,11 @@ leaving the caller to work it out.
 
 ## Diffusion from a model document
 
+**Detector limitation:** collection occurs on a density-grid face. The detector plane
+must coincide with that face and be normal to it; cylindrical grids support axial
+planes only. Internal and oblique planes are refused rather than silently relocated.
+Moving a detector therefore requires moving the corresponding grid boundary too.
+
 `"mode": "diffusion"` now runs. A source becomes an initial density — a Gaussian at
 the source position with the cloud's declared spreads, normalised to the declared
 population — a detector becomes a collecting boundary, and an electrode becomes a
@@ -349,6 +354,16 @@ The solver needs no change: it asks for a potential at a point and gets the
 effective one, which is the same thing `AxisymmetricField` does for a half-plane
 solve.
 
+**Supported spectrum:** one sinusoidal frequency at a held operating point (including
+one Fourier harmonic). A zero-amplitude generator contributes no frequency. Multiple
+active frequencies, rectangular waves and multi-harmonic drives are refused as
+`REGIME_INVALID` in the effective-field path; trajectory transport is unchanged.
+A shortest period is a step-control limit, not a frequency with which to weight every
+component of a spectrum. Same-frequency fields combine coherently before squaring.
+`RfValidityRegressionTests` checks an inert second clock, constructive/destructive
+interference, and refusal of two active frequencies. The quiver diagnostic uses the
+magnitude of charge, so changing polarity cannot hide an excessive excursion.
+
 ### The collisional well, and why it is not the textbook one
 
 An ion quivering in E0 cos(Omega t) and damped at rate nu obeys
@@ -442,10 +457,12 @@ every step and so is its mean square. Only the direct term moves.
 So `PotentialAt` is now exactly the sum of `DirectPotentialAt` and `WellAt`,
 asserted bit-for-bit over a spread of points and four RF phases, and a ramped
 run keeps the well per node and recomputes only the direct term. It is
-**verified rather than assumed**: sixteen nodes on a four-by-four lattice are
-recomputed from scratch at every step, and one disagreement past a relative 1e-12
-throws the whole cache away. So a document that really does ramp an RF amplitude
-gets the right answer, just without the saving. `DiffusionResult.WellRebuilds`
+**keyed to the RF definition**, not to agreement at a few spatial probes. A bounded
+drive can change entirely between probes: the former guard retained a well four times
+too shallow when its amplitude doubled. Reuse now requires the same immutable RF
+patterns, amplitudes, phases, species, damping and differencing settings. Unknown
+field implementations and position-dependent damping callbacks conservatively rebuild.
+A DC-only ramp can reuse the well; an RF change cannot. `DiffusionResult.WellRebuilds`
 rides out beside `Assemblies`, per phase in `einzel run --json`, because a saving
 nothing reports is a saving nobody can check.
 
@@ -454,6 +471,9 @@ Caching only the node value would force the central difference to be split into 
 direct part and a well part, and `(D+ + W+) - (D- + W-)` is not bit-identically
 `(D+ - D-) + (W+ - W-)`. Holding the well at all seven lets the difference be
 taken exactly as the field takes it.
+
+The following is the **historical benchmark with the former probe guard**, not a
+new timing claim for definition-based invalidation.
 
 | Synthetic DC ramp, 129 x 33 nodes, 20 steps | cached | reference |
 | --- | --- | --- |
@@ -856,6 +876,15 @@ true drift, so removing the cap makes the flux agree with the step rather than
 sitting conservatively under it.
 
 ## Crossing between the two modes (SEQ-1)
+
+Trajectory legs honour the declared gas with separate reproducible collision streams
+per member and phase. With `direct` or `pic` space charge, they advance collectively
+through `PacketIntegrator`, using the surviving population and the packet's actual
+positions. The self-field is rebuilt at a phase boundary; the result names this and
+the shared-step approximation. Collision-quality warnings survive the leg.
+A numerical failure cannot be passed into the next phase as a completed packet.
+If every ion has arrived or been lost, subsequent phases remain empty without
+conversion or reseeding; their centroid is absent.
 
 §9 says an instrument is a timed state machine of "ordered phases with durations,
 excitation overrides, **transport mode**, and transition conditions", and SEQ-1
@@ -1712,6 +1741,20 @@ is the dominant cost of a driven mean-field run and the obvious next optimisatio
 
 
 ## What a driven diffusive step costs, decomposed
+
+**Coefficient rebuilds reuse their storage.** Each run/species owns six coefficient
+arrays and one face operator. A rebuild overwrites them, retaining the original
+floating-point operation order; skipped faces are cleared so old boundary flags and
+coefficients cannot survive. `CoefficientReuseTests` compares reused and fresh
+operators bit for bit on Cartesian and cylindrical grids, including a change from
+open to reflecting faces.
+
+A warmed Release probe at 513 x 65 nodes measured **7,473,016 bytes per fresh rebuild
+against 3,432 with reuse** (including the probe's reflection/timing overhead). Across
+142,000 rebuilds this is about 1.06 TB against 0.49 GB of cumulative allocation, not
+simultaneously resident memory. Minimum rebuild times were 19.81 and 19.07 ms: this
+removes allocation pressure, not the cost of evaluating the field, and is not an
+end-to-end speedup claim.
 
 The TIMS front-end sequence had never run to completion, and the recorded diagnosis named the
 well assembly. That diagnosis was right about a real inefficiency and wrong about which term

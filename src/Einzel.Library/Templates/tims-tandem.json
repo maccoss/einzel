@@ -469,7 +469,7 @@
         "unit": "mm"
       },
       "maxX": {
-        "expression": "tunnelLength + gateGap + exitFunnelLength",
+        "expression": "tunnelLength + gateGap + exitFunnelLength - detectorPad",
         "unit": "mm"
       },
       "minY": {

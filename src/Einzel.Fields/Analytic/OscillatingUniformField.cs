@@ -70,6 +70,10 @@ public sealed class OscillatingUniformField : ITimeVaryingField
     /// <summary>The fundamental frequency, in hertz.</summary>
     public double FrequencyHz => _frequencyHz;
 
+    /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds => _amplitude.LengthSquared == 0.0
+        ? double.PositiveInfinity : 1.0 / (_frequencyHz * _waveform.SingleHarmonicOrder);
+
     /// <summary>The waveform.</summary>
     public RfWaveform Waveform => _waveform;
 

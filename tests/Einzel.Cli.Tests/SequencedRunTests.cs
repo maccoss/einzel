@@ -19,7 +19,7 @@ namespace Einzel.Cli.Tests;
 /// </remarks>
 public sealed class SequencedRunTests(ITestOutputHelper output)
 {
-    private const string Model = """
+    internal const string Model = """
     {
       "schemaVersion": "0.6",
       "name": "trap-then-extract",
@@ -46,7 +46,7 @@ public sealed class SequencedRunTests(ITestOutputHelper output)
       ],
       "fields": [{ "type": "fieldFree" }],
       "detector": {
-        "planePoint": { "value": [60, 0, 0], "unit": "mm" },
+        "planePoint": { "value": [40, 0, 0], "unit": "mm" },
         "normal": { "value": [-1, 0, 0] }
       },
       "transport": {
@@ -60,13 +60,30 @@ public sealed class SequencedRunTests(ITestOutputHelper output)
         },
         "gas": {
           "model": "hardSphere",
-          "pressure": { "value": 1, "unit": "mbar" },
+          "pressure": { "value": 1e-6, "unit": "mbar" },
           "mass": { "value": 28.0134, "unit": "Da" },
           "crossSection": { "value": 250, "unit": "Å^2" }
         }
       }
     }
     """;
+
+    [Fact]
+    public void AnExhaustedPacketIsNotConvertedOrReseeded()
+    {
+        var text = Model.Replace("[40, 0, 0]", "[20, 0, 0]", StringComparison.Ordinal)
+            .Replace("\"value\": 1, \"unit\": \"us\"", "\"value\": 10, \"unit\": \"us\"", StringComparison.Ordinal)
+            .Replace("\"value\": 1e-6, \"unit\": \"mbar\"", "\"value\": 1e-12, \"unit\": \"mbar\"", StringComparison.Ordinal);
+        var validation = ModelValidator.Validate(ModelJson.Parse(text));
+        Assert.True(validation.IsValid);
+        var model = validation.Model!;
+        var result = SequencedRun.Execute(model, FieldAssembly.BuildReported(model).Field,
+            BackgroundGas.FromModel(model.Gas));
+        Assert.Equal(200, result.Arrived);
+        Assert.Equal(0, result.Conversions);
+        Assert.All(result.Phases, p => Assert.Equal(0, p.Population));
+        Assert.All(result.Phases.Skip(1), p => Assert.Empty(p.CentroidMm));
+    }
 
     private static (CompiledModel Model, IElectrostaticField Field, BackgroundGas Gas) Load()
     {
@@ -289,9 +306,11 @@ public sealed class SequencedRunTests(ITestOutputHelper output)
     {
         var validation = ModelValidator.Validate(ModelJson.Parse(
             Model.Replace(
-                "\"planePoint\": { \"value\": [60, 0, 0], \"unit\": \"mm\" }",
+                "\"planePoint\": { \"value\": [40, 0, 0], \"unit\": \"mm\" }",
                 "\"planePoint\": { \"value\": [12, 0, 0], \"unit\": \"mm\" }",
-                StringComparison.Ordinal)));
+                StringComparison.Ordinal).Replace(
+                    "\"maxX\": { \"value\": 40, \"unit\": \"mm\" }",
+                    "\"maxX\": { \"value\": 12, \"unit\": \"mm\" }", StringComparison.Ordinal)));
 
         Assert.True(
             validation.IsValid,
@@ -347,7 +366,7 @@ public sealed class SequencedRunTests(ITestOutputHelper output)
       ],
       "fields": [{ "type": "fieldFree" }],
       "detector": {
-        "planePoint": { "value": [60, 0, 0], "unit": "mm" },
+        "planePoint": { "value": [40, 0, 0], "unit": "mm" },
         "normal": { "value": [-1, 0, 0] }
       },
       "transport": {
@@ -361,7 +380,7 @@ public sealed class SequencedRunTests(ITestOutputHelper output)
         },
         "gas": {
           "model": "hardSphere",
-          "pressure": { "value": 1, "unit": "mbar" },
+          "pressure": { "value": 1e-6, "unit": "mbar" },
           "mass": { "value": 28.0134, "unit": "Da" },
           "crossSection": { "value": 250, "unit": "Å^2" }
         }

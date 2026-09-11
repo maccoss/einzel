@@ -93,7 +93,7 @@ public sealed class RunCheckpointTests(ITestOutputHelper output) : IDisposable
       ],
       "fields": [{ "type": "fieldFree" }],
       "detector": {
-        "planePoint": { "value": [60, 0, 0], "unit": "mm" },
+        "planePoint": { "value": [40, 0, 0], "unit": "mm" },
         "normal": { "value": [-1, 0, 0] }
       },
       "transport": {

@@ -870,6 +870,25 @@ public static class DiffusionRun
         var axis = cylindrical || grid.OriginY >= 0.0 ? Escape.Reflecting : Escape.Absorbing;
 
         var normal = model.DetectorNormal;
+        var alongX = normal.X != 0.0 && normal.Y == 0.0 && normal.Z == 0.0;
+        var alongY = normal.Y != 0.0 && normal.X == 0.0 && normal.Z == 0.0 && !cylindrical;
+        var face = alongX
+            ? (normal.X < 0.0 ? grid.X(grid.CountX - 1) : grid.OriginX)
+            : (normal.Y < 0.0 ? grid.Y(grid.CountY - 1) : grid.OriginY);
+        var position = alongX ? model.DetectorPoint.X : model.DetectorPoint.Y;
+        var scale = Math.Max(Math.Max(Math.Abs(face), Math.Abs(position)),
+            Math.Max(grid.SpacingX, grid.SpacingY));
+        if ((!alongX && !alongY) || Math.Abs(position - face) > 1e-12 * scale)
+        {
+            throw new EinzelException(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = "/detector",
+                Constraint = "diffusive collection requires a detector coincident with a grid face and normal to it; cylindrical grids support axial detector planes only",
+                Observed = new ObservedValue(position, "m"),
+                Suggestion = "align the detector with the corresponding densityGrid boundary, or change that boundary to the detector position; internal and oblique detectors are not supported",
+            });
+        }
 
         // The detector normal points back toward the source, so the edge it faces is
         // the one in the opposite direction.

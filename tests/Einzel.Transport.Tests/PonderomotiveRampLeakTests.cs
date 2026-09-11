@@ -98,6 +98,7 @@ public sealed class PonderomotiveRampLeakTests(ITestOutputHelper output)
         Vec3 dcDirection) : ITimeVaryingField
     {
         public double ShortestPeriodSeconds => PeriodSeconds;
+        public double MonochromaticPeriodSeconds => PeriodSeconds;
 
         public double ResolutionLength => double.PositiveInfinity;
 
