@@ -1982,13 +1982,19 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **And the finding is that it elutes, with a resolving power - my two earlier accounts of
   this were both wrong.** Re-measured on one build, every configuration elutes. The delivered
-  packet collects **99,833.5 of 99,971** ions, mean 15,505.159 us, sigma 159.157, peak
-  elution potential **20.9878 V**, **R = 7.481** - against the analyser alone at 8, so the
-  funnel and gate cost about seven per cent and the delivery costs nothing measurable.
+  packet collects **99,666.7 of 99,954** ions, mean 15,480.750 us, sigma 156.344, peak
+  elution potential **21.1843 V**, **R = 7.674** - against the analyser alone at 8, so the
+  funnel and gate cost about four per cent and the delivery costs nothing measurable. Those
+  are the figures after PR #37, which moved the template's density grid onto the detector
+  plane it had been collecting three millimetres short of; before it they were 20.9878 V and
+  7.481. **The parked packet's equilibrium width is 0.7118 mm on both sides of that move**,
+  which is the control the closed form predicts, since it carries only the gas temperature
+  and the axial gradient.
 
   **Which answers the template's standing question.** A delivered packet and one seeded at the
-  balance point enter the ramp 34 per cent apart in width (sigma_z 0.954 against 0.712 mm) and
-  elute at means agreeing to **eight significant figures**, sigma to six. The arrival width is
+  balance point enter the ramp **1.88x** apart in width (sigma_z 1.3404 against 0.7118 mm) and
+  elute at **identical profiles** - same peak bin, same half-maximum width, same R to every
+  printed digit - their weighted means agreeing to eight significant figures. The arrival width is
   the **analyser's own**: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|` before
   release, and that formula contains nothing about where the packet came from. Two ramps
   beginning 9.7 ms apart land on the same potential to five figures; a *stepped* release is

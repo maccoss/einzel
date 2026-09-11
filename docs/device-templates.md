@@ -1243,32 +1243,47 @@ against the gate, and eluted by walking the exit potential 60 V to zero at 7.5 V
 
 | the packet | how it is released | release begins | ions | mean / us | sigma / us | peak / V | R |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| delivered, x0 = -40 mm | `ramp` 60 to 0 V | 10.3 ms | **99,833.5 of 99,971** | 15,505.159 | 159.1574 | **20.9878** | **7.481** |
-| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 10.3 ms | 85,170.0 of 85,170 | 15,505.159 | 159.1574 | 20.9878 | 7.481 |
-| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 0.6 ms | 85,170.0 of 85,170 | 5,805.161 | 159.1573 | 20.9878 | 7.481 |
+| delivered, x0 = -40 mm | `ramp` 60 to 0 V | 10.3 ms | **99,666.7 of 99,954** | 15,480.750 | 156.3442 | **21.1843** | **7.674** |
+| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 10.3 ms | 85,417.8 of 85,418 | 15,480.750 | 156.3442 | 21.1843 | 7.674 |
 | delivered, x0 = -40 mm | one `set` to 24 V | 10.3 ms | 95,243.8 of 99,920 | 11,922.343 | 178.0472 | - | - |
 | parked, x0 = 21.09 mm | one `set` to 24 V | 0.3 ms | 81,048.6 of 85,170 | 1,922.123 | 179.9054 | - | - |
 
-**The three ramped rows are the same measurement**, and that answers this template's standing
-open question. The delivered packet enters the ramp at sigma_z = 0.954 mm and the parked one
-at 0.712 mm - 34 per cent apart, the parked one being the closed-form equilibrium - and the
-two elute at means agreeing to **eight significant figures** (15,505.159357 against
-15,505.159346 us) with sigma agreeing to six. So **the arrival width is the analyser's own,
-not the delivery's**: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|` before the
-ramp releases it, which is exactly what that closed form says it must, since the formula
-contains nothing about where the packet came from.
+**The two ramped rows are the same measurement**, and that answers this template's standing
+open question. The delivered packet enters the ramp at sigma_z = **1.3404 mm** and the parked
+one at **0.7118 mm** - 1.88x apart, the parked one being the closed-form equilibrium - and
+the two elute at **identical profiles**: the same peak bin, the same 368.047 us of
+half-maximum width, the same R to every printed digit, with the weighted means agreeing to
+eight significant figures (15,480.750244 against 15,480.750223 us). So **the arrival width is
+the analyser's own, not the delivery's**: the packet re-equilibrates to
+`sigma_z^2 = (kT/q)/|dE/dx|` before the ramp releases it, which is exactly what that closed
+form says it must, since the formula contains nothing about where the packet came from.
 
-**And the timeline does not reach the answer either.** Two of those ramps begin 9.7 ms apart
-on the instrument's clock and land on the same elution potential to five figures; on a
-release-relative axis their peaks coincide at 5,205 us. The two stepped releases coincide in
-turn at 1,622 us and are **12 per cent wider** - sigma 178.0 and 179.9 against 159.16 - which
-is the release program showing up as a width where the packet's history does not.
+**These numbers moved when PR #37 landed, and the one that did not is the control.** That PR
+requires a diffusive detector to coincide with a grid face, and this template declared its
+detector at `tunnelLength + detectorPad` (12 mm) while its density grid ran to
+`tunnelLength + exitLength` (15 mm) - so the collecting face was three millimetres past the
+plane the document named, the position having been ignored in favour of the normal. With the
+grid aligned, and with that PR's own RF and cache corrections in (solver behaviour version 2),
+the peak moves 20.9878 to 21.1843 V, sigma 159.157 to 156.344 us and R 7.481 to 7.674.
+**The parked packet's equilibrium width is 0.7118 mm before and after, to four decimals** -
+which is what the closed form requires, since neither the gas temperature nor the axial
+gradient changed, and is the cleanest available check that the rest of the movement is
+geometry rather than arithmetic.
 
-**R = 7.481 against the analyser alone at 8** at the same gas speed and scan rate, so the
-funnel and the gate cost about seven per cent and the delivery itself costs nothing
-measurable. The profile's own FWHM (374.65 us) and the Gaussian equivalent of the second
-moment (374.78) agree to 0.04 per cent, so this peak is not skew - worth stating because the
-arrival-time peaks in the reflectron work here are (skew +3.27).
+**And the timeline does not reach the answer either.** On the geometry before #37, two ramps
+beginning 9.7 ms apart on the instrument's clock landed on the same elution potential to five
+figures, their peaks coinciding at 5,205 us on a release-relative axis; the two stepped
+releases coincided in turn at 1,622 us and were **12 per cent wider** - sigma 178.0 and 179.9
+against 159.16 - which is the release program showing up as a width where the packet's history
+does not. Those four runs are not re-measured on the new geometry, so the widths quoted for
+them are the old ones; what the re-measurement establishes is the delivered-against-parked
+identity, which is the claim the template's open question was about.
+
+**R = 7.674 against the analyser alone at 8** at the same gas speed and scan rate, so the
+funnel and the gate cost about four per cent and the delivery itself costs nothing measurable.
+The profile's own FWHM (368.047 us) and the Gaussian equivalent of the second moment (368.159)
+agree to 0.03 per cent, so this peak is not skew - worth stating because the arrival-time
+peaks in the reflectron work here are (skew +3.27).
 
 ### The frozen result, and why it is recorded as unexplained rather than explained
 

@@ -2306,15 +2306,20 @@ project's author needs to run it and more than any physics the moment one does.
    from both sides by a test that requires 1e-11 to be held and 1e-5 to be caught.
 
    **And the finding is that it elutes, with a resolving power.** Re-measured on one build,
-   every configuration of the document elutes: the delivered packet collects **99,833.5 of
-   99,971** ions at a mean of 15,505.159 us and sigma 159.157, giving a peak elution potential
-   of **20.9878 V** and **R = 7.481** against the analyser alone at 8 - so the funnel and gate
-   cost about seven per cent.
+   every configuration of the document elutes: the delivered packet collects **99,666.7 of
+   99,954** ions at a mean of 15,480.750 us and sigma 156.344, giving a peak elution potential
+   of **21.1843 V** and **R = 7.674** against the analyser alone at 8 - so the funnel and gate
+   cost about four per cent. Re-measured after PR #37, which moved this template's density
+   grid onto the detector plane it had always collected three millimetres short of; the
+   parked packet's equilibrium width is unchanged at 0.7118 mm across that move, which is the
+   control, since the closed form for it contains only the gas temperature and the axial
+   gradient.
 
    **That answers this item's standing question.** A delivered packet and one seeded at the
-   balance point enter the ramp 34 per cent apart in width (sigma_z 0.954 against 0.712 mm,
-   the latter being the closed-form equilibrium) and elute at means agreeing to **eight
-   significant figures**. So the arrival width is the **analyser's own**, not delivery spread
+   balance point enter the ramp **1.88x** apart in width (sigma_z 1.3404 against 0.7118 mm,
+   the latter being the closed-form equilibrium) and elute at **identical profiles** - the
+   same peak bin, the same half-maximum width, the same R to every printed digit - with their
+   weighted means agreeing to eight significant figures. So the arrival width is the **analyser's own**, not delivery spread
    the ramp reads as mobility: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|`
    before release, which the closed form requires, since it contains nothing about the
    packet's history. Two ramps beginning 9.7 ms apart on the instrument's clock land on the
