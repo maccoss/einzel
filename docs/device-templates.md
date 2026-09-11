@@ -1071,13 +1071,113 @@ That is what a funnel's effective wall is worth against a steady axial push, and
 Hernandez's sequence closes the gate *and* diverts the beam upstream with a deflector plate
 during the trap. A gate alone is a beam dump.
 
-**The whole sequence end to end is a study rather than a test, and it did not finish** — 4.75
-CPU-hours at 512 × 64 over 18 ms, and then 40 minutes at 256 × 32 over 12 ms, both killed.
-What the pieces already say is that it should hold no surprises: the funnel delivers to the
-analyser's own parking point and radius, and from there the elution is the analyser's,
-measured above. The number worth having from it is whether the arrival width is the
-analyser's too, or whether the delivery leaves an axial spread the ramp then reads as
-mobility.
+**The whole sequence end to end is a study rather than a test, and it has now failed to
+finish three times** — 4.75 CPU-hours at 512 × 64 over 18 ms, 40 minutes at 256 × 32 over
+12 ms, and 7.6 wall-hours at 512 × 64 against a predicted 4.17 before a Windows update
+rebooted the machine under it. It has produced no output on any attempt. Two things follow.
+The estimate is **not** the reason to distrust the plan — it said 4.17 h and the run passed
+that by 81 % with nothing else on the machine — so either the estimate is low for this
+model or the run does not terminate, and **which of those it is has never been established
+because no run has ever ended.** And a study measured in hours needs to survive an
+interruption: there is no checkpoint, so seven hours of a killed run is worth exactly
+nothing.
+
+### The open question is answered, by a matched pair rather than by the whole sequence
+
+The question was whether the arrival width is the analyser's own resolution or whether the
+delivery leaves an axial spread the ramp reads as mobility. It did not need the 18 ms
+sequence: it needed **two runs differing in one thing**, both stopped at the end of the
+trap, because the width the ramp will read is the width the packet has when the ramp
+starts.
+
+| at the end of the trap | axial σ | radial σ |
+| --- | --- | --- |
+| **delivered** — released 40 mm up the funnel, the shipped sequence | **1.7057 mm** | 0.6541 mm |
+| **parked** — released at the balance point, everything else identical | **0.7118 mm** | 0.1643 mm |
+
+**The delivered packet is 2.4× wider, so the width is mostly delivery** — but the sharper
+reading is in the two phases of each run. The parked packet is *settled*: 0.7119 mm at the
+end of its fill and 0.7118 at the end of the trap, so it has forgotten its 2 mm launch
+width. The delivered one is **still narrowing** — 1.9318 mm then 1.7057 mm. So delivery does
+not imprint a permanent width; the delivered packet **arrives wide and has not finished
+relaxing** in the 300 µs the shipped sequence gives it, which is a statement about the trap
+duration and therefore about a knob.
+
+**The analyser's own floor is a closed form, and the mobility cancels out of it.** Near the
+balance point the net axial drift is linear in displacement — `v(x) = K E(x) − u`, zero at
+`x₀` — so the stationary state of drift against diffusion is a Gaussian with
+
+```
+σ_z² = D / (K |dE/dx|) = (kT/q) / |dE/dx|
+```
+
+by the Einstein relation. **The width depends on the gas temperature and the axial field
+gradient and on nothing else** — not the ion, not the gas speed, not the pressure. Those set
+*where* the packet parks and not how wide it is, which makes the floor a property of the
+analyser rather than of what is in it. Measured against it:
+
+| | \|dE/dx\| at the parking point | σ_z |
+| --- | --- | --- |
+| nominal `2V/L²` | 55,319 V/m² | 0.6836 mm |
+| **solved field, differenced off the exported potential** | **50,667 V/m²**, 0.916 of nominal | **0.7143 mm** |
+| implied by the measured width | 51,010 V/m², 0.922 of nominal | — |
+| **measured, parked** | — | **0.7119 mm** |
+
+**0.34 % against the closed form once the gradient comes from the solved field**, and the
+8 % gradient shortfall is the exit element flattening the gradient toward the exit — already
+recorded above as the field peaking at 41.2 mm of 46.6. Same shape as the mirror's
+four-penetration-depth rule being 10 mm out: the formula is right and the number fed into it
+is not.
+
+Two checks came free. The solved axial field at the parking point is **−1170.03 V/m** against
+`v_gas/K` = 1168.2 — **0.16 %**, so the elution relation is confirmed off the exported field
+with no ion involved. And the width is **mesh-independent**: 0.7119 mm at both a 0.47 mm and
+a 0.23 mm axial cell, identical to four decimals, because Scharfetter–Gummel's zero-flux
+state *is* the Boltzmann factor and the equilibrium width is the scheme's exact answer rather
+than something converging to one. The **radial** width does move with the mesh (0.2043 →
+0.1643 mm), which is the control that makes the axial claim mean something: 0.406 mm cells
+are wider than a 0.16 mm width and 0.203 mm ones are not. The settled radial 0.1643 mm is
+also consistent to 4 % with the analyser template's validated 0.3406 mm rms radius, through
+the geometry of a 2-D Gaussian (std of r = σ√(2−π/2), rms r = σ√2).
+
+**What the two loss figures say, since they look backwards.** The parked run lost 14 % and the
+delivered one 0.3 %. A 2 mm-σ packet released *inside* a 4 mm bore has exp(−2) = 13.5 % of
+itself inside the metal at t = 0 — the seed's own overlap, deleted and counted — while the
+delivered packet starts where the funnel is 26 mm wide and the RF squeezes it in. Equilibrium
+is memoryless, so which ions were lost at t = 0 does not bias the settled width, and the
+0.34 % agreement with the closed form is what says so.
+
+**And the relaxation time is measured, to about one per cent.** The same linearization gives
+the variance a single relaxation time — `σ²(t) = σ²_eq + (σ²_0 − σ²_eq)exp(−2K|E'|t)`, so
+`τ = 1/(2K|E'|)` = **231 µs** here, half the centroid's because a variance is a second moment.
+Measured by splitting one hold into phases that double in length, which needs no new
+capability at all now that every phase boundary reports a width:
+
+| interval | excess variance, mm² | implied τ |
+| --- | --- | --- |
+| 100 → 200 µs | 2.2696 → 1.4699 | **230.2 µs** |
+| 200 → 400 µs | 1.4699 → 0.6197 | **231.6 µs** |
+| 400 → 800 µs | 0.6197 → 0.1114 | **233.1 µs** |
+| 800 → 1600 µs | 0.1114 → 0.0037 | **234.5 µs** |
+
+A packet released 2 mm wide comes down to **0.7117 mm** and stays there — 1.6662, 1.4059,
+1.0613, 0.7861, 0.7143, 0.7117, 0.7117 mm across the seven holds — so the equilibrium the
+closed form predicts is reached from four times that width, and the excess over it decays as
+a plain exponential at the predicted rate across four octaves. The 2 % upward drift in τ from
+the wide end to the narrow end is recorded as measured rather than explained. Every hold
+assembled its operator **once**, which is the held-phase fix doing what it was for.
+
+**That refutes one of the two explanations the delivered packet's slowness had.** Its
+1.9318 → 1.7057 mm over 300 µs implies **1019 µs, 4.4× slower** than 231, and the two
+candidates were a tail dominating a second moment or the linearization failing over a packet
+several millimeters wide. **It is not the width.** The parked packet's first interval is
+measured at σ = 1.67 mm — ±5 mm at three sigma, sampling the gradient over more than twice the
+span the objection was about — and it relaxes at 230 µs there, the predicted rate, from the
+widest point on the curve. What is left is the delivered packet's own shape: a second moment
+carrying a shoulder, or a population still being carried in while the trap holds. Either way
+the reading for a spectrum is *sharp with a shoulder* rather than broad, and the run that
+separates them is the delivered packet given time to relax (`delivered-relax`, the same seven
+doubling holds after the shipped delivery).
 
 **Why it costs what it does, and the fix it points at.** A ramped diffusive phase re-assembles
 its face operator every step, which is what a changing field requires. Here the field is
@@ -1107,10 +1207,104 @@ averaging window predicts that a slower ramp gives less, and a hundredfold slowe
 **3.6e-5, larger**. It scales as 1/amplitude instead - 7.0e-5 / 1.8e-5 / 1.2e-6 at 25 / 100
 / 400 V - the signature of an additive contamination cross-multiplied with the drive.
 
-So the sequence is still blocked, **by the jitter rather than by the absence of a cache**,
-and the tolerance is deliberately not loosened to cover it: a tolerance chosen larger than
-an unexplained variation is caching over that variation. The same 1.8e-5 is also an accuracy
-statement - a ramped driven diffusive well is not the well to better than about 1e-5.
+That was fixed by holding the operating point, which took the well's movement across a
+cycle to 6.53e-14, and the tolerance was deliberately left at 1e-12 - a tolerance chosen
+larger than an unexplained variation is caching over that variation.
+
+### The sequence runs end to end, and the cache's own check was what stopped it
+
+**905 seconds - fifteen minutes - for the whole 18.3 ms of fill, trap and ramp at 256 x 32.**
+It had failed to complete on four previous attempts, and the last of the cost was a cache
+establishing that a quantity it could not have changed had not changed.
+
+Split three ways on the elution ramp: the density step 0.005 s, the face assembly 0.0035 s,
+and 1.38 s in `Refresh`. Sixteen rebuilds over a 69-step ramp at about six seconds each, plus
+a sixteen-node probe on every step in between - so the full ramp is around 17,000 rebuilds,
+or **28 hours**, of recomputing the cycle mean square of an oscillation a DC ramp does not
+touch.
+
+**The residual movement is now explained, which is what licenses loosening the bar the
+paragraph above declined to loosen.** The well is a mean square taken after removing the
+mean, and the mean here is a DC field the ramp walks from 60 V to zero - so the noise floor
+of that subtraction is proportional to a quantity that changes by everything while the well
+changes by nothing. Measured at about 2.5e-13 of the deepest well per step, which crosses
+1e-12 in four steps and then does so forever. The bar is 1e-9 now, which on a 30 V well
+admits 3e-8 V against a thermal `kT/q` of 0.026 V, and the probe visits one lattice node per
+call rather than all sixteen. Both are pinned by tests from each side: a change of 1e-11 must
+be held and one of 1e-5 must be caught. **16 rebuilds became 1 and sigma_z is identical to
+all six printed digits.**
+
+### And the finding is that it elutes: R = 7.48 through the whole front end
+
+**Every configuration measured on one binary elutes.** The table below is the four-cell
+comparison that earlier appeared here with one cell reading "frozen"; re-measured on a single
+build, the frozen cell is gone. A packet released 40 mm up the funnel, carried in, held
+against the gate, and eluted by walking the exit potential 60 V to zero at 7.5 V/ms:
+
+| the packet | how it is released | release begins | ions | mean / us | sigma / us | peak / V | R |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| delivered, x0 = -40 mm | `ramp` 60 to 0 V | 10.3 ms | **99,833.5 of 99,971** | 15,505.159 | 159.1574 | **20.9878** | **7.481** |
+| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 10.3 ms | 85,170.0 of 85,170 | 15,505.159 | 159.1574 | 20.9878 | 7.481 |
+| parked, x0 = 21.09 mm | `ramp` 60 to 0 V | 0.6 ms | 85,170.0 of 85,170 | 5,805.161 | 159.1573 | 20.9878 | 7.481 |
+| delivered, x0 = -40 mm | one `set` to 24 V | 10.3 ms | 95,243.8 of 99,920 | 11,922.343 | 178.0472 | - | - |
+| parked, x0 = 21.09 mm | one `set` to 24 V | 0.3 ms | 81,048.6 of 85,170 | 1,922.123 | 179.9054 | - | - |
+
+**The three ramped rows are the same measurement**, and that answers this template's standing
+open question. The delivered packet enters the ramp at sigma_z = 0.954 mm and the parked one
+at 0.712 mm - 34 per cent apart, the parked one being the closed-form equilibrium - and the
+two elute at means agreeing to **eight significant figures** (15,505.159357 against
+15,505.159346 us) with sigma agreeing to six. So **the arrival width is the analyser's own,
+not the delivery's**: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|` before the
+ramp releases it, which is exactly what that closed form says it must, since the formula
+contains nothing about where the packet came from.
+
+**And the timeline does not reach the answer either.** Two of those ramps begin 9.7 ms apart
+on the instrument's clock and land on the same elution potential to five figures; on a
+release-relative axis their peaks coincide at 5,205 us. The two stepped releases coincide in
+turn at 1,622 us and are **12 per cent wider** - sigma 178.0 and 179.9 against 159.16 - which
+is the release program showing up as a width where the packet's history does not.
+
+**R = 7.481 against the analyser alone at 8** at the same gas speed and scan rate, so the
+funnel and the gate cost about seven per cent and the delivery itself costs nothing
+measurable. The profile's own FWHM (374.65 us) and the Gaussian equivalent of the second
+moment (374.78) agree to 0.04 per cent, so this peak is not skew - worth stating because the
+arrival-time peaks in the reflectron work here are (skew +3.27).
+
+### The frozen result, and why it is recorded as unexplained rather than explained
+
+An earlier run of the same document collected **7.74e-245** ions and sat at 21.14 mm. It is
+**not reproducible on the current build** and its cause is not established. What is
+established is what it was not:
+
+- **Not the ramp spelling.** A ramp elutes in three of the rows above.
+- **Not the delivery.** The delivered rows elute, ramped and stepped.
+- **Not the late start.** A ramp beginning at 10.3 ms elutes, parked and delivered.
+- **Not a stale operator.** The ramp phase re-assembles 67,828-68,216 times either way, so
+  the field is re-sampled at every step in all of them.
+- **Not the well cache.** This was the leading hypothesis, because the frozen run is the only
+  one on an engine predating the cache's tolerance change and that commit is the only one
+  between them touching a physics file. Reverting `PonderomotiveWellCache.cs` to its earlier
+  form on the current build gives **10,794 well rebuilds against 1** and the same answer to
+  **13 significant figures** (99,833.4920418748 ions, mean 15,505.159357357079 us, against
+  99,833.49204187385 and 15,505.159357357172). So the cache is excluded, and as a side effect
+  its bit-identical claim is now measured on the model that motivated it rather than on the
+  analyser alone.
+
+**The probe that appeared to clear the ramp did not.** It showed the potential at the parking
+point falling 11.100 V to 0.720 V through a ramp phase - on a model scaled a thousandfold in
+time, so its ramp began at 10.3 *us* where the real one begins at 10.3 ms. A probe only probes
+what it holds constant, and that one moved the quantity the frozen run differs in. The
+assembly count is what covers the real instant, and it was already being recorded.
+
+**Its provenance is gone, and that is my doing.** `results/` is keyed by the model's stem, so
+each re-run of `delivered.json` overwrote the manifest of the run before it - including the
+model hash that would have said whether the *document* was the same at the time. PRJ-4's
+"results are regenerable rather than precious" holds while a run reproduces; an anomaly is
+precisely the case where it may not, and copying the manifest aside costs nothing. In
+`docs/lessons.md`.
+
+**The exit fringe is no longer a candidate for anything.** It was proposed to explain a
+barrier that is not there.
 
 **What this template does not carry.** No deflector plate, so a continuous beam cannot be
 diverted during the trap and the fill is a single released packet rather than ten milliseconds

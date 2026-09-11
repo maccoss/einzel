@@ -3548,3 +3548,592 @@ The part worth keeping is how nearly it hid. At the shipping threshold that test
 nodes, below the cut, so it takes the serial path and passes - the defect only exists on a
 configuration nobody ships. It would have waited there until somebody lowered the threshold or
 grew the grid, and then presented as the well cache having regressed.
+
+## A shortcut that trades accuracy for speed is only as good as the ratio it assumes
+
+`einzel estimate` omitted the drift limit for any model whose field had to be solved, and said
+so in the code:
+
+> solving the field to estimate the cost of the run defeats the purpose of estimating
+
+**That is sound in general and wrong by four orders for one mode.** For a trajectory model the
+solve really is most of the cost, so the argument holds. For a diffusive one the run solves the
+same field and then steps through it a hundred thousand times, so the solve is 1.81 s of
+197,000 - and omitting it left the gate reporting **8 s for a fifty-five-hour run**, on the one
+verb whose entire job is deciding whether to commit hours.
+
+**The assumption was never written down, which is why it outlived the case it was true for.**
+The comment gives the conclusion - solving defeats the purpose - and not the ratio the
+conclusion rests on, which is that a solve is comparable to a run. Where a shortcut trades
+accuracy for speed, **state the ratio it assumes**, because a second mode will arrive for which
+the ratio is different and the sentence will still read as true.
+
+The corrected form is structural rather than a threshold anybody has to defend: **a diffusive
+run cannot be cheaper than its own solve.** So solving to estimate costs at most the run's
+unavoidable floor, whatever the model, and the gate now reports what it spent. It is bounded
+too - the diffusive mode is two-dimensional, so this is never a volume solve.
+
+**And the same fix found the ninth instance of the recurring defect, in the cost gate itself.**
+The sampling loop read `field.ElectricFieldAt(point)` - the time-free arm - so for a driven
+geometry it took the RF at an arbitrary instant rather than the cycle average the run drifts
+through. `GRD-8`'s claim is that estimate and run *call the same function*; that was true of the
+step rule and not of the field it was handed.
+
+**The check that says the two now measure one thing** is not the agreement itself but its
+independence: the estimate finds a 58.5 ns step, and counting the probe's assemblies - one per
+step in a ramped phase - gives 56 ns from a completely separate route.
+
+## Nothing had ever read a result document back, and both halves of the round trip were broken
+
+`einzel report` reads `results/*.result.json`. It is the first thing here that ever has:
+`verify` walks the manifests and checks hashes without opening a result, and `test` re-flies
+the model rather than reading a stored answer. So the first reader found two defects on its
+first run against a real project, and both had been true for every run this project has
+stored.
+
+**The sequenced run path wrote a manifest and no result.** Three of the four paths wrote one;
+this one wrote provenance and no answer. It is the path every TIMS study takes, so the runs
+whose answers were missing were exactly the ones most worth reading. This is the recurring
+"a capability wired into N-1 of N paths" shape, and what is new is *how* it was found: not by
+a failing test, but by writing the first consumer. **A producer with no consumer is unchecked
+however many tests it has**, because every test written from inside the project asserts what
+was computed rather than what was stored.
+
+**And a result document did not read back into the record that wrote it.** The emittance
+fields are `required double?` - the surface's way of saying the construction site must decide
+and the answer may be nothing. `WhenWritingNull` omits a null on the way out and C#'s
+`required` demands the property on the way in, so one keyword carried two meanings and they
+disagreed. The document was unreadable exactly when a value was *absent* - a trap, or a run
+where nothing arrived - so PRJ-3's "regenerate and compare" was impossible for every ensemble
+run of that kind, and nothing said so because **writing succeeded**.
+
+The general statement: **`required` on a serialised record is a claim about the document as
+well as about the constructor**, and a default that omits nulls turns the two into a
+contradiction.
+
+### And my first fix was the wrong one of the two, which a test written months earlier caught
+
+Writing every required property including its nulls round-trips just as well. It also
+**changed the published document** for every ensemble run - and this surface's own policy,
+recorded in four places, is that an undefined measurement is *absent*, with a test spelling
+out why: "a consumer distinguishes 'no orientation' from 'zero' by the key not being there."
+Any consumer that had believed the surface would have started reading a null where it expected
+absence.
+
+Both fixes satisfy the rule as I had written it down, and one of them breaks something else,
+so the rule as written was not precise enough. **The precise version is about which
+requirement is which**: absence of `required int Launched` is a malformed document, and
+absence of `required double? EmittanceMmMrad` is this surface's own encoding of *no value*, so
+demanding it on read was demanding that the encoding not be used. Relaxing the requirement on
+the reading side fixes the round trip and changes no byte of output.
+
+**What generalises: when two fixes both satisfy the rule you wrote down, the rule is
+underdetermined, and one of them is probably changing something the rule was not about.** The
+tell here was that one fix touched the output and the other did not - and the thing being
+fixed was an input.
+
+The other half is worth keeping too. The test that caught it was not mine and not new: it
+existed because a NaN Twiss angle had taken the serialiser down long before, and it asserted
+the *encoding* rather than only the absence of a crash. **A test that pins a wire format is
+what makes a compatibility break visible as a failure instead of as a support question.**
+
+**My first version of the test could not have caught it.** A packet that arrives writes every
+field and round-trips fine; the case that discriminates is a run whose ensemble measured
+nothing. That is the straddling rule this page already carries in three other places - a test
+whose parameter sits on one side of the value the behaviour switches at is a test of a
+different regime - met here on an *absence* rather than on a dimensionless number.
+
+### The corrected claim, and my first version of it was wrong
+
+I wrote, in the code and in the commit I was drafting, that `einzel verify` "had nothing to
+check a sequenced run against". **It did not need one.** Verify enumerates manifests and
+compares the model hash and the solver-behaviour version; it never opens a result. So it had
+been reporting sequenced runs as current all along - correctly, about drift, over an answer
+that was not there. The defect is real and its consequence was one step further away than I
+first wrote it: not that verification was broken, but that there was nothing stored for a
+*reader* to read.
+
+**Worth keeping because the wrong version is more satisfying.** "The verifier was blind" is a
+sharper story than "a document nobody read was absent", and it was the version I reached for
+before checking what verify actually opens.
+
+## A mark on everything marks nothing
+
+The report gives an unsuppressible warning a hatched band - the device `Einzel.Render` puts
+across a tainted figure, so the vocabulary is already this project's. Keyed on
+`IsSuppressible`, which is false for **everything above advisory**, so it landed on a
+housekeeping note about a convergence floor and on almost every warning there is.
+
+GRD-3's argument is that a validity violation must never be skimmed. The failure mode it
+warns about is a false alarm on that class teaching readers to ignore it; **the same
+teaching happens when the mark is true of nearly everything**, which is the other direction
+and is not written down anywhere in the requirement. Four severities exist and they mean
+different things, so the page has four levels and the hatch is for `ValidityViolation` alone.
+
+The headline count moved for the same reason. "Runs carrying an unsuppressible warning" is
+almost every run - eleven of this project's own thirty-nine corpus examples carry one while
+behaving exactly as designed, which was measured when the exit code was being decided and
+already written down. Counting them in a masthead would have been the same mistake in the
+same file twice.
+
+## A fraction and its interval live in the same units
+
+The page printed `transmission 0.00 %, interval 0 to 1`. Both are correct; only one had been
+scaled. Two numbers about one quantity in two different units, side by side - which is the
+ambiguity section 9 refuses a model document for (`{"energy": 4000}` is a validation error on
+purpose), met on the output side where nothing refuses it.
+
+The value was a hundred times smaller than the run measured, and it read as plausible: a
+transmission of 0.00 % is exactly what a trap reports. **A unit error is worst where the wrong
+answer is a legitimate value of the same quantity.**
+
+The second half is rounding. `F2` turns 99.9976 % into `100.00 %`, which claims every ion
+arrived when 0.24 of ten thousand did not - and for a diffusive run the density's tail is
+precisely where the loss lives. The format now widens only where rounding would land on
+nothing or on everything without being there, so an ordinary figure stays short and the two
+values that carry a claim of completeness are never claimed falsely.
+
+## I made the defect I had just written a command to expose
+
+`einzel report` exists because the sequenced run path stored a manifest and no result - one
+of four paths missing a capability the other three had. The first version of the report
+looked in `results/` for `X.result.json` and nothing else.
+
+**A study writes `X.json`, not `X.result.json`.** So every sweep, scan, optimisation and
+boundary search in a project was reported as a run that had stored nothing, with the warning
+about it attached - and the projects with the most work in them would have said it loudest.
+The same "wired into N-1 of N" shape, in the command written to expose that shape, inside an
+hour.
+
+**What would have caught it is enumerating the writers, and I enumerated the readers.** I
+checked which run paths wrote a result and found the gap; I did not ask which *commands*
+write into `results/` at all. `grep` for the directory would have given two answers in one
+line. **When fixing an "N-1 of N" defect, the N is the set of writers, and the count you
+arrive at by reading the code you are already in is a count of the ones you were looking
+at.**
+
+The fix generalises rather than listing kinds: **the answer sits beside the manifest under
+the manifest's own stem** - `.result.json` for a run, `.json` for a study - so a fifth kind
+of study would be found by the same rule.
+
+**And the three empty states had to be separated.** A run with no stored answer, a study's
+answer this page does not draw, and a document this build cannot load all show an empty
+table, and each calls for something different: run it, read it another way, report a defect.
+The first version filed the first and third together under one count and told the reader to
+do the wrong thing.
+
+## Two assertions covering two failure modes, and I had which was which backwards
+
+A packet held against a moving gas settles to `sigma^2 = (kT/q)/|dE/dx|` - the Einstein
+relation cancels the mobility, so the width is a property of the analyser and not of the ion
+in it. The test asserts two things: where the packet parks, and how wide it is. I wrote down
+that the *width* was the discriminating one, on the argument that a broken drift-to-diffusion
+ratio would move it with the mobility.
+
+**Running the mutations said otherwise, exactly:**
+
+| mutation | parking point | width |
+| --- | --- | --- |
+| Einstein relation (`D`) x 1.44 | x 1/1.44 = 0.694 | **unchanged, 1.0000 mm** |
+| thermal voltage (`kT` in the flux) x 1.44 | x 1.44 | x sqrt(1.44) = 1.2000 mm |
+
+Scharfetter-Gummel's zero-flux state is `exp(-q phi / kT)`. The equilibrium involves `kT` and
+**not** `D`, so the width is invariant to the diffusion coefficient *by construction* and `D`
+sets only how fast the packet gets there. What the balance point tests is the identity
+`q dphi/kT == v h / D` between the field term of the exponent and the gas term - **which is
+the Einstein relation.** So the parking point is the Einstein check and the width is the
+Boltzmann check, and neither alone covers the other.
+
+**The rule: a test with two assertions is two tests, and which failure each catches is a
+measurement rather than a reading.** Both of mine were necessary and I could not have said
+which was which from the algebra I had in front of me. The habit that pays is running one
+mutation per suspected mechanism and writing the table down, rather than arguing from the
+formula about what a wrong implementation would do.
+
+### And a third assertion that catches neither
+
+The companion test asserts the width does not move with the mesh - 0.00 um across a fourfold
+refinement, which is a strong and tolerance-free property, because the discrete equilibrium
+*is* the continuous one. **It passes under both mutations**, reporting 1.2000 mm at every mesh:
+internally consistent and absolutely wrong. Mesh-independence is a claim about resolution and
+says nothing whatever about the value. It earns its place beside the closed-form comparison
+and would be worthless in place of it.
+
+## Seven hours of a study that has never once finished is worth nothing, and the reason is the absence of a checkpoint
+
+The TIMS front-end sequence has now failed to complete three times: 4.75 CPU-hours at
+512 x 64, 40 minutes at 256 x 32, and 7.6 wall-hours at 512 x 64 against an estimate of 4.17
+before a Windows update rebooted the machine. **It has produced no output on any attempt**, so
+the one thing that would settle whether the estimate is low or the run does not terminate has
+never been observed.
+
+Two rules, and the second is the one that cost this.
+
+**A run measured in hours needs to emit something before it ends.** The engine writes its
+result at the end, so an interrupted run leaves nothing at all - not a partial density, not a
+step count, not the per-phase widths it had already computed. A study whose output is
+all-or-nothing at hour seven is a study that cannot be run on a machine somebody else
+administers.
+
+**And the question did not need the long run.** The open question - is the arrival width the
+analyser's own or the delivery's - was answered by two runs of 39 and 122 minutes that differ
+in *one parameter*, both stopped at the end of the trap, because the width the ramp reads is
+the width the packet has when the ramp starts. Measuring the decisive quantity directly was
+about eight times cheaper than measuring it at the end of the pipeline that produces it, and
+it removed a second claim (that the ramp is modelled right) from the answer. **Before paying
+for the whole sequence, ask which phase the number actually lives in.**
+
+**Both are now built, and the first one cost less than the argument for it.** `einzel run`
+reports on stderr every thirty seconds by default and rewrites a checkpoint beside its
+manifest, holding where it is, the phases that finished whole, and each population's center
+and width. The interval is a default rather than a flag because **a flag somebody has to
+remember is a flag that is not set on the run that gets killed**, and the file is removed when
+the run writes its answer, so finding one means the run did not finish - which needs no
+timestamp comparison to read. `docs/cli.md` carries the details.
+
+Three things it taught while being built.
+
+**A projection from total elapsed time is a projection of the solve.** The first version
+divided wall clock by the fraction of the phase simulated, which charges the one-off solve to
+every remaining microsecond: 82 minutes against an actual 23 on the shipped analyzer, and
+17,576 minutes on the very first report, where one step had been taken. Measuring the rate
+*between* reports fixed it and held at 23 minutes across three consecutive reports. Same rule
+`einzel estimate` reached when it started excluding process start: **a rate measured over a
+window containing a fixed cost is not a rate.**
+
+**An observer handed a live buffer has to be proved harmless.** Reporting is cheap only
+because the solver hands over its own density rather than a copy, and *which* steps report is
+set by the wall clock - so a consumer that wrote into what it was shown would produce numbers
+that still looked like measurements and were not even reproducible. Two runs of one seeded
+model, one silent and one reporting every step, are asserted equal to the last digit; the
+mutation that adds `1e-9` to one cell in the observer fails that test and nothing else.
+
+**And the run it was built for is the last thing that will be invisible.** The two relaxation
+runs launched before it existed were started from an older binary snapshot and emit nothing.
+The longer of the two was restarted from the new one at a cost of 32 minutes, which is the
+trade in its plainest form: half an hour of machine time to convert a 2.7-hour all-or-nothing
+run into one that banks each phase as it finishes.
+
+## A snapshot of a bin directory is the last build, and after a mutation test the last build is the mutation
+
+Long studies here run from a copy of the CLI in the scratchpad rather than from
+`src/Einzel.Cli/bin`, because editing source while a run holds those binaries blocks the
+build - which cost several hours over one night. The copy is made with `cp -r
+src/Einzel.Cli/bin/Debug/net10.0/*`.
+
+**Three mutations were run to check the new checkpoint's tests had teeth, the source was
+restored and verified byte-identical, and the snapshot was taken without rebuilding.** So the
+snapshot carried the third mutation - `Wants => false`, which disables progress reporting
+entirely - and the four-hour run started from it reported nothing at all. That reads exactly
+like the feature not working, and half an hour went into looking for the bug in code that was
+correct.
+
+What makes it worth writing down is how *plausible* the failure was. The mutated binary still
+announced each finished phase, because that path does not go through `Wants`; it still computed
+the right physics, because the observer is provably inert; and `--progress notanumber` was still
+refused with the right message, because the argument parsing is in a different assembly. Three
+checks that the feature was present all passed.
+
+**Two rules.** A binary snapshot is only as current as the last `dotnet build`, so **build
+immediately before copying, and stamp what was copied** - this project already learned the
+same thing when a snapshot came out labelled with the commit *before* the one whose code it
+contained. And **restoring the source after a mutation test is half the job**: the bin
+directory is still mutated until something rebuilds it, so a mutation test should end with a
+build, not with a `cp` of the backup.
+
+## A producer written without its reader, for the third time in three days
+
+`einzel report` exists because a night's runs left `results/*.json` that only a parser could
+read. Writing it found that the sequenced run path stored no result at all, and that a result
+document did not read back into the record that wrote it - both defects of the same shape,
+a thing produced with nothing downstream consuming it.
+
+Then the same shape twice more, in code hours old each time.
+
+**The per-phase packet width reached the result document and not the report.** It was added
+because a TIMS study's open question is "how wide is the packet when the ramp starts", and the
+report's sequenced arm yielded phases, conversions, arrived, mean arrival and arrival spread -
+every property of the whole run, and not the one quantity the study was about.
+
+**And the checkpoint above was very nearly written with nothing reading it.** A run that did
+not finish leaves a `.progress.json` and no result, and the report would have said only that
+"its answer is nowhere" - true, and it discards the phases that did finish, which for a
+relaxation study is most of the measurement. It now reads the checkpoint, says how far the run
+got, and draws the completed phases **through the same rendering a finished run's go through**,
+because a checkpoint and a result describe a phase in the same record.
+
+The rule that generalizes is not "write the reader too" - it is about where to look. Both
+report defects were found by *enumerating the writers into `results/`* rather than the readers
+of it; the run paths were enumerated first and that is what missed the studies. **After adding
+a producer, ask what reads it, and answer by enumerating consumers rather than by recalling
+one.**
+
+## A cache's own invalidation check cost more than the work it was avoiding
+
+The ponderomotive well cache exists because computing the well is expensive: on the shipped
+TIMS front end it is 8,448 nodes times seven offsets times sixteen cycle samples, about six
+seconds. It holds the well across steps and rebuilds only when the well has moved, which it
+establishes by probing sixteen nodes and comparing against what it holds.
+
+**On the front end's elution ramp it cost 1.38 seconds per step and the well never moved.**
+Split three ways: the density step 0.005 s, the face assembly 0.0035 s, and everything else
+in `Refresh`. Sixteen rebuilds over a 69-step ramp at six seconds each, plus a sixteen-node
+probe at 60 ms on every step in between. Over the full 8 ms ramp that is around 17,000
+rebuilds - **28 hours** - to compute a quantity a DC ramp cannot change, because the well is
+the cycle mean square of the *oscillating* field and a DC ramp moves no amplitude, frequency
+or phase.
+
+**What moved was the round-off, and the tolerance was below it.** The well is a mean square
+taken after removing the mean; the mean is a DC field the ramp walks from 60 V to zero, so
+the noise floor of that subtraction is proportional to a quantity that changes by everything
+while the well changes by nothing. Measured at about 2.5e-13 of the deepest well per step,
+which accumulates past a 1e-12 tolerance in four steps and then does so forever.
+
+**A tolerance below the arithmetic's own floor is not a tight tolerance - it is a tolerance
+that has stopped testing anything but the last few bits.** It reads as caution and behaves as
+a cache that never caches. Two changes, and the error each admits is stated: the bar is now
+1e-9 of the deepest well, which on a 30 V well is 3e-8 V against a thermal `kT/q` of 0.026 V;
+and the probe visits one lattice node per call rather than all sixteen, so a well that really
+moves is noticed within sixteen steps rather than within one - a fraction of a microsecond of
+instrument time, over which a sequence cannot change an amplitude, because it changes them at
+phase boundaries and every boundary starts a new cache.
+
+Both are pinned by tests that fail if the bar moves either way: a change of 1e-11 must be
+held and one of 1e-5 must be caught, and the probe cost is pinned as an evaluation count so
+that neither a wider lattice nor a return to probing all of it can quietly restore the cost.
+
+**And the diagnosis took four wrong turns, all of them mine, all recorded here already.**
+
+**I optimized the half I assumed.** The first fix was to sample the coefficient arrays at a
+ramped phase's two ends and interpolate, since they are affine in the ramp fraction. It works
+- 149 affine samples, zero re-samples - and it bought nothing, because sampling was 0.008 s
+of a 1.38 s step. `docs/lessons.md` already says *measure which half is slow before optimizing
+the half you assumed*, from the space-charge work.
+
+**Then I measured on a loaded machine.** The first per-step figures came off a run sharing the
+box with a companion run and repeated solution builds, which is where an 86x turned into a
+1.5x once the machine was idle. This file already carries that rule about `einzel estimate`.
+
+**Then I built a probe that could not see the cost.** Scaling every phase to a thousandth
+scales the step count and not the state the fill leaves behind, so the probe's ramp ran on a
+density that had never been delivered - 0.01 s per step against the real 1.38. A probe is only
+a probe of what it holds constant.
+
+**And the affine fix was then reverted**, because it changes the stability step in its last
+bits and so the step sequence: `ARampingDcRunIsBitIdenticalWithTheCacheAndWithout` failed on
+a step count of 26 against 20. It is a real 2.4x on a ramped phase and it is available; what
+it costs is that every seeded diffusive result moves slightly, which this project has
+consistently refused to pay for speed. Recorded as measured and declined rather than as
+unexplored.
+
+## A shared predicate stops a count and a diagnostic disagreeing only until the next state arrives
+
+`ReportOutcome.StoredNothing` exists because a count said "0 runs stored no result" in the
+same document as a warning that one had. The two were spelled out separately, a third state
+arrived, and only one of them learned about it - so they were collapsed into one named
+predicate with a comment saying why.
+
+**A fourth state then arrived and the predicate did not learn.** A run interrupted before it
+could write anything has no result, so it satisfied `StoredNothing` and was reported as a run
+that "stored a manifest and no result document ... Re-running the model stores one" - advice
+for a different problem, and following it would restart a run that was working. Found by
+reading a report of a project with a run *still going in it*, not by a test.
+
+So the shared predicate was the right fix and it is not a complete one: it makes the count and
+the warning agree with **each other**, and neither of them with reality when the set of states
+grows. What would have caught it is the property the report already implies one level up -
+that the counts partition the runs - which no test stated. It does now: an interrupted run is
+asserted absent from `withoutResult` and present in `interrupted`, and the mutation that
+removes the new clause fails it.
+
+**The rule: when a type gains a state, grep for every predicate that enumerates the others.**
+A predicate written as a conjunction of "not any of the ones I knew about" is a default case
+wearing a specific name, and it silently absorbs whatever arrives next.
+
+## A documented predicate can be exactly right and still be the wrong question to route on
+
+`CompiledModel.ChangesTransportMode` asks whether two **adjacent** phases name different modes,
+and needs at least two phases to ask it. That is what its name says, what its comment says, and
+what SEQ-1's conversion boundary is: a place where a packet has to be handed from one
+description to the other. Nothing about it is wrong.
+
+`einzel run` forked on it. So a sequence of one diffusive phase on a model declaring
+`trajectory`, or a sequence every phase of which declares `diffusion` on such a model, is not a
+"change" - and the run went down the **trajectory** path with the timeline ignored outright. The
+model asked for a density and got a single-ion flight, `TRAJECTORY_INCOMPLETE` and
+`collisions.single-ion-interval` on the result, **exit 0**, and nothing anywhere saying a
+sequence had been skipped.
+
+**The two questions are different and only one of them is the fork's.** "Does this run cross a
+boundary that needs a conversion" is about adjacent pairs. "Can this run be flown in one mode"
+is about the **set** of modes it uses, and a diffusive phase anywhere forces the sequenced path
+because the trajectory path cannot step a density at all - there is no trade-off, only a
+description the other path does not implement.
+
+**The validator had already asked the right one, and said why in a note.** Its own `Modes`
+gathers "every transport mode this run uses, the model's and every phase's", precisely so that
+"the diffusive mode needs a gas" attaches to the *run* rather than to one declaration in it -
+which is itself a defect fixed once before, when a trajectory model with a diffusive phase
+skipped every diffusive requirement and validated cleanly. So the answer was in the codebase, in
+a member written for the same reason, one assembly away.
+
+**The rule: a predicate whose name describes a property is not thereby the right predicate for
+a decision that sounds like it.** Before routing on one, write down the question the fork is
+actually asking and check it word for word against what the predicate computes. `Phases.Count >
+1` and "compares adjacent pairs" are both in `ChangesTransportMode`'s implementation and neither
+is in "can this be flown in one mode".
+
+## The evidence went missing inside the code written to carry it
+
+`--vtu` on a sequenced run wrote no density at all, which is the "capability wired into N-1 of N
+paths" shape this project has recorded several times. Fixing it meant writing the export - and
+GRD-2 says the caveats travel with the file, because a `.vti` is the artifact most likely to be
+opened by somebody who never saw the result envelope it came from. So the export gathers the
+run's warnings into the file's provenance header. That is the whole point of the block.
+
+**It gathered two of the three lists that hold them.** `fieldWarnings` - the solve's own
+caveats, the ones that say the numbers may not describe the document - were not in it. And the
+note saying a sequenced run has no single flight time is constructed *inline*, in the result's
+own envelope, about a hundred lines **below** the export, so the export could not have seen it
+however carefully it had been written.
+
+The consequence: on the shipped test model, which earns exactly one warning, the volume came out
+with an **empty caveat block on a run that had earned one**. Everything compiled, the file was
+written, the artifact was listed, and the assertion I had first written for it was about a
+warning code the model does not produce - so my own test's failure was the only thing that
+surfaced it, and my first two attempts at that test were both guesses at which code was missing
+rather than a look at the file.
+
+**Two things fixed it and only one is the list.** The warnings are now built into one local
+above both readers, so a caveat added later reaches the file and the document by being added
+once. And the severity is on each line rather than only the code, because a reader deciding
+whether to trust a volume needs to know which of these is a note about how the run was framed
+and which is the engine saying the numbers are suspect.
+
+**The rule, which is the fourth statement of one already here:** when a computation produces
+evidence about its own quality, discarding it must not be the shortest spelling - and *building*
+the carrier is not exemption from that. The place a caveat gets dropped is the place that
+enumerates caveats by hand. Ask which lists exist, not which ones come to mind, and put the
+answer somewhere both readers take it from.
+
+## Three runs, one heading, two comparisons
+
+The TIMS front end completes and elutes nothing. I bounded that with three runs and wrote the
+result up as a property of how the sweep is spelled: written as a `ramp` the packet freezes,
+written as a single `set` it travels and 81,049 of 85,170 arrive, written as sixteen `set`
+stages it elutes. A clean story with a named mechanism to go looking for.
+
+**The runs did not share a source.** The eluting single-`set` run seeded its packet AT the
+balance point; the frozen ramp delivered its packet from 40 mm up the entrance funnel. So the
+comparison moved the packet as well as the spelling, and every conclusion drawn from it was
+about an interaction I had not separated. Re-run parked, **a `ramp` elutes 85,170 ions** - the
+thing the write-up said a ramp does not do.
+
+**What made it look like one comparison was that all three ran from "the same document".** They
+did: one document, one parameter overridden per variant. `sourceX` was -40 mm in two of them and
+21.09 mm in the third, which is one line of a diff and the whole of the experiment. A variant
+set built by overriding a shared document reads as controlled *because* it is mostly shared, and
+the differing line is exactly the one nobody re-reads.
+
+What recovered it was tabulating every model in the study directory by the parameters that
+distinguish them - source, phase structure, flight-time limit - rather than by the name I had
+given each. The names encoded my intent; the table encoded what would run.
+
+**And the probe that cleared the ramp had the same shape of flaw.** It showed the potential at
+the parking point falling 11.100 V to 0.720 V through a ramp phase, which is the ramp working -
+on a model scaled a thousandfold in time, so its ramp began at 10.3 *microseconds* where the
+failing run's begins at 10.3 milliseconds. The absolute instant is the one quantity the two runs
+differ in and the probe moved it. That is this project's own rule, already written down, met a
+second time: a probe only probes what it holds constant.
+
+The route that did cover the real instant cost nothing, because it was already being recorded:
+the per-phase **assembly count**, added a day earlier to catch a held phase re-assembling for a
+ramp that was not there. The ramp phase re-assembles 68,216 times in the failing run and 67,828
+in the eluting one - so both re-sample a moving field every step, and "the field is frozen" is
+refuted without building anything. **A counter already in the output beats a probe you have to
+write**, and it beats it twice over because it was taken during the run in question rather than
+during a stand-in for it.
+
+**The rules.** Before drawing a conclusion from a set of variants, list them by the parameters
+that differ rather than by the names you gave them, and say out loud which single quantity each
+pair isolates - a set that shares a document is not thereby controlled. And when a cheap probe
+and an expensive run disagree, check what the probe scaled before believing it.
+
+## A study run out of `bin/Release` runs whatever was last built there
+
+Studies here are run from the Release tree, because Release is 3.27x faster and a diffusive
+sequence is measured in minutes either way. Development builds and tests Debug. Nothing links
+the two, so `bin/Release` holds whatever was last built into it - and after two days of work on
+the diffusive path, that was **two days old**.
+
+Both controls in a two-by-two went out on it. One of them was fine by luck: its phases are all
+holds, so the operator assembles once and the well rebuilds once, and the well-cache defect
+fixed in between could not bite. The other has a ramp, so on the stale binary it was rebuilding
+a six-second well every fourth step - the 28-hour behaviour the fix removed - and it sat there
+producing nothing while I read code.
+
+**The tell was a missing key, not a wrong number.** The phase records came back without
+`spreadMm`, which had been added to them the day before. A number that is absent is a much
+better signal than a number that is merely different, and it is only available because this
+surface writes an absent measurement as absent rather than as zero: had the width defaulted to
+0.0, the output would have been complete, plausible, and from the wrong engine.
+
+The worse outcome was the one narrowly avoided: the two cells of the comparison would have been
+measured on **different binaries**, days apart in behaviour, and the difference attributed to
+the physics being varied. That is the same error as timing a run against an estimate while the
+test suite is running, one level up - the confound is not in the machine's load but in which
+program was executed.
+
+**The rule: build the tree you are about to run, immediately before running it, and record what
+you built.** A manifest already carries the engine version for exactly this reason (`PRJ-3`),
+which means the check costs one line and I did not make it. And when a run produces less than
+you expect - a missing field, a shorter table - suspect the binary before the model.
+
+## Re-running a stem destroys the provenance of the run you are trying to explain
+
+`results/` is keyed by the model's stem: `delivered.json` writes `delivered.manifest.json` and
+`delivered.result.json`, and the next run of that document overwrites both. PRJ-4 licenses
+that deliberately - the durable record is the model and its history, and results are
+regenerable rather than precious.
+
+**An anomaly is exactly the case where that licence does not hold.** A run of the TIMS front
+end collected 7.74e-245 ions and did not move. Explaining it took five further runs of the
+same document, and each one overwrote the manifest of the one before - so by the time the
+question had narrowed to "was the document itself the same at the time?", the model hash that
+would have answered it had been written over four times. `PRJ-3` had recorded exactly the
+right thing and the file no longer held it.
+
+The checkpoint would have carried it too, and that was removed on schedule: a finished run
+deletes its own `.progress.json`, which is the invariant that makes finding one mean the run
+did not finish. Both mechanisms worked as designed and both destroyed the same evidence.
+
+**The rule: when a result is anomalous and you intend to investigate it, copy its manifest and
+result aside before re-running the stem.** It costs two file copies. The alternative is what
+happened here - a finding that is now recorded as unexplained partly because the evidence
+that would have settled it was overwritten by the investigation.
+
+## The leading hypothesis had one commit's worth of support and was wrong
+
+The frozen run was on engine `ab19163`; every eluting run was on `c135bc1` or later. Between
+those two commits exactly one file under `src/` changes any number:
+`PonderomotiveWellCache.cs`. The other changes were an elution *reporting* floor, tests and
+documentation. So the inference was short and looked airtight - the cache's tolerance moved
+from 1e-12 to 1e-9 and its probe went from sixteen lattice nodes to one, and that commit's
+bit-identical claim had been measured on the **analyser**, never on the front end, whose
+composite carries a solved funnel RF. A plausible mechanism, a clean bisection, an admitted
+gap in the evidence for the alternative.
+
+**The control killed it in one run.** Reverting that one file on the current build and running
+the same document gives **10,794 well rebuilds against 1** and the same answer to **13
+significant figures** - 99,833.4920418748 ions against 99,833.49204187385, mean
+15,505.159357357079 against 15,505.159357357172. The cache is excluded, and the side effect is
+worth as much as the result: its bit-identical claim is now measured on the model that
+motivated it.
+
+Two things worth keeping. **A bisection over commits is not a bisection over causes** - "one
+file changed" bounds where a cause could live and says nothing about whether it does, and the
+temptation is strongest when the diff is smallest. And **the control was cheap and I nearly
+skipped it**, because I had already written the hypothesis into four documents; reverting one
+file and re-running cost one build and one run, against a wrong entry in the living
+specification. Write the hypothesis down as a hypothesis, then run the thing that can refute
+it before it is written down as a finding.

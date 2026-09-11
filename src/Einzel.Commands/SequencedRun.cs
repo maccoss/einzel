@@ -23,6 +23,11 @@ namespace Einzel.Commands;
 /// How many trajectories carried them, or zero in a diffusive phase where there are none.
 /// </param>
 /// <param name="CentroidMm">Where the packet was when the phase ended, in millimetres.</param>
+/// <param name="SpreadMm">
+/// How wide the packet was when the phase ended - one standard deviation of position along
+/// each axis, in millimetres. Absent where there is nothing to take a width over: a single
+/// trajectory, or a phase that lost everything.
+/// </param>
 /// <param name="Converted">
 /// Whether the packet was converted into this phase's description at its start.
 /// </param>
@@ -81,6 +86,7 @@ public sealed record PhaseOutcome(
     double Population,
     int Trajectories,
     IReadOnlyList<double> CentroidMm,
+    IReadOnlyList<double>? SpreadMm,
     bool Converted,
     int Arrived,
     IReadOnlyList<LossChannel> Losses,
@@ -116,7 +122,29 @@ public sealed record SequencedOutcome(
     IReadOnlyList<ValidityWarning> Warnings,
     double Arrived,
     IReadOnlyList<WeightedLoss> Losses,
-    IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals);
+    IReadOnlyList<(double TimeSeconds, double Ions)> Arrivals)
+{
+    /// <summary>
+    /// The density the run ended with, where its last phase was a diffusive one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>So that a sequenced packet can be looked at rather than only summarised.</b> A
+    /// centroid and a standard deviation are two numbers about a shape, and the questions a
+    /// sequenced diffusive run raises are about the shape: whether a packet that will not
+    /// elute is held against a barrier, or spread, or in two places. The wholly diffusive
+    /// path has written its density since RND-8's argument was answered for it, on the
+    /// grounds that a mode whose principal result cannot be looked at in any form is worse
+    /// served by silence than by a figure.
+    /// </para>
+    /// <para>
+    /// Null where the run ended in the trajectory description, because then there is no
+    /// density - which is a different statement from an empty one, and the two must not
+    /// both read as a box with nothing in it.
+    /// </para>
+    /// </remarks>
+    public DensityField? FinalDensity { get; init; }
+}
 
 /// <summary>Ions lost one way, in real ions rather than in trajectories.</summary>
 /// <param name="Surface">Where they went, named as the model author named it.</param>
@@ -153,11 +181,19 @@ public static class SequencedRun
     /// <param name="model">The model, whose phases carry the modes.</param>
     /// <param name="field">The assembled field.</param>
     /// <param name="gas">The gas, resolved so an imported field reaches both modes.</param>
+    /// <param name="progress">
+    /// Told which phase is running and what each finished one measured, or null to run
+    /// silently. A phase that has finished is a measurement, so handing it over is what
+    /// lets a killed run leave the phases that completed behind it.
+    /// </param>
     /// <returns>What each phase did, and what the conversions cost.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">The model cannot be run this way.</exception>
     public static SequencedOutcome Execute(
-        CompiledModel model, IElectrostaticField field, BackgroundGas gas)
+        CompiledModel model,
+        IElectrostaticField field,
+        BackgroundGas gas,
+        IRunProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -210,6 +246,11 @@ public static class SequencedRun
             var phase = model.Phases[i];
             var trajectory = string.Equals(phase.Mode, "trajectory", StringComparison.Ordinal);
             var converted = false;
+
+            // Which phase of how many, so a watcher can say "5 of 8" - a thing the
+            // transport stepping one leg has no way to know.
+            progress?.Entering(
+                phase.Name, i + 1, model.Phases.Count, phase.DurationSeconds);
 
             // Enter the phase in its own description, converting if the packet is in
             // the other one. The first phase has nothing to convert from: it starts
@@ -284,14 +325,15 @@ public static class SequencedRun
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
                     states.Length * perTrajectory, states.Length,
-                    Centroid(states), converted,
+                    Centroid(states), Spread(states), converted,
                     arrived,
                     [.. lost.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                         .Select(pair => new LossChannel(pair.Key, pair.Value))]));
             }
             else
             {
-                var diffused = Diffuse(density!, model, field, gas, species, started, phase, warnings);
+                var diffused = Diffuse(
+                    density!, model, field, gas, species, started, phase, warnings, progress);
                 density = diffused.Density;
 
                 // The diffusive leg's own ledger used to be dropped here - `Diffuse`
@@ -313,6 +355,7 @@ public static class SequencedRun
                 }
 
                 var (cx, cy) = density.Centroid();
+                var (sx, sy) = density.Spread();
 
                 // A density's losses are the solver's own ledger, in ions rather than
                 // in counts, and folding them into a trajectory tally would add two
@@ -320,7 +363,9 @@ public static class SequencedRun
                 // phase instead, which is what the next conversion will carry.
                 outcomes.Add(new PhaseOutcome(
                     phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
-                    density.Population(), 0, [cx * 1e3, cy * 1e3], converted, 0, [],
+                    density.Population(), 0, [cx * 1e3, cy * 1e3],
+                    density.Population() > 0.0 ? [sx * 1e3, sy * 1e3] : null,
+                    converted, 0, [],
                     diffused.Assemblies, diffused.WellRebuilds,
                     // Asked of the model rather than inferred from the result, and the same
                     // predicate the wholly diffusive path uses. A count of zero is a real
@@ -330,6 +375,12 @@ public static class SequencedRun
                     model.ModelsMeanField ? diffused.SelfFieldSolves : null,
                     model.ModelsMeanField ? diffused.PeakSelfPotentialVolts : null));
             }
+
+            // A FINISHED PHASE IS A MEASUREMENT. Handed over whole, so a run killed in
+            // the sixth phase leaves the five that finished on disk rather than losing
+            // them with the process - which for a study that splits a hold into phases to
+            // read a relaxation curve is most of the answer.
+            progress?.Completed(outcomes[^1]);
 
             started = phase.EndsAtSeconds;
         }
@@ -352,7 +403,13 @@ public static class SequencedRun
             arrivedTotal,
             [.. lostTotal.OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new WeightedLoss(pair.Key, pair.Value))],
-            arrivals);
+            arrivals)
+        {
+            // Whichever description the packet is in at the end. Exactly one of the two is
+            // live at a time - that is what a transport mode is - so a null here says the
+            // run finished as trajectories rather than that its density was empty.
+            FinalDensity = density,
+        };
     }
 
     /// <summary>The field as a leg starting part-way along the timeline sees it.</summary>
@@ -450,6 +507,40 @@ public static class SequencedRun
         return [x * 1e3, y * 1e3];
     }
 
+    /// <summary>
+    /// How wide the packet is, as one standard deviation of position along each axis.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The same quantity the density solver reports, computed from the other
+    /// description.</b> SEQ-1's own subject is that position is the one thing both
+    /// descriptions carry, so a width is comparable across a conversion boundary where a
+    /// velocity distribution is not - which is what makes it worth reporting in one field
+    /// on both sides rather than in two fields named differently.
+    /// </para>
+    /// <para>
+    /// <b>Absent below two members</b>, because a standard deviation over one point is
+    /// zero and zero is a real width. The rule the rest of this surface reached after four
+    /// non-finite doubles took a serialiser down: an undefined measurement is missing
+    /// rather than nought.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<double>? Spread(PhaseState[] states)
+    {
+        if (states.Length < 2)
+        {
+            return null;
+        }
+
+        var meanX = states.Average(s => s.Position.X);
+        var meanY = states.Average(s => s.Position.Y);
+
+        var varianceX = states.Average(s => (s.Position.X - meanX) * (s.Position.X - meanX));
+        var varianceY = states.Average(s => (s.Position.Y - meanY) * (s.Position.Y - meanY));
+
+        return [Math.Sqrt(varianceX) * 1e3, Math.Sqrt(varianceY) * 1e3];
+    }
+
     /// <summary>Flies the packet for one phase, and keeps whatever is still in flight.</summary>
     /// <remarks>
     /// Bounded by the phase rather than by a detector: what the next phase needs is where
@@ -529,7 +620,8 @@ public static class SequencedRun
         IonSpecies species,
         double startedAt,
         CompiledPhase phase,
-        List<ValidityWarning> warnings)
+        List<ValidityWarning> warnings,
+        IRunProgress? progress)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -651,7 +743,8 @@ public static class SequencedRun
             scheme: scheme,
             stepGain: model.DensityStep.IsImplicit ? model.DensityStep.Gain : 1.0,
             fieldAt: fieldAt,
-            selfField: selfField);
+            selfField: selfField,
+            progress: progress);
 
         if (selfField is not null)
         {

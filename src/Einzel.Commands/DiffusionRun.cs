@@ -80,6 +80,11 @@ public static class DiffusionRun
     /// What lets a figure show the packet in flight rather than the empty box a
     /// finished run leaves.
     /// </param>
+    /// <param name="progress">
+    /// Told how far the solve has got while it is still going, or null to run silently.
+    /// Nothing it is handed reaches the solve, so a watched run and an unwatched one are
+    /// bit-identical.
+    /// </param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">
     /// The model cannot be expressed as a density problem, or it declares a velocity
@@ -92,7 +97,8 @@ public static class DiffusionRun
         BackgroundGas? resolved = null,
         Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
         double stepGain = 1.0,
-        IReadOnlyList<double>? snapshotSeconds = null)
+        IReadOnlyList<double>? snapshotSeconds = null,
+        IDensityProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -154,7 +160,8 @@ public static class DiffusionRun
 
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
-            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds, selfField: selfField);
+            scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds,
+            selfField: selfField, progress: progress);
 
         if (selfField is not null)
         {
@@ -209,6 +216,11 @@ public static class DiffusionRun
     /// a mixture needs no per-species geometry in the document. What separates them afterwards
     /// is their mobility, which is the point.
     /// </para>
+    /// <param name="progress">
+    /// Told how far the solve has got while it is still going, or null to run silently.
+    /// Nothing it is handed reaches the solve, so a watched run and an unwatched one are
+    /// bit-identical.
+    /// </param>
     /// </remarks>
     public static MixtureOutcome ExecuteMixture(
         CompiledModel model,
@@ -216,7 +228,8 @@ public static class DiffusionRun
         IReadOnlyList<ValidityWarning> fieldWarnings,
         BackgroundGas? resolved = null,
         Transport.Diffusion.StepScheme scheme = Transport.Diffusion.StepScheme.Explicit,
-        double stepGain = 1.0)
+        double stepGain = 1.0,
+        IDensityProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -328,7 +341,7 @@ public static class DiffusionRun
 
         var result = MixtureDiffusion.Run(
             members, field, gas, model.MaximumFlightTimeSi, edges, absorbers,
-            scheme: chosen, stepGain: gain, selfField: selfField);
+            scheme: chosen, stepGain: gain, selfField: selfField, progress: progress);
 
         if (seedLoss.Count > 0)
         {

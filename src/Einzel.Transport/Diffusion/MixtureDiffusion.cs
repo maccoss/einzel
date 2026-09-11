@@ -140,6 +140,12 @@ public static class MixtureDiffusion
     /// The mixture's own charge as a potential, or null to leave every species blind to the
     /// others - which is the control that says what the coupling was worth.
     /// </param>
+    /// <param name="progress">
+    /// Told how far the solve has got while it is still going, or null to run silently.
+    /// A run measured in hours has to be able to say something before it ends, which is
+    /// what this is for; nothing it is handed reaches the solve, so a watched run and an
+    /// unwatched one are bit-identical.
+    /// </param>
     /// <returns>What became of each species, and what the run cost.</returns>
     public static MixtureResult Run(
         IReadOnlyList<MixtureMember> members,
@@ -152,7 +158,8 @@ public static class MixtureDiffusion
         StepScheme scheme = StepScheme.Explicit,
         double stepGain = 1.0,
         Func<double, IElectrostaticField>? fieldAt = null,
-        DensitySelfField? selfField = null)
+        DensitySelfField? selfField = null,
+        IDensityProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(members);
         ArgumentNullException.ThrowIfNull(field);
@@ -321,6 +328,22 @@ public static class MixtureDiffusion
 
             time += dt;
             steps++;
+
+            // WHERE IT HAS GOT TO, WHILE IT IS STILL GOING - per species, because in a
+            // mixture the interesting thing is how far apart two populations have moved
+            // and a total would hide exactly that. Read only: nothing here reaches the
+            // solve, so a run being watched and one not are bit-identical.
+            if (progress is not null && progress.Wants(steps, time))
+            {
+                progress.Reached(new DensityProgressReport(
+                    steps,
+                    time,
+                    untilSeconds,
+                    dt,
+                    state.Sum(w => w.Collected),
+                    [.. state.Select(w =>
+                        new DensityProgressSpecies(w.Member.Name, w.Density))]));
+            }
         }
 
         return new MixtureResult(
@@ -401,6 +424,14 @@ public static class MixtureDiffusion
         internal MixtureMember Member { get; }
 
         internal DensityField Density { get; private set; }
+
+        /// <summary>Real ions of this species collected so far.</summary>
+        /// <remarks>
+        /// Exposed for the progress observer, which reports mid-run and so cannot wait for
+        /// <c>Result()</c>. Read-only: a watcher that could write into a walker would be a
+        /// second author of the run.
+        /// </remarks>
+        internal double Collected => _collected;
 
         internal double Stable { get; private set; }
 

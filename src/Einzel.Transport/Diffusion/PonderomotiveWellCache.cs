@@ -55,7 +55,36 @@ internal sealed class PonderomotiveWellCache
     /// drift cannot feel; what it buys is that a probe cannot fire on its own noise.
     /// </para>
     /// </remarks>
-    private const double Tolerance = 1e-12;
+    /// <summary>
+    /// How far the well may move, as a fraction of the deepest well on the grid, before it
+    /// is recomputed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Set to what the arithmetic can deliver, measured rather than chosen.</b> It was
+    /// 1e-12, and on the shipped TIMS front end that fires about every fourth step of an
+    /// elution ramp - 16 rebuilds over 69 steps - while the well itself does not move at
+    /// all: a DC ramp changes no drive amplitude, frequency or phase, so the cycle mean
+    /// square of the oscillation is the same quantity throughout.
+    /// </para>
+    /// <para>
+    /// <b>What moves is the round-off.</b> The well is a mean square taken after removing
+    /// the mean, and the mean is a DC field the ramp walks from 60 V to zero - so the noise
+    /// floor of the subtraction is proportional to a quantity that changes by everything
+    /// while the well changes by nothing. Measured at about 2.5e-13 of the deepest well per
+    /// step, which accumulates past 1e-12 in four steps and then does so forever. A
+    /// tolerance below the arithmetic's own floor is not a tight tolerance, it is a
+    /// tolerance that has stopped testing anything except the last few bits.
+    /// </para>
+    /// <para>
+    /// <b>What 1e-9 admits, in the units that matter.</b> The shipped analyzer's well is
+    /// about 30 V deep, so this holds a well that has moved by up to 3e-8 V - against a
+    /// thermal `kT/q` of 0.026 V, which is the scale the equilibrium width is set by, and
+    /// against the 1e-6 relative change a real retuning of the RF produces. `WellIsHeldOnly
+    /// WhileItHasNotMoved` asserts the second of those is still caught.
+    /// </para>
+    /// </remarks>
+    private const double Tolerance = 1e-9;
 
     /// <summary>The offsets the well is held at: the node, then plus and minus on each axis.</summary>
     private const int Offsets = 7;
@@ -63,6 +92,9 @@ internal sealed class PonderomotiveWellCache
     private readonly Grid2D _grid;
     private readonly int[] _probes;
     private readonly double[][] _well;
+
+    /// <summary>Which probe node the next check looks at.</summary>
+    private int _turn = -1;
 
     private PonderomotiveField _field;
     private double _deepest;
@@ -187,29 +219,41 @@ internal sealed class PonderomotiveWellCache
 
     private bool Holds(PonderomotiveField field)
     {
-        foreach (var node in _probes)
-        {
-            var i = node % _grid.CountX;
-            var j = node / _grid.CountX;
+        // ONE PROBE PER CALL, ROTATING, so the lattice is visited every sixteen calls.
+        //
+        // This check is already a sample - sixteen nodes of several thousand - so spreading
+        // those sixteen across sixteen steps is the same kind of decision as choosing
+        // sixteen in the first place, and not a new one. What it buys is the other half of
+        // a ramped step's cost: sixteen `WellAt` calls on a composite field whose funnel RF
+        // is solved are 60 ms, which over an 8 ms elution ramp's 68,000 steps is over an
+        // hour of checking that nothing changed.
+        //
+        // A well that moves is therefore noticed within sixteen steps rather than within
+        // one. That is a real weakening and it is bounded: a step is set by a stability
+        // limit, so sixteen of them is a fraction of a microsecond of instrument time, over
+        // which the drive amplitudes a well depends on cannot change - they are set by the
+        // sequence, which changes them at phase boundaries, and every boundary starts a new
+        // cache. `AnAmplitudeRampRebuildsTheWellAndADirectRampDoesNot` is the control: a
+        // well that really moves still rebuilds at every step, because a moving amplitude
+        // moves it at every node and any one probe sees it.
+        _turn = (_turn + 1) % _probes.Length;
 
-            var point = new Vec3(_grid.X(i), _grid.Y(j), 0.0);
+        var node = _probes[_turn];
 
-            var fresh = field.WellAt(in point);
-            var held = _well[0][node];
+        var i = node % _grid.CountX;
+        var j = node / _grid.CountX;
 
-            // The deepest well on the grid, or either value where one has grown past it,
-            // so a well that has collapsed to zero is caught as surely as one that has
-            // grown. A grid of wells all exactly zero passes, which is right: nothing
-            // has changed.
-            var scale = Math.Max(_deepest, Math.Max(Math.Abs(fresh), Math.Abs(held)));
+        var point = new Vec3(_grid.X(i), _grid.Y(j), 0.0);
 
-            if (Math.Abs(fresh - held) > Tolerance * scale)
-            {
-                return false;
-            }
-        }
+        var fresh = field.WellAt(in point);
+        var held = _well[0][node];
 
-        return true;
+        // The deepest well on the grid, or either value where one has grown past it, so a
+        // well that has collapsed to zero is caught as surely as one that has grown. A grid
+        // of wells all exactly zero passes, which is right: nothing has changed.
+        var scale = Math.Max(_deepest, Math.Max(Math.Abs(fresh), Math.Abs(held)));
+
+        return Math.Abs(fresh - held) <= Tolerance * scale;
     }
 
     private void Fill(PonderomotiveField field)

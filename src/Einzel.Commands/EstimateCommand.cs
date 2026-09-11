@@ -1544,25 +1544,55 @@ public static class EstimateCommand
         var diffusion = Transport.Diffusion.Mobility.DiffusionSi(
             gas.TemperatureK, species.ChargeSi, mobility);
 
-        // The drift limit needs the field. Where every element is analytic that is
-        // free to evaluate, so it is included and the estimate becomes exact; where
-        // anything has to be solved it is omitted and the estimate says so, because
-        // solving the field to estimate the cost of the run defeats the purpose of
-        // estimating.
-        var analytic = model.Fields.All(f => f.Solve is null && f.Solve3D is null);
+        // THE DRIFT LIMIT IS INCLUDED, AND THE FIELD IS SOLVED TO GET IT.
+        //
+        // This used to be evaluated only where every element was analytic, on the argument
+        // that "solving the field to estimate the cost of the run defeats the purpose of
+        // estimating". That is sound in general and wrong for this mode, by four orders: on
+        // the shipped TIMS front end it reported **8 s against an actual 197,000**, because
+        // the drift limit is not a refinement here - it IS the cost. The ramped phase steps
+        // at about 56 ns where the diffusion limit alone allows 1.26e-4 s, a factor of 2,236.
+        //
+        // The trade only looks bad against the estimate's own runtime. Against what is being
+        // estimated it is free, and the reason is structural rather than empirical: **a
+        // diffusive run cannot be cheaper than its own solve**, since it must solve the same
+        // field and then step through it thousands of times. So solving here costs at most
+        // the run's unavoidable floor - 1.81 s of 197,000 on that model - and the estimate
+        // reports what it spent so the reader can see the price.
+        var solveWatch = System.Diagnostics.Stopwatch.StartNew();
+        var (built, _) = Fields.FieldAssembly.BuildReported(model);
+        solveWatch.Stop();
 
+        var sign = Math.Sign(species.ChargeSi);
         var fastestDrift = 0.0;
 
-        if (analytic)
-        {
-            var (field, _) = Fields.FieldAssembly.BuildReported(model);
-            var sign = Math.Sign(species.ChargeSi);
+        // THE EFFECTIVE FIELD, which is what the run drifts a density through. A driven
+        // geometry reached through the time-free interface answers at an arbitrary instant -
+        // the peak of the RF rather than its cycle average - and this sampled it that way,
+        // which is the ninth appearance of that defect here and the first in the cost gate.
+        // `Effective` is the same wrapper `DiffusionRun` installs, so the two now sample one
+        // field; where there is no drive it returns the field unchanged.
+        //
+        // At every phase boundary as well as at zero. The potential is linear in the channel
+        // weights and a ramp is linear in time, so a phase's extremes are at its ends and the
+        // fastest drift anywhere in the sequence is at one of them. Sampling only t = 0 would
+        // have been right for a sequence that ramps DOWN and an under-estimate for one that
+        // ramps up, which is the unsafe direction for a gate.
+        var instants = new List<double> { 0.0 };
 
-            // Every node where the gas is graded, every other one where it is not.
-            // The run samples all of them; a stride is harmless on a field that is
-            // smooth compared with the mesh and is not harmless when the mobility
-            // varies too, because the fastest drift is then a product of two things
-            // that peak in different places.
+        foreach (var phase in model.Phases)
+        {
+            instants.Add(phase.EndsAtSeconds);
+        }
+
+        foreach (var atSeconds in instants)
+        {
+            var field = built;
+            _ = DiffusionRun.Effective(ref field, species, declaredMobility, gas, atSeconds);
+
+            // Every node where the gas is graded, every other one where it is not. The run
+            // samples all of them; a stride is harmless on a field that is smooth between
+            // nodes, and the mobility is what varies fastest where the gas does.
             var stride = gas.IsGraded ? 1 : 2;
 
             for (var j = 0; j < grid.CountY; j += stride)
@@ -1634,11 +1664,12 @@ public static class EstimateCommand
                 : $"so about {steps:N0} steps over ")
             + $"{model.MaximumFlightTimeSi * 1e6:G4} us, at {MegaCellsPerSecond:G2} million cell "
             + "updates per second measured on this codebase. "
-            + (analytic
-                ? "Both stability limits are included: this model's fields are analytic, so the "
-                    + "drift limit costs nothing to evaluate."
-                : "The drift limit is NOT included, because it needs a field this has not solved - "
-                    + "so the real step can only be smaller and this is a lower bound.")
+            + $"Both stability limits are included. The field was solved to get the drift one, "
+            + $"which cost {solveWatch.Elapsed.TotalSeconds:F2} s of this estimate - a diffusive "
+            + "run cannot be cheaper than its own solve, so that is bounded by the run's floor, "
+            + "and omitting it used to make this number four orders low on a ramped model. "
+            + $"Sampled at {instants.Count} instant(s) - zero and every phase boundary - through "
+            + "the cycle-averaged field the run drifts through, not the instantaneous one."
             + (implicitly
                 ? " The sweep count is the one quantity here that is not knowable in advance - it "
                     + "depends on how far past the DIFFUSION limit the step lands, not on the gain "

@@ -1783,9 +1783,38 @@ The ramped phase takes about **56 ns** a step where the diffusion limit alone wo
 is measured against the *diffusion* limit and buys nothing when drift is what binds, so 18.3 ms
 is roughly 142,000 steps whatever the per-step cost is.
 
-**So `einzel estimate` is still four orders low on this class of model** - 8 s against 197,000 -
-and its own basis line says why in words: "the drift limit is NOT included, because it needs a
-field this has not solved, so the real step can only be smaller and this is a lower bound." The
-caveat is honest and the *number* is what a machine consumer reads. A runtime pilot would fix
-it - the estimate already measures its solve and flight rates that way, and a probe of a few
-microseconds of the real sequence would return the actual step. Not built.
+**`einzel estimate` was four orders low on this class of model** - 8 s against 197,000 - and
+its own basis line said why in words: "the drift limit is NOT included, because it needs a field
+this has not solved, so the real step can only be smaller and this is a lower bound." The caveat
+was honest and the *number* is what a machine consumer reads.
+
+**Fixed by solving, and the reason it is not a bad trade is structural.** The gate used to
+evaluate the drift limit only where every element was analytic, on the argument that "solving
+the field to estimate the cost of the run defeats the purpose of estimating". That is sound in
+general and wrong for this mode: **a diffusive run cannot be cheaper than its own solve**, since
+it must solve the same field and then step through it thousands of times. So solving here costs
+at most the run's unavoidable floor - 1.81 s against 197,000 - and the estimate now reports what
+it spent. It is also bounded: the diffusive mode is two-dimensional, so this is never a volume
+solve.
+
+| | before | after |
+| --- | --- | --- |
+| stability step | 1.96e-6 s, set by diffusion | **9.15e-10 s, set by drift** |
+| stepped at gain 64 | 1.26e-4 s | 5.85e-8 s |
+| steps | 146 | **312,575** |
+| predicted wall | 8 s | **3.6 h** against a measured 4.1 |
+
+The step it finds, **58.5 ns**, matches the 56 ns counted independently from the probe's assembly
+count - which is the check that says the two are measuring one thing.
+
+**And it was sampling the wrong field.** `field.ElectricFieldAt(point)` is the TIME-FREE arm, so
+for a driven geometry it read the RF at an arbitrary instant rather than the cycle average the
+run drifts through - the ninth appearance of that defect here and the first inside the cost
+gate. It goes through `DiffusionRun.Effective` now, the same wrapper the run installs, so
+GRD-8's claim that estimate and run call the same function holds rather than being aspirational.
+
+**Sampled at every phase boundary**, not only at zero. The potential is linear in the channel
+weights and a ramp is linear in time, so a phase's extremes are at its ends. Zero alone happens
+to be right for this device, which ramps *down* so its first instant is its strongest field, and
+would be an **under**-estimate for one that ramps up - the unsafe direction for a gate, and
+right by luck is not right.

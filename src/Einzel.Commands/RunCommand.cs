@@ -352,6 +352,11 @@ public sealed record MixtureJson(
 /// How many trajectories carried them, or zero in a diffusive phase where there are none.
 /// </param>
 /// <param name="CentroidMm">Where the packet was when the phase ended.</param>
+/// <param name="SpreadMm">
+/// How wide it was, as one standard deviation of position along each axis in millimetres.
+/// Absent where there is nothing to take a width over - a single trajectory, or a phase that
+/// lost everything - because zero is a real width.
+/// </param>
 /// <param name="Converted">Whether the packet was converted into this description.</param>
 /// <param name="Assemblies">
 /// In a diffusive phase, how many times the density solver assembled its operator: once for
@@ -381,6 +386,7 @@ public sealed record SequencePhaseJson(
     double Population,
     int Trajectories,
     IReadOnlyList<double> CentroidMm,
+    IReadOnlyList<double>? SpreadMm,
     bool Converted,
     int Assemblies,
     int WellRebuilds,
@@ -1237,20 +1243,91 @@ public static class RunCommand
     /// platform.
     /// </para>
     /// </remarks>
+    /// <summary>Whether a collected population is a transmitted packet or a numerical tail.</summary>
+    /// <param name="collected">Real ions that reached the detector.</param>
+    /// <param name="launched">Real ions the packet started with.</param>
+    /// <returns>Whether there is an arrival time worth reporting.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A named function because the number it returns decides whether two numbers get
+    /// published.</b> The guard was <c>collected &gt; 0.0</c>, and the shipped TIMS
+    /// front-end sequence passed it with 7.74e-245 ions - reporting a mean arrival of
+    /// 11,366 us and a spread of 4,024 us for a run whose whole packet was still in the
+    /// tunnel. Two plausible numbers in microseconds, and nothing to tell a reader they
+    /// describe nothing.
+    /// </para>
+    /// <para>
+    /// <b>Scharfetter-Gummel's flux across a collecting face behind a barrier IS the
+    /// Boltzmann factor of that barrier</b>, so a held packet emits values from its first
+    /// step: 60 V against a thermal <c>kT/q</c> of 0.026 V is exp(-2300). This project has
+    /// been caught by the same tail once already, when an elution onset read as the first
+    /// non-empty bin came out during the hold; the answer there was a quantile and the
+    /// answer here is a floor.
+    /// </para>
+    /// <para>
+    /// <b>A fraction of the launched population rather than an absolute count</b>, because a
+    /// model may launch few ions deliberately and a density is continuous - "less than one
+    /// ion" is a real answer for a low transmission, while 1e-250 of one is not an answer at
+    /// all. The bar sits enormously above the tail and enormously below anything a reader
+    /// would call a transmission.
+    /// </para>
+    /// </remarks>
+    public static bool Eluted(double collected, double launched)
+        => collected >= 1e-6 * Math.Max(1.0, launched);
+
+    /// <summary>One phase of a sequenced run, on the wire.</summary>
+    /// <param name="phase">What the phase measured.</param>
+    /// <returns>The same, in the shape a document carries.</returns>
+    /// <remarks>
+    /// One conversion, because a checkpoint written mid-run and the result written at the
+    /// end have to describe a phase the same way - a reader comparing a killed run's
+    /// checkpoint against a finished run's result is the whole point of the checkpoint,
+    /// and two spellings of one record is how this project made `run` and `test` disagree
+    /// about a flight time twice.
+    /// </remarks>
+    internal static SequencePhaseJson Phase(PhaseOutcome phase)
+    {
+        ArgumentNullException.ThrowIfNull(phase);
+
+        return new SequencePhaseJson(
+            phase.Name,
+            phase.Mode,
+            phase.EndsAtSeconds * 1e6,
+            phase.Population,
+            phase.Trajectories,
+            phase.CentroidMm,
+            phase.SpreadMm,
+            phase.Converted,
+            phase.Assemblies,
+            phase.WellRebuilds,
+            phase.SelfFieldSolves,
+            phase.PeakSelfPotentialVolts);
+    }
+
     private static RunOutcome Sequenced(
         CompiledModel model,
         Fields.IElectrostaticField field,
         IReadOnlyList<ValidityWarning> fieldWarnings,
         ValidateOutcome validation,
         ProjectLayout project,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        bool exportVtu,
+        RunProgress? progress)
     {
         // The one place that knows where the model file is, so the one place that can
         // resolve a declared gas field.
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
-        var outcome = SequencedRun.Execute(model, field, resolved);
+        // THE CHECKPOINT, IF ANYBODY IS WATCHING. Created before the run rather than after
+        // it, which is the whole point: this is the path a TIMS study takes, and it is the
+        // one that has failed to finish three times with nothing on disk to say how far it
+        // got. Removed on success, so its presence means the run did not finish.
+        var watcher = Watch(progress, project, validation);
+
+        var outcome = SequencedRun.Execute(model, field, resolved, watcher);
+
+        watcher?.Discard();
 
         var manifest = new RunManifest
         {
@@ -1289,13 +1366,47 @@ public static class RunCommand
         // the spectrum. Written whole as an artifact - one line per step that collected
         // anything - because a spectrum reduced to a mean and a width has lost its shape,
         // and the shape is what a resolving power is read off.
-        var artifacts = new List<string> { manifestPath };
+        //
+        // RELATIVE TO THE PROJECT ROOT, like the other three paths. This one stored
+        // absolute paths, so its manifest named files by where they sat on the machine
+        // that wrote them - which a result document PRJ-3 says should determine its run
+        // cannot do, and which a report reading a project from anywhere else cannot
+        // resolve.
+        var artifacts = new List<string> { Path.GetRelativePath(project.Root, manifestPath) };
+        var sequenceWarnings = new List<ValidityWarning>();
         double? meanArrivalUs = null;
         double? arrivalSpreadUs = null;
 
         var collected = outcome.Arrivals.Sum(a => a.Ions);
 
-        if (outcome.Arrivals.Count > 0 && collected > 0.0)
+        // WHAT COUNTS AS HAVING ARRIVED. The guard was `collected > 0.0`, and the shipped
+        // front-end sequence passed it with 7.74e-245 ions - reporting a mean arrival of
+        // 11366 us and a spread of 4024 us for a run whose whole packet was still in the
+        // tunnel at the end. A reader sees two numbers in microseconds and believes them.
+        //
+        // Scharfetter-Gummel's flux across a collecting face behind a barrier IS the
+        // Boltzmann factor of that barrier, so a held packet emits a stream of values
+        // hundreds of orders below one ion from its first step. The bar is a fraction of
+        // the launched population rather than an absolute count, because a model may launch
+        // few ions on purpose and 1e-6 of anything is still enormously above a tail that
+        // runs at 1e-245.
+        var launched = outcome.Phases.Count > 0 ? outcome.Phases[0].Population : 0.0;
+        var meaningful = Eluted(collected, launched);
+
+        if (outcome.Arrivals.Count > 0 && !meaningful)
+        {
+            // Said rather than left as an absence, because "no mean arrival" and "this
+            // model does not elute" are the same fact and only one of them is actionable.
+            sequenceWarnings.Add(new ValidityWarning(
+                "sequence.nothing-eluted",
+                $"{collected:G6} ions reached the detector of {launched:G6} launched, which "
+                + "is the collecting face's Boltzmann tail rather than a transmitted packet "
+                + "- so there is no arrival time to report and none is. The sequence "
+                + "completed; the packet is where the phase table's last row says it is",
+                WarningSeverity.ValidityViolation));
+        }
+
+        if (outcome.Arrivals.Count > 0 && meaningful)
         {
             var weighted = outcome.Arrivals.Sum(a => a.TimeSeconds * a.Ions) / collected;
             var variance = outcome.Arrivals.Sum(
@@ -1309,10 +1420,78 @@ public static class RunCommand
             lines.AddRange(outcome.Arrivals.Select(a => string.Create(
                 System.Globalization.CultureInfo.InvariantCulture, $"{a.TimeSeconds * 1e6:R},{a.Ions:R}")));
             File.WriteAllLines(arrivalsPath, lines);
-            artifacts.Add(arrivalsPath);
+            artifacts.Add(Path.GetRelativePath(project.Root, arrivalsPath));
         }
 
-        return new RunOutcome
+        // EVERY CAVEAT THIS RUN EARNED, in one list, built before anything reads it.
+        //
+        // THE DENSITY FILE AND THE RESULT DOCUMENT MUST NOT BE ABLE TO DISAGREE about
+        // what was wrong with a run, and the first version of the export below let them:
+        // it gathered `outcome.Warnings` and `sequenceWarnings` by hand and so carried
+        // the FIELD's warnings not at all, while the note saying a sequenced run has no
+        // flight time was constructed inline in the result's own envelope a hundred lines
+        // further down - below the export, and therefore invisible to it. So the volume
+        // came out with an empty caveat block on a run that had earned one, which is
+        // precisely GRD-2's subject and precisely the artifact it is most about: a `.vti`
+        // is the thing most likely to be opened by somebody who never saw the envelope it
+        // came from.
+        //
+        // One list, two readers. A caveat added in future reaches both by being added
+        // here, rather than by somebody remembering there are two places.
+        var sequencedNote = new ValidityWarning(
+            "transport.sequenced-no-flight-time",
+            "this run ends when its sequence ends, not when an ion arrives, so there is "
+            + "no single flight time. What each phase did is reported under 'sequence', "
+            + "and the ions that reached the detector are counted there",
+            WarningSeverity.Provenance);
+
+        List<ValidityWarning> runWarnings =
+            [.. fieldWarnings, .. outcome.Warnings, .. sequenceWarnings];
+
+        // WHAT --vtu MEANS FOR A SEQUENCED RUN, which until now was nothing at all: it
+        // wrote a manifest, an arrivals file and a result, and no density - so a sequenced
+        // packet could be summarised into a centroid and a width and looked at in no other
+        // form. That is the state the wholly diffusive path was in before RND-8's argument
+        // was answered for it, and this is the same answer: the file it writes is the thing
+        // it actually computed.
+        //
+        // Only where the run ended as a density. A sequence finishing in the trajectory
+        // description has none, which is a different statement from having an empty one.
+        if (exportVtu && outcome.FinalDensity is { } finalDensity)
+        {
+            Directory.CreateDirectory(project.Scratch);
+
+            var densityPath = Path.Combine(project.Scratch, $"{stem}.density.vti");
+
+            // GRD-2: the warnings travel with the file, because a volume is the artifact
+            // most likely to be opened by somebody who never saw the result envelope.
+            var provenance = new List<string>
+            {
+                $"engine: {EngineBuild.Version}",
+                $"model: {validation.ModelHash}",
+                $"transport: {manifest.TransportMode}, {outcome.Phases.Count} phase(s) over "
+                    + $"{last.EndsAtSeconds * 1e6:G6} us",
+                $"ions: {outcome.Arrived:G6} collected, {last.Population:G6} still tracked",
+                $"the density at the end of '{last.Name}', where the sequence left it",
+                "units: ions per cubic metre, at grid nodes",
+            };
+
+            // The severity is on the line, not only the code. A reader deciding whether
+            // to trust a volume needs to know which of these is a note about how the run
+            // was framed and which is the engine saying the numbers may not describe the
+            // document - and above advisory they cannot be suppressed anywhere (GRD-3).
+            provenance.AddRange(
+                runWarnings.Append(sequencedNote)
+                    .Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+            File.WriteAllText(
+                densityPath,
+                Io.VtuWriter.WriteDensityField(finalDensity, "density_per_m3", provenance));
+
+            artifacts.Add(Path.GetRelativePath(project.Root, densityPath));
+        }
+
+        var run = new RunOutcome
         {
             Manifest = manifest,
 
@@ -1325,16 +1504,8 @@ public static class RunCommand
                             Quantity.Si(0.0, Dimension.TimeDimension),
                             1.0),
                         new Evidence.Convergence("sequenced transport", double.NaN, 0.0, double.NaN),
-                        [
-                            new ValidityWarning(
-                                "transport.sequenced-no-flight-time",
-                                "this run ends when its sequence ends, not when an ion "
-                                + "arrives, so there is no single flight time. What each "
-                                + "phase did is reported under 'sequence', and the ions that "
-                                + "reached the detector are counted there",
-                                WarningSeverity.Provenance),
-                        ]),
-                    [.. fieldWarnings, .. outcome.Warnings]),
+                        [sequencedNote]),
+                    runWarnings),
                 "us"),
 
             Outcome = "SequenceCompleted",
@@ -1354,18 +1525,7 @@ public static class RunCommand
             HasFlightTime = false, // a sequence ends on its own clock rather than on an arrival
 
             Sequence = new SequenceJson(
-                [.. outcome.Phases.Select(phase => new SequencePhaseJson(
-                    phase.Name,
-                    phase.Mode,
-                    phase.EndsAtSeconds * 1e6,
-                    phase.Population,
-                    phase.Trajectories,
-                    phase.CentroidMm,
-                    phase.Converted,
-                    phase.Assemblies,
-                    phase.WellRebuilds,
-                    phase.SelfFieldSolves,
-                    phase.PeakSelfPotentialVolts))],
+                [.. outcome.Phases.Select(Phase)],
                 outcome.Conversions,
                 outcome.Arrived,
                 outcome.Losses)
@@ -1373,6 +1533,28 @@ public static class RunCommand
                 MeanArrivalUs = meanArrivalUs,
                 ArrivalSpreadUs = arrivalSpreadUs,
             },
+        };
+
+        // WRITTEN LIKE EVERY OTHER RUN'S. Three of the four run paths wrote a result
+        // document beside their manifest; this one wrote the manifest and no result, so a
+        // sequenced run left behind provenance and no answer - and a sequenced run is what
+        // every TIMS study is. PRJ-3's claim is that a manifest determines its run, which
+        // stands either way; what was missing is the stored answer that determination is
+        // *for*, so nothing could be regenerated and compared, and no reader downstream had
+        // numbers to read for exactly the runs most worth reading.
+        //
+        // `einzel verify` was not the thing broken, and the first version of this comment
+        // said it was. Verify enumerates manifests and checks the model hash and the
+        // solver-behaviour version without reading a result at all, so it reported a
+        // sequenced run as current all along - correctly, about drift, over an answer that
+        // was not there. Found while building the report Amendment 43 asks for, which does
+        // read these files, on a project holding four manifests and no results.
+        var resultPath = Path.Combine(project.Results, $"{stem}.result.json");
+        File.WriteAllText(resultPath, CommandJson.Write(run));
+
+        return run with
+        {
+            Artifacts = [.. run.Artifacts, Path.GetRelativePath(project.Root, resultPath)],
         };
     }
 
@@ -1393,12 +1575,18 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
-        bool exportVtu)
+        bool exportVtu,
+        RunProgress? progress)
     {
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
-        var outcome = DiffusionRun.ExecuteMixture(model, field, fieldWarnings, resolved);
+        var watcher = Watch(progress, project, validation);
+
+        var outcome = DiffusionRun.ExecuteMixture(
+            model, field, fieldWarnings, resolved, progress: watcher);
+
+        watcher?.Discard();
         var result = outcome.Result;
 
         var manifest = new RunManifest
@@ -1576,6 +1764,43 @@ public static class RunCommand
         };
     }
 
+    /// <summary>The checkpoint for this run, or null where nobody asked to watch.</summary>
+    /// <remarks>
+    /// <b>Beside the manifest, under the manifest's own stem</b>, which is the rule the
+    /// report reached for finding a stored answer - a checkpoint somewhere else would be a
+    /// fourth convention in one directory.
+    /// </remarks>
+    private static RunCheckpointWriter? Watch(
+        RunProgress? progress, ProjectLayout project, ValidateOutcome validation)
+    {
+        if (progress is null || progress.IntervalSeconds <= 0.0)
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(project.Results);
+
+        var stem = Path.GetFileNameWithoutExtension(validation.ModelPath);
+
+        return new RunCheckpointWriter(
+            Path.Combine(project.Results, $"{stem}.progress.json"),
+            progress,
+
+            // WHAT A MANIFEST WOULD SAY, written before the first step. The manifest itself
+            // is written after the run returns - it records the modes the run actually used
+            // - so an interrupted run has none, and every consumer here enumerates
+            // manifests. None of this is derived from the outcome, which is what makes it
+            // available this early.
+            new RunCheckpointProvenance(
+                RunManifest.Portable(
+                    Path.GetRelativePath(project.Root, validation.ModelPath)),
+                validation.ModelHash,
+                EngineBuild.Version,
+                EngineBuild.SolverBehaviourVersion,
+                Environment.MachineName,
+                DateTimeOffset.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
     private static RunOutcome Diffusive(
         CompiledModel model,
         Fields.IElectrostaticField field,
@@ -1583,13 +1808,16 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
-        bool exportVtu)
+        bool exportVtu,
+        RunProgress? progress)
     {
         // Asked of the model rather than of the caller: a mixture is a property of the document,
         // and a fork the caller had to remember is one a caller will forget.
         if (model.IsMixture)
         {
-            return Mixture(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu);
+            return Mixture(
+                model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
+                progress);
         }
 
         // The one place that knows where the model file is, so the one place that can
@@ -1597,7 +1825,13 @@ public static class RunCommand
         var resolved = Io.GasFlowImport.Resolve(
             model.Gas, Path.GetDirectoryName(validation.ModelPath) ?? ".");
 
-        var outcome = DiffusionRun.Execute(model, field, fieldWarnings, resolved);
+        var watcher = Watch(progress, project, validation);
+
+        var outcome = DiffusionRun.Execute(
+            model, field, fieldWarnings, resolved, progress: watcher);
+
+        watcher?.Discard();
+
         var result = outcome.Result;
 
         var left = result.Collected + result.Lost.Values.Sum();
@@ -1915,13 +2149,20 @@ public static class RunCommand
     /// <param name="project">The project the outputs belong to.</param>
     /// <param name="exportVtu">Whether to write the trajectory for ParaView.</param>
     /// <param name="timestampUtc">The run timestamp, supplied so the caller owns the clock.</param>
+    /// <param name="progress">
+    /// How often the run should say where it has got to, and who to tell, or null to run
+    /// silently until it finishes. A run measured in hours has to be able to say something
+    /// before it ends - and one that stores nothing until then loses everything to a
+    /// reboot, which is how three attempts at the TIMS front-end sequence were lost.
+    /// </param>
     /// <returns>The run outcome, or the validation failure that prevented it.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="project"/> is null.</exception>
     public static (RunOutcome? Run, ValidateOutcome Validation) Execute(
         string modelPath,
         ProjectLayout project,
         bool exportVtu,
-        DateTimeOffset timestampUtc)
+        DateTimeOffset timestampUtc,
+        RunProgress? progress = null)
     {
         ArgumentNullException.ThrowIfNull(project);
 
@@ -1936,11 +2177,29 @@ public static class RunCommand
         var model = ModelValidator.Validate(
             document, null, Path.GetDirectoryName(validation.ModelPath)).Model!;
 
+        // THE SOLVE IS THE LONGEST SILENT STRETCH OF A LONG RUN, so it is announced
+        // before it starts rather than after. On the TIMS front end - a sixteen-plate
+        // funnel and a twenty-seven-ring analyzer - it is minutes on its own, and until
+        // this line existed a watched run said nothing at all until its first step, which
+        // reads exactly like a run that has hung. The wall clock is reported with it,
+        // because the cycles and the convergence factor already on the result say how
+        // well the solve went and not how long a person waited for it.
+        var announce = progress?.Announce;
+        var solving = System.Diagnostics.Stopwatch.StartNew();
+
+        announce?.Invoke("  solving the field, which for a large geometry is the "
+            + "longest single step of a run");
+
         // Reported, not bare. A solve that missed its tolerance produces a field
         // indistinguishable from one that met it, so the evidence has to travel
         // alongside and land on every number computed through it (GRD-2).
         var (field, built) = FieldAssembly.BuildReported(model);
         var fieldWarnings = built;
+
+        announce?.Invoke(string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            "  the field is solved in {0:F1} s; stepping now",
+            solving.Elapsed.TotalSeconds));
 
         // A run whose phases are not all in one description is a third case, and it
         // comes first: a model may declare "diffusion" as its own mode and still have a
@@ -1953,11 +2212,12 @@ public static class RunCommand
         // quantity reached through a time-free interface has answered at an arbitrary
         // instant rather than failing. A trajectory model needs no such routing: its
         // integrator asks the field for the instant it is at.
-        if (model.ChangesTransportMode
-            || (model.Phases.Count > 0 && model.TransportMode == "diffusion"))
+        if (model.NeedsSequencedTransport)
         {
             return (
-                Sequenced(model, field, fieldWarnings, validation, project, timestampUtc),
+                Sequenced(
+                    model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
+                    progress),
                 validation);
         }
 
@@ -1968,7 +2228,9 @@ public static class RunCommand
         if (model.TransportMode == "diffusion")
         {
             return (
-                Diffusive(model, field, fieldWarnings, validation, project, timestampUtc, exportVtu),
+                Diffusive(
+                    model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
+                    progress),
                 validation);
         }
 

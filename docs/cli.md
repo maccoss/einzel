@@ -20,6 +20,7 @@ einzel validate demo/models/q.json           # instant
 einzel estimate demo/models/q.json           # what it will cost
 einzel solve demo/models/q.json              # the field, and how it went
 einzel run demo/models/q.json --vtu          # run, and write a ParaView trajectory
+einzel report demo                           # what has been run here, as one page
 ```
 
 ## What one model contains
@@ -90,7 +91,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel validate <model.json>` | Units, bounds, dimensions, regime validity. Instant |
 | `einzel estimate <model.json\|study.json>` | What a run or a whole study will cost, before starting it (GRD-8) |
 | `einzel solve <model.json>` | Solve the fields only, and report how they went |
-| `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud |
+| `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud, and says where it has got to every 30 s (`--progress`) |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel scan <study.json>` | One parameter across a range: one row per point, and a curve |
 | `einzel boundary <study.json>` | Bisect onto a stability boundary, to ACC-6 (Class B) |
@@ -98,6 +99,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel preview <model.json>` | A fast, deliberately inexact look, marked as such (GRD-5) |
 | `einzel test [dir]` | Run the project's tests |
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
+| `einzel report [dir]` | An account of what has been run, as one self-contained page (Amendment 43) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
@@ -108,7 +110,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | --- | --- |
 | `--json` | Machine-readable output, including the full result envelope |
 | `--dry-run` | Say what would be written, and write nothing |
-| `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model |
+| `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
 | `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
@@ -255,6 +257,209 @@ matters: filing them together would train a reader to ignore both.
 
 Nothing is recomputed. A check that cost as much as the run it checks would not
 get run.
+
+### `einzel report`, and the two defects writing it found
+
+`verify` says whether a stored result is still the answer; `project` says what state each
+model is in. Neither says **what came out**. Every input for that existed - `results/*.result.json`
+carries the numbers with their GRD-1 envelopes and the manifests carry the provenance PRJ-3
+says determines a run - and nothing rendered them, so following a stretch of work meant
+reading terminal scrollback or a git log. `einzel report` writes one self-contained HTML
+page: per run, the model and its hash, the engine and solver-behaviour versions, the
+numbers with their units and intervals, the warnings by severity, and what the run wrote.
+
+```
+einzel report [dir] [--out <file>] [--json] [--dry-run]
+```
+
+**A view, not a recorder, and that is the load-bearing decision.** PRJ-4 puts the durable
+record of a design in the model document and its history, with `results/` regenerable and
+discardable. So the report holds no state: it reads the documents that are already there
+and *cannot* disagree with what ran. A recorder would be a second account of the same
+events, and the two would part company - the failure the generated half of `AGENTS.md`
+exists to prevent, one level up. Two tests hold it: nothing is added to `results/`, and two
+reports over the same runs are the same page but for the instant each was rendered at. A
+recorder passes the first and fails the second.
+
+Drift is not recomputed either. `verify` already separates an edited model from a changed
+engine build, and a second implementation of that distinction would eventually disagree
+with the first. The page goes at the project root rather than into `results/`, because
+`results/` is what this reads - a report written there would become an input to the next
+one.
+
+**The page is written and not opened.** Launching a browser would make this the one verb
+with a side effect outside the project, and a report generated over ssh is exactly the case
+that wants the file rather than the window.
+
+#### Reading a result document is what found the defects
+
+Nothing here had ever read one back. `verify` walks manifests; `test` re-flies the model.
+So the first reader found two things at once, both of which had been true for every run
+this project has ever stored.
+
+**The generated `AGENTS.md` had been promising the thing that was not true.** Its loop section
+says, in words, `einzel run models/<name>.json    # writes results/<name>.result.json` - which
+held for three of the four run paths. The one document in a project written *by* the platform to
+tell an agent what the platform does was stating a guarantee one path did not keep, which is the
+exact failure the generated layer exists to prevent, met from the inside.
+
+**The sequenced run path wrote a manifest and no result.** Three of the four run paths
+stored one and this one did not - and a sequenced run is what every TIMS study here is, so
+the runs whose answers were missing were the ones most worth reading. Found on a real
+project holding four manifests and no results. PRJ-3's claim that a manifest determines its
+run stands either way; what was missing is the stored answer the determination is *for*, so
+nothing could be regenerated and compared. This is the recurring "a capability wired into
+N-1 of N paths" shape, and the fix is guarded by a test that runs one model down each of
+the four paths and a crude count of the writes in `RunCommand` - the only thing that fails
+when a *fifth* path is added rather than an existing one changed.
+
+**A result document did not read back into the record that wrote it.** The emittance fields
+are `required double?` - this surface's way of saying the construction site must decide and
+the answer may be nothing - and `WhenWritingNull` omits a null while C#'s `required` demands
+it on the way in. So a document was unreadable exactly when one of those values was
+*absent*, which is when no ion arrived with a measurable spread: a trap, or a total loss.
+Every ensemble run of that kind had stored a result this build could not load, which makes
+"regenerate and compare" impossible, and nothing said so because *writing* succeeded.
+
+**The first fix was the other one and a test caught what it cost.** Writing every required
+property including its nulls also round-trips - and this surface states, in its own words,
+that "an undefined measurement is absent, not zero", with a test asserting that a consumer
+tells "no orientation" from "zero" by the key not being there. That fix changed the published
+document for every ensemble run and would have broken any consumer using key presence the way
+the surface told it to.
+
+The precise statement is about which requirement is which. Absence of `required int Launched`
+really is a malformed document; absence of `required double? EmittanceMmMrad` is this
+surface's own encoding of no value, so demanding it on the way in was demanding that the
+encoding not be used. So it is fixed on the **reading** side - a required property whose
+declaration admits null is not required on the wire - and **the document does not change at
+all**. Type level rather than per property, because the next `required` nullable would be
+declared without an attribute and nobody would notice until something read it back.
+
+**And the test for it had to straddle the switch.** A packet that *arrives* writes every
+field and round-trips fine, so the four-path test above cannot see this at all; the case
+that discriminates is a run whose ensemble measured nothing. That is the shape this
+repository keeps recording: a test whose parameter sits on one side of the value the
+behaviour switches at is a test of a different regime.
+
+#### `results/` holds two kinds of answer, and the first version knew one
+
+A run writes `X.result.json` beside `X.manifest.json`. A **study** writes `X.json` beside
+it - a sweep, a scan, an optimisation or a boundary search, each with its own record shape
+rather than a `RunOutcome`. Looking only for the first reported every study in a project as
+a run that had stored nothing, warning and all: **the same "wired into N-1 of N paths"
+mistake this command was written to expose, made in the command itself**, and loudest on the
+projects with the most work in them.
+
+The rule that generalises is the one the stem already follows: **the answer sits beside the
+manifest under the manifest's own stem**, as `.result.json` for a run and as `.json` for a
+study. No list of study kinds is needed and a fifth kind would be found the same way.
+
+**Named rather than drawn**, and the two are separate states on the page. Reading four more
+record types to render a distribution or a bisection bracket is a real extension of this
+report, not a line of plumbing, so what the page says is that the answer is there and it
+does not draw that kind yet - which is a different statement from an answer that was never
+stored, and calls for something different from the reader. There are five states for that
+reason: nothing to do, re-run it, run it to store an answer, read it another way, and report
+a defect.
+
+Three of them look alike from a list of numbers and all three are empty, so they are fields
+rather than inferences: `result` absent means nothing was stored; `notRendered` means a
+study's answer is there; `unreadable` means a document is there and this build cannot load
+it, which is a defect in the surface rather than in the project. The first version counted
+the first and the third together, and told the reader the wrong one.
+
+#### What the page does with a number it was given
+
+Nothing is computed and nothing is inferred. Every entry is a field of the stored result,
+and a figure the run did not produce is **absent rather than zero** - so a diffusive run
+has no flight time here, which is a statement rather than a gap. Whether there is one at
+all is read from `HasFlightTime`, a required member set at each construction site with its
+reason, rather than from the transport mode: that proxy stopped being equivalent the moment
+a third mode existed, and it has had to be widened three times.
+
+Three presentation decisions that are about not lying rather than about taste:
+
+- **A zero-width interval prints as no interval**, not as `+- 0`. A residual of zero is not
+  "no uncertainty", it is one smaller than a comparison of two doubles can see - the
+  distinction that made an agent refuse to publish `10.180506 +- 0 us` and go and measure
+  its own tolerance ladder instead.
+- **A transmission of `100.00 %` has to mean all of them.** Two decimals is right for
+  reading and turns 99.9976 % into `100.00 %`, which says every ion arrived when 0.24 of ten
+  thousand did not - and for a diffusive run the density's tail is exactly where the loss
+  is. The format widens only where rounding would land on nothing or on everything without
+  being there. (`einzel run` prints one decimal and has the same rounding; matching it would
+  be matching the wrong thing.)
+- **A fraction and its interval are scaled together, or neither.** They are stored in the
+  same units, so scaling the value alone prints `0.00 %, 0 to 1` - two numbers about one
+  quantity in two different units, side by side, which is the ambiguity section 9 refuses a
+  model document for. The first version of this page did that and reported a transmission a
+  hundred times smaller than the run measured.
+
+### A sequenced run is a timeline, not a list of scalars
+
+**The width per phase is what the page exists to show for a mobility analyzer, and the
+first version of it showed five numbers.** A sequenced run reported phases, mode
+conversions, ions arrived, mean arrival and arrival spread - all properties of the whole
+run - and the per-phase packet width, which had been added to the result document the day
+before precisely because a TIMS study's open question is "how wide is the packet when the
+ramp starts", was not among them. Computed by the solver, carried through the document, and
+absent from the surface a person reads: the same shape the report command was written to
+expose, in code a day old.
+
+It is a table rather than more rows in the numbers list because a flat name and value has
+nowhere to put the instant a number belongs to, and how a quantity *moved through the
+phases* is the whole answer a sequenced run gives. That also makes it a measuring
+instrument with no new capability at all: **split a hold into phases of the same settings
+and the table is a relaxation curve**, one row per boundary, because every boundary reports
+a width. The 231 microsecond relaxation time in `docs/literature-targets.md` section 6 was
+measured exactly that way.
+
+| | |
+| --- | --- |
+| `phase`, `mode` | as the model author named it, and which description it ran in |
+| `ends at` | on the instrument's own clock |
+| `population`, `trajectories` | real ions, and how many trajectories carried them - **absent** for a diffusive phase, because a density is not a count of anything and a zero there reads as an instrument that lost everything |
+| `center`, `axial width`, `radial width` | one standard deviation along each axis, absent where there was nothing left to measure |
+| `converted` | marked on the phase the packet crossed descriptions at (SEQ-1), because the widths either side of that mark are two measurements of one packet by two machineries |
+
+One rendering, shared with a checkpoint's: a run that never finished carries its completed
+phases in the same record, so this table cannot describe a killed run's phase differently
+from a finished one's.
+
+### A run that did not finish says how far it got
+
+**Its own state is the sixth thing this page distinguishes**, and it earns that because it
+calls for something different from every other: not "nothing to do", not "re-run it", not
+"run it again to store an answer" - but give it longer, or a coarser mesh, or a machine
+nobody is going to reboot. A run interrupted after six hours and a run that was never
+started both leave `results/` without a result, and reporting them alike throws away the
+phases the first one finished.
+
+What it reads is the checkpoint described under **Files a run writes** below. The sentence
+names where it was, how many steps in, and how long it had been going; the phases that
+completed are drawn in the timeline table above, through the same rendering a finished
+run's go through.
+
+**And the count learned about it at the same time**, which it had not the first time round.
+`StoredNothing`'s own comment records a count and a warning disagreeing in one document
+because a third state arrived and only one of the two was told - and a fourth then arrived
+and the same thing happened, so a run still in flight was reported as one that "stored a
+manifest and no result document ... Re-running the model stores one". That is advice for a
+different problem, and following it would restart a run that is working. Found in real
+output rather than by a test, which is the third time on this command.
+
+**Warnings get four levels because the enum has four.** The first version keyed the hatched
+band - the device `Einzel.Render` puts across a tainted figure - on `IsSuppressible`, which
+is false for everything above advisory. So the band that exists to mark the one class GRD-3
+says must never be skimmed appeared on a housekeeping note about a convergence floor, and on
+almost every warning there is. A mark on everything marks nothing, which is GRD-3's own
+argument met from the other direction. The hatch is now for `ValidityViolation` alone.
+
+The masthead's headline count moved for the same reason: "runs carrying an unsuppressible
+warning" is nearly every run there is - eleven of this project's thirty-nine corpus examples
+carry one while behaving exactly as designed - so what is counted is runs computed *outside
+validity*.
 
 ## Studies
 
@@ -569,9 +774,15 @@ agent trusts it and cannot see the drift.
 ## A run that changes transport mode
 
 A model whose phases do not all use one transport description runs through the same
-`einzel run`, and the fork tests that before it tests the model's own mode — a
-model may declare `diffusion` and still have a sequence that leaves it, and the
-sequence is the more specific statement.
+`einzel run`, and **the fork asks for the set of modes the run uses** rather than
+whether two adjacent phases differ. Both readings matter and they are not the same
+question: a *conversion* happens between adjacent phases that disagree, while
+*needing the sequenced path at all* is a property of the whole set, because the
+trajectory path cannot step a density. Asking the narrower one sent a sequence whose
+every phase said `diffusion`, on a model declaring `trajectory`, down the trajectory
+path with the timeline ignored — a density asked for, a single-ion flight delivered,
+exit 0. A model may equally declare `diffusion` and have a sequence that leaves it,
+and the sequence is the more specific statement either way.
 
 ```
 packet centre 9.999117 mm
@@ -593,6 +804,35 @@ ion whose final position it could be.
 every conversion warning on it. The manifest records `diffusion -> trajectory`
 rather than one mode, since a manifest that named one would claim to determine a run
 it does not describe.
+
+`--vtu` writes the density the sequence ended with, where it ended in the diffusive
+description. A sequence ending as trajectories has none — which is a different fact
+from having an empty one — so none is written, and the file carries the run's caveats
+and their severities in its own header, because a volume is the artifact most likely
+to be opened by somebody who never saw the envelope it came from.
+
+**And a mean arrival needs enough arrivals to be a mean of.** The diffusive
+population is continuous, and Scharfetter-Gummel's flux across a collecting face
+behind a barrier *is* the Boltzmann factor of that barrier — so a held packet emits a
+stream of values hundreds of orders below one ion from its first step. A run of the
+TIMS front end reported `mean arrival 11366.06 us, spread 4024.20 us` over
+**7.74e-245** of them, with 99,893.6 of 99,971 ions still in the tunnel. So the
+arrival figures now require the collected population to reach a millionth of what was
+launched — a fraction rather than a count, since "less than one ion arrived" is a real
+answer for a low transmission while 1e-245 of one is not an answer at all. Below that
+they are **absent**, with `sequence.nothing-eluted` naming which numbers are missing,
+why, and that the sequence itself completed:
+
+```
+sequence      0 mode conversion(s), 0 ions arrived
+  [ValidityViolation] sequence.nothing-eluted: 7.74132E-245 ions reached the detector
+  of 99971.0 launched, which is the collecting face's Boltzmann tail rather than a
+  transmitted packet - so there is no arrival time to report and none is. The sequence
+  completed; the packet is where the phase table's last row says it is
+```
+
+No `.arrivals.csv` is written in that case either, for the same reason: a profile of a
+tail is a profile of the barrier, not of an elution.
 
 Exit code 0: a run that finished what it was asked to do is a success, whichever
 descriptions it used on the way.
@@ -700,13 +940,76 @@ is the whole list.
 | --- | --- |
 | `results/<name>.manifest.json` | Model hash, engine version, solver-behaviour version, transport mode, compute path, machine, timestamp |
 | `results/<name>.result.json` | The figures of merit, each as a full envelope |
+| `results/<name>.progress.json` | **Only while the run is going** - where it has got to, and the phases that finished. Removed when the run writes its answer, so finding one means the run did not |
 | `.einzel/<name>.trajectory.vtu` | The sampled trajectory, with provenance in a comment block |
+| `.einzel/<name>.density.vti` | The density on the tracked grid, with the run's caveats and their severities in a comment block. Written for a diffusive run, and for a **sequenced** run whose last phase was diffusive - a sequence ending as trajectories has no density, which is a different fact from an empty one, so none is written |
+| `results/<name>.arrivals.csv` | The arrival profile, where enough arrived to be one. See the note on `sequence.nothing-eluted` below |
 
 The manifest fully determines the run, which is what makes `.einzel/` safe to
 delete and results regenerable rather than precious. It is also what lets drift be
 detected in both directions: a stored result can be checked against both the
 current model and the currently installed engine, in a plain folder, with no
 repository involved.
+
+### A run measured in hours says something before it ends
+
+**The gap this closes is an engineering one, and it made a study unrunnable.** A driven
+diffusive window is set by a Courant limit against a ponderomotive gradient, so it is
+hundreds of thousands of steps whatever each one costs - and the engine wrote its result at
+the end, so such a run produced its first byte of output when it finished. The TIMS
+front-end sequence failed to finish three times: 4.75 CPU-hours, then 40 minutes, then 7.6
+wall-hours against a 4.17 hour estimate before a Windows update rebooted the machine. **On
+none of the three was anything observed**, so the one question that would settle whether the
+estimate was low or the run does not terminate was never asked. `estimate` will tell you a
+run is going to take four hours; nothing then said a word for four hours.
+
+`einzel run --progress <seconds>` sets the interval, and it is **on by default at thirty
+seconds**. That is the decision rather than the plumbing: a flag somebody has to remember
+is a flag that is not set on the run that gets killed. `--progress 0` asks for silence, and
+leaves no file at all.
+
+Each report is one line on **stderr** (CLI-2 - progress is a diagnostic, so a caller piping
+`--json` still gets the result document and nothing else) and one rewrite of the checkpoint:
+
+```
+      27.8 s  phase 1/2 fill             17.0 of 3000.0     us        300 steps     85919 ions at x   21.090 +- 1.9395 mm  ~23 min left in this phase
+```
+
+Four things about it are load-bearing.
+
+**The projection is measured, not divided.** It comes from the step rate *between* reports,
+so the first report of a phase makes none and every one after it divides the microseconds
+gained by the wall clock spent gaining them. Dividing total elapsed time by the fraction
+simulated charges the solve - a one-off cost paid before the first step - to every remaining
+microsecond: measured at 82 minutes against an actual 23 on the shipped analyzer, and 17,576
+minutes on the very first report. Each phase times its own stepping, because a ramped phase
+and a held one differ by an order of magnitude in cost per microsecond and carrying a rate
+across a boundary projects the wrong phase's.
+
+**A finished phase is written whether or not the interval has come round.** That is the state
+a killed run should be found in: a study that splits a hold into phases to read a relaxation
+curve has most of its answer in the phases that completed, and before this they went with
+the process.
+
+**The checkpoint is written through a temporary file and moved into place**, so a reader
+never sees half a document and a process killed mid-write leaves the previous checkpoint
+rather than a broken one. A failed write is announced once and swallowed - a full disk must
+not end an eight-hour run at hour seven.
+
+**And watching does not change the answer.** The observer is handed the solver's own live
+density buffer rather than a copy, which is what makes reporting cheap enough to do at all,
+and *which* steps report is set by the wall clock - so if the answer depended on being
+watched it would not even be reproducible. Two runs of one seeded model, one silent and one
+reporting every step, are asserted equal to the last digit. The cost on the hot path is one
+call per step asking whether a report is wanted; the centroid and the width are full passes
+over the grid and are computed only when it is.
+
+**The solve is announced before it starts**, because with the projection fixed it became the
+longest silent stretch of a long run - 21 s on the TIMS front end's sixteen-plate funnel and
+twenty-seven-ring analyzer, and the first *step* on that geometry is another 26 s after it, so
+a watched run said nothing for three quarters of a minute and that reads like a hang. The wall
+clock goes with it, since the cycles and the convergence factor already on the result say how
+well the solve went rather than how long somebody waited.
 
 ## What `estimate` measures, and what it does not
 

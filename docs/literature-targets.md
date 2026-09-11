@@ -908,10 +908,93 @@ from 46 mm over a 1.6 + 0.125 mm pitch. And the storage and analysis regions sit
 | R against mobility | R goes as `K^(-3/4)` | **Trend present**: 1.34 : 1 : 0.60 measured against 1.24 : 1 : 0.74, three mobilities |
 | mobility calibration | `1/K` linear in elution voltage, with one instrument constant | **Linear to 2 per cent over three mobilities**, confined: exit potential at the median 30.7 / 20.9 / 11.3 V against 1/K of 1.333 / 1 / 0.667, slope 29.4 V, intercept −8.5 V. The intercept is the release lag in volts — the settling time `L²/2KV` is not small against the ramp — which is what the instrument constant absorbs. `docs/device-templates.md` |
 
+| R through the front end | - | **7.481 delivered down the funnel**, against **8** for the analyser alone at the same 50 m/s and 7.5 V/ms - so the front-end geometry costs about 7 per cent and the delivery itself costs nothing measurable. **99,833.5 of 99,971 ions**, peak **20.9878 V**, FWHM 374.65 us = 2.810 V. Identical to five figures for a packet *seeded* at the balance point instead, and for a ramp beginning 9.7 ms earlier on the instrument's clock. The profile FWHM and the Gaussian-equivalent of the second moment agree to **0.04 per cent**, so this peak is not skew - unlike the arrival-time peaks the reflectron work reports |
+| arrival width, delivered vs parked | - | **The width is the analyser's, not the delivery's.** Entering the ramp 34 per cent apart (sigma_z 0.954 mm delivered against 0.712 parked, the latter the closed-form equilibrium), the two elute at means agreeing to **eight significant figures** and sigma to six. The packet re-equilibrates to `sigma_z^2 = (kT/q)/\|dE/dx\|` before release, which that closed form requires since it carries nothing about the packet's history. A *stepped* release is 12 per cent wider than a ramped one (sigma 178.0 / 179.9 against 159.16) |
+
 **The resolving-power law is the target that matters**, because it is a *shape* over two
 independent variables rather than a single number: R must fall as the fourth root of the
 scan rate and as the three-quarter power of the mobility. A model that lands on one point
 by tuning cannot land on that surface.
+
+**One earlier run of this document is recorded as unexplained.** It collected 7.74e-245
+ions and did not move, and it does not reproduce on the current build. Excluded as causes:
+the ramp spelling, the delivery, the late start, a stale operator, and - by direct control -
+the ponderomotive well cache, which was the leading hypothesis because that commit is the only
+one between the two engine builds touching a physics file. Reverting it gives 10,794 well
+rebuilds against 1 and the same answer to **13 significant figures**. Its own provenance was
+overwritten by the re-runs investigating it, so the model hash cannot be compared.
+`docs/device-templates.md` carries the five-run table and `docs/lessons.md` the two rules that
+came out of it.
+
+### The analyser's own resolution floor, in closed form
+
+**The width a parked packet settles to is `sqrt((kT/q) / |dE/dx|)`, and the mobility cancels
+out of it.** Near the balance point the net axial drift is linear in displacement -
+`v(x) = K E(x) - u`, zero at `x0` - so the stationary state of drift against diffusion is a
+Gaussian with `sigma^2 = D / (K |dE/dx|)`, and the Einstein relation turns `D/K` into `kT/q`.
+
+So the floor on a TIMS analyser's resolution depends on **the gas temperature and the axial
+field gradient and on nothing else**: not the ion, not the gas speed, not the pressure. Those
+set *where* each mobility parks, which is what separates two species; they do not set how wide
+either one is. The two knobs that narrow a packet are therefore a steeper gradient - more volts
+over a shorter tunnel - and a colder gas, and neither is a knob this register had identified.
+
+Not a published relation, so it is recorded here as this project's own derivation, with what
+it was checked against:
+
+| | |
+| --- | --- |
+| closed form with the **solved** gradient at the parking point (50,667 V/m^2) | **0.7143 mm** |
+| measured, packet released at the balance point and held | **0.7119 mm**, 0.34 % |
+| closed form with the **nominal** `2V/L^2` (55,319 V/m^2) | 0.6836 mm, 4 % out |
+| solved axial field at the parking point vs `v_gas / K` = 1168.2 V/m | **-1170.03 V/m**, 0.16 % |
+| the same width at a 0.47 mm and a 0.23 mm axial cell | identical to four decimals |
+
+The 8 % gradient shortfall is the exit element flattening the field toward the exit, which
+`docs/device-templates.md` had already recorded as the field peaking at 41.2 mm of 46.6. The
+mesh-independence is not luck: Scharfetter-Gummel's zero-flux state *is* the Boltzmann factor,
+so the equilibrium width is the scheme's exact answer rather than an approximation converging
+to one. `MobilityBalanceWidthTests` asserts the closed form on an analytic linear field, where
+it is exact to every printed digit and the two-mobility width ratio is 1.00000.
+
+**And the width's own relaxation time is confirmed to about one per cent.** The same
+linearization gives the variance a single relaxation time, `tau = 1/(2 K |dE/dx|)`, which is
+half the centroid's - a variance relaxes at twice the rate of a first moment because it is a
+second one. For this analyzer at the 60 V hold that is **231 us**, and it is measured by
+splitting a hold into phases that double in length, so one run gives the whole curve (the
+per-phase width added for this study is the instrument):
+
+| interval | excess variance, mm^2 | implied tau |
+| --- | --- | --- |
+| 100 to 200 us | 2.2696 to 1.4699 | **230.2 us** |
+| 200 to 400 us | 1.4699 to 0.6197 | **231.6 us** |
+| 400 to 800 us | 0.6197 to 0.1114 | **233.1 us** |
+| 800 to 1600 us | 0.1114 to 0.0037 | **234.5 us** |
+
+A packet released 2 mm wide reaches **0.7117 mm** and stays there - the same equilibrium the
+closed form predicts, reached from four times that width - and the excess over it decays as a
+plain exponential at the predicted rate across four octaves of hold. The 2 per cent upward
+drift in tau from the wide end to the narrow end is recorded as measured rather than
+explained.
+
+**That result refutes one of the two explanations this register carried for a slower
+measurement.** The delivered packet - released 40 mm up the entrance funnel rather than at the
+balance point - ends the shipped 300 us trap at 1.706 mm and still narrowing, implying a
+relaxation about 4.4 times slower than 231 us, and the two candidate explanations were a tail
+dominating a second moment or the linearization failing over a packet several millimeters wide.
+**It is not the width**: the parked packet's first interval is measured at sigma = 1.67 mm, so
+plus or minus five millimeters at three sigma, and it relaxes at 230 us there - the predicted
+rate, from the widest point on the curve. What is left is the shape of the delivered packet
+itself: a second moment carrying a shoulder, or a population still being carried in while the
+trap holds. Discriminating those needs the delivered packet given time to relax, which is a
+longer run of the same shape.
+
+**What this is worth against the published resolving powers.** At the 60 V hold the width in
+volts is `sigma_z V / x0` = 1.945 V, so `R = V/(2.355 sigma_V)` = **13.1**, and at the 32 V
+quasi-static elution point 9.6. The engine's measured scan gives R = 8.3 at an 8 ms ramp, so
+the measured width sits close to the analyser's own thermal floor and there is little room in
+it for anything else - which is why Hernandez's 100-250 needs his 100-300 ms ramps and his
+140 m/s gas rather than a narrower packet.
 
 ### What this needs from the engine
 

@@ -120,6 +120,7 @@ public static class Program
             "preview" => Preview(options),
             "test" => Test(options),
             "verify" => Verify(options),
+            "report" => Report(options),
             "export" => Export(options),
             "render" => Render(args, options),
             "ext" => Ext(args, options),
@@ -1288,6 +1289,110 @@ public static class Program
         return (int)(outcome.AllCurrent ? ExitCode.Success : ExitCode.ValidationFailure);
     }
 
+    /// <summary>An account of a project's runs, for a person to read (Amendment 43).</summary>
+    /// <remarks>
+    /// <para>
+    /// A verb rather than a shell view, so AGT-2 holds: nothing exists only in the window,
+    /// and an agent asking what a night of runs produced gets the same account through
+    /// <c>--json</c> that a person gets as a page.
+    /// </para>
+    /// <para>
+    /// <b>The page is written and not opened.</b> Launching a browser would make this the
+    /// one verb with a side effect outside the project, and a report generated on a
+    /// headless machine over ssh is exactly the case that wants the file and not the
+    /// window.
+    /// </para>
+    /// </remarks>
+    private static int Report(CommandLine options)
+    {
+        var root = options.Value("project")
+            ?? (options.Positional.Count > 0 ? options.Positional[0] : ".");
+
+        var outcome = ReportCommand.Execute(root);
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        // The page goes at the project root rather than into results/, and that is not
+        // cosmetic: results/ is what `verify` walks and what this reads, so a report
+        // written there would become an input to the next one.
+        var target = options.Value("out")
+            ?? Path.Combine(outcome.Root, "report.html");
+
+        var page = ReportPage.Write(outcome, Path.GetFileName(outcome.Root.TrimEnd(
+            Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+
+        if (options.Has("dry-run"))
+        {
+            Console.Out.WriteLine(
+                $"would write {target} ({outcome.Runs.Count} run(s), {page.Length:N0} bytes)");
+
+            return (int)ExitCode.Success;
+        }
+
+        // A named directory is created rather than refused, since `--out reports/tonight.html`
+        // is the obvious way to keep a series of them and failing on the first is a poor
+        // answer. The default target's directory is the project root and always exists.
+        if (Path.GetDirectoryName(Path.GetFullPath(target)) is { } directory)
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(target, page);
+
+        foreach (var run in outcome.Runs)
+        {
+            var mark = run.Unreadable is not null ? "BROKEN"
+                : run.NotRendered is not null ? "study"
+                : run.Result is null ? "NOANSWER"
+                : run.Current ? "ok" : "STALE";
+
+            // A study's answer is not a fault, so it does not go to stderr with the ones
+            // that need doing something about.
+            var stream = mark is "ok" or "study" ? Console.Out : Console.Error;
+
+            stream.WriteLine(
+                $"{mark,-9}{run.Manifest,-46}{run.Numbers.Count,3} number(s), "
+                + $"{run.Warnings.Count} warning(s)"
+                // Only where there is a timeline, since a beamline has none and a count of
+                // zero phases on every ordinary run is the kind of line a reader learns to
+                // skip past - taking the ones that mean something with it.
+                + (run.Phases.Count > 0 ? $", {run.Phases.Count} phase(s)" : ""));
+        }
+
+        // Diagnostics on stderr and the result on stdout (CLI-2), so a caller piping this
+        // gets the path and nothing else.
+        if (outcome.Runs.Count > 0)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine(
+                $"{outcome.Current} of {outcome.Runs.Count} run(s) still stand"
+                + (outcome.WithoutResult > 0
+                    ? $"; {outcome.WithoutResult} stored no result document"
+                    : "")
+                + (outcome.Unreadable > 0
+                    ? $"; {outcome.Unreadable} stored one this build cannot read"
+                    : "")
+                + (outcome.NotRendered > 0
+                    ? $"; {outcome.NotRendered} study answer(s) this page does not draw"
+                    : "")
+                + (outcome.Interrupted > 0
+                    ? $"; {outcome.Interrupted} did not finish, or has not yet"
+                    : ""));
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"  [{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        Console.Out.WriteLine(target);
+
+        return (int)ExitCode.Success;
+    }
+
     private static int Export(CommandLine options)
     {
         if (options.Positional.Count == 0)
@@ -1984,7 +2089,9 @@ public static class Program
     {
         if (options.Positional.Count == 0)
         {
-            Console.Error.WriteLine("usage: einzel run <model.json> [--vtu] [--json] [--project <dir>]");
+            Console.Error.WriteLine(
+                "usage: einzel run <model.json> [--vtu] [--json] [--project <dir>] "
+                + "[--progress <seconds>]");
             return (int)ExitCode.ValidationFailure;
         }
 
@@ -1992,8 +2099,36 @@ public static class Program
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
         var project = new ProjectLayout(root);
 
+        // WATCHED BY DEFAULT, and that is the decision rather than the plumbing. A flag
+        // somebody has to remember is a flag that is not set on the run that gets killed -
+        // and three attempts at the TIMS front-end sequence were lost with nothing on disk
+        // to say how far they had got, the last of them to a Windows update. Thirty
+        // seconds, so a run of a few seconds says one thing and an eight-hour run says a
+        // thousand; `--progress 0` asks for silence.
+        var interval = 30.0;
+
+        if (options.Value("progress") is { } asked)
+        {
+            if (!double.TryParse(
+                    asked, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out interval))
+            {
+                Console.Error.WriteLine(
+                    $"--progress takes an interval in seconds, and '{asked}' is not one. "
+                    + "Use 0 to turn it off.");
+                return (int)ExitCode.ValidationFailure;
+            }
+        }
+
         var (run, validation) = RunCommand.Execute(
-            modelPath, project, exportVtu: options.Has("vtu"), timestampUtc: DateTimeOffset.UtcNow);
+            modelPath,
+            project,
+            exportVtu: options.Has("vtu"),
+            timestampUtc: DateTimeOffset.UtcNow,
+
+            // Diagnostics on stderr (CLI-2), so a caller piping `--json` gets the result
+            // document and nothing else however long the run took to produce it.
+            progress: new RunProgress(interval, Console.Error.WriteLine));
 
         if (run is null)
         {
@@ -2148,11 +2283,20 @@ public static class Program
                     ? phase.Trajectories.ToString(invariant)
                     : "-";
 
+                // The width beside the centre, because for a mobility analyser the two
+                // together are the measurement: where a packet parks is which mobility it
+                // has, and how wide it is when the ramp releases it is the floor on the
+                // resolving power. A dash rather than a zero where there is nothing to take
+                // a width over, on the same argument as the trajectory count above.
+                var wide = phase.SpreadMm is { Count: > 0 } spread
+                    ? string.Create(invariant, $"{spread[0],7:F3}")
+                    : "      -";
+
                 Console.Out.WriteLine(string.Create(
                     invariant,
                     $"  {phase.Name,-12} {phase.Mode,-11} to {phase.EndsAtUs,8:F2} us  "
                     + $"{phase.Population,10:G6} ions in {carried,5} trajectories  "
-                    + $"x {phase.CentroidMm[0],8:F3} mm"
+                    + $"x {phase.CentroidMm[0],8:F3} +- {wide} mm"
                     + $"{(phase.Converted ? "  converted" : string.Empty)}"));
             }
 
@@ -2434,6 +2578,7 @@ public static class Program
           test [dir]                    run the project's tests
           verify [dir]                  are the stored results still the answer?
           project [dir]                 what the project holds, and the state of each model
+          report [dir] [--out <f>]      an account of what has been run, as one HTML page
           sweep <study.json>            tolerance Monte Carlo, and which parameter binds first
           scan <study.json>             one parameter across a range, one row per point
           boundary <study.json>         bisect onto a stability boundary (Class B, ACC-6)

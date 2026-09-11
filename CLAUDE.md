@@ -1719,6 +1719,322 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   *non-monotone* approach that read as physics and was my own grid: at a fixed interval count
   the cells coarsen as the domain grows.
 
+- **`einzel report`, and the two defects reading a result document found.** An account of a
+  project's runs that a person can read: one self-contained HTML page - per run, the model and
+  its hash, the engine and solver-behaviour versions, the numbers with their units and
+  intervals, the warnings by severity, what it wrote - with `--json` carrying the same account
+  so AGT-2 holds. **Every input existed and nothing rendered them**, so following a stretch of
+  engine work meant reading terminal scrollback or a git log.
+
+  **A view, not a recorder, and that is now a property rather than a claim.** PRJ-4 puts the
+  durable record in the model document and its history, with `results/` regenerable; the report
+  reads what is already there and holds no state. Two tests hold it: nothing is added to
+  `results/`, and two reports over the same runs are the same page but for the instant each was
+  rendered at - **a recorder passes the first and fails the second**. Drift comes from `einzel
+  verify` rather than a second implementation of a distinction that took thought to get right.
+
+  **It is the first thing here that ever read a result document back** - `verify` walks
+  manifests and never opens one, `test` re-flies the model - so a producer with no consumer had
+  been unchecked however many tests it had. Both defects it found had been true of every run
+  this project has stored:
+
+  - **The sequenced run path wrote a manifest and no result.** Three of the four run paths
+    stored one; that path stored provenance and no answer, and it is the path every TIMS study
+    takes, so the runs whose answers were missing were the ones most worth reading. Found on a
+    real project holding four manifests and no results. The recurring "capability wired into
+    N-1 of N paths" shape - found by *writing the consumer* rather than by a failing test.
+    It was also the one path storing **absolute** artifact paths, so its manifest named files
+    by where they sat on the machine that wrote them.
+  - **A result document did not read back into the record that wrote it.** The emittance fields
+    are `required double?` - this surface's way of saying the construction site must decide and
+    the answer may be nothing - and `WhenWritingNull` omits a null on the way out while C#'s
+    `required` demands it on the way in. So a document was unreadable exactly when a value was
+    *absent*, which is a trap or a run where nothing arrived: PRJ-3's "regenerate and compare"
+    was impossible for every such run, and nothing said so because **writing succeeded**.
+
+    **And my first fix was the wrong one of the two, caught by a test written months earlier.**
+    Writing every required property including its nulls round-trips just as well - and changed
+    the published document for every ensemble run, against this surface's own recorded policy
+    that an undefined measurement is *absent*, with a test spelling out that "a consumer
+    distinguishes 'no orientation' from 'zero' by the key not being there". Both fixes satisfy
+    the rule as I had written it, and one breaks something else, so **the rule as written was
+    underdetermined**. The precise version is which requirement is which: absence of
+    `required int Launched` is a malformed document, absence of `required double?
+    EmittanceMmMrad` is the encoding of *no value* - so it is fixed on the **reading** side and
+    the document does not change at all. Type level rather than per property, because the next
+    `required` nullable would be declared without an attribute and go unnoticed until something
+    read it back.
+
+  **The test for the second had to straddle the switch.** A packet that arrives writes every
+  field and round-trips fine, so the four-path test cannot see it at all; the discriminating
+  case is a run whose ensemble measured *nothing*. Same rule this project has recorded three
+  times for dimensionless numbers, met here on an absence.
+
+  **And I made the same defect I had just written the command to expose.** `results/` holds
+  *two* kinds of answer - a run writes `X.result.json` beside its manifest and a **study**
+  writes `X.json` - and the first version looked for the first only, so every sweep, scan,
+  optimisation and boundary search in a project was reported as a run that had stored
+  nothing, loudest on the projects with the most work in them. What would have caught it is
+  enumerating the *writers* into `results/`; I enumerated the run paths I was already
+  reading. Fixed by a rule rather than a list of kinds - **the answer sits beside the
+  manifest under the manifest's own stem** - and the three empty states are now separate
+  fields, because "nothing was stored", "a study's answer is there and this page does not
+  draw it" and "a document is there and this build cannot load it" each call for something
+  different from the reader.
+
+  **And two presentation defects of my own, both "plausible wrong value".** A fraction was
+  scaled to a percentage and its interval was not - one quantity in two units side by side,
+  which is the ambiguity §9 refuses a model document for - reporting a transmission a hundred
+  times small and reading as exactly what a trap reports. And the hatched band that marks a
+  tainted result was keyed on `IsSuppressible`, false for everything above advisory, so the
+  mark that exists for the one class GRD-3 says must never be skimmed landed on a note about a
+  convergence floor and on almost every warning there is. **A mark on everything marks
+  nothing** - the same teaching GRD-3 warns about, from the other direction. Four severities,
+  four levels, the hatch for `ValidityViolation` alone. Also: `F2` turns a 99.9976 %
+  transmission into `100.00 %`, which claims every ion arrived when 0.24 of ten thousand did
+  not, so the format widens only where rounding would land on nothing or everything without
+  being there. Details in `docs/cli.md`, `docs/lessons.md`, SPEC.md Amendment 43.
+
+- **The TIMS analyser's resolution floor is a closed form, and the mobility cancels out of
+  it.** The front-end study's open question was whether the arrival width is the analyser's
+  own or whether the delivery leaves an axial spread the ramp reads as mobility. Answered -
+  and the closed form came first, on paper, before any run.
+
+  Near the balance point the net axial drift is linear in displacement, so the stationary
+  state of drift against diffusion is a Gaussian with `sigma_z^2 = D/(K|dE/dx|)`, and the
+  **Einstein relation cancels the mobility**: `sigma_z^2 = (kT/q)/|dE/dx|`. So the floor
+  depends on the gas temperature and the axial field gradient and on **nothing else** - not
+  the ion, not the gas speed, not the pressure. Those set *where* a mobility parks, which is
+  what separates species; they do not set how wide either one is. The knobs that narrow a
+  packet are a steeper gradient and a colder gas, which this project had not identified.
+
+  | | \|dE/dx\| at the parking point | sigma_z |
+  | --- | --- | --- |
+  | nominal `2V/L^2` | 55,319 V/m^2 | 0.6836 mm |
+  | **solved field, differenced off the exported potential** | **50,667**, 0.916 of nominal | **0.7143 mm** |
+  | **measured, parked** | - | **0.7119 mm** |
+
+  **0.34 % once the gradient comes from the solved field**, and the 8 % shortfall is the exit
+  element flattening the gradient - already recorded as the field peaking at 41.2 mm of 46.6.
+  The mirror's four-penetration-depth rule again: the formula is right and the number fed into
+  it is not. Two free checks: the solved axial field at the parking point is **-1170.03 V/m**
+  against `v_gas/K` = 1168.2 (**0.16 %**, the elution relation confirmed with no ion
+  involved), and the width is **mesh-independent** - 0.7119 mm at both a 0.47 mm and a 0.23 mm
+  cell, identical to four decimals, because Scharfetter-Gummel's zero-flux state *is* the
+  Boltzmann factor. The **radial** width does move with the mesh (0.2043 to 0.1643 mm), which
+  is the control that makes the axial claim mean something.
+
+  **And the answer to the question is the trap duration rather than the delivery.** A matched
+  pair differing in one parameter - where the packet is released - both stopped at the end of
+  the trap, because the width the ramp reads is the width the packet has when the ramp starts:
+
+  | at the end of the trap | axial sigma | radial |
+  | --- | --- | --- |
+  | delivered, 40 mm up the funnel | **1.7057 mm** | 0.6541 mm |
+  | parked at the balance point | **0.7118 mm** | 0.1643 mm |
+
+  2.4x wider - but the parked packet is **settled** (0.7119 then 0.7118, so it has forgotten
+  its 2 mm launch) and the delivered one is **still narrowing** (1.9318 then 1.7057). So
+  delivery does not imprint a width; the delivered packet arrives wide and has not finished
+  relaxing in the 300 us the shipped sequence gives it. Prediction on record for the run that
+  was killed before it landed: the variance relaxes with `1/(2K|E'|)` = 231 us and the
+  delivered packet implies 1019 us, **4.4x slower**, which is either a tail dominating a
+  second moment (sharp with a shoulder, not broad) or the linearisation failing over a
+  +-2 mm packet.
+
+  **`MobilityBalanceWidthTests` pins the closed form**, exact to every printed digit on an
+  analytic linear field, mesh-independent to 0.00 um across a fourfold refinement, with the
+  mobility cancelling measured as a width ratio of **1.00000**. **And running the mutations
+  refuted the test's own comment**: I wrote that a broken drift-to-diffusion ratio would move
+  the width with the mobility. It does not - `D` x 1.44 moves the *parking point* by 1/1.44
+  and leaves the width alone, while `kT` in the flux x 1.44 moves the width by sqrt(1.44).
+  The equilibrium is `exp(-q phi/kT)`, which contains `kT` and not `D`, so **the parking
+  point is the Einstein check and the width is the Boltzmann check** and I had them
+  backwards. The mesh-independence test passes under both mutations, reporting a consistent
+  and absolutely wrong 1.2000 mm at every mesh.
+
+  **The per-phase packet width now reaches the report**, which is what made any of this
+  askable - `DensityField.Spread()` has existed since the diffusive mode was built and the
+  sequenced phase record carried only the centroid, the recurring "a thing the mode computed
+  that nothing downstream could see" shape. One field on **both** sides of a conversion, since
+  SEQ-1's own subject is that position is the one thing both descriptions carry.
+
+  **And the full sequence has now failed to finish three times** - 4.75 CPU-hours, then 40
+  minutes, then 7.6 wall-hours against a 4.17 h estimate before a Windows update rebooted the
+  machine - **with no output on any attempt**, so whether the estimate is low or the run does
+  not terminate has never been observed. Two rules in `docs/lessons.md`: a run measured in
+  hours must emit something before it ends, and **ask which phase the number lives in before
+  paying for the whole pipeline** - the matched pair cost 39 and 122 minutes and removed a
+  second claim (that the ramp is modelled right) from the answer. Details in
+  `docs/device-templates.md`, `docs/literature-targets.md` section 6, `docs/lessons.md`.
+
+- **A run measured in hours now says where it is, and the width's relaxation time is measured
+  to one per cent.** Two things, and the first is what made the second cheap.
+
+  **A sequenced run reaches the report as a timeline rather than as five scalars.** The
+  per-phase packet width had been added to the result document the day before - because a
+  TIMS study's open question is *how wide is the packet when the ramp starts* - and
+  `einzel report`'s sequenced arm yielded phases, conversions, ions arrived, mean arrival and
+  arrival spread: every property of the whole run, and not the one quantity the study was
+  about. Computed by the solver, carried through the document, absent from the surface a
+  person reads. **The same shape the report command exists to expose, in code a day old.**
+
+  A table rather than more rows, because a flat name and value has nowhere to put the instant
+  a number belongs to. That makes it a measuring instrument with no new capability at all:
+  **split a hold into phases of identical settings and the table is a relaxation curve**, one
+  row per boundary. A diffusive phase's trajectory count is **absent** rather than zero, since
+  a density is not a count of anything and a zero beside a population of ten thousand reads as
+  an instrument that lost everything - RND-8's argument met on a number instead of a drawing.
+  One rendering, shared with a checkpoint's, so a killed run's phase cannot be described
+  differently from a finished one's.
+
+  **Measured that way: `tau = 1/(2K|E'|)` = 231 us, against 230.2 / 231.6 / 233.1 / 234.5 us**
+  over intervals of 100, 200, 400 and 800 us. A packet released 2 mm wide comes down through
+  1.6662, 1.4059, 1.0613, 0.7861, 0.7143, 0.7117 to 0.7117 mm and stays - so the equilibrium
+  the closed form predicts is reached from four times that width, and the excess over it decays
+  as a plain exponential at the predicted rate across four octaves. Every hold assembled its
+  operator **once**, which is the held-phase fix doing what it was for.
+
+  **And it refutes one of the two explanations on record for the delivered packet's 4.4x
+  slower relaxation.** The candidates were a tail dominating a second moment or the
+  linearization failing over a packet several millimeters wide. **It is not the width**: the
+  parked packet's first interval is measured at sigma = 1.67 mm - plus or minus five
+  millimeters at three sigma, more than twice the span the objection was about - and relaxes at
+  230 us there, the predicted rate, from the widest point on the curve. What is left is the
+  delivered packet's own shape, and the reading for a spectrum is *sharp with a shoulder*
+  rather than broad.
+
+  **The second thing is the engineering gap the night exposed. A run measured in hours emitted
+  nothing before it ended.** The TIMS front-end sequence failed to complete three times -
+  4.75 CPU-hours, then 40 minutes, then 7.6 wall-hours against a 4.17 hour estimate before a
+  Windows update rebooted the machine - and **nothing was observed on any attempt**, so whether
+  the estimate was low or the run does not terminate was never asked. GRD-8 gates on cost
+  *before* the work, so the platform will say a run is going to take four hours and then go
+  silent for four hours. SPEC.md Amendment 44.
+
+  `einzel run --progress <seconds>`, **thirty seconds by default**, writes
+  `results/<name>.progress.json` and one line per interval on stderr (CLI-2 - progress is a
+  diagnostic, so `--json` still gets a clean stdout). The default is the decision rather than
+  the plumbing: **a flag somebody has to remember is a flag that is not set on the run that
+  gets killed.** The file is **removed when the run writes its answer**, so finding one means
+  the run did not finish - which needs no timestamp comparison to read - and it is written
+  through a temporary file and moved into place, so a process killed mid-write leaves the
+  previous checkpoint rather than a broken one. A failed write is announced once and
+  swallowed: a full disk must not end an eight-hour run at hour seven.
+
+  **A finished phase is written whether or not the interval has come round**, because that is
+  the state a killed run should be found in - a study that splits a hold into phases has most
+  of its answer in the phases that completed, and before this they went with the process.
+
+  **Watching does not change the answer, and that is the claim that could have failed
+  quietly.** The observer is handed the solver's own live density buffer rather than a copy,
+  which is what makes reporting cheap enough to do at all, and *which* steps report is set by
+  the wall clock - so if the answer depended on being watched it would not even be
+  reproducible. Two runs of one seeded model, one silent and one reporting every step, are
+  asserted equal to the last digit; the mutation that adds `1e-9` to one cell from inside the
+  observer fails that test and nothing else. The hot-path cost is one call per step asking
+  whether a report is wanted; the centroid and the width are full grid passes and are computed
+  only when it is.
+
+  **A projection from total elapsed time is a projection of the solve.** The first version
+  divided wall clock by the fraction of the phase simulated, which charges the one-off solve to
+  every remaining microsecond: **82 minutes against an actual 23** on the shipped analyzer, and
+  17,576 minutes on the very first report, where one step had been taken. Measured between
+  reports instead, it held at 23 minutes across three consecutive reports. The same correction
+  `einzel estimate` made when it started excluding process start: **a rate measured over a
+  window containing a fixed cost is not a rate.** And with that fixed, **the solve became the
+  longest silent stretch** - minutes on a sixteen-plate funnel and a twenty-seven-ring analyzer
+  - so it is announced before it starts rather than after.
+
+  **The checkpoint was very nearly written with nothing reading it**, which would have been
+  the third instance in three days of the defect this report command exists to expose. A run
+  that did not finish leaves a `.progress.json` and no result, and the report would have said
+  only that "its answer is nowhere" - true, and it discards the phases that did finish. It now
+  reads the checkpoint, says how far the run got, and gives an interrupted run **its own state
+  on the page**, because it calls for something different from every other: not "nothing to
+  do", not "re-run it", not "run it again to store an answer", but give it longer, or a coarser
+  mesh, or a machine nobody is going to reboot. The rule, in `docs/lessons.md`: both report
+  defects were found by enumerating the *writers* into `results/` rather than its readers, so
+  **after adding a producer, ask what reads it, and answer by enumerating consumers rather than
+  by recalling one.**
+
+- **The front-end sequence runs end to end, and what stopped it was a cache checking its own
+  premise.** Four attempts had produced no output at all - 4.75 CPU-hours, then 40 minutes, then
+  7.6 wall-hours ended by a reboot, then 928 s at the 619th step of an 8 ms ramp projecting to
+  nine hours. The whole 18.3 ms of fill, trap and ramp now takes **905 seconds** at 256 x 32.
+
+  **The cost was one line.** The ponderomotive well is the cycle mean square of the
+  *oscillating* field, so a DC ramp cannot change it - and `PonderomotiveWellCache` decided
+  every fourth step that it had, rebuilt a six-second well, and would have done so about
+  **17,000 times** across the ramp. Twenty-eight hours of establishing that nothing had moved.
+
+  **What moves is round-off, and the tolerance sat below it.** The well is a mean square taken
+  after removing the mean, and the mean here is a DC field the ramp walks from 60 V to zero, so
+  the noise floor of that subtraction is proportional to a quantity that changes by everything
+  while the well changes by nothing: about **2.5e-13 of the deepest well per step**, which
+  crosses 1e-12 in four steps and then does so forever. The bar is 1e-9 now - on a 30 V well
+  that admits 3e-8 V against a thermal `kT/q` of 0.026 V - and the probe visits **one lattice
+  node per call** rather than all sixteen, so the other half of a ramped step is spread across
+  sixteen of them. `docs/device-templates.md` had recorded a deliberate decision *not* to loosen
+  the bar while the variation was unexplained, which was right; what changed is that it is
+  explained. Bit-identical: 16 rebuilds became 1 and sigma_z is the same to all six printed
+  digits, pinned from both sides by a test requiring 1e-11 to be held and 1e-5 to be caught.
+
+  **And the finding is that it elutes, with a resolving power - my two earlier accounts of
+  this were both wrong.** Re-measured on one build, every configuration elutes. The delivered
+  packet collects **99,833.5 of 99,971** ions, mean 15,505.159 us, sigma 159.157, peak
+  elution potential **20.9878 V**, **R = 7.481** - against the analyser alone at 8, so the
+  funnel and gate cost about seven per cent and the delivery costs nothing measurable.
+
+  **Which answers the template's standing question.** A delivered packet and one seeded at the
+  balance point enter the ramp 34 per cent apart in width (sigma_z 0.954 against 0.712 mm) and
+  elute at means agreeing to **eight significant figures**, sigma to six. The arrival width is
+  the **analyser's own**: the packet re-equilibrates to `sigma_z^2 = (kT/q)/|dE/dx|` before
+  release, and that formula contains nothing about where the packet came from. Two ramps
+  beginning 9.7 ms apart land on the same potential to five figures; a *stepped* release is
+  **12 per cent wider** (sigma 178.0 / 179.9 against 159.16), so the release program reaches
+  the width where the history does not.
+
+  **The frozen result is unexplained and unreproducible, and the leading hypothesis was
+  refuted by its own control.** An earlier run collected 7.74e-245 ions. Excluded: the ramp
+  spelling, the delivery, the late start, a stale operator - and the **ponderomotive well
+  cache**, which was the obvious suspect since that commit is the only one between the two
+  engines touching a physics file. Reverting `PonderomotiveWellCache.cs` on the current build
+  gives **10,794 well rebuilds against 1 and the same answer to 13 significant figures**. So
+  the cache is excluded and its bit-identical claim is now measured on the front end rather
+  than on the analyser alone. **And its provenance is gone by my own hand**: `results/` is
+  keyed by stem, so each re-run overwrote the manifest carrying the model hash that would have
+  said whether the document itself had changed.
+
+  **A sequence whose phases all name a mode the model does not was flown in the model's, and the
+  timeline ignored outright.** `ChangesTransportMode` asks whether two *adjacent* phases differ
+  and needs at least two phases to ask it, so a single diffusive phase on a model declaring
+  `trajectory` - or a sequence every phase of which says `diffusion` on such a model - is not a
+  change by that reading, and the fork sent it down the trajectory path: the model asked for a
+  density and got a single-ion flight, **exit 0**, with nothing saying the sequence had been
+  skipped. The eighth sighting of one shape here and the second on this fork - a question
+  answered by a proxy that stops being equivalent when the set of cases grows. The validator
+  already asked the right question, and its own note says why; `CompiledModel.Modes` gathers
+  every mode the run uses and `NeedsSequencedTransport` routes on it.
+
+  **`--vtu` on a sequenced run wrote no density**, so a packet that crossed into the diffusive
+  description could be summarised into a centroid and a width and looked at in no other form -
+  the state the wholly diffusive path was in before RND-8's argument was answered for it, and
+  the same "wired into N-1 of N paths" shape as this path lacking a result document and storing
+  absolute artifact paths. The control is what makes it a statement: a sequence ending as
+  trajectories has *no* density, which is a different fact from an empty one, so the same flag
+  must write nothing there.
+
+  **And my own export dropped the evidence at the seam, which is what the file exists to
+  carry.** It gathered the run's warnings by hand from two of the three lists that hold them, so
+  the field's caveats travelled nowhere - and the note saying a sequenced run has no flight time
+  is constructed inside the result's own envelope a hundred lines *below* the export, so the
+  volume came out with an **empty caveat block on a run that had earned one**. GRD-2's whole
+  subject, on the artifact it is most about: a `.vti` is the thing most likely to be opened by
+  somebody who never saw the envelope it came from. One list built above both readers now, with
+  the severity on each line, and the mutation back to the hand-gathered version fails that test
+  and nothing else.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
@@ -2020,7 +2336,7 @@ The two design documents remain the source of truth for *intent*. Tracked alongs
 
 Both are hand-authored, self-contained HTML documents: inline `<style>` blocks over an IBM Plex / CSS-variable palette, figures as inline `<svg>`. Edit the HTML directly; there is no generator and no markdown source. Revisions are new files with a bumped suffix (`-r06` → `-r07`), not in-place overwrites, and the change line at the top of the document records what the revision added.
 
-**Detailed documentation lives in `docs/`** — architecture and the four invariants, the model format in full, device templates, numerics with every measured figure, the lessons from bugs that presented as physics, the CLI contract, validation coverage *and its gaps*, and findings against the specification. Read the relevant page before changing something in that area; it records why things are the way they are, and several of the decisions cost real time to reach.
+**Detailed documentation lives in `docs/`** — architecture and the four invariants, the model format in full, device templates, numerics with every measured figure, the lessons from bugs that presented as physics, the CLI contract, validation coverage *and its gaps*, and findings against the specification. **`docs/extending.md` is the one to read before adding a capability**: it names the three kinds of change a device has ever needed below `Einzel.Library`, with the eleven instances as evidence, where each goes, and the traps each has already sprung. Read the relevant page before changing something in that area; it records why things are the way they are, and several of the decisions cost real time to reach.
 
 ## Commands
 
