@@ -671,6 +671,23 @@ public static class DriftDiffusion
     {
         var count = grid.CountX * grid.CountY;
 
+        // CHECKED, as `FaceCoefficients.Assemble` checks its own scratch object. A
+        // workspace sized for another grid would index past the end at best, and where it
+        // is longer than this grid needs it would leave the tail holding another run's
+        // values for a later full-length read to consume. Every cell of every array below
+        // is written unconditionally - there is no `continue` in the sampling loop - so
+        // matching lengths are the whole of what reuse requires here, which is why these
+        // are not cleared the way the face operator's are.
+        if (reuse is { } scratch
+            && (scratch.DriftX.Length != count || scratch.DriftY.Length != count
+                || scratch.Diffusion.Length != count || scratch.Potential.Length != count
+                || scratch.GasX.Length != count || scratch.GasY.Length != count))
+        {
+            throw new ArgumentException(
+                "the scratch coefficient arrays must each be "
+                + $"{count} long for this grid", nameof(reuse));
+        }
+
         var driftX = reuse?.DriftX ?? new double[count];
         var driftY = reuse?.DriftY ?? new double[count];
         var diffusion = reuse?.Diffusion ?? new double[count];

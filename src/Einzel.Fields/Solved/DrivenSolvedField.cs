@@ -129,7 +129,36 @@ public sealed class DrivenSolvedField : ITimeVaryingField, IConductorBounded
     public bool HasRamp => _stageEndDirect.Any(d => d is not null);
 
     // The same weights used by Weight(), evaluated at the held operating point.
+    //
+    // MEMOISED, because the answer cannot change for the lifetime of this instance: the
+    // operating point and every array it reads are immutable after construction. The
+    // callers are the cache's own validity check and the spectrum, both of which run once
+    // per channel per diffusive step - so projecting a fresh array each time put an
+    // allocation per channel into the path that exists to remove work from that step
+    // (CMP-1). Built on first use rather than in the constructor, since a field that is
+    // never asked for its spectrum should not pay for one.
+    //
+    // Unsynchronised deliberately. This type is sampled concurrently by the diffusive
+    // coefficient sweep, but through `Weight` and the field accessors rather than through
+    // here; and if a future caller did race, both racers would compute the same array from
+    // the same immutable inputs, so the loser's work is discarded rather than a wrong
+    // value published - reference assignment cannot tear. A lock would make the hot path
+    // pay for a hazard that has no wrong outcome.
+    private WeightTerm[][]? _rfTerms;
+
     private WeightTerm[] RfTermsAt(int channel)
+    {
+        var memo = _rfTerms ??= new WeightTerm[_channels.Length][];
+
+        if (memo[channel] is { } held)
+        {
+            return held;
+        }
+
+        return memo[channel] = RfTerms(channel);
+    }
+
+    private WeightTerm[] RfTerms(int channel)
     {
         var setting = _operatingPoint ?? 0.0;
         var stage = _boundaries.Length == 0 ? -1 : StageAt(setting);

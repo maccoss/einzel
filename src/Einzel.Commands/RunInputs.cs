@@ -27,9 +27,33 @@ internal static class RunInputs
         var hashes = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var (path, pointer) in paths)
         {
+            // PORTABLE, or refused. `GetRelativePath` cannot express a path on another
+            // volume and returns the absolute one, so a model on D: reading a field from
+            // C: would key this inventory by where the file sat on the machine that wrote
+            // it - which is the defect just fixed for artifact paths, in a manifest whose
+            // whole job is to determine a run somewhere else (PRJ-3). Refused at
+            // introduction rather than recorded and qualified, because nothing depends on
+            // it yet and a manifest that is portable for most inputs and not for one is
+            // the harder thing to reason about.
+            var relative = RunManifest.Portable(Path.GetRelativePath(root, path));
+
+            if (Path.IsPathRooted(relative))
+            {
+                throw new EinzelException(new EinzelError
+                {
+                    Code = ErrorCodes.SchemaInvalid,
+                    Path = pointer,
+                    Constraint = "an imported file must be reachable by a relative path from "
+                        + "the project root so the manifest that records it travels; "
+                        + $"'{path}' is on another volume",
+                    Suggestion = "copy the file into the project, or put it on the same "
+                        + "volume as the project root",
+                });
+            }
+
             try
             {
-                hashes[RunManifest.Portable(Path.GetRelativePath(root, path))] = ContentHash.OfFile(path);
+                hashes[relative] = ContentHash.OfFile(path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -45,6 +69,10 @@ internal static class RunInputs
         return hashes;
     }
 
+    /// <summary>Re-reads what was captured, so a file that moved under the run is caught.</summary>
+    /// <param name="hashes">What <see cref="Capture"/> recorded before the work began.</param>
+    /// <param name="root">The project root the keys are relative to.</param>
+    /// <returns>The same hashes, once every one of them still holds.</returns>
     internal static IReadOnlyDictionary<string, string> Checked(
         IReadOnlyDictionary<string, string> hashes, string root)
     {
@@ -55,8 +83,14 @@ internal static class RunInputs
                 throw new EinzelException(new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
-                    Path = relative,
-                    Constraint = "an input file changed during the calculation; its consumed content cannot be established",
+
+                    // AGT-3's path is a pointer into the DOCUMENT, which is what a caller
+                    // follows to find the declaration to change - the file that moved is
+                    // named in the constraint instead. `Capture` a few lines up already
+                    // reports the pointer; the two disagreed about what this field means.
+                    Path = "/transport/gas",
+                    Constraint = $"the input file '{relative}' changed during the calculation; "
+                        + "its consumed content cannot be established",
                     Suggestion = "restore stable input files and rerun before publishing a result",
                 });
         }

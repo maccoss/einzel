@@ -615,11 +615,22 @@ public static class SequencedRun
             var smoothing = interaction is CoulombInteraction direct
                 ? FormattableString.Invariant($"Plummer softening {direct.SofteningLengthSi:G6} m")
                 : "a grid-smoothed self-field";
-            warnings.Add(new ValidityWarning("spacecharge.sequenced-packet",
-                FormattableString.Invariant($"phase {phaseIndex + 1}: {model.SpaceChargeMode} advances {states.Length} macroparticles together, each representing {perTrajectory:G6} ions, with {smoothing}. ")
-                + "The self-field is rebuilt at the phase boundary; shared steps do not guarantee exact landing on each member's field discontinuities. "
-                + "Collisions, when present, are sampled once per macroparticle, not per represented ion",
-                WarningSeverity.Qualified));
+            // ONCE FOR THE RUN, not once per phase. The caveat is about the method
+            // rather than about this phase, so a sixteen-stage staircase would otherwise
+            // emit sixteen copies of the same paragraph and bury the warnings that differ -
+            // which is the defect this project already fixed once, when a malformed stage
+            // was reported per field element and turned one typo into a wall. The phase
+            // that first paid it is still named, because that is where a reader looks.
+            // The collision count below stays per phase: it is a different number each
+            // time and is the reason anybody wants it.
+            if (!warnings.Any(w => w.Code == "spacecharge.sequenced-packet"))
+            {
+                warnings.Add(new ValidityWarning("spacecharge.sequenced-packet",
+                    FormattableString.Invariant($"from phase {phaseIndex + 1}: {model.SpaceChargeMode} advances {states.Length} macroparticles together, each representing {perTrajectory:G6} ions, with {smoothing}. ")
+                    + "The self-field is rebuilt at every phase boundary; shared steps do not guarantee exact landing on each member's field discontinuities. "
+                    + "Collisions, when present, are sampled once per macroparticle, not per represented ion",
+                    WarningSeverity.Qualified));
+            }
         }
         else
         {

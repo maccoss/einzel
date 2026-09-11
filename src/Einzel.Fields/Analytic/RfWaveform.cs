@@ -46,16 +46,34 @@ public abstract record RfWaveform
         _ => double.NaN,
     };
 
+    /// <remarks>
+    /// <b>NaN is the sentinel, not zero.</b> Order zero is a real term - the constant of a
+    /// Fourier series - so using 0.0 to mean "nothing seen yet" conflates the two: a series
+    /// carrying a DC term and a fundamental would set the running order to 0, fail the
+    /// mixed-spectrum test against it, and be certified monochromatic at whatever came
+    /// next. It happens not to matter for the well, because the cycle mean is subtracted
+    /// before the mean square is taken, but it would be reached by accident rather than by
+    /// the check. A DC term is skipped explicitly instead, and says so.
+    /// </remarks>
     private static double SingleOrder(Harmonic harmonic)
     {
-        var order = 0.0;
+        var order = double.NaN;
+
         foreach (var term in harmonic.Terms)
         {
-            if (term.Amplitude == 0.0) continue;
-            if (order != 0.0 && order != term.Order) return double.NaN;
+            // A term with no amplitude contributes nothing to oscillate, and a term of
+            // order zero is a constant offset rather than an oscillation - it belongs in
+            // the direct part, which is where the cycle mean puts it.
+            if (term.Amplitude == 0.0 || term.Order == 0.0) continue;
+
+            if (!double.IsNaN(order) && order != term.Order) return double.NaN;
+
             order = term.Order;
         }
-        return order;
+
+        // Every term was constant or silent, so there is no oscillating order: zero, which
+        // the caller reads as "no drive" and turns into an infinite period.
+        return double.IsNaN(order) ? 0.0 : order;
     }
 
     /// <summary>The sinusoid a resonant drive produces. Gives the Mathieu equation.</summary>

@@ -433,6 +433,11 @@ public sealed class PonderomotiveField : IElectrostaticField
         // already in the scale, so q/m is 2 scale (Omega^2 + nu^2) / q.
         var chargeToMass = 2.0 * ScaleAt(in position) * damped * damped / _chargeSi;
 
+        // MAGNITUDE, because a quiver amplitude is a length. `ScaleAt` carries the charge
+        // SQUARED, so the quotient above takes the sign of the charge and an anion got a
+        // negative excursion - which made `rf.quiver-exceeds-mesh` unable to fire for a
+        // negative ion at any amplitude, since the comparison is against a cell size.
+        // Unlike the well, which is a potential and is legitimately signed by the charge.
         return Math.Abs(chargeToMass) * amplitude / (AngularFrequencySi * damped);
     }
 

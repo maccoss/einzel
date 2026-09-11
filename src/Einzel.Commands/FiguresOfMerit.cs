@@ -1093,6 +1093,11 @@ public static class FiguresOfMerit
     }
 
     /// <summary>Constructs the declared interaction from the packet actually entering a leg.</summary>
+    /// <param name="model">The compiled model, for the declared method and its grid.</param>
+    /// <param name="cloud">The macroparticles entering this leg, which set the softening.</param>
+    /// <param name="species">The ion, for charge and mass.</param>
+    /// <param name="population">How many real ions the packet represents.</param>
+    /// <returns>The self-field the document asked for.</returns>
     internal static Transport.Interaction.ISelfField PacketInteraction(
         CompiledModel model, PhaseState[] cloud, IonSpecies species, double population) =>
         string.Equals(model.SpaceChargeMode, "pic", StringComparison.Ordinal)
