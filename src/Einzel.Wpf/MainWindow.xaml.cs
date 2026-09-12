@@ -25,7 +25,7 @@ namespace Einzel.Wpf;
 /// is wrong with it, or what an edit does goes to <see cref="ModelTreeViewModel"/> and
 /// through it to the command layer (UI-1).
 /// </remarks>
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IDisposable
 {
     private ModelTreeViewModel? _tree;
     private ViewportViewModel? _viewport;
@@ -39,6 +39,9 @@ public partial class MainWindow : Window
 
     /// <summary>How many viewport refreshes have been started, so a stale one can stand down.</summary>
     private int _refreshes;
+
+    /// <summary>Stops the watch that is running, if one is.</summary>
+    private CancellationTokenSource? _watching;
 
     /// <summary>Creates the window.</summary>
     public MainWindow()
@@ -1061,6 +1064,103 @@ public partial class MainWindow : Window
 
     /// <summary>Turns a layer on or off and redraws.</summary>
     private void OnLayer(object sender, RoutedEventArgs e) => Draw(_viewport);
+
+    /// <summary>Runs the model's whole timeline, drawing the packet as it steps.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The capability a long run was missing.</b> A driven diffusive window is hundreds
+    /// of thousands of steps; a viewport redraw truncates such a model to its first phase
+    /// precisely because somebody is waiting on it. This is the other choice - walk the
+    /// whole thing and watch, which is what a person wants when the question is what the
+    /// instrument does to a packet rather than what state it ends in.
+    /// </para>
+    /// <para>
+    /// <b><c>async void</c> for the reason <see cref="Refresh"/> is</b>: a fire-and-forget
+    /// UI operation, where discarding the task would swallow anything the refusal handler
+    /// does not catch.
+    /// </para>
+    /// </remarks>
+    private async void OnWatch(object sender, RoutedEventArgs e)
+    {
+        if (_viewport is not { } viewport)
+        {
+            return;
+        }
+
+        // A watch already running is superseded rather than run alongside: two transports
+        // filling one set of collections is the corruption the generation guard exists for,
+        // and there is no sense in which the window could show both.
+        _watching?.Cancel();
+        _watching?.Dispose();
+        _watching = new CancellationTokenSource();
+
+        var stopping = _watching;
+        var generation = ++_refreshes;
+
+        WatchRun.IsEnabled = false;
+        StopWatch.IsEnabled = true;
+
+        void Frame(object? source, EventArgs empty)
+        {
+            if (generation == _refreshes && ReferenceEquals(viewport, _viewport))
+            {
+                Draw(viewport);
+            }
+        }
+
+        viewport.FrameDrawn += Frame;
+
+        try
+        {
+            await viewport.WatchAsync(stopping.Token);
+        }
+        finally
+        {
+            viewport.FrameDrawn -= Frame;
+
+            if (generation == _refreshes)
+            {
+                WatchRun.IsEnabled = true;
+                StopWatch.IsEnabled = false;
+            }
+        }
+
+        if (generation == _refreshes && ReferenceEquals(viewport, _viewport))
+        {
+            Draw(viewport);
+        }
+    }
+
+    /// <summary>Stops the running watch, keeping what it has drawn.</summary>
+    private void OnStopWatch(object sender, RoutedEventArgs e) => _watching?.Cancel();
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A disposable nobody disposes is worse than the field being left undisposed, because
+    /// the type now claims to be cleaned up. Closing the window is the moment.
+    /// </remarks>
+    protected override void OnClosed(EventArgs e)
+    {
+        Dispose();
+
+        base.OnClosed(e);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <b>A watch outliving its window would keep stepping a transport nobody can see</b>,
+    /// and on a driven diffusive model that is hours of a core. Canceled first and then
+    /// disposed, because disposing a source a background task is still registered on is
+    /// what the cancellation contract exists to avoid.
+    /// </remarks>
+    public void Dispose()
+    {
+        _watching?.Cancel();
+        _watching?.Dispose();
+        _watching = null;
+
+        GC.SuppressFinalize(this);
+    }
 
     private void OnCellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
     {

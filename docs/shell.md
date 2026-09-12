@@ -452,6 +452,87 @@ about a three-minute refresh is that it has begun. The window stays responsive t
 is the difference between a wait and a hang — but a wait nobody was warned about is still the
 wrong way round.
 
+### Watch run — the other answer, and the one that was actually wanted
+
+A redraw and a watch answer different questions, and only one of them was available. A redraw
+truncates to the first phase *because* somebody is staring at the window; **Watch run** walks
+the whole timeline and draws the packet every couple of seconds as it steps. On a driven
+diffusive model that is minutes to hours, and until this existed the only two things to do with
+them were stare at a window that had stopped answering or read a checkpoint file describing the
+packet in numbers.
+
+**What a picture shows that a centroid and a width cannot is the shape.** A packet still
+narrowing toward its equilibrium, one pressed against a wall and losing population to it, one
+that never left where it was seeded — all three report a centroid and a width, and only one of
+them is the instrument working.
+
+**A frame is a whole `ViewportOutcome`, not a density.** UI-1 puts the contouring on the command
+layer's side of the line, so a window handed a `DensityField` would have to do the one thing
+`ViewportCommand` exists to do. What crosses the seam is the same record a finished run
+produces, built by the same function — so a frame of a run in flight and the same instant drawn
+afterwards cannot come out looking different.
+
+**The geometry is extracted once and every frame shares it**, which is what makes watching
+affordable at all: surface extraction over every conductor is the dominant cost of a bundle, and
+the shipped C-trap is 795,564 triangles. It is sound because the sequencer already refuses a
+stage that moves an electrode — a stage may change what one holds, not where it is — so the
+meshes are identical at every instant of a run by construction. Asserted by *reference* rather
+than by comparison, because two lists that happen to be equal would also pass while the work was
+being done again.
+
+#### Three things the wiring got wrong
+
+**The transport reports its own leg's clock, and it is right to.** A leg does not know it is one
+of eight; the checkpoint writer prints `phase 2/3, 12.0 of 40.0 us`, which is exactly what a
+reader wants when the phase is named on the same line. A *picture* has no such line — a frame
+carrying a leg's clock sends the instant back to zero at every phase boundary, and the GRD-12
+stamp on it names a time the packet passed through long before. The relay adds the phase start,
+and takes it from what the phase **did** rather than what it declared: a phase can end early,
+and accumulating declared durations would then run the clock ahead of the packet for the whole
+rest of the sequence.
+
+**The end of a run is empty whenever the ions arrived.** Applying the final bundle
+unconditionally spends minutes drawing a packet and then, at the last instant, replaces it with
+an empty box — the exact picture the density work exists to stop a diffusive model producing. A
+watch keeps the last frame that held a packet and says on the status line that is what is drawn.
+The finished viewport picks the middle of the usable instants for the same reason; a watch has
+no list to pick from, so it keeps.
+
+**`RefreshAsync` returns `HasBundle`, which is whether there are trajectories.** A watch only
+ever runs on a model that has none by construction, so a watch returning it would answer false
+on every successful watch there is. It returns `HasDensity`.
+
+#### Coalesced, and applied on the thread that started it
+
+A viewport wants the newest packet, not every packet. The run produces frames faster than a
+window draws them whenever the drawing thread is busy, and a queue then shows a packet from four
+frames ago with three waiting behind it — the window falling further behind the longer it is
+watched. The newest frame replaces any that has not been drawn. **The queued flag is cleared
+before the frame is read**, so the race can post twice and can never drop the last one; the
+other order loses the last frame of a run.
+
+Frames are marshaled onto the synchronization context captured when the watch started, because
+a bound `ObservableCollection` may only be mutated on the thread that owns it. That is tested on
+a real dispatcher thread rather than under xUnit's absent context, for the reason the refresh
+test is: with nothing to post to, frames are applied inline and the assertion holds for a reason
+that says nothing about the marshaling.
+
+**Stopping keeps what it drew.** A density step is not interruptible part way, so what stopping
+does is decline to take the next one — the run ends where it stands and returns what it has.
+The packet drawn is where the run had got to, which is a real state of the instrument and the
+reason somebody pressed stop; the status says it is partial rather than the drawing being taken
+away. A watch is canceled and disposed when the window closes, because one outliving its window
+would keep stepping a transport nobody can see, and on a driven diffusive model that is hours of
+a core.
+
+**A trajectory model is refused rather than watched**, and not because it could not be: a flight
+finishes faster than a window could draw it part way through, so a watch would be a slower route
+to the answer the ordinary viewport gives at once. The refusal names what to do instead (AGT-3).
+
+**Amendment 25 holds**: the action is journalled as `einzel run <model> --progress 5`, which is
+the same transport writing a checkpoint instead of a picture. The run is the same run; what
+differs is who is told about it.
+
 ## Results by accuracy class
 
 §12 sorts figures into three families and the sort is not decoration: a Class T figure

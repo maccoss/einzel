@@ -4359,3 +4359,79 @@ intervals, so every resolving power published from one is low by about that 30 p
 shipped template declares 512. Nothing compared them, and nothing warned - which is why
 `diffusion.packet-resolution` now reports cells per packet width on every diffusive run, and
 refuses below four.
+
+## A clock that is right for a line of text is wrong for a picture
+
+The density solver reports its own leg's clock: a phase that runs from 40 to 80 microseconds
+of the instrument's timeline reports 0 to 40. That is not a bug and it is not an oversight — a
+leg genuinely does not know it is one of eight, and the consumer that existed when the seam was
+built prints a line of text with the phase named on it:
+
+```
+  phase 2/3 push        12.0 of 40.0       us     4,182 steps
+```
+
+which is exactly what a reader wants. The phase and the leg-local instant are on the same line,
+so there is no ambiguity to resolve.
+
+**Then a second consumer arrived and the same number was wrong.** A viewport frame is a
+picture, and the instant is stamped on it as provenance (GRD-12) because three shells of a
+packet say nothing without one. Carrying the leg's clock there sends the time back to zero at
+every phase boundary — the packet visibly advances, the number visibly restarts — and the stamp
+names an instant the packet passed through long before.
+
+**Two things generalise.**
+
+The first is that a quantity is not right or wrong on its own; it is right or wrong *for what
+is around it*. The leg clock is correct in a line that names the phase and incorrect in a
+picture that cannot. So when a second consumer is added to an existing seam, the question is
+not whether the data is correct but whether the new consumer supplies the same context the
+first one did. Here it could not, and the fix is in the *adapter* rather than in the seam.
+
+The second is about where the offset comes from. The obvious implementation accumulates the
+phases' **declared** durations, which is available at `Entering` and reads naturally. It is
+wrong: a phase can end early — everything collected, a stop condition met — and from that point
+the clock runs ahead of the packet for the whole rest of the sequence, by an amount nothing on
+the picture would explain. The authoritative number is on `PhaseOutcome.EndsAtSeconds`, which
+is what the phase *did*. **Prefer the completed fact to the declared intention whenever both
+are available**, and note that the declared one is usually the one in scope earlier, which is
+why it is the one that gets used.
+
+## The end of a run is empty whenever the ions arrived
+
+A watch that applies its final bundle unconditionally spends minutes drawing a packet and then,
+at the last instant, replaces it with an empty box. Every frame was correct; the last one is
+correct too — the ions really did arrive and there really is nothing left in the box. The
+result is a feature that works perfectly and shows nothing.
+
+This project had already solved it once, in the other direction: the finished viewport draws
+**the middle of the instants that still hold a packet**, with the end state as the fallback
+rather than the default, and the comment there records that this is the way round it was wrong
+first. A live watch has no list of instants to pick from, so the equivalent is to keep the last
+frame that held one — and to say on the status line that this is what is drawn, because a
+drawing whose instant is not the run's end must not silently claim to be.
+
+**The rule.** Where a run's final state is legitimately empty, a surface that shows "the
+result" has to decide between the last state and the last *informative* state, and it has to
+say which it chose. Reaching for the final state is the default that produces an empty screen
+at the end of every successful run.
+
+## A return value that answers the wrong question passes every test but one
+
+`ViewportViewModel.RefreshAsync` returns `HasBundle` — whether there are trajectories to draw.
+The watch was written beside it and returned the same thing, which compiled, matched the
+sibling method, and read as consistent.
+
+A watch only ever runs on a diffusive model, which has no trajectories **by construction**. So
+it returned false on every successful watch there is, and the first test written against it
+failed for a reason that looked like a defect in the transport rather than in the signature.
+
+The shape is the one this project has recorded before under a different name: a *proxy* that
+was equivalent to the real question in the context it was written for. "Is there a bundle" and
+"is there something drawn" were the same question while the viewport drew only trajectories.
+They stopped being the same question when it learned to draw a density, and the method that
+inherited the proxy was the one added afterward.
+
+**When copying a signature from a neighbouring method, ask what its return value means rather
+than what it is called** — and in particular, whether the thing it measures can be true at all
+for the new caller.

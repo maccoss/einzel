@@ -2041,6 +2041,59 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   the severity on each line, and the mutation back to the hand-gathered version fails that test
   and nothing else.
 
+- **The viewport is filled by a run that is still going, which is the capability a long run
+  was missing.** `IDensityProgress` has carried the solver's live density buffers since the
+  checkpoint writer was built, and the only consumer turned them into a centroid, a width and a
+  line of prose. So a person watching a TIMS elution could read that the packet had reached
+  21.1 mm and could not see it - on the one class of model where the whole difficulty is
+  understanding what the instrument does to a packet over twenty minutes.
+
+  **A redraw and a watch answer different questions.** A redraw truncates to the first phase
+  *because* somebody is staring at the window; `ViewportCommand.Watch` walks the whole timeline
+  and hands out a drawable bundle every couple of seconds. What a picture shows that a centroid
+  and a width cannot is the shape: a packet still narrowing toward its equilibrium, one pressed
+  against a wall and losing population to it, one that never left where it was seeded - all
+  three report a centroid and a width, and only one is the instrument working.
+
+  **A frame is a whole `ViewportOutcome`, not a density**, because UI-1 puts the contouring on
+  the command layer's side of the line - so a frame of a run in flight and the same instant
+  drawn afterwards are the same record built by the same function. **The geometry is extracted
+  once and every frame shares it** (asserted by reference, not by comparison, because two equal
+  lists would also pass while the work was being done again); it is sound because the sequencer
+  already refuses a stage that moves an electrode, so the meshes are identical at every instant
+  by construction. The shipped C-trap is 795,564 triangles, which is what that saves.
+
+  **Three things the wiring got wrong, all found before it shipped, and each is a general
+  shape.**
+  - **The transport reports its own leg's clock, and it is right to.** A leg does not know it is
+    one of eight; the checkpoint writer prints "phase 2/3, 12.0 of 40.0 us", which is what a
+    reader wants when the phase is named on the same line. A *picture* has no such line, so a
+    frame carrying it sends the instant back to zero at every phase boundary and stamps the
+    packet with a time it passed through long before. **A quantity is right or wrong for what is
+    around it**, and a second consumer of an existing seam may not supply the context the first
+    one did. The offset is taken from what the phase **did** (`PhaseOutcome.EndsAtSeconds`)
+    rather than what it declared, because a phase can end early - and the declared duration is
+    the one in scope earlier, which is why it is the one that gets used.
+  - **The end of a run is empty whenever the ions arrived.** Applying the final bundle
+    unconditionally spends minutes drawing a packet and then replaces it with an empty box - the
+    exact picture the density work exists to stop a diffusive model producing. Every frame was
+    correct and the last one was correct too. The watch keeps the last frame that held a packet
+    and says so; the finished viewport picks the middle of the usable instants for the same
+    reason, and a watch has no list to pick from.
+  - **`RefreshAsync` returns `HasBundle`, which is whether there are trajectories.** A watch only
+    ever runs on a model that has none by construction, so it answered false on every successful
+    watch there is - the proxy shape again, copied along with a signature from the neighbouring
+    method.
+
+  **Frames are coalesced rather than queued, and applied on the thread that started the watch.**
+  A viewport wants the newest packet, not every packet: a queue shows one from four frames ago
+  with three behind it, falling further behind the longer it is watched. The queued flag is
+  cleared *before* the frame is read, so the race can post twice and can never drop the last
+  one. A trajectory model is refused with what to do instead - a flight finishes faster than a
+  window could draw it part way through. Amendment 25 holds: the action is journalled as
+  `einzel run <model> --progress 5`, the same transport writing a checkpoint instead of a
+  picture.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

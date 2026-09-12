@@ -332,6 +332,280 @@ public static class ViewportCommand
             [], null, null, Ends(model, paths), warnings);
     }
 
+    /// <summary>
+    /// Handed a drawable bundle while the run that produced it is still going.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A viewport bundle rather than a density, deliberately.</b> UI-1 keeps physics and
+    /// file-format knowledge out of the shell, and a window handed a <c>DensityField</c>
+    /// would have to contour it - which is the whole of what <see cref="ViewportCommand"/>
+    /// exists to do on the other side of that line. What crosses is the same
+    /// <see cref="ViewportOutcome"/> a finished run produces, so a frame of a run in flight
+    /// and the same instant drawn afterwards are the same record drawn by the same code.
+    /// </para>
+    /// <para>
+    /// <b>Two methods for the same reason <c>IDensityProgress</c> has two.</b>
+    /// <see cref="Wants"/> is asked every step and must be cheap; <see cref="Reached"/>
+    /// carries the expensive part, which here is contouring the packet and revolving its
+    /// shells - hundreds of times what a centroid costs, and wasted on a step nobody will
+    /// look at.
+    /// </para>
+    /// </remarks>
+    public interface IViewportProgress
+    {
+        /// <summary>Whether a frame is wanted now.</summary>
+        /// <param name="steps">Steps taken so far.</param>
+        /// <param name="timeSeconds">Where the run has reached on its own clock.</param>
+        /// <returns>Whether to build a frame for this step.</returns>
+        bool Wants(int steps, double timeSeconds);
+
+        /// <summary>A frame of the run as it stands.</summary>
+        /// <param name="frame">Everything a viewport draws, at this instant.</param>
+        void Reached(ViewportOutcome frame);
+    }
+
+    /// <summary>Runs a model's transport, handing out a drawable frame as it goes.</summary>
+    /// <param name="modelPath">The model.</param>
+    /// <param name="watcher">Told each frame.</param>
+    /// <param name="phaseLimit">
+    /// How many phases of a sequence to walk, or null for all of them. Unlike a redraw,
+    /// which stops after the first phase because somebody is waiting on it, a watched run
+    /// defaults to the whole timeline - watching is what one does instead of waiting.
+    /// </param>
+    /// <returns>The bundle the finished run leaves, with every warning it earned.</returns>
+    /// <exception cref="ArgumentException"><paramref name="modelPath"/> is blank.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="watcher"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The model does not validate, or it computes no density and so has nothing to watch.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>The geometry is built once and every frame shares it.</b> The sequencer already
+    /// refuses a stage that moves an electrode - it may change what one holds, not where it
+    /// is - so the conductor meshes are the same at every instant of a run by construction,
+    /// and extracting them per frame would be the dominant cost of watching. What does move
+    /// is the packet, which is the thing being watched.
+    /// </para>
+    /// <para>
+    /// <b>Trajectories are refused rather than watched</b>, and not because they could not
+    /// be: an ion flight is seconds where a driven diffusive window is hundreds of thousands
+    /// of steps, so there is nothing to watch that is not over before a window could draw
+    /// it. A caller who asks is told to use <see cref="Execute"/>, which is the same answer
+    /// arriving sooner.
+    /// </para>
+    /// <para>
+    /// <b>Watching does not change the answer.</b> The densities in a report are the
+    /// solver's own buffers; they are read to build a frame and nothing goes back, so a run
+    /// with a watcher and one without are bit-identical. Asserted rather than assumed, the
+    /// same way the checkpoint writer's are.
+    /// </para>
+    /// </remarks>
+    public static ViewportOutcome Watch(
+        string modelPath, IViewportProgress watcher, int? phaseLimit = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        ArgumentNullException.ThrowIfNull(watcher);
+
+        var absolute = Path.GetFullPath(modelPath);
+        var validation = ModelValidator.Validate(
+            Io.ModelJson.Parse(File.ReadAllText(absolute)), null, Path.GetDirectoryName(absolute));
+
+        if (!validation.IsValid)
+        {
+            throw new Core.Errors.EinzelException(validation.Errors[0]);
+        }
+
+        var model = validation.Model!;
+
+        if (!model.Modes.Contains("diffusion"))
+        {
+            throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
+            {
+                Code = Core.Errors.ErrorCodes.RegimeInvalid,
+                Path = "/transport/mode",
+                Constraint = "this model computes trajectories rather than a density, and a "
+                    + "flight finishes faster than a viewport could draw it part way through",
+                Suggestion = "draw it with the ordinary viewport instead - the whole bundle "
+                    + "arrives at once, which for a trajectory model is sooner than the first "
+                    + "frame of a watch would be",
+            });
+        }
+
+        var warnings = new List<ValidityWarning>();
+        var (field, built) = FieldAssembly.BuildReported(model);
+
+        warnings.AddRange(built);
+
+        warnings.Add(new ValidityWarning(
+            "render.no-trajectories",
+            $"the '{model.TransportMode}' transport mode computes a density rather than "
+            + "trajectories, so there are no paths to draw. What this model has instead is "
+            + "a density field, drawn here as nested shells at decades below its peak",
+            WarningSeverity.Provenance));
+
+        // ONCE, AND SHARED BY EVERY FRAME. A stage may change what an electrode holds and
+        // not where it is, so the meshes are the same at every instant of the run.
+        var (conductors, low, high) = Geometry(model, field, warnings);
+        var levels = Levels(model, field, low, high);
+        var ends = Ends(model, []);
+
+        var relay = new ViewportRelay(
+            watcher, absolute, conductors, levels, low, high, ends, warnings);
+
+        IReadOnlyList<ValidityWarning> runWarnings;
+        Transport.Diffusion.DensityField? last;
+        double elapsedSeconds;
+
+        if (model.NeedsSequencedTransport)
+        {
+            var walk = SequencedRun.Execute(
+                model,
+                field,
+                Io.GasFlowImport.Resolve(model.Gas, model.SourceDirectory ?? "."),
+                relay,
+                phaseLimit: phaseLimit);
+
+            runWarnings = walk.Warnings;
+            last = walk.FinalDensity;
+            elapsedSeconds = walk.Phases.Count > 0 ? walk.Phases[^1].EndsAtSeconds : 0.0;
+        }
+        else
+        {
+            var run = DiffusionRun.Execute(model, field, [], progress: relay);
+
+            runWarnings = run.Warnings;
+            last = run.Result.Density;
+            elapsedSeconds = run.Result.ElapsedSeconds;
+        }
+
+        warnings.AddRange(runWarnings);
+
+        IReadOnlyList<DensityShell> shells = [];
+        double? peak = null;
+        double? at = null;
+
+        if (last is not null)
+        {
+            (shells, peak, at) = Shells(last, elapsedSeconds, elapsedSeconds, true, warnings);
+        }
+
+        return new ViewportOutcome(
+            absolute, [], false, null, null,
+            conductors, levels, low, high,
+            shells, peak, at, ends, warnings);
+    }
+
+    /// <summary>Turns each density report into a frame a viewport can draw.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Each frame carries its own warning list.</b> A frame is a whole
+    /// <see cref="ViewportOutcome"/>, and every one earns the provenance line saying which
+    /// instant it is - appending those to one shared list would grow it without bound over a
+    /// run of hundreds of thousands of steps, and would put every earlier frame's instant on
+    /// the current frame's picture.
+    /// </para>
+    /// <para>
+    /// <b>The phase methods do nothing here.</b> They are on <c>IRunProgress</c> because a
+    /// checkpoint file records which of eight phases a run is in; a viewport shows the
+    /// packet, and which phase it belongs to is the shell's to display from the sequence it
+    /// already has. Implemented rather than thrown from, because a sequenced run calls them.
+    /// </para>
+    /// </remarks>
+    private sealed class ViewportRelay(
+        IViewportProgress watcher,
+        string modelPath,
+        IReadOnlyList<ConductorSurface> conductors,
+        IReadOnlyList<Equipotential> levels,
+        double? low,
+        double? high,
+        FlightEnds ends,
+        IReadOnlyList<ValidityWarning> standing) : IRunProgress
+    {
+        /// <summary>Where the phase now running began, on the run's own clock.</summary>
+        /// <remarks>
+        /// <b>The transport reports its own leg's clock, and it is right to.</b> A leg does
+        /// not know it is one of eight - the checkpoint writer prints "phase 2/3, 12.0 of
+        /// 40.0 us", which is exactly what a reader wants when the phase is named on the
+        /// same line. A picture has no such line: a frame carrying a leg's clock would send
+        /// the instant back to zero at every phase boundary, and the provenance stamped on
+        /// it would name an instant the packet passed through long before.
+        /// </remarks>
+        private double _started;
+
+        private int _index;
+        private int _count;
+        private string _phase = string.Empty;
+
+        public bool Wants(int steps, double timeSeconds) => watcher.Wants(steps, timeSeconds);
+
+        public void Reached(Transport.Diffusion.DensityProgressReport report)
+        {
+            if (report.Species.Count == 0)
+            {
+                return;
+            }
+
+            var frame = new List<ValidityWarning>(standing);
+
+            if (_count > 0)
+            {
+                // WHICH PHASE THIS IS, because on a sequenced instrument the instant alone
+                // does not say what the instrument is doing at it - and a person watching a
+                // hold-then-ramp wants to know which of the two they are looking at.
+                frame.Add(new ValidityWarning(
+                    "render.phase",
+                    $"phase {_index} of {_count}, '{_phase}'",
+                    WarningSeverity.Provenance));
+            }
+
+            if (report.Species.Count > 1)
+            {
+                // Drawn as one packet because the viewport draws one density. Said rather
+                // than left to be inferred from a picture that looks complete.
+                frame.Add(new ValidityWarning(
+                    "render.first-species",
+                    $"this run carries {report.Species.Count} populations and the frame draws "
+                    + $"the first, '{report.Species[0].Name}'. The others are being computed "
+                    + "and are not on this picture",
+                    WarningSeverity.Provenance));
+            }
+
+            var (shells, peak, at) = Shells(
+                report.Species[0].Density,
+                _started + report.TimeSeconds,
+                _started + report.UntilSeconds,
+                true,
+                frame);
+
+            watcher.Reached(new ViewportOutcome(
+                modelPath, [], false, null, null,
+                conductors, levels, low, high,
+                shells, peak, at, ends, frame));
+        }
+
+        public void Entering(string phase, int index, int count, double ofSeconds)
+        {
+            _phase = phase ?? string.Empty;
+            _index = index;
+            _count = count;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// The offset comes from what the phase <em>did</em> rather than from what it
+        /// declared: a phase can end early - everything collected, or a stop condition met -
+        /// and accumulating declared durations would then run the clock ahead of the packet
+        /// for the whole rest of the sequence.
+        /// </remarks>
+        public void Completed(PhaseOutcome phase)
+        {
+            ArgumentNullException.ThrowIfNull(phase);
+
+            _started = phase.EndsAtSeconds;
+        }
+    }
+
     /// <summary>Where the flight begins and ends, with a size to draw them at.</summary>
     /// <remarks>
     /// <b>The span is a fraction of what is drawn, not a fixed length.</b> A marker sized in
@@ -552,31 +826,68 @@ public static class ViewportCommand
 
         warnings.AddRange(runWarnings);
 
-        var grid = last.Grid;
-
-        var spanU = grid.MaxX - grid.OriginX;
-        var spanV = grid.MaxY - grid.OriginY;
-        var area = Math.Max(spanU * spanV, 1e-12);
-
-        // Not merely positive: a run that collected everything leaves a residue orders
-        // below one ion in the whole domain, and contouring that draws the shape of the
-        // round-off. The same floor the section uses, for the same reason.
-        static double Floor(Transport.Diffusion.DensityField field, double area) =>
-            1e-6 * Math.Max(1.0, field.Population()) / area;
-
         // The middle of the instants that hold something, so the packet is as far along
         // as it can be while still being a packet. The final density is the fallback
         // rather than the default, which is the way round this was wrong first.
         var usable = snapshots
-            .Where(snapshot => snapshot.Density.Peak() > Floor(snapshot.Density, area))
+            .Where(snapshot => snapshot.Density.Peak() > Floor(snapshot.Density))
             .ToList();
 
         var chosen = usable.Count > 0 ? usable[usable.Count / 2] : null;
 
-        var density = chosen?.Density ?? last;
-        var atSecondsDrawn = chosen?.AtSeconds ?? elapsedSeconds;
+        return Shells(
+            chosen?.Density ?? last,
+            chosen?.AtSeconds ?? elapsedSeconds,
+            elapsedSeconds,
+            atSeconds is not null,
+            warnings);
+    }
+
+    /// <summary>How faint a density has to be before contouring it draws the round-off.</summary>
+    /// <param name="density">The field to judge.</param>
+    /// <returns>A density per cubic metre below which there is nothing to draw.</returns>
+    /// <remarks>
+    /// Not merely positive: a run that collected everything leaves a residue orders below
+    /// one ion in the whole domain, and contouring that draws the shape of the round-off.
+    /// The same floor the section renderer uses, for the same reason.
+    /// </remarks>
+    private static double Floor(Transport.Diffusion.DensityField density)
+    {
+        var grid = density.Grid;
+        var area = Math.Max(
+            (grid.MaxX - grid.OriginX) * (grid.MaxY - grid.OriginY), 1e-12);
+
+        return 1e-6 * Math.Max(1.0, density.Population()) / area;
+    }
+
+    /// <summary>Draws one density as nested shells at decades below its peak.</summary>
+    /// <param name="density">The packet to draw.</param>
+    /// <param name="atSecondsDrawn">The instant it is, on the run's own clock.</param>
+    /// <param name="elapsedSeconds">How far the run goes, for the provenance line.</param>
+    /// <param name="asked">Whether the caller named the instant or it was chosen.</param>
+    /// <param name="warnings">Where the provenance and the empty cases are recorded.</param>
+    /// <returns>The shells, the peak they are measured from, and the instant in microseconds.</returns>
+    /// <remarks>
+    /// <b>Separated from choosing WHICH density to draw, because a run being watched has
+    /// no choice to make</b> - a live report hands over the packet as it stands at that
+    /// step, where a finished run has a list of instants to pick the most informative
+    /// from. Two callers, one drawing, so a frame of a run in flight cannot come out
+    /// looking different from the same instant drawn afterwards.
+    /// </remarks>
+    private static (IReadOnlyList<DensityShell> Shells, double? Peak, double? AtUs) Shells(
+        Transport.Diffusion.DensityField density,
+        double atSecondsDrawn,
+        double elapsedSeconds,
+        bool asked,
+        List<ValidityWarning> warnings)
+    {
+        var grid = density.Grid;
+
+        var spanU = grid.MaxX - grid.OriginX;
+        var spanV = grid.MaxY - grid.OriginY;
+
         var peak = density.Peak();
-        var floor = Floor(density, area);
+        var floor = Floor(density);
 
         if (!(peak > floor))
         {
@@ -598,10 +909,10 @@ public static class ViewportCommand
             "render.density-at-instant",
             $"the density is drawn at t = {atSecondsDrawn * 1e6:G6} us of a "
             + $"{elapsedSeconds * 1e6:G6} us run"
-            + (atSeconds is null
-                ? ", chosen as the middle of the instants that still hold a packet. The "
-                  + "end of a run is empty whenever the ions arrived"
-                : ", as asked for"),
+            + (asked
+                ? ", as asked for"
+                : ", chosen as the middle of the instants that still hold a packet. The "
+                  + "end of a run is empty whenever the ions arrived"),
             WarningSeverity.Provenance));
 
         var columns = Math.Max(8, DensityColumns);
