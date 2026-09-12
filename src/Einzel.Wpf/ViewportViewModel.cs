@@ -40,6 +40,25 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
     /// <summary>Refreshes started, so a superseded one can stand down.</summary>
     private int _refreshes;
 
+    private bool _isWatching;
+
+    /// <summary>The newest frame a watch has produced, whether or not it has been drawn.</summary>
+    private ViewportOutcome? _latest;
+
+    /// <summary>Whether a drain is already queued on the drawing thread.</summary>
+    private int _queued;
+
+    /// <summary>The last frame drawn that held a packet at all.</summary>
+    /// <remarks>
+    /// <b>Because the end of a run is empty whenever the ions arrived.</b> A watch that
+    /// applied its final bundle unconditionally would spend minutes drawing a packet and
+    /// then, at the last instant, replace it with an empty box - which is exactly the
+    /// picture the density work was built to stop a diffusive model producing. The finished
+    /// viewport draws the middle of the instants that still hold something, for the same
+    /// reason; a watch has no list to pick from, so it keeps the last one that did.
+    /// </remarks>
+    private ViewportOutcome? _held;
+
     /// <summary>Opens the viewport over a session.</summary>
     /// <param name="session">The session, which owns the model.</param>
     /// <exception cref="ArgumentNullException"><paramref name="session"/> is null.</exception>
@@ -52,6 +71,14 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
 
     /// <inheritdoc/>
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>A watch has filled the collections with a new frame.</summary>
+    /// <remarks>
+    /// <b>Raised only by a watch</b>, not by every <c>Apply</c>. An ordinary refresh is
+    /// followed by the window's own redraw, so raising it there would draw the same scene
+    /// twice - and a frame of a run in flight has nobody else to ask for one.
+    /// </remarks>
+    public event EventHandler? FrameDrawn;
 
     /// <summary>The paths to draw, empty when the mode produces none.</summary>
     public ObservableCollection<TrajectoryPath> Trajectories { get; } = [];
@@ -240,6 +267,177 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
     /// overlapping refreshes must leave this at one more than it started, not two.
     /// </remarks>
     public int Applied { get; private set; }
+
+    /// <summary>Whether a run is being watched into this viewport right now.</summary>
+    public bool IsWatching
+    {
+        get => _isWatching;
+        private set
+        {
+            _isWatching = value;
+            Changed(nameof(IsWatching));
+        }
+    }
+
+    /// <summary>How often a watch asks for a frame, in wall-clock seconds.</summary>
+    /// <remarks>
+    /// <b>The wall clock rather than a step count</b>, for the reason the checkpoint writer
+    /// already gives: the steps a run takes per second span four orders across the models
+    /// here, so a step cadence is a frame a minute on one and a hundred a second on another.
+    /// Two seconds is slow enough that building a frame is a rounding error against the run
+    /// and fast enough to read as motion.
+    /// </remarks>
+    public double FrameIntervalSeconds { get; set; } = 2.0;
+
+    /// <summary>Runs the model's transport, drawing the packet as it goes.</summary>
+    /// <param name="stopping">Watched for a request to give up.</param>
+    /// <returns>
+    /// Whether a packet is drawn. <b>Not <see cref="HasBundle"/>, which a refresh returns</b>
+    /// - that is whether there are trajectories, and a watch only ever runs on a model that
+    /// has none by construction, so it would answer false on every successful watch there
+    /// is.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the thing a long run was missing.</b> A driven diffusive window is
+    /// hundreds of thousands of steps, and until now the choices were to wait for it in a
+    /// frozen window or to read a checkpoint file describing a packet in numbers. What the
+    /// viewport can do that a checkpoint cannot is show the shape: a packet that is still
+    /// narrowing, one that has hit a wall, one that never left where it was seeded.
+    /// </para>
+    /// <para>
+    /// <b>Frames are coalesced rather than queued.</b> The newest frame replaces any that
+    /// has not been drawn yet, because a viewport showing a packet from four frames ago
+    /// while three more wait behind it is worse than one showing where the packet is now.
+    /// The flag is cleared before the frame is read, so the race can post twice and can
+    /// never drop the last one.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> WatchAsync(CancellationToken stopping = default)
+    {
+        var generation = ++_refreshes;
+
+        // Captured here, on the thread that owns the collections, because that is the
+        // thread every frame has to be applied on.
+        var drawing = SynchronizationContext.Current;
+
+        IsWatching = true;
+
+        try
+        {
+            var final = await _session.WatchAsync(
+                frame => Offer(drawing, generation, frame),
+                (steps, since) => since >= FrameIntervalSeconds,
+                stopping).ConfigureAwait(true);
+
+            if (generation != _refreshes)
+            {
+                return HasDensity;
+            }
+
+            if (final.Density.Count == 0 && _held is { } held)
+            {
+                Apply(held);
+
+                // GRD-2 rather than a tidier picture: the run's own warnings are what the
+                // finished bundle earned and the held frame never saw, so they are carried
+                // across rather than dropped with the bundle they came on.
+                foreach (var warning in final.Warnings)
+                {
+                    var line = $"{warning.Code}: {warning.Message}";
+
+                    if (!Warnings.Contains(line))
+                    {
+                        Warnings.Add(line);
+                    }
+                }
+
+                Status = "the run finished with nothing left to draw - what is shown is the "
+                    + "last instant that still held a packet, which for a run whose ions "
+                    + "arrived is the informative one";
+            }
+            else
+            {
+                Apply(final);
+            }
+
+            return HasDensity;
+        }
+        catch (OperationCanceledException)
+        {
+            // A stopped watch is not a failure and the packet it drew is not wrong. What
+            // it is is incomplete, which the status line says rather than the drawing
+            // being cleared - clearing it would throw away the one thing that was gained.
+            if (generation == _refreshes)
+            {
+                Status = "stopped - the packet drawn is where the run had got to, not where it ends";
+            }
+
+            return HasDensity;
+        }
+        catch (EinzelException refusal)
+        {
+            if (generation != _refreshes)
+            {
+                return HasDensity;
+            }
+
+            Refused(refusal);
+
+            return false;
+        }
+        finally
+        {
+            if (generation == _refreshes)
+            {
+                IsWatching = false;
+            }
+        }
+    }
+
+    /// <summary>Takes a frame from the run's thread and asks the drawing thread for it.</summary>
+    private void Offer(SynchronizationContext? drawing, int generation, ViewportOutcome frame)
+    {
+        Volatile.Write(ref _latest, frame);
+
+        if (Interlocked.Exchange(ref _queued, 1) == 1)
+        {
+            // One is already waiting to be drawn, and it will pick up this frame instead.
+            return;
+        }
+
+        if (drawing is null)
+        {
+            Drain(generation);
+            return;
+        }
+
+        drawing.Post(_ => Drain(generation), null);
+    }
+
+    /// <summary>Draws whatever the newest frame is, on the thread that owns the collections.</summary>
+    private void Drain(int generation)
+    {
+        // Cleared BEFORE the frame is read, so a frame arriving in between queues another
+        // drain rather than being dropped. The other order loses the last frame of a run.
+        Interlocked.Exchange(ref _queued, 0);
+
+        var frame = Volatile.Read(ref _latest);
+
+        if (frame is null || generation != _refreshes)
+        {
+            return;
+        }
+
+        Apply(frame);
+
+        if (frame.Density.Count > 0)
+        {
+            _held = frame;
+        }
+
+        FrameDrawn?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>Shows a refusal instead of a drawing.</summary>
     private bool Refused(EinzelException refusal)
