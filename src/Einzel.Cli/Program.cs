@@ -2279,10 +2279,9 @@ public static class Program
                 // a conversion re-samples the first while carrying the second - so both
                 // are shown, and a diffusive phase shows a dash rather than a zero,
                 // because it has no trajectories rather than none left.
-                var carried = phase.Trajectories > 0
+                var carried = phase.Mode == "trajectory"
                     ? phase.Trajectories.ToString(invariant)
                     : "-";
-
                 // The width beside the centre, because for a mobility analyser the two
                 // together are the measurement: where a packet parks is which mobility it
                 // has, and how wide it is when the ramp releases it is the floor on the
@@ -2292,11 +2291,21 @@ public static class Program
                     ? string.Create(invariant, $"{spread[0],7:F3}")
                     : "      -";
 
+                // A phase the packet never reached has no centre to report, which is a
+                // different statement from a centre at the origin - the same argument the
+                // dash above makes for a trajectory count. Padded to the width of the
+                // populated form so the `converted` marker stays in one column: this is a
+                // table, and a row that is shorter than its neighbours moves the column.
+                var centre = phase.CentroidMm.Count > 0
+                    ? string.Create(
+                        invariant, $"x {phase.CentroidMm[0],8:F3} +- {wide} mm")
+                    : "packet empty";
+
                 Console.Out.WriteLine(string.Create(
                     invariant,
                     $"  {phase.Name,-12} {phase.Mode,-11} to {phase.EndsAtUs,8:F2} us  "
                     + $"{phase.Population,10:G6} ions in {carried,5} trajectories  "
-                    + $"x {phase.CentroidMm[0],8:F3} +- {wide} mm"
+                    + $"{centre,-24}"
                     + $"{(phase.Converted ? "  converted" : string.Empty)}"));
             }
 

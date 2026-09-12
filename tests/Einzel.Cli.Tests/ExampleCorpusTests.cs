@@ -149,6 +149,7 @@ public sealed class ExampleCorpusTests(ITestOutputHelper output) : IDisposable
         var root = Materialise();
 
         var (exitCode, stdout, stderr) = Run("test", root, "--json");
+        Assert.False(string.IsNullOrWhiteSpace(stdout), $"test exited {exitCode} without JSON: {stderr}");
 
         using var document = JsonDocument.Parse(stdout);
         var result = document.RootElement;

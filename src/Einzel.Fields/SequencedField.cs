@@ -101,6 +101,27 @@ public sealed class SequencedField : ITimeVaryingField
         _boundaries = boundaries;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A sequence is monochromatic only at a held operating point: without one there is
+    /// no single state to take a spectrum of, so a sequence carrying any driven state
+    /// reports NaN rather than picking one. All-static states have no oscillation at all,
+    /// which is infinity rather than unknown.
+    /// </remarks>
+    public double MonochromaticPeriodSeconds => _operatingPoint is null
+        ? (_states.All(s => s is not ITimeVaryingField) ? double.PositiveInfinity : double.NaN)
+        : (At(0) is ITimeVaryingField driven ? driven.MonochromaticPeriodSeconds : double.PositiveInfinity);
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other)
+    {
+        if (other is not SequencedField sequence || _operatingPoint is null || sequence._operatingPoint is null)
+            return ReferenceEquals(this, other);
+        var a = At(0) as ITimeVaryingField;
+        var b = sequence.At(0) as ITimeVaryingField;
+        return a is null ? b is null : b is not null && a.HasSameOscillationAs(b);
+    }
+
     /// <summary>The state that holds at an instant.</summary>
     /// <remarks>
     /// A time exactly on a boundary belongs to the phase that is starting, not the one
@@ -108,6 +129,8 @@ public sealed class SequencedField : ITimeVaryingField
     /// which side of the comparison it falls on is a real decision rather than a
     /// tie-break. Starting is the right one: the switch has happened.
     /// </remarks>
+    /// <param name="timeSeconds">The instant, on the instrument's timeline.</param>
+    /// <returns>The state in force there.</returns>
     private IElectrostaticField At(double timeSeconds)
     {
         timeSeconds = _operatingPoint ?? timeSeconds;

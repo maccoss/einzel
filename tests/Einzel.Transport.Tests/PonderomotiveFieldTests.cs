@@ -60,6 +60,20 @@ public sealed class PonderomotiveFieldTests
         return peak;
     }
 
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(2e6)]
+    public void QuiverIsAnAmplitudeForEitherChargeSign(double rate)
+    {
+        var ion = Peptide;
+        var positive = new PonderomotiveField(Quadrupole(), ion.ChargeSi, ion.MassSi, rate);
+        var negative = new PonderomotiveField(Quadrupole(), -ion.ChargeSi, ion.MassSi, rate);
+        var at = new Vec3(1e-3, 0, 0);
+        Assert.True(positive.QuiverAmplitude(at) > 0);
+        Assert.Equal(positive.QuiverAmplitude(at), negative.QuiverAmplitude(at));
+        Assert.Equal(positive.WellAt(at), -negative.WellAt(at));
+    }
+
     [Fact]
     public void TheCollisionlessWellIsTheDehmeltPseudopotential()
     {

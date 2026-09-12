@@ -67,7 +67,7 @@ public sealed class MeanFieldSurfaceTests(ITestOutputHelper output) : IDisposabl
                            "longitudinalSpread": { "value": 0.4, "unit": "mm" } }
               },
               "detector": {
-                "planePoint": { "value": [30, 0, 0], "unit": "mm" },
+                "planePoint": { "value": [32, 0, 0], "unit": "mm" },
                 "normal": { "value": [-1, 0, 0] }
               },
               "transport": {

@@ -8,6 +8,7 @@ using Einzel.Transport;
 using Einzel.Transport.Collisions;
 using Einzel.Transport.Diffusion;
 using Einzel.Transport.Integration;
+using Einzel.Transport.Interaction;
 
 namespace Einzel.Commands;
 
@@ -247,6 +248,26 @@ public static class SequencedRun
             var trajectory = string.Equals(phase.Mode, "trajectory", StringComparison.Ordinal);
             var converted = false;
 
+            // ACC-5: arrival or absorption can exhaust the packet before a mode change.
+            // Keep the remaining phases and the ledger, but never re-seed or convert zero ions.
+            //
+            // BEFORE the phase is announced, and the completed phase is still reported to
+            // the watcher: a skipped phase is one a killed run should be found having
+            // finished, so it belongs in the checkpoint like any other, and announcing
+            // entry to a phase that will not step would give a watcher an ETA for no work.
+            // `SpreadMm` is null rather than empty - there is no packet to take a width
+            // over, which is the same absent-not-zero rule the dash in the phase table
+            // follows.
+            if (states is { Length: 0 } || (density is not null && density.Population() == 0.0))
+            {
+                outcomes.Add(new PhaseOutcome(
+                    phase.Name, phase.Mode, phase.DurationSeconds, phase.EndsAtSeconds,
+                    0.0, 0, [], null, false, 0, []));
+                started = phase.EndsAtSeconds;
+                progress?.Completed(outcomes[^1]);
+                continue;
+            }
+
             // Which phase of how many, so a watcher can say "5 of 8" - a thing the
             // transport stepping one leg has no way to know.
             progress?.Entering(
@@ -311,7 +332,11 @@ public static class SequencedRun
             if (trajectory)
             {
                 var (flying, arrived, lost) = Fly(
-                    states!, species, field, detector, started, phase.DurationSeconds, model);
+                    // Subtract the same absolute instants as TimeShiftedField does.
+                    // The declared duration can differ by a few ulps and otherwise
+                    // leaves an unrepresentable sliver after the last switch.
+                    states!, species, field, detector, started, phase.EndsAtSeconds - started, model,
+                    gas, perTrajectory, outcomes.Count, warnings);
 
                 states = flying;
                 arrivedTotal += arrived * perTrajectory;
@@ -555,7 +580,11 @@ public static class SequencedRun
         TrajectoryStopFunction detector,
         double startedAt,
         double durationSeconds,
-        CompiledModel model)
+        CompiledModel model,
+        BackgroundGas gas,
+        double perTrajectory,
+        int phaseIndex,
+        List<ValidityWarning> warnings)
     {
         var seen = Instant(field, startedAt);
 
@@ -569,9 +598,75 @@ public static class SequencedRun
         var lost = new Dictionary<string, int>(StringComparer.Ordinal);
         var arrived = 0;
 
-        foreach (var state in states)
+        // Separate reproducible streams per member and leg; restarting the same stream
+        // at every boundary would correlate the collisions of successive phases.
+        var samplers = gas.IsPresent
+            ? Enumerable.Range(0, states.Length).Select(i => new CollisionSampler(
+                gas, species.MassSi, species.ChargeSi,
+                unchecked(model.Gas.Seed + i + phaseIndex * 1_000_003))).ToArray()
+            : null;
+        IReadOnlyList<PacketMember> members;
+        if (model.ModelsSpaceCharge && states.Length > 1)
         {
-            var flight = TrajectoryIntegrator.Integrate(state, species, seen, settings, detector);
+            var interaction = FiguresOfMerit.PacketInteraction(
+                model, states, species, perTrajectory * states.Length);
+            members = PacketIntegrator.Fly(states, species, seen, interaction, settings,
+                detector, samplers).Members;
+            var smoothing = interaction is CoulombInteraction direct
+                ? FormattableString.Invariant($"Plummer softening {direct.SofteningLengthSi:G6} m")
+                : "a grid-smoothed self-field";
+            // ONCE FOR THE RUN, not once per phase. The caveat is about the method
+            // rather than about this phase, so a sixteen-stage staircase would otherwise
+            // emit sixteen copies of the same paragraph and bury the warnings that differ -
+            // which is the defect this project already fixed once, when a malformed stage
+            // was reported per field element and turned one typo into a wall. The phase
+            // that first paid it is still named, because that is where a reader looks.
+            // The collision count below stays per phase: it is a different number each
+            // time and is the reason anybody wants it.
+            if (!warnings.Any(w => w.Code == "spacecharge.sequenced-packet"))
+            {
+                warnings.Add(new ValidityWarning("spacecharge.sequenced-packet",
+                    FormattableString.Invariant($"from phase {phaseIndex + 1}: {model.SpaceChargeMode} advances {states.Length} macroparticles together, each representing {perTrajectory:G6} ions, with {smoothing}. ")
+                    + "The self-field is rebuilt at every phase boundary; shared steps do not guarantee exact landing on each member's field discontinuities. "
+                    + "Collisions, when present, are sampled once per macroparticle, not per represented ion",
+                    WarningSeverity.Qualified));
+            }
+        }
+        else
+        {
+            var individual = new PacketMember[states.Length];
+            for (var i = 0; i < states.Length; i++)
+            {
+                var result = TrajectoryIntegrator.Integrate(states[i], species, seen,
+                    settings, detector, collisions: samplers?[i]);
+                individual[i] = new PacketMember(result.Outcome, result.FlightTimeSeconds,
+                    result.FinalState, result.StruckSurface);
+            }
+            members = individual;
+        }
+
+        if (samplers is not null)
+        {
+            warnings.AddRange(FlightTimeStudy.CollisionWarnings(
+                samplers.Any(s => s.BoundExceeded), samplers.Any(s => s.SampledOutsideDensity),
+                samplers.Any(s => s.SampledOutsideFlow)));
+            warnings.Add(new ValidityWarning("collisions.sequence-leg",
+                $"trajectory phase {phaseIndex + 1}: {samplers.Sum(s => s.Collisions)} collisions "
+                + $"across {states.Length} trajectories", WarningSeverity.Provenance));
+        }
+
+        foreach (var flight in members)
+        {
+            if (!flight.Outcome.Completed())
+            {
+                throw new EinzelException(new EinzelError
+                {
+                    Code = ErrorCodes.ConvergenceFailed,
+                    Path = "/sequence",
+                    Constraint = $"trajectory leg stopped with {flight.Outcome} at {flight.FlightTimeSeconds:G17} s of {durationSeconds:G17} s; it cannot hand an unfinished packet to the next phase",
+                    Suggestion = "inspect the transport settings and the field near the stopped ion",
+                });
+            }
 
             // Three outcomes, and all three are accounted for. An ion that ran the whole
             // phase is handed to the next one; one that reached the detector arrived; one

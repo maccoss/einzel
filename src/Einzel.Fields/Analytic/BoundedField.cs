@@ -157,6 +157,14 @@ public sealed class DrivenBoundedField : BoundedField, ITimeVaryingField
     /// <inheritdoc />
     public double ShortestPeriodSeconds => _driven.ShortestPeriodSeconds;
 
+    /// <inheritdoc/>
+    public double MonochromaticPeriodSeconds => _driven.MonochromaticPeriodSeconds;
+
+    /// <inheritdoc/>
+    public bool HasSameOscillationAs(ITimeVaryingField other) =>
+        other is DrivenBoundedField bounded && Region == bounded.Region
+        && _driven.HasSameOscillationAs(bounded._driven);
+
     /// <inheritdoc />
     public double OscillatingResolutionLength => _driven.OscillatingResolutionLength;
 

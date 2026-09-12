@@ -4137,3 +4137,70 @@ skipped it**, because I had already written the hypothesis into four documents; 
 file and re-running cost one build and one run, against a wrong entry in the living
 specification. Write the hypothesis down as a hypothesis, then run the thing that can refute
 it before it is written down as a finding.
+
+## Amendment numbers are a shared namespace, and two branches both took 42
+
+PR #37 branched from a commit where SPEC.md's highest amendment was 41, and numbered its four
+additions 42, 43, 44, 45. That was correct when written. #36 then merged first and took all
+four numbers for entirely different content - 42 for the extension surface, 43 for the run
+report, 44 for progress and checkpoints, 45 for the elution floor. Git merged the file without
+a conflict in the amendment section, because the two branches added text in different places,
+so **the merged specification had four pairs of duplicate headings and six citations pointing
+at the wrong one of each pair.**
+
+Nothing in the build catches this. SPEC.md is prose, and the living specification is exactly
+the document that must not quietly disagree with itself.
+
+**The repair is not a regex.** `Amendment 43` appears in main's own register rows and in two
+plan items, meaning main's 43; it appears in #37's rows meaning #37's. A blanket substitution
+would have renumbered both and turned the cross-references into nonsense while leaving every
+heading looking plausible. What worked was renumbering by exact string - four headings and six
+citations, each asserted to occur exactly once - and then checking that `### <n>` has no
+duplicates.
+
+**The rule: a document with a hand-maintained number sequence is a merge hazard that produces
+no conflict.** When two branches are open on one repository, the second to merge has to
+renumber, and the check is a uniqueness assertion on the headings rather than a reading of the
+diff. Worth doing before the build, because the build will not tell you.
+
+## The guard I flagged as a compatibility break caught four of my own fixtures
+
+#37 added a refusal: a diffusive detector must coincide with a grid face. I reviewed it as a
+compatibility break - documents that validated and ran would now fail, with no schema bump -
+and it is one. Then the merged suite failed seven tests, and four of them were my own fixtures
+declaring a detector twenty millimetres past the end of their density grid.
+
+They had always run. The collecting face was chosen from the detector's **normal**, and its
+**position was ignored** - so the documents named a plane the collector did not use, and the
+runs were correct about a geometry nobody had described. One of them was the fixture behind a
+published front-end resolving power.
+
+So the review finding and the fix are both right, and the order in which I learned them is the
+part to keep: **I classified the refusal as a cost before discovering that I was one of the
+people it was catching.** A guard that rejects existing documents is a compatibility break
+*and* evidence about those documents, and the second reading is the one that says whether the
+break is worth taking. Reading the diff gave me the first; running the suite gave me the
+second.
+
+## A version bump that invalidates everything and changes nothing is worth measuring
+
+`SolverBehaviourVersion` went 1 to 2, correctly: #37 changed the RF spectrum validation, the
+cache's keying and the period selection, any of which could move a number. PRJ-3 makes that
+bump invalidate every stored result in every project, so `verify` now reports drift
+everywhere.
+
+Which leaves a question nobody had to ask: **did the published numbers actually move?** For the
+scan-rate series they did not. The 8 ms anchor re-measured over the same tracked region gives
+R = 21.572 against the recorded 21.57, with sigma 94.757 against 94.76 - identical to the
+precision it was quoted at.
+
+**Measured as a pair, because a single re-run would have confounded two changes.** The same PR
+requires the detector to sit on a grid face, and every model in that study had it three
+millimetres off - so moving the detector onto the existing face isolates the engine, and
+aligning the grid to the detector isolates the geometry (+1.5 per cent). Without the pair the
+honest report would have been "the series moved by 1.5 per cent and I cannot say why".
+
+**The rule: when a behaviour version is bumped, re-measure one anchor per published series
+before assuming either way.** The bump is a statement that numbers *may* change, and the
+cheapest thing that turns it into a statement about whether they *did* is one short run per
+series - which also tells you whether the register needs restating at all.

@@ -104,7 +104,7 @@ public sealed class SequencedDrivenTests(ITestOutputHelper output)
         }
       }],
       "detector": {
-        "planePoint": { "value": [40, 0, 0], "unit": "mm" },
+        "planePoint": { "value": [6, 0, 0], "unit": "mm" },
         "normal": { "value": [-1, 0, 0] }
       },
       "transport": {

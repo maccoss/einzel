@@ -1311,6 +1311,7 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes,
         bool exportVtu,
         RunProgress? progress)
     {
@@ -1332,6 +1333,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // Which model, as distinct from which content. Without it verify has to find
             // the model by searching for one that still hashes to the recorded value, and
@@ -1575,6 +1577,7 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes,
         bool exportVtu,
         RunProgress? progress)
     {
@@ -1592,6 +1595,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
             ModelPath = RunManifest.Portable(
                 Path.GetRelativePath(project.Root, validation.ModelPath)),
             SchemaVersion = ModelJson.Parse(File.ReadAllText(validation.ModelPath)).SchemaVersion,
@@ -1808,6 +1812,7 @@ public static class RunCommand
         ValidateOutcome validation,
         ProjectLayout project,
         DateTimeOffset timestampUtc,
+        IReadOnlyDictionary<string, string> inputHashes,
         bool exportVtu,
         RunProgress? progress)
     {
@@ -1816,8 +1821,8 @@ public static class RunCommand
         if (model.IsMixture)
         {
             return Mixture(
-                model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
-                progress);
+                model, field, fieldWarnings, validation, project, timestampUtc, inputHashes,
+                exportVtu, progress);
         }
 
         // The one place that knows where the model file is, so the one place that can
@@ -1857,6 +1862,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // Which model, as distinct from which content. Without it verify has to find
             // the model by searching for one that still hashes to the recorded value, and
@@ -2174,6 +2180,7 @@ public static class RunCommand
         }
 
         var document = ModelJson.Parse(File.ReadAllText(validation.ModelPath));
+        var inputHashes = RunInputs.Capture(document, validation.ModelPath, project.Root);
         var model = ModelValidator.Validate(
             document, null, Path.GetDirectoryName(validation.ModelPath)).Model!;
 
@@ -2216,8 +2223,8 @@ public static class RunCommand
         {
             return (
                 Sequenced(
-                    model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
-                    progress),
+                    model, field, fieldWarnings, validation, project, timestampUtc, inputHashes,
+                    exportVtu, progress),
                 validation);
         }
 
@@ -2229,8 +2236,8 @@ public static class RunCommand
         {
             return (
                 Diffusive(
-                    model, field, fieldWarnings, validation, project, timestampUtc, exportVtu,
-                    progress),
+                    model, field, fieldWarnings, validation, project, timestampUtc, inputHashes,
+                    exportVtu, progress),
                 validation);
         }
 
@@ -2323,6 +2330,7 @@ public static class RunCommand
         var manifest = new RunManifest
         {
             ModelHash = validation.ModelHash,
+            InputHashes = RunInputs.Checked(inputHashes, project.Root),
 
             // Which model, as distinct from which content. Without it verify has to find
             // the model by searching for one that still hashes to the recorded value, and

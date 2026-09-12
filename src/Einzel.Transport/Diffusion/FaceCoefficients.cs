@@ -150,7 +150,8 @@ public sealed class FaceCoefficients
     /// <param name="thermal">The thermal voltage, signed by the charge.</param>
     /// <param name="edges">What happens at each edge of the domain.</param>
     /// <param name="absorbers">Cells inside a conductor.</param>
-    /// <returns>The assembled operator.</returns>
+    /// <param name="reuse">Optional scratch operator on the same grid dimensions; overwritten in place.</param>
+    /// <returns>The assembled operator (the supplied scratch object, when present).</returns>
     /// <exception cref="ArgumentNullException">Any reference argument is null.</exception>
     public static FaceCoefficients Assemble(
         DensityField density,
@@ -163,7 +164,8 @@ public sealed class FaceCoefficients
         double[] potential,
         double thermal,
         DriftDiffusion.DomainEdges edges,
-        AbsorbingCells absorbers)
+        AbsorbingCells absorbers,
+        FaceCoefficients? reuse = null)
     {
         ArgumentNullException.ThrowIfNull(density);
         ArgumentNullException.ThrowIfNull(grid);
@@ -177,7 +179,24 @@ public sealed class FaceCoefficients
 
         var cells = grid.CountX * grid.CountY;
 
-        var built = new FaceCoefficients(cells, grid.CountX);
+        var built = reuse ?? new FaceCoefficients(cells, grid.CountX);
+        if (built._countX != grid.CountX || built._outward.Length != cells)
+        {
+            throw new ArgumentException("the scratch operator must have the same grid dimensions", nameof(reuse));
+        }
+        if (reuse is not null)
+        {
+            // Some faces are skipped (reflecting edges and blocked cells). Clear them
+            // too, so a changed boundary or absorber cannot retain the previous operator.
+            Array.Clear(built._scale);
+            Array.Clear(built._weight);
+            Array.Clear(built._here);
+            Array.Clear(built._there);
+            Array.Clear(built._outward);
+            Array.Clear(built._leaving);
+            Array.Clear(built._collects);
+            Array.Clear(built._names);
+        }
 
         var offsets = Offsets;
 
