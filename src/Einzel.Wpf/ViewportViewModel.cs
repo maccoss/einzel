@@ -37,6 +37,9 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
     private bool _hasBundle;
     private bool _hasField;
 
+    /// <summary>Refreshes started, so a superseded one can stand down.</summary>
+    private int _refreshes;
+
     /// <summary>Opens the viewport over a session.</summary>
     /// <param name="session">The session, which owns the model.</param>
     /// <exception cref="ArgumentNullException"><paramref name="session"/> is null.</exception>
@@ -182,35 +185,87 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         return span > 0.0 ? Math.Clamp((value - low) / span, 0.0, 1.0) : 0.5;
     }
 
-    /// <summary>Re-reads what should be drawn.</summary>
+    /// <summary>Re-reads what should be drawn, holding the calling thread.</summary>
     /// <returns>Whether there is a bundle.</returns>
     public bool Refresh()
     {
-        ViewportOutcome outcome;
-
         try
         {
-            outcome = _session.Viewport();
+            return Apply(_session.Viewport());
         }
         catch (EinzelException refusal)
         {
-            Trajectories.Clear();
-            Conductors.Clear();
-            Ends = null;
-            Equipotentials.Clear();
-            Density.Clear();
-            Warnings.Clear();
-            HasBundle = false;
-            HasField = false;
-            HasDensity = false;
-
-            // AGT-3's error is already a recovery instruction, so it is shown rather than
-            // reworded.
-            Status = refusal.Error.Constraint
-                + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
-
-            return false;
+            return Refused(refusal);
         }
+    }
+
+    /// <summary>Re-reads what should be drawn, without holding the calling thread.</summary>
+    /// <returns>Whether there is a bundle.</returns>
+    /// <remarks>
+    /// <b>The transport runs in the background and the collections are filled on the
+    /// caller's thread</b>, which is what an <c>ObservableCollection</c> bound to a
+    /// viewport requires. `ConfigureAwait(true)` says so rather than relying on the
+    /// default, because the default is what somebody changes.
+    /// </remarks>
+    public async Task<bool> RefreshAsync()
+    {
+        // WHICH REFRESH THIS IS, and it has to be counted HERE rather than at the window.
+        // Two can be in flight at once - a parameter edit while the last is still stepping,
+        // or a model opened on top of it - and the transport takes minutes now, so they
+        // finish in whatever order they finish. Guarding only the redraw is not enough: the
+        // collections are filled inside this method, so a superseded refresh would stomp
+        // them with an older model's packet and the next redraw of any kind would show it.
+        //
+        // A generation rather than cancellation, because the work is not cancellable. What
+        // has to be prevented is applying the result, not computing it.
+        var generation = ++_refreshes;
+
+        try
+        {
+            var outcome = await _session.ViewportAsync().ConfigureAwait(true);
+
+            return generation == _refreshes ? Apply(outcome) : HasBundle;
+        }
+        catch (EinzelException refusal)
+        {
+            // A stale refusal is withheld for the same reason a stale success is: the
+            // status line would be describing a model the window has already left.
+            return generation == _refreshes ? Refused(refusal) : HasBundle;
+        }
+    }
+
+    /// <summary>How many refreshes have actually filled the collections.</summary>
+    /// <remarks>
+    /// Exposed so the superseding can be asserted rather than reasoned about: two
+    /// overlapping refreshes must leave this at one more than it started, not two.
+    /// </remarks>
+    public int Applied { get; private set; }
+
+    /// <summary>Shows a refusal instead of a drawing.</summary>
+    private bool Refused(EinzelException refusal)
+    {
+        Trajectories.Clear();
+        Conductors.Clear();
+        Ends = null;
+        Equipotentials.Clear();
+        Density.Clear();
+        Warnings.Clear();
+        HasBundle = false;
+        HasField = false;
+        HasDensity = false;
+
+        // AGT-3's error is already a recovery instruction, so it is shown rather than
+        // reworded.
+        Status = refusal.Error.Constraint
+            + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
+
+        return false;
+    }
+
+    /// <summary>Fills the bound collections from an outcome, on the caller's thread.</summary>
+    private bool Apply(ViewportOutcome outcome)
+    {
+        Applied++;
 
         Trajectories.Clear();
 

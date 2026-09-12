@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     private bool _framed;
     private bool _loaded;
 
+    /// <summary>How many viewport refreshes have been started, so a stale one can stand down.</summary>
+    private int _refreshes;
+
     /// <summary>Creates the window.</summary>
     public MainWindow()
     {
@@ -56,7 +59,7 @@ public partial class MainWindow : Window
             _loaded = true;
 
             Show(_tree);
-            Draw(_viewport);
+            Refresh(_viewport);
         };
     }
 
@@ -124,7 +127,7 @@ public partial class MainWindow : Window
         // seconds of solving thrown away, and is invisible on anything that solves fast.
         if (_loaded)
         {
-            Draw(viewport);
+            Refresh(viewport);
         }
     }
 
@@ -139,6 +142,52 @@ public partial class MainWindow : Window
     {
         StatusText.Text = reason;
         StatusBar.Background = new SolidColorBrush(Color.FromRgb(0xF6, 0xE0, 0xE0));
+    }
+
+    /// <summary>Re-reads the physics off the UI thread, then redraws.</summary>
+    /// <param name="viewport">What to refresh, or null when there is no model open.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Separate from <see cref="Draw"/> because only one of the two costs anything.</b>
+    /// Drawing turns meshes and polylines into vertices; refreshing runs the transport. They
+    /// were one method, so ticking a layer checkbox re-flew the ions - and once the viewport
+    /// learned to follow a model's sequence, it would have re-stepped a timed instrument's
+    /// first phase to answer "show the field".
+    /// </para>
+    /// <para>
+    /// <b><c>async void</c> on purpose.</b> This is a fire-and-forget UI operation, and the
+    /// alternative - discarding a task - swallows anything the refusal handler does not
+    /// catch. An unhandled exception here reaches the dispatcher, which is where a window's
+    /// failures are supposed to surface.
+    /// </para>
+    /// </remarks>
+    private async void Refresh(ViewportViewModel? viewport)
+    {
+        if (viewport is null)
+        {
+            return;
+        }
+
+        // A SECOND GENERATION, GUARDING THE DRAW RATHER THAN THE DATA. The view model holds
+        // the one that matters - it owns the collections, so it is the only place that can
+        // stop a superseded refresh writing to them, and without it concurrent writers
+        // corrupt the collection outright rather than merely leaving it stale.
+        //
+        // What this one adds is that a superseded refresh does not spend a redraw painting
+        // a scene a newer one is about to replace, and that a refresh outliving the model it
+        // was started for does not draw into the window at all.
+        var generation = ++_refreshes;
+
+        await viewport.RefreshAsync();
+
+        if (generation != _refreshes || !ReferenceEquals(viewport, _viewport))
+        {
+            // Something started after this did, or the window moved to another model. Its
+            // own Draw is the one that should stand.
+            return;
+        }
+
+        Draw(viewport);
     }
 
     /// <summary>Draws the instrument, the field and the bundle.</summary>
@@ -167,8 +216,6 @@ public partial class MainWindow : Window
         {
             return;
         }
-
-        viewport.Refresh();
 
         Viewport.Items.Clear();
 
@@ -1065,9 +1112,9 @@ public partial class MainWindow : Window
         {
             Show(_tree);
 
-            // The bundle is redrawn too: watching the paths move is the reason to change
-            // a parameter with the window open rather than in a text editor.
-            Draw(_viewport);
+            // The bundle is recomputed too: watching the paths move is the reason to
+            // change a parameter with the window open rather than in a text editor.
+            Refresh(_viewport);
         });
     }
 }

@@ -401,6 +401,57 @@ structural check — counts, parities, index ranges — and was caught by **ever
 normals having length exactly zero**, because a contour traced where the field is flat has
 no gradient to take a normal from.
 
+### A sequenced model is walked along its own timeline, one phase at a time
+
+The cloud came from the wholly diffusive solver, which reads the field once and never looks at
+a sequence — so a model with a timeline was drawn as though it had none, and its window came
+from `maximumFlightTime`, which for a timed instrument is a ceiling on a leg rather than how
+long the instrument runs. Every requested instant landed outside the run, and the viewport drew
+the geometry beside an empty box. **Three surfaces had the same defect** — `einzel run`'s fork,
+both render verbs, and this.
+
+**It stops after the first phase unless an instant is named.** A redraw is something somebody is
+waiting on and a TIMS elution is twenty minutes of stepping, so opening on a whole timeline would
+hang the window on exactly the models this exists for. It is also the right default rather than
+merely the cheap one: a timed instrument prepares its packet in its first phase, and a packet
+parked against the gas at its balance point is the state worth opening on. A truncated walk says
+so on the figure (GRD-12), naming the phase it stopped after and what to run for more.
+
+**`SequencedRun` takes a phase limit rather than an instant**, and the reason is worth keeping: a
+phase's ramp interpolates over the phase's own declared duration, so stopping one early by
+shortening it makes every parameter it ramps arrive at its end value early. A wrong answer, not a
+short one, and it would validate, solve and run.
+
+### The redraw stopped holding the window, and a layer toggle stopped re-running the physics
+
+Once a refresh could be minutes, two things that had been fine became untenable.
+
+**`Draw` was refreshing as well as drawing.** Ticking a layer checkbox re-flew the ions — a
+control that costs nothing and a control that costs everything were the same method. They are two
+now: `Draw` turns meshes and polylines into vertices, `Refresh` runs the transport and then draws.
+Only the three sites that need new physics — opening, loading, and a parameter edit — call the
+second.
+
+**And the transport moved off the UI thread.** `ViewportViewModel.RefreshAsync` awaits the command
+in the background and fills the bound collections on the caller's thread, which is what an
+`ObservableCollection` bound to a viewport requires. **The journal is reconciled on the UI thread,
+not the worker's**: `ShellSession.ViewportAsync` reconciles and records first, then hands the
+worker a path rather than the journal, so an edit arriving while a transport is in flight cannot
+race a reconcile — GRD-9's subject, since an unrecorded outside change is what breaks the undo
+chain. The synchronous `Refresh` remains and both funnel into one apply step, so the two cannot
+come to disagree about what was drawn; a test asserts they do not.
+
+**Measured on the shipped `tims-analyzer`:** a redraw is **685 s in Debug** — about 210 s in
+Release at the 3.27x this project measured — and produces **3 shells at a peak of 1.29e14 ions
+per cubic metre, drawn at 500 us of its 1000 us hold**. So the packet parked against the gas at
+its balance point is now something the window shows, and it takes minutes to show it.
+
+**What is still open, and this measurement is why it matters:** nothing gates the wait. GRD-8
+costs a run before it starts and does not reach a redraw, so the first thing a reader learns
+about a three-minute refresh is that it has begun. The window stays responsive throughout, which
+is the difference between a wait and a hang — but a wait nobody was warned about is still the
+wrong way round.
+
 ## Results by accuracy class
 
 §12 sorts figures into three families and the sort is not decoration: a Class T figure

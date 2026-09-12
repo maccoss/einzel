@@ -145,6 +145,41 @@ public sealed record SequencedOutcome(
     /// </para>
     /// </remarks>
     public DensityField? FinalDensity { get; init; }
+
+    /// <summary>The density at each instant the caller asked for, on the run's own clock.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An animation is the reason this exists.</b> A film of a packet parking and being
+    /// released needs the density at each frame's instant, and the only way to get one used
+    /// to be to call the wholly diffusive solver - which runs the model's declared mode over
+    /// its whole flight and never looks at the sequence. So a sequenced model rendered as an
+    /// unsequenced one, silently: the ramp that releases the packet never ran, and the film
+    /// showed it sitting where it was parked.
+    /// </para>
+    /// <para>
+    /// <b>Instants are on the instrument's clock, not the leg's.</b> Each diffusive phase is
+    /// handed the subset falling inside it, shifted to its own start, and the global instant
+    /// is restored on the way out - the same shift <see cref="TimeShiftedField"/> makes for a
+    /// trajectory leg, and for the same reason.
+    /// </para>
+    /// <para>
+    /// An instant landing in a <b>trajectory</b> phase yields nothing, because a trajectory
+    /// phase has trajectories and not a density. That is a shortfall the caller can see and
+    /// must decide about; filling it with the nearest density would draw a packet somewhere
+    /// it never was.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<DensitySnapshot> Snapshots { get; init; } = [];
+
+    /// <summary>Phases the model declares, where the run walked fewer of them.</summary>
+    /// <remarks>
+    /// <b>So that a short walk cannot read as a whole instrument.</b> A caller that asked
+    /// for a phase limit knows it did; anything downstream reading the outcome does not,
+    /// and a three-phase timeline reported as one finished phase is a different instrument
+    /// from one that stopped after its first. Equal to <c>Phases.Count</c> on an ordinary
+    /// run, so the comparison is the question rather than a flag somebody has to remember.
+    /// </remarks>
+    public int PhasesDeclared { get; init; }
 }
 
 /// <summary>Ions lost one way, in real ions rather than in trajectories.</summary>
@@ -187,6 +222,23 @@ public static class SequencedRun
     /// silently. A phase that has finished is a measurement, so handing it over is what
     /// lets a killed run leave the phases that completed behind it.
     /// </param>
+    /// <param name="snapshotSeconds">
+    /// Instants on the instrument's own clock at which to keep a copy of the density,
+    /// ascending, or null for none. Each is served by the diffusive phase containing it;
+    /// one landing in a trajectory phase yields nothing, since there is no density there.
+    /// </param>
+    /// <param name="phaseLimit">
+    /// Stop after this many phases, or null to walk the whole timeline.
+    /// </param>
+    /// <remarks>
+    /// <b>Phases rather than an instant, and that is the load-bearing part of the
+    /// signature.</b> The obvious spelling is "run until t", and it is wrong here: a
+    /// phase's ramp interpolates over the phase's own declared duration, so stopping a
+    /// phase early by shortening it makes every parameter it ramps arrive at its end value
+    /// early. That is not a short answer, it is a wrong one, and it would validate, solve
+    /// and run. A boundary needs no truncation, so nothing about a phase changes when the
+    /// walk stops after it.
+    /// </remarks>
     /// <returns>What each phase did, and what the conversions cost.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">The model cannot be run this way.</exception>
@@ -194,7 +246,9 @@ public static class SequencedRun
         CompiledModel model,
         IElectrostaticField field,
         BackgroundGas gas,
-        IRunProgress? progress = null)
+        IRunProgress? progress = null,
+        IReadOnlyList<double>? snapshotSeconds = null,
+        int? phaseLimit = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -223,6 +277,7 @@ public static class SequencedRun
         var arrivedTotal = 0.0;
         var lostTotal = new Dictionary<string, double>(StringComparer.Ordinal);
         var arrivals = new List<(double TimeSeconds, double Ions)>();
+        var snapshots = new List<DensitySnapshot>(snapshotSeconds?.Count ?? 0);
 
         // What one trajectory stands for. It starts as the declared population spread
         // over the launched cloud, and a conversion back from a density re-derives it
@@ -357,9 +412,76 @@ public static class SequencedRun
             }
             else
             {
+                // The instants this phase is responsible for, shifted onto its own clock.
+                //
+                // Half-open at the END, so an instant landing exactly on a boundary is served
+                // by the phase that BEGINS there rather than by the one closing there - the
+                // same convention `StageAt` uses, and the two must agree or a frame on a
+                // boundary is drawn in the operating point of the phase before it.
+                //
+                // The LAST phase carries no upper bound at all, which is not the same rule
+                // relaxed. Phase ends are accumulated durations, so the declared end of an
+                // 80 us run is 80 us only up to rounding - and an animation forces its final
+                // frame onto exactly the declared end, which is precisely the instant a
+                // comparison against the accumulated one drops. Whether the run actually
+                // reached an instant is decided below by the run, which is the thing that
+                // knows, rather than here by arithmetic on the durations.
+                var last = i == model.Phases.Count - 1;
+                var mine = snapshotSeconds is null
+                    ? null
+                    : snapshotSeconds
+                        .Where(at => at >= started && (last || at < phase.EndsAtSeconds))
+                        // Snapped to the start, and that is not defensive rounding. A phase
+                        // start is an accumulated sum of durations, so an instant asked for
+                        // exactly at a boundary lands a few zeptoseconds AFTER it - positive,
+                        // so a clamp at zero does nothing. The solver serves an instant at or
+                        // before its launch from the density it was handed and anything past
+                        // that only at the first step at or after, so on a leg of one or two
+                        // steps that one bit dated the packet a whole phase forward: a frame
+                        // asked for at the end of the hold was drawn after the push.
+                        .Select(at => at - started <= Math.Abs(phase.DurationSeconds) * 1e-9
+                            ? 0.0
+                            : at - started)
+                        .ToList();
+
                 var diffused = Diffuse(
-                    density!, model, field, gas, species, started, phase, warnings, progress);
+                    density!, model, field, gas, species, started, phase, warnings, progress,
+                    mine is { Count: > 0 } ? mine : null);
                 density = diffused.Density;
+
+                foreach (var shot in diffused.Snapshots)
+                {
+                    snapshots.Add(shot with
+                    {
+                        RequestedSeconds = started + shot.RequestedSeconds,
+                        AtSeconds = started + shot.AtSeconds,
+                    });
+                }
+
+                // An instant asked for at the very END of the phase is served by the density
+                // the leg finished with. The solver records at the first step AT OR AFTER
+                // what was asked for, and a step sequence set by a stability limit lands a
+                // few ulps short of the declared duration far more often than it lands on
+                // it - so the instant that matters most to an animation, which forces its
+                // last frame onto the end of the flight, was the one reliably dropped.
+                //
+                // Only where the leg actually reached it. A leg that stopped early because
+                // its packet was exhausted has no density at an instant it never ran to,
+                // and handing over the last one it had would date a packet forward.
+                if (mine is { Count: > 0 } && diffused.Snapshots.Count < mine.Count)
+                {
+                    var served = diffused.Snapshots.Select(s => s.RequestedSeconds).ToHashSet();
+
+                    foreach (var at in mine.Where(at => !served.Contains(at)
+                        && at <= diffused.ElapsedSeconds
+                            + (Math.Abs(phase.DurationSeconds) * 1e-9)))
+                    {
+                        snapshots.Add(new DensitySnapshot(
+                            started + at,
+                            started + diffused.ElapsedSeconds,
+                            diffused.Density.Clone()));
+                    }
+                }
 
                 // The diffusive leg's own ledger used to be dropped here - `Diffuse`
                 // returned the density and nothing else - so a sequenced diffusive run
@@ -408,6 +530,13 @@ public static class SequencedRun
             progress?.Completed(outcomes[^1]);
 
             started = phase.EndsAtSeconds;
+
+            // After the phase is whole, never inside one. See the remarks on the parameter:
+            // a phase shortened is a phase whose ramps finish early.
+            if (phaseLimit is { } limit && outcomes.Count >= limit)
+            {
+                break;
+            }
         }
 
         if (conversions > 0)
@@ -434,6 +563,8 @@ public static class SequencedRun
             // live at a time - that is what a transport mode is - so a null here says the
             // run finished as trajectories rather than that its density was empty.
             FinalDensity = density,
+            Snapshots = snapshots,
+            PhasesDeclared = model.Phases.Count,
         };
     }
 
@@ -716,7 +847,8 @@ public static class SequencedRun
         double startedAt,
         CompiledPhase phase,
         List<ValidityWarning> warnings,
-        IRunProgress? progress)
+        IRunProgress? progress,
+        IReadOnlyList<double>? snapshotSeconds = null)
     {
         var grid = DiffusionRun.GridFor(model);
 
@@ -839,6 +971,7 @@ public static class SequencedRun
             stepGain: model.DensityStep.IsImplicit ? model.DensityStep.Gain : 1.0,
             fieldAt: fieldAt,
             selfField: selfField,
+            snapshotSeconds: snapshotSeconds,
             progress: progress);
 
         if (selfField is not null)

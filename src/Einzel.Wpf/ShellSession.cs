@@ -159,6 +159,36 @@ public sealed class ShellSession
         return ViewportCommand.Execute(Journal.ModelPath);
     }
 
+    /// <summary>Reads what the viewport should draw, without holding the caller's thread.</summary>
+    /// <returns>The paths, or none with a reason (RND-8).</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Because a redraw runs the transport.</b> That was always true and was always
+    /// cheap, until the viewport learned to follow a model's sequence - a timed instrument
+    /// steps its whole timeline, which for a mobility analyzer is minutes even truncated to
+    /// its first phase. A window that stops answering for a minute is one somebody force
+    /// quits.
+    /// </para>
+    /// <para>
+    /// <b>The journal is reconciled on the caller's thread, not the worker's.</b> Only the
+    /// command runs in the background, and it is handed the path rather than the journal -
+    /// so an edit arriving while a transport is in flight cannot race a reconcile. That is
+    /// GRD-9's subject: an unrecorded outside change breaks the undo chain, and doing the
+    /// recording from two threads would be a way to produce one.
+    /// </para>
+    /// </remarks>
+    public Task<ViewportOutcome> ViewportAsync()
+    {
+        Journal.Reconcile();
+
+        Record($"einzel render section {Quoted(Journal.ModelPath)}", entry: null);
+
+        // Captured, so the worker touches nothing the UI thread may be changing.
+        var path = Journal.ModelPath;
+
+        return Task.Run(() => ViewportCommand.Execute(path));
+    }
+
     /// <summary>Runs the model and reports its figures by §12's accuracy class.</summary>
     /// <param name="preview">
     /// Whether to use the preview tier, which is cheaper, writes nothing, and is

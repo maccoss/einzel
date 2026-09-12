@@ -260,4 +260,77 @@ public sealed class DensityCloudTests(ITestOutputHelper output) : IDisposable
         // two apart if both print as zero. The rule the rest of this surface follows.
         Assert.Null(outcome.PeakDensityPerCubicMetre);
     }
+
+    [Fact]
+    public void ASequencedModelIsWalkedAlongItsOwnTimeline()
+    {
+        // THE THIRD SURFACE with one defect. `Cloud` called the wholly diffusive solver
+        // directly, which reads the field once and never looks at a sequence - so a model
+        // with a timeline was drawn as though it had none. And its window came from
+        // `maximumFlightTime`, which for a timed instrument is a ceiling on a leg rather
+        // than how long the instrument runs, so every requested instant landed outside.
+        var path = Path.Combine(_root, "models", "hold-then-push.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, SequencedRenderTests.HoldThenPush);
+
+        var outcome = ViewportCommand.Execute(path);
+
+        Assert.NotEmpty(outcome.Density);
+        Assert.NotNull(outcome.DensityAtUs);
+
+        // Opened on the first phase, which is where a timed instrument prepares its packet -
+        // and is what keeps a redraw from stepping a whole elution while somebody waits.
+        Assert.Contains(
+            outcome.Warnings,
+            w => w.Code == "render.sequence-truncated" && w.Message.Contains("1 of this model's 2"));
+
+        // Inside that phase rather than past it: the window is the sequence's own.
+        Assert.InRange(outcome.DensityAtUs!.Value, 0.0, 40.0);
+
+        output.WriteLine(
+            $"{outcome.Density.Count} shells at t = {outcome.DensityAtUs:F2} us, "
+            + $"peak {outcome.PeakDensityPerCubicMetre:G4} per cubic metre");
+    }
+
+    [Fact]
+    public void ANamedInstantWalksAsFarAsItNeedsTo()
+    {
+        // Naming an instant lifts the one-phase default, because the caller has said how
+        // far it wants to go. 60 us is inside the SECOND phase, which the default never
+        // reaches - so this is the control that says the limit is a default and not a cap.
+        var path = Path.Combine(_root, "models", "hold-then-push.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, SequencedRenderTests.HoldThenPush);
+
+        var outcome = ViewportCommand.Execute(path, densityAtSeconds: 60e-6);
+
+        Assert.NotEmpty(outcome.Density);
+        Assert.InRange(outcome.DensityAtUs!.Value, 40.0, 80.0);
+        Assert.DoesNotContain(outcome.Warnings, w => w.Code == "render.sequence-truncated");
+    }
+
+    [Fact]
+    public void ADeclaredTrajectoryModelWithADiffusivePhaseIsNotDrawnWithoutItsDensity()
+    {
+        // The arm was gated on the model's DECLARED mode, so this model - trajectory by
+        // declaration, diffusive in the middle - computed a density and was drawn with
+        // none. Asked of the modes the run uses, it is drawn.
+        var path = Path.Combine(_root, "models", "trap-then-extract.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, SequencedRunTests.Model);
+
+        var outcome = ViewportCommand.Execute(path, densityAtSeconds: 10e-6);
+
+        Assert.NotEmpty(outcome.Density);
+
+        // RND-8 still holds where it applies: this instant is inside the diffusive phase,
+        // so there are no paths to draw at it. What the trajectory arm used to do here was
+        // worse than nothing - it integrates without knowing a sequence exists, so it drew
+        // lines straight across the diffusive stretch.
+        Assert.False(outcome.ProducesTrajectories);
+        Assert.Empty(outcome.Trajectories);
+
+        // And the half that is missing is named rather than left as an absence.
+        Assert.Contains(outcome.Warnings, w => w.Code == "render.mixed-sequence");
+    }
 }

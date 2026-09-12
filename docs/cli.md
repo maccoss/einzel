@@ -112,6 +112,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
 | `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
+| `--progress <seconds>` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default, `0` for silence |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
 Not yet built: `self-update`, which needs `Einzel.Update`. Of the render verbs
@@ -975,6 +976,20 @@ run is going to take four hours; nothing then said a word for four hours.
 seconds**. That is the decision rather than the plumbing: a flag somebody has to remember
 is a flag that is not set on the run that gets killed. `--progress 0` asks for silence, and
 leaves no file at all.
+
+**`render section` and `render animation` take it too, and they had to.** A figure of a
+diffusive model runs a transport to get its density, and for a model with a sequence that is
+the whole run - the 8 ms TIMS elution film is twenty minutes of stepping and a 128 ms ramp is
+most of a working day. Before both verbs learned to follow a model's timeline they had never
+run anything long enough to need watching; the moment they did, they inherited the requirement.
+
+**A render leaves no checkpoint, and that is deliberate.** The document states in its own
+`note` that the answer appears beside it as `<name>.result.json` when the run finishes and
+that finding the file means the run did not - a render writes neither, so the file would be
+false on both counts, and `einzel report` reads exactly those files and would describe a
+finished figure as an interrupted run. What a render gets is the announcement; the rate
+projection and the phase accounting behind it are the checkpoint writer's own rather than a
+second implementation.
 
 Each report is one line on **stderr** (CLI-2 - progress is a diagnostic, so a caller piping
 `--json` still gets the result document and nothing else) and one rewrite of the checkpoint:

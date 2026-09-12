@@ -4204,3 +4204,158 @@ honest report would have been "the series moved by 1.5 per cent and I cannot say
 before assuming either way.** The bump is a statement that numbers *may* change, and the
 cheapest thing that turns it into a statement about whether they *did* is one short run per
 series - which also tells you whether the register needs restating at all.
+
+## The clock said it was wrong before anything else did
+
+An elution animation of the shipped TIMS analyser came back in **25 seconds**. The run it was
+filming takes **thirteen minutes**. Nothing failed, the frames were well-formed, the provenance
+block said `density recorded at 126 instants over 7674 steps`, and the contour levels spanned
+seven decades - every sign of a working figure except the one that mattered.
+
+**It was drawing a real density of an instrument nobody had described.** `render section` and
+`render animation` both decided what to draw by asking the model's *declared* transport mode and
+then calling `DiffusionRun.Execute` - the wholly diffusive path, which reads the field once and
+never looks at a sequence. So the exit potential never ramped, the packet sat parked where it
+started for all 126 frames, and the command exited 0.
+
+That is the **ninth** sighting of one shape here and the second on this exact question: a
+capability wired into N-1 of N paths, reached through a proxy (`TransportMode`) that stopped
+being equivalent to the question (`which modes does this run use`) the moment a sequence could
+name one. `einzel run`'s own fork was corrected the same way, and the correction did not travel.
+
+**What found it was a ratio, not a test.** Frame count, byte count and path count were all
+plausible; 7,674 steps for an 11.3 ms window is 1.47 us a step where the shipped model's
+stability limit is ~56 ns. The rule: **when a computation finishes far faster than the work it
+claims to have done, price it before believing it** - a figure whose cost is wrong is usually a
+figure of something else.
+
+## Two ways a requested instant lands in the wrong phase, and only one is a clamp
+
+Threading snapshot instants through a sequenced run put both of these in, and the tests found
+them rather than the reading did.
+
+**An instant at the very end of a run is dropped.** Phase ends are accumulated sums of
+durations, so the declared end of an 80 us run is 80 us only up to rounding, and the solver
+records at the first step *at or after* what was asked for. An animation forces its final frame
+onto exactly the declared end - so the one frame most likely to be looked at was the one
+reliably missing. The fix is to give the last phase no upper bound at all and let the *run*
+decide whether it reached an instant, because arithmetic on declared durations does not know.
+
+**An instant on a phase boundary dates the packet a whole phase forward.** Shifted onto the next
+phase's clock it lands a few zeptoseconds *after* zero - positive, so `Math.Max(0.0, ...)` does
+nothing, which is what I wrote first and it changed nothing. The solver serves an instant at or
+before its launch from the density it was handed and anything past that only at the first step
+at or after; on a leg of one or two steps that one bit meant a frame asked for at the end of the
+hold was drawn *after* the push. Snapping a near-zero offset to zero is the fix, and the two
+mistakes look identical until you print the offset.
+
+**The generalising rule: a clamp guards a sign, and floating-point boundary error has no sign
+you can rely on.** Where two clocks meet, the quantity to test is the distance from the
+boundary against a tolerance in that clock's own units - not whether it came out negative.
+
+## A figure that was cheap because it was wrong becomes a run that is silent
+
+Fixing the routing did what it should: the animation now runs the model's own sequence and takes
+**as long as the run does**, because it *is* the run. That is correct and it creates the exact
+gap `einzel run --progress` was built to close a week earlier - twenty minutes with nothing on
+stderr, and a 128 ms ramp would be three and three-quarter hours of the same.
+
+The render verbs do not pass an `IRunProgress`, and until this change they never ran anything
+long enough to need one. **Worth stating as the shape rather than the instance: when a path
+starts doing real work it did not do before, it inherits every requirement that attaches to real
+work** - progress, checkpointing, the cost gate - and none of them arrive by being in the
+assembly next door.
+
+## Stopping a phase early is a wrong answer, not a short one
+
+A viewport redraw runs the transport, which was cheap until the viewport learned to follow a
+model's sequence - a mobility analyzer's timeline is twenty minutes of stepping, and a window
+that stops answering for twenty minutes is one somebody force quits. So the walk had to be able
+to stop.
+
+**The obvious spelling is `untilSeconds`, and it is the one that produces a wrong number.** A
+phase's `ramp` interpolates each parameter from its start to its end value **over the phase's own
+declared duration**. Truncating the phase - `phase with { DurationSeconds = shorter }` - therefore
+makes every parameter it ramps arrive at its end value early: an elution ramp that should be a
+tenth of the way down would be at zero. That model validates, solves, runs and reports a packet
+in the wrong place, with nothing anywhere saying the ramp had been compressed.
+
+**A phase boundary needs no truncation**, so `phaseLimit` counts phases instead and nothing about
+any phase changes when the walk stops after one. It is also the better default rather than merely
+the safe one: a timed instrument prepares its packet in its first phase, and a packet parked
+against the gas at its balance point is the state worth opening a window on.
+
+**The rule: before adding a way to stop something early, ask what inside it is parameterised on
+its full length.** A ramp, an average over a window, a normalization, a fraction-of-the-way-through
+- each turns a shortened run into a differently-wrong one rather than a partial one.
+
+## A capability that arrives at a surface brings that surface's requirements with it
+
+Correcting the render verbs to follow a model's sequence did what it should, and made a render
+cost what a run costs - because it *is* the run. The 8 ms elution film became twenty minutes of
+silence, and a 128 ms ramp would be three and three-quarter hours of it. The render verbs passed
+no `IRunProgress` and, until that change, had never run anything long enough to need one.
+
+The same thing happened one surface over. The viewport's density had always come from a wholly
+diffusive run of a short model; pointed at a sequenced one it would have stepped a whole timeline
+on the UI thread.
+
+**Stated as the shape: when a path starts doing real work it did not do before, it inherits every
+requirement that attaches to real work** - progress, a cost gate, not blocking the thing that
+called it - and none of them arrive by being implemented in the assembly next door. The question
+to ask after widening what something can reach is not "does it still work" but "what is it now,
+and what does that kind of thing owe".
+
+**Two smaller ones came out of the same seam.** A checkpoint must not be written by something that
+stores no result: the document says in its own words that the answer will appear beside it and
+that finding the file means the run did not finish, and `einzel report` reads exactly those files -
+so a render leaving one would have a finished figure reported as an interrupted run. And the
+viewport's `Draw` had been refreshing as well as drawing, so ticking a layer checkbox re-flew the
+ions; once a refresh could be minutes, **a control that costs nothing and a control that costs
+everything were the same method.**
+
+## An exponent is a property of whatever is limiting, not of the law
+
+Sixteen cheap runs measured the four levers in the TIMS resolving-power law, one at a time
+against a shared anchor. Every one of the first three answers was wrong, and each was wrong in
+the same way.
+
+**The gas speed came back as an exponent of 1.98 against the law's 1.00**, at a worst residual
+of 11.9 per cent - which is a fit saying it has been handed the wrong functional form. An
+affine fit gave `R = 0.3144 v_g - 6.960` at under 6 per cent, and its sharpest prediction held:
+extrapolating to a zero at 22 m/s said the analyser should stop eluting there, and at 25 m/s
+the elution voltage measured **0.417 V of a 60 V ramp**. A quantity `a x - b` has a log-log
+slope of `a x/(a x - b)`, above one and drifting with x - so **an exponent fitted to an affine
+quantity is a number about where the sweep sat.**
+
+**The charge came back as 0.084 against 0.500**, because the width it was supposed to move was
+not free to move: sigma fell 8.6 per cent for a threefold charge where `sigma_z^2 = (kT/q)/
+|dE/dx|` demands 42. Fitting five runs that differ in temperature and charge onto one line in
+`T/q` - the closed form's own claim, confirmed to 4 per cent - isolated a floor of 110.8 us
+that neither lever reached, and made the thermal levers look capped at 1.205x between them.
+
+**And then the floor turned out to be mostly the mesh.** Refining 256 to 512 to 1024 intervals
+moved the arrival width 133.52 to 114.55 to 107.31 us at an observed order of 1.39. The
+elution *voltage* moved 0.14 per cent across the same refinement - so the numerical error was
+entirely in the width, which is precisely the quantity every one of those exponents was
+fitted against.
+
+**What each mistake shares.** The gas-speed exponent was really the release lag's. The charge
+exponent was really the mesh's. The ramp-rate exponent came back as 0.389 against 0.250 because
+the short-ramp end of the sweep was mesh-floored and the long-ramp end, with a packet ten times
+wider, was not - **a bias that shrinks along a sweep makes the sweep look steeper than it is.**
+In each case a real dependence existed and something else was limiting, so what the fit
+returned was a property of the limit.
+
+**The rule.** Before fitting an exponent, establish that the quantity you are fitting is the
+one that moves - by checking that the response is not dominated by a floor, an offset or a
+discretisation. Three cheap diagnostics do most of it: fit the affine form beside the power
+law and compare residuals; refine the mesh and see whether the answer moves; and look at the
+raw quantity the figure of merit is built from, because sigma being flat across a 2.4-fold
+sweep is visible in a table and invisible in an exponent.
+
+**And the corollary that cost the most.** Every study model in this project declares 256
+intervals, so every resolving power published from one is low by about that 30 per cent. The
+shipped template declares 512. Nothing compared them, and nothing warned - which is why
+`diffusion.packet-resolution` now reports cells per packet width on every diffusive run, and
+refuses below four.

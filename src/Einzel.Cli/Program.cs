@@ -1464,7 +1464,8 @@ public static class Program
         if (kind is not (null or "section") || positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel render section <model.json | figures/spec.json> [--out <file>]");
+                "usage: einzel render section <model.json | figures/spec.json> [--out <file>] "
+                + "[--at-us <t>] [--progress <seconds>]");
             Console.Error.WriteLine(
                 "       [--format svg|pdf] [--equipotentials N] [--width-mm W] [--no-trajectory]");
             Console.Error.WriteLine(
@@ -1515,8 +1516,14 @@ public static class Program
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
+        if (!RenderProgress(options, out var sectionProgress))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var outcome = RenderCommand.Section(
-            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"));
+            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
+            sectionProgress);
 
         if (options.Has("json"))
         {
@@ -1570,7 +1577,8 @@ public static class Program
         if (positional.Count == 0)
         {
             Console.Error.WriteLine(
-                "usage: einzel render animation <spec.json> [--out <dir>] [--format svg|pdf]");
+                "usage: einzel render animation <spec.json> [--out <dir>] [--format svg|pdf] "
+                + "[--fps <n>] [--progress <seconds>]");
             Console.Error.WriteLine(
                 "       [--fps N] [--width-mm W] [--project <dir>] [--dry-run] [--json]");
             Console.Error.WriteLine(
@@ -1619,8 +1627,14 @@ public static class Program
 
         var root = options.Value("project") ?? InferProjectRoot(modelPath);
 
+        if (!RenderProgress(options, out var animationProgress))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
         var outcome = RenderCommand.Animation(
-            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"));
+            modelPath, new ProjectLayout(root), spec, options.Value("out"), options.Has("dry-run"),
+            animationProgress);
 
         if (options.Has("json"))
         {
@@ -2615,4 +2629,35 @@ public static class Program
         4 convergence failure, 5 engine-pin mismatch, 6 internal error.
 
         """;
+
+    /// <summary>How often a render's own transport should report, from the command line.</summary>
+    /// <remarks>
+    /// <b>Watched by default, at the same thirty seconds a run uses.</b> A render of a
+    /// sequenced model runs that model's whole sequence, so the flag that is not set is the
+    /// flag that is missing from the render that gets killed - the same argument that made
+    /// `einzel run` watch by default. Diagnostics on stderr (CLI-2), so `--json` still gets
+    /// the result document and nothing else. `--progress 0` asks for silence.
+    /// </remarks>
+    /// <param name="options">The parsed command line.</param>
+    /// <param name="progress">The interval and where to send it.</param>
+    /// <returns>True where the flag parsed, false where it did not and was complained about.</returns>
+    private static bool RenderProgress(CommandLine options, out RunProgress? progress)
+    {
+        var interval = 30.0;
+        progress = null;
+
+        if (options.Value("progress") is { } asked
+            && !double.TryParse(
+                asked, NumberStyles.Float, CultureInfo.InvariantCulture, out interval))
+        {
+            Console.Error.WriteLine(
+                $"--progress takes an interval in seconds, and '{asked}' is not one. "
+                + "Use 0 to turn it off.");
+            return false;
+        }
+
+        progress = new RunProgress(interval, Console.Error.WriteLine);
+        return true;
+    }
+
 }
