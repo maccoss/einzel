@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     private bool _framed;
     private bool _loaded;
 
+    /// <summary>How many viewport refreshes have been started, so a stale one can stand down.</summary>
+    private int _refreshes;
+
     /// <summary>Creates the window.</summary>
     public MainWindow()
     {
@@ -165,7 +168,24 @@ public partial class MainWindow : Window
             return;
         }
 
+        // A SECOND GENERATION, GUARDING THE DRAW RATHER THAN THE DATA. The view model holds
+        // the one that matters - it owns the collections, so it is the only place that can
+        // stop a superseded refresh writing to them, and without it concurrent writers
+        // corrupt the collection outright rather than merely leaving it stale.
+        //
+        // What this one adds is that a superseded refresh does not spend a redraw painting
+        // a scene a newer one is about to replace, and that a refresh outliving the model it
+        // was started for does not draw into the window at all.
+        var generation = ++_refreshes;
+
         await viewport.RefreshAsync();
+
+        if (generation != _refreshes || !ReferenceEquals(viewport, _viewport))
+        {
+            // Something started after this did, or the window moved to another model. Its
+            // own Draw is the one that should stand.
+            return;
+        }
 
         Draw(viewport);
     }

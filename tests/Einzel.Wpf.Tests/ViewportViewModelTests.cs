@@ -1,4 +1,6 @@
 using System.IO;
+using System.Linq;
+using System.Windows.Threading;
 
 using Einzel.Commands;
 using Einzel.Wpf;
@@ -272,6 +274,146 @@ public sealed class ViewportViewModelTests(ITestOutputHelper output) : IDisposab
         Assert.Equal(blocking.Status, background.Status);
 
         output.WriteLine(background.Status);
+    }
+
+
+    /// <summary>A superseded refresh does not fill the collections behind a newer one.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two refreshes can be in flight at once</b> - a parameter edit arriving while the
+    /// last one is still stepping, or a model opened on top of it - and since the transport
+    /// moved off the UI thread it takes minutes, so they finish in whatever order they
+    /// finish. The one that finishes last would otherwise win, and what it writes is an
+    /// older model's packet.
+    /// </para>
+    /// <para>
+    /// <b>Guarding the redraw alone is not enough</b>, which is why the generation lives
+    /// here rather than in the window: the collections are filled inside `RefreshAsync`, so
+    /// a superseded result would already have stomped them by the time any redraw was
+    /// skipped, and the next redraw of any kind would show it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task OnlyTheNewestOfTwoOverlappingRefreshesFillsTheCollections()
+    {
+        var viewport = Over(Example("single-stage-reflectron"));
+
+        var before = viewport.Applied;
+
+        // Started without awaiting, which is exactly what the window does when an edit lands
+        // while a refresh is still running. FOUR rather than two: the synchronous part of
+        // each call runs to its first await before any of them resumes, so the generation
+        // reaches four while every one of them is still stepping - which makes the outcome
+        // deterministic instead of depending on which finishes first.
+        var refreshes = Enumerable.Range(0, 4).Select(_ => viewport.RefreshAsync()).ToArray();
+
+        await Task.WhenAll(refreshes);
+
+        output.WriteLine(
+            $"{viewport.Applied - before} of {refreshes.Length} overlapping refreshes applied");
+
+        // THE ASSERTION. All four ran the transport - none is cancellable - and exactly one
+        // was allowed to write.
+        //
+        // Dropping the generation check does not merely leave stale data: the concurrent
+        // writers corrupt the collection outright, and the mutation fails here with
+        // `IndexOutOfRangeException` from `ObservableCollection.InsertItem`. That it is a
+        // race means it does not fail EVERY time with two writers, which is why there are
+        // four.
+        Assert.Equal(before + 1, viewport.Applied);
+
+        // And what it left behind is a complete drawing rather than a half-applied one.
+        Assert.True(viewport.HasBundle);
+        Assert.NotEmpty(viewport.Trajectories);
+    }
+
+    /// <summary>The bound collections are filled on the thread that asked for the refresh.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The claim `RefreshAsync` makes, tested rather than asserted in a comment.</b> A
+    /// viewport's <c>ObservableCollection</c>s may only be mutated on the thread that owns
+    /// them, and the transport now runs somewhere else - so what keeps that legal is the
+    /// `ConfigureAwait(true)` bringing the continuation home.
+    /// </para>
+    /// <para>
+    /// <b>The sibling test cannot see this, which is why this one exists.</b> Comparing the
+    /// two paths' final values passes whichever thread filled them: xUnit installs no
+    /// dispatcher context, so a continuation resumes on a worker and every value still
+    /// matches. A regression moving the collection updates off the UI thread would go
+    /// undetected. Here the work runs on a thread with a real dispatcher and message loop,
+    /// so there is a home thread to come back to and a way to tell whether it did.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheCollectionsAreFilledOnTheThreadThatAskedForTheRefresh()
+    {
+        // Materialised before the dispatcher thread starts, because `Example` drives the
+        // CLI and redirects the console, which is not a thing to do from two threads.
+        var model = Example("single-stage-reflectron");
+
+        var done = new TaskCompletionSource<(int Caller, int Worker, int? Filled, bool Drew)>();
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var dispatcher = Dispatcher.CurrentDispatcher;
+
+                SynchronizationContext.SetSynchronizationContext(
+                    new DispatcherSynchronizationContext(dispatcher));
+
+                var viewport = Over(model);
+                var caller = Environment.CurrentManagedThreadId;
+                int? filled = null;
+
+                viewport.Conductors.CollectionChanged += (_, _) =>
+                    filled ??= Environment.CurrentManagedThreadId;
+
+                dispatcher.BeginInvoke(async () =>
+                {
+                    try
+                    {
+                        // The control on the premise: if the work never left this thread
+                        // there would be nothing to come back from, and the assertion below
+                        // would hold for a reason that says nothing about `ConfigureAwait`.
+                        var worker = await Task.Run(() => Environment.CurrentManagedThreadId);
+                        var drew = await viewport.RefreshAsync();
+
+                        done.TrySetResult((caller, worker, filled, drew));
+                    }
+                    catch (Exception failure)
+                    {
+                        done.TrySetException(failure);
+                    }
+                    finally
+                    {
+                        dispatcher.InvokeShutdown();
+                    }
+                });
+
+                Dispatcher.Run();
+            }
+            catch (Exception failure)
+            {
+                done.TrySetException(failure);
+            }
+        })
+        { IsBackground = true };
+
+        thread.Start();
+
+        var (caller, worker, filled, drew) = await done.Task;
+
+        output.WriteLine(
+            $"asked on thread {caller}, transport ran on {worker}, collections filled on {filled}");
+
+        Assert.True(drew);
+        Assert.NotEqual(caller, worker);
+        Assert.NotNull(filled);
+
+        // THE ASSERTION. Change `ConfigureAwait(true)` to `false` in `RefreshAsync` and the
+        // continuation resumes on a pool thread, so this is where that regression shows.
+        Assert.Equal(caller, filled);
     }
 
     /// <summary>A refusal reaches the window from the background path too.</summary>
