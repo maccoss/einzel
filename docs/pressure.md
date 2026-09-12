@@ -1089,7 +1089,46 @@ goes as ∇E² — so there was no well, the packet moved 0.1% whether the drive
 or off, and the test passed on a threshold of "less than where it began". A
 confinement test on a geometry that cannot confine measures nothing.
 
-### Not built
+### How many cells the packet is wide, and why nothing used to say
+
+**Found by a study, not by a test, which is why the check now exists.** Every study model in
+this project declares **256 intervals** in x while the shipped `tims-analyzer` template
+declares 512. On the analyser's own operating point 256 is **2.7 cells across the packet**,
+and refining it moves the answer:
+
+| intervals | cell / mm | cells per sigma | arrival sigma / us | elution peak / V |
+| --- | --- | --- | --- | --- |
+| 256 | 0.268 | 2.7 | 133.52 | 21.119 |
+| 512 | 0.134 | 5.3 | 114.55 | 21.141 |
+| 1024 | 0.067 | 10.6 | 107.31 | 21.149 |
+
+Richardson on the three gives an **observed order of 1.39** extrapolating to **102.8 us**, so
+256 intervals is about **30 per cent wide** and every resolving power taken from such a run is
+about 30 per cent low. The implicit step at a gain of 64 adds a further 3.4 per cent.
+
+**The fourth column is what makes this reportable as a number rather than a caution.** The
+elution *voltage* is converged at all three meshes - 0.14 per cent across a fourfold
+refinement - so the error is in the width and nowhere else. A figure that is a position, a
+transit time or a transmission is not at risk; a width, a resolving power or anything derived
+from one is. `diffusion.packet-resolution` says which, on every run (REG-2), and
+`diffusion.packet-under-resolved` is a validity violation below **four cells**, which is where
+the measured error passes a fifth.
+
+**What the check cannot see, stated on it.** The packet is measured at its seed and at the end
+of the run, and a TIMS analyser's is narrowest **in between** - parked at its balance point,
+at the equilibrium `sigma_z^2 = (kT/q)/|dE/dx|`, which is narrower than either. So passing is
+a floor on the coarseness rather than a certificate. Sampling every step would cost a full
+grid pass per step, which is why it is not done.
+
+**And the end state counts only if it is still a packet.** A run that collected almost
+everything leaves a sliver against the collecting face, and a second moment over that is the
+width of a residue - it read **0.3 cells on the corpus drift tube where the seed is 3.0**. The
+check now uses the end state only where at least a hundredth of the launched population
+survives, and says when it has fallen back to the seed alone. That is the third time this
+project has had to guard a statistic against being computed over a residue, after contouring a
+density orders below one ion and reading an elution onset off a Boltzmann tail.
+
+## Not built
 
 Nothing outstanding for SEQ-1. The remaining diffusive-mode gap is unrelated to
 sequencing: `IGasFlow` has one implementation beyond an imported field, so a funnel's

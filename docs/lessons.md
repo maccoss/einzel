@@ -4313,3 +4313,49 @@ so a render leaving one would have a finished figure reported as an interrupted 
 viewport's `Draw` had been refreshing as well as drawing, so ticking a layer checkbox re-flew the
 ions; once a refresh could be minutes, **a control that costs nothing and a control that costs
 everything were the same method.**
+
+## An exponent is a property of whatever is limiting, not of the law
+
+Sixteen cheap runs measured the four levers in the TIMS resolving-power law, one at a time
+against a shared anchor. Every one of the first three answers was wrong, and each was wrong in
+the same way.
+
+**The gas speed came back as an exponent of 1.98 against the law's 1.00**, at a worst residual
+of 11.9 per cent - which is a fit saying it has been handed the wrong functional form. An
+affine fit gave `R = 0.3144 v_g - 6.960` at under 6 per cent, and its sharpest prediction held:
+extrapolating to a zero at 22 m/s said the analyser should stop eluting there, and at 25 m/s
+the elution voltage measured **0.417 V of a 60 V ramp**. A quantity `a x - b` has a log-log
+slope of `a x/(a x - b)`, above one and drifting with x - so **an exponent fitted to an affine
+quantity is a number about where the sweep sat.**
+
+**The charge came back as 0.084 against 0.500**, because the width it was supposed to move was
+not free to move: sigma fell 8.6 per cent for a threefold charge where `sigma_z^2 = (kT/q)/
+|dE/dx|` demands 42. Fitting five runs that differ in temperature and charge onto one line in
+`T/q` - the closed form's own claim, confirmed to 4 per cent - isolated a floor of 110.8 us
+that neither lever reached, and made the thermal levers look capped at 1.205x between them.
+
+**And then the floor turned out to be mostly the mesh.** Refining 256 to 512 to 1024 intervals
+moved the arrival width 133.52 to 114.55 to 107.31 us at an observed order of 1.39. The
+elution *voltage* moved 0.14 per cent across the same refinement - so the numerical error was
+entirely in the width, which is precisely the quantity every one of those exponents was
+fitted against.
+
+**What each mistake shares.** The gas-speed exponent was really the release lag's. The charge
+exponent was really the mesh's. The ramp-rate exponent came back as 0.389 against 0.250 because
+the short-ramp end of the sweep was mesh-floored and the long-ramp end, with a packet ten times
+wider, was not - **a bias that shrinks along a sweep makes the sweep look steeper than it is.**
+In each case a real dependence existed and something else was limiting, so what the fit
+returned was a property of the limit.
+
+**The rule.** Before fitting an exponent, establish that the quantity you are fitting is the
+one that moves - by checking that the response is not dominated by a floor, an offset or a
+discretisation. Three cheap diagnostics do most of it: fit the affine form beside the power
+law and compare residuals; refine the mesh and see whether the answer moves; and look at the
+raw quantity the figure of merit is built from, because sigma being flat across a 2.4-fold
+sweep is visible in a table and invisible in an exponent.
+
+**And the corollary that cost the most.** Every study model in this project declares 256
+intervals, so every resolving power published from one is low by about that 30 per cent. The
+shipped template declares 512. Nothing compared them, and nothing warned - which is why
+`diffusion.packet-resolution` now reports cells per packet width on every diffusive run, and
+refuses below four.

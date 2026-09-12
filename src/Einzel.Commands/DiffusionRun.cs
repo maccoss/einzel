@@ -158,6 +158,10 @@ public static class DiffusionRun
 
         var selfField = SelfFieldFor(model, grid, absorbers, edges, species);
 
+        // Measured before the run, because the run steps this array in place and the seed's
+        // own width is half of what says whether the mesh resolves the packet.
+        var seeded = density.Spread();
+
         var result = DriftDiffusion.Run(
             density, field, gas, mobility, species, model.MaximumFlightTimeSi, edges, absorbers,
             scheme: chosen, stepGain: gain, snapshotSeconds: snapshotSeconds,
@@ -184,6 +188,7 @@ public static class DiffusionRun
 
         warnings.AddRange(RegimeWarnings(gas, mobility, field, grid, declared));
         warnings.AddRange(StepWarnings(result));
+        warnings.AddRange(ResolutionWarnings(grid, seeded, result, launched));
 
         if (effective is not null)
         {
@@ -1225,4 +1230,100 @@ public static class DiffusionRun
 
         return warnings;
     }
+
+    /// <summary>How many cells the packet is wide, and whether that is enough.</summary>
+    /// <param name="grid">The tracked grid.</param>
+    /// <param name="seeded">The spread the run started with, in metres.</param>
+    /// <param name="result">What the run did, for the density and the surviving population.</param>
+    /// <param name="launched">Ions seeded, against which survival is judged.</param>
+    /// <returns>One note on every run, and a violation where the mesh is too coarse.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>REG-2's rule on a new quantity: reported whether or not it crosses a threshold.</b>
+    /// A reader who sees eleven cells per sigma knows the width was checked; one who sees
+    /// nothing cannot tell that from its not having been checked.
+    /// </para>
+    /// <para>
+    /// <b>The threshold is measured rather than chosen.</b> On the shipped TIMS analyser's own
+    /// operating point, refining 256 to 512 to 1024 intervals gives arrival widths of 133.52,
+    /// 114.55 and 107.31 us - an observed order of 1.39 extrapolating to 102.8 - at 2.7, 5.3
+    /// and 10.6 cells per sigma. So about 30 per cent wide at three cells, 11 per cent at
+    /// five, 4 per cent at ten. Four cells is where the error passes a fifth, and that is the
+    /// bar.
+    /// </para>
+    /// <para>
+    /// <b>What this cannot see.</b> The packet is measured at its seed and at the end, and a
+    /// TIMS analyser's is narrowest in between, parked at its balance point - the equilibrium
+    /// `sigma_z^2 = (kT/q)/|dE/dx|` the register carries, which is narrower than either. So
+    /// this is a floor on the coarseness, not a certificate: a run that passes here may still
+    /// have been under-resolved at its narrowest. Sampling every step would cost a full grid
+    /// pass per step, which is the reason it is not done.
+    /// </para>
+    /// <para>
+    /// <b>And the error is in the width alone.</b> The same refinement moves the elution
+    /// voltage by 0.14 per cent - 21.119, 21.141, 21.149 V - so a figure that is a position,
+    /// a transit time or a transmission is not at risk here, and one that is a width or a
+    /// resolving power is.
+    /// </para>
+    /// </remarks>
+    private static List<ValidityWarning> ResolutionWarnings(
+        Grid2D grid, (double X, double Y) seeded, DiffusionResult result, double launched)
+    {
+        // THE END STATE COUNTS ONLY IF IT IS STILL A PACKET. A run that collected almost
+        // everything leaves a sliver against the collecting face, and a second moment taken
+        // over that is the width of the residue rather than of anything that was ever an ion
+        // cloud - which read as 0.3 cells on the corpus drift tube, where the seed is 3.2.
+        // This project has met the same shape twice before, contouring a density orders below
+        // one ion and reporting an onset from a Boltzmann tail.
+        var survived = launched > 0.0 && result.Remaining / launched >= 0.01;
+
+        var widths = survived
+            ? new[] { seeded.X, result.Density.Spread().X }
+            : [seeded.X];
+
+        // The narrowest of the moments this can see, since that is the one the mesh has most
+        // trouble with.
+        var axial = widths.Where(w => w > 0.0).DefaultIfEmpty(0.0).Min();
+
+        if (!(axial > 0.0))
+        {
+            return [];
+        }
+
+        var cells = axial / grid.SpacingX;
+
+        var warnings = new List<ValidityWarning>
+        {
+            new(
+                "diffusion.packet-resolution",
+                $"the packet is {cells:F1} cells wide along the axis at its narrowest of the two "
+                + $"instants this is measured at - {axial * 1e3:F4} mm of spread on a "
+                + $"{grid.SpacingX * 1e3:F4} mm cell"
+                + (survived
+                    ? " - the seed and the end state"
+                    : ", which is the seed alone: too little was left at the end for its "
+                      + "width to be a packet's rather than a residue's")
+                + ". Widths and resolving powers are the "
+                + "figures this bears on; a position, a transit time or a transmission is not "
+                + "at risk from it",
+                WarningSeverity.Provenance),
+        };
+
+        if (cells < 4.0)
+        {
+            warnings.Add(new ValidityWarning(
+                "diffusion.packet-under-resolved",
+                $"{cells:F1} cells across the packet is too few for its width to be the "
+                + "model's rather than the mesh's. Measured on the shipped TIMS analyser: "
+                + "2.7 cells gives an arrival width 30 per cent wide, 5.3 gives 11 per cent "
+                + "and 10.6 gives 4, converging at an observed order of 1.39. Raise "
+                + "'densityGrid.intervalsX' until the width stops moving - the elution "
+                + "voltage will not move with it, so only the width and anything derived "
+                + "from it is affected",
+                WarningSeverity.ValidityViolation));
+        }
+
+        return warnings;
+    }
+
 }
