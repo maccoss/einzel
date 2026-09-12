@@ -2699,25 +2699,56 @@ project's author needs to run it and more than any physics the moment one does.
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
-8. **The render verbs run a whole transport and say nothing while they do it.** Fixed today:
+8. **The render verbs and the viewport now follow a model's timeline, and say where they have got to.** Fixed:
    `render section` and `render animation` decided what to draw from the model's *declared*
    transport mode and then called the wholly diffusive solver, so a model with a timeline
    rendered as though it had none - the elution ramp never ran, the packet stayed parked in
    every frame, exit 0. Both now ask `Modes` and route through `SequencedRun`, which takes
    snapshot instants on the instrument's own clock.
 
-   **What that creates is the gap `--progress` exists to close, one verb over.** Rendering a
-   sequenced model now costs what running it costs, because it is running it: the 8 ms elution
-   film took twenty minutes of silence, and the 128 ms ramp would be three and three-quarter
-   hours of the same. `RenderCommand` passes no `IRunProgress` and until now never ran anything
-   long enough to need one. It is small - the observer and the checkpoint both exist - and it
-   belongs before anyone animates a long ramp.
+   **That created the gap `--progress` exists to close, one verb over, and it is closed.**
+   Rendering a sequenced model costs what running it costs because it is running it - the 8 ms
+   elution film was twenty minutes of silence. Both render verbs take `--progress`, thirty
+   seconds by default as `run` does, and report per phase on stderr so `--json` still gets a
+   clean stdout. **They write no checkpoint, deliberately**: that document states that the
+   answer appears beside it when the run finishes and that finding the file means it did not,
+   and `einzel report` reads exactly those files - so one left by a render would have a finished
+   figure reported as an interrupted run. The projection and the phase accounting are the
+   checkpoint writer's own rather than a second set.
 
-   **Two narrower things are also open.** An instant landing in a *trajectory* phase yields no
+   **The viewport was the third surface with the same defect**, and it is corrected too.
+   `ViewportCommand.Cloud` called the wholly diffusive solver directly and took its window from
+   `maximumFlightTime`, which for a timed instrument is a ceiling on a leg rather than how long
+   the instrument runs - so every requested instant landed outside the run and the window drew
+   geometry beside an empty box. It walks the sequence now, over the sequence's own window, and
+   stops after the **first phase** unless an instant is named: a redraw is something somebody is
+   waiting on, and the first phase is where a timed instrument prepares its packet. A truncated
+   walk says so on the figure (GRD-12).
+
+   **`SequencedRun` gained `phaseLimit` rather than an instant to stop at**, and the reason is
+   the useful part: a phase's ramp interpolates over the phase's own declared duration, so
+   stopping one early by shortening it makes every parameter it ramps arrive at its end value
+   early. That is a wrong answer rather than a short one, and it would validate, solve and run.
+
+   **And the shell stopped blocking on it.** `ViewportViewModel.RefreshAsync` runs the transport
+   off the UI thread and fills the bound collections on it; `ShellSession.ViewportAsync`
+   reconciles the journal on the caller's thread and hands the worker a path, so an edit in
+   flight cannot race a reconcile. `Draw` no longer refreshes - the two were one method, so a
+   layer checkbox re-flew the ions, and once a refresh could be minutes a control that costs
+   nothing and one that costs everything were the same call.
+
+   **Measured, because the number is the argument.** A viewport redraw of the shipped
+   `tims-analyzer` is **685 s in Debug** - about 210 s in Release - and draws 3 shells at a peak
+   of 1.29e14 ions per cubic metre at 500 us of its 1000 us hold. The packet parked at its
+   balance point is now something the window shows; it takes minutes to show it, and the window
+   stays responsive while it does.
+
+   **Two narrower things stay open.** An instant landing in a *trajectory* phase yields no
    density, so a mixed sequence cannot be filmed end to end; the animation refuses with a count
    of the frames it could not fill rather than inventing them, which is right, and the figure
-   that would show such an instrument does not exist. And the cost gate has not been taught
-   that a render can now be a multi-hour operation, so GRD-8 does not reach it.
+   that would show such an instrument does not exist. And the cost gate has not been taught that
+   a render or a redraw can now be a multi-hour operation, so GRD-8 does not reach either - which
+   matters most for the viewport, where nothing warns before the wait begins.
 
 9. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -

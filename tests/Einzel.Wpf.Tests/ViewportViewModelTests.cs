@@ -243,4 +243,57 @@ public sealed class ViewportViewModelTests(ITestOutputHelper output) : IDisposab
         Assert.Equal(ColourRamp.At(0.0), ColourRamp.At(-5.0));
         Assert.Equal(ColourRamp.At(1.0), ColourRamp.At(5.0));
     }
+
+    /// <summary>Reading off the UI thread gives what reading on it gives.</summary>
+    /// <remarks>
+    /// <b>The claim that could fail quietly.</b> A redraw runs the transport, and once the
+    /// viewport learned to follow a model's sequence that became minutes rather than
+    /// milliseconds - so it moved off the calling thread. If the two paths could disagree,
+    /// the window would draw one thing and a test assert another; they share the apply
+    /// step precisely so they cannot.
+    /// </remarks>
+    [Fact]
+    public async Task RefreshingAsynchronouslyDrawsWhatRefreshingSynchronouslyDraws()
+    {
+        var model = Example("single-stage-reflectron");
+
+        var blocking = Over(model);
+        Assert.True(blocking.Refresh());
+
+        var background = Over(model);
+        Assert.True(await background.RefreshAsync());
+
+        Assert.Equal(blocking.HasBundle, background.HasBundle);
+        Assert.Equal(blocking.HasField, background.HasField);
+        Assert.Equal(blocking.Trajectories.Count, background.Trajectories.Count);
+        Assert.Equal(blocking.Conductors.Count, background.Conductors.Count);
+        Assert.Equal(blocking.LowestEnergyEv, background.LowestEnergyEv);
+        Assert.Equal(blocking.HighestEnergyEv, background.HighestEnergyEv);
+        Assert.Equal(blocking.Status, background.Status);
+
+        output.WriteLine(background.Status);
+    }
+
+    /// <summary>A refusal reaches the window from the background path too.</summary>
+    /// <remarks>
+    /// Both paths funnel into one refusal handler, so this is the control on that: a
+    /// reason that arrived on one path and not the other would leave an empty viewport
+    /// with nothing saying why - which is the failure the synchronous path was given its
+    /// own handler to prevent.
+    /// </remarks>
+    [Fact]
+    public async Task ARefusalStillArrivesWithItsReason()
+    {
+        var path = Path.Combine(_root, "models", "missing.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{ \"schemaVersion\": \"0.1\", \"name\": \"nothing\" }");
+
+        var viewport = Over(path);
+
+        Assert.False(await viewport.RefreshAsync());
+        Assert.NotEmpty(viewport.Status);
+        Assert.Empty(viewport.Trajectories);
+
+        output.WriteLine(viewport.Status);
+    }
 }

@@ -4265,3 +4265,51 @@ long enough to need one. **Worth stating as the shape rather than the instance: 
 starts doing real work it did not do before, it inherits every requirement that attaches to real
 work** - progress, checkpointing, the cost gate - and none of them arrive by being in the
 assembly next door.
+
+## Stopping a phase early is a wrong answer, not a short one
+
+A viewport redraw runs the transport, which was cheap until the viewport learned to follow a
+model's sequence - a mobility analyzer's timeline is twenty minutes of stepping, and a window
+that stops answering for twenty minutes is one somebody force quits. So the walk had to be able
+to stop.
+
+**The obvious spelling is `untilSeconds`, and it is the one that produces a wrong number.** A
+phase's `ramp` interpolates each parameter from its start to its end value **over the phase's own
+declared duration**. Truncating the phase - `phase with { DurationSeconds = shorter }` - therefore
+makes every parameter it ramps arrive at its end value early: an elution ramp that should be a
+tenth of the way down would be at zero. That model validates, solves, runs and reports a packet
+in the wrong place, with nothing anywhere saying the ramp had been compressed.
+
+**A phase boundary needs no truncation**, so `phaseLimit` counts phases instead and nothing about
+any phase changes when the walk stops after one. It is also the better default rather than merely
+the safe one: a timed instrument prepares its packet in its first phase, and a packet parked
+against the gas at its balance point is the state worth opening a window on.
+
+**The rule: before adding a way to stop something early, ask what inside it is parameterised on
+its full length.** A ramp, an average over a window, a normalization, a fraction-of-the-way-through
+- each turns a shortened run into a differently-wrong one rather than a partial one.
+
+## A capability that arrives at a surface brings that surface's requirements with it
+
+Correcting the render verbs to follow a model's sequence did what it should, and made a render
+cost what a run costs - because it *is* the run. The 8 ms elution film became twenty minutes of
+silence, and a 128 ms ramp would be three and three-quarter hours of it. The render verbs passed
+no `IRunProgress` and, until that change, had never run anything long enough to need one.
+
+The same thing happened one surface over. The viewport's density had always come from a wholly
+diffusive run of a short model; pointed at a sequenced one it would have stepped a whole timeline
+on the UI thread.
+
+**Stated as the shape: when a path starts doing real work it did not do before, it inherits every
+requirement that attaches to real work** - progress, a cost gate, not blocking the thing that
+called it - and none of them arrive by being implemented in the assembly next door. The question
+to ask after widening what something can reach is not "does it still work" but "what is it now,
+and what does that kind of thing owe".
+
+**Two smaller ones came out of the same seam.** A checkpoint must not be written by something that
+stores no result: the document says in its own words that the answer will appear beside it and
+that finding the file means the run did not finish, and `einzel report` reads exactly those files -
+so a render leaving one would have a finished figure reported as an interrupted run. And the
+viewport's `Draw` had been refreshing as well as drawing, so ticking a layer checkbox re-flew the
+ions; once a refresh could be minutes, **a control that costs nothing and a control that costs
+everything were the same method.**

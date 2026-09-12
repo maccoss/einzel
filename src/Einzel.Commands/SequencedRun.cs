@@ -170,6 +170,16 @@ public sealed record SequencedOutcome(
     /// </para>
     /// </remarks>
     public IReadOnlyList<DensitySnapshot> Snapshots { get; init; } = [];
+
+    /// <summary>Phases the model declares, where the run walked fewer of them.</summary>
+    /// <remarks>
+    /// <b>So that a short walk cannot read as a whole instrument.</b> A caller that asked
+    /// for a phase limit knows it did; anything downstream reading the outcome does not,
+    /// and a three-phase timeline reported as one finished phase is a different instrument
+    /// from one that stopped after its first. Equal to <c>Phases.Count</c> on an ordinary
+    /// run, so the comparison is the question rather than a flag somebody has to remember.
+    /// </remarks>
+    public int PhasesDeclared { get; init; }
 }
 
 /// <summary>Ions lost one way, in real ions rather than in trajectories.</summary>
@@ -217,6 +227,18 @@ public static class SequencedRun
     /// ascending, or null for none. Each is served by the diffusive phase containing it;
     /// one landing in a trajectory phase yields nothing, since there is no density there.
     /// </param>
+    /// <param name="phaseLimit">
+    /// Stop after this many phases, or null to walk the whole timeline.
+    /// </param>
+    /// <remarks>
+    /// <b>Phases rather than an instant, and that is the load-bearing part of the
+    /// signature.</b> The obvious spelling is "run until t", and it is wrong here: a
+    /// phase's ramp interpolates over the phase's own declared duration, so stopping a
+    /// phase early by shortening it makes every parameter it ramps arrive at its end value
+    /// early. That is not a short answer, it is a wrong one, and it would validate, solve
+    /// and run. A boundary needs no truncation, so nothing about a phase changes when the
+    /// walk stops after it.
+    /// </remarks>
     /// <returns>What each phase did, and what the conversions cost.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="EinzelException">The model cannot be run this way.</exception>
@@ -225,7 +247,8 @@ public static class SequencedRun
         IElectrostaticField field,
         BackgroundGas gas,
         IRunProgress? progress = null,
-        IReadOnlyList<double>? snapshotSeconds = null)
+        IReadOnlyList<double>? snapshotSeconds = null,
+        int? phaseLimit = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(field);
@@ -507,6 +530,13 @@ public static class SequencedRun
             progress?.Completed(outcomes[^1]);
 
             started = phase.EndsAtSeconds;
+
+            // After the phase is whole, never inside one. See the remarks on the parameter:
+            // a phase shortened is a phase whose ramps finish early.
+            if (phaseLimit is { } limit && outcomes.Count >= limit)
+            {
+                break;
+            }
         }
 
         if (conversions > 0)
@@ -534,6 +564,7 @@ public static class SequencedRun
             // run finished as trajectories rather than that its density was empty.
             FinalDensity = density,
             Snapshots = snapshots,
+            PhasesDeclared = model.Phases.Count,
         };
     }
 

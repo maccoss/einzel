@@ -56,7 +56,7 @@ public partial class MainWindow : Window
             _loaded = true;
 
             Show(_tree);
-            Draw(_viewport);
+            Refresh(_viewport);
         };
     }
 
@@ -124,7 +124,7 @@ public partial class MainWindow : Window
         // seconds of solving thrown away, and is invisible on anything that solves fast.
         if (_loaded)
         {
-            Draw(viewport);
+            Refresh(viewport);
         }
     }
 
@@ -139,6 +139,35 @@ public partial class MainWindow : Window
     {
         StatusText.Text = reason;
         StatusBar.Background = new SolidColorBrush(Color.FromRgb(0xF6, 0xE0, 0xE0));
+    }
+
+    /// <summary>Re-reads the physics off the UI thread, then redraws.</summary>
+    /// <param name="viewport">What to refresh, or null when there is no model open.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Separate from <see cref="Draw"/> because only one of the two costs anything.</b>
+    /// Drawing turns meshes and polylines into vertices; refreshing runs the transport. They
+    /// were one method, so ticking a layer checkbox re-flew the ions - and once the viewport
+    /// learned to follow a model's sequence, it would have re-stepped a timed instrument's
+    /// first phase to answer "show the field".
+    /// </para>
+    /// <para>
+    /// <b><c>async void</c> on purpose.</b> This is a fire-and-forget UI operation, and the
+    /// alternative - discarding a task - swallows anything the refusal handler does not
+    /// catch. An unhandled exception here reaches the dispatcher, which is where a window's
+    /// failures are supposed to surface.
+    /// </para>
+    /// </remarks>
+    private async void Refresh(ViewportViewModel? viewport)
+    {
+        if (viewport is null)
+        {
+            return;
+        }
+
+        await viewport.RefreshAsync();
+
+        Draw(viewport);
     }
 
     /// <summary>Draws the instrument, the field and the bundle.</summary>
@@ -167,8 +196,6 @@ public partial class MainWindow : Window
         {
             return;
         }
-
-        viewport.Refresh();
 
         Viewport.Items.Clear();
 
@@ -1065,9 +1092,9 @@ public partial class MainWindow : Window
         {
             Show(_tree);
 
-            // The bundle is redrawn too: watching the paths move is the reason to change
-            // a parameter with the window open rather than in a text editor.
-            Draw(_viewport);
+            // The bundle is recomputed too: watching the paths move is the reason to
+            // change a parameter with the window open rather than in a text editor.
+            Refresh(_viewport);
         });
     }
 }

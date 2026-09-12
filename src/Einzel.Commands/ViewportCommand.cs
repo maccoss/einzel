@@ -223,7 +223,13 @@ public static class ViewportCommand
         var mode = TransportModes.All.FirstOrDefault(
             m => string.Equals(m.Name, model.TransportMode, StringComparison.Ordinal));
 
-        if (!(mode?.ProducesTrajectories ?? true))
+        // Asked of the set of modes the RUN uses rather than the one the document
+        // declares. A model declaring `trajectory` with a diffusive phase computes a
+        // density and was drawn with none; one declaring `diffusion` whose sequence never
+        // leaves it was drawn by the wholly diffusive solver, which reads the field once
+        // and never looks at the timeline. `einzel run` and both render verbs were
+        // corrected the same way; this is the third surface it had to reach.
+        if (!(mode?.ProducesTrajectories ?? true) || model.Modes.Contains("diffusion"))
         {
             // RND-8: not an omission to be filled in later, a statement that there is
             // nothing of this kind to draw. A viewport that drew lines here would be
@@ -235,6 +241,25 @@ public static class ViewportCommand
                 + "instead is a density field, drawn here as nested shells at decades "
                 + "below its peak",
                 WarningSeverity.Provenance));
+
+            // A MIXED SEQUENCE IS DRAWN AS HALF OF ITSELF, AND SAYS SO. This arm draws the
+            // density and no paths - which is a real improvement on what it did before,
+            // since the trajectory arm integrates straight through without knowing a
+            // sequence exists and so drew lines across the diffusive stretch, the exact
+            // thing RND-8 forbids. But a packet that flies for part of its timeline has
+            // paths worth seeing, and they are not here. Stated rather than left as an
+            // absence, because an empty half looks the same as a half that was not asked
+            // for.
+            if (model.Modes.Contains("trajectory") && model.Phases.Count > 0)
+            {
+                warnings.Add(new ValidityWarning(
+                    "render.mixed-sequence",
+                    "this sequence crosses between the two transport descriptions, and only "
+                    + "its diffusive phases are drawn. The trajectory phases have paths and "
+                    + "they are not shown: drawing them would need the viewport to walk the "
+                    + "timeline, where it currently steps the density alone",
+                    WarningSeverity.Provenance));
+            }
 
             // The geometry is still drawn. RND-8 forbids trajectories through a
             // diffusive region, not the instrument they would have flown through - and a
@@ -415,21 +440,101 @@ public static class ViewportCommand
         List<ValidityWarning> warnings,
         double? atSeconds)
     {
-        // Spread across the declared flight rather than the elapsed one, which is not
-        // known until the run is over. A run that stops early simply leaves the later
-        // instants unfilled, and those are skipped below.
-        var ceiling = model.MaximumFlightTimeSi;
+        // A SEQUENCED MODEL IS WALKED ALONG ITS OWN TIMELINE, and the window is the
+        // sequence's rather than `maximumFlightTime` - which for a timed instrument is a
+        // ceiling on a leg and says nothing about how long the instrument runs. Spread
+        // over the wrong window every requested instant lands outside the run, and the
+        // viewport draws the geometry beside an empty box.
+        var sequenced = model.NeedsSequencedTransport;
+
+        // AS FAR AS IT HAS TO GO AND NO FURTHER. A viewport redraw is a thing somebody is
+        // waiting on and a TIMS elution is twenty minutes of transport, so a walk that ran
+        // the whole timeline would hang the window on the models this most exists for -
+        // including when an instant early in the sequence was named, where every phase
+        // after it is paid for and thrown away.
+        //
+        // The default is the FIRST phase, which is the right one rather than merely the
+        // cheap one: a timed instrument prepares its packet in its first phase, and a
+        // packet parked against the gas at its balance point is the state worth opening on.
+        var limit = sequenced
+            ? (atSeconds is { } target ? Reaching(model, target) : 1)
+            : (int?)null;
+
+        var ceiling = sequenced
+            ? model.Phases[limit!.Value - 1].EndsAtSeconds
+            : model.MaximumFlightTimeSi;
 
         var wanted = atSeconds is { } named
             ? (IReadOnlyList<double>)[Math.Clamp(named, 0.0, ceiling)]
             : [.. Enumerable.Range(1, DensityInstants).Select(
                 i => ceiling * i / (DensityInstants + 1.0))];
 
-        DiffusiveOutcome run;
+        // What the drawing needs, whichever transport produced it. Locals rather than two
+        // copies of everything below: this file's own history is that writing a helper a
+        // second time got two of four wrong.
+        IReadOnlyList<ValidityWarning> runWarnings;
+        IReadOnlyList<Transport.Diffusion.DensitySnapshot> snapshots;
+        Transport.Diffusion.DensityField last;
+        double elapsedSeconds;
 
         try
         {
-            run = DiffusionRun.Execute(model, field, [], snapshotSeconds: wanted);
+            if (sequenced)
+            {
+                var walk = SequencedRun.Execute(
+                    model,
+                    field,
+                    Io.GasFlowImport.Resolve(model.Gas, model.SourceDirectory ?? "."),
+                    snapshotSeconds: wanted,
+                    phaseLimit: limit);
+
+                // THE END STATE IS THE FALLBACK, NOT THE SOURCE. A sequence ending in the
+                // trajectory description has no final density - and may still have had one
+                // at the instant that was asked for, which is the whole reason an instant
+                // can be named. Bailing on a null end discarded exactly the packet the
+                // caller wanted to look at, on the one kind of model where naming an
+                // instant is the only way to see it.
+                if (walk.FinalDensity is null && walk.Snapshots.Count == 0)
+                {
+                    warnings.Add(new ValidityWarning(
+                        "render.no-density",
+                        "this sequence holds no density at any instant asked for, and ends "
+                        + "in the trajectory description. Name an instant inside a "
+                        + "diffusive phase to see the packet while it exists",
+                        WarningSeverity.Provenance));
+
+                    return ([], null, null);
+                }
+
+                runWarnings = walk.Warnings;
+                snapshots = walk.Snapshots;
+                last = walk.FinalDensity ?? walk.Snapshots[^1].Density;
+                elapsedSeconds = walk.Phases.Count > 0 ? walk.Phases[^1].EndsAtSeconds : 0.0;
+
+                if (walk.Phases.Count < walk.PhasesDeclared)
+                {
+                    // GRD-12 again: the reader is looking at part of an instrument, and
+                    // nothing else on the screen would say so.
+                    warnings.Add(new ValidityWarning(
+                        "render.sequence-truncated",
+                        $"drawn after {walk.Phases.Count} of this model's "
+                        + $"{walk.PhasesDeclared} phases - through '{walk.Phases[^1].Name}' "
+                        + "and no further. A viewport redraw runs the transport, and a "
+                        + "whole timed sequence is minutes to hours of it; name a later "
+                        + "instant to walk further, or use 'einzel render section --at-us' "
+                        + "for a figure of one",
+                        WarningSeverity.Provenance));
+                }
+            }
+            else
+            {
+                var run = DiffusionRun.Execute(model, field, [], snapshotSeconds: wanted);
+
+                runWarnings = run.Warnings;
+                snapshots = run.Result.Snapshots;
+                last = run.Result.Density;
+                elapsedSeconds = run.Result.ElapsedSeconds;
+            }
         }
         catch (Core.Errors.EinzelException failure)
         {
@@ -445,9 +550,9 @@ public static class ViewportCommand
             return ([], null, null);
         }
 
-        warnings.AddRange(run.Warnings);
+        warnings.AddRange(runWarnings);
 
-        var grid = run.Grid;
+        var grid = last.Grid;
 
         var spanU = grid.MaxX - grid.OriginX;
         var spanV = grid.MaxY - grid.OriginY;
@@ -462,14 +567,14 @@ public static class ViewportCommand
         // The middle of the instants that hold something, so the packet is as far along
         // as it can be while still being a packet. The final density is the fallback
         // rather than the default, which is the way round this was wrong first.
-        var usable = run.Result.Snapshots
+        var usable = snapshots
             .Where(snapshot => snapshot.Density.Peak() > Floor(snapshot.Density, area))
             .ToList();
 
         var chosen = usable.Count > 0 ? usable[usable.Count / 2] : null;
 
-        var density = chosen?.Density ?? run.Result.Density;
-        var atSecondsDrawn = chosen?.AtSeconds ?? run.Result.ElapsedSeconds;
+        var density = chosen?.Density ?? last;
+        var atSecondsDrawn = chosen?.AtSeconds ?? elapsedSeconds;
         var peak = density.Peak();
         var floor = Floor(density, area);
 
@@ -492,7 +597,7 @@ public static class ViewportCommand
         warnings.Add(new ValidityWarning(
             "render.density-at-instant",
             $"the density is drawn at t = {atSecondsDrawn * 1e6:G6} us of a "
-            + $"{run.Result.ElapsedSeconds * 1e6:G6} us run"
+            + $"{elapsedSeconds * 1e6:G6} us run"
             + (atSeconds is null
                 ? ", chosen as the middle of the instants that still hold a packet. The "
                   + "end of a run is empty whenever the ions arrived"
@@ -1191,4 +1296,27 @@ public static class ViewportCommand
     /// rounding in a signed distance built from a chain of arithmetic.
     /// </remarks>
     private const double OrientStepMetres = 1e-6;
+
+    /// <summary>How many phases must run for an instant to have happened.</summary>
+    /// <param name="model">The model, whose phases carry the timeline.</param>
+    /// <param name="atSeconds">The instant, on the instrument's own clock.</param>
+    /// <returns>A phase count, at least one and at most the whole sequence.</returns>
+    /// <remarks>
+    /// Counted rather than clamped to the end, because the phases after the one holding the
+    /// instant are work whose result is discarded - and on a timed instrument each of them
+    /// is minutes.
+    /// </remarks>
+    private static int Reaching(CompiledModel model, double atSeconds)
+    {
+        for (var i = 0; i < model.Phases.Count; i++)
+        {
+            if (atSeconds <= model.Phases[i].EndsAtSeconds)
+            {
+                return i + 1;
+            }
+        }
+
+        return model.Phases.Count;
+    }
+
 }

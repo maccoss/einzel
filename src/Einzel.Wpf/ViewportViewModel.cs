@@ -182,36 +182,64 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         return span > 0.0 ? Math.Clamp((value - low) / span, 0.0, 1.0) : 0.5;
     }
 
-    /// <summary>Re-reads what should be drawn.</summary>
+    /// <summary>Re-reads what should be drawn, holding the calling thread.</summary>
     /// <returns>Whether there is a bundle.</returns>
     public bool Refresh()
     {
-        ViewportOutcome outcome;
-
         try
         {
-            outcome = _session.Viewport();
+            return Apply(_session.Viewport());
         }
         catch (EinzelException refusal)
         {
-            Trajectories.Clear();
-            Conductors.Clear();
-            Ends = null;
-            Equipotentials.Clear();
-            Density.Clear();
-            Warnings.Clear();
-            HasBundle = false;
-            HasField = false;
-            HasDensity = false;
-
-            // AGT-3's error is already a recovery instruction, so it is shown rather than
-            // reworded.
-            Status = refusal.Error.Constraint
-                + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
-
-            return false;
+            return Refused(refusal);
         }
+    }
 
+    /// <summary>Re-reads what should be drawn, without holding the calling thread.</summary>
+    /// <returns>Whether there is a bundle.</returns>
+    /// <remarks>
+    /// <b>The transport runs in the background and the collections are filled on the
+    /// caller's thread</b>, which is what an <c>ObservableCollection</c> bound to a
+    /// viewport requires. `ConfigureAwait(true)` says so rather than relying on the
+    /// default, because the default is what somebody changes.
+    /// </remarks>
+    public async Task<bool> RefreshAsync()
+    {
+        try
+        {
+            return Apply(await _session.ViewportAsync().ConfigureAwait(true));
+        }
+        catch (EinzelException refusal)
+        {
+            return Refused(refusal);
+        }
+    }
+
+    /// <summary>Shows a refusal instead of a drawing.</summary>
+    private bool Refused(EinzelException refusal)
+    {
+        Trajectories.Clear();
+        Conductors.Clear();
+        Ends = null;
+        Equipotentials.Clear();
+        Density.Clear();
+        Warnings.Clear();
+        HasBundle = false;
+        HasField = false;
+        HasDensity = false;
+
+        // AGT-3's error is already a recovery instruction, so it is shown rather than
+        // reworded.
+        Status = refusal.Error.Constraint
+            + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
+
+        return false;
+    }
+
+    /// <summary>Fills the bound collections from an outcome, on the caller's thread.</summary>
+    private bool Apply(ViewportOutcome outcome)
+    {
         Trajectories.Clear();
 
         foreach (var path in outcome.Trajectories)

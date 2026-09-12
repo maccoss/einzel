@@ -87,6 +87,11 @@ public static class RenderCommand
     /// <param name="spec">What to draw.</param>
     /// <param name="outputPath">Where to write, or null to name it after the model.</param>
     /// <param name="dryRun">Report what would be written without writing it.</param>
+    /// <param name="progress">
+    /// How often the transport behind the figure should say where it has got to, and who
+    /// to tell, or null for silence. A diffusive figure runs a transport to get its
+    /// density, and for a sequenced model that is the whole run.
+    /// </param>
     /// <returns>The outcome.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <exception cref="ArgumentException"><paramref name="modelPath"/> is null or blank.</exception>
@@ -96,7 +101,8 @@ public static class RenderCommand
         ProjectLayout project,
         RenderSpec spec,
         string? outputPath = null,
-        bool dryRun = false)
+        bool dryRun = false,
+        RunProgress? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
@@ -161,6 +167,11 @@ public static class RenderCommand
                 // of the declared ones. Found by rendering a four-population model and getting
                 // one blob: the recurring shape here is a capability wired into one path and
                 // not the other, producing output that looks correct.
+                // ONE OBSERVER FOR WHICHEVER TRANSPORT RUNS. Built before the fork rather
+                // than inside each arm, because a capability wired into some of the arms and
+                // not the others is the defect this whole branch was just corrected for.
+                var watcher = Watch(progress);
+
                 if (validation.Model!.IsMixture)
                 {
                     var mixture = DiffusionRun.ExecuteMixture(validation.Model!, built, fieldWarnings);
@@ -194,6 +205,7 @@ public static class RenderCommand
                         built,
                         Io.GasFlowImport.Resolve(
                             validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? "."),
+                        watcher,
                         snapshotSeconds: spec.AtSeconds > 0.0 ? [spec.AtSeconds] : null);
 
                     var shot = sequenced.Snapshots.Count > 0 ? sequenced.Snapshots[0] : null;
@@ -244,8 +256,10 @@ public static class RenderCommand
                             validation.Model!,
                             built,
                             fieldWarnings,
-                            snapshotSeconds: [spec.AtSeconds])
-                        : DiffusionRun.Execute(validation.Model!, built, fieldWarnings);
+                            snapshotSeconds: [spec.AtSeconds],
+                            progress: watcher)
+                        : DiffusionRun.Execute(
+                            validation.Model!, built, fieldWarnings, progress: watcher);
 
                     if (spec.AtSeconds > 0.0 && outcome.Result.Snapshots.Count == 0)
                     {
@@ -411,12 +425,18 @@ public static class RenderCommand
     /// so the compression can be audited rather than taken on trust.
     /// </para>
     /// </remarks>
+    /// <param name="progress">
+    /// How often the transport behind the frames should say where it has got to, and who
+    /// to tell, or null for silence. For a sequenced model this is the whole run, so it is
+    /// the difference between a film and hours with nothing on the diagnostic stream.
+    /// </param>
     public static RenderOutcome Animation(
         string modelPath,
         ProjectLayout project,
         RenderSpec spec,
         string? outputDirectory = null,
-        bool dryRun = false)
+        bool dryRun = false,
+        RunProgress? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
         ArgumentNullException.ThrowIfNull(project);
@@ -479,16 +499,24 @@ public static class RenderCommand
             // releases it lives in the sequence - so running the model's declared mode
             // over its whole flight produced 126 frames of a packet sitting still, in 25
             // seconds where the run it was filming takes thirteen minutes.
+            //
+            // Which is why this is watched: correcting it made the render cost what the run
+            // costs, because it IS the run. The 8 ms elution is twenty minutes and the
+            // 128 ms ramp is most of a working day.
+            var watcher = Watch(progress);
+
             var frameDensities = validation.Model!.NeedsSequencedTransport
                 ? SequencedRun.Execute(
                         validation.Model!,
                         built,
                         Io.GasFlowImport.Resolve(
                             validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? "."),
+                        watcher,
                         snapshotSeconds: instants)
                     .Snapshots
                 : DiffusionRun.Execute(
-                        validation.Model!, built, fieldWarnings, snapshotSeconds: instants)
+                        validation.Model!, built, fieldWarnings,
+                        snapshotSeconds: instants, progress: watcher)
                     .Result.Snapshots;
 
             if (frameDensities.Count < instants.Count)
@@ -686,4 +714,26 @@ public static class RenderCommand
 
         return (spec, Path.GetFullPath(Path.Combine(folder, spec.Model)));
     }
+
+    /// <summary>The observer a render's transport reports to, or null for silence.</summary>
+    /// <param name="progress">How often to report and who to tell, or null for none.</param>
+    /// <returns>An observer, or null where nothing is to be reported.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Announcing, and writing nothing.</b> A render stores no result, so a checkpoint
+    /// beside one would state in its own words that an answer will appear next to it when
+    /// the run finishes - which for a render never happens - and <c>einzel report</c> reads
+    /// exactly those files, so a finished render would be reported as an interrupted run.
+    /// </para>
+    /// <para>
+    /// The rate projection, the phase accounting and the wall clock are the checkpoint
+    /// writer's own rather than a second set. Two implementations of "how long has this
+    /// got left" is how two surfaces come to disagree about it.
+    /// </para>
+    /// </remarks>
+    private static RunCheckpointWriter? Watch(RunProgress? progress)
+        => progress is { IntervalSeconds: > 0.0 }
+            ? RunCheckpointWriter.Announcing(progress)
+            : null;
+
 }

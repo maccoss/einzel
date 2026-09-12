@@ -55,7 +55,7 @@ public sealed class SequencedRenderTests : IDisposable
     /// packet that is carried down the axis. The two are far apart rather than subtly
     /// different, which is what a routing test needs.
     /// </remarks>
-    private const string HoldThenPush = """
+    internal const string HoldThenPush = """
     {
       "schemaVersion": "0.13",
       "name": "hold-then-push",
@@ -283,5 +283,65 @@ public sealed class SequencedRenderTests : IDisposable
             "sequenced run, 3 phases",
             File.ReadAllText(root.GetProperty("artifacts")[0].GetString()!),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARenderReportsWhereItsTransportHasGotTo()
+    {
+        // Correcting the routing made a render cost what the run costs, because it IS the
+        // run - and the render verbs passed no observer, so the 8 ms elution film was twenty
+        // minutes of silence and the 128 ms ramp would be most of a working day of it. That
+        // is the gap `--progress` was built to close, one verb over.
+        Assert.Equal(0, Cli("init", _root).ExitCode);
+
+        var path = Path.Combine(_root, "models", "hold-then-push.json");
+        File.WriteAllText(path, HoldThenPush);
+
+        var (exit, stdout, stderr) = Cli(
+            "render", "section", path, "--json", "--progress", "0.0001");
+
+        Assert.Equal(0, exit);
+
+        // One line per phase, naming which of how many - the sequenced run's own structure,
+        // which is what a reader watching a multi-hour render wants first.
+        Assert.Contains("phase 1/2", stderr, StringComparison.Ordinal);
+        Assert.Contains("phase 2/2", stderr, StringComparison.Ordinal);
+
+        // CLI-2. A caller piping --json gets the result document and nothing else, however
+        // long the transport behind the figure took to produce it.
+        Assert.Contains("section", JsonDocument.Parse(stdout).RootElement
+            .GetProperty("kind").GetString()!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARenderLeavesNoCheckpoint()
+    {
+        // THE DESIGN DECISION, ASSERTED. A checkpoint says in its own words that the answer
+        // will appear beside it when the run finishes and that finding the file means it did
+        // not - and a render writes no result at all, so that document would be false on both
+        // counts. `einzel report` reads exactly those files, so one left here would have it
+        // describe a finished render as an interrupted run.
+        Assert.Equal(0, Cli("init", _root).ExitCode);
+
+        var path = Path.Combine(_root, "models", "hold-then-push.json");
+        File.WriteAllText(path, HoldThenPush);
+
+        Assert.Equal(0, Cli("render", "section", path, "--progress", "0.0001").ExitCode);
+
+        Assert.Empty(Directory.GetFiles(_root, "*.progress.json", SearchOption.AllDirectories));
+    }
+
+    [Fact]
+    public void ProgressIsRefusedRatherThanIgnoredWhenItIsNotANumber()
+    {
+        Assert.Equal(0, Cli("init", _root).ExitCode);
+
+        var path = Path.Combine(_root, "models", "hold-then-push.json");
+        File.WriteAllText(path, HoldThenPush);
+
+        var (exit, _, stderr) = Cli("render", "section", path, "--progress", "soon");
+
+        Assert.NotEqual(0, exit);
+        Assert.Contains("--progress takes an interval in seconds", stderr, StringComparison.Ordinal);
     }
 }

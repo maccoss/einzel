@@ -168,7 +168,7 @@ public sealed record RunProgress(double IntervalSeconds, Action<string>? Announc
 /// </remarks>
 public sealed class RunCheckpointWriter : IRunProgress
 {
-    private readonly string _path;
+    private readonly string? _path;
     private readonly double _interval;
     private readonly Action<string>? _announce;
     private readonly System.Diagnostics.Stopwatch _clock =
@@ -211,8 +211,48 @@ public sealed class RunCheckpointWriter : IRunProgress
         _run = run;
     }
 
-    /// <summary>Where the checkpoint is written.</summary>
-    public string CheckpointPath => _path;
+    private RunCheckpointWriter(RunProgress progress)
+    {
+        _path = null;
+        _interval = progress.IntervalSeconds;
+        _announce = progress.Announce;
+        _run = new RunCheckpointProvenance("", "", "", 0, "", "");
+    }
+
+    /// <summary>Watches a transport that will store no answer, announcing and writing nothing.</summary>
+    /// <param name="progress">How often, and who to tell.</param>
+    /// <returns>An observer that reports on the diagnostic stream only.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="progress"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>For a render, which runs a transport and stores no result.</b> Rendering a
+    /// sequenced model costs what running it costs - it is the same solve and the same
+    /// steps - so it needs the same live account of where it has got to. What it does not
+    /// need is the file.
+    /// </para>
+    /// <para>
+    /// <b>And must not write one.</b> A checkpoint states in its own `note` that the answer
+    /// will appear beside it as <c>&lt;name&gt;.result.json</c> when the run finishes and
+    /// that finding the checkpoint means the run did not. A render writes neither, so that
+    /// document would be a false statement on both counts, and `einzel report` - which reads
+    /// <c>results/</c> for exactly these files - would describe a finished render as an
+    /// interrupted run.
+    /// </para>
+    /// <para>
+    /// The projection, the phase accounting and the wall clock are the ones the checkpoint
+    /// writer already has. A second implementation of a rate measured between reports is how
+    /// two surfaces come to disagree about how long something will take.
+    /// </para>
+    /// </remarks>
+    public static RunCheckpointWriter Announcing(RunProgress progress)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+
+        return new RunCheckpointWriter(progress);
+    }
+
+    /// <summary>Where the checkpoint is written, or null where none is.</summary>
+    public string? CheckpointPath => _path;
 
     /// <summary>How many reports have been made.</summary>
     public int Reports { get; private set; }
@@ -372,6 +412,11 @@ public sealed class RunCheckpointWriter : IRunProgress
     /// </remarks>
     public void Discard()
     {
+        if (_path is null)
+        {
+            return;
+        }
+
         try
         {
             File.Delete(_path);
@@ -393,6 +438,14 @@ public sealed class RunCheckpointWriter : IRunProgress
         double collected = 0.0,
         double? ofSeconds = null)
     {
+        // Nothing to write where there is no file, and the guard is here rather than at
+        // each caller so that every report path - a finished phase, an interval, a phase
+        // entry - is covered by construction.
+        if (_path is null)
+        {
+            return;
+        }
+
         var document = new RunCheckpointJson
         {
             Note = "a run in progress, not its answer - the answer is written beside this "
