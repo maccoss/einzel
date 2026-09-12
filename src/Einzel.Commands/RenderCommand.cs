@@ -143,9 +143,13 @@ public static class RenderCommand
         // path", and a diffusive model has no path to draw by definition - so
         // conflating the two made --no-trajectory silently suppress the one output
         // such a model has. Two independent things, asked about independently.
-        if (spec.DensityContours > 0
-            && string.Equals(
-                validation.Model!.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        // Asked of the set of modes the run USES, not of the mode the model declares.
+        // A model declaring `trajectory` with a diffusive phase has a density and was
+        // drawing none; a model declaring `diffusion` whose sequence never leaves it was
+        // being drawn by the wholly diffusive solver, which reads the field once and never
+        // looks at the timeline. `einzel run`'s fork was corrected the same way, and this
+        // is the second path it had to be corrected in.
+        if (spec.DensityContours > 0 && validation.Model!.Modes.Contains("diffusion"))
         {
             try
             {
@@ -176,6 +180,55 @@ public static class RenderCommand
                         provenance.Add(
                             $"asked for t = {spec.AtSeconds * 1e6:G6} us and drew the END of the run: "
                             + "the mixture stepper records no intermediate densities in this build");
+                    }
+                }
+                else if (validation.Model!.NeedsSequencedTransport)
+                {
+                    // A model with a timeline is run THROUGH its timeline. Drawing it with
+                    // the wholly diffusive solver gave a figure of an instrument nobody
+                    // described - the exit potential never ramped, so a packet released by
+                    // the ramp was drawn still parked, with nothing anywhere saying the
+                    // sequence had been skipped.
+                    var sequenced = SequencedRun.Execute(
+                        validation.Model!,
+                        built,
+                        Io.GasFlowImport.Resolve(
+                            validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? "."),
+                        snapshotSeconds: spec.AtSeconds > 0.0 ? [spec.AtSeconds] : null);
+
+                    var shot = sequenced.Snapshots.Count > 0 ? sequenced.Snapshots[0] : null;
+
+                    densities = [shot?.Density ?? sequenced.FinalDensity
+                        ?? throw new EinzelException(new EinzelError
+                        {
+                            Code = ErrorCodes.SchemaInvalid,
+                            Path = "/sequence",
+                            Constraint = "this sequence ends in the trajectory description, so "
+                                + "there is no density to contour",
+                            Suggestion = "ask for an instant inside a diffusive phase with "
+                                + "--at-us, or render a model whose last phase is diffusive",
+                        })];
+
+                    provenance.Add(
+                        $"sequenced run, {sequenced.Phases.Count} phases, "
+                        + $"{sequenced.Conversions} transport-mode conversion(s)");
+
+                    if (shot is not null)
+                    {
+                        provenance.Add(
+                            $"density at t = {shot.AtSeconds * 1e6:G6} us, "
+                            + $"asked for {spec.AtSeconds * 1e6:G6} us");
+                    }
+                    else if (spec.AtSeconds > 0.0)
+                    {
+                        provenance.Add(
+                            $"no diffusive phase contains t = {spec.AtSeconds * 1e6:G6} us, so "
+                            + "the density drawn is the one the run finished with");
+                    }
+
+                    foreach (var warning in sequenced.Warnings)
+                    {
+                        provenance.Add($"{warning.Severity}: {warning.Code}: {warning.Message}");
                     }
                 }
                 else
@@ -413,8 +466,7 @@ public static class RenderCommand
         // one run supplies the whole animation.
         IReadOnlyList<Transport.Diffusion.DensityField>? densities = null;
 
-        if (string.Equals(
-            validation.Model!.TransportMode, "diffusion", StringComparison.OrdinalIgnoreCase))
+        if (validation.Model!.Modes.Contains("diffusion"))
         {
             var instants = TimeMapping.Frames(animation)
                 .Select(f => f.SimulatedSeconds)
@@ -422,31 +474,48 @@ public static class RenderCommand
 
             var (built, fieldWarnings) = Fields.FieldAssembly.BuildReported(validation.Model!);
 
-            var run = DiffusionRun.Execute(
-                validation.Model!, built, fieldWarnings, snapshotSeconds: instants);
+            // Through the timeline where there is one. A film of a parking packet being
+            // released is the whole reason to animate this device, and the ramp that
+            // releases it lives in the sequence - so running the model's declared mode
+            // over its whole flight produced 126 frames of a packet sitting still, in 25
+            // seconds where the run it was filming takes thirteen minutes.
+            var frameDensities = validation.Model!.NeedsSequencedTransport
+                ? SequencedRun.Execute(
+                        validation.Model!,
+                        built,
+                        Io.GasFlowImport.Resolve(
+                            validation.Model!.Gas, Path.GetDirectoryName(absolute) ?? "."),
+                        snapshotSeconds: instants)
+                    .Snapshots
+                : DiffusionRun.Execute(
+                        validation.Model!, built, fieldWarnings, snapshotSeconds: instants)
+                    .Result.Snapshots;
 
-            if (run.Result.Snapshots.Count < instants.Count)
+            if (frameDensities.Count < instants.Count)
             {
                 throw new EinzelException(new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = "/animation/phases",
-                    Constraint = $"the mapping runs to "
-                        + $"{instants[^1] * 1e6:G6} us and the run reached "
-                        + $"{run.Result.ElapsedSeconds * 1e6:G6} us, so "
-                        + $"{instants.Count - run.Result.Snapshots.Count} frames have no density",
-                    Suggestion = "shorten the last phase, or raise "
-                        + "'transport.maximumFlightTime'. Repeating the last density for the "
-                        + "frames past the end would show a packet sitting still rather than a "
-                        + "run that finished",
+                    Constraint = $"the mapping runs to {instants[^1] * 1e6:G6} us and "
+                        + $"{instants.Count - frameDensities.Count} of its {instants.Count} "
+                        + "frames have no density behind them",
+                    Suggestion = "shorten the last phase, raise "
+                        + "'transport.maximumFlightTime', or - for a sequenced model - keep "
+                        + "the mapping inside the diffusive phases, since a trajectory phase "
+                        + "has no density to draw. Repeating the last density for the frames "
+                        + "past the end would show a packet sitting still rather than a run "
+                        + "that finished",
                 });
             }
 
-            densities = [.. run.Result.Snapshots.Select(x => x.Density)];
+            densities = [.. frameDensities.Select(x => x.Density)];
 
             provenance.Add(
-                $"density recorded at {densities.Count} instants over "
-                + $"{run.Result.Steps} steps");
+                $"density recorded at {densities.Count} instants"
+                + (validation.Model!.NeedsSequencedTransport
+                    ? ", through the model's own sequence"
+                    : string.Empty));
         }
 
         var animationGas = Io.GasFlowImport.Resolve(

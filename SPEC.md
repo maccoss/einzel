@@ -2699,7 +2699,27 @@ project's author needs to run it and more than any physics the moment one does.
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
-8. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
+8. **The render verbs run a whole transport and say nothing while they do it.** Fixed today:
+   `render section` and `render animation` decided what to draw from the model's *declared*
+   transport mode and then called the wholly diffusive solver, so a model with a timeline
+   rendered as though it had none - the elution ramp never ran, the packet stayed parked in
+   every frame, exit 0. Both now ask `Modes` and route through `SequencedRun`, which takes
+   snapshot instants on the instrument's own clock.
+
+   **What that creates is the gap `--progress` exists to close, one verb over.** Rendering a
+   sequenced model now costs what running it costs, because it is running it: the 8 ms elution
+   film took twenty minutes of silence, and the 128 ms ramp would be three and three-quarter
+   hours of the same. `RenderCommand` passes no `IRunProgress` and until now never ran anything
+   long enough to need one. It is small - the observer and the checkpoint both exist - and it
+   belongs before anyone animates a long ramp.
+
+   **Two narrower things are also open.** An instant landing in a *trajectory* phase yields no
+   density, so a mixed sequence cannot be filmed end to end; the animation refuses with a count
+   of the frames it could not fill rather than inventing them, which is right, and the figure
+   that would show such an instrument does not exist. And the cost gate has not been taught
+   that a render can now be a multi-hour operation, so GRD-8 does not reach it.
+
+9. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -
    and SPEC's own summary is blunt about the consequence: **nobody can install this**.
 

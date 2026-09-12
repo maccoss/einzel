@@ -4204,3 +4204,64 @@ honest report would have been "the series moved by 1.5 per cent and I cannot say
 before assuming either way.** The bump is a statement that numbers *may* change, and the
 cheapest thing that turns it into a statement about whether they *did* is one short run per
 series - which also tells you whether the register needs restating at all.
+
+## The clock said it was wrong before anything else did
+
+An elution animation of the shipped TIMS analyser came back in **25 seconds**. The run it was
+filming takes **thirteen minutes**. Nothing failed, the frames were well-formed, the provenance
+block said `density recorded at 126 instants over 7674 steps`, and the contour levels spanned
+seven decades - every sign of a working figure except the one that mattered.
+
+**It was drawing a real density of an instrument nobody had described.** `render section` and
+`render animation` both decided what to draw by asking the model's *declared* transport mode and
+then calling `DiffusionRun.Execute` - the wholly diffusive path, which reads the field once and
+never looks at a sequence. So the exit potential never ramped, the packet sat parked where it
+started for all 126 frames, and the command exited 0.
+
+That is the **ninth** sighting of one shape here and the second on this exact question: a
+capability wired into N-1 of N paths, reached through a proxy (`TransportMode`) that stopped
+being equivalent to the question (`which modes does this run use`) the moment a sequence could
+name one. `einzel run`'s own fork was corrected the same way, and the correction did not travel.
+
+**What found it was a ratio, not a test.** Frame count, byte count and path count were all
+plausible; 7,674 steps for an 11.3 ms window is 1.47 us a step where the shipped model's
+stability limit is ~56 ns. The rule: **when a computation finishes far faster than the work it
+claims to have done, price it before believing it** - a figure whose cost is wrong is usually a
+figure of something else.
+
+## Two ways a requested instant lands in the wrong phase, and only one is a clamp
+
+Threading snapshot instants through a sequenced run put both of these in, and the tests found
+them rather than the reading did.
+
+**An instant at the very end of a run is dropped.** Phase ends are accumulated sums of
+durations, so the declared end of an 80 us run is 80 us only up to rounding, and the solver
+records at the first step *at or after* what was asked for. An animation forces its final frame
+onto exactly the declared end - so the one frame most likely to be looked at was the one
+reliably missing. The fix is to give the last phase no upper bound at all and let the *run*
+decide whether it reached an instant, because arithmetic on declared durations does not know.
+
+**An instant on a phase boundary dates the packet a whole phase forward.** Shifted onto the next
+phase's clock it lands a few zeptoseconds *after* zero - positive, so `Math.Max(0.0, ...)` does
+nothing, which is what I wrote first and it changed nothing. The solver serves an instant at or
+before its launch from the density it was handed and anything past that only at the first step
+at or after; on a leg of one or two steps that one bit meant a frame asked for at the end of the
+hold was drawn *after* the push. Snapping a near-zero offset to zero is the fix, and the two
+mistakes look identical until you print the offset.
+
+**The generalising rule: a clamp guards a sign, and floating-point boundary error has no sign
+you can rely on.** Where two clocks meet, the quantity to test is the distance from the
+boundary against a tolerance in that clock's own units - not whether it came out negative.
+
+## A figure that was cheap because it was wrong becomes a run that is silent
+
+Fixing the routing did what it should: the animation now runs the model's own sequence and takes
+**as long as the run does**, because it *is* the run. That is correct and it creates the exact
+gap `einzel run --progress` was built to close a week earlier - twenty minutes with nothing on
+stderr, and a 128 ms ramp would be three and three-quarter hours of the same.
+
+The render verbs do not pass an `IRunProgress`, and until this change they never ran anything
+long enough to need one. **Worth stating as the shape rather than the instance: when a path
+starts doing real work it did not do before, it inherits every requirement that attaches to real
+work** - progress, checkpointing, the cost gate - and none of them arrive by being in the
+assembly next door.
