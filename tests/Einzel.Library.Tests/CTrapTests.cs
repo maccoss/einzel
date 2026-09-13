@@ -125,55 +125,80 @@ public sealed class CTrapTests(ITestOutputHelper output)
         Assert.Single(channels);
     }
 
-    /// <summary>The rods are continuous: the beads overlap rather than leaving gaps.</summary>
+    /// <summary>The rods are smooth along the arc: a swept profile does not scallop.</summary>
     /// <remarks>
-    /// A chain of spheres is a rod only if consecutive beads intersect. Spaced further
-    /// apart than their radius it is a string of pearls, and the field reaches through the
-    /// gaps — which would look like a working trap with a mysteriously poor acceptance.
-    /// Checked as arithmetic on the declared geometry rather than by sampling the field,
-    /// because the condition is geometric and exact.
+    /// <para>
+    /// <b>This test replaces one that had stopped measuring anything.</b> While the rods
+    /// were chains of overlapping spheres it asserted that consecutive beads intersect -
+    /// spaced further apart than their radius a rod is a string of pearls and the field
+    /// reaches through the gaps, which would look like a working trap with a mysteriously
+    /// poor acceptance. It grouped the electrodes by the stem of their names and compared
+    /// consecutive members of each group. With the rods swept, each group has ONE member,
+    /// the inner loop never runs, and the worst spacing stays at the zero it was
+    /// initialized to. It passed, and a vacuous truth over an empty collection is a thing
+    /// this project has now been caught by five times.
+    /// </para>
+    /// <para>
+    /// <b>What the swept geometry has to be asserted about instead is that it is smooth</b>,
+    /// which is the property the beads failed: thirteen spheres of 3.439 mm radius on a
+    /// 3.459 mm pitch scalloped each rod by 13.6 percent of its own radius. So this walks
+    /// the trap axis round the arc and asks how far the nearest metal is at each step. A
+    /// swept profile gives the same answer everywhere by construction; a beaded one ripples
+    /// at the bead pitch.
+    /// </para>
+    /// <para>
+    /// Measured on the geometry rather than on the field, because the claim is geometric
+    /// and exact - and the signed distance is the same function the solver's cut cells and
+    /// the ion absorber both use, so it is the quantity that would have been wrong.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void TheBeadsOverlapAlongEachRod()
+    public void TheSweptRodsAreSmoothAlongTheArc()
     {
         var model = Compile();
 
-        var electrodes = model.Fields[0].Solve3D!.Electrodes;
+        var solve = model.Fields[0].Solve3D!;
+        var electrodes = solve.Electrodes;
 
-        // Beads of one rod, in order: every repeat of one declaration shares a name stem.
-        var byRod = electrodes
-            .GroupBy(e => new string([.. e.Name.TakeWhile(c => !char.IsDigit(c) && c != '-')]))
-            .ToList();
+        Assert.Equal(5, electrodes.Count);
 
-        Assert.True(byRod.Count >= 4, $"expected four rods, found {byRod.Count} groups");
+        var bend = model.Parameters["bendRadius"].SiValue;
+        var arc = model.Parameters["arcHalfTurns"].SiValue;
 
-        var worst = 0.0;
+        var nearest = new List<double>();
 
-        foreach (var rod in byRod)
+        // Along the trap axis - the circle of the bend radius, in the plane of the arc -
+        // staying clear of the two ends, where the rods legitimately stop.
+        for (var k = 0; k <= 200; k++)
         {
-            var beads = rod.ToList();
+            var half = arc * (0.1 + (0.8 * k / 200.0));
 
-            for (var k = 1; k < beads.Count; k++)
-            {
-                var step = Math.Sqrt(
-                    Math.Pow(beads[k].CentreX - beads[k - 1].CentreX, 2)
-                    + Math.Pow(beads[k].CentreY - beads[k - 1].CentreY, 2)
-                    + Math.Pow(beads[k].CentreZ - beads[k - 1].CentreZ, 2));
+            var x = bend * double.CosPi(half);
+            var y = bend * double.SinPi(half);
 
-                var radius = beads[k].Radius;
-
-                worst = Math.Max(worst, step / radius);
-            }
+            nearest.Add(electrodes.Min(e => e.SignedDistance(x, y, 0.0)));
         }
 
-        output.WriteLine(
-            $"{byRod.Count} rods, worst bead spacing {worst:F3} of a rod radius");
+        var low = nearest.Min();
+        var high = nearest.Max();
+        var ripple = (high - low) / high;
 
-        // Under 2 is contact; comfortably under is a smooth rod. Above 2 the beads do not
-        // touch at all.
+        output.WriteLine(
+            $"nearest metal from the trap axis: {low * 1e3:F6} to {high * 1e3:F6} mm, "
+            + $"ripple {ripple * 100.0:E3} percent of the gap");
+
+        // The beads rippled by 13.6 percent of a rod radius. A swept profile is the same
+        // solid at every angle, so what is left is the arithmetic of turning an angle into
+        // a point and back.
         Assert.True(
-            worst < 1.5,
-            $"beads are {worst:F2} radii apart, so the rod has gaps in it");
+            ripple < 1.0e-9,
+            $"the gap to the nearest rod varies {ripple * 100.0:F3} percent round the arc, "
+            + "so the rods are not surfaces of revolution");
+
+        // And the control, so a constant is not a constant nothing: the axis really is
+        // inside the bore, at about the inscribed radius rather than at zero or at the
+        // rod depth.
+        Assert.Equal(model.Parameters["inscribedRadius"].SiValue, high, 5);
     }
 
     /// <summary>The RF carries an ion round the bend, and without it the ion is lost.</summary>
@@ -383,7 +408,8 @@ public sealed class CTrapTests(ITestOutputHelper output)
     }
 
     /// <summary>Ejects a spread of ions and finds the waist of the packet they make.</summary>
-    private FocusResult MeasureFocus(double bendMm, double rfVolts, double phase, bool trace)
+    private FocusResult MeasureFocus(
+        double bendMm, double rfVolts, double phase, bool trace, double slotMm = 0.5)
     {
         const double Spread = 0.04;   // half turns either side of the slot centre
         const double EjectVolts = 60.0;
@@ -404,6 +430,7 @@ public sealed class CTrapTests(ITestOutputHelper output)
                 ("ejectVolts", Quantity.From(EjectVolts, "V")),
                 ("rfAmplitude", Quantity.From(rfVolts, "V")),
                 ("ejectPhase", Quantity.Number(phase)),
+                ("slotHalfWidth", Quantity.From(slotMm, "mm")),
                 // Cooled. An ion still running along the arc leaves at an angle to its own
                 // radius, which is an aberration on the focus rather than a focus.
                 ("launchVolts", Quantity.From(0.005, "V")),
@@ -425,6 +452,7 @@ public sealed class CTrapTests(ITestOutputHelper output)
         {
             output.WriteLine(
                 $"bend radius {bendMm:F1} mm, RF {rfVolts:F0} V at phase {phase:F2}, "
+                + $"slot half-width {slotMm:F2} mm, "
                 + $"launch extent {launchExtent * 1e3:F3} mm");
 
             output.WriteLine("     t/us   centroid r/mm   packet extent/mm");
@@ -471,12 +499,12 @@ public sealed class CTrapTests(ITestOutputHelper output)
             Math.Sqrt((atWaist.X * atWaist.X) + (atWaist.Y * atWaist.Y)));
     }
 
-    /// <summary>A curved trap ejects a converging packet; a straight one cannot.</summary>
+    /// <summary>A curved trap ejects a converging packet, and its waist is the arc center.</summary>
     /// <remarks>
     /// <para>
     /// <b>This is what the curvature is for.</b> Every ion in a curved trap is pushed out
     /// along its own radius, so their velocities all point inward and the packet converges
-    /// as it flies — it arrives at the analyser spatially focused rather than as a line. A
+    /// as it flies - it arrives at the analyzer spatially focused rather than as a line. A
     /// straight trap pushes every ion in the SAME direction, so whatever length of trap the
     /// ions occupied, they still occupy after the flight. The template has claimed this in
     /// its description since it was written and nothing measured it.
@@ -488,15 +516,23 @@ public sealed class CTrapTests(ITestOutputHelper output)
     /// here is exactly 1 for one.
     /// </para>
     /// <para>
-    /// <b>The focus is not at the arc centre, which is the part a design has to know.</b>
-    /// Aiming every velocity along a radius would put it there, one bend radius away; it is
-    /// measured at 1.73 and 1.92 bend radii, so the packet crosses the centre still
-    /// converging and reaches its waist well beyond. The slot is a lens as well as a hole —
-    /// the ion is accelerated up to it and drifts field-free after it, which is an aperture
-    /// lens by construction. What is NOT claimed is a strength for it: a thin-lens fit to
-    /// the shorter bend predicts 46.0 mm for the longer one against a measured 38.4, so the
-    /// two are not one fixed lens and one variable one. The slot's own opening scales with
-    /// the bend as well, since it is declared as an angle.
+    /// <b>The waist sits at the center of curvature, and an earlier reading of this that
+    /// said otherwise is withdrawn.</b> Velocities aimed along radii meet one bend radius
+    /// away, and that is where they are found: the packet travels 1.011 bend radii at both
+    /// 20 mm and 15 mm and ends 2.4 and 2.3 percent of a bend radius short of the center.
+    /// The previous measurement put it at 1.73 and 1.92 bend radii and explained the excess
+    /// as an aperture lens at the slot, with a thin-lens fit that then mispredicted the
+    /// longer bend by 17 percent - a formula carrying an error dressed as a model, and it
+    /// was recorded as one. It was the geometry. Those numbers were taken on rods built as
+    /// chains of overlapping spheres, scalloped by 13.6 percent of their own radius, with
+    /// a slot modeled as an angular gap that only let out an angular slice of the packet;
+    /// that model no longer exists, so the shift is attributed to the geometry as a whole
+    /// rather than to either half of it.
+    /// </para>
+    /// <para>
+    /// <b>The slot is not the lens, which is now measured rather than argued</b> - see
+    /// <see cref="TheFocusFollowsTheBendAndNotTheSlot"/>. What the slot does set is how
+    /// much of the packet gets out.
     /// </para>
     /// <para>
     /// The control for "is it the curvature" is to change the bend radius and watch the
@@ -510,10 +546,13 @@ public sealed class CTrapTests(ITestOutputHelper output)
     {
         var focus = MeasureFocus(bendMm, rfVolts: 0.0, phase: 0.0, trace: true);
 
+        var bend = bendMm * 1e-3;
+
         output.WriteLine(
             $"waist {focus.Waist * 1e3:F4} mm, {focus.Travelled * 1e3:F3} mm from launch "
-            + $"= {focus.Travelled / (bendMm * 1e-3):F3} bend radii, "
-            + $"{focus.WaistRadius * 1e3:F3} mm from the arc centre");
+            + $"= {focus.Travelled / bend:F3} bend radii, "
+            + $"{focus.WaistRadius * 1e3:F3} mm from the arc center "
+            + $"= {focus.WaistRadius / bend:F3} of one");
 
         output.WriteLine(
             $"launch extent / waist = {focus.Convergence:F1}x; a straight trap would be 1.0x");
@@ -526,44 +565,95 @@ public sealed class CTrapTests(ITestOutputHelper output)
             + $"{focus.Waist * 1e3:F3} mm at its narrowest, a factor of "
             + $"{focus.Convergence:F2}. That is not a focus");
 
-        // And the curvature is what sets the distance: the focus lands within a factor of
-        // two of one bend radius at both radii, which a fixed-length lens would not do.
-        var inRadii = focus.Travelled / (bendMm * 1e-3);
+        // And it focuses WHERE the geometry says, which is the sharp half: one bend radius
+        // of travel, ending on the center of curvature. Both are asserted because either
+        // alone is weak - a packet could travel the right distance in the wrong direction,
+        // and a packet could end near the center by starting near it.
+        Assert.Equal(1.0, focus.Travelled / bend, 1);
 
-        Assert.InRange(inRadii, 1.2, 2.5);
+        Assert.True(
+            focus.WaistRadius < 0.05 * bend,
+            $"the waist is {focus.WaistRadius * 1e3:F3} mm from the arc center, "
+            + $"{focus.WaistRadius / bend:F3} of a bend radius - so the velocities are not "
+            + "meeting where radii meet");
     }
 
-    /// <summary>Leaving the drive on refocuses the ejection, and it does it by cycle average.</summary>
+    /// <summary>The focus follows the bend radius and is indifferent to the slot's opening.</summary>
     /// <remarks>
     /// <para>
-    /// A real C-trap switches its RF off to eject. With it left running the packet still
-    /// converges, but it converges <b>three times sooner and two and a half times less
-    /// well</b> — so an analyser placed where the quiet ejection focuses would be in
-    /// entirely the wrong place, and one placed at the driven focus would receive a poorer
-    /// packet. Whether the drive is on at the instant of ejection is a design decision
-    /// about where the analyser goes, not a detail of the hold.
+    /// <b>The control that retires the aperture-lens explanation.</b> The earlier account of
+    /// this device had the slot acting as a lens - accelerated up to it, field-free after
+    /// it - to explain a waist at 1.73 and 1.92 bend radii rather than at 1. A lens has a
+    /// strength, and an aperture lens's strength depends on its opening, so widening the
+    /// slot has to move the focus if that is what is happening.
     /// </para>
     /// <para>
-    /// <b>The phase sweep is the half that says what mechanism it is</b>, and it refuted
-    /// the guess that prompted it. An ejection into a field reversing at three megahertz
-    /// looks like it should depend on where in the cycle the push arrived — every ion in
-    /// the packet sees the same phase, so a kick would aim the whole packet somewhere
-    /// different. It does not: over a whole cycle the focal distance moves by about a
-    /// tenth, against the threefold shift the drive itself causes. So what acts on the
-    /// packet is the <b>cycle-averaged</b> force — the pseudopotential — and not the
-    /// instantaneous field. The ion crosses about seventeen RF periods on its way to the
-    /// waist, which is why the phase it started at washes out, and the tenth that remains
-    /// is the one partial cycle at the beginning.
-    /// </para>
-    /// <para>
-    /// Sweeping it at all is the point: one ejection with the drive running is a single
-    /// sample of something periodic, and this project has already recorded once what comes
-    /// of quoting one — an isolation-efficiency curve whose shape reversed at an amplitude
-    /// nobody had swept.
+    /// Over a fourfold range of slot width the waist stays at the center of curvature. So
+    /// the slot is a hole rather than an element, and where the analyzer goes is set by the
+    /// bend alone - which is the useful form of the finding for somebody placing one.
     /// </para>
     /// </remarks>
     [Fact]
-    public void LeavingTheDriveOnMovesTheFocusThroughItsCycleAverage()
+    public void TheFocusFollowsTheBendAndNotTheSlot()
+    {
+        const double BendMm = 20.0;
+
+        var travelled = new List<double>();
+
+        foreach (var slotMm in (double[])[0.25, 0.5, 1.0])
+        {
+            var focus = MeasureFocus(BendMm, rfVolts: 0.0, phase: 0.0, trace: false, slotMm: slotMm);
+
+            travelled.Add(focus.Travelled);
+
+            output.WriteLine(
+                $"  slot half-width {slotMm:F2} mm: waist {focus.Waist * 1e3:F4} mm at "
+                + $"{focus.Travelled * 1e3:F3} mm = {focus.Travelled / (BendMm * 1e-3):F3} "
+                + $"bend radii, {focus.Convergence:F1}x");
+        }
+
+        var spread = travelled.Max() / travelled.Min();
+
+        output.WriteLine($"a fourfold change of slot moves the focus {spread:F3}x");
+
+        // A lens whose opening quadruples does not leave its focal distance where it was.
+        Assert.True(
+            spread < 1.05,
+            $"the focal distance moved {spread:F3}x over a fourfold slot change, which is "
+            + "an element rather than a hole");
+    }
+
+    /// <summary>Leaving the drive on costs the focus, and which phase it is at matters.</summary>
+    /// <remarks>
+    /// <para>
+    /// A real C-trap switches its RF off to eject - the paper ramps it down over 100 to
+    /// 200 ns before pulsing. With it left running the packet still converges, and it
+    /// converges <b>an order of magnitude less well</b>: 45.9x quiet against 2.6 to 4.1x at
+    /// four phases spread across one cycle. So what leaving the drive on costs is the focus
+    /// itself, not principally where the focus is.
+    /// </para>
+    /// <para>
+    /// <b>An earlier version of this test concluded the opposite about the mechanism, and
+    /// the corrected geometry withdraws it.</b> On the beaded rods the drive moved the
+    /// focal distance 3.14x while a whole cycle of phase moved it 1.10x, and the reading
+    /// was that the packet is steered by the cycle average - the pseudopotential - with the
+    /// phase washing out over the seventeen RF periods it crosses. On swept hyperbolic rods
+    /// the two are the same size: the drive shifts the focus 1.26x and the phase spreads it
+    /// 1.25x. An effect equal to the effect of the drive itself is not a residue of one
+    /// partial cycle, so the instantaneous field is doing as much as its average and
+    /// <b>no single number describes a driven ejection</b>.
+    /// </para>
+    /// <para>
+    /// That is the assertion here, and it is the negation of what was asserted before. What
+    /// survives from the old test is its reason for sweeping at all: one ejection with the
+    /// drive running is a single sample of something periodic, and this project has already
+    /// recorded once what comes of quoting one - an isolation-efficiency curve whose shape
+    /// reversed at an amplitude nobody had swept. Had this been quoted at phase zero alone
+    /// it would have read as a modest 1.26x shift with the mechanism unchanged.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void LeavingTheDriveOnCostsTheFocusAndThePhaseMattersAsMuch()
     {
         double[] phases = [0.0, 0.25, 0.5, 0.75];
 
@@ -596,34 +686,34 @@ public sealed class CTrapTests(ITestOutputHelper output)
             + $"moves it {phaseSpread:F2}x - "
             + $"effects of {driveShift - 1.0:F2} against {phaseSpread - 1.0:F2}");
 
-        // The drive matters a great deal to WHERE the packet focuses.
-        Assert.True(
-            driveShift > 2.0,
-            $"the quiet ejection focused at {quiet.Travelled * 1e3:F2} mm and the driven "
-            + $"one at {travelled.Max() * 1e3:F2} mm, only {driveShift:F2}x apart - so "
-            + "leaving the drive running would not change where an analyser goes");
+        output.WriteLine(
+            $"the drive costs {quiet.Convergence / convergence.Max():F1}x of convergence at "
+            + $"its best phase and {quiet.Convergence / convergence.Min():F1}x at its worst");
 
-        // And it does it through the cycle average, not through the phase. This is the
-        // discriminating half: a kick would put the phase spread at the same scale as the
-        // drive shift, and instead it is an order smaller.
-        // Compared as EXCESS OVER ONE, not as the ratios themselves. A ratio that says
-        // "no variation" is 1 rather than 0, so the size of an effect measured as a ratio
-        // is its distance from 1 - and a first version of this assertion compared 1.10
-        // against 3.14/4, which no phase spread could ever satisfy however flat it was.
+        // What the drive costs is the focus. Every phase, so this is not a phase that
+        // happens to be unlucky.
         Assert.True(
-            phaseSpread - 1.0 < (driveShift - 1.0) / 4.0,
-            $"the focal distance moved {phaseSpread:F2}x across one RF cycle against the "
-            + $"drive's own {driveShift:F2}x. Those are comparable, so the packet is being "
-            + "kicked by the instantaneous field rather than steered by its cycle average, "
-            + "and no single number describes a driven ejection");
-
-        // Every phase is worse than switching off, which is the reason to switch off
-        // rather than to pick a phase.
-        Assert.True(
-            convergence.Max() < quiet.Convergence,
+            convergence.Max() < quiet.Convergence / 5.0,
             $"the best driven ejection converged {convergence.Max():F1}x against "
             + $"{quiet.Convergence:F1}x with the drive off, so there is a phase at which "
-            + "leaving the drive running costs nothing");
+            + "leaving the drive running costs little");
+
+        // And the phase is not a detail. Compared as EXCESS OVER ONE, not as the ratios
+        // themselves: a ratio that says "no variation" is 1 rather than 0, so the size of
+        // an effect measured as a ratio is its distance from 1.
+        Assert.True(
+            phaseSpread - 1.0 > (driveShift - 1.0) / 4.0,
+            $"the focal distance moved {phaseSpread:F2}x across one RF cycle against the "
+            + $"drive's own {driveShift:F2}x. A phase spread that small would mean the "
+            + "cycle average is what steers the packet, which is what the beaded geometry "
+            + "reported and what this geometry does not");
+
+        // The drive does move the focus as well, so the two effects being comparable is
+        // not both of them being nothing.
+        Assert.True(
+            driveShift > 1.1,
+            $"the quiet ejection focused at {quiet.Travelled * 1e3:F2} mm and the driven "
+            + $"one at {travelled.Max() * 1e3:F2} mm, {driveShift:F2}x apart");
     }
 
     /// <summary>What the C-trap hands an orbital analyser, in the analyser's own currency.</summary>

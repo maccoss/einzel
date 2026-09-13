@@ -1465,103 +1465,125 @@ ends, having struck nothing and passed no detector — and the model puts its
 detector *outside* the trap so the three outcomes stay distinct: **struck, escaped,
 held**.
 
+### The electrodes are hyperboloids, and for most of this project's life they were not
+
+A quadrupole trap's electrodes are the equipotentials of the field it is meant to make:
+the ring is one sheet of a hyperboloid, `r = r0 sqrt(1 + (z/z0)^2)`, and each endcap is one
+sheet of a two-sheeted one, `z = z0 sqrt(1 + (r/r0)^2)`. This template declared **three
+flat annuli** instead, because when it was written the cross-section vocabulary had no
+curve — rectangles and discs, and a hyperbola is neither.
+
+A flat annulus at the nominal radius lies *inside* the hyperbola sharing its vertex
+everywhere except at that vertex: at z = 2.23 mm the ring hyperbola would be at r = 5.09 mm
+and the annulus sat at 4.00. Metal closer in is a stronger field at the center than `r0`
+implies, a smaller effective radius, a larger `q` per volt, and ejection at a **lower**
+amplitude. That was worth **9.4 percent**, measured three independent ways and carried as a
+correction on every number this template ever published.
+
+The `polygon` electrode landed for the linear ion trap, which needs a hyperbolic rod for the
+same reason. The three profiles are traced with it now, and the correction is not smaller but
+**gone**.
+
 ### Measured
 
 | | |
 | --- | --- |
 | Basis solves for three electrodes | **1** |
-| Ejection boundary, 0.3 mm launch, 200 cycles, 128 × 64 | **672–674 V**, q_z = 0.8218–0.8236 |
-| The same at 256 × 128 | **672–674 V** — mesh-converged |
-| The same at 800 cycles | **674 V** — hold-converged |
-| Tabulated Mathieu boundary, a = 0 line | q_z = 0.90804 |
-| Where the ion is lost | an **endcap**, at exactly ±z0 |
-| Effective r0 from the solved field | **3.8195 mm** against 4.0000 declared |
-| Boundary a scale factor alone would predict | **677.5 V**, q_z = 0.828 |
+| Effective r0 from the solved field | **3.9983 mm** against 4.0000 declared |
+| The same, refined 8x | **3.9983 mm** — a floor, not a sequence still falling |
+| Curvature ratio `dEz/dz / dEr/dr` at 0.4 mm | **−2.0006** (flat annuli: −1.9867) |
+| Where it is lost | an **endcap**, on the hyperboloid rather than at z0 |
+| β = 1 from the calibration | **742.5 V**, q_nominal **0.90737** |
+| Tabulated Mathieu boundary, a = 0 line | q_z = **0.90804** |
+| Ejection edge at a 0.05 mm launch | **740.0–740.6 V**, 0.9966 of β = 1 |
 
-**Most of the 9.4 per cent shortfall is one number, and the rest is not.** These
-electrodes are flat annuli, and a flat annulus at the nominal radius lies *inside*
-the hyperbola sharing its vertex everywhere except at that vertex — at z = 2.23 mm
-the ring hyperbola would be at r = 5.09 mm and this ring is at 4.00; at r = 3.4 mm
-the endcap hyperbola would be at z = 3.71 mm and this endcap is at 2.83. Metal
-closer in means a stronger field at the centre than `r0` implies, which is a smaller
-effective radius, which is a larger `q` per volt, which is ejection at a **lower**
-amplitude. That accounts for the sign and for 0.828 of the 0.908.
+**0.07 percent from the tabulated boundary**, where the flat trap was 9 percent below it.
 
-### The ejection edge is amplitude-dependent, and it is not the linear boundary
+**What is left is an octupole, and its order was predicted rather than fitted.** The
+hyperboloids are truncated — they have to be, at the gap and at the outer radius — so the
+field is not the ideal one however exactly the faces are cut. The trap is symmetric about
+its center plane and about its axis, so every odd multipole vanishes and four is the first
+available; an octupole makes the curvature ratio depart from −2 as the *square* of the
+sampling radius:
 
-| launch offset | hold-converged edge | q_z |
-| --- | --- | --- |
-| 0.1 mm | 695–700 V | 0.849–0.856 |
-| 0.3 mm | 665–670 V | 0.813–0.819 |
-| 0.6 mm | ~520 V | 0.635 |
-
-The Mathieu equation is linear, so a trajectory scaled by a constant is another
-trajectory and **an ideal trap's stability boundary cannot depend on how far off
-centre the ion started**. This edge depends on it strongly, and it is **hold-converged**
-— 800 and 2000 RF cycles give the same answer at both offsets, so this is not the
-observation window.
-
-**The reason is structural and it is not fixable by measuring more carefully.** A
-boundary found by asking *did the ion reach an electrode* requires the ion to travel
-from wherever it started all the way to z0, through the whole anharmonic region. So it
-is never a small-amplitude measurement, whatever it was launched at — the launch offset
-sets how much of the journey is spent in the anharmonic region, not whether any of it
-is. A small launch survives past the linear boundary because the anharmonic frequency
-shift halts the growth before z0; a larger one is lost below it.
-
-### The linear boundary, measured without the ion going anywhere
-
-β needs no journey. It is read off the spectrum of an ion that stays small, so the
-linear boundary can be located by calibrating β(V) against Mathieu across a range where
-the ion *is* small, and asking where the calibration puts β = 1.
-
-**β is amplitude-independent where it should be**, which is the premise:
-
-| amplitude | β at 0.05 mm | β at 0.20 mm | spread |
+| sampling radius | departure from −2 | grew | an octupole predicts |
 | --- | --- | --- | --- |
-| 300 V | 0.29554 | 0.29495 | 2.0e-3 |
-| 450 V | 0.46746 | 0.46540 | 4.4e-3 |
-| 600 V | 0.69923 | 0.68749 | 1.7e-2 |
+| 0.4 mm | 0.0006 | | |
+| 0.6 mm | 0.0014 | 2.241x | 2.250x |
+| 0.8 mm | 0.0025 | 1.806x | 1.778x |
 
-A fourfold change in launch amplitude moves β by two parts in a thousand at low q, and
-measurably more at high q — which is the anharmonicity appearing in the *frequency*
-rather than in a loss, and is the control that says the shift is real and small.
+**And the 0.04 percent that is left in the effective radius is the truncation, not the
+mesh** — which is the opposite of what I expected and wrote the test asserting. Refining
+eight times over takes the shortfall from 0.0506 to 0.0420 percent and stops (1.18x, then
+1.05x, then 0.97x, the last step inside its own noise). A discretization falls at second
+order; a floor is geometry. A real quadrupole trap has this too.
 
-Fitting one number — the scale `s` with `β_measured(V) = β_Mathieu(q_nominal(V)·s)` —
-across four amplitudes:
+### The secular frequency, and what the correction was hiding
 
-| | measured | predicted | ratio |
-| --- | --- | --- | --- |
-| 300 V | 0.29524 | 0.29515 | 1.0003 |
-| 390 V | 0.39470 | 0.39442 | 1.0007 |
-| 480 V | 0.50618 | 0.50590 | 1.0006 |
-| 570 V | 0.64114 | 0.64191 | 0.9988 |
+Calibrating β(V) against Mathieu across four amplitudes where the ion stays small:
 
-**Worst residual 1.2e-3.** The trap is one ideal quadrupole across the whole range, of
-effective radius **3.8137 mm** — against **3.8195 mm** from the field curvature with no
-ion involved at all, and in the direction that measurement's own δ-dependence predicts
-(3.8195 at a 0.4 mm sampling radius, 3.8286 at 0.6, 3.8438 at 0.8, so falling as δ→0).
-**Two routes sharing nothing but the solved field, agreeing to 0.15 per cent.**
+| | q_nominal | measured β | predicted β | ratio |
+| --- | --- | --- | --- | --- |
+| 300 V | 0.3666 | 0.26678 | 0.26680 | 1.0000 |
+| 390 V | 0.4766 | 0.35451 | 0.35449 | 1.0001 |
+| 480 V | 0.5866 | 0.45015 | 0.45018 | 0.9999 |
+| 570 V | 0.6965 | 0.55987 | 0.55984 | 1.0001 |
 
-That puts β = 1 — the published boundary q = 0.90804 — at **675.5 V, q_nominal =
-0.82543**. And the two ejection edges **bracket it**: 665–670 V at 0.3 mm and
-695–700 V at 0.1 mm.
+**Worst residual 7.8e-5**, against 1.2e-3 on flat annuli. The fitted scale is **1.00074**,
+an effective radius of **3.9985 mm** — against **3.9983 mm** from the field's curvature with
+no ion involved at all. Two routes sharing nothing but the solved field, agreeing to
+**five parts in a hundred thousand**.
 
-**A caveat about the tool.** The endpoint is anchored to the *tabulated* 0.90804 rather
-than to the continued fraction used everywhere else here, deliberately: that expansion
-has a near-singularity exactly at β = 1, where its n = 1 denominator `(β−2)²` goes to
-one, and it puts the crossing at q = 0.9117 — four parts in a thousand off. It is
+**That agreement is worth more now than it was**, and the reason is uncomfortable. While the
+scale factor was 1.0968, most of what the agreement demonstrated was that one number had
+been transcribed into two places. At 1.0007 the correction has nothing left to do, and what
+is being compared is Mathieu's closed form against a flown ion.
+
+A test carrying the old effective radius as a **constant** is how this was found: the
+hyperboloids moved the geometry and `3.8195` stayed in the source, over-predicting every
+secular line by ten percent. A constant describing a geometry stops being true when the
+geometry is rebuilt, and nothing tells you. It is measured from the field now.
+
+**A caveat about the tool, unchanged.** The endpoint is anchored to the *tabulated* 0.90804
+rather than to the continued fraction used everywhere else here, deliberately: that
+expansion has a near-singularity exactly at β = 1, where its n = 1 denominator `(β−2)²` goes
+to one, and it puts the crossing at q = 0.9117 — four parts in a thousand off. It is
 accurate where it is used, at β from 0.3 to 0.8, and not at the endpoint.
 
-**So the 9.4 per cent shortfall from the tabulated boundary is one geometric factor,
-now measured three independent ways** — the field's curvature at the centre, the secular
-frequency of a flown ion, and the ejection edges that straddle it.
+### The ejection edge still depends on the launch, and now converges on the boundary
 
-### A resonance band inside the stable region, found by the confirmation walk
+| launch offset | held to | lost by | q_nominal | of β = 1 |
+| --- | --- | --- | --- | --- |
+| 0.05 mm | 740.0 V | 740.6 V | 0.90433 | **0.9966** |
+| 0.10 mm | 738.3 V | 738.9 V | 0.90218 | 0.9943 |
+| 0.30 mm | 724.2 V | 724.8 V | 0.88500 | 0.9753 |
+| 0.60 mm | 684.4 V | 685.0 V | 0.83631 | 0.9217 |
 
-At a 0.3 mm launch there is a narrow band of loss at **605–614 V** (q_z =
-0.739–0.750), sixty volts *below* the main edge and well inside what the Mathieu
-chart calls stable. Every control says it is real:
+The Mathieu equation is linear, so a trajectory scaled by a constant is another trajectory
+and **an ideal trap's stability boundary cannot depend on how far off center the ion
+started**. This one still does, and the reason is structural rather than a defect of the
+geometry: a boundary found by asking *did the ion reach an electrode* requires the ion to
+travel all the way to the endcap, through whatever anharmonic region there is. It is never a
+small-amplitude measurement, whatever it was launched at.
+
+**What changed is where it goes as the launch shrinks.** The flat trap's small-launch edge
+sat at q_z = 0.85 against a β-derived 0.8254 — on the *wrong side*, above the linear boundary,
+because the anharmonic frequency shift halted the growth before z0. Here the edge approaches
+β = 1 **from below** and reaches 0.9966 of it at a 0.05 mm launch, which is what an almost
+ideal trap should do.
+
+**And β stops depending on the launch amplitude near the center.** On flat annuli a 0.20 mm
+launch already shifted β measurably against 0.05 mm, and the old test read that shift as the
+anharmonicity arriving; those two now agree to below a part in a thousand at every amplitude
+tried. The control had to move out to **1.6 mm**, where the truncation of the hyperboloids
+does bite — 6.6e-3 at 300 V and 9.4e-1 at 600 V. An old control that no longer discriminates
+is a control that was measuring a deliberate imperfection.
+
+### The resonance band went with the flat electrodes
+
+At a 0.3 mm launch the flat-annulus trap lost its ion in a narrow band at **605–614 V**
+(q_z = 0.739–0.750), sixty volts *below* the main edge and well inside what the Mathieu chart
+calls stable. Every control said it was real:
 
 | control | result |
 | --- | --- |
@@ -1570,49 +1592,47 @@ chart calls stable. Every control says it is real:
 | 60 cycles | **gone** — the growth is slow and secular, not exponential |
 | 0.1 mm launch | **gone** — so it is driven by the field's higher multipoles |
 
-That combination is the signature of a **nonlinear resonance**: a linear instability
-would be exponential (visible at 60 cycles) and amplitude-independent (visible at
-0.1 mm), and this is neither. **Which** resonance is not established — β_z there is
-0.615, which lands on no `n_z β_z + n_r β_r = 2` for any multipole order up to six —
-and settling that needs a frequency analysis of the secular motion rather than a
-loss test. Recorded as measured rather than explained.
+A nonlinear resonance is *defined* by a frequency condition, `n_z β_z + n_r β_r = 2` for a
+multipole of order `n_z + n_r`, so naming one means measuring the frequencies rather than the
+losses. Measured in the *solved* geometry — not the nominal one, where β at q_z = 0.745 is
+0.6156 and satisfies nothing — the band center gave β_z = 0.6769 and β_r = 0.3225, so
+**2β_z + 2β_r = 1.9989**: order four, an **octupole**, met to 0.055 percent against 0.22 and
+0.10 at the amplitudes either side. Order four was predicted in advance from the trap's own
+symmetry.
 
-It is worth saying how it was found: **the confirmation walk in `einzel boundary`
-turned it up on its first real use**, from a search whose bisection had converged
-cleanly onto the main edge sixty volts above. The bisection itself reported nothing
+**With hyperboloids the band is gone, and that is a stronger confirmation than the fit was.**
+An octupole is what a flat annulus buys, so an account blaming the octupole predicts that
+giving the trap its real surfaces removes the band. Scanned at four volts from 560 to 716 V —
+forty amplitudes below the 724 V edge — **every one holds its ion**. And the frequency
+condition goes with it: at the old band center the nearest even condition now misses 2 by
+**0.2241**, where it was met to 0.0011. Two independent signatures, disappearing together.
+
+It is worth saying how the band was found in the first place: **the confirmation walk in
+`einzel boundary` turned it up on its first real use**, from a search whose bisection had
+converged cleanly onto the main edge sixty volts above. The bisection itself reported nothing
 unusual, and could not have — see `optimisation.md`.
-
-The effective radius is read off the field itself, from `dEz/dz = 2V/r0²`, and the
-same samples give the anharmonicity for free. `dEz/dz ÷ dEr/dr` is exactly −2
-wherever the quadratic term dominates — that is Laplace's equation in cylindrical
-coordinates — and here it drifts from −1.9867 to −1.9461 as the sampling radius
-doubles from 0.4 to 0.8 mm. **A hyperbolic trap would hold −2 everywhere by
-construction**, so a departure growing with radius is the higher multipole flat
-electrodes buy. That growth is what the test asserts, rather than a blanket
-tolerance: a departure that did *not* grow with radius would be discretisation or a
-bug.
 
 ### The finding worth keeping: a boundary needs its observation window
 
-At **60 RF cycles** the ejection boundary is not a boundary. It is a ragged strip:
+Measured on the flat-annulus geometry, and general. At **60 RF cycles** the ejection boundary
+is not a boundary. It is a ragged strip:
 
 ```
    V   672 674 676 678 680 682 684 686 688 690 692
 held     1   1   0   0   1   0   1   0   1   0   0
 ```
 
-At **200 cycles** the same scan is a clean step between 672 and 674 with no
-survivors above it. Nothing about the design changed. The growth rate goes to zero
-at the stability edge, so whether a marginally unstable ion reaches an electrode
-inside the hold is a property of *the hold*, not of the trap.
+At **200 cycles** the same scan is a clean step with no survivors above it. Nothing about the
+design changed. The growth rate goes to zero at the stability edge, so whether a marginally
+unstable ion reaches an electrode inside the hold is a property of *the hold*, not of the
+trap.
 
 Two consequences. The template holds for 200 cycles by default and says why. And
-**`einzel boundary` now walks outward from its converged bracket** looking for the
-predicate flipping back — because bisection on the 60-cycle scan lands anywhere in
-that strip depending on the path it took, and every step of that path is consistent
-with a clean edge. Two runs over slightly different brackets gave 680.7 V and
-694.4 V for the same geometry, which is how the fraying was noticed at all. See
-`optimisation.md`.
+**`einzel boundary` now walks outward from its converged bracket** looking for the predicate
+flipping back — because bisection on the 60-cycle scan lands anywhere in that strip depending
+on the path it took, and every step of that path is consistent with a clean edge. Two runs
+over slightly different brackets gave 680.7 V and 694.4 V for the same geometry, which is how
+the fraying was noticed at all. See `optimisation.md`.
 
 ### What it cost below the library: one line, and it was a real gap
 
@@ -1754,65 +1774,71 @@ revolution.** A translational solve assumes the geometry repeats along an axis; 
 axisymmetric one assumes it repeats all the way round. A curved axis does neither, so this
 needs a genuine volume solve — the first template to.
 
-**The rods are chains of overlapping spheres**, because a `cylinder` in this format is
-axis-aligned and a bent rod is not. That needed **no new primitive**: `repeat` binds an
-index and `cosPi`/`sinPi` place a bead anywhere. Overlapping copies at one potential are
-deliberate rather than tolerated — the overlap check refuses only conductors that
-*disagree* about what they hold.
+**The rods are hyperbolic profiles swept round the arc**, which is what the `revolve`
+primitive was added for. `prism` is to a line what `revolve` is to an arc: the same closed
+outline, turned about an axis instead of extruded along one, its vertices given as a
+distance from that axis and a position along it. The hyperbolic profile is the linear ion
+trap's own — `r0 sqrt(1 + (v/r0)^2)` — so a straight quadrupole rod and a bent one are the
+same outline used two ways. See [Model format](model-format.md).
 
-| | |
-| --- | --- |
-| 49 electrode declarations | **1 basis channel** |
-| Cycles, convergence factor | 19, 0.3316 |
-| Solve time, 65 x 65 x 33 | 9.1 s |
-| Worst bead spacing | 1.005 rod radii |
-| Out-of-plane excursion, in-plane launch | **0.000 nm** |
+**They were chains of overlapping spheres, and the picture is what caught it.** A `cylinder`
+in this format is axis-aligned and a bent rod is not, so the first version beaded each rod
+from thirteen spheres, which needed no new primitive at all: `repeat` binds an index and
+`cosPi`/`sinPi` place one anywhere. Nobody looked at the result until the viewport drew it,
+and it drew a string of beads — spheres of 3.439 mm radius on a 3.459 mm pitch, scalloping
+each rod by **13.6 percent of its own radius**. The template's own description of
+`beadCount` stated the criterion the shipped value failed: the spacing "wants to be
+comfortably under the rod radius", and its ratio was 1.006.
+
+| | beaded | swept |
+| --- | --- | --- |
+| electrode declarations | 49 | **5** |
+| basis channels | 1 | **1** |
+| cycles, convergence factor | 19, 0.3316 | **18, 0.3038** |
+| solve, 65 x 65 x 33 | 9.1 s | **7.4 s** |
+| triangles in the viewport | 795,564 | **21,396** |
+| gap from the trap axis to metal, round the arc | ripples 13.6% | **flat to 1.2e-13 %** |
+| face shape | round | **hyperbolic**, which is what the paper says |
 
 Four bent rods reduce to one solve for the same reason four straight ones do: the in-plane
 pair and the out-of-plane pair are exact negatives. Bending changes nothing about that, and
-it matters more here than in a cross-section — a second channel in a volume solve is
-another pass over the whole grid.
+it matters more here than in a cross-section — a second channel in a volume solve is another
+pass over the whole grid.
 
 **The drive is what carries the ion round**, checked against the same model with the
 amplitude at zero:
 
 | | outcome | closest approach, late in flight |
 | --- | --- | --- |
-| drive on | arrives at the arc's end | **8.4 um**, 0.5% of its own worst |
+| drive on | arrives at the arc's end, 53.5 us | **1.3 um**, 0.7% of its own worst |
 | drive off | strikes a rod at 25.9 us | never nearer than **782 um**, 26% of its worst |
 
 Bounded against unbounded, which is what confinement means. Three earlier versions of that
 assertion compared the wrong pair of quantities and are written up in `docs/lessons.md`.
 
-### The slot, and what the beads eat of it
+### The slot runs the length of the arc
 
-Ejection needs a hole in the inner electrode, so it is declared as two segments with an
-angular gap. **The gap is not the opening.** The bounding bead at each end is a sphere of
-the rod radius sitting on the inner arc, and it reaches `asin(rodRadius / innerArcRadius)`
-past its own centre — 14.7 degrees on each side for the shipped numbers, so a declared
-27-degree gap opens **minus two**.
+Ejection needs a hole in the electrode nearest the center of curvature — Makarov 2006 puts
+it in the **pull-out** electrode and has ions leave orthogonally, toward that center — and
+the first version of this template modeled it as an **angular gap**, the inner rod stopping
+and starting again. That cannot be what the device does. Collisional cooling forms a thin
+thread along the whole curved axis, and the focusing this trap exists for is that every ion
+is pushed out along its *own* radius; an angular hole lets out an angular slice. The slot is
+a **slit along the arc**, so the inner electrode is two half-rods either side of it, which is
+exactly how `linear-ion-trap-3d` writes its own slotted rod.
 
-Found by ejecting into it: before the slot existed the ion struck metal after travelling
-exactly the inscribed radius, and with a 27-degree gap it struck the bounding bead.
+The beaded version's gap had a second problem worth recording because it is a class: the
+bounding bead at each end reached `asin(rodRadius / innerArcRadius)` past its own center —
+14.7 degrees a side — so a declared 27-degree gap opened **minus two**. `slotHalfTurns` was
+renamed to mean the opening between metal surfaces rather than the span between bead
+centers, and that needed `asinPi` in the expression grammar: placing something by angle when
+what is known is a *length ratio* needs an inverse sine, in half turns so the result feeds
+straight back into `cosPi`/`sinPi`. A parameter that means something other than what it says
+is worse than one that is missing.
 
-**`slotHalfTurns` is now the opening**, measured between the two metal surfaces, and the
-bead reach is a derived parameter the segments are placed by. A parameter that means
-something other than what it says is worse than one that is missing — the arithmetic is
-right either way, and only one of the two spellings is right when somebody reads it.
-
-**That needed `asinPi` in the expression grammar**, which is the same shape as the Kingdon
-trap needing `log` and the multipole guide finding no trigonometry at all. Placing
-something by angle when what is known is a *length ratio* needs an inverse sine, and in
-half turns so that the result feeds straight back into `cosPi`/`sinPi` — there is no `pi`
-in the grammar, on purpose.
-
-The slot also had to move to the **middle** of the arc. At a quarter of the way along, the
-metal would have to stop `slotHalfTurns/2 + beadHalfTurns` short of the slot centre on the
-entrance side, which is a negative span.
-
-**And it has to be a cooled ion.** Launched at 439 m/s the packet drifts 12 degrees along
-the arc while it is being pushed out, and clips the far edge of the opening. A real C-trap
-cools its ions in gas before ejecting them, and modelling that is what makes the ejection
+**And it has to be a cooled ion.** Launched at 439 m/s the packet drifts 12 degrees along the
+arc while it is being pushed out and clips the far edge. A real C-trap cools its ions in
+nitrogen at about 1 mTorr before ejecting them, and modeling that is what makes the ejection
 work. `launchVolts` is that temperature, written the way a source declares one.
 
 ### The push has to be against earth
@@ -1824,73 +1850,85 @@ climbs the same V back out — it arrives where the analyser would be with nothi
 turns round. Pushing against earth leaves that space field-free, and a field-free space is
 where a converging packet does its converging.
 
-This was not found by a failing test. It was found by asking where the energy goes, after
-the first ejection scan produced ions at 173, 346, 361 and 856 mm from a 20 mm trap.
+This was not found by a failing test. It was found by asking where the energy goes, after the
+first ejection scan produced ions at 173, 346, 361 and 856 mm from a 20 mm trap.
 
-### The curvature focuses the packet, and not where the geometry says
+**It is also a simplification of the instrument, and the difference is worth stating.** The
+paper pulses 1200 V on the push-out electrode, 1000 V on the pull-out and 1100 V on the upper
+and lower — a common **1100 V float**, which is the acceleration toward the analyzer, with
+±100 V across the trap to drive ions to the slot. This template has the differential and not
+the float, because the float needs a downstream reference the document cannot declare.
 
-This is what the curvature is *for*, and the template claimed it in prose from the day it
-was written with nothing measuring it. Every ion is pushed out along its own radius, so
-their velocities all point inward and the packet converges as it flies. **A straight trap
-pushes every ion in the same direction**, so whatever length of trap the ions occupied they
-still occupy at the analyser.
+### The curvature focuses the packet, at the center of curvature
+
+This is what the curvature is *for*, and the template claimed it in prose from the day it was
+written with nothing measuring it. Every ion is pushed out along its own radius, so their
+velocities all point inward and the packet converges as it flies. **A straight trap pushes
+every ion in the same direction**, so whatever length of trap the ions occupied they still
+occupy at the analyzer.
 
 Five ions spread over ±7.2 degrees of arc, cooled, ejected at 60 V with the drive off:
 
-| bend radius | launch extent | waist | convergence | focus at |
-| --- | --- | --- | --- | --- |
-| 15 mm | 1.331 mm | 0.0547 mm | **24.3x** | 25.94 mm = **1.73 R** |
-| 20 mm | 1.774 mm | 0.0852 mm | **20.8x** | 38.38 mm = **1.92 R** |
-| *a straight trap* | — | — | *exactly 1.0x* | *never* |
+| bend radius | launch extent | waist | convergence | focus at | from the arc center |
+| --- | --- | --- | --- | --- | --- |
+| 15 mm | 1.331 mm | 0.0267 mm | **49.9x** | 15.159 mm = **1.011 R** | 0.345 mm = 0.023 R |
+| 20 mm | 1.774 mm | 0.0387 mm | **45.9x** | 20.222 mm = **1.011 R** | 0.474 mm = 0.024 R |
+| *a straight trap* | — | — | *exactly 1.0x* | *never* | — |
 
 The straight-trap column needs no run: a parallel ejection is a rigid translation and a
 translation preserves every distance, so the comparison is arithmetic rather than a second
 model.
 
-**The focus is not at the arc centre**, which is the part a design has to know. Velocities
-aimed along radii meet at the centre, one bend radius away; measured, the packet crosses
-the centre *still converging* and reaches its waist at 1.73 and 1.92 bend radii. The slot
-is a lens as well as a hole — the ion is accelerated up to it and drifts field-free after
-it, which is an aperture lens by construction.
+**The waist is at the center of curvature, and an earlier account of this is withdrawn.**
+Velocities aimed along radii meet one bend radius away, and that is where they are found — to
+1.1 percent, at both bend radii. The beaded geometry put the waist at **1.73 and 1.92 bend
+radii** and explained the excess as an aperture lens at the slot: accelerated up to it,
+field-free after it. A thin-lens fit to the shorter bend then implied `f_slot = −35.5 mm` and
+mispredicted the longer by 17 percent, which was recorded at the time as a formula carrying
+an error dressed as a model. It was the geometry.
 
-**What is deliberately not claimed is a strength for that lens.** A thin-lens fit to the
-shorter bend — one fixed slot lens in series with a curvature whose focal length is the
-bend radius — implies `f_slot = −35.5 mm` and predicts **46.0 mm** for the longer bend
-against a measured **38.4**. So the two are not one fixed lens and one variable one, and
-the reason is visible in the geometry: the slot is declared as an *angle*, so its own
-opening scales with the bend as well. The prediction is recorded because it failed;
-carrying it as a formula would have been carrying a 17% error dressed as a model.
+**The slot is a hole and not an element, which is measured rather than argued.** A lens has a
+strength, and an aperture lens's strength depends on its opening:
 
-### Leaving the drive on refocuses the ejection, through its cycle average
+| slot half-width | waist | focus at | convergence |
+| --- | --- | --- | --- |
+| 0.25 mm | 0.0880 mm | 1.027 R | 20.2x |
+| 0.50 mm | 0.0387 mm | 1.011 R | 45.9x |
+| 1.00 mm | 0.0330 mm | 0.980 R | 53.7x |
 
-A real C-trap switches its RF off to eject. With it left running the packet still
-converges, but it converges **three times sooner and two and a half times less well**:
+A fourfold change of opening moves the focal distance **1.048x**. So where the analyzer goes
+is set by the bend alone. What the slot does set is how *well* the packet converges — 2.7x
+across that range — which is its fringe field aberrating the packet rather than focusing it,
+and it is a knob a designer would want to know about.
+
+### Leaving the drive on costs the focus, and the phase matters as much
+
+A real C-trap switches its RF off to eject: the paper ramps it down over 100 to 200 ns before
+pulsing. With it left running the packet still converges, and it converges **an order of
+magnitude less well**:
 
 | | convergence | focus at |
 | --- | --- | --- |
-| drive off | **20.8x** | 38.37 mm |
-| drive on, phase 0.00 | 8.3x | 11.57 mm |
-| drive on, phase 0.25 | 6.1x | 12.21 mm |
-| drive on, phase 0.50 | 8.8x | 11.59 mm |
-| drive on, phase 0.75 | 8.7x | 11.07 mm |
+| drive off | **45.9x** | 20.22 mm |
+| drive on, phase 0.00 | 2.6x | 16.01 mm |
+| drive on, phase 0.25 | 4.1x | 12.79 mm |
+| drive on, phase 0.50 | 3.3x | 12.88 mm |
+| drive on, phase 0.75 | 2.8x | 13.60 mm |
 
-So an analyser placed where the quiet ejection focuses would be in entirely the wrong
-place. Whether the drive is on at the instant of ejection is a decision about where the
-analyser goes, not a detail of the hold.
+**An earlier conclusion about the mechanism is withdrawn with the geometry that produced
+it.** On the beaded rods the drive moved the focal distance 3.14x while a whole cycle of
+phase moved it 1.10x, and the reading was that the packet is steered by the cycle average —
+the pseudopotential — with the phase washing out over the seventeen RF periods the ion
+crosses. On swept hyperbolic rods the two are the same size: the drive shifts the focus
+**1.26x** and the phase spreads it **1.25x**. An effect equal to the effect of the drive
+itself is not the residue of one partial cycle, so the instantaneous field is doing as much
+as its average and **no single number describes a driven ejection**.
 
-**The phase sweep is the half that says what mechanism it is, and it refuted the guess that
-prompted it.** An ejection into a field reversing at three megahertz looks like it should
-depend on where in the cycle the push arrived — every ion in the packet sees the same
-phase, so a kick would aim the whole packet somewhere different. It does not: over a whole
-cycle the focal distance moves **1.10x**, against the **3.14x** the drive itself causes. So
-what acts on the packet is the **cycle-averaged** force — the pseudopotential — and not the
-instantaneous field. The ion crosses about seventeen RF periods on its way to the waist,
-which is why the phase it started at washes out, and the tenth that remains is the one
-partial cycle at the beginning.
-
-Sweeping it at all is the point. One ejection with the drive running is a single sample of
-something periodic, and this project has already recorded what comes of quoting one: an
-isolation-efficiency curve whose shape reversed at an amplitude nobody had swept.
+Sweeping it at all is what makes either reading possible. One ejection with the drive running
+is a single sample of something periodic, and this project has already recorded what comes of
+quoting one: an isolation-efficiency curve whose shape reversed at an amplitude nobody had
+swept. Quoted at phase zero alone, this would have read as a modest 1.26x shift with the
+mechanism unchanged.
 
 ### C-trap to orbital analyser: the handover, since the composition is not possible
 
@@ -1913,20 +1951,21 @@ parameter.
 | | arrival spread | of a period | coherence |
 | --- | --- | --- | --- |
 | analyser axial period | 3.1983 us | — | — |
-| ejected, drive off | **60.02 ns** | 1.88% | **0.9990** |
-| ejected, drive on | 170.93 ns | 5.34% | 0.9893 |
+| ejected, drive off | **38.90 ns** | 1.22% | **0.9996** |
+| ejected, drive on | 339.97 ns | 10.63% | 0.9628 |
 
 Coherence is the modulus of the mean of `exp(i omega t)` over the packet — the amplitude
 of the image current the ions actually induce, 1 for a packet that arrived together and 0
 for one smeared over a whole cycle. **The C-trap can inject this analyser**, with room to
-spare, and leaving the drive on costs a factor of 2.8 in spread and almost nothing in
-coherence.
+spare, and leaving the drive on costs a factor of 8.7 in spread — enough to take the
+coherence from 0.9996 to 0.9628, which is a tenth of the image current given away for
+nothing, since the instrument quenches the RF anyway.
 
 **What this does not show is that the curvature delivers the coherence.** Every ion sits
 the same distance from the rods whether the trap is bent or straight, so they fall through
-the same potential either way and a straight trap would arrive just as together. The 60 ns
+the same potential either way and a straight trap would arrive just as together. The 39 ns
 is the *slot's* doing — ions nearer its edge see a different fringe than ions at its
-centre. The curvature buys the other thing, measured above: a packet 20.8 times narrower in
+center. The curvature buys the other thing, measured above: a packet 45.9 times narrower in
 space, which is about passing an entrance aperture.
 
 That split is worth stating because it says where design effort goes. In this field the

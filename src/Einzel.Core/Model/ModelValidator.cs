@@ -2238,15 +2238,147 @@ public static class ModelValidator
                 };
             }
 
+            case "revolve":
+            {
+                if (electrode.TiltHalfTurns is not null || electrode.TiltAxis is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/{(electrode.TiltHalfTurns is not null ? "tiltHalfTurns" : "tiltAxis")}",
+                        Constraint = $"'{name}' is a revolve and only a box may be tilted",
+                        Observed = new ObservedValue(0.0, "revolve"),
+                        Suggestion =
+                            "a revolve is oriented by 'axis' and swept by 'fromHalfTurns' and 'toHalfTurns'",
+                    });
+
+                    return null;
+                }
+
+                if (electrode.Lower is not null || electrode.Upper is not null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/{(electrode.Lower is not null ? "lower" : "upper")}",
+                        Constraint =
+                            $"'{name}' is a revolve, which is swept through an angle rather than extruded along a length",
+                        Observed = new ObservedValue(0.0, "revolve"),
+                        Suggestion =
+                            "use 'fromHalfTurns' and 'toHalfTurns'; a profile extruded along a line is a 'prism'",
+                    });
+
+                    return null;
+                }
+
+                var vertices = CompileVertices(electrode.Vertices, name, path, p, errors);
+
+                // Dimensionless, because a half turn is an angle expressed as a ratio - the
+                // same reading the box tilt takes.
+                var from = electrode.FromHalfTurns is null
+                    ? Quantity.Si(0.0, Dimension.Dimensionless)
+                    : TryQuantity(
+                        electrode.FromHalfTurns, $"{path}/fromHalfTurns",
+                        Dimension.Dimensionless, p, errors);
+
+                var to = electrode.ToHalfTurns is null
+                    ? Quantity.Si(2.0, Dimension.Dimensionless)
+                    : TryQuantity(
+                        electrode.ToHalfTurns, $"{path}/toHalfTurns",
+                        Dimension.Dimensionless, p, errors);
+
+                if (vertices is null || from is null || to is null)
+                {
+                    return null;
+                }
+
+                var axis = electrode.Axis switch
+                {
+                    null or "z" => CylinderAxis.Z,
+                    "x" => CylinderAxis.X,
+                    "y" => CylinderAxis.Y,
+                    _ => (CylinderAxis?)null,
+                };
+
+                if (axis is null)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.SchemaInvalid,
+                        Path = $"{path}/axis",
+                        Constraint = "a revolve axis must be 'x', 'y' or 'z'",
+                        Observed = new ObservedValue(0.0, electrode.Axis ?? "(none)"),
+                        Suggestion = "'z' when omitted; the vertices are then (radius, z)",
+                    });
+
+                    return null;
+                }
+
+                // A PROFILE MAY NOT CROSS ITS OWN AXIS. Revolving a vertex at a negative
+                // radius sweeps it back through the solid the positive side already made, so
+                // the result overlaps itself and no signed distance describes it - the
+                // surface would be inside the body. Refused rather than folded to the
+                // absolute value, because a profile written across the axis is a mistake
+                // about what the coordinates mean rather than a shape somebody wanted.
+                if (vertices.Any(v => v.X < 0.0))
+                {
+                    var worst = vertices.Min(v => v.X);
+
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = $"{path}/vertices",
+                        Constraint =
+                            $"revolve '{name}' has a vertex at a negative radius, and a profile revolved "
+                            + "across its own axis sweeps a solid that overlaps itself",
+                        Observed = new ObservedValue(worst, "m"),
+                        Suggestion =
+                            "the first vertex coordinate is the distance from the axis and the second the "
+                            + "position along it; a profile straddling the axis is two electrodes, or a prism",
+                    });
+
+                    return null;
+                }
+
+                var sweep = Math.Abs(to.Value.SiValue - from.Value.SiValue);
+
+                if (sweep <= 0.0 || sweep > 2.0)
+                {
+                    errors.Add(new EinzelError
+                    {
+                        Code = ErrorCodes.ValueOutOfBounds,
+                        Path = path,
+                        Constraint =
+                            $"revolve '{name}' must sweep more than nothing and no more than a full turn",
+                        Observed = new ObservedValue(sweep, "half turns"),
+                        Suggestion =
+                            "two half turns is the whole ring; past that the solid would wrap over itself",
+                    });
+
+                    return null;
+                }
+
+                return common with
+                {
+                    Shape = Electrode3DShape.Revolve,
+                    Vertices = vertices,
+                    Axis = axis.Value,
+                    FromHalfTurns = Math.Min(from.Value.SiValue, to.Value.SiValue),
+                    ToHalfTurns = Math.Max(from.Value.SiValue, to.Value.SiValue),
+                };
+            }
+
             default:
                 errors.Add(new EinzelError
                 {
                     Code = ErrorCodes.SchemaInvalid,
                     Path = $"{path}/shape",
-                    Constraint = "an electrode shape must be 'box', 'sphere', 'cylinder' or 'prism'",
+                    Constraint =
+                        "an electrode shape must be 'box', 'sphere', 'cylinder', 'prism' or 'revolve'",
                     Observed = new ObservedValue(0.0, electrode.Shape ?? "(none)"),
                     Suggestion =
-                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead, a prism is any outline given a length",
+                        "a box is a plate or a housing, a cylinder is a rod or a tube, a sphere is a bead, "
+                        + "a prism is any outline given a length, a revolve is one given a turn",
                 });
 
                 return null;

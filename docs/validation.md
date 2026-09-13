@@ -443,37 +443,47 @@ least-squares fit of a sinusoid at each trial frequency and needs no such step.
 
 ## Two independent routes to the same effective radius
 
-The Paul trap's electrodes are flat annuli, so the field at its centre is stronger
-than its declared 4 mm inscribed radius implies. That effective radius is measurable
-two entirely different ways, sharing nothing but the solved field:
+The effective radius — the radius an ideal quadrupole of the same central curvature would
+have — is measurable two entirely different ways, sharing nothing but the solved field:
 
 - **From the field.** The curvature at the centre, `dEz/dz = 2V/r0²`, with no ion
-  involved at all. **3.8195 mm.**
+  involved at all. **3.9983 mm** against 4.0000 declared.
 - **From a trajectory.** Fly an ion for two hundred RF cycles, take the periodogram,
   and compare the secular line against Mathieu's closed form evaluated at
   `q × (r0/r0_eff)²`.
 
 | amplitude | q nominal | q effective | predicted | measured | ratio |
 | --- | --- | --- | --- | --- | --- |
-| 200 V | 0.2444 | 0.2681 | 96.154 kHz | 96.133 kHz | **0.9998** |
-| 300 V | 0.3666 | 0.4021 | 147.095 kHz | 147.035 kHz | **0.9996** |
-| 400 V | 0.4888 | 0.5361 | 202.327 kHz | 201.750 kHz | 0.9972 |
-| 600 V | 0.7332 | 0.8041 | 347.360 kHz | 336.413 kHz | 0.9685 |
+| 200 V | 0.2444 | 0.2446 | 87.528 kHz | 87.478 kHz | **0.9994** |
+| 300 V | 0.3666 | 0.3669 | 133.416 kHz | 133.392 kHz | **0.9998** |
+| 400 V | 0.4888 | 0.4892 | 182.350 kHz | 182.387 kHz | **1.0002** |
+| 600 V | 0.7332 | 0.7338 | 300.831 kHz | 301.060 kHz | **1.0008** |
 
-**Two hundredths of a per cent at low q**, from a field curvature and a flight time.
-And the departure at high q is the other half of the same statement rather than a
-failure: the trap is an ideal quadrupole of radius 3.82 mm *to the extent the ion
-stays small*, and stops being one as the excursion grows. That is the anharmonicity
-arriving on schedule, and it is why the stability boundary — which is measured by an
-ion travelling all the way to an electrode — cannot be predicted from the effective
-radius alone.
+**Worst departure 0.076 percent across the whole range**, from a field curvature and a
+flight time. The residual moves monotonically with q and **crosses zero on the way**, so it
+is not the one-sided pull an anharmonicity gives; at a few parts in ten thousand it is the
+mesh, the periodogram's own resolution and the continued fraction's truncation together, and
+separating those is a study rather than an assertion.
 
-## Naming a nonlinear resonance
+**This check used to be much weaker than it looked, and the geometry is why.** The
+template's electrodes were three **flat annuli** until recently, and a flat annulus at the
+nominal radius lies inside the hyperbola sharing its vertex — so the effective radius was
+3.8195 mm and the scale factor `(r0/r0_eff)²` was 1.0968. Most of what the agreement then
+demonstrated was that one number had been transcribed into two places. At 1.0009 the
+correction has nothing left to do, and what is being compared is Mathieu's closed form
+against a flown ion.
 
-The same trap loses its ion in a narrow band at 605–614 V, sixty volts inside what
-the Mathieu chart calls stable. A loss scan can establish that the band is real —
-identical at twice the mesh and twice the hold, absent at a quarter of the hold and
-at a third of the launch offset — and can never say *what* it is, because a
+It is also how the staleness was found. The trajectory side carried `3.8195` as a **constant
+in its source**; the hyperboloids moved the geometry and the constant did not, over-predicting
+every line by ten percent. It is measured from the field now. **A constant describing a
+geometry stops being true when the geometry is rebuilt, and nothing tells you.**
+
+## Naming a nonlinear resonance, and then watching it go
+
+While the electrodes were flat annuli the trap lost its ion in a narrow band at 605–614 V,
+sixty volts inside what the Mathieu chart calls stable. A loss scan can establish that the
+band is real — identical at twice the mesh and twice the hold, absent at a quarter of the
+hold and at a third of the launch offset — and can never say *what* it is, because a
 resonance is defined by a condition on frequencies.
 
 | amplitude | β_z | β_r | best condition | value | miss |
@@ -498,6 +508,19 @@ Note also that the ideal-Mathieu prediction fails here and had to: β at the *no
 q of 0.745 is 0.6156, which satisfies no low-order condition at all. The measured
 0.6769 is the one the resonance condition is about, and the difference between them
 is the effective radius plus the anharmonic shift.
+
+**And the strongest confirmation came from removing the cause.** An octupole is what a flat
+annulus buys, so an account blaming the octupole predicts that giving the trap its real
+hyperboloids removes the band. Scanned at four volts from 560 to 716 V — forty amplitudes
+below the ejection edge — **every one holds its ion**, and at the old band center the nearest
+even condition now misses 2 by **0.2241** where it was met to 0.0011. Two independent
+signatures, gone together, and the prediction was on the record before the geometry changed.
+
+What remains of the octupole is small and measurable: the curvature ratio still departs from
+−2 as the *square* of the sampling radius — 0.0006 / 0.0014 / 0.0025 at 0.4 / 0.6 / 0.8 mm,
+growing 2.241x then 1.806x against the 2.250x and 1.778x an octupole predicts — at 0.06 per
+cent where the flat annuli gave 1.3. That is the truncation of the hyperboloids, which a real
+trap has too.
 
 ## The arbitrary waveform, and isolation efficiency against notch width
 

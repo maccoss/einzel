@@ -201,7 +201,7 @@ public static class ModelSchema
     /// case in a sharper form: an older build would solve the untilted cross-section and
     /// report a converging analyser as a parallel one.
     /// </remarks>
-    public const string CurrentVersion = "0.13";
+    public const string CurrentVersion = "0.14";
 
     /// <summary>Versions this build can read.</summary>
     /// <remarks>
@@ -211,7 +211,7 @@ public static class ModelSchema
     /// </remarks>
     public static IReadOnlyList<string> SupportedVersions { get; } =
         ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "0.10", "0.11", "0.12",
-         "0.13"];
+         "0.13", "0.14"];
 }
 
 /// <summary>The ion being tracked.</summary>

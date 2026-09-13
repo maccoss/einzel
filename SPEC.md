@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,355 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,438 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -154,6 +154,76 @@ Einzel. **That, rather than a date, is the trigger.**
 ---
 
 ## Amendments to the specification
+
+### 50 - Two shipped templates were drawn as approximations, and the approximations had reached the findings
+
+**LIB-1.** `c-trap` modeled each bent rod as a chain of thirteen overlapping spheres, and
+`paul-trap` modeled a quadrupole trap's hyperboloids as three flat annuli. Both were
+deliberate when written — a `cylinder` in this format is axis-aligned and a bent rod is not;
+the cross-section vocabulary had no curve — and both were documented as approximations. They
+survived because **an approximation adopted because the format could not express the real
+thing does not announce itself when the format gains the ability.**
+
+**What was added below the library is one primitive.** `revolve` is a closed outline turned
+about an axis through an arc: `prism` is to a line what `revolve` is to an arc, and the
+vertex coordinates are a distance from the axis and a position along it — the half-plane an
+axisymmetric solve already works in, so the linear ion trap's hyperbolic rod profile
+transfers to a bent quadrupole unchanged. Schema **0.14**. Inside the sweep the signed
+distance reduces *exactly* to the profile's own two-dimensional distance; every revolved
+profile edge is a quadric, so a link's crossings are roots of a quadratic and nothing is
+bisected. Checked against the closed-form torus at 14.446 / 3.614 / 0.904 um for 32 / 64 /
+128 profile vertices — the inscribed-polygon bound to the digit, falling exactly 4.00x — and
+against a `prism` at a kilometer of radius to under 100 nm. The Paul trap needed nothing new
+at all: `polygon` had landed for the linear ion trap, which wants a hyperbolic rod for the
+same reason.
+
+**What it bought, measured:**
+
+| | approximation | real geometry |
+| --- | --- | --- |
+| Paul trap, effective r0 against 4.0000 mm declared | 3.8195 | **3.9983** |
+| Paul trap, boundary against a tabulated q = 0.90804 | 9 percent low | **0.07 percent** |
+| Paul trap, curvature ratio against −2 at 0.4 mm | −1.9867 | **−2.0006** |
+| C-trap, electrode declarations / basis channels | 49 / 1 | **5 / 1** |
+| C-trap, ejected waist | 1.73 and 1.92 bend radii | **1.011 and 1.011** |
+| C-trap, convergence at a 20 mm bend | 20.8x | **45.9x** |
+| C-trap, arrival spread into the analyzer | 60.02 ns | **38.90 ns** |
+
+**The Paul trap's 9.4 percent was not an unknown.** It was measured three independent ways,
+explained correctly, and carried as a stated correction on every number the template
+published. That is the right thing to do with a known approximation, and it is also exactly
+what let it sit there: **a correction that is carried faithfully stops being a problem to
+fix.**
+
+**Two published findings were artifacts, and both had plausible mechanisms attached.** The
+C-trap's waist at 1.73 and 1.92 bend radii was explained as an aperture lens at the slot; the
+thin-lens fit it implied mispredicted the longer bend by 17 percent, and that failure was
+recorded at the time rather than buried. On swept rods the waist is at the center of
+curvature, where velocities aimed along radii meet, and a **fourfold change of slot opening
+moves it 1.048x** — so the slot is a hole. And the Paul trap's octupole resonance band at
+605–614 V, identified from the measured secular frequencies as an order-four condition met to
+0.055 percent with order four predicted in advance from the trap's symmetry, is **gone**:
+forty amplitudes below the edge, none loses its ion, and the condition now misses 2 by 0.22.
+That identification was right, and an octupole is what a flat annulus buys.
+
+**One defect in the primitive is worth the spec's attention because it is a class.** Deciding
+whether a profile edge is an annular disc or a cone by asking `dh == 0.0` is an exact test on
+a computed quantity. An outline is written as expressions, so a face meant to be flat is flat
+only to rounding — the C-trap's inner rod has an edge sloping by 8.7e-19 m over three
+millimeters of radius, which against zero is a cone of slope 2e15 whose quadratic root is
+lost. The same rod's other face **was** exactly flat, so one side of a mirror-symmetric
+electrode got its cut cells and the other did not, **the conductor mask was symmetric either
+way**, and the solved field came out eleven percent asymmetric across a plane the geometry is
+symmetric about. Fixed with a relative tolerance; cut-fraction asymmetry 1.0 to 1.9e-13. The
+general statement is that a symmetric Dirichlet mask is not a symmetric discretization, so
+nothing that checks a geometry by asking which nodes are inside can see this class of defect.
+
+**And three tests were carrying the old geometry in their source, each failing differently.**
+A hardcoded constant (`EffectiveMm = 3.8195`, over-predicting every secular line by ten per
+cent), a quoted sentence printed as output beside an assertion on a range around it, and a
+**vacuous truth** — `TheBeadsOverlapAlongEachRod` grouped electrodes by name stem and compared
+consecutive members; with the rods swept each group has one member, the loop never runs, and
+the worst spacing stays at the zero it was initialized to. It passed. `docs/lessons.md`.
 
 ### 49 - Rebuilding an operator does not require reallocating it
 
@@ -889,10 +959,12 @@ measurement rather than an optional extra — the same standing that grid conver
 already has under ACC-3.
 
 **And with the launch amplitude, which is the sharper half.** The same trap's
-hold-converged edge is q_z = 0.85 at a 0.1 mm launch, 0.82 at 0.3 mm and 0.64 at
-0.6 mm. The Mathieu equation is linear, so an ideal trap's boundary *cannot* depend
-on how far off centre the ion started — a trajectory scaled by a constant is another
-trajectory. A real one's does, and the dependence is not small.
+hold-converged edge is q_z = 0.904 at a 0.05 mm launch, 0.902 at 0.1 mm, 0.885 at
+0.3 mm and 0.836 at 0.6 mm. The Mathieu equation is linear, so an ideal trap's boundary
+*cannot* depend on how far off center the ion started — a trajectory scaled by a
+constant is another trajectory. A real one's does, and the dependence is not small.
+(Measured on the flat-annulus geometry it was larger still — 0.85 / 0.82 / 0.64 —
+and on the *wrong side* of the linear boundary; see Amendment 50.)
 
 **The reason is structural, and the fix is to stop measuring it that way.** A
 measurement that registers a loss only when the ion **reaches** an electrode requires
@@ -900,10 +972,10 @@ it to cross the whole anharmonic region, so it is never a small-amplitude measur
 whatever it was launched at. The *linear* boundary is a statement about a frequency,
 and §12's own secular-frequency spectrum measures it without the ion going anywhere:
 calibrating β(V) against Mathieu over a range where the ion stays small fits to a
-worst residual of **1.2e-3**, gives an effective radius of **3.8137 mm** against
-**3.8195** from the field's curvature with no ion involved, and puts β = 1 at
-q_nominal = 0.8254 — **bracketed** by the two ejection edges rather than equal to
-either.
+worst residual of **7.8e-5**, gives an effective radius of **3.9985 mm** against
+**3.9983** from the field's curvature with no ion involved, and puts β = 1 at
+q_nominal = 0.90737 against a tabulated 0.90804. The ejection edges approach it **from
+below** as the launch shrinks — 0.9966 of it at 0.05 mm — rather than equalling it.
 
 **Recommend §12 distinguish the two**, because they are different quantities and only
 one of them is the design parameter: a *linear* stability boundary, which is where β
@@ -911,11 +983,17 @@ reaches one and is a property of the field; and an *ejection* threshold, which i
 a particular ion launched a particular way leaves within a particular hold, and is what
 an instrument actually does.
 
-The same geometry also carries a **narrow band of loss at q_z = 0.739–0.750**, sixty
-volts inside the main edge, which survives a mesh doubling and a hold doubling and
-vanishes at a 0.1 mm launch and at 60 cycles — a nonlinear resonance, and §12's
-Class B vocabulary has no way to report one. It was found by the confirmation walk
-of Amendment 20, from a search whose bisection had converged cleanly.
+The flat-annulus geometry also carried a **narrow band of loss at q_z = 0.739–0.750**,
+sixty volts inside the main edge, which survived a mesh doubling and a hold doubling and
+vanished at a 0.1 mm launch and at 60 cycles — a nonlinear resonance, and §12's Class B
+vocabulary has no way to report one. It was found by the confirmation walk of
+Amendment 20, from a search whose bisection had converged cleanly, and named as an
+**octupole** from the measured secular frequencies. **It is gone now that the electrodes
+are hyperboloids**, which is the identification's own prediction: an octupole is what a
+flat annulus buys. Forty amplitudes below the edge lose nothing, and the frequency
+condition misses 2 by 0.22 where it was met to 0.0011. The recommendation stands — §12
+still has no way to report a nonlinear resonance, and a trap with real electrodes can
+have one the truncation of its hyperboloids produces.
 
 ### 20 · Bisection cannot check its own premise, and now does
 
@@ -1878,7 +1956,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `AGT-1` | The model is text Declarative, schema-validated, diffable JSON. A model file plus referenced artifacts fully determines a run. | **Met** | Schema-versioned JSON, currently 0.13. `einzel schema` generates the JSON Schema by reflection over the document records. An unrecognised property is **refused**, not ignored - see Amendment 14. |
+| `AGT-1` | The model is text Declarative, schema-validated, diffable JSON. A model file plus referenced artifacts fully determines a run. | **Met** | Schema-versioned JSON, currently 0.14. `einzel schema` generates the JSON Schema by reflection over the document records. An unrecognized property is **refused**, not ignored - see Amendment 14. |
 | `AGT-2` | Nothing exists only in the shell Every capability reachable from the window is reachable from the CLI and from MCP, through the same command objects. This now explicitly includes rendering (§17). | Partial | **Both other surfaces now exist, and the invariant is asserted rather than argued.** Every MCP tool returns `CommandJson.Write` of the same outcome record the CLI serialises for `--json`, compared **byte for byte** by a test; every shell action is journalled as the `einzel` invocation that would reproduce it (Amendment 25), and twice a view could not be built until a command existed - `einzel outline` and `ViewportCommand` - which is that amendment running in the direction it was not designed for. **Partial for one precise reason**: the requirement names rendering explicitly and the MCP tool surface does not expose it. That surface is deliberately not a second CLI (`model_read \| model_edit \| model_undo \| session_journal \| model_validate \| model_preview`), so the question is whether rendering belongs in it or whether the requirement means reachable *through a command object* rather than *through a tool*. Until that is settled this cannot be called met. The earlier evidence here read "neither MCP nor the shell exists", which stopped being true when both were built. |
 | `AGT-3` | Errors are recovery instructions Machine-readable code, offending path, violated constraint, observed value, suggested correction. | **Met** | Code, JSON Pointer path, constraint, observed value, suggestion, severity. Validation collects every error rather than throwing on the first. |
 | `AGT-4` | Results carry their own uncertainty See §4. No quantitative result is ever returned as a bare number. | **Met** | GRD-1 enforced by reflection over the public surface of `Measured`, verified by injecting a violation and watching it fail. |
@@ -1978,7 +2056,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Ten device templates as data in the model schema. Two have needed a change below `Einzel.Library` to *express* the device, and both were narrow and general: `drivePhase` becoming an expression (the travelling wave), and trigonometry in the expression grammar (any multipole above four rods). The second yielded **one** template covering quadrupole, hexapole, octupole and beyond rather than three files. A third change - the Paul trap - is worth distinguishing: nothing was missing, a validator was **wrong**. `CanDoWork` asked whether any electrode held non-zero **DC**, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion. LIB-1 says to believe the signal when a template needs a change below the library; this one said "there is a bug here", not "the abstraction is wrong", and telling those apart is part of using the rule. |
+| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Twenty-two device templates, all data in the model schema. **The signal has fired about twelve times and every one was vocabulary, not architecture** - nothing has ever required a change to the solver, the integrator or the transport core. Three kinds, enumerated with their instances in `docs/extending.md`: a *function* in the expression grammar (`log` for the Kingdon trap, `cosPi`/`sinPi` for any multipole above four rods, `asinPi` for the C-trap's slot, `floor`/`mod` for a repeated ring), an *attribute* on an existing element (`drivePhase` as an expression for the travelling wave, `repeat`, a tilt on a box, Neumann faces on `solve3d`, `axis` on the analytic RF element, `fringe` on a region, a parametric launch direction), and a *primitive* (`polygon` for the linear ion trap's hyperbolic rod, `prism` for its three axial sections, `revolve` for the C-trap's bent one). Twenty-two templates have cost fourteen schema versions, all purely additive, and roughly half needed nothing below the library at all. **Two entries are worth distinguishing from the rest.** The Paul trap's was not a missing capability but a *wrong validator*: `CanDoWork` asked whether any electrode held non-zero DC, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion - the rule says to believe the signal, and telling "there is a bug here" from "the abstraction is wrong" is part of using it. And `revolve` arrived late for a device that had shipped for months: `c-trap` modeled its bent rods as chains of overlapping spheres because no primitive could express one, which is the format's limit correctly worked around and then **not revisited when the limit moved**. See Amendment 50 for what that cost. |
 
 ### Licensing (§20)
 
@@ -2699,7 +2777,54 @@ project's author needs to run it and more than any physics the moment one does.
     a floor of 0.15-0.33 u against the paper's 0.35-1.0 Th, the broadenings the instrument
     has (a millimetre cloud, amplitude noise, real machining) being absent from the template.
 
-8. **The render verbs and the viewport now follow a model's timeline, and say where they have got to.** Fixed:
+8. **Two templates were rebuilt from their real electrodes, and what is left in the C-trap is
+   a literature question rather than a format one.** `revolve` landed, `c-trap` went from 49
+   beaded spheres to five swept hyperbolic rods with a slit along the whole arc, and
+   `paul-trap` went from three flat annuli to hyperboloids. Amendment 50 carries what that
+   corrected: the Paul trap's 9.4 percent effective-radius shortfall is now 0.04 percent and
+   its boundary sits 0.07 percent from the tabulated Mathieu one; the C-trap's ejected waist
+   is at the center of curvature rather than at 1.73 and 1.92 bend radii, and two published
+   findings turned out to be artifacts of geometries the format could not express when the
+   templates were written.
+
+   **What is open is provenance, not capability.** Makarov 2006 gives the C-trap's face shape
+   ("rods with hyperbolic surfaces"), its gas, its RF range, the quench, the extraction
+   voltages and the slot's placement in the pull-out electrode. It gives **no cross-section
+   dimension and no radius of curvature**, and neither does US 6,872,938 B2 — whose preferred
+   curved trap is a different device again, a stack of curved plates. So `inscribedRadius`,
+   `rodHalfWidth`, `rodDepth`, `slotHalfWidth` and `bendRadius` are all guesses, marked as
+   such parameter by parameter, and the register in `docs/literature-targets.md` section 7
+   says which is which. A single further source with a dimensioned drawing would turn most of
+   the template from guessed to sourced, and until one appears the focusing numbers are a
+   property of this model rather than of the instrument.
+
+   **And the template still does not model the 1100 V float, the quench, the gas or the two
+   end lenses**, each of which the paper describes and each of which is stated as a gap on the
+   template itself. The float is the one that needs something the format has: a downstream
+   reference the document cannot declare.
+
+   **One gap the rebuild exposed and did not close: the overlap check is cross-section
+   only.** `ElectrodeOverlap.Check` takes a `CompiledElectrode` and is called from the
+   `solve2d` path alone, so every volume primitive — `box`, `sphere`, `cylinder`, `prism`,
+   `revolve` — is unchecked. Two conductors in one place at different excitations give the
+   field of a geometry nobody described, which is exactly what that check exists to refuse,
+   and the C-trap is the most exposed geometry here: five conductors at two RF phases, nested
+   inside one another, whose previous incarnation deliberately overlapped spheres at one
+   potential. A bounding-box screen will not do — nested arcs have overlapping boxes by
+   construction and it would refuse a legitimate geometry. What will is fifteen exact pair
+   tests, or a sampled check reporting only the overlaps it finds, which misses rather than
+   false-refuses. Pre-existing rather than introduced here, and named because `revolve` is the
+   first shape for which it plausibly matters.
+
+   **The general follow-on is an audit, and it has been done once.** Every template's electrode
+   outlines were drawn and read against what the device actually has. Nothing else is a shape
+   the format has outgrown — the round rods of a quadrupole are what a quadrupole has, and the
+   two mirror templates declare edge *profiles*, which are boundary conditions rather than
+   shapes and have no outline to draw. Worth repeating whenever a primitive lands, because the
+   failure mode is not that an approximation is undocumented but that it is documented,
+   corrected for faithfully, and therefore stops reading as a problem.
+
+9. **The render verbs and the viewport now follow a model's timeline, and say where they have got to.** Fixed:
    `render section` and `render animation` decided what to draw from the model's *declared*
    transport mode and then called the wholly diffusive solver, so a model with a timeline
    rendered as though it had none - the elution ramp never ran, the packet stayed parked in
@@ -2750,7 +2875,7 @@ project's author needs to run it and more than any physics the moment one does.
    a render or a redraw can now be a multi-hour operation, so GRD-8 does not reach either - which
    matters most for the viewport, where nothing warns before the wait begins.
 
-9. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
+10. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -
    and SPEC's own summary is blunt about the consequence: **nobody can install this**.
 
@@ -3030,8 +3155,8 @@ cannot load" call for three different things from a reader.
 
    **Until then both pairings are two models with a measured handover**, which is done
    and is worth having on its own — see the two entries in `docs/device-templates.md`.
-   The handover is a *number*, not a hope: for the C-trap, a 60.02 ns arrival spread
-   against a 3.1983 µs axial period, coherence 0.9990. For the ion processor, a
+   The handover is a *number*, not a hope: for the C-trap, a 38.90 ns arrival spread
+   against a 3.1983 µs axial period, coherence 0.9996. For the ion processor, a
    4.220 ns turn-around against a 55.9366 µs analyser period, crossing the mirror's own
    aberration limit at 48 oscillations.
 

@@ -769,6 +769,91 @@ derived from public information is a result, and one obtained privately is not.
 
 ---
 
+## 7. The C-trap — the curved linear trap that injects an orbital analyzer
+
+**Both sources are now in `papers/` and have been read** (they are image-only scans; rendered
+with `pdftoppm -png -r 150`, the recipe this directory already records):
+
+- `c-trap-Makarov-AnalChem-2006.pdf` — Makarov, Denisov, Kholomeev, Balschun, Lange, Strupat,
+  Horning, *Performance Evaluation of a Hybrid Linear Ion Trap/Orbitrap Mass Spectrometer*,
+  Anal. Chem. 2006;78(7):2113-2120. The shipped LTQ Orbitrap.
+- `Orbitrap-patent-Makarov.pdf` — Makarov, Hardman, Schwartz, Senko, *Mass spectrometry method
+  and apparatus*, **US 6,872,938 B2** (filed Mar 2002, granted Mar 2005) / WO 02/078046, the
+  curved trap as cols. 13-14.
+
+**They describe different electrodes, and the paper is the one to model.** The patent's
+preferred curved trap 300 is a **stack of curved plates** - an outer plate 330 and an inner
+plate 340 near ground, sandwiching upper and lower center plate pairs 360a/360b at RF-, which
+in turn sandwich an axis plate pair 350 at RF+. The paper, four years later and describing the
+instrument as sold, says plainly: **"The C-trap uses rods with hyperbolic surfaces."** So the
+plate stack is the patented principle and the hyperbolic quadrupole is the product. This
+template models the product.
+
+### What the paper states, read rather than recalled
+
+| | | where |
+| --- | --- | --- |
+| electrode faces | **rods with hyperbolic surfaces** | p. 2114, col. 2 |
+| enclosure | two flat lenses with apertures: the **gate** electrode (toward the octapole) and the **trap** electrode | p. 2114, col. 2 |
+| bath gas | **nitrogen at ~1 mTorr**, chosen over helium for better collisional damping and lower carryover | p. 2114, col. 2 |
+| RF | **500-2000 V peak to peak** at a DC offset of **0 V** | p. 2114, col. 2 |
+| gate electrode | held at **+3 to +6 V**; the trap electrode at **12-15 V** | p. 2114, col. 2 |
+| before ejection | **200 V to both gate and trap**, which compresses the thread axially | p. 2114, col. 2 |
+| the quench | RF **ramped down over 100-200 ns** | p. 2114, col. 2 |
+| extraction | **1200 V push-out** (furthest from the center of curvature), **1000 V pull-out** (closest), **1100 V to both upper and lower** | p. 2114, col. 2 |
+| the exit | ions **leave via a slot in the pull-out electrode**, orthogonally, toward the center of curvature | p. 2114, col. 2 |
+| the packet | collisional cooling forms **a thin, long thread along the curved axis** | p. 2114, col. 2 |
+| upstream | transfer octapole 300 mm long, 400 V p-p, **5.7 mm inscribed diameter** | p. 2114, col. 2 |
+
+**The extraction is a float plus a differential, and reading it as one number loses the
+point.** 1200 / 1100 / 1100 / 1000 is a **common 1100 V** - the acceleration toward the
+analyzer - with **±100 V** across the trap to drive ions to the slot. The patent says the same
+thing from the other end: equal and opposite pulses on the outer and inner plates, and "if the
+curved trap floats at the acceleration voltage then no energy lift will be required".
+
+**And the patent adds two things the paper does not.** A **liner 380** sits between the trap
+exit and the lenses in a field-free region, pulsed to give an "energy lift" where the trap does
+not float; and the patent claims the **RF need not be removed at all** - "they have little
+effect on the beam parameters due to their symmetry" - where the shipped instrument ramps it
+down. Where they differ, the paper is what shipped.
+
+### What this template does with it
+
+| | |
+| --- | --- |
+| hyperbolic faces, swept round the arc | **sourced** (paper) |
+| slit along the whole arc, in the inner electrode, ejecting toward the center of curvature | **sourced** (paper) |
+| `rfAmplitude` 500 V zero-to-peak = 1000 V p-p | **sourced**, mid-range of 500-2000 p-p |
+| bend radius 20 mm | **GUESSED** - neither source gives one |
+| `inscribedRadius` 3 mm, `rodHalfWidth`, `rodDepth`, `slotHalfWidth` | **GUESSED** - no cross-section dimensions in either source |
+| ejection as a push on the outer rod against earth | **a simplification**, see below |
+
+**Not modeled, each a stated gap.**
+
+- **No float.** The instrument puts all four electrodes near 1100 V and differentials of ±100 V
+  on top; this template pushes the outer rod against earth. The float is what accelerates the
+  packet toward the analyzer, and modeling it needs a downstream reference this document does
+  not have - the patent's lenses 310 and liner 380. That is also why an earlier attempt to put
+  the inner rod at -V failed: without the float and the lens, an ion falls through the slit and
+  climbs the same potential straight back out.
+- **No quench.** The paper ramps the RF down over 100-200 ns before pulsing. This template
+  ejects at whatever amplitude is declared, and its own measurement shows it matters: the drive
+  left on moves the focus from 38.4 mm to 11-12 mm.
+- **No gas.** ~1 mTorr of nitrogen is what forms the thin thread the whole device depends on.
+  This template flies in vacuum, so its packet was never thermalised.
+- **No end lenses.** The gate and trap electrodes are what hold ions axially and then compress
+  them with 200 V. Absent here.
+
+### The target to regress against
+
+The paper's own claim for the injection is coherence: the packet has to arrive inside a small
+fraction of the analyzer's axial period. This project has measured the ejected packet's arrival
+spread at **38.90 ns** against an analyzer period of 3.1983 us - 1.22 percent, coherence
+0.9996 - on the swept hyperbolic geometry, in vacuum, with no quench, no float and no end
+lenses. (On the earlier beaded round-rod geometry it was 60.02 ns and 0.9990.) Each of those
+gaps has to be closed before the number counts. Recorded as the thing to check rather than as
+a result.
+
 ## Candidates not yet worked up
 
 - **Reflectron and MR-TOF geometries** with published resolving powers, to check
