@@ -4805,3 +4805,43 @@ an N-gon sits inside its circle by 3.6 um at 64 vertices, comparable with the sl
 **The general form: when a real geometry cannot be driven into the regime you want to
 measure, build one that can.** A synthetic pair with a closed-form answer measured in
 minutes what the template refused to show at all.
+
+## An error that cannot say where it is, and the 64 copies that made the case
+
+`EinzelError` carries a JSON Pointer because AGT-3 makes an error a **recovery
+instruction** rather than a notification. A dimension mismatch is raised inside
+`Quantity`, which has two operands and no document, so it names the root as a
+placeholder - and the frames that caught it, which were resolving a *named parameter* or
+a *numbered electrode's face*, added it verbatim. **The path was known at the catch site
+and discarded**, which is the same shape as `FieldAssembly.Build` dropping its
+`SolveReport` and the sweep evaluator dropping its warnings.
+
+It had been written down, as "a derived-parameter units error reports its path as `/`
+rather than naming the parameter - a small AGT-3 gap, not yet fixed". That description is
+accurate and it is why nothing happened: one parameter with a vague path is a blemish.
+
+**What changed is that the consequence got measured.** A foil thickness written without a
+unit on a real template gives **64 identical `UNITS_INCOMPATIBLE` errors, every one
+located at `/`** - naming neither which electrode nor which face, and indistinguishable
+from what a single mistake would print. Located, each reads
+`/fields/2/solve3d/electrodes/0/repeat/7/maxY`, down to the repeat index. The gap was not
+small; it had only ever been seen small.
+
+**And the fix was already present, ten lines above the place it was missing.**
+`ParameterSurface` located a *literal* parameter's failure with `with { Path = path }` and
+dropped a *derived* one's - the two branches of one method disagreeing, which is how the
+recorded gap came to exist without anyone seeing it as an instance of anything.
+
+Two things worth keeping about the shape of the fix. **Only the placeholder is replaced**:
+locating an error must never make it *less* located, and an expression evaluator is handed
+the path it works on and raises its own failures with it, so an outer frame that knew only
+the enclosing element would otherwise coarsen every one on the way past. And the teeth are
+measured in both directions - making `At` the identity fails three tests, removing its
+placeholder guard fails a different one.
+
+**How it was found is the reusable part.** Not by a failing test: by driving a refusal I
+had just added through the CLI, which is this project's own rule that after adding a
+producer you ask what reads it. The first attempt at a deliberately broken model used a
+bare `2.0` where the grammar has no unit literals, so it produced the wrong error
+entirely - **and the wrong error was the finding**. A probe that fails for an unintended
+reason is still showing you something; read it before fixing it.

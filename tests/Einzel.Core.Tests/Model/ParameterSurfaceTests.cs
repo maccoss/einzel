@@ -151,6 +151,43 @@ public sealed class ParameterSurfaceTests
         Assert.Equal(ErrorCodes.UnitsIncompatible, error.Code);
     }
 
+    /// <summary>
+    /// A dimension mismatch <em>inside</em> an expression is located too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Different from the test above it, and that is the point. There the declared unit
+    /// disagrees with what the expression produces, which <c>ParameterSurface</c> notices
+    /// itself and raises with the parameter's own path. Here the mismatch is between two
+    /// operands, which is raised inside <c>Quantity</c> - two numbers and no document -
+    /// so it names the root as a placeholder and the catching frame has to fill it in.
+    /// It did not: this branch dropped the path while the literal branch ten lines above
+    /// it kept it, which is what made an expression mistake report <c>/</c>.
+    /// </para>
+    /// <para>
+    /// AGT-3 is the requirement that an error be a recovery instruction. On a real
+    /// document the consequence was 64 identical <c>UNITS_INCOMPATIBLE</c> errors all
+    /// located at <c>/</c>, naming neither which electrode nor which face - the same
+    /// message one mistake would give.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AMismatchInsideAnExpressionNamesTheParameterRatherThanTheRoot()
+    {
+        // The grammar has no unit literals, so adding a bare number to a length is a
+        // dimension error - and it is the mistake a template author actually makes.
+        var declared = new Dictionary<string, ParameterDocument>(StringComparer.Ordinal)
+        {
+            ["depth"] = new() { Value = 90.0, Unit = "mm" },
+            ["astray"] = new() { Expression = "depth + 2.0", Unit = "mm" },
+        };
+
+        var error = Assert.Single(Failures(declared));
+
+        Assert.Equal(ErrorCodes.UnitsIncompatible, error.Code);
+        Assert.Equal("/parameters/astray", error.Path);
+    }
+
     [Fact]
     public void AnEmptyDeclarationResolvesToAnEmptySurface()
     {

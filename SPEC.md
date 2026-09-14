@@ -155,6 +155,33 @@ Einzel. **That, rather than a date, is the trigger.**
 
 ## Amendments to the specification
 
+### 52 - An error raised where the location is unknown is located by whoever caught it
+
+**AGT-3.** `EinzelError` carries a JSON Pointer because an error here is a *recovery
+instruction*, not a notification. A dimension mismatch is raised inside `Quantity`, which
+has two operands and no document, so it names the root as a placeholder - and the frames
+catching it, which were resolving a named parameter or a numbered electrode's face, added
+it **verbatim**. The path was known at the catch site and discarded, the same shape as
+`FieldAssembly.Build` dropping its `SolveReport`.
+
+**The gap had been recorded and read as small.** The changelog carried "a
+derived-parameter units error reports its path as `/` rather than naming the parameter - a
+small AGT-3 gap, not yet fixed" for as long as it had only been seen once. Measured on a
+real template it is not small: a foil thickness written without a unit gives **64 identical
+`UNITS_INCOMPATIBLE` errors, every one located at `/`**, naming neither which electrode nor
+which face and indistinguishable from what one mistake would print. Located, each reads
+`/fields/2/solve3d/electrodes/0/repeat/7/maxY`.
+
+`EinzelError.At(path)` fills in the placeholder, applied at the four sites that add a
+caught error. **Only the placeholder is replaced** - locating an error must never make it
+less located, since an expression evaluator is handed the path it works on and raises its
+own failures with it. One of the four had already been written correctly and the branch ten
+lines below it had not, which is how the recorded gap came to exist.
+
+Found by driving a newly added refusal through the CLI rather than by a failing test.
+Teeth measured both ways: making `At` the identity fails three tests, and removing its
+placeholder guard fails a different one.
+
 ### 51 - A volume geometry's conductors were never checked for occupying the same space
 
 **LIB-1, GRD-3.** `ElectrodeOverlap` has refused two conductors in one place at two

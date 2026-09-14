@@ -4959,7 +4959,7 @@ public static class ModelValidator
         }
         catch (EinzelException failure)
         {
-            errors.Add(failure.Error);
+            errors.Add(failure.Error.At(path));
             return null;
         }
     }
@@ -4981,7 +4981,7 @@ public static class ModelValidator
         }
         catch (EinzelException failure)
         {
-            errors.Add(failure.Error);
+            errors.Add(failure.Error.At(path));
             return null;
         }
     }
@@ -5006,7 +5006,7 @@ public static class ModelValidator
         }
         catch (EinzelException failure)
         {
-            errors.Add(failure.Error);
+            errors.Add(failure.Error.At(path));
             return null;
         }
     }
