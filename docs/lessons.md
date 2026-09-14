@@ -4751,3 +4751,43 @@ electrode's DC, `CanDoWork` asking the base potentials of a sequenced trap, the 
 asking whether two *adjacent* phases differ in mode, the terminal listing the modes that have
 no flight time. Each was correct when written. The tell is a check that reads one state, one
 mode, or one tap of something the format has since made plural.
+
+## A branch-and-bound's running best is an upper bound, and it is not the quantity's name
+
+Two mistakes in one number, both mine, and they compound.
+
+The first prototype of the volume overlap check reported "closest approach 1868.34 um at
+rodOuter / rodTop" for the C-trap, and that figure reached a commit message, `CLAUDE.md`,
+`SPEC.md` and two test doc comments before it was checked. **It is an unconverged running
+best.** Branch and bound reports the smallest value *found so far*; more probes can only
+lower it, so any value read out before the queue empties is an upper bound on the answer.
+Re-run at twenty times the budget it settles at **1032.73 um** - and that is the value the
+very first hand probe of that pair had already printed, on the first night, from a single
+point.
+
+The second mistake is what the quantity is. `min over space of max(dA, dB)` is not the
+distance between two solids: the midpoint of the shortest segment joining two surfaces has
+both distances equal to **half** the gap, so this minimum is at most half the separation and
+can be less. Reporting it as "the nearest metal is 1.87 mm away" gave a number that was
+wrong twice over - unconverged, and then read as a quantity it is not. What is defensible
+with no geometric assumption is the measurement itself: no point is inside both, and the
+deepest the search reaches is 1.033 mm *outside* both, so the surfaces are at least 2.07 mm
+apart.
+
+**The tell was available and I did not take it.** The value carried more digits than a
+search which had exhausted its budget could justify - 200,000 boxes had been spent on that
+pair without the queue emptying, which is precisely the state in which "best so far" means
+"not yet". A search that terminates by running out of budget should report its answer as a
+bound, or not report it at all.
+
+**And the experiment the correction suggested does not exist.** Having found the real
+separation, the obvious next measurement is how thin an interpenetration the check can still
+find *on curved surfaces* - walk one rod into the other and watch. It cannot be done on this
+pair: shifting `rodTop` three millimeters along the axis closes the gap by only 0.92 mm,
+because their closest approach is mostly radial. Growing the template's own dimensions
+instead trips the polygon self-intersection check first, at `rodHalfWidth` 5.5 mm, before
+the rods reach one another - and non-monotonically, since the profile changes shape. So the
+sliver limit recorded for this check is measured on two boxes sharing a face, where the
+shared volume is a slab and the search finds **1 um of shared metal on a 10 mm box**. A
+curved near-tangency gives a lens-shaped sliver rather than a slab and is harder; that
+number is not measured, and saying so is the honest state.

@@ -43,7 +43,7 @@ public sealed class VolumeOverlapTests(ITestOutputHelper output)
     /// <remarks>
     /// The C-trap is the sharpest of the four: its five rods are nested arcs about one
     /// axis, so <c>rodInnerUpper</c>'s bounding box lies wholly inside
-    /// <c>rodOuter</c>'s while the nearest metal is 1.87 mm away. A check that screened
+    /// <c>rodOuter</c>'s while the metal is nowhere near it. A check that screened
     /// on boxes alone would refuse it.
     /// </remarks>
     [Theory]

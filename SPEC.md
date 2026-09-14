@@ -193,7 +193,7 @@ costs one probe.
 
 **A bounding-box screen alone would refuse the C-trap**, whose five rods are nested arcs
 about one axis: `rodInnerUpper`'s box lies wholly inside `rodOuter`'s while the nearest
-metal is 1.87 mm away. The screen still earns its place in front of the search - on the
+metal is nowhere near it. The screen still earns its place in front of the search - on the
 Astral it settles 3,204 of 3,328 disagreeing pairs at no cost - because it settles them
 the safe way, by proving disjointness. Validation costs 4 to 43 ms on the four shipped
 volume templates.
@@ -2907,7 +2907,9 @@ project's author needs to run it and more than any physics the moment one does.
    shape at all, asking each primitive only for its bounding box and its signed distance. It
    refused `astral-3d` on its first run, where every drift stripe was extruded 1.285 mm into
    the grounded board it is printed on. The C-trap, the geometry this item predicted was most
-   exposed, is **clear by 1.87 mm** — and the corner where `rodOuter` and `rodTop` bound each
+   exposed, is **clear**: the deepest the search reaches on its closest disagreeing pair is
+   1.033 mm *outside* both, so those surfaces are at least 2.07 mm apart — and the corner
+   where `rodOuter` and `rodTop` bound each
    other, which reads off the vertex expressions as a deliberate contact, is on neither
    surface.
 

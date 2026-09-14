@@ -180,7 +180,7 @@ public sealed class ElectrodeOverlap3DTests(ITestOutputHelper output)
     /// A sphere at the centre of a hollow shell's bounding box shares that box entirely
     /// and shares no metal at all. The C-trap is the shipped case: its five rods are
     /// nested arcs about one axis, so <c>rodInnerUpper</c>'s box sits wholly inside
-    /// <c>rodOuter</c>'s while the metal is 1.87 mm apart. A check that refused on boxes
+    /// <c>rodOuter</c>'s while the metal is nowhere near it. A check that refused on boxes
     /// would refuse the C-trap.
     /// </remarks>
     [Fact]

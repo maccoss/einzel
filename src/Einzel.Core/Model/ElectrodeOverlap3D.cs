@@ -74,10 +74,12 @@ public static class ElectrodeOverlap3D
     /// <summary>Probes one pair may spend before the answer is "none found".</summary>
     /// <remarks>
     /// Reached only by a pair that genuinely touches, where the search is driven into
-    /// the contact and there is nothing to find. A real interpenetration is found in
-    /// far fewer - the Astral's buried drift stripe is found by the very first probe, its
-    /// own centre - and what the shipped
-    /// templates actually need is measured in <c>ElectrodeOverlap3DTests</c>.
+    /// the contact and there is nothing to find. A real interpenetration is found in far
+    /// fewer - the Astral's buried drift stripe is found by the very first probe, its own
+    /// center - and <c>ElectrodeOverlap3DTests</c> measures how thin a sliver still is:
+    /// 1 um of shared metal on a 10 mm box. That is a slab, where two faces overlap over
+    /// their whole area; a near-tangency between two <em>curved</em> surfaces shares a
+    /// lens rather than a slab and is harder, and that limit is not measured.
     /// </remarks>
     private const int PairBudget = 3000;
 

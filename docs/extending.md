@@ -115,7 +115,7 @@ geometry — a function is best tested through something that would visibly brea
 
   **A bounding-box screen alone will not do**, which the C-trap says: its five rods are nested
   arcs about one axis, so `rodInnerUpper`'s box lies wholly inside `rodOuter`'s while the metal
-  is 1.87 mm apart. The screen is still worth having in front of the search — on the shipped
+  is nowhere near. The screen is still worth having in front of the search — on the shipped
   Astral it settles 3,204 of 3,328 disagreeing pairs at no cost — because it settles them the
   safe way, by proving disjointness.
 

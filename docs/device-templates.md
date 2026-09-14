@@ -1509,7 +1509,7 @@ bound, expanding deepest-bound-first, both centers probed first.
 
 **A bounding-box screen alone would refuse the C-trap**, whose five rods are nested
 arcs about one axis: `rodInnerUpper`'s box lies wholly *inside* `rodOuter`'s while
-the nearest metal is 1.87 mm away. The screen still earns its place in front of the
+the metal is nowhere near it. The screen still earns its place in front of the
 search — on the Astral it settles 3,204 of 3,328 disagreeing pairs at no cost —
 because it settles them the safe way, by proving disjointness.
 
