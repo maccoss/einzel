@@ -133,6 +133,20 @@ geometry — a function is best tested through something that would visibly brea
   phase's. The geometry is fixed across states, so the expensive half is still done once per
   pair.
 
+  **How thin a sliver it reaches, measured two ways.** Two boxes sharing a face overlap
+  over their whole area, so the search only has to find a **slab**: it finds 1 µm of shared
+  metal on a 10 mm box. The realistic case is two *curved* surfaces just interpenetrating,
+  which share a **lens** and are harder — two tori whose profile circles of radius r have
+  centers d apart share a lens of width `2r - d`, a closed form, so the sliver is a
+  controlled quantity. On a 3 mm tube the deepest lens found at the shipped 3,000 probes is
+  **5.8 µm**; at 30,000 it is 4.8 µm and 300,000 buys nothing further, so **the limit is a
+  budget rather than a wall** and resolving a thinner lens costs steeply, as a halving in
+  three dimensions should. The threshold is the same at 64 and 256 profile vertices, which
+  is what says it measures the search and not the polygon. 3,000 is kept because 5.8 µm of
+  penetration into a 3 mm conductor is 0.2 percent — far below any modeling mistake anyone
+  makes — and a tenfold budget would cost the linear ion trap 43 ms of validation instead of
+  4.
+
   **The two checks were cross-validated against each other, once.** Running the volume
   witness search over every shipped cross-section — a completely different algorithm on the
   same geometries — found **0 witnesses**, agreeing with the plane check's exact pair tests

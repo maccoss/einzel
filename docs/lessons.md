@@ -4789,5 +4789,19 @@ instead trips the polygon self-intersection check first, at `rodHalfWidth` 5.5 m
 the rods reach one another - and non-monotonically, since the profile changes shape. So the
 sliver limit recorded for this check is measured on two boxes sharing a face, where the
 shared volume is a slab and the search finds **1 um of shared metal on a 10 mm box**. A
-curved near-tangency gives a lens-shaped sliver rather than a slab and is harder; that
-number is not measured, and saying so is the honest state.
+curved near-tangency gives a lens-shaped sliver rather than a slab and is harder.
+
+**So it was measured on a geometry built for it rather than on a template.** Two tori about
+one axis: profile circles of radius r with centers d apart share a lens of width `2r - d`,
+which is a closed form, so the sliver is a controlled quantity where the template's was not.
+On a 3 mm tube the search finds a lens **5.8 um** deep at the shipped 3,000 probes, against
+1 um of slab on a 10 mm box - an order of magnitude harder, as the shapes predict. **The
+limit is a budget rather than a wall**: 30,000 probes reach 4.8 um and 300,000 buy nothing
+further, so a halving costs more than tenfold, which is what subdividing in three dimensions
+should cost. And the threshold is identical at 64 and 256 profile vertices - the control that
+separates a property of the search from a property of the polygon, which matters here because
+an N-gon sits inside its circle by 3.6 um at 64 vertices, comparable with the sliver itself.
+
+**The general form: when a real geometry cannot be driven into the regime you want to
+measure, build one that can.** A synthetic pair with a closed-form answer measured in
+minutes what the template refused to show at all.

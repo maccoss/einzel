@@ -310,4 +310,97 @@ public sealed class ElectrodeOverlap3DTests(ITestOutputHelper output)
         Assert.Contains("during 'elute'", error.Constraint, StringComparison.Ordinal);
         Assert.Contains("60 V", error.Constraint, StringComparison.Ordinal);
     }
+
+    /// <summary>A torus, for a curved near-tangency with a closed-form overlap.</summary>
+    private static CompiledElectrode3D Torus(
+        string name, double centerRadius, double tubeRadius, int vertices, double potential)
+    {
+        var outline = new List<(double X, double Y)>(vertices);
+
+        for (var k = 0; k < vertices; k++)
+        {
+            var a = 2.0 * Math.PI * k / vertices;
+
+            outline.Add((
+                centerRadius + (tubeRadius * Math.Cos(a)),
+                tubeRadius * Math.Sin(a)));
+        }
+
+        return new CompiledElectrode3D
+        {
+            Name = name,
+            Shape = Electrode3DShape.Revolve,
+            Vertices = outline,
+            FromHalfTurns = 0.0,
+            ToHalfTurns = 0.5,
+            Potential = potential,
+        };
+    }
+
+    /// <summary>
+    /// Two curved surfaces sharing a lens rather than a slab, which is the harder case
+    /// and the realistic one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The expectation is arithmetic the engine has no part in.</b> Two circles of
+    /// radius r whose centers are d apart share a lens of width <c>2r - d</c>, and the
+    /// deepest point of it is half that inside both. Revolved about one axis those are
+    /// two tori, so the sliver the search has to find is a controlled quantity - which
+    /// the box case cannot give, since two boxes sharing a face overlap over their whole
+    /// area and the search only has to find a slab.
+    /// </para>
+    /// <para>
+    /// <b>Both profile resolutions, because the polygon is not the circle.</b> An N-gon
+    /// sits inside the circle it approximates by <c>r(1 - cos(pi/N))</c>, which is
+    /// 3.6 um at 64 vertices and 0.23 um at 256 - comparable with the sliver being
+    /// measured. That the answer is the same at both is what says this measures the
+    /// search rather than the profile.
+    /// </para>
+    /// <para>
+    /// <b>Measured, and the limitation is a budget rather than a wall.</b> At the shipped
+    /// 3,000 probes the deepest sliver found on a 3 mm tube is 5.8 um; at 30,000 it is
+    /// 4.8 um, and 300,000 buys nothing further over that range - so resolving a thinner
+    /// lens costs steeply, as a halving in three dimensions should. 30 um of shared width
+    /// is a factor of three above the threshold, which is what this asserts; the
+    /// threshold itself is recorded in <c>docs/extending.md</c> rather than pinned here,
+    /// because an exact crossing is the wrong thing for a test to own.
+    /// </para>
+    /// </remarks>
+    /// <param name="vertices">Profile resolution.</param>
+    [Theory]
+    [InlineData(64)]
+    [InlineData(256)]
+    public void ALensOfSharedMetalBetweenCurvedSurfacesIsFound(int vertices)
+    {
+        const double Tube = 3e-3;
+        const double Center = 20e-3;
+
+        // The polygon sits inside the circle by this much on each profile, so the metal
+        // the two actually share is the circles' overlap less twice it.
+        var chord = Tube * (1.0 - Math.Cos(Math.PI / vertices));
+
+        CompiledElectrode3D[] At(double circleOverlap) =>
+        [
+            Torus("a", Center, Tube, vertices, 100.0),
+            Torus("b", Center + (2.0 * Tube) - circleOverlap, Tube, vertices, -100.0),
+        ];
+
+        var shared = 30e-6 - (2.0 * chord);
+
+        Assert.True(shared > 0.0, "the profile is too coarse for this overlap to exist");
+
+        var errors = Check(At(30e-6));
+
+        output.WriteLine(
+            $"{vertices}-gon: circles overlap 30 um, polygons share {shared * 1e6:0.###} um, "
+            + $"deepest {shared * 0.5e6:0.###} um inside both -> {errors.Count} refusal");
+
+        Assert.Single(errors);
+
+        // The control, and it is the half that matters: tangency between the same two
+        // curved surfaces is a legitimate design and must pass. At zero circle overlap
+        // the polygons are actually apart, by twice the chord.
+        Assert.Empty(Check(At(0.0)));
+    }
 }

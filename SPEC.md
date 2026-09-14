@@ -223,8 +223,14 @@ all five rungs.
 
 **What it does not do**, stated rather than discovered: it cannot prove two conductors
 disjoint, so a sliver of shared metal thinner than the search reaches is missed. Measured
-down to 1 um of shared metal on a 10 mm box, and that theory is the test to extend if a
-real geometry is ever missed. **A refusal rests on the sign of a signed distance and on
+two ways. Two boxes sharing a face overlap over their whole area, so the search need only
+find a **slab**: 1 um of shared metal on a 10 mm box. Two *curved* surfaces just
+interpenetrating share a **lens** and are harder - built as two tori, where the circles'
+overlap `2r - d` is a closed form, the deepest lens found on a 3 mm tube is **5.8 um** at
+the shipped budget. **The limit is a budget rather than a wall**: 30,000 probes reach
+4.8 um and 300,000 buy nothing further, so a halving costs over tenfold. 3,000 is kept
+because 5.8 um into a 3 mm conductor is 0.2 percent, far below any modeling mistake, and
+a tenfold budget would cost the linear ion trap 430 ms of validation instead of 43. **A refusal rests on the sign of a signed distance and on
 nothing else** - the Lipschitz bound decides only which boxes are worth opening, so a
 primitive whose distance is a conservative under-estimate rather than exact can cost the
 search a witness and can never cause a false refusal, since the witness is a point both
