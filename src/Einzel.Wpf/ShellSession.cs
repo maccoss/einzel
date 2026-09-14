@@ -189,6 +189,79 @@ public sealed class ShellSession
         return Task.Run(() => ViewportCommand.Execute(path));
     }
 
+    /// <summary>Runs the model's transport, handing each frame back as it is drawn.</summary>
+    /// <param name="frames">
+    /// Told each frame. Called on a background thread, so a caller binding to it marshals.
+    /// </param>
+    /// <param name="wanted">
+    /// Whether a frame is wanted now, given the steps taken and the wall-clock seconds
+    /// since the last one. Asked once per step, so it must be cheap.
+    /// </param>
+    /// <param name="stopping">Watched for a request to give up.</param>
+    /// <returns>The bundle the finished run leaves.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="frames"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Watching is what one does instead of waiting.</b> <see cref="ViewportAsync"/>
+    /// stops after the first phase because somebody is staring at a window; this walks the
+    /// whole timeline, because the reason to start it is to see what the instrument does to
+    /// a packet over all of it. A TIMS elution is twenty minutes, and twenty minutes of
+    /// watching is a different proposition from twenty minutes of a frozen window.
+    /// </para>
+    /// <para>
+    /// <b>Cancellation is checked rather than enforced.</b> A density step is not
+    /// interruptible part way, so what stopping does is decline to take the next one - the
+    /// run then ends where it stands and returns what it has. The alternative, aborting the
+    /// thread, would leave the solver's buffers in a state nothing could describe.
+    /// </para>
+    /// </remarks>
+    public Task<ViewportOutcome> WatchAsync(
+        Action<ViewportOutcome> frames,
+        Func<int, double, bool> wanted,
+        CancellationToken stopping = default)
+    {
+        ArgumentNullException.ThrowIfNull(frames);
+        ArgumentNullException.ThrowIfNull(wanted);
+
+        Journal.Reconcile();
+
+        // Amendment 25: every shell action is expressible as a command line. This one is
+        // `einzel run --progress`, which is the same transport writing a checkpoint instead
+        // of a picture - the run is the same run, and what differs is who is told about it.
+        Record($"einzel run {Quoted(Journal.ModelPath)} --progress 5", entry: null);
+
+        var path = Journal.ModelPath;
+
+        return Task.Run(
+            () => ViewportCommand.Watch(path, new Relay(frames, wanted, stopping)), stopping);
+    }
+
+    /// <summary>Passes frames on, and declines them when nobody is waiting for one.</summary>
+    private sealed class Relay(
+        Action<ViewportOutcome> frames,
+        Func<int, double, bool> wanted,
+        CancellationToken stopping) : ViewportCommand.IViewportProgress
+    {
+        private readonly System.Diagnostics.Stopwatch _clock =
+            System.Diagnostics.Stopwatch.StartNew();
+
+        private double _lastAt = double.NegativeInfinity;
+
+        public bool Wants(int steps, double timeSeconds)
+        {
+            stopping.ThrowIfCancellationRequested();
+
+            return wanted(steps, _clock.Elapsed.TotalSeconds - _lastAt);
+        }
+
+        public void Reached(ViewportOutcome frame)
+        {
+            _lastAt = _clock.Elapsed.TotalSeconds;
+
+            frames(frame);
+        }
+    }
+
     /// <summary>Runs the model and reports its figures by §12's accuracy class.</summary>
     /// <param name="preview">
     /// Whether to use the preview tier, which is cheaper, writes nothing, and is

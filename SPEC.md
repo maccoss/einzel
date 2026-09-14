@@ -2743,12 +2743,52 @@ project's author needs to run it and more than any physics the moment one does.
    balance point is now something the window shows; it takes minutes to show it, and the window
    stays responsive while it does.
 
+   **And the viewport is now filled by a run that is still going, which is the other answer
+   to the same problem.** A redraw truncates to the first phase because somebody is waiting on
+   it; `ViewportCommand.Watch` walks the whole timeline and hands out a drawable bundle every
+   so often, so the choice is no longer between a frozen window and a checkpoint file
+   describing a packet in numbers. What a picture shows that a centroid and a width cannot is
+   the shape: a packet still narrowing, one pressed against a wall, one that never left where
+   it was seeded.
+
+   **A frame is a whole `ViewportOutcome`, not a density**, because UI-1 puts the contouring
+   on the command layer's side of the line - so a frame of a run in flight and the same
+   instant drawn afterwards are the same record built by the same function. The geometry is
+   extracted **once** and every frame shares it (asserted by reference, not by comparison),
+   which is what makes watching affordable: the sequencer already refuses a stage that moves
+   an electrode, so the meshes are identical at every instant of a run by construction.
+
+   **Three things the wiring got wrong, all found before it shipped.**
+   - **The transport reports its own leg's clock, and it is right to.** A leg does not know it
+     is one of eight; the checkpoint writer prints "phase 2/3, 12.0 of 40.0 us", which is what
+     a reader wants when the phase is named on the same line. A *picture* has no such line, so
+     a frame carrying a leg's clock sends the instant back to zero at every phase boundary and
+     stamps the packet with a time it passed through long before. The relay adds the phase
+     start, taken from what the phase **did** rather than what it declared - a phase can end
+     early, and accumulating declared durations would run the clock ahead of the packet for
+     the rest of the sequence.
+   - **The end of a run is empty whenever the ions arrived**, so applying the final bundle
+     unconditionally spends minutes drawing a packet and then replaces it with an empty box -
+     the exact picture the density work exists to stop a diffusive model producing. The watch
+     keeps the last frame that held one and says so; the finished viewport picks the middle of
+     the usable instants for the same reason, and a watch has no list to pick from.
+   - **`RefreshAsync` returns `HasBundle`, which is whether there are trajectories.** A watch
+     only ever runs on a model that has none by construction, so returning it would answer
+     false on every successful watch there is.
+
+   **Frames are coalesced rather than queued**, and applied on the thread that started the
+   watch. A viewport wants the newest packet, not every packet: a queue shows one from four
+   frames ago with three waiting behind it, falling further behind the longer it is watched.
+   The queued flag is cleared *before* the frame is read, so the race can post twice and can
+   never drop the last one.
+
    **Two narrower things stay open.** An instant landing in a *trajectory* phase yields no
    density, so a mixed sequence cannot be filmed end to end; the animation refuses with a count
    of the frames it could not fill rather than inventing them, which is right, and the figure
    that would show such an instrument does not exist. And the cost gate has not been taught that
-   a render or a redraw can now be a multi-hour operation, so GRD-8 does not reach either - which
-   matters most for the viewport, where nothing warns before the wait begins.
+   a render or a redraw can now be a multi-hour operation, so GRD-8 does not reach either -
+   which matters less than it did now that the viewport can be watched rather than waited on,
+   and still matters for a redraw, where nothing warns before the wait begins.
 
 9. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -

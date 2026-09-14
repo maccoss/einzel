@@ -320,6 +320,18 @@
             <CheckBox x:Name="Transparent" Content="see through" IsChecked="True"
                       Click="OnLayer"
                       ToolTip="Draw electrodes semi-transparent, so paths inside stay visible" />
+            <Separator />
+            <!--
+              Watching is what one does instead of waiting. A driven diffusive window is
+              hundreds of thousands of steps, so a redraw of such a model is minutes even
+              truncated to its first phase - and until this button existed the only thing
+              to do with those minutes was look at a window that had stopped answering.
+            -->
+            <Button x:Name="WatchRun" Content="Watch run" Click="OnWatch" MinWidth="76"
+                    ToolTip="Run the whole timeline, drawing the packet as it steps" />
+            <Button x:Name="StopWatch" Content="Stop" Click="OnStopWatch" MinWidth="48"
+                    IsEnabled="False"
+                    ToolTip="Stop after the current step, keeping what has been drawn" />
           </ToolBar>
         </ToolBarTray>
 
