@@ -205,18 +205,18 @@ public sealed class PolygonElectrodeTests(ITestOutputHelper output)
         var shifted = Polygon("shifted", (1, -1), (5, -1), (5, 1), (1, 1));
 
         var errors = new List<Errors.EinzelError>();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, lower with { Potential = 2.0 }], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, lower with { Potential = 2.0 }], [], "/f", errors);
         Assert.Empty(errors);
 
         errors.Clear();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, shifted with { Potential = 2.0 }], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, shifted with { Potential = 2.0 }], [], "/f", errors);
         Assert.Single(errors);
         output.WriteLine(errors[0].Constraint);
 
         // One polygon wholly inside another, no edge crossing at all.
         var inner = Polygon("inner", (1, 0.5), (2, 0.5), (2, 1.5), (1, 1.5));
         errors.Clear();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, inner with { Potential = 2.0 }], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, inner with { Potential = 2.0 }], [], "/f", errors);
         Assert.Single(errors);
 
         var tangentDisc = new CompiledElectrode
@@ -224,19 +224,19 @@ public sealed class PolygonElectrodeTests(ITestOutputHelper output)
             Name = "disc", Shape = ElectrodeShape.Disc, CentreX = 2.0, CentreY = 3.0, Radius = 1.0, Potential = 5.0,
         };
         errors.Clear();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, tangentDisc], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, tangentDisc], [], "/f", errors);
         Assert.Empty(errors);
 
         errors.Clear();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, tangentDisc with { CentreY = 2.5 }], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, tangentDisc with { CentreY = 2.5 }], [], "/f", errors);
         Assert.Single(errors);
 
         // And a rectangle against a polygon goes through the same arithmetic.
         errors.Clear();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, Rectangle(3, 1, 6, 3) with { Potential = 9.0 }], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, Rectangle(3, 1, 6, 3) with { Potential = 9.0 }], [], "/f", errors);
         Assert.Single(errors);
         errors.Clear();
-        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, Rectangle(4, 0, 6, 2) with { Potential = 9.0 }], "/f", errors);
+        ElectrodeOverlap.Check([upper with { Potential = 1.0 }, Rectangle(4, 0, 6, 2) with { Potential = 9.0 }], [], "/f", errors);
         Assert.Empty(errors);
     }
 }

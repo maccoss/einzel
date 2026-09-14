@@ -1571,11 +1571,27 @@ pointed at the left where the injector prism is, which no electrode would be, an
 `Ion Foil` leader line in the figure lands on the pale-blue band and not on it. Reading it
 as a third and fourth electrode is what produced the axis-centred leaf shape.
 
-**Mounted flush with the boards.** `foilGap` defaults to `halfGap`, making the foil a
-shaped conductive region on the inner face of each board rather than a separate aperture in
-the flight path — the plausible construction for a printed-circuit analyser, and what the
-projection would look like either way. Measured cost of moving it there from an 8 mm
-half-gap: 15% of the well depth and **no change in the well's shape**.
+**Mounted flush with the boards.** `foilGap` puts the foil's inner face at 20 mm against a
+20.715 mm board half-gap, making the foil a shaped conductive region on the inner face of
+each board rather than a separate aperture in the flight path — the plausible construction
+for a printed-circuit analyzer, and what the projection would look like either way.
+Measured cost of moving it there from an 8 mm half-gap: 15% of the well depth and **no
+change in the well's shape**.
+
+**How thick that foil is was corrected later, and the numbers here are unaffected.** The
+declaration extruded each stripe *outward* by a separate 2 mm `foilThickness`, which at the
+shipped `foilGap` drove it through the board's inner face and 1.285 mm into the grounded
+metal behind — two conductors in one place at two potentials, found when the volume
+electrode-overlap check was built (SPEC.md Amendment 51). The stripe now runs from
+`foilGap` out to `halfGap` and is tangent to the board, and `foilThickness` is derived.
+**The two declarations give identical Dirichlet masks — every node and every cut link — at
+cell sizes of 4, 2, 1, 0.5 and 0.25 mm**, because a cut link records the nearest surface
+along its arm and a contested node goes to the board, so nothing behind the stripe's front
+face was ever sampled. Every well depth and reversal distance in this log therefore stands.
+What is no longer expressible is the 8 mm comparison in the paragraph above: that 2 mm
+plate floating in the gap *is* the separate-aperture construction this template rejects,
+and the old declaration reached it only by extruding outward. The 15% is kept here as the
+measurement it was.
 
 ### What the shape does, by differencing two solves
 

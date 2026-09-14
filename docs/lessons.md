@@ -4641,3 +4641,207 @@ quantities and refinement separates them: refine, and see which way each moves. 
 `spreadMm` on a sequenced phase is a second moment. For a packet that was delivered rather
 than seeded it is not a width, and reading it as one - which is what I did in concluding the
 front end held a 1.9x wider packet - is reading the tail.
+
+## A guard that exists in one dimension is not a guard
+
+`ElectrodeOverlap` has refused two conductors occupying one place at two potentials since
+a hexapole was built with a quadrupole's rod ratio, put its rods through one another, and
+solved contentedly in eight cycles. It takes a `CompiledElectrode` and is called from the
+`solve2d` path. Every volume geometry - `box`, `sphere`, `cylinder`, `prism`, `revolve` -
+went unchecked from the day the volume solver landed, and the gap was *written down* in
+`docs/extending.md` as a stated limitation with both candidate designs named and the note
+"neither is built".
+
+Writing the volume half refused a shipped template on its first run. `astral-3d` extruded
+every drift stripe outward by its own declared 2 mm thickness, through the inner face of
+the grounded board it is printed on and 1.285 mm into the metal behind it.
+
+**A known gap, written down, is still a gap.** It survived because it was recorded honestly
+rather than despite it: the note describes the missing check accurately and reads as a
+decision, so every later reader - me included, repeatedly - saw a considered limitation
+rather than a defect waiting. This is the same shape as the Paul trap's 9.4 % shortfall,
+which was measured three independent ways, explained correctly, and carried as a stated
+correction on every published number until the geometry that caused it was replaced. **A
+correction that is carried faithfully stops being a problem to fix.** The counter-practice
+is to give a recorded gap an owner and a trigger, not only a description.
+
+## A check that must not falsely refuse should search for a proof, not for the truth
+
+The obvious volume overlap check is the minimum of `f = max(dA, dB)` over the intersection
+of the two bounding boxes: negative means shared metal. Both signed distances are
+1-Lipschitz, so branch and bound on it is straightforward and the first prototype was
+twenty lines.
+
+It is also the wrong question. Two conductors sharing a face - which is how *every*
+segmented electrode chain in this library is written - have `f` equal to zero over a whole
+surface, so proving `min f >= 0` means subdividing that surface to the tolerance. The
+prototype burned its 200,000-box budget on each of sixty such pairs in the Astral and came
+back **inconclusive on the commonest legitimate configuration there is**, which is a guard
+that cannot decide the case it will meet most often.
+
+The doctrine already in the plane check settles it: *"a test that guessed would sometimes
+refuse a legitimate geometry, which is worse than one that sometimes misses"*. So the check
+never needs to prove disjointness. **A point strictly inside both conductors is a proof of
+the violation; nothing proves the absence.** Reframed as a witness search the same
+machinery terminates on a budget, refuses only what it has proved, and passes tangency by
+construction rather than by tolerance. The Astral's buried stripe is found by the second
+probe.
+
+**The general form: before building a decision procedure, ask which of the two answers you
+are allowed to be wrong about.** If one direction is a proof and the other is only an
+absence of evidence, search for the proof and budget the search - the expensive half is
+usually the half you were never permitted to act on anyway.
+
+## Two conductors can interpenetrate and change nothing, and the mesh is why
+
+The Astral fix had to be shown not to move a published number, so the two declarations were
+compared as *masks* rather than as fields: every node's fixedness and value, every cut
+link's fraction. Identical - at cell sizes of 4, 2, 1, 0.5 and 0.25 mm, a sixteenfold
+refinement.
+
+The reason is two rules working together, neither of which is about the overlap. A cut link
+records the **nearest** surface along its arm, so the stripe's front face at 20 mm wins over
+everything behind it; and a node inside both conductors goes to whichever was written last,
+which is the board. Between them, what is behind the first surface is never sampled.
+
+**So the interpenetration was latent rather than active, and that is not what one would
+guess.** The natural worry about a buried conductor is that refining the mesh eventually
+resolves it and the geometry changes under a convergence study - which would make every
+refinement on this template suspect. It does not, and only the ladder says so; a
+single-mesh comparison at the shipped 4 mm cell shows nothing at all, because the 0.715 mm
+stripe holds **no node** there and exists purely as a cut link.
+
+The measurement's own teeth are the other half: extruding the stripe by 8 mm rather than 2,
+far enough to leave the back of the board, fails all five rungs. Without running that, "no
+differences at five meshes" is equally consistent with a comparison that compares nothing.
+
+## "Do these two agree" has as many answers as the instrument has states
+
+`ElectrodeOverlap` skips a pair of overlapping conductors when they hold the same thing,
+because overlapping is not the fault - disagreeing is. It read that off the electrodes as
+declared, which was the right question from the day it was written, and stopped being the
+right question the day a solve could carry a sequence.
+
+A stage changes **what an electrode holds** - that is the whole design - and may not change
+**where it is**, which `SameGeometry` and `SameGeometry3D` already enforce. So two conductors
+sharing metal at one potential while the trap holds and at two while it pushes are a field of
+a geometry nobody described **for exactly the duration of the push**, on a document that
+validates, solves and runs. The check that exists to prevent that would have said nothing.
+
+Both checks now gather every state - the base, each stage, and each ramping stage's far end -
+and refuse a pair that disagrees in any of them, naming the stage. Because the geometry is
+fixed across states the expensive half is unchanged: one intersection test, or one witness
+search, per pair.
+
+**Three things worth keeping.**
+
+The far end of a ramp is the arm that matters and the easy one to miss. A ramping phase's
+opening excitations are usually the previous phase's, so a disagreement introduced by the
+ramp lives only at the end it is walking toward - which is the whole point of a mass scan or
+a TIMS elution, where a potential ends somewhere else.
+
+**None of the twenty-two shipped templates is affected**, and that is the argument for doing
+it now rather than a reason not to. A guard written before the case exists costs an
+afternoon; the same guard written after costs an afternoon plus whatever was published from
+the run it should have refused.
+
+And the shape is the one this repository keeps recording: **a question answered by a proxy
+that was equivalent when the case set was smaller.** `einzel solve` reading a driven
+electrode's DC, `CanDoWork` asking the base potentials of a sequenced trap, the run fork
+asking whether two *adjacent* phases differ in mode, the terminal listing the modes that have
+no flight time. Each was correct when written. The tell is a check that reads one state, one
+mode, or one tap of something the format has since made plural.
+
+## A branch-and-bound's running best is an upper bound, and it is not the quantity's name
+
+Two mistakes in one number, both mine, and they compound.
+
+The first prototype of the volume overlap check reported "closest approach 1868.34 um at
+rodOuter / rodTop" for the C-trap, and that figure reached a commit message, `CLAUDE.md`,
+`SPEC.md` and two test doc comments before it was checked. **It is an unconverged running
+best.** Branch and bound reports the smallest value *found so far*; more probes can only
+lower it, so any value read out before the queue empties is an upper bound on the answer.
+Re-run at twenty times the budget it settles at **1032.73 um** - and that is the value the
+very first hand probe of that pair had already printed, on the first night, from a single
+point.
+
+The second mistake is what the quantity is. `min over space of max(dA, dB)` is not the
+distance between two solids: the midpoint of the shortest segment joining two surfaces has
+both distances equal to **half** the gap, so this minimum is at most half the separation and
+can be less. Reporting it as "the nearest metal is 1.87 mm away" gave a number that was
+wrong twice over - unconverged, and then read as a quantity it is not. What is defensible
+with no geometric assumption is the measurement itself: no point is inside both, and the
+deepest the search reaches is 1.033 mm *outside* both, so the surfaces are at least 2.07 mm
+apart.
+
+**The tell was available and I did not take it.** The value carried more digits than a
+search which had exhausted its budget could justify - 200,000 boxes had been spent on that
+pair without the queue emptying, which is precisely the state in which "best so far" means
+"not yet". A search that terminates by running out of budget should report its answer as a
+bound, or not report it at all.
+
+**And the experiment the correction suggested does not exist.** Having found the real
+separation, the obvious next measurement is how thin an interpenetration the check can still
+find *on curved surfaces* - walk one rod into the other and watch. It cannot be done on this
+pair: shifting `rodTop` three millimeters along the axis closes the gap by only 0.92 mm,
+because their closest approach is mostly radial. Growing the template's own dimensions
+instead trips the polygon self-intersection check first, at `rodHalfWidth` 5.5 mm, before
+the rods reach one another - and non-monotonically, since the profile changes shape. So the
+sliver limit recorded for this check is measured on two boxes sharing a face, where the
+shared volume is a slab and the search finds **1 um of shared metal on a 10 mm box**. A
+curved near-tangency gives a lens-shaped sliver rather than a slab and is harder.
+
+**So it was measured on a geometry built for it rather than on a template.** Two tori about
+one axis: profile circles of radius r with centers d apart share a lens of width `2r - d`,
+which is a closed form, so the sliver is a controlled quantity where the template's was not.
+On a 3 mm tube the search finds a lens **5.8 um** deep at the shipped 3,000 probes, against
+1 um of slab on a 10 mm box - an order of magnitude harder, as the shapes predict. **The
+limit is a budget rather than a wall**: 30,000 probes reach 4.8 um and 300,000 buy nothing
+further, so a halving costs more than tenfold, which is what subdividing in three dimensions
+should cost. And the threshold is identical at 64 and 256 profile vertices - the control that
+separates a property of the search from a property of the polygon, which matters here because
+an N-gon sits inside its circle by 3.6 um at 64 vertices, comparable with the sliver itself.
+
+**The general form: when a real geometry cannot be driven into the regime you want to
+measure, build one that can.** A synthetic pair with a closed-form answer measured in
+minutes what the template refused to show at all.
+
+## An error that cannot say where it is, and the 64 copies that made the case
+
+`EinzelError` carries a JSON Pointer because AGT-3 makes an error a **recovery
+instruction** rather than a notification. A dimension mismatch is raised inside
+`Quantity`, which has two operands and no document, so it names the root as a
+placeholder - and the frames that caught it, which were resolving a *named parameter* or
+a *numbered electrode's face*, added it verbatim. **The path was known at the catch site
+and discarded**, which is the same shape as `FieldAssembly.Build` dropping its
+`SolveReport` and the sweep evaluator dropping its warnings.
+
+It had been written down, as "a derived-parameter units error reports its path as `/`
+rather than naming the parameter - a small AGT-3 gap, not yet fixed". That description is
+accurate and it is why nothing happened: one parameter with a vague path is a blemish.
+
+**What changed is that the consequence got measured.** A foil thickness written without a
+unit on a real template gives **64 identical `UNITS_INCOMPATIBLE` errors, every one
+located at `/`** - naming neither which electrode nor which face, and indistinguishable
+from what a single mistake would print. Located, each reads
+`/fields/2/solve3d/electrodes/0/repeat/7/maxY`, down to the repeat index. The gap was not
+small; it had only ever been seen small.
+
+**And the fix was already present, ten lines above the place it was missing.**
+`ParameterSurface` located a *literal* parameter's failure with `with { Path = path }` and
+dropped a *derived* one's - the two branches of one method disagreeing, which is how the
+recorded gap came to exist without anyone seeing it as an instance of anything.
+
+Two things worth keeping about the shape of the fix. **Only the placeholder is replaced**:
+locating an error must never make it *less* located, and an expression evaluator is handed
+the path it works on and raises its own failures with it, so an outer frame that knew only
+the enclosing element would otherwise coarsen every one on the way past. And the teeth are
+measured in both directions - making `At` the identity fails three tests, removing its
+placeholder guard fails a different one.
+
+**How it was found is the reusable part.** Not by a failing test: by driving a refusal I
+had just added through the CLI, which is this project's own rule that after adding a
+producer you ask what reads it. The first attempt at a deliberately broken model used a
+bare `2.0` where the grammar has no unit literals, so it produced the wrong error
+entirely - **and the wrong error was the finding**. A probe that fails for an unintended
+reason is still showing you something; read it before fixing it.

@@ -230,7 +230,7 @@ public sealed class ParameterSurface
             }
             catch (EinzelException failure)
             {
-                errors.Add(failure.Error with { Path = path });
+                errors.Add(failure.Error.At(path));
                 continue;
             }
 
@@ -244,7 +244,7 @@ public sealed class ParameterSurface
                 }
                 catch (EinzelException failure)
                 {
-                    errors.Add(failure.Error);
+                    errors.Add(failure.Error.At(path));
                     continue;
                 }
 

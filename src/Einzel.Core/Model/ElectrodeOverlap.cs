@@ -36,26 +36,65 @@ public static class ElectrodeOverlap
 {
     /// <summary>Checks a solved 2D geometry for contradictory overlaps.</summary>
     /// <param name="electrodes">The compiled electrodes, in declaration order.</param>
+    /// <param name="stages">The timed states, empty when the geometry holds one.</param>
     /// <param name="path">JSON Pointer to the solve block, for the error object.</param>
     /// <param name="errors">Where a violation is recorded.</param>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// <b>Over every state the instrument has, not over the one it is declared in.</b>
+    /// A stage may change what an electrode holds - that is what a stage is for - and
+    /// may not change where it is, which <c>SameGeometry</c> enforces. So "do these two
+    /// agree" has as many answers as there are states, and asking it of the base state
+    /// alone is a proxy that stops being equivalent the moment a document declares a
+    /// sequence: two conductors sharing metal at one potential while held, and at two
+    /// while pushing, would be a field of a geometry nobody described for exactly the
+    /// duration of the push. The geometry is fixed across states, so the intersection
+    /// test is still done once per pair.
+    /// </remarks>
     public static void Check(
-        IReadOnlyList<CompiledElectrode> electrodes, string path, List<EinzelError> errors)
+        IReadOnlyList<CompiledElectrode> electrodes,
+        IReadOnlyList<CompiledStage> stages,
+        string path,
+        List<EinzelError> errors)
     {
         ArgumentNullException.ThrowIfNull(electrodes);
+        ArgumentNullException.ThrowIfNull(stages);
         ArgumentNullException.ThrowIfNull(errors);
+
+        // Every state the pair is ever in, base first so an unsequenced geometry is
+        // reported exactly as it was before stages were considered.
+        var states = new List<IReadOnlyList<CompiledElectrode>> { electrodes };
+
+        foreach (var stage in stages)
+        {
+            if (stage.Electrodes.Count == electrodes.Count)
+            {
+                states.Add(stage.Electrodes);
+            }
+
+            if (stage.EndElectrodes is { } end && end.Count == electrodes.Count)
+            {
+                states.Add(end);
+            }
+        }
 
         for (var i = 0; i < electrodes.Count; i++)
         {
             for (var j = i + 1; j < electrodes.Count; j++)
             {
-                var a = electrodes[i];
-                var b = electrodes[j];
+                var disagreeing = states.FirstOrDefault(s => !Agrees(s[i], s[j]));
 
-                if (Agrees(a, b) || !Intersects(a, b))
+                if (disagreeing is null || !Intersects(electrodes[i], electrodes[j]))
                 {
                     continue;
                 }
+
+                var a = disagreeing[i];
+                var b = disagreeing[j];
+
+                var when = ReferenceEquals(disagreeing, electrodes)
+                    ? string.Empty
+                    : $" during '{Named(stages, disagreeing)}'";
 
                 errors.Add(new EinzelError
                 {
@@ -63,7 +102,7 @@ public static class ElectrodeOverlap
                     Path = $"{path}/electrodes",
                     Constraint =
                         $"'{a.Name}' and '{b.Name}' occupy the same space and hold different "
-                        + $"excitations: {Describe(a)} against {Describe(b)}",
+                        + $"excitations{when}: {Describe(a)} against {Describe(b)}",
                     Suggestion =
                         "two conductors cannot be in one place at two potentials, and a mask built "
                         + "from them keeps whichever was written last - so the solve would return "
@@ -79,6 +118,22 @@ public static class ElectrodeOverlap
                 return;
             }
         }
+    }
+
+    /// <summary>Which stage a set of electrodes came from, for the message.</summary>
+    private static string Named(
+        IReadOnlyList<CompiledStage> stages, IReadOnlyList<CompiledElectrode> state)
+    {
+        foreach (var stage in stages)
+        {
+            if (ReferenceEquals(stage.Electrodes, state)
+                || ReferenceEquals(stage.EndElectrodes, state))
+            {
+                return stage.Name;
+            }
+        }
+
+        return "a stage";
     }
 
     /// <summary>Whether two electrodes hold the same thing, so overlapping is harmless.</summary>

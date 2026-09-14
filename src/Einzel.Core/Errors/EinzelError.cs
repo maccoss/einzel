@@ -77,6 +77,32 @@ public sealed record EinzelError
     /// <summary>Severity. Defaults to <see cref="ErrorSeverity.Error"/>.</summary>
     public ErrorSeverity Severity { get; init; } = ErrorSeverity.Error;
 
+    /// <summary>
+    /// The path a placeholder stands in for, supplied by whoever caught the error.
+    /// </summary>
+    /// <param name="path">JSON Pointer to the location the caller was working on.</param>
+    /// <returns>This error, located.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Arithmetic cannot know where it is.</b> A dimension mismatch is raised inside
+    /// <c>Quantity</c>, which has two operands and no document, so it names the root as a
+    /// placeholder. The caller catching it does know - it was resolving a named parameter
+    /// or a numbered electrode's face - and AGT-3 is the requirement that an error be a
+    /// recovery instruction, which a path of <c>/</c> is not.
+    /// </para>
+    /// <para>
+    /// <b>Only the placeholder is replaced</b>, so an error raised deeper with a genuine
+    /// path keeps it: filling in a location must never overwrite a more specific one.
+    /// </para>
+    /// <para>
+    /// The consequence of dropping it, measured on a real document: a thickness written
+    /// without a unit made 64 identical <c>UNITS_INCOMPATIBLE</c> errors, every one of
+    /// them located at <c>/</c>, which names neither which electrode nor which face and
+    /// is the same message a single mistake would give.
+    /// </para>
+    /// </remarks>
+    public EinzelError At(string path) => Path == "/" ? this with { Path = path } : this;
+
     /// <summary>Renders the error for a terminal, one line per populated field.</summary>
     /// <returns>A human-readable rendering; the JSON form is the machine surface.</returns>
     public override string ToString()

@@ -60,7 +60,7 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
     {
         var errors = new List<EinzelError>();
 
-        ElectrodeOverlap.Check(electrodes, "/fields/0/solve", errors);
+        ElectrodeOverlap.Check(electrodes, [], "/fields/0/solve", errors);
 
         return errors;
     }
@@ -188,6 +188,7 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
                 Tapped("a", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.0)),
                 Tapped("b", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.5)),
             ],
+            [],
             "/fields/0/solve",
             errors);
 
@@ -209,6 +210,7 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
                 Tapped("a", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.25)),
                 Tapped("b", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.25)),
             ],
+            [],
             "/fields/0/solve",
             errors);
 
@@ -227,9 +229,90 @@ public sealed class ElectrodeOverlapTests(ITestOutputHelper output)
                 Tapped("a", 0.0, new CompiledTap(0, 300.0, 0.0)),
                 Tapped("b", 0.0, new CompiledTap(0, 300.0, 0.0), new CompiledTap(1, 50.0, 0.0)),
             ],
+            [],
             "/fields/0/solve",
             errors);
 
         Assert.Single(errors);
+    }
+
+    /// <summary>
+    /// Two conductors that agree while the instrument holds and differ while it pushes
+    /// are still two conductors in one place at two potentials.
+    /// </summary>
+    /// <remarks>
+    /// <b>The proxy this project keeps meeting.</b> This check asked about the declared
+    /// state alone from the day it was written, which was equivalent to the right
+    /// question until a solve could carry a sequence. A stage may not move metal -
+    /// <c>SameGeometry</c> enforces that - so the overlap is settled once and only the
+    /// excitations vary; what would otherwise happen is a field of a geometry nobody
+    /// described for exactly the duration of the push, on a document that validated
+    /// cleanly. None of the shipped templates is affected, which is what makes this a
+    /// guard written before the case rather than a fix.
+    /// </remarks>
+    [Fact]
+    public void ConductorsThatAgreeAtRestAndDifferDuringAStageAreRefused()
+    {
+        CompiledElectrode[] At(double volts) =>
+        [
+            Box("plate", 0.0, 0.0, 0.010, 0.010),
+            Box("shoulder", 0.004, 0.0, 0.014, 0.010, volts),
+        ];
+
+        var errors = new List<EinzelError>();
+
+        // At rest they agree, so the overlap is a fillet and nothing is reported.
+        ElectrodeOverlap.Check(
+            At(0.0), [new CompiledStage("hold", 1e-6, At(0.0))], "/fields/0/solve", errors);
+
+        Assert.Empty(errors);
+
+        // Push, and the same metal is at 0 V and 400 V at once.
+        ElectrodeOverlap.Check(
+            At(0.0),
+            [
+                new CompiledStage("hold", 1e-6, At(0.0)),
+                new CompiledStage("push", 2e-6, At(400.0)),
+            ],
+            "/fields/0/solve",
+            errors);
+
+        var error = Assert.Single(errors);
+
+        Assert.Contains("during 'push'", error.Constraint, StringComparison.Ordinal);
+        Assert.Contains("400 V", error.Constraint, StringComparison.Ordinal);
+
+        output.WriteLine(error.Constraint);
+    }
+
+    /// <summary>A ramp's far end is a state too.</summary>
+    /// <remarks>
+    /// A phase that ramps carries the electrodes as they stand at both ends, and the
+    /// disagreement may live only at the end it is walking toward - the state a check
+    /// reading the phase's opening excitations would never see. This is the arm that
+    /// matters for a TIMS elution or a mass scan, where the whole point of the phase is
+    /// that a potential ends somewhere else.
+    /// </remarks>
+    [Fact]
+    public void ADisagreementOnlyAtTheEndOfARampIsRefused()
+    {
+        CompiledElectrode[] At(double volts) =>
+        [
+            Box("plate", 0.0, 0.0, 0.010, 0.010),
+            Box("shoulder", 0.004, 0.0, 0.014, 0.010, volts),
+        ];
+
+        var errors = new List<EinzelError>();
+
+        ElectrodeOverlap.Check(
+            At(0.0),
+            [new CompiledStage("elute", 8e-3, At(0.0)) { EndElectrodes = At(60.0) }],
+            "/fields/0/solve",
+            errors);
+
+        var error = Assert.Single(errors);
+
+        Assert.Contains("during 'elute'", error.Constraint, StringComparison.Ordinal);
+        Assert.Contains("60 V", error.Constraint, StringComparison.Ordinal);
     }
 }

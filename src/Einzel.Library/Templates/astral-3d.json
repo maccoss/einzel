@@ -143,18 +143,16 @@
       "description": "Superseded by v0..v15; retained so older documents parse. Not referenced by any electrode."
     },
     "foilThickness": {
-      "value": 2.0,
+      "expression": "halfGap - foilGap",
       "unit": "mm",
-      "minimum": 0.5,
-      "maximum": 6.0,
-      "description": "how thick the foil electrodes are."
+      "description": "How far the foil stands proud of the board it is printed on, which is set by foilGap rather than declared: the foil runs from foilGap out to the board's inner face, so there is one knob and not two. It was a knob, at 2 mm, and the foil was then extruded outward THROUGH the board face and 1.285 mm into the grounded metal behind it - two conductors in one place at two potentials, which is ill-posed and which the volume overlap check refuses. The solve never saw that metal: a cut link records the NEAREST surface along its arm, so the foil's front face won over everything behind it, and a node inside both went to the board because the boards are written last. Saying so therefore changes the Dirichlet mask in no node and no cut link at cell sizes of 4, 2, 1, 0.5 and 0.25 mm, so every number measured from this template stands. SPEC.md Amendment 51."
     },
     "foilGap": {
       "value": 20.0,
       "unit": "mm",
       "minimum": 2.0,
       "maximum": 30.0,
-      "description": "Half-gap between the foil plates in the board-gap direction. Defaults to halfGap, so the foil is a shaped conductive region on the inner face of each board rather than a separate aperture in the flight path - which is both the plausible construction for a printed-circuit analyser and what the published schematic projects to. Mounting the plates flush costs 15% of the well depth (7.31 V against 8.58 V at foilGap 8 mm) and leaves the well shape unchanged, shallowest at 41% of the drift and deepest at 67%."
+      "description": "Where the foil's inner face sits, measured from the ion plane in the board-gap direction. The foil runs from here out to the board's inner face at halfGap, so it is a shaped conductive region on the FACE of each board rather than a separate aperture in the flight path - the plausible construction for a printed-circuit analyzer, and what the published schematic projects to. At the shipped 20 mm the foil stands 0.715 mm proud and the well reaches 7.31 V, shallowest at 41% of the drift and deepest at 67%. The 15% comparison against a 2 mm plate floating at an 8 mm half-gap is recorded in docs/astral-log.md and is no longer expressible here, deliberately: that plate IS the separate-aperture construction this template rejects, and the old declaration reached it by extruding the foil outward by a declared thickness - which at the shipped value drove it 1.285 mm into the grounded board behind it."
     },
     "foilSlices": {
       "value": 16.0,
@@ -1699,7 +1697,7 @@
               "unit": "mm"
             },
             "maxY": {
-              "expression": "foilGap + foilThickness",
+              "expression": "halfGap",
               "unit": "mm"
             },
             "minZ": {
@@ -1733,7 +1731,7 @@
               "unit": "mm"
             },
             "minY": {
-              "expression": "-foilGap - foilThickness",
+              "expression": "-halfGap",
               "unit": "mm"
             },
             "maxY": {
@@ -1775,7 +1773,7 @@
               "unit": "mm"
             },
             "maxY": {
-              "expression": "foilGap + foilThickness",
+              "expression": "halfGap",
               "unit": "mm"
             },
             "minZ": {
@@ -1809,7 +1807,7 @@
               "unit": "mm"
             },
             "minY": {
-              "expression": "-foilGap - foilThickness",
+              "expression": "-halfGap",
               "unit": "mm"
             },
             "maxY": {
