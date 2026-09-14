@@ -2465,6 +2465,14 @@ public static class ModelValidator
 
         var stages = CompileStages3D(solve, timeline, electrodes, drives, errors);
 
+        // The same refusal the plane path makes, and for the same reason: two conductors
+        // in one place at two potentials is ill-posed, and the mask keeps whichever was
+        // written last. Checked after expansion, because a repeated electrode only
+        // overlaps itself once its copies exist - which is exactly the case this found
+        // on its first run, a repeated drift stripe buried in the board behind it. And
+        // after the stages, because what an electrode holds is what a stage changes.
+        ElectrodeOverlap3D.Check(electrodes, stages, path, errors);
+
         if (drives.Count == 0 && electrodes.Any(e => e.IsDriven))
         {
             var driven = electrodes.First(e => e.IsDriven);
@@ -2748,17 +2756,18 @@ public static class ModelValidator
             Expand(solve.Electrodes[i], $"{path}/electrodes/{i}", drives, p, electrodes, errors);
         }
 
-        // Two conductors in one place at two potentials is ill-posed, and the mask
-        // keeps whichever was written last - so the solve would return the field of
-        // a geometry nobody described. Checked after expansion, because a repeated
-        // electrode only overlaps itself once its copies exist.
-        ElectrodeOverlap.Check(electrodes, path, errors);
-
         var reflect = solve.ReflectAboutX is null
             ? (double?)null
             : TryQuantity(solve.ReflectAboutX, $"{path}/reflectAboutX", length, p, errors)?.SiValue;
 
         var stages = CompileStages(solve, timeline, electrodes, drives, errors);
+
+        // Two conductors in one place at two potentials is ill-posed, and the mask
+        // keeps whichever was written last - so the solve would return the field of
+        // a geometry nobody described. Checked after expansion, because a repeated
+        // electrode only overlaps itself once its copies exist; and after the stages,
+        // because what an electrode holds is what a stage changes.
+        ElectrodeOverlap.Check(electrodes, stages, path, errors);
 
         var symmetry = Symmetry(solve.Symmetry, $"{path}/symmetry", errors);
 

@@ -94,16 +94,54 @@ geometry — a function is best tested through something that would visibly brea
   already met: a hexapole written with a quadrupole's rod ratio put its rods through one
   another, and the engine **solved it, converged in eight cycles, and returned a field**.
 
-  **It is cross-section only, and that is a stated gap rather than an omission in this list.**
-  `ElectrodeOverlap.Check` takes `CompiledElectrode` and is called from the `solve2d` path
-  alone, so `box`, `sphere`, `cylinder`, `prism` and `revolve` are all unchecked — a volume
-  primitive has no rows to add. The C-trap is the geometry most exposed to it: five conductors
-  at two RF phases, nested inside one another, and its previous incarnation *deliberately*
-  overlapped spheres at one potential. What a volume check cannot be is a bounding-box screen,
-  because nested arcs have overlapping boxes by construction and it would refuse a legitimate
-  geometry; what it can be is either fifteen exact pair tests or a sampled one that reports
-  only the overlaps it actually finds, which misses rather than false-refuses. Neither is
-  built.
+  **A volume primitive has no rows to add here, and needs none.**
+  `src/Einzel.Core/Model/ElectrodeOverlap3D.cs` is the volume half, and it does not switch on
+  the pair of shapes at all: it asks each primitive only for its **bounding box** and its
+  **signed distance**, both of which this list already requires. So a sixth primitive is
+  checked the day it compiles, which is invariant 2 in a new place — the fifteen exact pair
+  tests five shapes would otherwise need include a tilted box against a revolved hyperbola,
+  which has no closed form worth writing.
+
+  **It searches for a witness rather than proving disjointness, and that is the design.** A
+  point strictly inside both conductors *proves* the geometry is ill-posed, so a refusal is
+  never wrong; the opposite claim is far more expensive, because two conductors sharing a face
+  have `max(dA, dB)` equal to zero over a whole surface and a subdivision would have to cover
+  it. Since the doctrine is *miss rather than falsely refuse*, the expensive half is the half
+  not worth buying: a budget running out means "no violation found", not "refuse anyway".
+  Branch and bound on `max(dA, dB)` over the intersection of the two boxes, pruning on the
+  1-Lipschitz bound and expanding deepest-bound-first, with both electrode centers probed
+  first as a seed — for a convex primitive that settles containment in two
+  evaluations, and for a concave outline it costs one probe.
+
+  **A bounding-box screen alone will not do**, which the C-trap says: its five rods are nested
+  arcs about one axis, so `rodInnerUpper`'s box lies wholly inside `rodOuter`'s while the metal
+  is 1.87 mm apart. The screen is still worth having in front of the search — on the shipped
+  Astral it settles 3,204 of 3,328 disagreeing pairs at no cost — because it settles them the
+  safe way, by proving disjointness.
+
+  **The tangency tolerance is load-bearing, and for the reason the flat-face defect taught.**
+  A witness must be `1e-9` of the pair's extent inside both. Faces meant to coincide are
+  written as two different expressions over the parameter surface and agree to a few ulps
+  rather than exactly, so an exact test would refuse a geometry whose author did nothing
+  wrong — and tangency is not a corner case, it is how every segmented chain in this library
+  is written.
+
+  **Both checks ask about every state the instrument has.** A stage changes what an electrode
+  *holds* and may not change where it *is*, so "do these two agree" has as many answers as
+  there are states. Each gathers the base state, every stage, and every ramping stage's far
+  end — the arm that matters, since a ramp's opening excitations are usually the previous
+  phase's. The geometry is fixed across states, so the expensive half is still done once per
+  pair.
+
+  **The two checks were cross-validated against each other, once.** Running the volume
+  witness search over every shipped cross-section — a completely different algorithm on the
+  same geometries — found **0 witnesses**, agreeing with the plane check's exact pair tests
+  everywhere. That is corroboration rather than coverage, which is why it is recorded here
+  and not kept as a test: `CompiledElectrode.SignedDistance` is defined for `Disc`,
+  `Rectangle` and `Polygon`, exactly the three the plane switch already tests exactly, so the
+  search shares the plane check's blind spot for an **edge profile** and could not have
+  caught it. The volume check has no matching gap, because there is no volume analogue of an
+  edge profile.
 
 **The pattern.** A primitive carries a **closed-form signed distance** (negative inside) and a
 **closed-form first entry** along a segment. Those two are what make it a cut cell in the

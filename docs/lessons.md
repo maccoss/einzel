@@ -4641,3 +4641,113 @@ quantities and refinement separates them: refine, and see which way each moves. 
 `spreadMm` on a sequenced phase is a second moment. For a packet that was delivered rather
 than seeded it is not a width, and reading it as one - which is what I did in concluding the
 front end held a 1.9x wider packet - is reading the tail.
+
+## A guard that exists in one dimension is not a guard
+
+`ElectrodeOverlap` has refused two conductors occupying one place at two potentials since
+a hexapole was built with a quadrupole's rod ratio, put its rods through one another, and
+solved contentedly in eight cycles. It takes a `CompiledElectrode` and is called from the
+`solve2d` path. Every volume geometry - `box`, `sphere`, `cylinder`, `prism`, `revolve` -
+went unchecked from the day the volume solver landed, and the gap was *written down* in
+`docs/extending.md` as a stated limitation with both candidate designs named and the note
+"neither is built".
+
+Writing the volume half refused a shipped template on its first run. `astral-3d` extruded
+every drift stripe outward by its own declared 2 mm thickness, through the inner face of
+the grounded board it is printed on and 1.285 mm into the metal behind it.
+
+**A known gap, written down, is still a gap.** It survived because it was recorded honestly
+rather than despite it: the note describes the missing check accurately and reads as a
+decision, so every later reader - me included, repeatedly - saw a considered limitation
+rather than a defect waiting. This is the same shape as the Paul trap's 9.4 % shortfall,
+which was measured three independent ways, explained correctly, and carried as a stated
+correction on every published number until the geometry that caused it was replaced. **A
+correction that is carried faithfully stops being a problem to fix.** The counter-practice
+is to give a recorded gap an owner and a trigger, not only a description.
+
+## A check that must not falsely refuse should search for a proof, not for the truth
+
+The obvious volume overlap check is the minimum of `f = max(dA, dB)` over the intersection
+of the two bounding boxes: negative means shared metal. Both signed distances are
+1-Lipschitz, so branch and bound on it is straightforward and the first prototype was
+twenty lines.
+
+It is also the wrong question. Two conductors sharing a face - which is how *every*
+segmented electrode chain in this library is written - have `f` equal to zero over a whole
+surface, so proving `min f >= 0` means subdividing that surface to the tolerance. The
+prototype burned its 200,000-box budget on each of sixty such pairs in the Astral and came
+back **inconclusive on the commonest legitimate configuration there is**, which is a guard
+that cannot decide the case it will meet most often.
+
+The doctrine already in the plane check settles it: *"a test that guessed would sometimes
+refuse a legitimate geometry, which is worse than one that sometimes misses"*. So the check
+never needs to prove disjointness. **A point strictly inside both conductors is a proof of
+the violation; nothing proves the absence.** Reframed as a witness search the same
+machinery terminates on a budget, refuses only what it has proved, and passes tangency by
+construction rather than by tolerance. The Astral's buried stripe is found by the second
+probe.
+
+**The general form: before building a decision procedure, ask which of the two answers you
+are allowed to be wrong about.** If one direction is a proof and the other is only an
+absence of evidence, search for the proof and budget the search - the expensive half is
+usually the half you were never permitted to act on anyway.
+
+## Two conductors can interpenetrate and change nothing, and the mesh is why
+
+The Astral fix had to be shown not to move a published number, so the two declarations were
+compared as *masks* rather than as fields: every node's fixedness and value, every cut
+link's fraction. Identical - at cell sizes of 4, 2, 1, 0.5 and 0.25 mm, a sixteenfold
+refinement.
+
+The reason is two rules working together, neither of which is about the overlap. A cut link
+records the **nearest** surface along its arm, so the stripe's front face at 20 mm wins over
+everything behind it; and a node inside both conductors goes to whichever was written last,
+which is the board. Between them, what is behind the first surface is never sampled.
+
+**So the interpenetration was latent rather than active, and that is not what one would
+guess.** The natural worry about a buried conductor is that refining the mesh eventually
+resolves it and the geometry changes under a convergence study - which would make every
+refinement on this template suspect. It does not, and only the ladder says so; a
+single-mesh comparison at the shipped 4 mm cell shows nothing at all, because the 0.715 mm
+stripe holds **no node** there and exists purely as a cut link.
+
+The measurement's own teeth are the other half: extruding the stripe by 8 mm rather than 2,
+far enough to leave the back of the board, fails all five rungs. Without running that, "no
+differences at five meshes" is equally consistent with a comparison that compares nothing.
+
+## "Do these two agree" has as many answers as the instrument has states
+
+`ElectrodeOverlap` skips a pair of overlapping conductors when they hold the same thing,
+because overlapping is not the fault - disagreeing is. It read that off the electrodes as
+declared, which was the right question from the day it was written, and stopped being the
+right question the day a solve could carry a sequence.
+
+A stage changes **what an electrode holds** - that is the whole design - and may not change
+**where it is**, which `SameGeometry` and `SameGeometry3D` already enforce. So two conductors
+sharing metal at one potential while the trap holds and at two while it pushes are a field of
+a geometry nobody described **for exactly the duration of the push**, on a document that
+validates, solves and runs. The check that exists to prevent that would have said nothing.
+
+Both checks now gather every state - the base, each stage, and each ramping stage's far end -
+and refuse a pair that disagrees in any of them, naming the stage. Because the geometry is
+fixed across states the expensive half is unchanged: one intersection test, or one witness
+search, per pair.
+
+**Three things worth keeping.**
+
+The far end of a ramp is the arm that matters and the easy one to miss. A ramping phase's
+opening excitations are usually the previous phase's, so a disagreement introduced by the
+ramp lives only at the end it is walking toward - which is the whole point of a mass scan or
+a TIMS elution, where a potential ends somewhere else.
+
+**None of the twenty-two shipped templates is affected**, and that is the argument for doing
+it now rather than a reason not to. A guard written before the case exists costs an
+afternoon; the same guard written after costs an afternoon plus whatever was published from
+the run it should have refused.
+
+And the shape is the one this repository keeps recording: **a question answered by a proxy
+that was equivalent when the case set was smaller.** `einzel solve` reading a driven
+electrode's DC, `CanDoWork` asking the base potentials of a sequenced trap, the run fork
+asking whether two *adjacent* phases differ in mode, the terminal listing the modes that have
+no flight time. Each was correct when written. The tell is a check that reads one state, one
+mode, or one tap of something the format has since made plural.

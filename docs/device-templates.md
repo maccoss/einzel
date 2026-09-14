@@ -1494,6 +1494,74 @@ because the overlap is not the problem; and an **edge profile is skipped**, beca
 a boundary profile touching an interior electrode is a different question and a
 check that guessed would sometimes refuse a legitimate geometry.
 
+### And the same refusal in a volume, which found one
+
+`ElectrodeOverlap3D` is the volume half. It switches on nothing: it asks each
+primitive for its bounding box and its signed distance, so `box`, `sphere`,
+`cylinder`, `prism`, `revolve` and any sixth are checked by one piece of code.
+**It searches for a witness rather than proving disjointness** — a point strictly
+inside both conductors proves the geometry is ill-posed, while the opposite claim
+is far more expensive, because two conductors sharing a face have `max(dA, dB)`
+equal to zero over a whole surface. Since the doctrine is *miss rather than falsely
+refuse*, the expensive half is the one not worth buying. Branch and bound on
+`max(dA, dB)` over the intersection of the two boxes, pruning on the 1-Lipschitz
+bound, expanding deepest-bound-first, both centers probed first.
+
+**A bounding-box screen alone would refuse the C-trap**, whose five rods are nested
+arcs about one axis: `rodInnerUpper`'s box lies wholly *inside* `rodOuter`'s while
+the nearest metal is 1.87 mm away. The screen still earns its place in front of the
+search — on the Astral it settles 3,204 of 3,328 disagreeing pairs at no cost —
+because it settles them the safe way, by proving disjointness.
+
+| | electrodes | disagreeing pairs | validated in |
+| --- | --- | --- | --- |
+| `c-trap` | 5 | 6 | 14 ms |
+| `segmented-quadrupole` | 12 | 52 | 7 ms |
+| `linear-ion-trap-3d` | 32 | 400 | 43 ms |
+| `astral-3d` | 86 | 3,328 | 4 ms |
+
+**Written, it refused a shipped template on its first run.** Every drift stripe in
+`astral-3d` was extruded outward by its own declared 2 mm thickness, through the
+inner face of the grounded board it is printed on and **1.285 mm into the metal
+behind it** — two conductors in one place at two potentials, the exact condition the
+plane check has refused since the hexapole. The fix is one expression: the stripe now
+runs from `foilGap` out to `halfGap`, the board's own face, so the two are tangent,
+and `foilThickness` became derived rather than a second knob.
+
+**No number moved, and that is measured rather than argued.** The two declarations
+give **identical masks — every node, every cut link — at cell sizes of 4, 2, 1, 0.5
+and 0.25 mm**, a sixteenfold refinement. Two mechanisms combine: a cut link records
+the *nearest* surface along its arm, so the stripe's front face at 20 mm wins over
+anything behind it, and a node inside both goes to the board because the boards are
+written last. **So the interpenetration was latent rather than active** — a refinement
+study on this template would not have silently changed the geometry, which is not
+what one would guess and is the thing worth knowing. The measurement's teeth are
+checked by mutation: extruding the stripe by 8 mm instead of 2, far enough to leave
+the back of the board, fails all five rungs.
+
+At the shipped 4 mm cell the stripe holds **no node at all** — it is 0.715 mm thick
+and the nodes nearest it sit at 19.20 and 23.04 mm — so what the solve sees is a
+conductor surface at 20 mm reached through a cut link, and the foil's thickness is
+not a resolved quantity there.
+
+### Both checks now ask about every state, not the declared one
+
+A stage changes what an electrode **holds** and may not change where it **is**. So
+"do these two agree" has as many answers as the instrument has states, and asking it
+of the declared state alone was a proxy that stopped being equivalent the moment a
+solve could carry a sequence: two conductors sharing metal at one potential while a
+trap holds and at two while it pushes would be a field of a geometry nobody described
+for exactly the duration of the push, on a document that validated cleanly. Both the
+plane and the volume check now gather the base state, every stage, and every ramping
+stage's **far end** — the arm that matters, since a ramp's opening excitations are
+usually the previous phase's and the disagreement it introduces lives at the end it is
+walking toward. The refusal names the stage.
+
+The geometry is fixed across states, so the expensive half is unchanged: one
+intersection test, or one witness search, per pair. **None of the twenty-two shipped
+templates is affected**, which is what makes this a guard written before the case
+rather than a fix after it.
+
 ## `paul-trap` — the 3-D quadrupole trap, and where its cut-off really is
 
 A driven ring with an earthed endcap either side of it, on the axis of rotation.

@@ -155,6 +155,101 @@ Einzel. **That, rather than a date, is the trigger.**
 
 ## Amendments to the specification
 
+### 51 - A volume geometry's conductors were never checked for occupying the same space
+
+**LIB-1, GRD-3.** `ElectrodeOverlap` has refused two conductors in one place at two
+potentials since a hexapole was built with a quadrupole's rod ratio, put its rods through
+one another, and solved contentedly in eight cycles at a convergence factor of 0.0285. It
+takes a `CompiledElectrode` and is called from the `solve2d` path alone. **Every volume
+geometry was unchecked** - `box`, `sphere`, `cylinder`, `prism`, `revolve` - from the day
+the volume solver landed, and `docs/extending.md` recorded the gap, named both candidate
+designs, and said "neither is built".
+
+`ElectrodeOverlap3D` is the volume half, called from `CompileSolved3D` at the same point
+the plane path checks: after expansion, because a repeated electrode only overlaps itself
+once its copies exist.
+
+**It switches on nothing.** Each primitive is asked only for its bounding box and its
+signed distance, both of which the model format already requires for the solver and the
+ion absorber, so a sixth primitive is checked the day it compiles. That is architecture
+invariant 2 in a new place: the fifteen exact pair tests five shapes would otherwise need
+include a tilted box against a revolved hyperbola, which has no closed form worth writing.
+
+**It searches for a witness rather than proving disjointness, and that is the design
+rather than a shortcut.** A point strictly inside both conductors *proves* the geometry is
+ill-posed, so a refusal is never wrong. The opposite claim is far more expensive: two
+conductors sharing a face have `max(dA, dB)` equal to zero over a whole surface, and a
+first prototype that tried to prove `min >= 0` burned a 200,000-box budget on each of sixty
+such pairs in the Astral and came back **inconclusive on the commonest legitimate
+configuration there is**, while the real overlap it was meant to find is settled by the
+very first probe. Since the plane check's own doctrine is that a guard must miss
+rather than falsely refuse, the expensive half is the half not worth buying: a budget
+running out means "no violation found". Branch and bound on `max(dA, dB)` over the
+intersection of the two boxes, pruned on the 1-Lipschitz bound, expanded
+deepest-bound-first, with both electrode centers probed first as a seed: for a convex
+primitive that settles containment in two evaluations, and for a concave prism or revolve
+outline - where `Centre` is the outline's bounding-box center and need not be inside - it
+costs one probe.
+
+**A bounding-box screen alone would refuse the C-trap**, whose five rods are nested arcs
+about one axis: `rodInnerUpper`'s box lies wholly inside `rodOuter`'s while the nearest
+metal is 1.87 mm away. The screen still earns its place in front of the search - on the
+Astral it settles 3,204 of 3,328 disagreeing pairs at no cost - because it settles them
+the safe way, by proving disjointness. Validation costs 4 to 43 ms on the four shipped
+volume templates.
+
+**The tangency tolerance is load-bearing**, at `1e-9` of the pair's extent. Faces meant to
+coincide are written as two different expressions over the parameter surface and agree to a
+few ulps rather than exactly; an exact test on a computed quantity is what made a symmetric
+electrode solve to an asymmetric field, and here it would refuse every segmented electrode
+chain in the library.
+
+**It refused a shipped template on its first run.** Every drift stripe in `astral-3d` was
+extruded outward by its own declared 2 mm thickness, through the inner face of the grounded
+board it is printed on and **1.285 mm into the metal behind it**. The fix is one expression:
+the stripe now runs from `foilGap` out to `halfGap`, the board's own face, so the two are
+tangent, and `foilThickness` became derived rather than a second knob.
+
+**No number moved, measured rather than argued.** The two declarations give identical masks
+- every node, every cut link - at cell sizes of 4, 2, 1, 0.5 and 0.25 mm. Two mechanisms
+combine: a cut link records the *nearest* surface along its arm, so the stripe's front face
+wins over anything behind it, and a node inside both goes to the board because the boards
+are written last. **So the interpenetration was latent rather than active** - a refinement
+study on this template would not have silently changed the geometry, which is not what one
+would guess and is exactly what a single-mesh comparison could not have said, since at the
+shipped 4 mm cell the 0.715 mm stripe holds no node at all. The mutation that gives the
+measurement teeth is an 8 mm extrusion, far enough to leave the back of the board; it fails
+all five rungs.
+
+**What it does not do**, stated rather than discovered: it cannot prove two conductors
+disjoint, so a sliver of shared metal thinner than the search reaches is missed. Measured
+down to 1 um of shared metal on a 10 mm box, and that theory is the test to extend if a
+real geometry is ever missed. **A refusal rests on the sign of a signed distance and on
+nothing else** - the Lipschitz bound decides only which boxes are worth opening, so a
+primitive whose distance is a conservative under-estimate rather than exact can cost the
+search a witness and can never cause a false refusal, since the witness is a point both
+primitives report as interior.
+
+**And it asks over every state the instrument has, not over the one it is declared in.**
+A stage may change what an electrode holds - that is what a stage is for - and may not
+change where it is, which `SameGeometry3D` already enforces. So *"do these two agree"* has
+as many answers as there are states, and asking it of the base state alone is the proxy
+this project keeps meeting: two conductors sharing metal at one potential while held and at
+two while pushing would be a field of a geometry nobody described for exactly the duration
+of the push, on a document that validated cleanly. The geometry is fixed across states, so
+the expensive half - the witness search - is still done once per pair, and the refusal names
+the stage. A ramping phase contributes both its ends, since the disagreement may live only
+at the end it is walking toward.
+
+**And the plane check was given the same treatment in the same change**, because it had the
+same defect and fixing one path and not the other is the pattern this project keeps
+recording. `ElectrodeOverlap.Check` asked about the declared state alone from the day it was
+written - correct until a solve could carry a sequence - and now gathers the same states.
+**None of the twenty-two shipped templates is affected either way**, which is what makes
+this a guard written before the case exists rather than a fix after one; the mutation back
+to reading the base state alone fails two tests on each path.
+
+
 ### 50 - Two shipped templates were drawn as approximations, and the approximations had reached the findings
 
 **LIB-1.** `c-trap` modeled each bent rod as a chain of thirteen overlapping spheres, and
@@ -2805,18 +2900,16 @@ project's author needs to run it and more than any physics the moment one does.
    template itself. The float is the one that needs something the format has: a downstream
    reference the document cannot declare.
 
-   **One gap the rebuild exposed and did not close: the overlap check is cross-section
-   only.** `ElectrodeOverlap.Check` takes a `CompiledElectrode` and is called from the
-   `solve2d` path alone, so every volume primitive — `box`, `sphere`, `cylinder`, `prism`,
-   `revolve` — is unchecked. Two conductors in one place at different excitations give the
-   field of a geometry nobody described, which is exactly what that check exists to refuse,
-   and the C-trap is the most exposed geometry here: five conductors at two RF phases, nested
-   inside one another, whose previous incarnation deliberately overlapped spheres at one
-   potential. A bounding-box screen will not do — nested arcs have overlapping boxes by
-   construction and it would refuse a legitimate geometry. What will is fifteen exact pair
-   tests, or a sampled check reporting only the overlaps it finds, which misses rather than
-   false-refuses. Pre-existing rather than introduced here, and named because `revolve` is the
-   first shape for which it plausibly matters.
+   **The gap the rebuild exposed is now closed, and it caught something.** The overlap check
+   was cross-section only — `ElectrodeOverlap.Check` takes a `CompiledElectrode` and is called
+   from the `solve2d` path alone — so every volume primitive was unchecked. `ElectrodeOverlap3D`
+   is the volume half (Amendment 51): a witness search on `max(dA, dB)` that switches on no
+   shape at all, asking each primitive only for its bounding box and its signed distance. It
+   refused `astral-3d` on its first run, where every drift stripe was extruded 1.285 mm into
+   the grounded board it is printed on. The C-trap, the geometry this item predicted was most
+   exposed, is **clear by 1.87 mm** — and the corner where `rodOuter` and `rodTop` bound each
+   other, which reads off the vertex expressions as a deliberate contact, is on neither
+   surface.
 
    **The general follow-on is an audit, and it has been done once.** Every template's electrode
    outlines were drawn and read against what the device actually has. Nothing else is a shape
