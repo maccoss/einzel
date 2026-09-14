@@ -2340,7 +2340,9 @@ project's author needs to run it and more than any physics the moment one does.
 
 ### Open, in priority order
 
-1. **Run the front-end study.** The study that had never finished now costs about **four
+1. ~~**Run the front-end study.**~~ - **run, and it turned into a study of the resolving-power law rather than of the front end.** The front end costs **nothing** once the two models are compared on matched cell sizes (-1.9 percent; 18 percent on unmatched ones, which is a 1.68x difference in cell size and nothing else). What the study found instead is that **gas speed is not an independent knob** - the tunnel holds up to `K E_peak` = 93.7 m/s at 60 V and a scan past it walks out of the device while still reporting a clean rising resolving power - and that **the field and the ramp time do not enter through their ratio**, because the release lag goes as `1/(V T)` and a scan rate is `V/T`. The published `R ~ v_g` is recovered as an asymptotic statement, exponent 0.971, approached from above as `tau/T` falls. `docs/literature-targets.md` section 6 and `docs/lessons.md`.
+
+   The original framing, kept because the cost work stands: the study that had never finished now costs about **four
    hours** rather than fifty-five, and the cost gate that would have talked anyone out of
    starting it is fixed.
 

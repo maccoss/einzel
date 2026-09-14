@@ -4482,3 +4482,86 @@ and is the same size on swept ones, reversing the conclusion the old control sup
 was calibrated against changes size, the control has to be recalibrated or it silently becomes
 an assertion about nothing — and unlike a stale expected value, it does not fail when it stops
 being useful. It fails when the thing it measures is *fixed*.
+
+
+## A figure of merit's guards live in the figure of merit
+
+Measuring a resolving power across a ladder of TIMS runs, I read `meanArrivalUs` and
+`arrivalSpreadUs` out of each result document and did the arithmetic myself - the figure is
+`V(t_peak)` over how far the ramp moves in a FWHM, four lines of Python, and it saved
+re-flying every configuration through `einzel test`.
+
+One run came back at **R = 101.7, the largest number in the study**, from a front end whose
+field cannot hold a 140 m/s gas. Its mean arrival was **943 us against a ramp that starts at
+10,300** - every ion gone before the scan began, during the fill - and the implied release
+potential was **130.175 V on a 60 V supply**.
+
+**The engine refuses exactly this, and has all along.** `MobilityResolvingPower` computes
+`inside = peak >= rampStart && peak <= rampEnd`, returns **null** when the peak is outside,
+emits `mobility.peak-outside-ramp` naming both instants and what to do about it, and
+`MobilityResolvingPowerTests` covers the warning present and absent. `einzel run` does not
+evaluate figures of merit, so it had no occasion to refuse; I took the raw fields and
+divided.
+
+This project already records the same shape for a different figure: *"a probe read
+`flightTimeSeconds` from `--json` and printed 0.000 us... GRD-1 prevents the engine emitting
+a bare number; nothing stops a consumer reintroducing one."* That was written about a reader
+somebody else wrote. This one I wrote, after reading that sentence, and then read its output
+as a finding about the platform.
+
+**The rule.** A figure of merit is its refusals at least as much as its arithmetic - the
+arithmetic is four lines and the refusals are two hundred. Recomputing it from the fields a
+result document happens to expose gets the four lines and none of the two hundred. If the
+cost of calling the real figure is a re-flight, that is the price of the guards, and the
+alternative is not a cheaper measurement but an unguarded one.
+
+## A comparison of two models on two meshes measures the meshes
+
+The same study set the shipped TIMS front end against the analyzer alone, matched on seed,
+on hold, on gas, on field and on parking point, so that the two differed in geometry alone.
+The front end came out **18 percent worse**, against a register entry recording the cost as
+4 percent, and I wrote that up as a correction to a published number.
+
+The two models have different domains - 115.6 mm against 68.6 mm - so at the same declared
+interval count their cells are **0.452 and 0.268 mm**. Refining each until the cells matched
+(0.113 and 0.134 mm) took the difference to **-1.9 percent**, which is nothing. The whole
+of it was the coarser mesh inflating the front end's arrival peak.
+
+**What makes this worth writing down is that the same study had already established the
+mechanism.** Two sections earlier it measures R rising 1.15 to 1.19x under one refinement
+while the elution potential moves 0.035 percent, and concludes - reproducing the register -
+that a coarse mesh distorts widths and resolving powers and leaves positions alone. Then it
+compared two resolving powers across a 1.68x difference in cell size.
+
+**The rule.** Matching interval counts is not matching meshes; matching cell sizes is. And
+where a study has just finished establishing which of its figures a discretization moves, the
+next comparison of that figure is the one to check first, not last.
+
+## A second moment is not a width, and refinement is how you tell
+
+The delivered TIMS packet has carried an oddity for some time: it enters the elution ramp at
+**1.3082 mm** where the analyzer's parked packet is at 0.6819, and the closed form
+`sigma_z^2 = (kT/q)/|dE/dx|` - which carries nothing about the packet's history - says both
+should sit at 0.71. The register narrowed the cause to two candidates, *"either a tail
+dominating a second moment (sharp with a shoulder, not broad) or the linearisation failing
+over a +-2 mm packet"*, and eliminated the second by measuring a 1.67 mm parked packet
+relaxing at the predicted rate.
+
+Refining the mesh eliminates the first from the other side. Across a fourfold refinement:
+
+| | spatial second moment | arrival peak |
+| --- | --- | --- |
+| analyzer | 0.6819 -> **0.6819 mm** | 128.2 -> 111.4 us |
+| front end | 1.3082 -> **3.2665 mm** | 156.3 -> 109.5 us |
+
+**Two moments of one packet moving in opposite directions.** A genuinely broad packet
+narrows under refinement, because the coarse mesh was inflating it. A tail-dominated second
+moment **grows**, because the finer grid resolves more of the tail - here, density strung
+back up the funnel that the coarse grid could not hold - while the core that sets the arrival
+width sharpens.
+
+**The rule.** Where a distribution may be skew, a second moment and a width are different
+quantities and refinement separates them: refine, and see which way each moves. And
+`spreadMm` on a sequenced phase is a second moment. For a packet that was delivered rather
+than seeded it is not a width, and reading it as one - which is what I did in concluding the
+front end held a 1.9x wider packet - is reading the tail.

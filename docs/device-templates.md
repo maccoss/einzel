@@ -1019,6 +1019,34 @@ gives as the optimum — where a low-field mobility is not valid and this model 
 describing a different regime from the one its mobility was measured in.
 `docs/literature-targets.md` section 6 carries the register and the remaining targets.
 
+### The holding limit, which is a design number rather than a caveat
+
+A tunnel holds an ion where the field's push back balances the gas drag, so the fastest gas
+it can hold **at all** is set by the largest field anywhere along it, `v_max = K E_peak`.
+Read off this template's own solved field, restricted to the tunnel, the axial field peaks
+at **2189.8 V/m at x = 41.17 mm** for 60 V - so
+
+- **93.7 m/s at the shipped 60 V**, and the limit scales with the exit potential
+- holding Hernandez's 140 m/s needs at least 90 V, or 168 V to hold it at the same 21.1 mm
+- at his "under 300 V" the same geometry would hold about 300 m/s
+
+**Gas speed is therefore not an independent knob**, and a scan over it at a fixed field
+walks out of the device. Held with no ramp at all for 5 ms the outcome is binary: 100.00 per
+cent still inside at 50 m/s and 0.00 at 100, and at 140 m/s **0.00 at 60 V against 100.00 at
+168 V** - the control varying the field rather than the gas, so it cannot be read as a
+gas-speed effect.
+
+**And the failure does not look like one.** Scanning gas at the fixed 60 V gives R = 9.3,
+31.2, 69.0 at 50, 100 and 140 m/s, every run collecting 100 percent of its ions and
+producing a clean peak. Those are measurements of how coherently a packet crosses a tunnel
+that is not holding it. The elution potential says so - 21.1 V at 50 m/s, five sixths of the
+way down the ramp, against 57.4 V at 140, which is 1.1 ms in - and so does the hold: below
+the limit R is invariant to the hold time to five significant figures, above it the hold is
+the whole measurement.
+
+`docs/literature-targets.md` section 6 carries the two coupled ladders this opens up, and
+what they say about the published resolving-power law.
+
 ## `tims-front-end` — the funnel and the gate in front of the analyser
 
 The analyser template starts its packet inside the tunnel. The instrument does not: Hernandez
@@ -1327,6 +1355,36 @@ of arrivals. The gas is the analyser's uniform 50 m/s stream through funnel and 
 where the real funnel sits at a higher pressure with a slower, wider flow. No exit funnel. And
 three plates of the geometry are guesswork the papers do not give: the DC drop (an ordinary
 5 V/cm), the gate's thickness and its gaps, and the RF amplitude on the funnel plates.
+
+### What the front end costs, measured on one mesh
+
+**Nothing.** Against the analyzer alone given this template's own seed and its own
+fill-plus-trap, so the two models differ in geometry alone, the front end is **1.9 percent
+better** - which is nothing - and the two agree on the arrival width to 1.7 percent.
+
+On unmatched cells it looks **18 percent worse**, and the whole of that is this model's
+domain being 115.6 mm against the analyzer's 68.6, so the same declared interval count is a
+**1.68x coarser cell** and inflates its arrival peak more. Matching interval counts is not
+matching meshes; matching cell sizes is.
+
+| | cell | arrival width | R |
+| --- | --- | --- | --- |
+| analyzer | 0.268 mm | 128.237 us |  9.333 |
+| front end | 0.452 mm | 156.344 us |  7.658 |
+| analyzer refined | 0.134 mm | 111.375 us | 10.753 |
+| front end refined | 0.113 mm | 109.470 us | **10.961** |
+
+**And the delivered packet's tail is now established rather than inferred.** Refining
+fourfold takes its spatial second moment from 1.3082 to **3.2665 mm** while its arrival peak
+narrows from 156.3 to **109.5 us**, and the analyzer's moment does not move at all, staying
+at 0.6819 mm to four decimals. A genuinely broad packet narrows under refinement, because
+the coarse mesh was inflating it; a tail-dominated moment **grows**, because the finer grid
+holds more of the tail - here density strung back up the funnel.
+
+So the packet delivered down the funnel is **sharp with a shoulder rather than broad**,
+which is the reading the relaxation puzzle above had narrowed to and could not decide
+between. And `spreadMm` on a sequenced phase is a second moment: for a delivered packet it
+is not a width, and reading it as one overstates the packet by 1.9x.
 
 ## What is missing
 

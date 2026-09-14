@@ -1011,6 +1011,143 @@ overwritten by the re-runs investigating it, so the model hash cannot be compare
 `docs/device-templates.md` carries the five-run table and `docs/lessons.md` the two rules that
 came out of it.
 
+### What holds an ion, and what a resolving power means when nothing does
+
+**A tunnel holds an ion where the field's push back balances the gas drag, so the fastest
+gas it can hold at all is set by the largest field anywhere along it: `v_max = K E_peak`.**
+Read off the solved field, restricted to the tunnel, the shipped analyzer's axial field
+peaks at **2189.8 V/m at x = 41.17 mm** for 60 V across it - the same peak this register
+already records the *position* of, at 41.2 mm, from an independent measurement. So
+
+| | |
+| --- | --- |
+| holding limit at 60 V | **93.7 m/s**, which is 21.9 V/cm |
+| scaled to Hernandez's "under 300 V" | 109 V/cm, holding about 300 m/s |
+| so his 140 m/s | needs at least 90 V here, or 168 V to hold it at the same 21.1 mm |
+
+**Confirmed binary, by holding with no ramp at all for 5 ms:**
+
+| | gas | V | limit | still inside | arrived |
+| --- | --- | --- | --- | --- | --- |
+| |  50 m/s |  60 V |  94 m/s | **100.00%** | 0 |
+| | 100 m/s |  60 V |  94 m/s | 0.00% | 100,000 |
+| | 140 m/s |  60 V |  94 m/s | 0.00% | 100,000 |
+| | **140 m/s** | **168 V** | 262 m/s | **100.00%** | 0 |
+
+The control varies the **field** at one gas speed rather than the gas, so it cannot be read
+as a gas-speed effect, and a seven percent overshoot of the limit empties the tunnel inside
+five milliseconds.
+
+**And a resolving power computed above that limit is not one.** Scanning gas speed at the
+template's fixed 60 V gives R = **9.3, 31.2, 69.0** at 50, 100 and 140 m/s, with 100 per
+cent of the ions collected every time and a clean peak every time. What it is measuring is
+how coherently a packet crosses a tunnel that is not holding it, and it rises with gas speed
+because a faster sweep is a shorter one. The elution potential is the tell: 21.1 V at
+50 m/s, five sixths of the way down an 8 ms ramp, against **57.4 V at 140 m/s, which is
+1.1 ms in**.
+
+**The cheapest test is the hold itself**: hold at the operating point with no ramp and ask
+whether the population is still there. Two hundred seconds, and unlike computing `K E_peak`
+it needs no field export and no assumption about where the field peaks. The same question
+asked a second way is whether R moves when the hold is lengthened - below the limit it is
+invariant to five figures, above it the hold is the whole measurement.
+
+### The gas-speed gain, and what a scan rate cannot see
+
+Gas speed is not an independent axis, because holding the parking point fixed needs the
+field raised with it. Two ladders separate what that costs. Both hold the parking point at
+**21.10 mm to 0.7 percent across a fourfold change in gas speed**, which is what makes
+their R columns comparable.
+
+**Ladder B** raises the field with the gas at a fixed 8 ms ramp, so the scan rate rises too:
+
+| gas | field | beta | sigma_t | R | released at |
+| --- | --- | --- | --- | --- | --- |
+|  50 m/s |  60 V |  7.5 V/ms | 128.236 us |  9.333 | 64.8% of the ramp |
+| 100 m/s | 120 V | 15.0 V/ms |  84.792 us | 16.991 | 57.6% |
+| 140 m/s | 168 V | 21.0 V/ms |  69.968 us | 21.722 | 55.3% |
+| 200 m/s | 240 V | 30.0 V/ms |  57.344 us | 27.632 | 53.4% |
+
+Per interval the exponent is **0.864, 0.730, 0.675** - it passes through the law's 0.750 and
+keeps falling, and the release fraction falls monotonically with it. **The marginal gain at
+Hernandez's end of the range is `v^0.675`**, so buying resolving power with gas alone gets
+worse the faster the gas already is.
+
+**Ladder C** stretches the ramp with the field as well, holding `beta` at 7.5 V/ms
+throughout:
+
+| gas | field | ramp | tau/T | R | exponent | released at |
+| --- | --- | --- | --- | --- | --- | --- |
+|  50 m/s |  60 V |  8.0 ms | 0.0264 |  9.333 | | 64.8% |
+| 100 m/s | 120 V | 16.0 ms | 0.0066 | 23.946 | 1.359 | 53.3% |
+| 140 m/s | 168 V | 22.4 ms | 0.0034 | 34.087 | 1.049 | 50.8% |
+| 200 m/s | 240 V | 32.0 ms | 0.0016 | **48.194** | **0.971** | 49.2% |
+
+**The law's `R ~ v_g` is recovered, as an asymptotic statement.** The exponent lands on
+0.971 against 1.000 and the release fraction converges on about 49 percent, both as
+`tau/T` falls to 0.0016, and the approach is from above. R = 48.2 at a 32 ms ramp is the
+second highest this project has produced, against 51.1 at 128 ms on Ridgeway's profile -
+reached in a quarter of the ramp time by moving the gas and the field instead.
+
+**What beta cannot see.** The release fraction moves along ladder C *at a fixed scan rate*.
+The packet's settling time goes as `1/V`, because the restoring gradient does, so the
+fractional lag is `tau/T ~ 1/(V T)` - and **a scan rate is `V/T`, which cannot distinguish
+`V T` from `V/T`**. Two runs at one beta can sit at different lags, and here they do, 0.0264
+down to 0.0034 at 7.5 V/ms throughout.
+
+**So the field and the ramp do not enter as their ratio.** Writing `R ~ v^p V^q T^r` and
+taking `p = 1`, three measurements fix the others - ladder B gives `p + q`, ladder C gives
+`p + q + r`, and one matched pair differing in the ramp time alone gives `r` directly, at
+**0.4950** against **0.4948** by subtraction:
+
+| | 256 intervals | 512 intervals | the law |
+| --- | --- | --- | --- |
+| `p + q` | 0.8644 | **0.9055** | 0.750 |
+| `r` | 0.4950 | **0.3794** | 0.250 |
+| so `q` | -0.136 | **-0.094** | -0.250 |
+
+The law has `q` and `r` equal and opposite because it carries both only through beta. **They
+are neither.** The field costs about a third of what the law charges for it and the ramp buys
+half again what it credits. Both are still moving under refinement and are upper bounds in
+magnitude; what survives the mesh is that they do not collapse into one variable.
+
+**The mesh acts on the arrival histogram, not on the packet.** Refining 256 to 512 leaves
+the spatial packet at ramp start **identical to four decimals** (0.6819 mm, and 0.4822 mm at
+120 V, both the closed form's `sqrt((kT/q)/|dE/dx|)`) while R rises 1.15 to 1.19x. And the
+lift orders by the **arrival** width rather than the spatial one: two runs with the identical
+0.4822 mm packet take lifts of 1.186 and 1.094, the narrower arrival peak taking the larger.
+A narrow peak spans fewer solver steps, so a coarse mesh smears it more. The solver's packet
+is resolved at 256 cells; its flux history is not.
+
+### What the front end costs, measured on one mesh
+
+**Nothing, and the earlier 4 percent is confirmed rather than corrected.** Against the
+analyzer alone given the front end's own seed and its own fill-plus-trap, so the two models
+differ in geometry alone:
+
+| | cell | sigma_t | R |
+| --- | --- | --- | --- |
+| analyzer, 0.268 mm cells | 0.268 mm | 128.237 us |  9.333 |
+| front end, 0.452 mm cells | 0.452 mm | 156.344 us |  7.658 |
+| analyzer refined | 0.134 mm | 111.375 us | 10.753 |
+| front end refined | 0.113 mm | 109.470 us | **10.961** |
+
+On unmatched cells the front end looks 18 percent worse; **on matched cells it is 1.9 per
+cent better, which is nothing**, and the two agree on `sigma_t` to 1.7 percent. The whole
+apparent cost was the front end running on 1.68x coarser cells, which inflates its arrival
+peak more - in a study that had already established R as the one figure a coarse mesh
+distorts. A comparison of two models on two meshes measures the meshes.
+
+**And the delivered packet's tail is now established rather than inferred.** This register
+records the delivered packet relaxing 4.4x slower than `1/(2K|E'|)` and narrows the cause to
+"either a tail dominating a second moment or the linearisation failing", eliminating the
+second by measuring a 1.67 mm parked packet relaxing at the predicted rate. Refinement
+eliminates the first from the other side: the front end's spatial second moment **grows**
+1.3082 -> 3.2665 mm while its arrival peak **narrows** 156.3 -> 109.5 us, and the analyzer's
+moment does not move at all. A genuinely broad packet narrows under refinement; a
+tail-dominated moment grows, because a finer grid holds more of the tail. **It is the tail** -
+and `spreadMm` on a delivered packet is a second moment rather than a width.
+
 ### The analyser's own resolution floor, in closed form
 
 **The width a parked packet settles to is `sqrt((kT/q) / |dE/dx|)`, and the mobility cancels
