@@ -1102,9 +1102,13 @@ taking `p = 1`, three measurements fix the others - ladder B gives `p + q`, ladd
 
 | | 256 intervals | 512 intervals | the law |
 | --- | --- | --- | --- |
-| `p + q` | 0.8644 | **0.9055** | 0.750 |
+| `p + q`, 50 -> 100 m/s | 0.8644 | **0.9055** | 0.750 |
+| `p + q`, 50 -> 200 m/s | 0.7830 | **0.8273** | 0.750 |
 | `r` | 0.4950 | **0.3794** | 0.250 |
-| so `q` | -0.136 | **-0.094** | -0.250 |
+| so `q`, over the full range | -0.217 | **-0.173** | -0.250 |
+
+Refinement lifts `p + q` by the same 0.044 at both spans, which is what a bias acting on
+the arrival width rather than on the exponent itself should do.
 
 The law has `q` and `r` equal and opposite because it carries both only through beta. **They
 are neither.** The field costs about a third of what the law charges for it and the ramp buys
@@ -1114,10 +1118,22 @@ magnitude; what survives the mesh is that they do not collapse into one variable
 **The mesh acts on the arrival histogram, not on the packet.** Refining 256 to 512 leaves
 the spatial packet at ramp start **identical to four decimals** (0.6819 mm, and 0.4822 mm at
 120 V, both the closed form's `sqrt((kT/q)/|dE/dx|)`) while R rises 1.15 to 1.19x. And the
-lift orders by the **arrival** width rather than the spatial one: two runs with the identical
-0.4822 mm packet take lifts of 1.186 and 1.094, the narrower arrival peak taking the larger.
-A narrow peak spans fewer solver steps, so a coarse mesh smears it more. The solver's packet
-is resolved at 256 cells; its flux history is not.
+lift orders by the **arrival** width rather than the spatial one, monotonically over every
+run refined:
+
+| | arrival width at 256 | spatial packet | R lift 256 -> 512 |
+| --- | --- | --- | --- |
+| C-v100 | 132.5 us | 0.4822 mm | 1.094x |
+| B-v50  | 128.2 us | 0.6819 mm | 1.152x |
+| B-v100 |  84.8 us | 0.4822 mm | 1.186x |
+| B-v200 |  57.3 us | 0.3411 mm | **1.225x** |
+
+C-v100 and B-v100 hold the **identical** spatial packet and take the smallest and the
+second-largest lift, so the ordering is the arrival width's and not the packet's. A narrow
+peak spans fewer solver steps, so a coarse mesh smears it more. The solver's packet is
+resolved at 256 cells - 0.6819, 0.4822 and 0.3411 mm, unchanged to four decimals under
+refinement, and each the closed form's `sqrt((kT/q)/|dE/dx|)` at its own field - and its
+flux history is not.
 
 ### What the front end costs, measured on one mesh
 
