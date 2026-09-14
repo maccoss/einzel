@@ -4435,3 +4435,209 @@ inherited the proxy was the one added afterward.
 **When copying a signature from a neighbouring method, ask what its return value means rather
 than what it is called** — and in particular, whether the thing it measures can be true at all
 for the new caller.
+
+
+## An exact test on a computed quantity, and an eleven percent field asymmetry
+
+The `revolve` primitive decides what each edge of a profile sweeps into. An edge whose radius
+varies with the axial coordinate makes a cone, one parallel to the axis a cylinder, one
+**perpendicular** an annular disc — and only the disc is handled separately, because for it
+the quadratic that finds a link's crossing degenerates. The first version asked
+`if (dh == 0.0)`.
+
+**An outline is written as expressions, so a face meant to be flat comes out flat only to
+rounding.** The C-trap's inner rod traces a hyperbola from `-rodHalfWidth` to `+rodHalfWidth`
+and then closes with a corner at the same half-width. The run's last vertex arrives at
+`3.0000000000000009` mm; the corner is written `3.0000000000000001`. The edge between them
+slopes by **8.7e-19 m** over three millimeters of radius. Tested against zero that is not a
+disc but a cone of slope 2e15, whose quadratic is so ill-conditioned that its root is lost
+or displaced by a quarter of the link.
+
+**What made it expensive is that the other face of the same rod was exactly flat**, because
+`-rodHalfWidth` and the run's first vertex round the same way. So one side of a
+mirror-symmetric electrode got its cut cells and the other did not. The **conductor mask was
+symmetric either way** — a node is inside or outside, and the distance function was never
+wrong — so nothing about the geometry looked amiss, and the solved field came out **eleven
+percent asymmetric** across a plane the geometry is symmetric about.
+
+The fix is a relative tolerance built from the coordinates in play,
+`|dh| <= 1e-12 * (|h0| + |h1| + |r1 - r0|)`. Cut-fraction asymmetry went from 1.0 to 1.9e-13.
+
+**Three things generalise.**
+
+- **Never test a computed geometric quantity against zero.** `dh` is a difference of two
+  expression results, and the question being asked — "is this face flat?" — is a question
+  about the author's intent, which survives rounding. The exact test asks a different
+  question that happens to agree most of the time.
+- **A symmetric mask is not a symmetric discretization.** Cut links carry sub-cell surface
+  positions, so two geometries with identical masks can solve to different fields. Anything
+  that checks a geometry by asking which nodes are inside cannot see this class of defect.
+- **The discriminating test is a mirror pair, not a value.** `AFaceFlatOnlyToRoundingIsStillCutWhereItIs`
+  fires links at both faces of a deliberately mirror-symmetric rod and compares the two
+  entry fractions; it needs no reference value at all, which is what makes it immune to the
+  geometry being rebuilt later.
+
+## Two templates were drawn as approximations nobody had looked at
+
+The C-trap's rods were **chains of thirteen overlapping spheres**, scalloped by 13.6 percent
+of their own radius; the Paul trap's electrodes were **three flat annuli** where a quadrupole
+trap has hyperboloids. Both were deliberate at the time — a `cylinder` is axis-aligned and a
+bent rod is not; the cross-section vocabulary had no curve — and both survived for the same
+reason: **an approximation adopted because the format could not express the real thing does
+not announce itself when the format gains the ability.**
+
+What the two cost, measured:
+
+| | approximation | real geometry |
+| --- | --- | --- |
+| Paul trap, effective r0 against 4.0000 mm declared | 3.8195 | **3.9983** |
+| Paul trap, boundary against a tabulated q = 0.90804 | 9 percent low | **0.07 percent** |
+| Paul trap, curvature ratio against −2 at 0.4 mm | −1.9867 | **−2.0006** |
+| C-trap, ejected waist | 1.73 and 1.92 bend radii | **1.011 and 1.011** |
+| C-trap, convergence at 20 mm | 20.8x | **45.9x** |
+
+**The Paul trap's 9.4 percent was not an unknown.** It was measured three independent ways,
+explained correctly, and carried as a stated correction on every number the template
+published — which is the right thing to do with a known approximation and is also exactly
+what let it sit there for months. A correction that is carried faithfully stops being a
+problem to fix.
+
+**Two published findings turned out to be artifacts of the approximations**, and both had
+plausible mechanisms attached:
+
+- The C-trap's waist at 1.73 and 1.92 bend radii was explained as an **aperture lens at the
+  slot** — accelerated up to it, field-free after, which is a real mechanism and is what an
+  aperture does. The thin-lens fit it implied mispredicted the longer bend by 17 percent, and
+  that failure was recorded rather than buried. With swept rods the waist is at the center of
+  curvature, where velocities aimed along radii meet, and a fourfold change of slot opening
+  moves it 1.048x — so the slot is a hole. **The failed prediction was the signal, and it was
+  read as a limitation of the model rather than as evidence against it.**
+- The Paul trap's **octupole resonance band** at 605–614 V was identified from the measured
+  secular frequencies as an order-four condition met to 0.055 percent, with order four
+  predicted in advance from the trap's symmetry. That identification was right — and an
+  octupole is what a flat annulus buys, so giving the trap hyperboloids removed the band.
+  Forty amplitudes below the edge, none loses its ion, and the frequency condition misses 2
+  by 0.22 where it was met to 0.0011. **A correct explanation of a phenomenon caused by an
+  approximation is still a correct explanation, and the phenomenon still goes away.**
+
+**Three tests were carrying the old geometry in their source**, and each failed in a
+different way when the electrodes changed:
+
+- A **hardcoded constant**: `const double EffectiveMm = 3.8195` in the secular-frequency
+  test, over-predicting every line by ten percent. Now measured from the field.
+- A **quoted sentence**: the boundary test printed "hold-converged ejection edges: 665-670 V
+  at 0.3 mm" as literal output text beside an assertion on a range around them. Now bisected.
+- A **vacuous truth**: `TheBeadsOverlapAlongEachRod` grouped electrodes by name stem and
+  compared consecutive members of each group. With the rods swept, each group has one member,
+  the inner loop never runs, and the worst spacing stays at the zero it was initialized to.
+  **It passed.** Replaced by a test that the gap from the trap axis to metal is constant round
+  the arc — which is the property the beads failed.
+
+**The rule.** When a template's geometry is rebuilt, the tests that need rewriting are not
+only the ones that fail. Grep the test sources for numbers describing the old geometry, and
+for any loop whose body may now execute zero times.
+
+## A control that no longer discriminates is a control that was measuring the defect
+
+The Paul trap test `BetaDoesNotDependOnHowFarOffCenterTheIonStarted` asserted two things: that
+beta is amplitude-independent near the center, which is the premise of the calibration, and
+that it is measurably **not** at high q, which is the control saying the spectrum is sharp
+enough to see an anharmonicity at all.
+
+On hyperboloids the control stopped firing — a 0.05 mm and a 0.20 mm launch now agree to
+below a part in a thousand at every amplitude, where the flat annuli shifted beta by 1.7e-2 at
+600 V. The obvious reading is that the measurement has become insensitive. It has not: the
+control was calibrated against a deliberate imperfection, and the imperfection is gone.
+
+Moving it out to a **1.6 mm** launch, where the truncation of the hyperboloids does bite,
+restores it — 6.6e-3 at 300 V and 9.4e-1 at 600 V. The same happened to the C-trap's
+drive-phase sweep, where the phase spread was an order below the drive shift on beaded rods
+and is the same size on swept ones, reversing the conclusion the old control supported.
+
+**The rule.** A control asserts that a measurement *can* detect something. When the thing it
+was calibrated against changes size, the control has to be recalibrated or it silently becomes
+an assertion about nothing — and unlike a stale expected value, it does not fail when it stops
+being useful. It fails when the thing it measures is *fixed*.
+
+
+## A figure of merit's guards live in the figure of merit
+
+Measuring a resolving power across a ladder of TIMS runs, I read `meanArrivalUs` and
+`arrivalSpreadUs` out of each result document and did the arithmetic myself - the figure is
+`V(t_peak)` over how far the ramp moves in a FWHM, four lines of Python, and it saved
+re-flying every configuration through `einzel test`.
+
+One run came back at **R = 101.7, the largest number in the study**, from a front end whose
+field cannot hold a 140 m/s gas. Its mean arrival was **943 us against a ramp that starts at
+10,300** - every ion gone before the scan began, during the fill - and the implied release
+potential was **130.175 V on a 60 V supply**.
+
+**The engine refuses exactly this, and has all along.** `MobilityResolvingPower` computes
+`inside = peak >= rampStart && peak <= rampEnd`, returns **null** when the peak is outside,
+emits `mobility.peak-outside-ramp` naming both instants and what to do about it, and
+`MobilityResolvingPowerTests` covers the warning present and absent. `einzel run` does not
+evaluate figures of merit, so it had no occasion to refuse; I took the raw fields and
+divided.
+
+This project already records the same shape for a different figure: *"a probe read
+`flightTimeSeconds` from `--json` and printed 0.000 us... GRD-1 prevents the engine emitting
+a bare number; nothing stops a consumer reintroducing one."* That was written about a reader
+somebody else wrote. This one I wrote, after reading that sentence, and then read its output
+as a finding about the platform.
+
+**The rule.** A figure of merit is its refusals at least as much as its arithmetic - the
+arithmetic is four lines and the refusals are two hundred. Recomputing it from the fields a
+result document happens to expose gets the four lines and none of the two hundred. If the
+cost of calling the real figure is a re-flight, that is the price of the guards, and the
+alternative is not a cheaper measurement but an unguarded one.
+
+## A comparison of two models on two meshes measures the meshes
+
+The same study set the shipped TIMS front end against the analyzer alone, matched on seed,
+on hold, on gas, on field and on parking point, so that the two differed in geometry alone.
+The front end came out **18 percent worse**, against a register entry recording the cost as
+4 percent, and I wrote that up as a correction to a published number.
+
+The two models have different domains - 115.6 mm against 68.6 mm - so at the same declared
+interval count their cells are **0.452 and 0.268 mm**. Refining each until the cells matched
+(0.113 and 0.134 mm) took the difference to **-1.9 percent**, which is nothing. The whole
+of it was the coarser mesh inflating the front end's arrival peak.
+
+**What makes this worth writing down is that the same study had already established the
+mechanism.** Two sections earlier it measures R rising 1.15 to 1.19x under one refinement
+while the elution potential moves 0.035 percent, and concludes - reproducing the register -
+that a coarse mesh distorts widths and resolving powers and leaves positions alone. Then it
+compared two resolving powers across a 1.68x difference in cell size.
+
+**The rule.** Matching interval counts is not matching meshes; matching cell sizes is. And
+where a study has just finished establishing which of its figures a discretization moves, the
+next comparison of that figure is the one to check first, not last.
+
+## A second moment is not a width, and refinement is how you tell
+
+The delivered TIMS packet has carried an oddity for some time: it enters the elution ramp at
+**1.3082 mm** where the analyzer's parked packet is at 0.6819, and the closed form
+`sigma_z^2 = (kT/q)/|dE/dx|` - which carries nothing about the packet's history - says both
+should sit at 0.71. The register narrowed the cause to two candidates, *"either a tail
+dominating a second moment (sharp with a shoulder, not broad) or the linearisation failing
+over a +-2 mm packet"*, and eliminated the second by measuring a 1.67 mm parked packet
+relaxing at the predicted rate.
+
+Refining the mesh eliminates the first from the other side. Across a fourfold refinement:
+
+| | spatial second moment | arrival peak |
+| --- | --- | --- |
+| analyzer | 0.6819 -> **0.6819 mm** | 128.2 -> 111.4 us |
+| front end | 1.3082 -> **3.2665 mm** | 156.3 -> 109.5 us |
+
+**Two moments of one packet moving in opposite directions.** A genuinely broad packet
+narrows under refinement, because the coarse mesh was inflating it. A tail-dominated second
+moment **grows**, because the finer grid resolves more of the tail - here, density strung
+back up the funnel that the coarse grid could not hold - while the core that sets the arrival
+width sharpens.
+
+**The rule.** Where a distribution may be skew, a second moment and a width are different
+quantities and refinement separates them: refine, and see which way each moves. And
+`spreadMm` on a sequenced phase is a second moment. For a packet that was delivered rather
+than seeded it is not a width, and reading it as one - which is what I did in concluding the
+front end held a 1.9x wider packet - is reading the tail.

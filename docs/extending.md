@@ -21,7 +21,7 @@ other half.
 ## What extending has actually meant
 
 `LIB-1` says that if a device needs a change below `Einzel.Library`, the abstraction is probably
-wrong — believe the signal. It has fired about eleven times. **Every single one was
+wrong — believe the signal. It has fired about twelve times. **Every single one was
 vocabulary, and none was architecture.** Nothing has ever required a change to the solver, the
 integrator, or the transport core.
 
@@ -30,6 +30,7 @@ integrator, or the transport core.
 | Kingdon trap | `log` in the grammar | function |
 | multipole guide | `cosPi`, `sinPi` | function |
 | C-trap | `asinPi`; a parametric launch `direction` | function; attribute |
+| C-trap, rebuilt | the `revolve` electrode | primitive |
 | ion funnel | `floor`, `mod`; `repeat` on an electrode | functions; attribute |
 | travelling-wave guide | `drivePhase` as an expression | attribute |
 | linear ion trap | the `polygon` electrode | primitive |
@@ -39,7 +40,7 @@ integrator, or the transport core.
 | TIMS front end | `fringe` on a bounded element's region | attribute |
 | rectilinear trap | start at rest; parametric vector placement; a dimensionless zero | attributes |
 
-Three kinds, and that is the whole list. **Twenty-two device templates have cost thirteen
+Three kinds, and that is the whole list. **Twenty-two device templates have cost fourteen
 schema versions, all purely additive.** Roughly half the templates needed nothing below the
 library at all.
 
@@ -88,10 +89,21 @@ geometry — a function is best tested through something that would visibly brea
 - The **pairwise overlap check**, `src/Einzel.Core/Model/ElectrodeOverlap.cs`. Two conductors
   occupying the same space at different potentials give a field of a geometry nobody described
   — the Dirichlet mask is written electrode by electrode, so the last one wins — and that check
-  exists to refuse it. It switches on a *pair* of shapes, so a new shape adds a row of cases
-  rather than one. A pair it does not recognise is the failure this project already met: a
-  hexapole written with a quadrupole's rod ratio put its rods through one another, and the
-  engine **solved it, converged in eight cycles, and returned a field**.
+  exists to refuse it. It switches on a *pair* of shapes, so a new cross-section shape adds a
+  row of cases rather than one. A pair it does not recognise is the failure this project
+  already met: a hexapole written with a quadrupole's rod ratio put its rods through one
+  another, and the engine **solved it, converged in eight cycles, and returned a field**.
+
+  **It is cross-section only, and that is a stated gap rather than an omission in this list.**
+  `ElectrodeOverlap.Check` takes `CompiledElectrode` and is called from the `solve2d` path
+  alone, so `box`, `sphere`, `cylinder`, `prism` and `revolve` are all unchecked — a volume
+  primitive has no rows to add. The C-trap is the geometry most exposed to it: five conductors
+  at two RF phases, nested inside one another, and its previous incarnation *deliberately*
+  overlapped spheres at one potential. What a volume check cannot be is a bounding-box screen,
+  because nested arcs have overlapping boxes by construction and it would refuse a legitimate
+  geometry; what it can be is either fifteen exact pair tests or a sampled one that reports
+  only the overlaps it actually finds, which misses rather than false-refuses. Neither is
+  built.
 
 **The pattern.** A primitive carries a **closed-form signed distance** (negative inside) and a
 **closed-form first entry** along a segment. Those two are what make it a cut cell in the
@@ -112,9 +124,28 @@ drawn as the zero level set of its own signed distance.
   generator script is needed to write a document, the format is missing what the script
   supplies.**
 
+- **An exact test on a computed quantity is a test that will be wrong.** The `revolve`
+  primitive decides whether a profile edge is an annular disc or a cone by asking whether its
+  two endpoints share an axial coordinate, and the first version asked `dh == 0.0`. An outline
+  is written as expressions, so a face meant to be flat is flat only to rounding: the C-trap's
+  inner rod has its last hyperbola vertex at 3.0000000000000009 mm meeting a corner written
+  3.0000000000000001, sloping by 8.7e-19 m. Against zero that is a cone of slope 2e15, whose
+  quadratic is so ill-conditioned the root is lost or badly displaced. The same rod's other
+  face **was** exactly flat, so one side of a mirror-symmetric electrode got its cut cells and
+  the other did not — the conductor mask symmetric either way — and the field came out eleven
+  percent asymmetric across a plane the geometry is symmetric about. Compare against a
+  relative scale built from the coordinates in play.
+
 **What it owes**: the primitive against a shape it should reduce to (a square polygon solving to
-the rectangle's field to 1e-13; a square prism a box to 3e-18 m), and a convergence check, since
-a curved boundary is where second order is won or lost.
+the rectangle's field to 1e-13; a square prism a box to 3e-18 m; a revolve far from its axis a
+prism, to under 100 nm at a kilometer of radius), and a convergence check, since a curved
+boundary is where second order is won or lost — a circular profile revolved converges on the
+closed-form torus at exactly the inscribed-polygon rate, 14.446 / 3.614 / 0.904 um at 32 / 64 /
+128 vertices.
+
+**And it owes a symmetry check the shape itself cannot fail.** A mirror-symmetric electrode
+must be cut symmetrically, which is a property of the *entry* code rather than of the distance,
+and the conductor mask stays symmetric whether or not it holds.
 
 ### An attribute on an existing element
 

@@ -769,6 +769,91 @@ derived from public information is a result, and one obtained privately is not.
 
 ---
 
+## 7. The C-trap — the curved linear trap that injects an orbital analyzer
+
+**Both sources are now in `papers/` and have been read** (they are image-only scans; rendered
+with `pdftoppm -png -r 150`, the recipe this directory already records):
+
+- `c-trap-Makarov-AnalChem-2006.pdf` — Makarov, Denisov, Kholomeev, Balschun, Lange, Strupat,
+  Horning, *Performance Evaluation of a Hybrid Linear Ion Trap/Orbitrap Mass Spectrometer*,
+  Anal. Chem. 2006;78(7):2113-2120. The shipped LTQ Orbitrap.
+- `Orbitrap-patent-Makarov.pdf` — Makarov, Hardman, Schwartz, Senko, *Mass spectrometry method
+  and apparatus*, **US 6,872,938 B2** (filed Mar 2002, granted Mar 2005) / WO 02/078046, the
+  curved trap as cols. 13-14.
+
+**They describe different electrodes, and the paper is the one to model.** The patent's
+preferred curved trap 300 is a **stack of curved plates** - an outer plate 330 and an inner
+plate 340 near ground, sandwiching upper and lower center plate pairs 360a/360b at RF-, which
+in turn sandwich an axis plate pair 350 at RF+. The paper, four years later and describing the
+instrument as sold, says plainly: **"The C-trap uses rods with hyperbolic surfaces."** So the
+plate stack is the patented principle and the hyperbolic quadrupole is the product. This
+template models the product.
+
+### What the paper states, read rather than recalled
+
+| | | where |
+| --- | --- | --- |
+| electrode faces | **rods with hyperbolic surfaces** | p. 2114, col. 2 |
+| enclosure | two flat lenses with apertures: the **gate** electrode (toward the octapole) and the **trap** electrode | p. 2114, col. 2 |
+| bath gas | **nitrogen at ~1 mTorr**, chosen over helium for better collisional damping and lower carryover | p. 2114, col. 2 |
+| RF | **500-2000 V peak to peak** at a DC offset of **0 V** | p. 2114, col. 2 |
+| gate electrode | held at **+3 to +6 V**; the trap electrode at **12-15 V** | p. 2114, col. 2 |
+| before ejection | **200 V to both gate and trap**, which compresses the thread axially | p. 2114, col. 2 |
+| the quench | RF **ramped down over 100-200 ns** | p. 2114, col. 2 |
+| extraction | **1200 V push-out** (furthest from the center of curvature), **1000 V pull-out** (closest), **1100 V to both upper and lower** | p. 2114, col. 2 |
+| the exit | ions **leave via a slot in the pull-out electrode**, orthogonally, toward the center of curvature | p. 2114, col. 2 |
+| the packet | collisional cooling forms **a thin, long thread along the curved axis** | p. 2114, col. 2 |
+| upstream | transfer octapole 300 mm long, 400 V p-p, **5.7 mm inscribed diameter** | p. 2114, col. 2 |
+
+**The extraction is a float plus a differential, and reading it as one number loses the
+point.** 1200 / 1100 / 1100 / 1000 is a **common 1100 V** - the acceleration toward the
+analyzer - with **±100 V** across the trap to drive ions to the slot. The patent says the same
+thing from the other end: equal and opposite pulses on the outer and inner plates, and "if the
+curved trap floats at the acceleration voltage then no energy lift will be required".
+
+**And the patent adds two things the paper does not.** A **liner 380** sits between the trap
+exit and the lenses in a field-free region, pulsed to give an "energy lift" where the trap does
+not float; and the patent claims the **RF need not be removed at all** - "they have little
+effect on the beam parameters due to their symmetry" - where the shipped instrument ramps it
+down. Where they differ, the paper is what shipped.
+
+### What this template does with it
+
+| | |
+| --- | --- |
+| hyperbolic faces, swept round the arc | **sourced** (paper) |
+| slit along the whole arc, in the inner electrode, ejecting toward the center of curvature | **sourced** (paper) |
+| `rfAmplitude` 500 V zero-to-peak = 1000 V p-p | **sourced**, mid-range of 500-2000 p-p |
+| bend radius 20 mm | **GUESSED** - neither source gives one |
+| `inscribedRadius` 3 mm, `rodHalfWidth`, `rodDepth`, `slotHalfWidth` | **GUESSED** - no cross-section dimensions in either source |
+| ejection as a push on the outer rod against earth | **a simplification**, see below |
+
+**Not modeled, each a stated gap.**
+
+- **No float.** The instrument puts all four electrodes near 1100 V and differentials of ±100 V
+  on top; this template pushes the outer rod against earth. The float is what accelerates the
+  packet toward the analyzer, and modeling it needs a downstream reference this document does
+  not have - the patent's lenses 310 and liner 380. That is also why an earlier attempt to put
+  the inner rod at -V failed: without the float and the lens, an ion falls through the slit and
+  climbs the same potential straight back out.
+- **No quench.** The paper ramps the RF down over 100-200 ns before pulsing. This template
+  ejects at whatever amplitude is declared, and its own measurement shows it matters: the drive
+  left on moves the focus from 38.4 mm to 11-12 mm.
+- **No gas.** ~1 mTorr of nitrogen is what forms the thin thread the whole device depends on.
+  This template flies in vacuum, so its packet was never thermalised.
+- **No end lenses.** The gate and trap electrodes are what hold ions axially and then compress
+  them with 200 V. Absent here.
+
+### The target to regress against
+
+The paper's own claim for the injection is coherence: the packet has to arrive inside a small
+fraction of the analyzer's axial period. This project has measured the ejected packet's arrival
+spread at **38.90 ns** against an analyzer period of 3.1983 us - 1.22 percent, coherence
+0.9996 - on the swept hyperbolic geometry, in vacuum, with no quench, no float and no end
+lenses. (On the earlier beaded round-rod geometry it was 60.02 ns and 0.9990.) Each of those
+gaps has to be closed before the number counts. Recorded as the thing to check rather than as
+a result.
+
 ## Candidates not yet worked up
 
 - **Reflectron and MR-TOF geometries** with published resolving powers, to check
@@ -925,6 +1010,159 @@ rebuilds against 1 and the same answer to **13 significant figures**. Its own pr
 overwritten by the re-runs investigating it, so the model hash cannot be compared.
 `docs/device-templates.md` carries the five-run table and `docs/lessons.md` the two rules that
 came out of it.
+
+### What holds an ion, and what a resolving power means when nothing does
+
+**A tunnel holds an ion where the field's push back balances the gas drag, so the fastest
+gas it can hold at all is set by the largest field anywhere along it: `v_max = K E_peak`.**
+Read off the solved field, restricted to the tunnel, the shipped analyzer's axial field
+peaks at **2189.8 V/m at x = 41.17 mm** for 60 V across it - the same peak this register
+already records the *position* of, at 41.2 mm, from an independent measurement. So
+
+| | |
+| --- | --- |
+| holding limit at 60 V | **93.7 m/s**, which is 21.9 V/cm |
+| scaled to Hernandez's "under 300 V" | 109 V/cm, holding about 300 m/s |
+| so his 140 m/s | needs at least 90 V here, or 168 V to hold it at the same 21.1 mm |
+
+**Confirmed binary, by holding with no ramp at all for 5 ms:**
+
+| | gas | V | limit | still inside | arrived |
+| --- | --- | --- | --- | --- | --- |
+| |  50 m/s |  60 V |  94 m/s | **100.00%** | 0 |
+| | 100 m/s |  60 V |  94 m/s | 0.00% | 100,000 |
+| | 140 m/s |  60 V |  94 m/s | 0.00% | 100,000 |
+| | **140 m/s** | **168 V** | 262 m/s | **100.00%** | 0 |
+
+The control varies the **field** at one gas speed rather than the gas, so it cannot be read
+as a gas-speed effect, and a seven percent overshoot of the limit empties the tunnel inside
+five milliseconds.
+
+**And a resolving power computed above that limit is not one.** Scanning gas speed at the
+template's fixed 60 V gives R = **9.3, 31.2, 69.0** at 50, 100 and 140 m/s, with 100 per
+cent of the ions collected every time and a clean peak every time. What it is measuring is
+how coherently a packet crosses a tunnel that is not holding it, and it rises with gas speed
+because a faster sweep is a shorter one. The elution potential is the tell: 21.1 V at
+50 m/s, five sixths of the way down an 8 ms ramp, against **57.4 V at 140 m/s, which is
+1.1 ms in**.
+
+**The cheapest test is the hold itself**: hold at the operating point with no ramp and ask
+whether the population is still there. Two hundred seconds, and unlike computing `K E_peak`
+it needs no field export and no assumption about where the field peaks. The same question
+asked a second way is whether R moves when the hold is lengthened - below the limit it is
+invariant to five figures, above it the hold is the whole measurement.
+
+### The gas-speed gain, and what a scan rate cannot see
+
+Gas speed is not an independent axis, because holding the parking point fixed needs the
+field raised with it. Two ladders separate what that costs. Both hold the parking point at
+**21.10 mm to 0.7 percent across a fourfold change in gas speed**, which is what makes
+their R columns comparable.
+
+**Ladder B** raises the field with the gas at a fixed 8 ms ramp, so the scan rate rises too:
+
+| gas | field | beta | sigma_t | R | released at |
+| --- | --- | --- | --- | --- | --- |
+|  50 m/s |  60 V |  7.5 V/ms | 128.236 us |  9.333 | 64.8% of the ramp |
+| 100 m/s | 120 V | 15.0 V/ms |  84.792 us | 16.991 | 57.6% |
+| 140 m/s | 168 V | 21.0 V/ms |  69.968 us | 21.722 | 55.3% |
+| 200 m/s | 240 V | 30.0 V/ms |  57.344 us | 27.632 | 53.4% |
+
+Per interval the exponent is **0.864, 0.730, 0.675** - it passes through the law's 0.750 and
+keeps falling, and the release fraction falls monotonically with it. **The marginal gain at
+Hernandez's end of the range is `v^0.675`**, so buying resolving power with gas alone gets
+worse the faster the gas already is.
+
+**Ladder C** stretches the ramp with the field as well, holding `beta` at 7.5 V/ms
+throughout:
+
+| gas | field | ramp | tau/T | R | exponent | released at |
+| --- | --- | --- | --- | --- | --- | --- |
+|  50 m/s |  60 V |  8.0 ms | 0.0264 |  9.333 | | 64.8% |
+| 100 m/s | 120 V | 16.0 ms | 0.0066 | 23.946 | 1.359 | 53.3% |
+| 140 m/s | 168 V | 22.4 ms | 0.0034 | 34.087 | 1.049 | 50.8% |
+| 200 m/s | 240 V | 32.0 ms | 0.0016 | **48.194** | **0.971** | 49.2% |
+
+**The law's `R ~ v_g` is recovered, as an asymptotic statement.** The exponent lands on
+0.971 against 1.000 and the release fraction converges on about 49 percent, both as
+`tau/T` falls to 0.0016, and the approach is from above. R = 48.2 at a 32 ms ramp is the
+second highest this project has produced, against 51.1 at 128 ms on Ridgeway's profile -
+reached in a quarter of the ramp time by moving the gas and the field instead.
+
+**What beta cannot see.** The release fraction moves along ladder C *at a fixed scan rate*.
+The packet's settling time goes as `1/V`, because the restoring gradient does, so the
+fractional lag is `tau/T ~ 1/(V T)` - and **a scan rate is `V/T`, which cannot distinguish
+`V T` from `V/T`**. Two runs at one beta can sit at different lags, and here they do, 0.0264
+down to 0.0034 at 7.5 V/ms throughout.
+
+**So the field and the ramp do not enter as their ratio.** Writing `R ~ v^p V^q T^r` and
+taking `p = 1`, three measurements fix the others - ladder B gives `p + q`, ladder C gives
+`p + q + r`, and one matched pair differing in the ramp time alone gives `r` directly, at
+**0.4950** against **0.4948** by subtraction:
+
+| | 256 intervals | 512 intervals | the law |
+| --- | --- | --- | --- |
+| `p + q`, 50 -> 100 m/s | 0.8644 | **0.9055** | 0.750 |
+| `p + q`, 50 -> 200 m/s | 0.7830 | **0.8273** | 0.750 |
+| `r` | 0.4950 | **0.3794** | 0.250 |
+| so `q`, over the full range | -0.217 | **-0.173** | -0.250 |
+
+Refinement lifts `p + q` by the same 0.044 at both spans, which is what a bias acting on
+the arrival width rather than on the exponent itself should do.
+
+The law has `q` and `r` equal and opposite because it carries both only through beta. **They
+are neither.** The field costs about a third of what the law charges for it and the ramp buys
+half again what it credits. Both are still moving under refinement and are upper bounds in
+magnitude; what survives the mesh is that they do not collapse into one variable.
+
+**The mesh acts on the arrival histogram, not on the packet.** Refining 256 to 512 leaves
+the spatial packet at ramp start **identical to four decimals** (0.6819 mm, and 0.4822 mm at
+120 V, both the closed form's `sqrt((kT/q)/|dE/dx|)`) while R rises 1.15 to 1.19x. And the
+lift orders by the **arrival** width rather than the spatial one, monotonically over every
+run refined:
+
+| | arrival width at 256 | spatial packet | R lift 256 -> 512 |
+| --- | --- | --- | --- |
+| C-v100 | 132.5 us | 0.4822 mm | 1.094x |
+| B-v50  | 128.2 us | 0.6819 mm | 1.152x |
+| B-v100 |  84.8 us | 0.4822 mm | 1.186x |
+| B-v200 |  57.3 us | 0.3411 mm | **1.225x** |
+
+C-v100 and B-v100 hold the **identical** spatial packet and take the smallest and the
+second-largest lift, so the ordering is the arrival width's and not the packet's. A narrow
+peak spans fewer solver steps, so a coarse mesh smears it more. The solver's packet is
+resolved at 256 cells - 0.6819, 0.4822 and 0.3411 mm, unchanged to four decimals under
+refinement, and each the closed form's `sqrt((kT/q)/|dE/dx|)` at its own field - and its
+flux history is not.
+
+### What the front end costs, measured on one mesh
+
+**Nothing, and the earlier 4 percent is confirmed rather than corrected.** Against the
+analyzer alone given the front end's own seed and its own fill-plus-trap, so the two models
+differ in geometry alone:
+
+| | cell | sigma_t | R |
+| --- | --- | --- | --- |
+| analyzer, 0.268 mm cells | 0.268 mm | 128.237 us |  9.333 |
+| front end, 0.452 mm cells | 0.452 mm | 156.344 us |  7.658 |
+| analyzer refined | 0.134 mm | 111.375 us | 10.753 |
+| front end refined | 0.113 mm | 109.470 us | **10.961** |
+
+On unmatched cells the front end looks 18 percent worse; **on matched cells it is 1.9 per
+cent better, which is nothing**, and the two agree on `sigma_t` to 1.7 percent. The whole
+apparent cost was the front end running on 1.68x coarser cells, which inflates its arrival
+peak more - in a study that had already established R as the one figure a coarse mesh
+distorts. A comparison of two models on two meshes measures the meshes.
+
+**And the delivered packet's tail is now established rather than inferred.** This register
+records the delivered packet relaxing 4.4x slower than `1/(2K|E'|)` and narrows the cause to
+"either a tail dominating a second moment or the linearisation failing", eliminating the
+second by measuring a 1.67 mm parked packet relaxing at the predicted rate. Refinement
+eliminates the first from the other side: the front end's spatial second moment **grows**
+1.3082 -> 3.2665 mm while its arrival peak **narrows** 156.3 -> 109.5 us, and the analyzer's
+moment does not move at all. A genuinely broad packet narrows under refinement; a
+tail-dominated moment grows, because a finer grid holds more of the tail. **It is the tail** -
+and `spreadMm` on a delivered packet is a second moment rather than a width.
 
 ### The analyser's own resolution floor, in closed form
 

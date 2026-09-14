@@ -2,11 +2,22 @@ namespace Einzel.Core.Model;
 
 /// <summary>The shapes a three-dimensional electrode can take.</summary>
 /// <remarks>
-/// Three primitives, chosen because between them they build the devices the
-/// specification's table asks for: a box is a plate, a segment wall or a housing; a
-/// cylinder is a rod, a tube or a ring; a sphere is a bead or a rounded end. A
-/// device that needs a fourth is a fair reason to add one, and a device that needs
-/// arbitrary geometry is what mesh import is for.
+/// <para>
+/// A box is a plate, a segment wall or a housing; a cylinder is a rod, a tube or a ring; a
+/// sphere is a bead or a rounded end; a prism is any outline given a length, which is how a
+/// hyperbolic quadrupole rod with a slot cut through it is written. A device that needs
+/// another is a fair reason to add one, and a device that needs arbitrary geometry is what
+/// mesh import is for.
+/// </para>
+/// <para>
+/// <b><see cref="Revolve"/> is the fifth, and the C-trap is why.</b> A curved quadrupole's
+/// rods are a shaped cross-section swept round an arc - the same profile a linear trap
+/// extrudes along a line, bent. With no such primitive the template modeled each rod as a
+/// chain of overlapping spheres, which needed nothing new because <c>repeat</c> binds an
+/// index and <c>cosPi</c>/<c>sinPi</c> place a bead anywhere. That is the shape of mistake
+/// LIB-1 exists to catch: the abstraction was missing and the expedient hid it, at the cost
+/// of a rod whose surface scalloped by 13.6 percent of its own radius.
+/// </para>
 /// </remarks>
 public enum Electrode3DShape
 {
@@ -25,6 +36,13 @@ public enum Electrode3DShape
     /// wedge. The two-dimensional polygon, given a length.
     /// </summary>
     Prism,
+
+    /// <summary>
+    /// A closed outline revolved about one axis through an arc: a bent rod of any
+    /// cross-section, a toroidal electrode, a ring of shaped section. The same
+    /// two-dimensional polygon <see cref="Prism"/> takes, given a turn instead of a length.
+    /// </summary>
+    Revolve,
 }
 
 /// <summary>Which coordinate axis a cylinder runs along.</summary>
@@ -89,11 +107,39 @@ public sealed record CompiledElectrode3D
     public CylinderAxis Axis { get; init; }
 
     /// <summary>
-    /// Prism: the outline's vertices in the cross-section plane, in metres, in order.
-    /// The plane's two coordinates are the two world axes other than <see cref="Axis"/>,
-    /// in world order: (y, z) for a prism along x, (x, z) along y, (x, y) along z.
+    /// The outline's vertices in its own plane, in meters, in order.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For a prism</b> the plane is the cross-section, whose two coordinates are the two
+    /// world axes other than <see cref="Axis"/>, in world order: (y, z) for a prism along x,
+    /// (x, z) along y, (x, y) along z.
+    /// </para>
+    /// <para>
+    /// <b>For a revolve the plane contains the axis</b>, so the two coordinates are the
+    /// distance from it and the position along it, in that order - the same (radius, axial)
+    /// half-plane an axisymmetric solve works in. A vertex at a negative radius is refused
+    /// rather than reflected, because a profile crossing its own axis of revolution sweeps a
+    /// solid that overlaps itself and no signed distance describes it.
+    /// </para>
+    /// </remarks>
     public IReadOnlyList<(double X, double Y)> Vertices { get; init; } = [];
+
+    /// <summary>Where a revolved outline's sweep begins, in half turns about its axis.</summary>
+    /// <remarks>
+    /// Half turns rather than radians, the convention the drive decomposition, the expression
+    /// grammar and the box tilt already use: <c>double.CosPi</c> is exact at every quarter
+    /// turn where <c>Math.Cos(Math.PI / 2)</c> is 6.1e-17, and a rod meant to start on an axis
+    /// would otherwise start a rounding off it.
+    /// </remarks>
+    public double FromHalfTurns { get; init; }
+
+    /// <summary>Where a revolved outline's sweep ends, in half turns about its axis.</summary>
+    public double ToHalfTurns { get; init; }
+
+    /// <summary>Whether a revolved outline closes on itself, so that it has no end caps.</summary>
+    private bool SweepsFully =>
+        Math.Abs(ToHalfTurns - FromHalfTurns) >= 2.0 - 1e-12;
 
     /// <summary>Which axis a box is tilted about, through its own centre.</summary>
     public CylinderAxis TiltAxis { get; init; }
@@ -219,6 +265,16 @@ public sealed record CompiledElectrode3D
         Electrode3DShape.Box => Math.Min(
             Math.Abs(MaxX - MinX),
             Math.Min(Math.Abs(MaxY - MinY), Math.Abs(MaxZ - MinZ))) * 0.5,
+
+        // The profile's smallest half-extent, and the swept arc's own length where the
+        // sweep is short enough to be the thinner dimension - a 2 degree segment of a fat
+        // torus is a thin thing however wide its profile is.
+        Electrode3DShape.Revolve => Math.Min(
+            0.5 * Math.Min(
+                Vertices.Max(v => v.X) - Vertices.Min(v => v.X),
+                Vertices.Max(v => v.Y) - Vertices.Min(v => v.Y)),
+            0.5 * Vertices.Min(v => v.X) * Math.Abs(ToHalfTurns - FromHalfTurns) * Math.PI),
+
         _ => throw Unhandled(),
     };
 
@@ -250,6 +306,8 @@ public sealed record CompiledElectrode3D
             0.5 * (Vertices.Min(v => v.X) + Vertices.Max(v => v.X)),
             0.5 * (Vertices.Min(v => v.Y) + Vertices.Max(v => v.Y))),
 
+        Electrode3DShape.Revolve => RevolveCenter(),
+
         _ => throw Unhandled(),
     };
 
@@ -279,6 +337,7 @@ public sealed record CompiledElectrode3D
         Electrode3DShape.Box => TiltedBounds(),
 
         Electrode3DShape.Prism => PrismBounds(),
+        Electrode3DShape.Revolve => RevolveBounds(),
         Electrode3DShape.Cylinder => Axis switch
         {
             CylinderAxis.X => (
@@ -450,6 +509,9 @@ public sealed record CompiledElectrode3D
                 return Math.Sqrt((oacross * oacross) + (oaxial * oaxial));
             }
 
+            case Electrode3DShape.Revolve:
+                return RevolveDistance(x, y, z);
+
             default:
                 throw Unhandled();
         }
@@ -582,6 +644,9 @@ public sealed record CompiledElectrode3D
 
                 return null;
             }
+
+            case Electrode3DShape.Revolve:
+                return RevolveEntry(fromX, fromY, fromZ, toX, toY, toZ);
 
             case Electrode3DShape.Cylinder:
             {
@@ -752,4 +817,298 @@ public sealed record CompiledElectrode3D
     }
 
     private bool PolygonContains(double a, double b) => PolygonDistance(a, b) <= 0.0;
+
+    /// <summary>A point inside a revolved outline: its profile's middle, halfway round.</summary>
+    private (double X, double Y, double Z) RevolveCenter()
+    {
+        var radius = 0.5 * (Vertices.Min(v => v.X) + Vertices.Max(v => v.X));
+        var axial = 0.5 * (Vertices.Min(v => v.Y) + Vertices.Max(v => v.Y));
+        var middle = 0.5 * (FromHalfTurns + ToHalfTurns);
+
+        return ToWorld(axial, radius * double.CosPi(middle), radius * double.SinPi(middle));
+    }
+
+    /// <summary>The smallest box containing a revolved outline.</summary>
+    /// <remarks>
+    /// <b>Exact rather than the whole annulus.</b> A quarter-turn sweep occupies a quadrant,
+    /// and bounding it by the full ring would quadruple the box the viewport samples a
+    /// surface over and the region a coarse level pins. The extremes of an annular sector are
+    /// at its two ends and at whichever quarter turns fall inside it, which is a short list
+    /// to evaluate.
+    /// </remarks>
+    private (double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
+        RevolveBounds()
+    {
+        var inner = Vertices.Min(v => v.X);
+        var outer = Vertices.Max(v => v.X);
+
+        var from = Math.Min(FromHalfTurns, ToHalfTurns);
+        var to = Math.Max(FromHalfTurns, ToHalfTurns);
+
+        var angles = new List<double> { from, to };
+
+        for (var quarter = Math.Ceiling(from * 2.0); quarter <= to * 2.0; quarter += 1.0)
+        {
+            angles.Add(quarter * 0.5);
+        }
+
+        double minA = double.MaxValue, maxA = double.MinValue;
+        double minB = double.MaxValue, maxB = double.MinValue;
+
+        foreach (var angle in angles)
+        {
+            var c = double.CosPi(angle);
+            var s = double.SinPi(angle);
+
+            foreach (var radius in (double[])[inner, outer])
+            {
+                minA = Math.Min(minA, radius * c);
+                maxA = Math.Max(maxA, radius * c);
+                minB = Math.Min(minB, radius * s);
+                maxB = Math.Max(maxB, radius * s);
+            }
+        }
+
+        var (lowAlong, lowA, lowB) = ToWorld(Vertices.Min(v => v.Y), minA, minB);
+        var (highAlong, highA, highB) = ToWorld(Vertices.Max(v => v.Y), maxA, maxB);
+
+        return (
+            Math.Min(lowAlong, highAlong), Math.Min(lowA, highA), Math.Min(lowB, highB),
+            Math.Max(lowAlong, highAlong), Math.Max(lowA, highA), Math.Max(lowB, highB));
+    }
+
+    /// <summary>The exact signed distance to a revolved outline.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Inside the sweep it is the profile's own two-dimensional distance, exactly.</b> A
+    /// copy of the profile stands at every angle in the sweep, so for a query at an angle
+    /// within it the nearest copy is the one at that very angle - turning either way only
+    /// adds arc. So this reduces to <see cref="PolygonDistance"/> in the (radius, axial)
+    /// half-plane, which is the same reduction an axisymmetric solve makes for a field.
+    /// </para>
+    /// <para>
+    /// <b>Outside it, the nearest feature is an end cap</b>, which is the filled profile
+    /// standing in a half-plane. The query splits into a component in that plane and one
+    /// perpendicular to it; the in-plane part goes through the outline's distance and the two
+    /// combine as a box's do. That is exact at the cap face and exact along the edge where
+    /// the cap meets the swept surface, which is where a cut cell needs it.
+    /// </para>
+    /// </remarks>
+    private double RevolveDistance(double x, double y, double z)
+    {
+        var (along, a, b) = Resolve(x, y, z);
+        var radius = Math.Sqrt((a * a) + (b * b));
+
+        if (SweepsFully)
+        {
+            return PolygonDistance(radius, along);
+        }
+
+        var from = Math.Min(FromHalfTurns, ToHalfTurns);
+        var to = Math.Max(FromHalfTurns, ToHalfTurns);
+
+        // Half turns in (-1, 1], brought up into [from, from + 2) so that "within the
+        // sweep" is a plain interval test rather than a case analysis about wrapping.
+        var angle = double.Atan2Pi(b, a);
+
+        while (angle < from)
+        {
+            angle += 2.0;
+        }
+
+        while (angle >= from + 2.0)
+        {
+            angle -= 2.0;
+        }
+
+        if (angle <= to)
+        {
+            return PolygonDistance(radius, along);
+        }
+
+        var cap = angle - to <= from + 2.0 - angle ? to : from;
+
+        var c = double.CosPi(cap);
+        var s = double.SinPi(cap);
+
+        var inPlane = (a * c) + (b * s);
+        var outOfPlane = (b * c) - (a * s);
+
+        var across = Math.Max(PolygonDistance(inPlane, along), 0.0);
+
+        return Math.Sqrt((across * across) + (outOfPlane * outOfPlane));
+    }
+
+    /// <summary>Where a segment first enters a revolved outline, as a fraction of it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Closed form, because every edge of the profile revolves into a quadric.</b> A
+    /// slanted edge sweeps a cone, one parallel to the axis a cylinder, one perpendicular to
+    /// it an annular disc - and a segment meets each of those at the roots of a quadratic.
+    /// So this is the prism's method with the edge lines replaced by the surfaces they turn
+    /// into: find every crossing exactly, then decide each interval between consecutive
+    /// crossings at its midpoint, since between two crossings the segment is wholly inside
+    /// or wholly outside.
+    /// </para>
+    /// <para>
+    /// <b>The algebra admits a cone's mirror image and the geometry does not.</b> Squaring
+    /// the profile radius loses its sign, so a root can land where the swept radius would be
+    /// negative - on the reflected half of the double cone, which is not part of the
+    /// electrode. Those are dropped by checking the radius the edge implies is not negative.
+    /// </para>
+    /// </remarks>
+    private double? RevolveEntry(
+        double fromX, double fromY, double fromZ, double toX, double toY, double toZ)
+    {
+        var (fromAlong, fromA, fromB) = Resolve(fromX, fromY, fromZ);
+        var (toAlong, toA, toB) = Resolve(toX, toY, toZ);
+
+        var dAlong = toAlong - fromAlong;
+        var dA = toA - fromA;
+        var dB = toB - fromB;
+
+        var crossings = new List<double> { 0.0, 1.0 };
+
+        var count = Vertices.Count;
+
+        for (int i = 0, j = count - 1; i < count; j = i++)
+        {
+            var (r0, h0) = Vertices[j];
+            var (r1, h1) = Vertices[i];
+
+            var dh = h1 - h0;
+
+            // FLAT TO WITHIN WHAT THE COORDINATES CARRY, not flat exactly - and testing that
+            // against zero is what made a symmetric electrode solve to an asymmetric field.
+            // An outline is written as expressions, so a face meant to be flat comes out flat
+            // only to rounding: the C-trap's inner rod has its last hyperbola vertex at
+            // 3.0000000000000009 mm meeting a corner at 3.0000000000000001, an edge sloping by
+            // 8.7e-19 m. Compared with zero that is not a disc but a cone of slope 2e15, whose
+            // quadratic is so ill-conditioned that the root is lost and the crossing simply
+            // disappears. The same rod's other face WAS exactly flat, because -rodHalfWidth and
+            // the run's first vertex round the same way - so one side of a mirror-symmetric
+            // electrode got its cut cell and the other did not, and a field with a plane of
+            // symmetry came out 11 percent asymmetric across it. The conductor mask was
+            // right, which is what made it hard to see.
+            var scale = Math.Abs(h0) + Math.Abs(h1) + Math.Abs(r1 - r0);
+
+            if (Math.Abs(dh) <= 1e-12 * scale)
+            {
+                // An annular disc: one plane, met once, at a radius the edge has to span.
+                if (dAlong == 0.0)
+                {
+                    continue;
+                }
+
+                var flat = (h0 - fromAlong) / dAlong;
+
+                if (flat > 0.0 && flat < 1.0)
+                {
+                    crossings.Add(flat);
+                }
+
+                continue;
+            }
+
+            // On the edge the radius is a linear function of the axial coordinate, so the
+            // swept surface is a^2 + b^2 = (g0 + g1 t)^2 - a quadratic in the segment
+            // parameter whichever of cone, cylinder or plane it happens to be.
+            var slope = (r1 - r0) / dh;
+            var g0 = r0 + (slope * (fromAlong - h0));
+            var g1 = slope * dAlong;
+
+            foreach (var root in Roots(
+                (dA * dA) + (dB * dB) - (g1 * g1),
+                2.0 * ((fromA * dA) + (fromB * dB) - (g0 * g1)),
+                (fromA * fromA) + (fromB * fromB) - (g0 * g0)))
+            {
+                if (root <= 0.0 || root >= 1.0 || g0 + (g1 * root) < 0.0)
+                {
+                    continue;
+                }
+
+                var fraction = (fromAlong + (dAlong * root) - h0) / dh;
+
+                if (fraction >= 0.0 && fraction <= 1.0)
+                {
+                    crossings.Add(root);
+                }
+            }
+        }
+
+        if (!SweepsFully)
+        {
+            foreach (var cap in (double[])[FromHalfTurns, ToHalfTurns])
+            {
+                var c = double.CosPi(cap);
+                var s = double.SinPi(cap);
+
+                var offset = (fromB * c) - (fromA * s);
+                var rate = (dB * c) - (dA * s);
+
+                if (rate == 0.0)
+                {
+                    continue;
+                }
+
+                var crossing = -offset / rate;
+
+                if (crossing > 0.0 && crossing < 1.0)
+                {
+                    crossings.Add(crossing);
+                }
+            }
+        }
+
+        crossings.Sort();
+
+        for (var k = 0; k + 1 < crossings.Count; k++)
+        {
+            var start = crossings[k];
+            var end = crossings[k + 1];
+
+            if (end <= start)
+            {
+                continue;
+            }
+
+            var middle = 0.5 * (start + end);
+
+            if (Contains(
+                fromX + ((toX - fromX) * middle),
+                fromY + ((toY - fromY) * middle),
+                fromZ + ((toZ - fromZ) * middle)))
+            {
+                return Math.Max(start, 0.0);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The real roots of a quadratic, which may be linear when its leading term is not there.</summary>
+    private static IEnumerable<double> Roots(double a, double b, double c)
+    {
+        if (a == 0.0)
+        {
+            if (b != 0.0)
+            {
+                yield return -c / b;
+            }
+
+            yield break;
+        }
+
+        var discriminant = (b * b) - (4.0 * a * c);
+
+        if (discriminant < 0.0)
+        {
+            yield break;
+        }
+
+        var root = Math.Sqrt(discriminant);
+
+        yield return (-b - root) / (2.0 * a);
+        yield return (-b + root) / (2.0 * a);
+    }
 }

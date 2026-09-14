@@ -120,7 +120,9 @@ public sealed record Electrode3DDocument : ITappedElectrode
     /// <summary>A name, used in reporting and as the basis-field label.</summary>
     public string? Name { get; init; }
 
-    /// <summary>One of <c>box</c>, <c>sphere</c>, or <c>cylinder</c>.</summary>
+    /// <summary>
+    /// One of <c>box</c>, <c>sphere</c>, <c>cylinder</c>, <c>prism</c> or <c>revolve</c>.
+    /// </summary>
     public string? Shape { get; init; }
 
     /// <summary>Repeats this electrode, binding an index its expressions can name.</summary>
@@ -186,11 +188,35 @@ public sealed record Electrode3DDocument : ITappedElectrode
 
 
     /// <summary>
-    /// Prism: the outline's vertices, in order, in the cross-section plane - the two axes
-    /// other than <c>axis</c>, in world order: (y, z) for a prism along x, (x, z) along y,
-    /// (x, y) along z. Runs with <c>count</c> and <c>index</c> are allowed, as for a polygon.
+    /// Prism or revolve: the outline's vertices, in order, in the outline's own plane. Runs
+    /// with <c>count</c> and <c>index</c> are allowed, as for a polygon.
     /// </summary>
+    /// <remarks>
+    /// <b>For a prism</b> the plane is the cross-section - the two axes other than
+    /// <c>axis</c>, in world order: (y, z) along x, (x, z) along y, (x, y) along z.
+    /// <b>For a revolve the plane contains the axis</b>, so <c>x</c> is the distance from it
+    /// and <c>y</c> the position along it. That is the (radius, axial) half-plane an
+    /// axisymmetric solve already works in, and a vertex at a negative radius is refused.
+    /// </remarks>
     public IReadOnlyList<VertexDocument>? Vertices { get; init; }
+
+    /// <summary>Revolve: where the sweep begins, in half turns about <c>axis</c>.</summary>
+    /// <remarks>
+    /// <para>
+    /// Half turns rather than radians, the convention the drive decomposition, the expression
+    /// grammar and the box tilt already use: <c>cosPi(0.5)</c> is exactly zero where
+    /// <c>Math.Cos(Math.PI / 2)</c> is 6.1e-17, so a rod meant to start on an axis starts on
+    /// it rather than a rounding off it.
+    /// </para>
+    /// <para>
+    /// Absent on both means a full turn, which is the ring a reader expects from a profile
+    /// revolved with nothing said about how far.
+    /// </para>
+    /// </remarks>
+    public QuantityValue? FromHalfTurns { get; init; }
+
+    /// <summary>Revolve: where the sweep ends, in half turns about <c>axis</c>.</summary>
+    public QuantityValue? ToHalfTurns { get; init; }
 
     /// <summary>Cylinder: lower end along its axis.</summary>
     public QuantityValue? Lower { get; init; }

@@ -369,6 +369,71 @@ that is inside both the outline and the slab, so a re-entrant outline finds a li
 through its notch. A square prism reproduces a box to 3e-18 m in distance and to the bit in a
 solve. A prism may not be tilted: write the tilt into the outline.
 
+### A revolve: the polygon, swept round an arc
+
+`prism` is to a line what `revolve` is to an arc. The same outline, turned about an axis
+through `fromHalfTurns` to `toHalfTurns` instead of extruded between `lower` and `upper`:
+
+```json
+{
+  "name": "rodInnerUpper", "shape": "revolve", "axis": "z",
+  "fromHalfTurns": { "expression": "0", "unit": "1" },
+  "toHalfTurns": { "expression": "arcHalfTurns", "unit": "1" },
+  "vertices": [ ...the same runs and corners a polygon takes... ],
+  "potential": { "expression": "0", "unit": "V" },
+  "driveAmplitude": { "expression": "rfAmplitude", "unit": "V" }
+}
+```
+
+**The vertex coordinates are not the two world axes a prism's are.** `x` is the distance
+from the axis of revolution and `y` is the position along it — the half-plane an
+axisymmetric solve already works in, so a rod profile written for `solved2d` transfers
+unchanged. A vertex at negative radius is refused rather than reflected: it means the
+author is thinking in world coordinates, and the solid it would produce is not the one
+they drew.
+
+Half turns for the same reason everything angular here uses them — `double.CosPi` and
+`double.SinPi` are exact at quarter turns, where `Math.Cos(Math.PI / 2)` is 6.1e-17 and a
+cap at a right angle lands a hair off the axis. `2.0` is a full revolution and is the only
+value for which the ends close; the sweep must be positive and no more than that.
+`lower`/`upper` are refused, since the sweep is what bounds it, and a `tilt` is refused for
+the same reason a prism's is: write it into the outline.
+
+**The signed distance reduces to the outline's own inside the sweep.** Resolve the query
+into (radius, along) and the distance to the solid of revolution *is* `PolygonDistance` —
+exactly, not approximately, because a revolution takes every point to the profile plane
+without distortion. Outside the sweep, project onto the nearer cap half-plane and combine
+the in-plane and out-of-plane parts in quadrature. Checked against the closed form for a
+torus at 32, 64 and 128 profile vertices: **14.446, 3.614 and 0.904 µm**, which is the
+inscribed-polygon bound `r(1 − cos(π/n))` to the digit and falls exactly 4.00×, so what
+is left is the sampling of the circle rather than the operator.
+
+**The first crossing is closed form, because every revolved edge is a quadric.** An edge
+whose radius varies linearly with the axial coordinate sweeps a cone; one parallel to the
+axis a cylinder; one perpendicular an annular disc. So a link's crossings are roots of a
+quadratic — or, for the disc, a single linear crossing — and the intervals between them are
+decided by `Contains` at their midpoints. No bisection anywhere, which is what a cut cell
+needs.
+
+**One trap, and it cost an eleven percent field asymmetry.** A face meant to be flat is
+flat only to rounding, because an outline is written as expressions: the C-trap's inner rod
+has its last hyperbola vertex at 3.0000000000000009 mm meeting a corner written
+3.0000000000000001, an edge sloping by 8.7e-19 m over three millimeters of radius. Tested
+against zero that is not a disc but a cone of slope 2e15, whose quadratic is so
+ill-conditioned that the root is lost or badly displaced. The same rod's other face *was*
+exactly flat, because `-rodHalfWidth` and the run's first vertex round the same way — so one
+side of a mirror-symmetric electrode got its cut cells and the other did not, the conductor
+mask was symmetric either way, and the solved field came out eleven percent asymmetric
+across a plane the geometry is symmetric about. The flatness test is relative to what the
+coordinates carry, and `AFaceFlatOnlyToRoundingIsStillCutWhereItIs` guards it.
+
+Far from its axis a revolve is a prism, which is the limit the two primitives share and the
+one a reader can check: the same outline at a kilometer of radius, swept over the arc length
+it covers there, agrees with the extruded version to **under 100 nm** over 500 probes — the
+sag a kilometer radius has over the sampled span.
+
+Schema **0.14** carries `revolve`.
+
 ## Operating an instrument through a sequence
 
 The sequencer the architecture calls a timed state machine. A trap fills,
@@ -1095,7 +1160,7 @@ here.
 
 ## Versioning
 
-Schema 0.1 through 0.12 all load, and a test reads a document at every version the
+Schema 0.1 through 0.14 all load, and a test reads a document at every version the
 build claims. Every bump ships a migration and a test that the prior corpus still
 loads. Codes and field names are a compatibility surface that agent workflows bind
 to: they are added, never reworded or repurposed.
@@ -1103,8 +1168,9 @@ to: they are added, never reworded or repurposed.
 0.3 adds the source cloud, 0.4 the gas, 0.5 the mutual Coulomb force, 0.6 the
 model-level sequence, 0.7 parametric directions, 0.8 a tilt on a cross-section's
 extrusion axis, 0.9 the polygon electrode, 0.10 parameter provenance, 0.11 an
-`axis` on the analytic RF quadrupole and 0.12 a `fringe` on a bounded element's
-region. All purely additive, so every earlier
+`axis` on the analytic RF quadrupole, 0.12 a `fringe` on a bounded element's
+region, 0.13 several ion species in one run and 0.14 the revolved
+outline. All purely additive, so every earlier
 document still reads — but a document whose ions push on each other genuinely is
 not a 0.4 document, and saying so is cheaper than an older build reading it,
 ignoring the field it does not know, and reporting a different flight with nothing
