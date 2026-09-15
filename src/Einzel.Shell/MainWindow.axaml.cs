@@ -3,6 +3,7 @@ using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 
 using Einzel.Commands;
 using Einzel.Core.Results;
@@ -21,6 +22,64 @@ public sealed partial class MainWindow : Window
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    /// <summary>Runs the model's transport, filling the viewport as it goes.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>On a background thread, because the run is the length of the physics.</b> A TIMS
+    /// elution is twenty minutes; a window that computed it on the UI thread would be a
+    /// window that stopped responding for twenty minutes, which is exactly the state this
+    /// button exists to replace.
+    /// </para>
+    /// <para>
+    /// <b>A trajectory model is refused rather than watched</b>, by the command layer and
+    /// with a reason: a flight finishes faster than a viewport could draw it part way
+    /// through, so the whole bundle arriving at once is sooner than the first frame of a
+    /// watch would be. The refusal is shown rather than swallowed - a button that appears
+    /// to do nothing is worse than one that says why it did not.
+    /// </para>
+    /// </remarks>
+    private static void Watch(string modelPath, SceneView view, Button button, TextBlock status)
+    {
+        button.IsEnabled = false;
+        status.Text = "einzel run " + modelPath + " --progress 5   ·   solving, then stepping";
+
+        var watcher = new Watcher(
+            frame => Dispatcher.UIThread.Post(() => view.Show(frame)),
+            TimeSpan.FromMilliseconds(400));
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var final = ViewportCommand.Watch(modelPath, watcher);
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    // The last frame that held a packet, not the last frame: a run whose
+                    // ions all arrived ends with an empty box.
+                    if (watcher.LastWithPacket is { } held)
+                    {
+                        view.Show(held);
+                    }
+
+                    status.Text = string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"run finished · {final.Density.Count} density contours at the last frame with a packet");
+
+                    button.IsEnabled = true;
+                });
+            }
+            catch (Exception error)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    status.Text = "Cannot watch this run: " + error.Message;
+                    button.IsEnabled = true;
+                });
+            }
+        });
+    }
 
     /// <summary>
     /// Builds the scene through the command layer and hands it to the viewport.
@@ -81,6 +140,9 @@ public sealed partial class MainWindow : Window
         var transparent = this.FindControl<ToggleButton>("Transparent")!;
         transparent.IsCheckedChanged += (_, _) =>
             view.ConductorOpacity = transparent.IsChecked == true ? 0.35 : 1.0;
+
+        var watch = this.FindControl<Button>("WatchRun")!;
+        watch.Click += (_, _) => Watch(modelPath, view, watch, status);
 
         void Named(string name, (double Azimuth, double Elevation) at) =>
             this.FindControl<Button>(name)!.Click += (_, _) => view.View = at;

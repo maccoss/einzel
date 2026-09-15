@@ -26,6 +26,7 @@
     <Project Path="tests/Einzel.Library.Tests/Einzel.Library.Tests.csproj" />
     <Project Path="tests/Einzel.Mcp.Tests/Einzel.Mcp.Tests.csproj" />
     <Project Path="tests/Einzel.Render.Tests/Einzel.Render.Tests.csproj" />
+    <Project Path="tests/Einzel.Shell.Tests/Einzel.Shell.Tests.csproj" />
     <Project Path="tests/Einzel.Sweeps.Tests/Einzel.Sweeps.Tests.csproj" />
     <Project Path="tests/Einzel.Transport.Tests/Einzel.Transport.Tests.csproj" />
     <Project Path="tests/Einzel.Wpf.Tests/Einzel.Wpf.Tests.csproj" />

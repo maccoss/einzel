@@ -24,6 +24,13 @@
         <Button x:Name="ViewFront" Content="Front" MinWidth="64" />
         <Border Width="1" Background="#3A3A3A" Margin="6,0" />
         <ToggleButton x:Name="Transparent" Content="See through metal" MinWidth="150" />
+        <Border Width="1" Background="#3A3A3A" Margin="6,0" />
+        <!--
+          The other half of the window's purpose: not only seeing the instrument, but
+          watching what it does while it does it. Amendment 25 - the action is journalled
+          as the command a person could have typed, and an agent can call the same one.
+        -->
+        <Button x:Name="WatchRun" Content="Watch run" MinWidth="110" />
       </StackPanel>
     </Border>
 

@@ -67,7 +67,11 @@ public sealed class SceneView : OpenGlControlBase
     """;
 
     private readonly List<Mesh> _conductors = [];
+    private readonly List<Mesh> _density = [];
     private readonly List<Line> _paths = [];
+    private readonly Lock _gate = new();
+
+    private ViewportOutcome? _pending;
 
     private GL? _gl;
     private uint _program;
@@ -137,6 +141,32 @@ public sealed class SceneView : OpenGlControlBase
         }
     }
 
+    /// <summary>Shows a newer frame of a run that is still going.</summary>
+    /// <param name="frame">The run as it stands.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Coalesced rather than queued, and that is the decision.</b> A viewport wants the
+    /// newest packet, not every packet: a queue shows one from four frames ago with three
+    /// behind it, falling further behind the longer it is watched. So a frame that arrives
+    /// before the last one was drawn replaces it.
+    /// </para>
+    /// <para>
+    /// The upload itself has to happen on the render thread, because that is where the GL
+    /// context is - so this only hands the frame over and asks for a redraw.
+    /// </para>
+    /// </remarks>
+    public void Show(ViewportOutcome frame)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+
+        lock (_gate)
+        {
+            _pending = frame;
+        }
+
+        RequestNextFrameRendering();
+    }
+
     /// <inheritdoc />
     protected override void OnOpenGlInit(GlInterface gl)
     {
@@ -153,6 +183,7 @@ public sealed class SceneView : OpenGlControlBase
         }
 
         UploadConductors(_gl, scene);
+        UploadDensity(_gl, scene);
         UploadPaths(_gl, scene);
         _framing = Framing.Measure(scene, _view.Azimuth, _view.Elevation);
 
@@ -165,6 +196,32 @@ public sealed class SceneView : OpenGlControlBase
         if (_gl is not { } api)
         {
             return;
+        }
+
+        ViewportOutcome? arrived;
+
+        lock (_gate)
+        {
+            // Cleared BEFORE the frame is read, so the race can post twice and can never
+            // drop the last one.
+            arrived = _pending;
+            _pending = null;
+        }
+
+        if (arrived is { } frame)
+        {
+            // Only the density is rebuilt. The sequencer refuses a stage that moves an
+            // electrode, so the conductors are identical at every instant by construction -
+            // and re-uploading a trap's whole mesh every frame is what makes a watch stutter.
+            foreach (var shell in _density)
+            {
+                api.DeleteVertexArray(shell.Vao);
+                api.DeleteBuffer(shell.Vbo);
+                api.DeleteBuffer(shell.Ebo);
+            }
+
+            _density.Clear();
+            UploadDensity(api, frame);
         }
 
         var scaling = (this.GetVisualRoot() as IRenderRoot)?.RenderScaling ?? 1.0;
@@ -236,6 +293,26 @@ public sealed class SceneView : OpenGlControlBase
         {
             api.Disable(EnableCap.Blend);
         }
+
+        // The density last and translucent, because it is what moves and it sits inside the
+        // metal. Contours at decades below the peak rather than at even fractions: a density
+        // spans orders of magnitude, so even spacing draws the top decade several times and
+        // the extent not at all.
+        if (_density.Count > 0)
+        {
+            api.Enable(EnableCap.Blend);
+            api.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+            api.Uniform1(_alphaLocation, 0.30f);
+
+            foreach (var shell in _density)
+            {
+                api.Uniform3(_colorLocation, shell.R, shell.G, shell.B);
+                api.BindVertexArray(shell.Vao);
+                api.DrawElements(PrimitiveType.Triangles, (uint)shell.Count, DrawElementsType.UnsignedInt, null);
+            }
+
+            api.Disable(EnableCap.Blend);
+        }
     }
 
     /// <inheritdoc />
@@ -253,12 +330,20 @@ public sealed class SceneView : OpenGlControlBase
             api.DeleteBuffer(mesh.Ebo);
         }
 
+        foreach (var shell in _density)
+        {
+            api.DeleteVertexArray(shell.Vao);
+            api.DeleteBuffer(shell.Vbo);
+            api.DeleteBuffer(shell.Ebo);
+        }
+
         foreach (var path in _paths)
         {
             api.DeleteVertexArray(path.Vao);
             api.DeleteBuffer(path.Vbo);
         }
 
+        _density.Clear();
         _conductors.Clear();
         _paths.Clear();
 
@@ -310,6 +395,30 @@ public sealed class SceneView : OpenGlControlBase
             var (r, g, b) = ColourRamp.Diverging(fraction);
 
             _conductors.Add(Mesh.Upload(api, conductor, (float)r, (float)g, (float)b));
+        }
+    }
+
+    private void UploadDensity(GL api, ViewportOutcome scene)
+    {
+        // Anchored on the decade rather than on this frame's own peak. A diffusing packet's
+        // peak falls as it spreads, so levels taken per frame would fall with it, the
+        // contours would stay the same size, and a film of a packet spreading would show a
+        // packet doing nothing - which is not flicker, it is a lie.
+        var deepest = scene.Density.Count == 0 ? 1 : scene.Density.Max(d => d.DecadesBelowPeak);
+
+        foreach (var shell in scene.Density)
+        {
+            if (shell.Triangles.Count == 0)
+            {
+                continue;
+            }
+
+            var fraction = deepest > 0
+                ? 1.0 - (Math.Clamp(shell.DecadesBelowPeak, 0, deepest) / (double)deepest)
+                : 1.0;
+
+            var (r, g, b) = ColourRamp.At(fraction);
+            _density.Add(Mesh.Upload(api, shell, (float)r, (float)g, (float)b));
         }
     }
 

@@ -25,30 +25,62 @@ public readonly record struct Mesh(uint Vao, uint Vbo, uint Ebo, int Count, floa
     /// Position and normal are interleaved into one buffer because they are read together
     /// on every vertex, and because two buffers would double the bookkeeping for nothing.
     /// </remarks>
-    public static unsafe Mesh Upload(
-        GL api, ConductorSurface conductor, float r, float g, float b)
+    public static Mesh Upload(GL api, ConductorSurface conductor, float r, float g, float b)
     {
-        ArgumentNullException.ThrowIfNull(api);
         ArgumentNullException.ThrowIfNull(conductor);
 
-        var vertices = conductor.VerticesMm.Count / 3;
+        return Upload(api, conductor.VerticesMm, conductor.Normals, conductor.Triangles, r, g, b);
+    }
+
+    /// <summary>Uploads a density shell.</summary>
+    /// <param name="api">The GL context.</param>
+    /// <param name="shell">One contour of the density, at a decade below the peak.</param>
+    /// <param name="r">Red, zero to one.</param>
+    /// <param name="g">Green, zero to one.</param>
+    /// <param name="b">Blue, zero to one.</param>
+    /// <returns>The uploaded mesh.</returns>
+    /// <remarks>
+    /// The same three arrays a conductor has, so the same upload. A density shell and a
+    /// conductor differ in what they mean and not in how they are drawn, which is what lets
+    /// one routine serve both - the same argument that has one marching-squares routine draw
+    /// every conductor and every equipotential in the renderer.
+    /// </remarks>
+    public static Mesh Upload(GL api, DensityShell shell, float r, float g, float b)
+    {
+        ArgumentNullException.ThrowIfNull(shell);
+
+        return Upload(api, shell.VerticesMm, shell.Normals, shell.Triangles, r, g, b);
+    }
+
+    private static unsafe Mesh Upload(
+        GL api,
+        IReadOnlyList<double> verticesMm,
+        IReadOnlyList<double> normals,
+        IReadOnlyList<int> triangles,
+        float r,
+        float g,
+        float b)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+
+        var vertices = verticesMm.Count / 3;
         var interleaved = new float[vertices * 6];
 
         for (var v = 0; v < vertices; v++)
         {
-            interleaved[(v * 6) + 0] = (float)conductor.VerticesMm[(v * 3) + 0];
-            interleaved[(v * 6) + 1] = (float)conductor.VerticesMm[(v * 3) + 1];
-            interleaved[(v * 6) + 2] = (float)conductor.VerticesMm[(v * 3) + 2];
-            interleaved[(v * 6) + 3] = (float)conductor.Normals[(v * 3) + 0];
-            interleaved[(v * 6) + 4] = (float)conductor.Normals[(v * 3) + 1];
-            interleaved[(v * 6) + 5] = (float)conductor.Normals[(v * 3) + 2];
+            interleaved[(v * 6) + 0] = (float)verticesMm[(v * 3) + 0];
+            interleaved[(v * 6) + 1] = (float)verticesMm[(v * 3) + 1];
+            interleaved[(v * 6) + 2] = (float)verticesMm[(v * 3) + 2];
+            interleaved[(v * 6) + 3] = (float)normals[(v * 3) + 0];
+            interleaved[(v * 6) + 4] = (float)normals[(v * 3) + 1];
+            interleaved[(v * 6) + 5] = (float)normals[(v * 3) + 2];
         }
 
-        var indices = new uint[conductor.Triangles.Count];
+        var indices = new uint[triangles.Count];
 
         for (var i = 0; i < indices.Length; i++)
         {
-            indices[i] = (uint)conductor.Triangles[i];
+            indices[i] = (uint)triangles[i];
         }
 
         var vao = api.GenVertexArray();
