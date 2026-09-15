@@ -4908,3 +4908,103 @@ met again. And **the evidence that the window was wasted was in the checkpoint a
 the collected count and the remaining population are printed every interval, and nobody had
 read them as a statement about cost.
 
+
+## An electrode that keeps its potential somewhere else is invisible to everything that asks
+
+An `edgeProfile` electrode holds a piecewise-linear potential along a domain edge - a printed
+board with a resistive divider down it, which is how both mirror templates are written. Its
+volts live in its `profile`, and **every shipped one leaves the scalar `potential` null**,
+because there is nothing for a scalar to say.
+
+Two checks ask the scalar, and both got the wrong answer.
+
+**The channel decomposition gave it no supply.** A supply is built from `Direct` and `Taps`,
+so an edge profile joined none, appeared in no pattern, and was weighted at zero - and
+`RasteriseEdgeProfile` multiplies the profile by that weight. The board was **not in the
+solve at all**: no refusal, no warning, a converged solve reporting its other channels. A
+model whose right edge was held at -500 V flew its ion across 4 mm in 6.419 us, against
+6.44 us of field-free flight at 621.2 m/s. The plate was exactly absent, to three figures.
+
+**And the start-at-rest guard concluded nothing could move an ion.** `Energised` asks
+`Potential != 0 || IsDriven`, so a model whose only live electrode was a profiled board was
+refused as an instrument in which nothing happens. That is the **sixth** configuration that
+check has had to learn, after the DC, the drive, the 3-D arm, the solved stages, and an
+analytic element energised only by a phase - and its own remarks had already written down the
+rule that predicts it: *a new way to hold a potential is a new configuration.* The remark was
+there; the case still had to arrive.
+
+**Why it went unseen for so long is the part worth keeping.** Both templates that use edge
+profiles declare **no drive**, and an undriven solve takes the other arm, where the scale is
+1.0 and the profile is applied as written. So every shipped number was right, and the defect
+was reachable only by declaring a drive on a geometry that also has a profiled board -
+which nobody had, until an ejection slot needed an extraction plate behind it. **A shape used
+by two templates that happen to share one property is a shape tested in one regime.**
+
+The fix is a unit coefficient: a pattern is normalized by its leading coefficient and the
+channel's weight is that leading value, so weight times normalized coefficient is exactly one
+however many other electrodes share the supply - which is precisely "apply my profile once,
+as written". A profile that is everywhere zero gets zero instead, so a grounded board does
+not conjure a channel whose field is nothing.
+
+**And the fix creates a narrower wrong case, which is now refused rather than left.** A stage
+that *changes* a profile would be two spatial patterns wearing one coefficient, so the second
+stage would silently run the first one's field. A uniform scaling of every point would in fact
+be expressible, and is not detected - so the refusal names the whole restriction rather than
+the half of it that is genuinely impossible, and says what to do instead.
+
+
+## A table whose rows differ by less than their counting error
+
+The recorded comparison of four slot profiles was measured on **twenty ions**, of which about
+thirteen go toward the slot at all - so each entry carries a counting error of roughly four
+ions, which is the size of the differences between the rows. Re-measured at 300 ions the
+*ordering* survives and the *magnitudes* move: the shipped profile reads 9 of 20 there and
+38.0 per cent here.
+
+Nothing about the original run was wrong, and its conclusion - that a straight channel barely
+works and a relief rescues it - is the same conclusion. What is not supportable from twenty
+ions is any of the finer readings the table invites, such as how much of the loss is on the
+relief's walls against the face beside the slot.
+
+The rule is not "use more ions". It is that **a table of counts should carry the count**, so
+a reader can see at a glance which of its differences are real - and that an ensemble figure
+whose denominator is a subset (here, the ions that went the right way) should say what the
+subset was, because the sample is always smaller than the run.
+
+
+## A template can model the prototype a paper describes rather than the instrument that shipped
+
+The linear ion trap template cut one ejection slit, in the +x rod, faithfully following
+Schwartz 2002. The released LTQ ejects radially **both ways**, through a slit in each x rod
+with a detector behind each — and the paper says so on its own page, in the paragraph that
+measures the prototype:
+
+> "This produces a scan out efficiency of 44% ... It is assumed that half of the ions are
+> neutralized on the rod opposite the ejection slot. The use of a second slot on the opposite
+> rod in combination with a second detector should produce a scan out efficiency of 88%"
+
+So the correction was available in the source the template was built from, in the sentence
+that gives the number the template was later judged against. **Reading a device paper for its
+geometry means reading its future tense as well as its present**: a prototype paper tells you
+what the instrument became, and the tell is a passage that proposes a change and computes what
+it would buy.
+
+What it cost was not the geometry, which is one parameter. It was the **finding attached to
+it**: the register recorded a slot dipole of 9.6e-4 as *the slot's field fault*, with the
+stretch unable to cancel it. A slit in each x rod is symmetric about x, so the dipole and the
+hexapole cancel to rounding — the fault belongs to the prototype and not to the device. The
+number was right; the sentence around it named the wrong object.
+
+**And the correction can overshoot.** The Stellar's trap has slots in **all four** rods, which
+the dual-pressure paper states explicitly — "a fully symmetric geometry with ejection slots in
+all four rods. This design provides fully symmetrical RF fields" — with detectors behind only
+the x pair. Reading "ejects through two slits" as "has two slits" would have removed two real
+slots. The two readings are separated by what the y slots are *for*: they shape the field and
+pass no ions. The model says which is right without the paper: slits in the x pair alone leave
+the stretch four-fold and the slots two-fold, which admits an octupole of 1.25e-4 against
+1.4e-16 with all four.
+
+The general rule: **a geometry in a template is a claim about a physical device, and it should
+name which device.** Every slot parameter now says whether it is the prototype's or the
+released instrument's, and the prototype is one override away rather than lost.
+

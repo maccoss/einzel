@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.9",
   "name": "linear-ion-trap-3d",
-  "description": "The 2002 linear ion trap (Schwartz, Senko, Syka, JASMS 2002) as a volume: the same hyperbolic half-rods and 0.25 mm slot as the linear-ion-trap cross-section, extruded along the axis as prisms and cut into the paper's three axial sections of 12, 37 and 12 mm, each at its own DC offset, with the slot only in the centre section and a plate lens with a 2 mm aperture at each end. The end sections' DC offset makes the axial well; the paper argues that applying the RF and the dipole excitation equally across all three sections keeps the excitation field free of an axial component in the centre section, which a single-section trap with DC end lenses cannot do, and that is what this template exists to measure. The cross-section is generated from the same outline as linear-ion-trap, so anything measured there about the slot and the stretch holds here. Not modelled: the gaps' exact widths and the lenses' thickness, which the paper does not give.",
+  "description": "The 2002 linear ion trap (Schwartz, Senko, Syka, JASMS 2002) as a volume: the same hyperbolic half-rods and 0.25 mm slits as the linear-ion-trap cross-section, extruded along the axis as prisms and cut into the paper's three axial sections of 12, 37 and 12 mm, each at its own DC offset, with the slits only in the centre section and a plate lens with a 2 mm aperture at each end. THE RELEASED INSTRUMENT EJECTS BOTH WAYS - a slit in each x rod with a detector behind each - which is what this carries; the 2002 paper's device is the prototype and has one, at slotXMinus zero. The end sections' DC offset makes the axial well, which is the thing this template exists to hold and a cross-section cannot: the paper's 3 V lifts the ends above the centre and traps along z. The paper argues that applying the RF and the dipole excitation equally across all three sections keeps the excitation field free of an axial component in the centre section, which a single-section trap with DC end lenses cannot do, and that is what this template exists to measure. The cross-section is generated from the same outline as linear-ion-trap, so anything measured there about the slot and the stretch holds here. Not modelled: the gaps' exact widths and the lenses' thickness, which the paper does not give.",
   "parameters": {
     "inscribedRadius": {
       "value": 4.0,
@@ -44,6 +44,13 @@
       "minimum": 0.0,
       "maximum": 2.0,
       "description": "Half the height of the ejection slot through the centre section's +x rod. Published: 0.25 mm high, along the centre section."
+    },
+    "slotXMinus": {
+      "value": 0.125,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "description": "Half the height of the ejection slit through the centre section's -x rod. The released instrument ejects radially both ways, a slit in each x rod with a detector behind each, so this matches its opposite. Zero gives the single-slit prototype the 2002 paper describes, whose measured scan-out efficiency is 44 per cent against the 88 it predicts for two slits and two detectors."
     },
     "noSlot": {
       "value": 0.0,
@@ -1192,11 +1199,11 @@
                 },
                 "index": "k",
                 "x": {
-                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + ((noSlot + (rodHalfWidth - noSlot) * k / 24) / inscribedRadius) * ((noSlot + (rodHalfWidth - noSlot) * k / 24) / inscribedRadius)))",
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius) * ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius)))",
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "(noSlot + (rodHalfWidth - noSlot) * k / 24)",
+                  "expression": "(slotXMinus + (rodHalfWidth - slotXMinus) * k / 24)",
                   "unit": "mm"
                 }
               },
@@ -1216,27 +1223,27 @@
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "(reliefRatio * noSlot)",
+                  "expression": "(reliefRatio * slotXMinus)",
                   "unit": "mm"
                 }
               },
               {
                 "x": {
-                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (noSlot / inscribedRadius) * (noSlot / inscribedRadius)) + slotDepth)",
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "(reliefRatio * noSlot)",
+                  "expression": "(reliefRatio * slotXMinus)",
                   "unit": "mm"
                 }
               },
               {
                 "x": {
-                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (noSlot / inscribedRadius) * (noSlot / inscribedRadius)) + slotDepth)",
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "noSlot",
+                  "expression": "slotXMinus",
                   "unit": "mm"
                 }
               }
@@ -1282,11 +1289,11 @@
                 },
                 "index": "k",
                 "x": {
-                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + ((noSlot + (rodHalfWidth - noSlot) * k / 24) / inscribedRadius) * ((noSlot + (rodHalfWidth - noSlot) * k / 24) / inscribedRadius)))",
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius) * ((slotXMinus + (rodHalfWidth - slotXMinus) * k / 24) / inscribedRadius)))",
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "-(noSlot + (rodHalfWidth - noSlot) * k / 24)",
+                  "expression": "-(slotXMinus + (rodHalfWidth - slotXMinus) * k / 24)",
                   "unit": "mm"
                 }
               },
@@ -1306,27 +1313,27 @@
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "-(reliefRatio * noSlot)",
+                  "expression": "-(reliefRatio * slotXMinus)",
                   "unit": "mm"
                 }
               },
               {
                 "x": {
-                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (noSlot / inscribedRadius) * (noSlot / inscribedRadius)) + slotDepth)",
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "-(reliefRatio * noSlot)",
+                  "expression": "-(reliefRatio * slotXMinus)",
                   "unit": "mm"
                 }
               },
               {
                 "x": {
-                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (noSlot / inscribedRadius) * (noSlot / inscribedRadius)) + slotDepth)",
+                  "expression": "-(xStretch + inscribedRadius * sqrt(1 + (slotXMinus / inscribedRadius) * (slotXMinus / inscribedRadius)) + slotDepth)",
                   "unit": "mm"
                 },
                 "y": {
-                  "expression": "-noSlot",
+                  "expression": "-slotXMinus",
                   "unit": "mm"
                 }
               }
