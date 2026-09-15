@@ -5,7 +5,13 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>Einzel.Wpf</RootNamespace>
-    <AssemblyName>einzel-shell</AssemblyName>
+    <!--
+      Renamed when the cross-platform shell arrived and took the plain name. Two projects
+      producing one assembly identity is a latent collision - and it made the boundary test
+      ambiguous about which shell it had found. This one is the outgoing presentation layer:
+      Windows-only, and on a 3-D backend archived since 2020.
+    -->
+    <AssemblyName>einzel-shell-wpf</AssemblyName>
 
     <!--
       Lets the project restore and compile on Linux, where the Windows targeting

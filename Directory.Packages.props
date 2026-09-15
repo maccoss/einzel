@@ -54,6 +54,41 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      The cross-platform shell. Section 16's viewport has to run on Linux as well as
+      Windows: the WPF shell is pinned to Windows by WPF itself, and its 3-D path rides
+      on SharpDX, which the note above records as archived since December 2020. Avalonia
+      is the replacement presentation layer, and UI-1 plus Amendment 25 are what make
+      that a swap rather than a rewrite - the shell owns layout, input and the viewport
+      and reaches the engine only through Einzel.Commands.
+
+      Avalonia is 2-D, so the viewport is an OpenGL control and the drawing is ours.
+      Silk.NET.OpenGL wraps the function pointers Avalonia's GlInterface hands over; it
+      is a binding rather than an engine, and nothing below the shell sees it.
+
+      Licences verified rather than assumed, per section 20 and r06's own caveat. Both
+      are MIT: Avalonia declares MIT in its nuspec and Silk.NET is MIT under the .NET
+      Foundation. LIC-1 clear. Versions are the ones the spike proved on both platforms
+      rather than the newest available, and the spike is the evidence that this path
+      renders the engine's own exported conductor meshes rather than a typed triangle.
+    -->
+    <PackageVersion Include="Avalonia" Version="11.2.3" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <PackageVersion Include="Silk.NET.OpenGL" Version="2.21.0" />
+
+    <!--
+      Transitively pinned, not chosen. Avalonia 11.2.3 brings Tmds.DBus.Protocol 0.20.0
+      for the Linux session bus, and that version carries a known high-severity advisory
+      (GHSA-xrw6-gwf8-vvr9). The repository builds with warnings as errors and NuGet
+      auditing on, so it failed the build rather than passing as a note - which is the
+      guard working. Central transitive pinning is enabled here, so the fixed version is
+      named once and every project gets it. MIT, as the package it comes from is.
+    -->
+    <PackageVersion Include="Tmds.DBus.Protocol" Version="0.95.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Test stack. MIT / Apache-2.0. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />

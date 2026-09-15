@@ -33,6 +33,16 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
     /// (`einzel test` passing with no tests, `einzel solve` converging over no elements),
     /// so these must be among what it found.
     /// </remarks>
+    /// <summary>Every name a shell assembly or project goes under.</summary>
+    /// <remarks>
+    /// Project name and assembly name both, because a <c>ProjectReference</c> is declared
+    /// under the first and recorded under the second, and here they differ on purpose.
+    /// </remarks>
+    private static readonly HashSet<string> ShellNames = new(StringComparer.Ordinal)
+    {
+        "Einzel.Wpf", "einzel-shell-wpf", "Einzel.Shell", "einzel-shell",
+    };
+
     private static readonly string[] MustBePresent =
     [
         "Einzel.Core",
@@ -85,9 +95,13 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
 
             scanned.Add(name);
 
+            // Both shells, by every name they go under. A reference is recorded by
+            // ASSEMBLY name rather than by project name, and both shells rename theirs -
+            // so checking only "Einzel.Wpf" was checking for a string that can never
+            // appear in metadata, and the declared-reference test below was carrying the
+            // whole invariant on its own.
             var offending = references
-                .Where(r => r.Name is not null
-                    && r.Name.StartsWith("Einzel.Wpf", StringComparison.Ordinal))
+                .Where(r => r.Name is not null && ShellNames.Contains(r.Name))
                 .Select(r => r.Name!)
                 .ToArray();
 
@@ -122,20 +136,23 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
     /// the CLI, the MCP server and the shell are peers driving the same command objects.
     /// </para>
     /// </remarks>
-    [Fact]
-    public void TheShellReachesThePlatformThroughTheCommandLayer()
+    [Theory]
+    [InlineData("Einzel.Wpf", "einzel-shell-wpf", true)]
+    [InlineData("Einzel.Shell", "einzel-shell", false)]
+    public void TheShellReachesThePlatformThroughTheCommandLayer(
+        string project, string assembly, bool windowsOnly)
     {
         // Found by path rather than by name: this test project deliberately does not
-        // reference the shell - that is the invariant above - so there is no assembly
-        // identity to resolve and nothing copies it here.
-        var path = Shell();
+        // reference either shell - that is the invariant above - so there is no assembly
+        // identity to resolve and nothing copies them here.
+        var path = Shell(project, assembly);
 
-        if (!OperatingSystem.IsWindows())
+        if (windowsOnly && !OperatingSystem.IsWindows())
         {
-            // The shell is Windows-only, so on the Linux runner there is nothing to
-            // check and saying so is the honest outcome. Invariant 1's check above is
-            // the one that matters there, and it does not need this.
-            output.WriteLine("not Windows; the shell cannot be built here");
+            // The WPF shell is Windows-only, so on the Linux runner there is nothing to
+            // check and saying so is the honest outcome. The cross-platform one has no
+            // such excuse and is checked on both, which is the whole reason it exists.
+            output.WriteLine($"not Windows; {project} cannot be built here");
 
             return;
         }
@@ -146,8 +163,8 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
         // a reference it should not have.
         Assert.True(
             path is not null,
-            "the shell was not found beside the tests or in its own build output, so "
-            + "UI-1 went unchecked on the one platform that can check it");
+            $"{project} was not found beside the tests or in its own build output, so "
+            + "UI-1 went unchecked for it");
 
         var shell = Assembly.LoadFrom(path!);
 
@@ -170,7 +187,7 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
         // Declaration is the right thing to check for UI-1: once the reference is there,
         // using it is one keystroke away, and the rule is about what the shell may reach
         // for rather than what it happens to have reached for so far.
-        var declared = Declared(path!);
+        var declared = Declared(path!, project);
 
         output.WriteLine($"declares: {string.Join(", ", declared)}");
 
@@ -196,21 +213,21 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
     /// exactly the state UI-1 needs to catch: the rule is about what the shell may reach
     /// for, not what it has reached for so far.
     /// </remarks>
-    private static string[] Declared(string assemblyPath)
+    private static string[] Declared(string assemblyPath, string project)
     {
         for (var directory = new DirectoryInfo(Path.GetDirectoryName(assemblyPath)!);
             directory is not null;
             directory = directory.Parent)
         {
-            var project = Path.Combine(directory.FullName, "Einzel.Wpf.csproj");
+            var file = Path.Combine(directory.FullName, project + ".csproj");
 
-            if (!File.Exists(project))
+            if (!File.Exists(file))
             {
                 continue;
             }
 
             return [.. System.Text.RegularExpressions.Regex
-                .Matches(File.ReadAllText(project), @"ProjectReference\s+Include=""[^""]*?([A-Za-z.]+)\.csproj""")
+                .Matches(File.ReadAllText(file), @"ProjectReference\s+Include=""[^""]*?([A-Za-z.]+)\.csproj""")
                 .Select(m => m.Groups[1].Value)
                 .Order(StringComparer.Ordinal)];
         }
@@ -223,9 +240,9 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
     /// Nothing copies it here, because nothing may reference it. Walking to its build
     /// output is the price of the invariant being real.
     /// </remarks>
-    private static string? Shell()
+    private static string? Shell(string project, string assembly)
     {
-        var beside = Path.Combine(AppContext.BaseDirectory, "einzel-shell.dll");
+        var beside = Path.Combine(AppContext.BaseDirectory, assembly + ".dll");
 
         if (File.Exists(beside))
         {
@@ -237,12 +254,12 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
             directory = directory.Parent)
         {
             var candidate = Path.Combine(
-                directory.FullName, "src", "Einzel.Wpf", "bin");
+                directory.FullName, "src", project, "bin");
 
             if (Directory.Exists(candidate))
             {
                 return Directory
-                    .EnumerateFiles(candidate, "einzel-shell.dll", SearchOption.AllDirectories)
+                    .EnumerateFiles(candidate, assembly + ".dll", SearchOption.AllDirectories)
                     .FirstOrDefault();
             }
         }

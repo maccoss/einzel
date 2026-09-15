@@ -1,0 +1,44 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Einzel.Shell.MainWindow"
+        Width="1200" Height="760"
+        Title="Einzel">
+
+  <DockPanel>
+
+    <Border DockPanel.Dock="Top" Background="#1B1B1B" Padding="10,6">
+      <TextBlock x:Name="Heading" FontSize="13" Foreground="#E8E8E8" />
+    </Border>
+
+    <!--
+      Named views rather than only the gestures. Ion optics is read as an axial section and
+      two transverse ones, and getting to one by dragging is approximate where a button is
+      exact. Iso leads because a cross-section's conductors are uncapped prisms, so the
+      section view is the one direction that shows none of them.
+    -->
+    <Border DockPanel.Dock="Top" Background="#242424" Padding="8,5">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button x:Name="ViewIso" Content="Iso" MinWidth="64" />
+        <Button x:Name="ViewSide" Content="Side" MinWidth="64" />
+        <Button x:Name="ViewTop" Content="Top" MinWidth="64" />
+        <Button x:Name="ViewFront" Content="Front" MinWidth="64" />
+        <Border Width="1" Background="#3A3A3A" Margin="6,0" />
+        <ToggleButton x:Name="Transparent" Content="See through metal" MinWidth="150" />
+      </StackPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Background="#1B1B1B" Padding="10,6">
+      <TextBlock x:Name="Status" FontSize="12" Foreground="#B8B8B8" TextWrapping="Wrap" />
+    </Border>
+
+    <!--
+      The viewport fills what is left. The remaining panes - the model tree, the journal,
+      results by accuracy class, the regime inspector, the sequence editor, the project
+      view and the extension manager - come across next; this is the one that carries the
+      risk, because Avalonia has no 3-D of its own.
+    -->
+    <Panel x:Name="ViewportHost" Background="White" />
+
+  </DockPanel>
+
+</Window>
