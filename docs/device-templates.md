@@ -26,7 +26,7 @@ physics or the abstraction is wrong, and almost always the second.
 | `c-trap` | Four rods bent around an arc: the curved RF trap that injects an orbital analyser |
 | `pnnl-ion-funnel` | The published PNNL 100-electrode funnel, as built to a literature benchmark: Kim 2000's transmission against RF amplitude and Page 2006's low-m/z cutoff |
 | `linear-ion-trap` | The radial-ejection linear ion trap of Schwartz, Senko and Syka (2002) in cross-section: hyperbolic rods as polygons, a 0.25 mm ejection slot, the x pair stretched 0.75 mm, main RF and a dipole excitation on two generators, helium |
-| `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods, helium at 0.5 mTorr - from the same generator as the LTQ |
+| `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods for symmetric RF with a detector behind each of the x pair, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
 | `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
 | `tims-front-end` | The analyser with Hernandez's entrance funnel and gate in front of it: a 50 mm funnel tapering 26 to 8 mm with plate-alternating RF delivers a wide packet to the tunnel's own balance point at 99.8 per cent, and the fill-trap-ramp sequence runs as phases |
@@ -2393,6 +2393,94 @@ a ramped RF flies an ion to within 2 µm of where a forty-step staircase puts it
 4 µs step would have been 0.8 Th, most of a peak, so the ramp is what makes the fast
 scans below possible at all.
 
+### Two slits and two detectors, and what one slit was costing
+
+**The template modelled a prototype.** It cut one slit, in the +x rod, because that is the
+device the 2002 paper describes. The released LTQ ejects radially **both ways**, through a
+slit in each x rod with a detector behind each, and the paper says so itself while
+predicting it:
+
+> "This produces a scan out efficiency of 44%, or an overall detection efficiency of 12.7%.
+> It is assumed that half of the ions are neutralized on the rod opposite the ejection slot.
+> The use of a second slot on the opposite rod in combination with a second detector should
+> produce a scan out efficiency of 88%"
+
+The Stellar paper confirms it from the other side, describing the LTQ's two-fold stretch as
+answering "the field distortions of the ejection **slots**" - plural. Both `linear-ion-trap`
+and `linear-ion-trap-3d` now carry two, and `slotXMinus` at zero gives the prototype back.
+
+**The Velos family cuts four, and only two of them pass ions.** Second's dual-pressure paper
+is explicit - "a fully symmetric geometry with ejection slots in all four rods. This design
+provides fully symmetrical RF fields" - so `stellar-ion-trap` keeps all four. Ejection is
+still the dipole across x, so the y slots shape the field and pass nothing, and the paper's
+own plural "detectors" is two.
+
+**The odd-order fault was the prototype's, and the second slit removes it.** Multipoles at
+r0/2, +-500 V on the pairs:
+
+| geometry | A2 | A1/A2 | A3/A2 | A4/A2 | A6/A2 |
+| --- | --- | --- | --- | --- | --- |
+| no slit | 102.79 | 1.2e-15 | 5.0e-16 | 1.74e-3 | 1.73e-4 |
+| **one slit, the prototype** | 102.73 | **1.26e-3** | **1.84e-4** | 1.68e-3 | 1.61e-4 |
+| **two slits, as released** | 102.68 | **2.8e-15** | **8.6e-16** | 1.62e-3 | 1.48e-4 |
+| Stellar, four slits | 87.04 | 1.4e-15 | 1.1e-15 | **1.4e-16** | 2.74e-4 |
+
+A slit in each x rod is symmetric about x, so the dipole and hexapole cancel to rounding; the
+octupole is the stretch's and survives. **The quadrupole term barely moves** - 0.8219 of the
+ideal formula's at one slit, 0.8214 at two - so the ejection working point, and every corpus
+example that pins it, is unaffected.
+
+**And four slots earn their place in the field rather than in the ion path**, which the model
+says independently: cutting the x pair only leaves the stretch four-fold and the slots
+two-fold, and that admits an octupole of **1.25e-4 against 1.4e-16 with all four**. Second's
+"fully symmetrical RF fields" is a claim this reproduces.
+
+**What two slits buy, measured.** 300 ions at effective q 0.875 with the paper's excitation,
+the shipped relief:
+
+| | through the +x detector | through the -x detector | scan-out |
+| --- | --- | --- | --- |
+| one slit, the prototype | 65 | - | **21.7 %** |
+| two slits, as released | 12 | 124 | **45.3 %** |
+
+It roughly doubles, as the paper says it must, and lands at **about half the paper's 88 per
+cent** either way. That remaining factor of two is the slot profile, not the second slit -
+see the two sections below, which measure the profile and rule out the extraction field.
+
+**The 124-to-12 split is an artifact of the launch, not of the trap**, and it took two
+measurements to be sure. The solved field is symmetric about x to **1.5e-6 of applied inside
+the trapping region** (the 15 per cent asymmetry the whole domain showed was the housing,
+which had a wall on one side and the bare domain edge on the other, and both sides now carry
+a named detector). What is asymmetric is the *ensemble*: every ion starts at one point at one
+instant, so their secular oscillations are in phase and they reach the ejection amplitude
+together, on the same half-cycle. Spreading the cloud walks the split to even -
+
+| cloud spread | left / right |
+| --- | --- |
+| 0.00 mm | 17.6 / 82.4 |
+| 0.10 mm | 18.9 / 81.1 |
+| 0.30 mm | 32.3 / 67.7 |
+| 0.60 mm | 39.1 / 60.9 |
+| 1.00 mm | **46.1 / 53.9** |
+
+- and the honest reading is that **a physically sized cloud is still coherent**: 300 K in this
+well is about 0.1 mm, which is still 19/81. What decoheres a real trap is milliseconds of
+cooling before the ramp, which gives each ion its own secular phase; this model launches them
+all at once. So the *sum* over both detectors is what this template can report, and the split
+between them is not.
+
+**A format gap, named rather than built.** The model format carries **one** detector plane,
+and both the LTQ and the Stellar have two. The +x slit gets the plane and the -x slit gets a
+named absorber, so a scan-out efficiency is the arrivals plus the ions itemised against
+`detectorLeft`. That asymmetry is the format's and not the instrument's - a LIB-1 signal,
+since a second real device needs it.
+
+**And the rod's thickness is not the missing factor.** `rodDepth` is a guess like the channel
+and the relief, and at 12 mm the slit runs through 8 mm of metal, so a thinner rod looked like
+the obvious candidate for the factor of two. Scanned at the shipped relief: **45.3 / 43.0 /
+36.7 / 47.7 per cent** through 3.5 / 4.5 / 6.0 / 8.0 mm of metal - non-monotone, no trend, and
+the thickest rod the highest. Refuted.
+
 ### Through the slot, or into it
 
 Only 1 of the 45 ions ejected toward the slotted rod in the scan reached the detector.
@@ -2423,7 +2511,87 @@ LTQ detector also sits behind a strong extraction field, which this cross-sectio
 1.5 mm behind the rod in a grounded wall, does not have; the two ions that turned round and
 struck the back face of the 8 mm rod are that gap showing. The ejection efficiency through
 the slot is therefore a **sensitivity, not a prediction**: it depends on the one part of the
-geometry the paper does not give.
+geometry the paper does not give. **The extraction field that this cross-section lacks does
+not change that**, and the next section measures why.
+
+
+### The extraction field cannot reach the slot, and h/pi is why
+
+The paragraph above names a gap - a real LTQ's detector sits behind a strong extraction
+field and this model ends in a grounded wall - and reads as though closing it would settle
+the efficiency. It does not. An extraction plate spanning the housing 2 mm behind the rods,
+with the detector plane in the gap in front of it, over ions launched at effective q 0.875
+with the paper's excitation, **300 ions a point** so the counting error is a point or two
+rather than ten:
+
+| plate | 0.25 mm channel straight through | 0.5 mm channel, eightfold relief | on the relief's walls |
+| --- | --- | --- | --- |
+| +200 V | 5.3 % | 20.7 % | 62 |
+| 0 V | 6.6 % | 38.0 % | 51 |
+| -100 V | 6.3 % | 40.0 % | 47 |
+| -300 V | 8.7 % | 43.8 % | 44 |
+| **-1000 V** | **9.5 %** | **49.7 %** | **32** |
+
+as a fraction of the ions ejected toward the slotted rod, which is about 165 of 300 - the
+rest go the other way onto the unslotted rod, and a dipole excitation drives both.
+
+**A kilovolt buys the relieved slot twelve points and the straight channel three.** Neither
+comes near closing the gap between the two profiles, which is 31 points at earth and 40 at a
+kilovolt. **The profile dominates the field at every voltage tried**, so the efficiency stays
+a sensitivity to the geometry the paper does not give.
+
+**Why, measured rather than argued: a slot is a waveguide below cutoff for an electrostatic
+field.** The plate's own basis - the same geometry with the rods earthed and the drive off,
+so the exported field is the plate's contribution and nothing else - sampled along the slot's
+own line:
+
+| depth into the rod | 0.25 mm channel | 0.5 mm channel + relief |
+| --- | --- | --- |
+| 0.00 mm, the mouth | 1e-6 | 1e-6 |
+| 1.00 mm | 0 | 3e-6 |
+| 3.00 mm | 0 | 9.2e-5 |
+| 7.00 mm | 4e-7 | 4.3e-2 |
+| 8.00 mm, the rod's back | 5.1e-2 | 2.2e-1 |
+
+as a fraction of the plate. **At the slot mouth a kilovolt is worth six tenths of a
+millivolt**, and the mouth is where the aperture lens acts - so no achievable extraction
+voltage can oppose the 5e5 V/m the ion is leaving. What the field does instead is act in the
+**relief cavity and the gap**, which is exactly what the loss columns say: the relief's walls
+take 51 ions at earth and 32 at a kilovolt, while the slot's own walls do not move (23
+against 23).
+
+**The decay length is `h / pi`, the lowest mode of a channel of full height h**, and the
+relief is tall enough to check it properly: over 32 samples across 4 mm of the 2 mm-high
+cavity the field falls with a length of **0.6392 mm against `h/pi` = 0.6366 mm, a ratio of
+1.0040**. The 0.25 mm channel falls by a dead-constant factor of 0.2704 per cell over eight
+cells, a length of 0.0941 mm against `h/pi` = 0.0796 - **18 per cent high, and in the
+direction under-resolution predicts**, since 0.25 mm is two cells at this mesh and a discrete
+operator's lowest mode decays more slowly than the continuum's. Either number is fatal for
+the straight channel: e-folding every tenth of a millimeter over 7.25 mm of rod is eighty
+e-foldings.
+
+**So the relief is not only mechanical clearance.** It is what lets an extraction field reach
+inside the rod at all, and the reach is set by the relief's height rather than by its length
+or by the voltage.
+
+**And the control is the positive plate**, which must make things worse and does: +200 V
+costs the relieved slot nearly half its transmission and puts **12 ions on the rod's back
+face against 1 at earth** - ions that cleared the relief and were pushed back across the gap.
+A field that only ever helps would be indistinguishable from an arithmetic error.
+
+**Measured on a 3 mm clearance** rather than the template's 1.5, to leave room for the plate
+and a detector plane in front of it; the geometry is otherwise the shipped one. **The control
+is the shipped clearance with no plate at all**, at the same 300 ions and the same seed:
+**35.1 per cent relieved and 8.6 per cent straight**, against 38.0 and 6.6 on the widened
+geometry - both inside 0.7 of a standard error, so the widening is not what the table above
+measures. What does move between the two is which *way* each ion leaves, 115 of 300 to the
+unslotted rod against 133, and that is the chaotic per-ion sensitivity this template already
+records rather than a change in the optics.
+
+**One caveat on the table above this one.** It was measured on **twenty** ions, of which
+about thirteen go toward the slot, so its entries carry a counting error of roughly four
+ions - the same size as the differences between its rows. Its ordering survives at 300 ions
+and its magnitudes move: the relieved slot reads 9 of 20 there and 38.0 per cent here.
 
 
 ### The Stellar's own trap, and its four scan rates

@@ -376,11 +376,21 @@ The paper gives the trap in one paragraph, and it is enough to draw it:
 | Peak widths at m/z 622 | **~0.35, 0.5, 0.7, 1.0 Th** at those rates | unit resolution |
 | RF frequency, ejection q, excitation | not given | 1 MHz, 0.88, 3 V + 20 mV per m/z |
 
-**What the geometry alone says, before any ion is flown.** With both pairs out the
-cross-section is four-fold symmetric again, and the field shows it: the dipole and the
-hexapole that the 2002 trap's single slot leaves (1.5e-3 and 2.1e-4 of the quadrupole)
-are gone to rounding (1e-15), and so is the octupole the two-fold stretch added - the
-four-fold stretch is not an aberration, it is a change of scale. The quadrupole term is
+**What the geometry alone says, before any ion is flown.** With both pairs out *and*
+slots in all four rods the cross-section is four-fold symmetric again, and the field
+shows it: the dipole and the hexapole that the 2002 **prototype's** single slit leaves
+(1.26e-3 and 1.84e-4 of the quadrupole) are gone to rounding (1.4e-15 and 1.1e-15), and
+so is the octupole the two-fold stretch added (**1.4e-16**) - the four-fold stretch is
+not an aberration, it is a change of scale.
+
+**And the four slots are load-bearing for that, which the model says independently of
+the paper.** Cutting slits in the x pair only - ejection needs no more, since the dipole
+excitation is across x - leaves the stretch four-fold and the *slots* two-fold, which
+breaks the antisymmetry between the rod pairs and admits an octupole: **1.25e-4 with two
+slits against 1.4e-16 with four**, on otherwise identical geometry. So Second's sentence
+that the dual-pressure trap "has a fully symmetric geometry with ejection slots in all
+four rods. This design provides fully symmetrical RF fields" is a statement about the
+field rather than about the ion path, and the y slots pass nothing. The quadrupole term is
 **0.6966 of the ideal formula's** at r0 = 4 mm, against (4.0 / 4.76)² = 0.7062 for an ideal
 trap of the stretched radius; the truncated hyperbolae and the four slots account for the
 rest. So the Stellar's q per volt is 0.70 of the textbook value for its field radius, and
@@ -478,10 +488,10 @@ question. `docs/device-templates.md` has the table and the caveats.
 | q per volt, m/z 587 at 600 V | q = 0.623 | 0.6245 from the ideal formula | the paper's calibration point, arithmetic |
 | Secular frequency at q = 0.83 | 368 kHz | 368.1 kHz, beta(0.83) = 0.7362 | so the paper's q scale is the **effective** q |
 | Quadrupole strength with the x pair stretched 0.75 mm | not stated | **0.822 of ideal** | measured from the solved field; the ideal formula's voltages are 22% low for this geometry |
-| Field fault of the 0.25 mm slot | "detrimental field effects" | dipole 9.6e-4, hexapole 1.9e-4 of A2 | odd orders, which the symmetric stretch cannot cancel |
+| Field fault of the 0.25 mm slot | "detrimental field effects" | **prototype, one slit:** dipole 1.26e-3, hexapole 1.84e-4 of A2. **Released, two slits: 2.8e-15 and 8.6e-16** | odd orders, which one slit creates and the second cancels - a slit in each x rod is symmetric about x. The stretch is symmetric too and never had them to cancel |
 | What the stretch adds | "analogous to the stretch in 3D traps" | octupole **1.7e-3** of A2 | the same term a stretched 3-D trap adds on purpose |
 | Resonance ejection, 13.5 V at 421 kHz, m/z 524 | ejects at q = 0.88 | ejects from q = 0.870 up, 30 to 5 µs; confined to 0.86 | excitation-off edge between 0.890 and 0.900 (tabulated 0.908, moved by the octupole) |
-| Ejection direction | through the x slot | onto the x rods, none on y | the dipole is along x |
+| Ejection direction | through the x slits, both ways | onto the x rods, none on y | the released instrument has a slit in each x rod with a detector behind each; the dipole excitation drives both ways and about half the ions go each |
 
 The template's parameters carry the published geometry and operating point (r0 4 mm,
 1 MHz, slot 0.25 mm, stretch 0.75 mm, He 3 mTorr, excitation 3 V + 20 mV per m/z) and
@@ -565,9 +575,9 @@ The Stellar-specific numbers are still to be confirmed against its own paper.
 
 | | LTQ (2002) | Velos dual-pressure (2009) |
 | --- | --- | --- |
-| Rods | hyperbolic, r0 = 4 mm | as LTQ, slots in all four rods (fully symmetric) |
+| Rods | hyperbolic, r0 = 4 mm | as LTQ, slots in all four rods (fully symmetric RF) |
 | Axial sections | 12 / 37 / 12 mm, DC-offset for axial trapping | two cells, one aperture lens between them |
-| Ejection slot | 0.25 mm high, 30 mm long, one X rod | all four rods |
+| Ejection slot | 0.25 mm high, 30 mm long. **One X rod in the 2002 prototype; the released LTQ has one in each X rod with a detector behind each** | all four rods, and "the detectors" plural. **Four slots are for the field, two for the ions**: ejection is the dipole across X, so the Y slots pass nothing and exist to make the RF symmetric |
 | Slot compensation | slotted rod pair moved out 0.75 mm | — |
 | Main RF | 1 MHz, up to 5 kV peak rod-to-ground | — |
 | Resonance ejection | dipole across X rods, q = 0.88 | — |

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.9",
   "name": "linear-ion-trap",
-  "description": "A radial-ejection linear ion trap in cross-section, after the two-dimensional quadrupole ion trap of Schwartz, Senko and Syka (JASMS 2002, 13, 659): four hyperbolic rods at an inscribed radius of 4 mm, the x pair moved out 0.75 mm to compensate the field fault of a 0.25 mm ejection slot cut through the +x rod, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation across the x rods for resonance ejection through the slot. Helium at three millitorr damps the ion. Each rod is two polygons meeting at the slot, so a slot of zero height is a whole rod and a slot in every rod - the symmetric dual-pressure design - is four numbers. The default holds one ion at a Mathieu q near 0.3 with the excitation off; a study raises the RF into the excitation's resonance and asks what leaves through the slot, and when. What this cross-section cannot express is the axial structure - three DC sections and the end lenses - which belongs to a volume solve.",
+  "description": "The radial-ejection linear ion trap of the LTQ in cross-section: four hyperbolic rods at an inscribed radius of 4 mm, the x pair moved out 0.75 mm to compensate the field fault of the 0.25 mm ejection slots, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation across the x rods for resonance ejection. Helium at three millitorr damps the ion. THE RELEASED INSTRUMENT EJECTS BOTH WAYS: a slot in each x rod with a detector behind each, which is what this template carries. The device in Schwartz, Senko and Syka (JASMS 2002, 13, 659) is the prototype and has one slot; the paper measures its scan-out efficiency at 44 per cent, assumes half the ions are neutralised on the rod opposite, and says a second slot with a second detector should give 88 per cent. Set slotXMinus to zero for that prototype. Two slots in the x pair are symmetric about x, so the slot dipole the single slot produces cancels and what the stretch answers is the remaining even fault. Each rod is two polygons meeting at the slot, so a slot of zero height is a whole rod. The default holds one ion at a Mathieu q near 0.3 with the excitation off; a study raises the RF into the excitation's resonance and asks what leaves through a slot, and when. What this cross-section cannot express is the axial structure - three DC sections and the end lenses - which belongs to a volume solve.",
   "parameters": {
     "inscribedRadius": {
       "value": 4.0,
@@ -60,25 +60,25 @@
       "description": "The slot opens behind its channel to this multiple of its half-height; one is no relief, the channel running through to the back at the face's height. Not published. Measured at effective q 0.875 with twenty ions: the straight channel passes none or one of the ions ejected toward it and puts the rest on its walls, an eightfold relief half a millimetre behind the face passes four to nine, and the rest strike the relief's walls or the face beside the slot. Scales with the slot, so a closed slot has no relief and the rod is solid."
     },
     "slotXMinus": {
-      "value": 0.0,
+      "value": 0.125,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 2.0,
-      "description": "Half-height of a slot through the -x rod. Zero in the 2002 trap, which ejects one way; 0.125 for the symmetric design with slots in all four rods."
+      "description": "Half-height of a slot through the -x rod. The released LTQ and the Stellar both eject radially BOTH ways, through a slit in each x rod with a detector behind each, so this is 0.125 like its opposite. Zero gives the single-slot prototype of the 2002 paper, whose own measured scan-out efficiency is 44 per cent against the 88 it predicts for two slits and two detectors."
     },
     "slotYPlus": {
       "value": 0.0,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 2.0,
-      "description": "Half-height of a slot through the +y rod. Zero in the 2002 trap."
+      "description": "Half-height of a slot through the +y rod. Zero in every real trap here: radial ejection is along x, and the four-fold description of the Velos and Stellar traps is of the STRETCH, not of the slits."
     },
     "slotYMinus": {
       "value": 0.0,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 2.0,
-      "description": "Half-height of a slot through the -y rod. Zero in the 2002 trap."
+      "description": "Half-height of a slot through the -y rod. Zero, for the reason its opposite gives."
     },
     "rfAmplitude": {
       "value": 257.0,
@@ -881,7 +881,7 @@
             ]
           },
           {
-            "name": "housingLeft",
+            "name": "detectorLeft",
             "shape": "rectangle",
             "minX": {
               "expression": "-domainHalfWidth",
@@ -889,6 +889,30 @@
             },
             "maxX": {
               "expression": "-(domainHalfWidth - wallThickness)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "domainHalfWidth",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "detectorRight",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "domainHalfWidth - wallThickness",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "domainHalfWidth",
               "unit": "mm"
             },
             "minY": {

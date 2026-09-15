@@ -57,14 +57,16 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         var r0 = model.Parameters["inscribedRadius"].SiValue;
         var stretch = model.Parameters["xStretch"].SiValue;
 
-        Assert.Equal(11, solve.Electrodes.Count);   // eight half-rods and three housing walls
+        Assert.Equal(12, solve.Electrodes.Count);   // eight half-rods, a detector each side, two housing walls
         Assert.All(solve.Electrodes.Where(e => e.Name.StartsWith("rod", StringComparison.Ordinal)), e => Assert.Equal(ElectrodeShape.Polygon, e.Shape));
-        // 25 on the face, the back corner, and the slot channel and relief: 29 on the slotted
+        // 25 on the face, the back corner, and the slot channel and relief: 29 on a slotted
         // rod's halves, 28 on the others, where the closed slot puts two corners on one point
-        // and they merge.
+        // and they merge. BOTH x rods are slotted - the released instrument ejects radially
+        // either way, through a slit in each with a detector behind it, and the single slit of
+        // the 2002 paper is the prototype it predicts 88 per cent for against its own 44.
         foreach (var e in solve.Electrodes.Where(e => e.Name.StartsWith("rod", StringComparison.Ordinal)))
         {
-            Assert.Equal(e.Name.StartsWith("rodXPlus", StringComparison.Ordinal) ? 29 : 28, e.Vertices.Count);
+            Assert.Equal(e.Name.StartsWith("rodX", StringComparison.Ordinal) ? 29 : 28, e.Vertices.Count);
         }
 
 
@@ -129,26 +131,33 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Four geometries: ideal (no slot, no stretch), slot alone, stretch alone, and the
-    /// published trap (both). A slot through one rod breaks the symmetry between +x and
-    /// -x, so it radiates into the odd orders - a dipole and a hexapole - as well as
-    /// weakening that rod's share of the quadrupole; moving the x pair outward is
-    /// symmetric and touches only the even orders. So the stretch cannot cancel the odd
-    /// terms the slot creates, and the test does not ask it to. What it asks is the
-    /// paper's own claim: the stretch has "analogous effects to the stretch in most
-    /// commercial 3D ion traps", which is an octupole added deliberately. The numbers
+    /// Five geometries: ideal, one slit, two slits, stretch alone, and the released trap
+    /// (two slits and the stretch). A slit through ONE rod breaks the symmetry between +x
+    /// and -x, so it radiates into the odd orders - a dipole and a hexapole - as well as
+    /// weakening that rod's share of the quadrupole. <b>A slit in each x rod is symmetric
+    /// about x, so those odd orders cancel</b>, which is what the released instrument has:
+    /// it ejects radially both ways through a slit in each with a detector behind it. The
+    /// 2002 paper's device is the prototype, measures 44 per cent scan-out on it, assumes
+    /// half the ions are lost on the rod opposite, and predicts 88 for the pair.
+    /// </para>
+    /// <para>
+    /// Moving the x pair outward is symmetric too and touches only the even orders, so the
+    /// stretch never had the odd terms to cancel and the test does not ask it to. What it
+    /// asks is the paper's own claim: the stretch has "analogous effects to the stretch in
+    /// most commercial 3D ion traps", which is an octupole added deliberately. The numbers
     /// are printed for the register; the assertions are about signs and orderings.
     /// </para>
     /// </remarks>
     [Fact]
     public void TheSlotsFieldFaultAndTheStretchThatAnswersIt()
     {
-        var cases = new (string Name, double Slot, double Stretch)[]
+        var cases = new (string Name, double SlotPlus, double SlotMinus, double Stretch)[]
         {
-            ("ideal", 0.0, 0.0),
-            ("slot only", 0.125, 0.0),
-            ("stretch only", 0.0, 0.75),
-            ("published", 0.125, 0.75),
+            ("ideal", 0.0, 0.0, 0.0),
+            ("one slit", 0.125, 0.0, 0.0),
+            ("two slits", 0.125, 0.125, 0.0),
+            ("stretch only", 0.0, 0.0, 0.75),
+            ("released", 0.125, 0.125, 0.75),
         };
 
         var results = new Dictionary<string, double[]>(StringComparer.Ordinal);
@@ -156,9 +165,11 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         var r0 = model0.Parameters["inscribedRadius"].SiValue;
 
         output.WriteLine("geometry        A1/A2      A3/A2      A4/A2      A6/A2      A2 [V]");
-        foreach (var (name, slot, stretch) in cases)
+        foreach (var (name, slotPlus, slotMinus, stretch) in cases)
         {
-            var model = Compile(Trap(("slotXPlus", slot), ("xStretch", stretch), ("rfAmplitude", 100.0)));
+            var model = Compile(Trap(
+                ("slotXPlus", slotPlus), ("slotXMinus", slotMinus),
+                ("xStretch", stretch), ("rfAmplitude", 100.0)));
             var field = FieldAssembly.Build(model);
             var terms = Multipoles(field, 0.5 * r0, 10);
             results[name] = terms;
@@ -166,21 +177,31 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         }
 
         var ideal = results["ideal"];
-        var slotOnly = results["slot only"];
+        var oneSlit = results["one slit"];
+        var twoSlits = results["two slits"];
         var stretchOnly = results["stretch only"];
-        var published = results["published"];
+        var released = results["released"];
 
         // The ideal geometry is four-fold symmetric: no odd orders, no octupole.
         Assert.True(ideal[1] / ideal[2] < 1e-4, $"ideal dipole {ideal[1] / ideal[2]:E2}");
         Assert.True(ideal[4] / ideal[2] < 1e-4, $"ideal octupole {ideal[4] / ideal[2]:E2}");
 
-        // The slot alone creates a dipole and a hexapole the stretch leaves alone.
-        Assert.True(slotOnly[1] / slotOnly[2] > 10.0 * ideal[1] / ideal[2]);
+        // One slit creates a dipole and a hexapole - the prototype's fault.
+        Assert.True(oneSlit[1] / oneSlit[2] > 10.0 * ideal[1] / ideal[2], $"one-slit dipole {oneSlit[1] / oneSlit[2]:E2}");
+        Assert.True(oneSlit[3] / oneSlit[2] > 10.0 * ideal[3] / ideal[2], $"one-slit hexapole {oneSlit[3] / oneSlit[2]:E2}");
+
+        // The SECOND slit cancels them: the released instrument's pair is symmetric about x.
+        // Asserted against the one-slit case rather than against a bare threshold, so the
+        // claim is that the second slit removed them rather than that they were small.
+        Assert.True(twoSlits[1] / twoSlits[2] < 0.01 * oneSlit[1] / oneSlit[2], $"two-slit dipole {twoSlits[1] / twoSlits[2]:E2}");
+        Assert.True(twoSlits[3] / twoSlits[2] < 0.01 * oneSlit[3] / oneSlit[2], $"two-slit hexapole {twoSlits[3] / twoSlits[2]:E2}");
+
+        // And the stretch is symmetric, so it never made an odd order to begin with.
         Assert.True(stretchOnly[1] / stretchOnly[2] < 1e-4, $"stretch-only dipole {stretchOnly[1] / stretchOnly[2]:E2}");
 
-        // The stretch alone adds an octupole, and the published geometry carries it too.
+        // The stretch alone adds an octupole, and the released geometry carries it too.
         Assert.True(stretchOnly[4] / stretchOnly[2] > 10.0 * ideal[4] / ideal[2]);
-        Assert.True(published[4] / published[2] > 10.0 * ideal[4] / ideal[2]);
+        Assert.True(released[4] / released[2] > 10.0 * ideal[4] / ideal[2]);
     }
 
     /// <summary>
@@ -323,7 +344,11 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         parameters["rfAmplitude"] = parameters["rfAmplitude"] with { Value = 100.0 };
         var stellar = Compile(document with { Parameters = parameters });
         var ltq = Compile(Trap(("rfAmplitude", 100.0)));
-        var ideal = Compile(Trap(("slotXPlus", 0.0), ("xStretch", 0.0), ("rfAmplitude", 100.0)));
+        var ideal = Compile(Trap(
+            ("slotXPlus", 0.0), ("slotXMinus", 0.0), ("xStretch", 0.0), ("rfAmplitude", 100.0)));
+
+        // The 2002 paper's prototype, which is the geometry that has an odd-order fault at all.
+        var prototype = Compile(Trap(("slotXMinus", 0.0), ("rfAmplitude", 100.0)));
 
         Assert.Equal(0.76e-3, stellar.Parameters["xStretch"].SiValue, 12);
         Assert.Equal(0.76e-3, stellar.Parameters["yStretch"].SiValue, 12);
@@ -347,7 +372,13 @@ public sealed class LinearIonTrapStudy(ITestOutputHelper output)
         Assert.True(s[1] / s[2] < 1e-5, $"Stellar dipole {s[1] / s[2]:E2}");
         Assert.True(s[3] / s[2] < 1e-5, $"Stellar hexapole {s[3] / s[2]:E2}");
         Assert.True(s[4] / s[2] < 1e-5, $"Stellar octupole {s[4] / s[2]:E2}");
-        Assert.True(l[1] / l[2] > 1e-4, "the 2002 trap's single slot leaves a dipole");
+        // The odd-order fault belongs to the SINGLE slit of the prototype, not to the released
+        // LTQ: a slit in each x rod is symmetric about x and leaves no dipole, which is why the
+        // comparison is against the prototype rather than against the shipped template.
+        var proto = Multipoles(FieldAssembly.Build(prototype), 0.5 * r0, 10);
+        output.WriteLine($"prototype  {proto[2] / i[2],10:F4} {proto[1] / proto[2],10:E2} {proto[3] / proto[2],10:E2} {proto[4] / proto[2],10:E2} {proto[6] / proto[2],10:E2}");
+        Assert.True(proto[1] / proto[2] > 1e-4, "the 2002 prototype's single slit leaves a dipole");
+        Assert.True(l[1] / l[2] < 1e-5, $"the released LTQ's two slits cancel it, {l[1] / l[2]:E2}");
 
         // Weaker per volt than the 2002 trap, near what r0 = 4.76 mm would give.
         Assert.InRange(s[2] / i[2], 0.66, 0.76);
