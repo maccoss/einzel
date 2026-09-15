@@ -4845,3 +4845,66 @@ producer you ask what reads it. The first attempt at a deliberately broken model
 bare `2.0` where the grammar has no unit literals, so it produced the wrong error
 entirely - **and the wrong error was the finding**. A probe that fails for an unintended
 reason is still showing you something; read it before fixing it.
+
+
+## A convergence ladder at one end of a sweep says nothing about the other end
+
+The TIMS resolving-power series is a sweep over ramp duration, and its mesh convergence had
+been established once, on the 8 ms rung: sigma 93.48 / 79.99 / 74.90 us at 256 / 512 / 1024
+intervals, an observed order of 1.41, and a converged value 30 per cent above the coarsest.
+The register carried that as a blanket caveat over the whole row - *every figure here is
+mesh-limited and low* - which was the honest reading of one ladder and turned out to be
+wrong at the other end of the sweep.
+
+**At 128 ms, doubling the mesh moves R by 0.8 per cent against 16.9 at 8 ms.** Twenty times
+smaller, and the 256-interval rung already recorded in the register is 1.3 per cent low
+rather than 30.
+
+The mechanism is worth writing as a variance rather than as a width, because as a width it
+looks like a contradiction. Taking the extrapolated widths as the physical ones, a
+256-interval mesh adds 3,580 us^2 at 8 ms and 14,562 us^2 at 128 ms - **four times more in
+absolute terms**, which is what one would expect, since the long-ramp packet spends longer
+in the analyzer and so accumulates more numerical diffusion. What changes the conclusion is
+that the physical variance grows 105-fold over the same range, so the fractional inflation
+falls from 69 per cent to 2.7.
+
+**The consequence is not a level, it is a slope.** A bias that shrinks along a sweep tilts
+the sweep. The scan-rate exponent over 8 to 128 ms reads **0.306 at 256 intervals, 0.252 at
+512 and 0.215 once both ends are extrapolated**, against the law's 0.250 - so the
+coarse-mesh sweep is 22 per cent steep, and the 512 sweep's near-perfect agreement with the
+law is **two unequal errors cancelling**, not convergence. Reporting that agreement would
+have been the worst of the three outcomes: right for a reason that does not survive
+refinement.
+
+So: a convergence study establishes convergence **at the point it was run**. Where a sweep
+crosses a regime in which the discretization error changes its share of the answer, the
+ladder has to be repeated at both ends before any slope taken across it means anything.
+Repeating it in the middle is cheaper than it looks, too, and skipping it there has a cost:
+the 32 ms rung of this series has no ladder, so the per-doubling figures through the middle
+of the sweep cannot be corrected at all.
+
+
+## A declared duration and a simulated window are two different things
+
+A TIMS elution declares a ramp, and the ramp's *rate* is the physics: it sets beta and so
+the resolving power. How much of the sequence is computed is a separate question, and the
+study models had been declaring both at full length. So the 128 ms rung stepped a tunnel
+whose last ion was collected at about 40 ms out to 128 ms plus a 3 ms drain - roughly two
+thirds of a fourteen-hour run computing an empty box, and the checkpoint said so plainly
+while it was happening: **99,999.994 ions collected, 2.4e-165 still inside**.
+
+The fix is to shorten the phase while leaving the rate alone - cut the 8 ms elute from 8000
+to 3900 us and end its ramp at 51.25 V instead of 0, which is the same 0.0125 V/us. The
+result reproduces the full-window run to **every printed digit** of mean, sigma, peak,
+elution voltage, width and R, at **2.05x fewer steps**. The arrival timestamps are identical
+because the stability limits are; the ion counts differ in the last digit or two at the
+1e-87 level, which is the ramp interpolation reaching the same rate along a different
+floating-point path.
+
+Two smaller things came with it. **The saving has to be read in steps, not seconds** - the
+truncated run's wall clock was only 1.33x better because it shared eight cores with the
+long run, which is this file's own rule about wall-clock comparisons on a loaded machine,
+met again. And **the evidence that the window was wasted was in the checkpoint all along**:
+the collected count and the remaining population are printed every interval, and nobody had
+read them as a statement about cost.
+

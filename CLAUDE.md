@@ -1479,14 +1479,26 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   fast-ramp shortfall is the release lag — the exit potential at the peak is 13.1 V at 4 ms
   against the quasi-static 32 V, 30.6 V at 128 ms — so `V/(β Δt)` collapses as `V(t_peak)`
   while the width in time barely moves. **At Ridgeway's gas profile R doubles** (21.6 at
-  8 ms, 37.2 at 32 ms), the profile authored as imported velocity and pressure fields from
+  8 ms, 37.2 at 32 ms - **both 256-interval numbers; the 8 ms one is 24 per cent below its
+  mesh-converged value and the 32 ms one has no ladder under it at all**), the profile
+  authored as imported velocity and pressure fields from
   the register's own numbers, the parking point moving to 24.92 mm against 25.2 predicted
   by hand from the local gas speed and the `1/n` mobility. The gap to Hernandez's 100-250
   is arithmetic now - his 100-300 ms ramps, his 140 m/s optimum, an accumulation plateau -
   with about 1.5 left in the width's own composition. `mobilityResolvingPower` (V/ΔV off
   the arrivals against the ramped parameter) is a Class B figure of merit, and every
-  diffusive figure takes the sequenced path for a sequenced model. Details in
-  `docs/device-templates.md`.
+  diffusive figure takes the sequenced path for a sequenced model. **And the mesh bias is
+  not uniform along the sweep, which is what makes the sweep's own slope untrustworthy.**
+  Doubling the mesh moves R by **16.9 per cent at 8 ms and 0.8 per cent at 128 ms** on this
+  profile: a coarse mesh adds roughly the same numerical width to both, and the long-ramp
+  packet is ten times wider, so the inflation is 69 per cent of the variance at one end and
+  2.7 at the other. The exponent over 8 to 128 ms therefore reads **0.306 at 256 intervals,
+  0.252 at 512 and 0.215 extrapolated**, against the law's 0.250 - so the agreement at 512
+  is two unequal errors cancelling. A 1024 rung at 128 ms was costed and not run: 14.29
+  hours at 512, about fourfold that at 1024, for a further 0.31 per cent. **The
+  simulated window is separate from the declared ramp and may be stopped past the peak**,
+  which halves the 8 ms rung's step count and reproduces its spectrum to every printed
+  digit. Details in `docs/device-templates.md`.
 
 - **`tims-front-end` — the funnel and the gate, and the fringe a bounded field needed.**
   Hernandez's 50 mm entrance funnel (26 to 8 mm, sixteen plates on a 3.1 mm pitch, the RF

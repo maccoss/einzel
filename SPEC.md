@@ -2703,7 +2703,12 @@ project's author needs to run it and more than any physics the moment one does.
     because the release lags the sliding balance and the exit potential at the peak has
     fallen below the release value. At Ridgeway's gas profile — imported velocity and
     pressure fields authored from the register's numbers — R doubles (21.6 at 8 ms, 37.2
-    at 32 ms), as `R ∝ v_g`. The gap to Hernandez's 100-250 is now arithmetic: his ramps
+    at 32 ms), as `R ∝ v_g`. **Those are 256-interval numbers and the mesh bias is not
+    uniform along the sweep**: doubling the mesh moves R by 16.9 per cent at 8 ms and
+    0.8 per cent at 128 ms, so refining flattens the sweep and the exponent over that
+    range reads 0.306 / 0.252 / 0.215 at 256 / 512 / extrapolated against the law's
+    0.250. A position, a transit or a transmission from these runs stands; a width or a
+    resolving power carries the caveat. The gap to Hernandez's 100-250 is now arithmetic: his ramps
     (×1.3-1.8), his flow (×1.3), and an accumulation plateau this tunnel lacks, leaving
     ~1.5 unresolved in the width. `mobilityResolvingPower` is a Class B figure of merit.
     The remainder is the front end: the entrance funnel and the gate the operating
