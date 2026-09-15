@@ -999,6 +999,50 @@ remaining 3-7, which leaves about 1.5 for the width's own composition — the sa
 factor as at 50 m/s. What is *not* in the gap: the transmission (every ion arrives), the
 order (least mobile first), the parking (to 1 µm), or the exponent.
 
+### The mesh is not the same at both ends of the ramp, and that tilts the sweep
+
+The ladder above was extended to 128 ms on Ridgeway's profile and refined at both ends. All
+three ramps are on the grid aligned with the detector plane, so they are comparable with
+each other rather than with the 21.6 and 37.2 in the table above, which predate that
+alignment by about 1.5 per cent.
+
+| ramp | 256 intervals | 512 | 1024 | mesh factor 256 to 512 | extrapolated |
+| --- | --- | --- | --- | --- | --- |
+| 8 ms | 21.906 | 25.611 | 27.355 | **1.169** | ~28.5 |
+| 32 ms | 37.306 | - | - | - | - |
+| 128 ms | 51.124 | **51.544** | - | **1.008** | **51.80** |
+
+**The long ramp is converged and the short one is not**, which the 8 ms ladder alone would
+not have predicted - its 30 per cent had been carried over the whole row as a caveat. Read
+as a variance the two ends are consistent: taking the extrapolated widths as physical, a
+256-interval mesh adds 3,580 µs^2 at 8 ms and 14,562 µs^2 at 128 ms - four times *more*
+in absolute terms, because the packet spends longer in the analyzer - while the physical
+variance grows 105-fold, so the fractional inflation falls from 69 per cent to 2.7.
+
+**So the mesh changes the sweep's slope, not only its level.** Over 8 to 128 ms, a factor
+of 16 in β, the exponent reads **0.306 at 256 intervals, 0.252 at 512 and 0.215 once both
+ends are extrapolated**, against the law's 0.250. The coarse sweep is 22 per cent steep;
+the 512 sweep agrees with the law almost exactly, and that agreement is two unequal errors
+cancelling - 11 per cent short at one end, half a per cent at the other. The 32 ms rung has
+no ladder, so the middle of the series cannot be corrected and the per-doubling ratios above
+stand as coarse-mesh numbers.
+
+**The 1024 rung at 128 ms was costed and not run.** 512 took **156,626 steps and 14.29
+hours**; 1024 is about fourfold that at twice the cells and twice the steps, and at the
+observed order of 1.41 it would move R by a further **0.31 per cent**, to 51.71.
+
+**And a declared ramp is not a simulated window.** The rate sets β and so the physics; how
+much of the sequence is computed is separate, and these runs declared both at full length -
+at 128 ms the last ion is collected near 40 ms and the run stepped to 131. Cutting the 8 ms
+elute from 8000 to 3900 µs with its ramp ending at 51.25 V instead of 0, which is the same
+0.0125 V/µs, reproduces the full-window answer to **every printed digit** (mean 3475.970
+µs, σ 79.9887, peak 3476.555 µs at 60.2931 V, FWHM 188.2803 µs, R 25.611) at **2.05x
+fewer steps** - 9,792 to 4,789. The arrival timestamps are identical because the stability
+limits are; the counts differ in the last digit or two at the 1e-87 level, the ramp
+interpolation reaching the same rate along a different floating-point path. The whole
+spectrum beyond the cut is 2.5e-15 ions of 100,000. At 128 ms the same nine sigma of
+headroom is a 45 ms window against a 131 ms sequence, about 2.9x.
+
 ### What this stage still does not carry
 
 **The shipped template's gas is one stream at 50 m/s.** Ridgeway's profile has been run
