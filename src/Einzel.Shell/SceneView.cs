@@ -69,6 +69,7 @@ public sealed class SceneView : OpenGlControlBase
     private readonly List<Mesh> _conductors = [];
     private readonly List<Mesh> _density = [];
     private readonly List<Line> _paths = [];
+    private readonly List<Line> _field = [];
     private readonly Lock _gate = new();
 
     private ViewportOutcome? _pending;
@@ -183,6 +184,7 @@ public sealed class SceneView : OpenGlControlBase
         }
 
         UploadConductors(_gl, scene);
+        UploadField(_gl, scene);
         UploadDensity(_gl, scene);
         UploadPaths(_gl, scene);
         _framing = Framing.Measure(scene, _view.Azimuth, _view.Elevation);
@@ -265,6 +267,16 @@ public sealed class SceneView : OpenGlControlBase
         // rather than something to re-derive from a pressure.
         api.Uniform1(_alphaLocation, 1.0f);
 
+        // The field with the paths and before the metal, for the same reason: an
+        // equipotential is drawn on the section plane, which runs through the bore, so
+        // drawn after opaque conductors it is behind the near wall at every pixel.
+        foreach (var contour in _field)
+        {
+            api.Uniform3(_colorLocation, contour.R, contour.G, contour.B);
+            api.BindVertexArray(contour.Vao);
+            api.DrawArrays(PrimitiveType.LineStrip, 0, (uint)contour.Count);
+        }
+
         foreach (var path in _paths)
         {
             api.Uniform3(_colorLocation, path.R, path.G, path.B);
@@ -337,12 +349,13 @@ public sealed class SceneView : OpenGlControlBase
             api.DeleteBuffer(shell.Ebo);
         }
 
-        foreach (var path in _paths)
+        foreach (var path in _paths.Concat(_field))
         {
             api.DeleteVertexArray(path.Vao);
             api.DeleteBuffer(path.Vbo);
         }
 
+        _field.Clear();
         _density.Clear();
         _conductors.Clear();
         _paths.Clear();
@@ -395,6 +408,33 @@ public sealed class SceneView : OpenGlControlBase
             var (r, g, b) = ColourRamp.Diverging(fraction);
 
             _conductors.Add(Mesh.Upload(api, conductor, (float)r, (float)g, (float)b));
+        }
+    }
+
+    private void UploadField(GL api, ViewportOutcome scene)
+    {
+        // The same diverging ramp the conductors take, and symmetric about earth for the
+        // same reason: stretching it across the observed range puts the neutral colour at
+        // the arithmetic middle, so an earthed contour would be painted like a negative one.
+        var span = Math.Max(
+            Math.Abs(scene.LowestPotentialVolts ?? 0.0),
+            Math.Abs(scene.HighestPotentialVolts ?? 0.0));
+
+        foreach (var level in scene.Equipotentials)
+        {
+            var fraction = span > 0.0
+                ? 0.5 + (0.5 * Math.Clamp(level.PotentialVolts / span, -1.0, 1.0))
+                : 0.5;
+
+            var (r, g, b) = ColourRamp.Diverging(fraction);
+
+            foreach (var polyline in level.PathsMm)
+            {
+                if (polyline.Count >= 6)
+                {
+                    _field.Add(Line.Upload(api, polyline, (float)r, (float)g, (float)b));
+                }
+            }
         }
     }
 

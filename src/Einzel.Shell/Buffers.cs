@@ -143,12 +143,45 @@ public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float
     /// in step for no gain: the fragment stage takes the absolute lambert, so a constant
     /// normal simply gives a flat colour.
     /// </remarks>
-    public static unsafe Line Upload(GL api, TrajectoryPath path, float r, float g, float b)
+    public static Line Upload(GL api, TrajectoryPath path, float r, float g, float b)
     {
-        ArgumentNullException.ThrowIfNull(api);
         ArgumentNullException.ThrowIfNull(path);
 
-        var points = path.PointsMm;
+        return Upload(api, path.PointsMm, r, g, b);
+    }
+
+    /// <summary>Uploads one polyline of an equipotential.</summary>
+    /// <param name="api">The GL context.</param>
+    /// <param name="pointsMm">Consecutive x, y, z triples in millimetres.</param>
+    /// <param name="r">Red, zero to one.</param>
+    /// <param name="g">Green, zero to one.</param>
+    /// <param name="b">Blue, zero to one.</param>
+    /// <returns>The uploaded strip.</returns>
+    /// <remarks>
+    /// An equipotential is a level set and so is a conductor's surface, which is why the
+    /// renderer draws both with one marching-squares routine. Here they differ only in
+    /// dimension - a contour on the section plane is a line where a conductor is a surface -
+    /// so an equipotential shares the trajectory's upload rather than the conductor's.
+    /// </remarks>
+    public static Line Upload(GL api, IReadOnlyList<double> pointsMm, float r, float g, float b)
+    {
+        ArgumentNullException.ThrowIfNull(pointsMm);
+
+        var triples = new List<IReadOnlyList<double>>(pointsMm.Count / 3);
+
+        for (var i = 0; i + 2 < pointsMm.Count; i += 3)
+        {
+            triples.Add([pointsMm[i], pointsMm[i + 1], pointsMm[i + 2]]);
+        }
+
+        return Upload(api, triples, r, g, b);
+    }
+
+    private static unsafe Line Upload(
+        GL api, IReadOnlyList<IReadOnlyList<double>> points, float r, float g, float b)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+
         var interleaved = new float[points.Count * 6];
 
         for (var p = 0; p < points.Count; p++)

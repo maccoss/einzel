@@ -130,6 +130,20 @@ public sealed partial class MainWindow : Window
         var view = new SceneView { Scene = outcome };
         host.Children.Add(view);
 
+        // The model's own knobs, through the command that exists so the window need not
+        // parse the document. An outline that fails is shown as an empty list rather than
+        // taking the window down: the picture is still worth having.
+        try
+        {
+            this.FindControl<ItemsControl>("Parameters")!.ItemsSource =
+                OutlineCommand.Execute(modelPath).Parameters.Select(ParameterRow.From).ToList();
+        }
+        catch (Exception outlineFailed)
+        {
+            this.FindControl<ItemsControl>("Parameters")!.ItemsSource =
+                new[] { new ParameterRow("could not read the surface", outlineFailed.Message, string.Empty, null) };
+        }
+
         // Amendment 25: each of these is a camera, not a capability, so none of them needs
         // a command spelling - what a named view changes is where somebody is standing.
         Named("ViewIso", (-32.0, 24.0));
