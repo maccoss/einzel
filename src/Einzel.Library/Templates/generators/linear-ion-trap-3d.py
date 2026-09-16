@@ -65,23 +65,26 @@ rf_y = {"drive": "rf", "amplitude": q("rfAmplitude", "V")}
 ex_plus = {"drive": "excite", "amplitude": q("0.5 * exciteAmplitude", "V")}
 ex_minus = {"drive": "excite", "amplitude": q("-0.5 * exciteAmplitude", "V")}
 
-# Three sections: front (z negative), centre, back. The slot is cut only in the centre section's +x rod.
+# Three sections: front (z negative), centre, back. The slits are cut only in the centre
+# section, and there are TWO of them - one in each x rod, with a detector behind each, which
+# is how the released instrument ejects. The 2002 paper's device is the prototype and has
+# one; set slotXMinus to zero for that.
 # The quadrupolar DC (dcOffset, x pair up and y pair down) sets Mathieu a; the end offset
 # is common to all four rods of a section - that is what makes an axial well. Written
 # quadrupolar, as the first draft had it, it is zero on the axis and makes none.
 sections = [
-    ("front", "-(centreHalfLength + sectionGap + endLength)", "-(centreHalfLength + sectionGap)", "dcOffset + endOffset", "-dcOffset + endOffset", "noSlot"),
-    ("centre", "-centreHalfLength", "centreHalfLength", "dcOffset", "-dcOffset", "slotXPlus"),
-    ("back", "centreHalfLength + sectionGap", "centreHalfLength + sectionGap + endLength", "dcOffset + endOffset", "-dcOffset + endOffset", "noSlot"),
+    ("front", "-(centreHalfLength + sectionGap + endLength)", "-(centreHalfLength + sectionGap)", "dcOffset + endOffset", "-dcOffset + endOffset", "noSlot", "noSlot"),
+    ("centre", "-centreHalfLength", "centreHalfLength", "dcOffset", "-dcOffset", "slotXPlus", "slotXMinus"),
+    ("back", "centreHalfLength + sectionGap", "centreHalfLength + sectionGap + endLength", "dcOffset + endOffset", "-dcOffset + endOffset", "noSlot", "noSlot"),
 ]
 
 electrodes = []
-for section, lower, upper, x_dc, y_dc, x_slot in sections:
+for section, lower, upper, x_dc, y_dc, x_slot, x_minus_slot in sections:
     electrodes += [
         prism(f"{section}XPlusUpper", "x", +1, +1, x_slot, "xStretch + ", lower, upper, x_dc, [rf_x, ex_plus]),
         prism(f"{section}XPlusLower", "x", +1, -1, x_slot, "xStretch + ", lower, upper, x_dc, [rf_x, ex_plus]),
-        prism(f"{section}XMinusUpper", "x", -1, +1, "noSlot", "xStretch + ", lower, upper, x_dc, [rf_x, ex_minus]),
-        prism(f"{section}XMinusLower", "x", -1, -1, "noSlot", "xStretch + ", lower, upper, x_dc, [rf_x, ex_minus]),
+        prism(f"{section}XMinusUpper", "x", -1, +1, x_minus_slot, "xStretch + ", lower, upper, x_dc, [rf_x, ex_minus]),
+        prism(f"{section}XMinusLower", "x", -1, -1, x_minus_slot, "xStretch + ", lower, upper, x_dc, [rf_x, ex_minus]),
         prism(f"{section}YPlusRight", "y", +1, +1, "noSlot", "yStretch + ", lower, upper, y_dc, [rf_y]),
         prism(f"{section}YPlusLeft", "y", +1, -1, "noSlot", "yStretch + ", lower, upper, y_dc, [rf_y]),
         prism(f"{section}YMinusRight", "y", -1, +1, "noSlot", "yStretch + ", lower, upper, y_dc, [rf_y]),
@@ -118,9 +121,13 @@ doc = {
     "name": "linear-ion-trap-3d",
     "description": (
         "The 2002 linear ion trap (Schwartz, Senko, Syka, JASMS 2002) as a volume: the same hyperbolic half-rods and "
-        "0.25 mm slot as the linear-ion-trap cross-section, extruded along the axis as prisms and cut into the paper's "
-        "three axial sections of 12, 37 and 12 mm, each at its own DC offset, with the slot only in the centre section "
-        "and a plate lens with a 2 mm aperture at each end. The end sections' DC offset makes the axial well; the paper "
+        "0.25 mm slits as the linear-ion-trap cross-section, extruded along the axis as prisms and cut into the paper's "
+        "three axial sections of 12, 37 and 12 mm, each at its own DC offset, with the slits only in the centre section "
+        "and a plate lens with a 2 mm aperture at each end. THE RELEASED INSTRUMENT EJECTS BOTH WAYS - a slit in each "
+        "x rod with a detector behind each - which is what this carries; the 2002 paper's device is the prototype and "
+        "has one, at slotXMinus zero. The end sections' DC offset makes the axial well, which is the thing this "
+        "template exists to hold and a cross-section cannot: the paper's 3 V lifts the ends above the centre and traps "
+        "along z. The paper "
         "argues that applying the RF and the dipole excitation equally across all three sections keeps the excitation "
         "field free of an axial component in the centre section, which a single-section trap with DC end lenses cannot "
         "do, and that is what this template exists to measure. The cross-section is generated from the same outline as "
@@ -134,6 +141,7 @@ doc = {
         "xStretch": {"value": 0.75, "unit": "mm", "minimum": -2.0, "maximum": 5.0, "description": "How far the x rod pair is moved outward. Published: 0.75 mm."},
         "yStretch": {"value": 0.0, "unit": "mm", "minimum": -2.0, "maximum": 5.0, "description": "How far the y rod pair is moved outward. Zero in the 2002 trap."},
         "slotXPlus": {"value": 0.125, "unit": "mm", "minimum": 0.0, "maximum": 2.0, "description": "Half the height of the ejection slot through the centre section's +x rod. Published: 0.25 mm high, along the centre section."},
+        "slotXMinus": {"value": 0.125, "unit": "mm", "minimum": 0.0, "maximum": 2.0, "description": "Half the height of the ejection slit through the centre section's -x rod. The released instrument ejects radially both ways, a slit in each x rod with a detector behind each, so this matches its opposite. Zero gives the single-slit prototype the 2002 paper describes, whose measured scan-out efficiency is 44 per cent against the 88 it predicts for two slits and two detectors."},
         "noSlot": {"value": 0.0, "unit": "mm", "minimum": 0.0, "maximum": 0.0, "description": "A closed slot, for the rods and sections that have none. Fixed at zero; it exists so every half-rod is the same outline."},
         "slotDepth": {"value": 0.5, "unit": "mm", "minimum": 0.0, "maximum": 20.0, "description": "How far behind the face the slot keeps its face height before opening into the relief. Not published."},
         "reliefRatio": {"value": 8.0, "unit": "1", "minimum": 1.0, "maximum": 40.0, "description": "The slot opens behind its channel to this multiple of its half-height. Not published."},

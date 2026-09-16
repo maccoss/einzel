@@ -1214,8 +1214,10 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
 - **The linear ion trap, and the polygon it forced.** The radial-ejection trap of Schwartz,
   Senko and Syka (JASMS 2002) - the ancestor of the Velos dual-pressure design and the Stellar
-  front end - has hyperbolic rods with a 0.25 mm slot cut through one and the x pair moved out
-  0.75 mm. Not awkward to write in rectangle and disc: **not expressible at all**. LIB-1's
+  front end - has hyperbolic rods with 0.25 mm ejection slits and the x pair moved out
+  0.75 mm. **The released instrument ejects radially both ways, a slit in each x rod with a
+  detector behind each**; the paper's device is the prototype, cuts one, measures 44 per cent
+  scan-out on it and predicts 88 for the pair. Not awkward to write in rectangle and disc: **not expressible at all**. LIB-1's
   signal fired for the sixth time, and for the first time asked for a shape: `polygon`, any
   closed outline at one potential, with a closed-form signed distance and first crossing so
   its faces are cut cells like a disc's. A square as four vertices solves to the rectangle's
@@ -1234,9 +1236,12 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   to **0.822 of the ideal formula's** (multipoles: A2 20.55 against 24.98 V per 100 V applied),
   so "0.92" was 0.757. The paper's own q scale is the effective one - it quotes 368 kHz at
   q = 0.83, the ideal beta to a tenth of a per cent - as every trap's is, since q is inferred
-  from frequency and not from metal. The slot's fault is a **dipole** (9.6e-4 of A2) the
-  symmetric stretch cannot touch; the stretch's answer is an **octupole** (1.7e-3), the
-  3-D "stretch" term, as the paper says.
+  from frequency and not from metal. **A single slit's fault is a dipole** (1.26e-3 of A2)
+  and a hexapole (1.84e-4) the symmetric stretch cannot touch - **and the second slit cancels
+  both** (2.8e-15, 8.6e-16), because a slit in each x rod is symmetric about x. So that fault
+  belongs to the prototype rather than to the instrument. What the stretch answers is the
+  **octupole** (1.62e-3), the 3-D "stretch" term, as the paper says, and the quadrupole term
+  moves 0.8219 to 0.8214 between one slit and two - so the working point is unaffected.
 
   **Resonance ejection, then the scan.** With the paper's dipole excitation (3 V + 20 mV per
   m/z at 421.3 kHz) the ion leaves from effective q 0.870 up, along x onto the x rods; with it
@@ -2163,6 +2168,102 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   **The fix is `EinzelError.At(path)` at four call sites**, and it only fills in the placeholder — locating an error must never make it *less* located, since an expression evaluator is handed the path it is working on and raises its own failures with it. One of the four had already been written the right way and **the branch ten lines below it had not**: `ParameterSurface` located a *literal* parameter's failure and dropped a *derived* one's, which is exactly the gap the changelog had recorded without connecting it to the general shape.
 
   Found by driving my own new refusal through the CLI rather than by a failing test — the project's own rule that after adding a producer you ask what reads it. The first attempt at a deliberately broken model used a bare `2.0` where the grammar has no unit literals, so it produced the wrong error, and the wrong error was the finding. **Teeth measured both ways**: making `At` the identity fails three tests, and removing its placeholder guard fails a different one.
+
+- **The slot's exit optics, and the electrode that was not in the solve.** SPEC item 7's one
+  open sub-item was the ejection slot: a real LTQ's detector sits behind a strong extraction
+  field and the cross-section ends 1.5 mm behind the rod in a grounded wall, so the efficiency
+  was recorded as *a sensitivity, not a prediction*. **Closing that gap does not make it a
+  prediction.** A plate behind the rods, 300 ions a point, takes the shipped relieved slot from
+  **38.0 to 49.7 per cent** between earth and a kilovolt and the straight channel from **6.6 to
+  9.5**, against a **31-point gap between the two profiles at earth**: the profile dominates
+  the field at every voltage tried.
+
+  **A slot is a waveguide below cutoff for an electrostatic field**, and the plate's own basis
+  measures it: at the slot mouth, which is where the aperture lens acts, **a kilovolt is worth
+  six tenths of a millivolt** - one part in a million, for both profiles. The decay length is
+  `h/pi`, the lowest mode of a channel of full height h, checked on the 2 mm relief cavity at
+  **0.6392 mm against 0.6366, a ratio of 1.0040** over 32 samples. The 0.25 mm channel falls by
+  a dead-constant 0.2704 per cell over eight cells - 0.0941 mm against 0.0796, **18 per cent
+  high on two cells, in the direction under-resolution predicts** - and either number is fatal:
+  eighty e-foldings over 7.25 mm of rod.
+
+  So what an extraction field reaches is the **relief cavity and the gap**, never the mouth,
+  which the loss columns say independently: the relief's walls take **51 ions at earth and 32
+  at a kilovolt** while the slot's own walls do not move (23 against 23). **A relief is not
+  only mechanical clearance - it is what lets an extraction field inside the rod at all**, and
+  its reach is set by the relief's height rather than by its length or the voltage. The control
+  is a positive plate, which must make things worse and does: +200 V costs the relieved slot
+  nearly half its transmission and puts **12 ions on the rod's back face against 1 at earth**.
+
+  **An engine defect found by needing the plate, and it is the recurring shape.** An
+  `edgeProfile` electrode keeps its volts in its `profile` and every shipped one leaves the
+  scalar `potential` null. The channel decomposition builds a supply from that scalar and the
+  taps, so an edge profile joined none, was weighted at zero, and the rasterizer multiplied it
+  through: **in any driven solve the board was not there at all**, silently, on a converged
+  solve reporting its other channels. Caught against a closed form - a 1 eV ion crossed 4 mm in
+  **6.419 us against 6.44 us of field-free flight**, so the -500 V plate was exactly absent.
+  It never showed because **both templates that use edge profiles declare no drive**, and the
+  undriven arm applies the profile as written. The same null scalar had also made `CanDoWork`
+  refuse such a model as one in which nothing could move an ion - the **sixth** configuration
+  that check has learned, and its own remarks already carried the rule that predicts it: a new
+  way to hold a potential is a new configuration. Fixed with a unit coefficient, and the
+  narrower wrong case the fix creates - a stage that *changes* a profile, which would be two
+  patterns wearing one coefficient - is now refused by name rather than left. Both fixes
+  mutation-checked; the two controls pass either way, which is what makes them controls.
+
+  **And the table this replaces was twenty ions**, of which about thirteen go toward the slot,
+  so its rows differ by less than their counting error. The ordering survives at 300 and the
+  magnitudes move: the shipped profile reads 9 of 20 there and 38.0 per cent here. Details in
+  `docs/device-templates.md` and `docs/lessons.md`.
+
+- **The linear ion trap modelled a prototype, and the paper says so on its own page.** The
+  template cut one ejection slit, in the +x rod, because that is the device Schwartz 2002
+  describes. **The released LTQ ejects radially both ways** - a slit in each x rod with a
+  detector behind each - and the paper predicts exactly that while measuring the prototype:
+  *"a scan out efficiency of 44% ... It is assumed that half of the ions are neutralized on
+  the rod opposite the ejection slot. The use of a second slot on the opposite rod in
+  combination with a second detector should produce a scan out efficiency of 88%."* The
+  Stellar paper confirms it from the other side, describing the LTQ's two-fold stretch as
+  answering "the field distortions of the ejection **slots**", plural. Corrected in
+  `linear-ion-trap`, `linear-ion-trap-3d` - the one that carries the axial DC trapping - and
+  the Stellar; `slotXMinus` at zero gives the prototype back.
+
+  **The Velos family cuts four and only two pass ions**, which is a distinction I nearly got
+  wrong in the other direction. Second's dual-pressure paper is explicit - *"a fully symmetric
+  geometry with ejection slots in all four rods. This design provides fully symmetrical RF
+  fields"* - so the Stellar keeps all four, and ejection stays the dipole across x. **The model
+  reproduces the paper's stated reason independently**: cutting the x pair only leaves the
+  stretch four-fold and the slots two-fold, which breaks the antisymmetry between the rod pairs
+  and admits an octupole of **1.25e-4 against 1.4e-16 with all four**.
+
+  **The odd-order fault was the prototype's.** At r0/2: one slit gives a dipole of **1.26e-3**
+  and a hexapole of **1.84e-4** of the quadrupole; two give **2.8e-15 and 8.6e-16**, because a
+  slit in each x rod is symmetric about x. The octupole is the stretch's and survives at
+  1.62e-3. **The quadrupole term moves 0.8219 to 0.8214**, so the ejection working point and
+  every corpus example pinned to it are unaffected. Three tests carried the old geometry in
+  their assertions and now encode the new claim; all seven in the class pass.
+
+  **Scan-out roughly doubles, as the paper says it must, and still lands at half its figure**:
+  **21.7 per cent one slit, 45.3 two**, against 88. The remaining factor of two is the slot
+  profile - the relief ratio is the knob (8.6 / 17.3 / 22.7 / 35.1 / 52.2 per cent at 1 / 2 /
+  4 / 8 / 16 times), the channel depth barely matters below 1 mm, and **the rod's thickness is
+  refuted**: 45.3 / 43.0 / 36.7 / 47.7 per cent through 3.5 / 4.5 / 6.0 / 8.0 mm of metal, non-
+  monotone, thickest highest.
+
+  **And the 124-to-12 split between the two detectors is the launch, not the trap.** The solved
+  field is symmetric about x to **1.5e-6 of applied inside the trapping region** - the 15 per
+  cent the whole domain showed was the housing, which had a wall on one side and the bare
+  domain edge on the other, now a named detector on both. What is asymmetric is the ensemble:
+  every ion starts at one point at one instant, so their secular oscillations are in phase and
+  they eject together. Spreading the cloud walks the split 17.6/82.4 to **46.1/53.9** at 1 mm.
+  The honest reading is that **a physically sized cloud is still coherent** - 300 K in this well
+  is 0.1 mm, still 19/81 - and what decoheres a real trap is milliseconds of cooling before the
+  ramp. So the sum over both detectors is reportable and the split between them is not.
+
+  **A format gap, named rather than built**: the model format carries **one** detector plane and
+  both instruments have two, so the -x slit gets a named absorber and a scan-out is the arrivals
+  plus the ions itemised against `detectorLeft`. A LIB-1 signal with a second real device behind
+  it. Details in `docs/device-templates.md` and `docs/literature-targets.md` §2.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

@@ -745,9 +745,42 @@ public static class GeometryBuilder
         [.. states.Select(state => (IReadOnlyList<Excitation>)[.. state.Select(Excited)])];
 
     /// <summary>How a two-dimensional electrode is excited, for the shared decomposition.</summary>
+    /// <remarks>
+    /// <para>
+    /// An <b>edge profile carries its volts in its profile</b> rather than in a scalar
+    /// potential, and every shipped one leaves that scalar null. So asking the electrode
+    /// what it holds returns zero, the decomposition gives it no supply, and the channel
+    /// weights it at zero - which <see cref="RasteriseEdgeProfile"/> then multiplies
+    /// through, so the board is not there at all. Silently: the solve converges, reports
+    /// its other channels, and a mirror simply has no field.
+    /// </para>
+    /// <para>
+    /// It never showed because the two templates with edge profiles declare no drive, and
+    /// an undriven solve takes the <c>potentialOf is null</c> arm, where the scale is 1.0
+    /// and the profile is used as written. The moment such a geometry declares a drive it
+    /// goes through the channels and the board vanishes. A unit coefficient is the fix
+    /// that fits the scheme: the pattern is normalized by its leading coefficient and the
+    /// channel's weight is that leading value, so weight times normalized coefficient is
+    /// exactly one however many other electrodes share the supply - which is precisely
+    /// "apply my profile once, as written".
+    /// </para>
+    /// <para>
+    /// A profile that is everywhere zero gets zero rather than one, so a grounded edge
+    /// profile does not conjure a DC channel whose field is nothing.
+    /// </para>
+    /// </remarks>
     private static Excitation Excited(CompiledElectrode electrode) =>
-        new(electrode.Name, electrode.Potential, [.. electrode.Taps.Select(
+        new(electrode.Name, DirectOf(electrode), [.. electrode.Taps.Select(
             t => new DriveTap(t.Drive, t.Amplitude, t.Phase))]);
+
+    /// <summary>
+    /// What an electrode contributes to the constant supply: its DC potential, or for an
+    /// edge profile a unit scale on the profile that holds its volts.
+    /// </summary>
+    private static double DirectOf(CompiledElectrode electrode) =>
+        electrode.Shape != ElectrodeShape.EdgeProfile
+            ? electrode.Potential
+            : electrode.Profile.Any(point => point.Potential != 0.0) ? 1.0 : 0.0;
 
     /// <summary>
     /// The waveform, frequency and quadrature flag of every generator a geometry

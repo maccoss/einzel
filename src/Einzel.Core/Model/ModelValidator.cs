@@ -363,8 +363,22 @@ public static class ModelValidator
     };
 
     /// <summary>Whether any of these electrodes can move an ion.</summary>
+    /// <remarks>
+    /// The <b>edge profile</b> is the sixth configuration, and it arrived exactly as the
+    /// remarks on <see cref="Energised(CompiledField)"/> predict one would: it is a new way
+    /// to hold a potential. Its volts live in its profile rather than in a scalar, and every
+    /// shipped one leaves that scalar null - so a mirror whose boards are the only thing
+    /// energised in the whole model was refused as an instrument in which nothing could move
+    /// an ion. Asking the profile is the same question, asked where this shape keeps its
+    /// answer.
+    /// </remarks>
     private static bool Energised(IReadOnlyList<CompiledElectrode> electrodes) =>
-        electrodes.Any(e => e.Potential != 0.0 || e.IsDriven);
+        electrodes.Any(e => e.Potential != 0.0 || e.IsDriven || HoldsAProfile(e));
+
+    /// <summary>Whether an edge profile is held anywhere above earth along its edge.</summary>
+    private static bool HoldsAProfile(CompiledElectrode electrode) =>
+        electrode.Shape == ElectrodeShape.EdgeProfile
+        && electrode.Profile.Any(point => point.Potential != 0.0);
 
     /// <summary>Whether any of these electrodes can move an ion.</summary>
     private static bool Energised3D(IReadOnlyList<CompiledElectrode3D> electrodes) =>
@@ -1794,6 +1808,31 @@ public static class ModelValidator
         {
             var a = baseline[i];
             var b = staged[i];
+
+            // An edge profile keeps its volts in its profile, and the channel decomposition
+            // weights a solved pattern by a scalar - so a profile that differs between two
+            // stages is two spatial patterns wearing one coefficient, and the second stage
+            // would silently run the first one's field. Refused rather than approximated:
+            // scaling every point by one factor WOULD be expressible, and is not detected
+            // here, so the message names the whole restriction rather than half of it.
+            if (!a.Profile.SequenceEqual(b.Profile))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/set",
+                    Constraint =
+                        $"stage '{stage}' changes the profile on edge electrode '{a.Name}', which a "
+                        + "sequenced solve cannot express: a profile is a spatial pattern and a stage "
+                        + "may only re-weight one",
+                    Observed = new ObservedValue(b.Profile.Count, "profile points"),
+                    Suggestion =
+                        "hold the profile fixed and put what the stage changes on an ordinary "
+                        + "electrode, whose potential a stage may set freely",
+                });
+
+                return false;
+            }
 
             var moved = a.Shape != b.Shape
                 || a.MinX != b.MinX || a.MaxX != b.MaxX

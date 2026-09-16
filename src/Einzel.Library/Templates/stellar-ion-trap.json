@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.9",
   "name": "stellar-ion-trap",
-  "description": "The mass-analysing cell of the Stellar's linear ion trap in cross-section, as its paper describes it (Remes, Jacob, Heil, Shulman, MacLean, MacCoss, J. Proteome Res. 2024, 23, 5476): the Velos Pro structure, a 4.0 mm field radius with a four-fold symmetric stretch of 0.76 mm - both rod pairs moved out, which restores the x-y symmetry the 2002 trap's two-fold stretch broke - slots in all four rods, and helium at 0.5 mTorr in the low-pressure cell that performs the mass analysis. The paper gives the analysis scan rates (33, 67, 125 and 200 kDa/s) and the peak widths they produce at m/z 622 (about 0.35, 0.5, 0.7 and 1.0 Th); it does not give the RF frequency, the ejection q or the excitation, which are carried over from the 2002 trap and named as guesses. The slot's depth and relief and the rods' truncation are guesses too. The high-pressure cell (~6 mTorr) that receives ions and performs isolation and activation is the same cross-section at a different heliumPressure. Generated from the same script as linear-ion-trap: the two are one function with different numbers.",
+  "description": "The mass-analysing cell of the Stellar's linear ion trap in cross-section, as its paper describes it (Remes, Jacob, Heil, Shulman, MacLean, MacCoss, J. Proteome Res. 2024, 23, 5476): the Velos Pro structure, a 4.0 mm field radius with a four-fold symmetric stretch of 0.76 mm - both rod pairs moved out, which restores the x-y symmetry the 2002 trap's two-fold stretch broke - and slots in all four rods, which the dual-pressure paper states as such: 'a fully symmetric geometry with ejection slots in all four rods', for symmetric RF fields. EJECTION AND DETECTION ARE THROUGH THE X PAIR: the dipole excitation is across the x rods and a detector sits behind each of those two, so the y slots shape the field and pass no ions. Helium sits at 0.5 mTorr in the low-pressure cell that performs the mass analysis. The paper gives the analysis scan rates (33, 67, 125 and 200 kDa/s) and the peak widths they produce at m/z 622 (about 0.35, 0.5, 0.7 and 1.0 Th); it does not give the RF frequency, the ejection q or the excitation, which are carried over from the 2002 trap and named as guesses. The slot's depth and relief and the rods' truncation are guesses too. The high-pressure cell (~6 mTorr) that receives ions and performs isolation and activation is the same cross-section at a different heliumPressure. Generated from the same script as linear-ion-trap: the two are one function with different numbers.",
   "parameters": {
     "inscribedRadius": {
       "value": 4.0,
@@ -64,21 +64,21 @@
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 2.0,
-      "description": "Half-height of a slot through the -x rod. Zero in the 2002 trap, which ejects one way; 0.125 for the symmetric design with slots in all four rods."
+      "description": "Half-height of a slot through the -x rod. The released LTQ and the Stellar both eject radially BOTH ways, through a slit in each x rod with a detector behind each, so this is 0.125 like its opposite. Zero gives the single-slot prototype of the 2002 paper, whose own measured scan-out efficiency is 44 per cent against the 88 it predicts for two slits and two detectors."
     },
     "slotYPlus": {
       "value": 0.125,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 2.0,
-      "description": "Half-height of a slot through the +y rod. Zero in the 2002 trap."
+      "description": "Half-height of a slot through the +y rod. Zero in every real trap here: radial ejection is along x, and the four-fold description of the Velos and Stellar traps is of the STRETCH, not of the slits."
     },
     "slotYMinus": {
       "value": 0.125,
       "unit": "mm",
       "minimum": 0.0,
       "maximum": 2.0,
-      "description": "Half-height of a slot through the -y rod. Zero in the 2002 trap."
+      "description": "Half-height of a slot through the -y rod. Zero, for the reason its opposite gives."
     },
     "rfAmplitude": {
       "value": 257.0,
@@ -881,7 +881,7 @@
             ]
           },
           {
-            "name": "housingLeft",
+            "name": "detectorLeft",
             "shape": "rectangle",
             "minX": {
               "expression": "-domainHalfWidth",
@@ -889,6 +889,30 @@
             },
             "maxX": {
               "expression": "-(domainHalfWidth - wallThickness)",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "-domainHalfWidth",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "domainHalfWidth",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "detectorRight",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "domainHalfWidth - wallThickness",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "domainHalfWidth",
               "unit": "mm"
             },
             "minY": {

@@ -2854,7 +2854,21 @@ project's author needs to run it and more than any physics the moment one does.
       avoids that and costs no flights, but is floored by adiabaticity. The two floors are
       independent, which is why the methods agree on ranking and disagree on values.
 
-7. **The linear ion trap, from a cross-section to an instrument.** The 2002 LTQ
+7. **The linear ion trap, from a cross-section to an instrument.** **The template modelled
+    the 2002 paper's prototype rather than the released instrument**: one ejection slit where
+    the LTQ has one in each x rod with a detector behind each, which the paper itself predicts
+    while measuring the prototype at 44 per cent scan-out against 88 for the pair. Corrected
+    in the cross-section, the volume template and the Stellar - whose four slots are for
+    symmetric RF, with ejection still through the x pair, as the dual-pressure paper states.
+    **The odd-order field fault this register attributed to the slot is the prototype's**: a
+    dipole of 1.26e-3 and a hexapole of 1.84e-4 at one slit, 2.8e-15 and 8.6e-16 at two, since
+    a slit in each x rod is symmetric about x. The quadrupole term moves 0.8219 to 0.8214, so
+    no working point shifts. Scan-out doubles to 45.3 per cent and stays at half the paper's
+    88; the profile is the remaining factor and the rod's thickness is refuted. The split
+    between the two detectors is launch coherence rather than geometry - the field is symmetric
+    to 1.5e-6 inside the trapping region - so the sum is reportable and the split is not. **And
+    the format carries one detector plane where both instruments have two**, a LIB-1 signal
+    left named rather than built. The 2002 LTQ
     cross-section reproduces the paper's resonance ejection and its unit resolution at
     5,555 u/s (Amendment 37, `docs/literature-targets.md` §2), and it exposed four things
     that stand between that and the dual-pressure device the Stellar front end actually is.
@@ -2873,9 +2887,22 @@ project's author needs to run it and more than any physics the moment one does.
     below 0.001 % - the paper's figure 2 as numbers - and it scans: twelve ions at
     16,700 u/s eject at effective q 0.8703 against the cross-section's 0.8685, the 0.2 %
     being its quadrupole term (0.8207 of ideal at the 0.5 mm cell against 0.8223, converging
-    with the mesh); **the slot's exit optics**, which the cross-section cannot settle because
-    the paper does not give the slot's profile and the real detector sits behind an
-    extraction field this model ends in a grounded wall; and ~~**space charge in the
+    with the mesh); ~~**the slot's exit optics**~~ - **measured, and the
+    extraction field is not the missing piece**: a plate behind the rods takes the shipped
+    relieved slot from 38.0 to 49.7 per cent between earth and a kilovolt and the straight
+    channel from 6.6 to 9.5, against a 31-point gap between the two profiles at earth, so the
+    profile dominates the field at every voltage tried and the efficiency stays a sensitivity
+    to the geometry the paper does not give. **A slot is a waveguide below cutoff for an
+    electrostatic field**: at the mouth, where the aperture lens acts, a kilovolt is worth six
+    tenths of a millivolt, and the decay length is `h/pi` - checked on the 2 mm relief cavity
+    at **0.6392 mm against 0.6366**, with the 0.25 mm channel 18 per cent high on two cells, in
+    the direction under-resolution predicts. What the field reaches is the **relief cavity and
+    the gap**: the relief's walls take 51 ions at earth and 32 at a kilovolt while the slot's
+    own take 23 either way, so **a relief is what lets an extraction field inside the rod at
+    all**, its reach set by the relief's height rather than its length or the voltage. The
+    control is a positive plate, which costs half the transmission and puts 12 ions on the
+    rod's back face against 1. 300 ions a point, because the four-profile table this replaces
+    was twenty and its rows differ by less than their counting error; and ~~**space charge in the
     scan**~~ - **resolved as far as a vacuum run can take it**: the direct sum's softening,
     set from the packet's RMS radius, exceeded a line cloud's transverse size
     thirty-four-fold and switched the force off; it is now reported

@@ -20,20 +20,24 @@ VARIANT = sys.argv[2] if len(sys.argv) > 2 else "ltq"     # "ltq" (Schwartz 2002
 if VARIANT == "ltq":
     NAME = "linear-ion-trap"
     XSTRETCH, YSTRETCH = 0.75, 0.0
-    SLOTS = {"slotXPlus": 0.125, "slotXMinus": 0.0, "slotYPlus": 0.0, "slotYMinus": 0.0}
+    SLOTS = {"slotXPlus": 0.125, "slotXMinus": 0.125, "slotYPlus": 0.0, "slotYMinus": 0.0}
     PRESSURE = 4.0e-3
     MZ = 524.3
     DESCRIPTION = (
-        "A radial-ejection linear ion trap in cross-section, after the two-dimensional quadrupole ion trap "
-        "of Schwartz, Senko and Syka (JASMS 2002, 13, 659): four hyperbolic rods at an inscribed radius of 4 mm, "
-        "the x pair moved out 0.75 mm to compensate the field fault of a 0.25 mm ejection slot cut through the +x "
-        "rod, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation across the "
-        "x rods for resonance ejection through the slot. Helium at three millitorr damps the ion. Each rod is two "
-        "polygons meeting at the slot, so a slot of zero height is a whole rod and a slot in every rod - the "
-        "symmetric dual-pressure design - is four numbers. The default holds one ion at a Mathieu q near 0.3 with "
-        "the excitation off; a study raises the RF into the excitation's resonance and asks what leaves through the "
-        "slot, and when. What this cross-section cannot express is the axial structure - three DC sections and the "
-        "end lenses - which belongs to a volume solve."
+        "The radial-ejection linear ion trap of the LTQ in cross-section: four hyperbolic rods at an inscribed "
+        "radius of 4 mm, the x pair moved out 0.75 mm to compensate the field fault of the 0.25 mm ejection "
+        "slots, the main RF at 1 MHz on the rod pairs in antiphase, and a supplementary dipole excitation "
+        "across the x rods for resonance ejection. Helium at three millitorr damps the ion. THE RELEASED "
+        "INSTRUMENT EJECTS BOTH WAYS: a slot in each x rod with a detector behind each, which is what this "
+        "template carries. The device in Schwartz, Senko and Syka (JASMS 2002, 13, 659) is the prototype and "
+        "has one slot; the paper measures its scan-out efficiency at 44 per cent, assumes half the ions are "
+        "neutralised on the rod opposite, and says a second slot with a second detector should give 88 per "
+        "cent. Set slotXMinus to zero for that prototype. Two slots in the x pair are symmetric about x, so "
+        "the slot dipole the single slot produces cancels and what the stretch answers is the remaining even "
+        "fault. Each rod is two polygons meeting at the slot, so a slot of zero height is a whole rod. The "
+        "default holds one ion at a Mathieu q near 0.3 with the excitation off; a study raises the RF into the "
+        "excitation's resonance and asks what leaves through a slot, and when. What this cross-section cannot "
+        "express is the axial structure - three DC sections and the end lenses - which belongs to a volume solve."
     )
 else:
     NAME = "stellar-ion-trap"
@@ -45,7 +49,11 @@ else:
         "The mass-analysing cell of the Stellar's linear ion trap in cross-section, as its paper describes it "
         "(Remes, Jacob, Heil, Shulman, MacLean, MacCoss, J. Proteome Res. 2024, 23, 5476): the Velos Pro structure, "
         "a 4.0 mm field radius with a four-fold symmetric stretch of 0.76 mm - both rod pairs moved out, which "
-        "restores the x-y symmetry the 2002 trap's two-fold stretch broke - slots in all four rods, and helium at "
+        "restores the x-y symmetry the 2002 trap's two-fold stretch broke - and slots in all four rods, which "
+        "the dual-pressure paper states as such: 'a fully symmetric geometry with ejection slots in all four "
+        "rods', for symmetric RF fields. EJECTION AND DETECTION ARE THROUGH THE X PAIR: the dipole "
+        "excitation is across the x rods and a detector sits behind each of those two, so the y slots shape "
+        "the field and pass no ions. Helium sits at "
         "0.5 mTorr in the low-pressure cell that performs the mass analysis. The paper gives the analysis scan rates "
         "(33, 67, 125 and 200 kDa/s) and the peak widths they produce at m/z 622 (about 0.35, 0.5, 0.7 and 1.0 Th); "
         "it does not give the RF frequency, the ejection q or the excitation, which are carried over from the 2002 "
@@ -134,8 +142,20 @@ electrodes = [
 def wall(name, x0, x1, y0, y1):
     """A grounded housing wall along one edge of the domain: electrically the same as the
     grounded domain edge, but an electrode, so an ion that leaves through a slot strikes
-    metal with a name instead of coasting out of the box. With slots in all four rods
-    three of the four ways out have no detector behind them."""
+    metal with a name instead of coasting out of the box.
+
+    Both x sides carry one, because the released instrument has a detector behind each slit
+    and the housing has to be as symmetric as the instrument is. It was not: with a wall on
+    the left and nothing but the grounded domain edge on the right, the solved potential
+    differed by 77.5 V of 500 between mirror points behind the rods - 15 per cent, from
+    ground sitting a quarter of a millimeter nearer on one side. Inside the trapping region
+    that asymmetry is 1.5e-6 of applied, so it never touched the ejection; it is the region
+    an ejected ion crosses on its way out that it distorts.
+
+    The model format carries ONE detector plane, so the +x slit gets it - in front of
+    detectorRight, which the ion therefore never reaches - and the -x slit gets a named
+    absorber: a run's scan-out efficiency is the arrivals plus the ions itemised against
+    detectorLeft. That asymmetry is the format's and not the instrument's."""
     return {
         "name": name, "shape": "rectangle",
         "minX": q(x0, "mm"), "maxX": q(x1, "mm"), "minY": q(y0, "mm"), "maxY": q(y1, "mm"),
@@ -144,7 +164,8 @@ def wall(name, x0, x1, y0, y1):
 
 
 electrodes += [
-    wall("housingLeft", "-domainHalfWidth", "-(domainHalfWidth - wallThickness)", "-domainHalfWidth", "domainHalfWidth"),
+    wall("detectorLeft", "-domainHalfWidth", "-(domainHalfWidth - wallThickness)", "-domainHalfWidth", "domainHalfWidth"),
+    wall("detectorRight", "domainHalfWidth - wallThickness", "domainHalfWidth", "-domainHalfWidth", "domainHalfWidth"),
     wall("housingBottom", "-domainHalfWidth", "domainHalfWidth", "-domainHalfWidth", "-(domainHalfWidth - wallThickness)"),
     wall("housingTop", "-domainHalfWidth", "domainHalfWidth", "domainHalfWidth - wallThickness", "domainHalfWidth"),
 ]
@@ -188,15 +209,15 @@ doc = {
         },
         "slotXMinus": {
             "value": SLOTS["slotXMinus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
-            "description": "Half-height of a slot through the -x rod. Zero in the 2002 trap, which ejects one way; 0.125 for the symmetric design with slots in all four rods.",
+            "description": "Half-height of a slot through the -x rod. The released LTQ and the Stellar both eject radially BOTH ways, through a slit in each x rod with a detector behind each, so this is 0.125 like its opposite. Zero gives the single-slot prototype of the 2002 paper, whose own measured scan-out efficiency is 44 per cent against the 88 it predicts for two slits and two detectors.",
         },
         "slotYPlus": {
             "value": SLOTS["slotYPlus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
-            "description": "Half-height of a slot through the +y rod. Zero in the 2002 trap.",
+            "description": "Half-height of a slot through the +y rod. Zero in every real trap here: radial ejection is along x, and the four-fold description of the Velos and Stellar traps is of the STRETCH, not of the slits.",
         },
         "slotYMinus": {
             "value": SLOTS["slotYMinus"], "unit": "mm", "minimum": 0.0, "maximum": 2.0,
-            "description": "Half-height of a slot through the -y rod. Zero in the 2002 trap.",
+            "description": "Half-height of a slot through the -y rod. Zero, for the reason its opposite gives.",
         },
         "rfAmplitude": {
             "value": 257.0, "unit": "V", "minimum": 0.0, "maximum": 5000.0,
