@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Einzel.Shell</RootNamespace>
+    <AssemblyName>einzel-shell</AssemblyName>
+
+    <!--
+      net10.0 rather than net10.0-windows, which is the whole point: this shell runs
+      where the engine runs. OutputType WinExe suppresses the console window on Windows
+      and is ignored elsewhere.
+    -->
+
+    <!--
+      Pointers, for one reason: uploading a vertex buffer and setting a matrix uniform
+      hand OpenGL a block of memory, and there is no safe spelling of that. Confined to
+      the shell, which owns no physics - the engine's own inner loop is safe code that
+      allocates nothing, which is a different discipline and stays that way.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+    <!--
+      The same reversal the WPF shell needs, for a different reason and with the same
+      argument behind it. Text layout and number entry in a window are locale-facing;
+      what invariant globalization was protecting is that CLI output and golden files do
+      not move with the host locale (CLI-5), and that is achieved by passing
+      CultureInfo.InvariantCulture explicitly at every formatting and parsing site
+      rather than by the build flag. A value typed into the model tree is parsed
+      invariantly whatever the locale, because the file being edited is invariant.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+
+    <Description>
+      The shell, cross-platform. Spec section 16's eleven views on Avalonia, replacing
+      the Windows-only WPF presentation layer. UI-1 is the constraint that shapes it:
+      the shell owns layout, input, the interactive viewport and the update check, and
+      owns no physics, no validation rules, no file format knowledge and no render
+      output. Amendment 25 adds the constructive half - every action here must be
+      expressible as a CLI invocation and journalled as one, so a capability with no
+      command spelling cannot be added to the window, and a person's session hands over
+      to an agent in the same vocabulary.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The only reference, and the boundary UI-1 is about. -->
+    <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Silk.NET.OpenGL" />
+  </ItemGroup>
+
+</Project>

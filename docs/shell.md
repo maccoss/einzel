@@ -779,3 +779,189 @@ says there is no extensions folder to read. Both show no rows, and only one of t
 something is missing. An earlier version of that test put the loose model at the project
 root and reported the two states as identical - which they were, because the layout is found
 by walking up.
+
+## A second shell, on Avalonia, that runs where the engine runs
+
+The shell above is WPF, and WPF is Windows. A user asked for the platform to run
+elsewhere, so `Einzel.Shell` is the same §16 views on Avalonia with an OpenGL viewport:
+plain `net10.0`, no `-windows`, and a reference to **`Einzel.Commands` and nothing else**.
+
+**The swap cost nothing below the shell, and that is the whole point of having kept the
+two rules.** Invariant 1 kept every physics assembly free of UI types, and Amendment 25
+made every shell action a CLI invocation - so there was no capability trapped in the old
+window that had to be excavated before a new one could have it. 2,167 lines, zero physics,
+and one file (the color ramp) ported with only its namespace changed.
+
+**The WPF shell is untouched and still builds.** Its assembly was renamed to
+`einzel-shell-wpf`: two projects emitting one assembly identity is a latent collision, and
+it had already made `ShellBoundaryTests` ambiguous about which shell it had found. That
+test is now a `[Theory]` over both, with a `windowsOnly` flag, so UI-1 is checked against
+each of them rather than against whichever the scan happened to pick up.
+
+| §16 view | WPF | Avalonia |
+| --- | --- | --- |
+| 3-D viewport | yes | **yes** |
+| Model tree | yes | **yes** |
+| Field over the geometry | yes | **yes** |
+| A run watched while it steps | yes | **yes** |
+| Journal | yes | not yet |
+| Results by accuracy class | yes | not yet |
+| Regime inspector | yes | not yet |
+| Sequence editor | yes | not yet |
+| Project view | yes | not yet |
+| Extension manager | yes | not yet |
+
+Every row in the second column that says "not yet" is presentation over a command that
+already works - the same observation this page makes about the WPF shell's own remaining
+rows, and the reason a second window is a drawing exercise rather than a capability one.
+
+### Avalonia is 2-D, so the viewport is ours
+
+Helix Toolkit does the scene graph, the camera and the lighting for the WPF viewport.
+Avalonia has no equivalent: `OpenGlControlBase` hands over a context and a size, and
+everything above that - shader, camera, mesh upload, depth state - is written here.
+`Silk.NET.OpenGL` wraps the function pointers Avalonia's `GlInterface` supplies; it is a
+binding rather than an engine, and nothing below the shell sees it.
+
+That is more code and it removes the SharpDX problem this page records above: the WPF 3-D
+path rides on a library archived since December 2020, and this one rides on OpenGL.
+
+### ANGLE hands back an ES context, and the failure is silent
+
+On Windows, Avalonia's default GL backend is ANGLE, which supplies an **OpenGL ES 3.0**
+context. A shader declaring `#version 330 core` does not compile there - and Avalonia does
+not surface that as an error, it **disables the control**. A viewport that draws nothing
+looks exactly like a viewport whose scene was empty.
+
+So the shader body is written once and the version header is chosen from the context the
+platform actually supplied:
+
+```csharp
+private static string Header(GlVersion version) =>
+    version.Type == GlProfileType.OpenGLES
+        ? "#version 300 es\nprecision highp float;\n\n"
+        : "#version 330 core\n\n";
+```
+
+`precision highp float;` is required in ES and is a syntax error in desktop GL, which is
+why the two headers differ by more than a number. One body rather than two shaders, for
+the reason the renderer draws conductors and equipotentials with one marching-squares
+routine: two copies of a thing that must agree eventually stop agreeing.
+
+### A high-severity advisory arrived with a transitive package
+
+Avalonia 11.2.3 pulls `Tmds.DBus.Protocol` 0.20.0 for the Linux session bus, and that
+version carries **GHSA-xrw6-gwf8-vvr9**. 0.21.2 is affected too. The repository builds
+with warnings as errors and NuGet auditing on, so it **failed the build** rather than
+passing as a note - which is the guard doing its job on the first package added in months.
+Central transitive pinning names the fixed 0.95.1 once and every project gets it.
+
+LIC-1 is clear and verified rather than assumed: Avalonia declares MIT in its nuspec,
+Silk.NET is MIT under the .NET Foundation, and `Tmds.DBus.Protocol` is MIT as the package
+that brought it in is.
+
+### Watch run, and what it does not cover
+
+The viewport fills from a run that is still going, through the same
+`ViewportCommand.Watch` and `IViewportProgress` the WPF shell uses. Frames are
+**coalesced rather than queued** - a viewport wants the newest packet, not every packet,
+and a queue falls further behind the longer it is watched - and the queued flag is cleared
+*before* the frame is read, so the race can post twice and can never drop the last one.
+Only the density is rebuilt per frame; the geometry is extracted once and shared, which on
+the shipped C-trap is 795,564 triangles not re-uploaded sixty times.
+
+`Watcher` decides when a frame is wanted from the **wall clock**, not the step count, so a
+model whose steps are microseconds and one whose steps are milliseconds both draw at the
+same rate. Its first version refused the first frame: `_last` was `TimeSpan.Zero` and the
+stopwatch also reads about zero there, so the window opened on an empty box and stayed
+empty for an interval - which reads as a run that has not started. `TimeSpan.MinValue`
+then overflowed the subtraction. The question being asked is "has a frame been wanted
+yet", so `_last` is nullable and it is asked directly. Caught by its own test.
+
+**A trajectory model is refused with a reason rather than watched**, by the command layer:
+the whole bundle arrives faster than the first frame of a watch would. That is right, and
+it means "watch the analysis happen" is currently true for a density and **not for a scan,
+a sweep, a boundary search or an optimization** - which are the study drivers, and the
+thing somebody actually leaves running for hours. Making those watchable is a
+command-layer question before it is a window one, and it is the next thing worth doing
+here.
+
+### Tested without a window
+
+`Einzel.Shell.Tests` targets plain `net10.0` and runs on both runners - the first time a
+shell's own tests have. Eleven tests, none of which opens a window:
+
+- **`FramingTests`** pins the camera as arithmetic. The projection is a `float[16]`, so
+  what it does to a point is checkable directly: the center of the scene lands at the
+  origin of clip space, a point at the framed radius lands inside the frustum, the
+  trajectories are included in the measured extent (the reflectron lesson - a page chosen
+  from the conductors alone puts the turning point off it), and an empty scene gives a
+  framing rather than a division by zero.
+- **`WatcherTests`** pins the cadence, including the first frame and the last-with-a-packet
+  rule.
+- **`WatchedRunTests`** drives a real diffusive run end to end and asserts the packet's
+  leading edge **moves** across the frames. That frames arrive says the callback is wired;
+  that the packet moves says they are different frames.
+
+What is not tested without a window is the GL path itself - the shader, the uploads, the
+depth state. That needs a context, and the ANGLE defect above is exactly the class of
+thing it would catch. A headless GL context in CI is the honest answer and is not built.
+
+### Seven defects a review found, and two of them drew the wrong picture
+
+The Avalonia shell went up for review before it merged. Two findings are worth keeping for
+what they say about porting rather than about this window.
+
+**Every driven electrode was painted the same color.** The port kept the intent — an
+electrode is colored by the peak its drive reaches, not the DC it sits at, which is the
+mistake this project has made six times — and lost it in the arithmetic:
+
+```csharp
+// Wrong. Math.Sign(1.0) is +1, so a -500 V tap became +500 V.
+var peak = conductor.PotentialVolts
+    + (Math.Sign(conductor.PotentialVolts is 0.0 ? 1.0 : conductor.PotentialVolts)
+       * Math.Abs(conductor.DriveAmplitudeVolts));
+```
+
+`DriveAmplitudeVolts` is **signed**, and the sign is what makes a quadrupole's two pairs
+exact negatives — one basis channel, and the single most informative thing in the picture.
+Taking its absolute value and recovering the sign from the DC works for a DC-biased
+electrode and fails completely for a purely driven one, where the DC is zero and the
+ternary substitutes `+1`. Every rod of `quadrupole-rf` came back at `+500 V` and the same
+saturated red. The WPF shell it was ported from computes `PotentialVolts +
+DriveAmplitudeVolts` and is correct.
+
+**So this is the seventh appearance of that defect and the first to survive into a
+viewport** — and it survived because the decision lived inside an `OpenGlControlBase`, where
+checking it needs a GL context. It is `Shading` now, which needs none, and
+`ShadingTests.AntiphaseDrivenRodsAreDrawnAtOppositeEnds` fails with the old expression
+restored. **A decision that needs a platform to observe is a decision nothing will check.**
+
+**And a diffusive model with no electrodes was framed at a millimetre.** `Framing.Measure`
+spanned conductors and trajectories. RND-8 means a diffusive model has no trajectories by
+construction, and it need not declare electrodes either — the drift tube in this assembly's
+own test has a uniform analytic field and no metal at all. Nothing was measured, the
+framing fell back to `radius 1.0` at the origin, and a packet spanning 42 mm was drawn
+entirely outside the frustum: **a blank viewport for exactly the model class `Watch run`
+exists to serve**, and the test suite contained the model that would do it.
+
+The density is measured now, and a second half was needed with it: a packet that *drifts*
+leaves the box it was framed in. Re-measuring per frame is the obvious answer and is worse
+— the box would breathe with the packet, which reads as a lurching camera rather than a
+moving packet. `Framing.Union` grows the frame and never shrinks it, as the bounding sphere
+of two spheres so that repeated application cannot drift it outward.
+
+The other five, briefly:
+
+| | |
+| --- | --- |
+| The finished-watch caption printed `final.Density.Count` while the viewport showed `LastWithPacket` — "0 density contours" over a picture of five, in the case that mechanism exists for | counted off the frame actually shown |
+| The watch path replaced the status line and surfaced none of the run's warnings (GRD-2, and the eighth drop-at-a-seam here) | one `Worst` shared with the open path |
+| Translucent conductors and density shells blended with depth writes still on, so "see through metal" revealed only whatever was drawn first | `DepthMask(false)` for both passes, depth still *tested* so the paths drawn beforehand read through |
+| The window solved and flew synchronously in its constructor — no window at all for nine seconds on the C-trap, which is what `Watch`'s own comment forbids twelve lines above | measured on a background thread, drawn on the UI one |
+| `AFlightIsRefusedRatherThanWatched` edited its model by string replacement without asserting the edit happened, against a rule `docs/lessons.md` records twice | `Assert.NotEqual(Model, flown)`, and `Assert.Throws<EinzelException>` rather than `ThrowsAny` |
+
+Plus two allocations: the diverging ramp's five anchors were a method-local literal rebuilt
+on every call while the viridis table forty lines above was already `static readonly`, and
+the equipotential upload re-wrapped every point into its own `double[3]` to reach an
+overload that flattened it again.
