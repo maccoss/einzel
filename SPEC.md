@@ -211,11 +211,29 @@ presentation over a command that already works, which is the same observation
 AGT-2 that matters, since it means the second window is a drawing exercise rather than a
 capability exercise.
 
+**A review found seven defects before it merged, and two drew the wrong picture.** Every
+driven electrode was painted the same color - the port kept the intent (color by the peak
+the drive reaches, not the DC) and lost it in the arithmetic, taking `Math.Abs` of a
+**signed** drive amplitude and recovering the sign from a DC that is zero for a purely
+driven electrode. All four rods of `quadrupole-rf` came back at +500 V. That is the seventh
+appearance of that defect and the first to reach a viewport, and it survived because the
+decision sat inside a GL control where checking it needs a platform. **A decision that needs
+a platform to observe is a decision nothing will check** - it is `Shading` now, and its test
+fails with the old expression restored.
+
+And `Framing` spanned conductors and trajectories, so a diffusive model with no electrodes -
+which has neither, and which this assembly's own test model is - framed at a millimetre at
+the origin and drew its packet entirely off screen. The density is measured now, and
+`Framing.Union` grows the frame as the packet drifts without letting it breathe. The other
+five and the reasoning are in `docs/shell.md`.
+
 **What is open**: `Watch run` applies to diffusive models only, and is refused with a
 reason for a trajectory model because the whole bundle arrives faster than the first frame
 of a watch. That is correct, and it means "watch the analysis happen" is true for a density
 and not for a scan, a sweep or an optimization - which are the study drivers. Making those
-watchable is a command-layer question before it is a window one.
+watchable is a command-layer question before it is a window one. The GL path itself is
+untested - shader, uploads, depth state need a context, and the ANGLE dialect defect is
+exactly what a headless GL context in CI would catch.
 
 ### 52 - An error raised where the location is unknown is located by whoever caught it
 

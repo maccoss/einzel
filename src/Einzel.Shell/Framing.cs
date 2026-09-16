@@ -34,10 +34,20 @@ public sealed record Framing(
     /// <param name="elevation">Tilt above the horizontal, in degrees.</param>
     /// <returns>A framing that holds everything drawn.</returns>
     /// <remarks>
+    /// <para>
     /// <b>The flight is measured too, not only the metal.</b> A reflectron's ion turns round
     /// outside every conductor, and a page chosen from the conductors alone puts the turning
     /// point off it - which is how the scaffolded model once drew its turning point a hundred
     /// metres off a 160 mm page.
+    /// </para>
+    /// <para>
+    /// <b>And so is the density, for the same reason one dimension over.</b> A diffusive model
+    /// has no trajectories by construction (RND-8), and it need not have electrodes either -
+    /// a drift tube in a declared uniform field has neither. Measured from conductors and
+    /// paths alone such a scene is empty, the framing falls back to a millimetre at the
+    /// origin, and the packet is drawn entirely outside the frustum: a blank viewport for
+    /// exactly the model class the watch exists to serve.
+    /// </para>
     /// </remarks>
     public static Framing Measure(ViewportOutcome scene, double azimuth, double elevation)
     {
@@ -74,6 +84,17 @@ public sealed record Framing(
             }
         }
 
+        // The outermost contour is the packet's own extent, so measuring every shell and
+        // measuring the widest give the same box - but a frame of a run still going may not
+        // carry the widest, and the cost is a pass over vertices already in memory.
+        foreach (var shell in scene.Density)
+        {
+            for (var i = 0; i + 2 < shell.VerticesMm.Count; i += 3)
+            {
+                Take(shell.VerticesMm[i], shell.VerticesMm[i + 1], shell.VerticesMm[i + 2]);
+            }
+        }
+
         if (!seen)
         {
             return new Framing((0.0, 0.0, 0.0), 1.0, azimuth, elevation);
@@ -86,6 +107,54 @@ public sealed record Framing(
             + ((highZ - lowZ) * (highZ - lowZ)));
 
         return new Framing(center, Math.Max(radius, 1e-6), azimuth, elevation);
+    }
+
+    /// <summary>A framing that holds this one and another.</summary>
+    /// <param name="other">The framing to take in.</param>
+    /// <returns>The smallest framing containing both, at this one's camera angles.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A watched packet moves, and the frame is measured before it does.</b> A TIMS
+    /// elution is seeded near the entrance and elutes forty millimetres away, so a camera
+    /// framed from the first instant loses the packet it was opened to watch. Re-measuring
+    /// per frame is the obvious answer and is worse: the box would breathe with the packet,
+    /// which reads as a camera lurching rather than as a packet drifting.
+    /// </para>
+    /// <para>
+    /// So the frame only ever grows. The bounding sphere of two spheres is exact, which is
+    /// what makes this composable without drifting outward on repeated application - a union
+    /// of boxes taken through centre and radius would not be.
+    /// </para>
+    /// </remarks>
+    public Framing Union(Framing other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        var (ax, ay, az) = CenterMm;
+        var (bx, by, bz) = other.CenterMm;
+
+        double dx = bx - ax, dy = by - ay, dz = bz - az;
+        var apart = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+        // One already contains the other, including the degenerate case of equal centers.
+        if (apart + other.RadiusMm <= RadiusMm)
+        {
+            return this;
+        }
+
+        if (apart + RadiusMm <= other.RadiusMm)
+        {
+            return new Framing(other.CenterMm, other.RadiusMm, Azimuth, Elevation);
+        }
+
+        var radius = (RadiusMm + other.RadiusMm + apart) / 2.0;
+        var along = (radius - RadiusMm) / apart;
+
+        return new Framing(
+            (ax + (dx * along), ay + (dy * along), az + (dz * along)),
+            radius,
+            Azimuth,
+            Elevation);
     }
 
     /// <summary>The identity, for a control with nothing to draw.</summary>

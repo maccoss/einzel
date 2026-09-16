@@ -224,6 +224,13 @@ public sealed class SceneView : OpenGlControlBase
 
             _density.Clear();
             UploadDensity(api, frame);
+
+            // The frame only grows. A packet that drifts out of the box it was framed in
+            // leaves an empty viewport, and re-measuring per frame would make the camera
+            // breathe with the packet instead of letting the packet move.
+            _framing = _framing is { } held
+                ? held.Union(Framing.Measure(frame, _view.Azimuth, _view.Elevation))
+                : Framing.Measure(frame, _view.Azimuth, _view.Elevation);
         }
 
         var scaling = (this.GetVisualRoot() as IRenderRoot)?.RenderScaling ?? 1.0;
@@ -290,6 +297,14 @@ public sealed class SceneView : OpenGlControlBase
         {
             api.Enable(EnableCap.Blend);
             api.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+
+            // AND DEPTH WRITES OFF, WHICH IS WHAT MAKES THE TOGGLE WORK. A translucent
+            // surface that writes depth occludes everything drawn behind it afterwards, so
+            // "see through metal" would reveal only whatever happened to be drawn first -
+            // the near rod of a segmented chain hiding the far one, which is the pair a
+            // reader is looking through the metal to compare. Depth is still TESTED, so the
+            // paths and the field drawn before this still read through correctly.
+            api.DepthMask(false);
         }
 
         api.Uniform1(_alphaLocation, alpha);
@@ -304,6 +319,7 @@ public sealed class SceneView : OpenGlControlBase
         if (alpha < 1.0f)
         {
             api.Disable(EnableCap.Blend);
+            api.DepthMask(true);
         }
 
         // The density last and translucent, because it is what moves and it sits inside the
@@ -316,6 +332,11 @@ public sealed class SceneView : OpenGlControlBase
             api.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
             api.Uniform1(_alphaLocation, 0.30f);
 
+            // Nested shells, so depth writes would have the outermost hide every one inside
+            // it - drawing a packet's tail and nothing of its core, which is the opposite of
+            // what the contours are for.
+            api.DepthMask(false);
+
             foreach (var shell in _density)
             {
                 api.Uniform3(_colorLocation, shell.R, shell.G, shell.B);
@@ -324,6 +345,7 @@ public sealed class SceneView : OpenGlControlBase
             }
 
             api.Disable(EnableCap.Blend);
+            api.DepthMask(true);
         }
     }
 
@@ -383,15 +405,11 @@ public sealed class SceneView : OpenGlControlBase
 
     private void UploadConductors(GL api, ViewportOutcome scene)
     {
-        // A potential is signed, so the ramp is diverging and symmetric about earth:
-        // stretching it across the observed range puts the neutral color at the
-        // arithmetic middle, and an earthed tube gets painted the same as a genuinely
-        // negative one. An electrode is colored by the peak its drive reaches rather
-        // than by the DC it sits at - reading only the DC of a driven electrode is a
-        // mistake this project has made six times.
-        var span = scene.Conductors.Count == 0
-            ? 1.0
-            : scene.Conductors.Max(c => Math.Abs(c.PotentialVolts) + Math.Abs(c.DriveAmplitudeVolts));
+        // A potential is signed, so the ramp is diverging and symmetric about earth. Both
+        // the span and each conductor's place on it come from `Shading`, which lives outside
+        // this control so that it can be checked without a GL context - the sign defect it
+        // records was invisible from here for exactly that reason.
+        var span = Shading.Span(scene.Conductors);
 
         foreach (var conductor in scene.Conductors)
         {
@@ -400,12 +418,7 @@ public sealed class SceneView : OpenGlControlBase
                 continue;
             }
 
-            var peak = conductor.PotentialVolts
-                + (Math.Sign(conductor.PotentialVolts is 0.0 ? 1.0 : conductor.PotentialVolts)
-                   * Math.Abs(conductor.DriveAmplitudeVolts));
-
-            var fraction = span > 0.0 ? 0.5 + (0.5 * Math.Clamp(peak / span, -1.0, 1.0)) : 0.5;
-            var (r, g, b) = ColorRamp.Diverging(fraction);
+            var (r, g, b) = ColorRamp.Diverging(Shading.Fraction(conductor, span));
 
             _conductors.Add(Mesh.Upload(api, conductor, (float)r, (float)g, (float)b));
         }

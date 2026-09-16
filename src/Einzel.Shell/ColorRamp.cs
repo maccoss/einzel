@@ -81,6 +81,36 @@ public static class ColorRamp
         (0.993, 0.906, 0.144),
     ];
 
+    /// <summary>The diverging scale at five points, evenly spaced from zero to one.</summary>
+    /// <remarks>
+    /// <para>
+    /// Cool-warm for a light ground: a deep blue, a mid blue, a mid-gray neutral at earth, a
+    /// warm terracotta, a deep red.
+    /// </para>
+    /// <para>
+    /// <b>The neutral is the anchor that decides this.</b> A near-white center is right on a
+    /// dark ground and disappears on a light one - and it is earth, the value a reader looks
+    /// for first. Measured against white, worst contrast anywhere on the ramp is 3.03 here,
+    /// against 1.09 for the bright dark-ground anchors and 1.26 for the print-standard
+    /// cool-warm, whose neutral is a light gray for paper that is being printed on rather
+    /// than displayed against.
+    /// </para>
+    /// <para>
+    /// Static beside <see cref="Anchors"/>, because a constant table is a constant. It was a
+    /// method-local literal, so it was rebuilt on every call - once per conductor and once
+    /// per equipotential level - while the viridis table forty lines up was already a field.
+    /// Two halves of one file disagreeing about whether a fixed list of five colors is fixed.
+    /// </para>
+    /// </remarks>
+    private static readonly (double R, double G, double B)[] Signed =
+    [
+        (0.129, 0.259, 0.639),
+        (0.325, 0.478, 0.796),
+        (0.545, 0.545, 0.560),
+        (0.831, 0.451, 0.365),
+        (0.647, 0.075, 0.110),
+    ];
+
     /// <summary>A diverging scale, blue through gray to red.</summary>
     /// <param name="fraction">Where on the scale, from zero to one.</param>
     /// <returns>Red, green and blue, each from zero to one.</returns>
@@ -114,30 +144,12 @@ public static class ColorRamp
 
         var t = Math.Clamp(fraction, 0.0, 1.0);
 
-        // Cool-warm for a light ground: a deep blue, a mid blue, a MID-GRAY neutral at
-        // earth, a warm terracotta, a deep red.
-        //
-        // The neutral is the anchor that decides this. A near-white center is right on a
-        // dark ground and disappears on a light one - and it is earth, the value a reader
-        // looks for first. Measured against white, worst contrast anywhere on the ramp is
-        // 3.03 here, against 1.09 for the bright dark-ground anchors and 1.26 for the
-        // print-standard cool-warm, whose neutral is a light gray for paper that is being
-        // printed on rather than displayed against.
-        (double R, double G, double B)[] anchors =
-        [
-            (0.129, 0.259, 0.639),
-            (0.325, 0.478, 0.796),
-            (0.545, 0.545, 0.560),
-            (0.831, 0.451, 0.365),
-            (0.647, 0.075, 0.110),
-        ];
-
-        var scaled = t * (anchors.Length - 1);
-        var lower = Math.Min((int)scaled, anchors.Length - 2);
+        var scaled = t * (Signed.Length - 1);
+        var lower = Math.Min((int)scaled, Signed.Length - 2);
         var step = scaled - lower;
 
-        var a = anchors[lower];
-        var b = anchors[lower + 1];
+        var a = Signed[lower];
+        var b = Signed[lower + 1];
 
         return (
             a.R + ((b.R - a.R) * step),

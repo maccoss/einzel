@@ -1,4 +1,5 @@
 using Einzel.Commands;
+using Einzel.Core.Errors;
 using Einzel.Shell;
 
 using Xunit.Abstractions;
@@ -121,9 +122,22 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
     [Fact]
     public void AFlightIsRefusedRatherThanWatched()
     {
-        File.WriteAllText(_model, Model.Replace("\"mode\": \"diffusion\"", "\"mode\": \"trajectory\"", StringComparison.Ordinal));
+        var flown = Model.Replace(
+            "\"mode\": \"diffusion\"", "\"mode\": \"trajectory\"", StringComparison.Ordinal);
 
-        var error = Assert.ThrowsAny<Exception>(
+        // The edit is asserted to have happened, which this project has had to learn twice:
+        // a replacement matching nothing leaves the model diffusive, the refusal never comes,
+        // and the failure names the missing exception rather than the stale edit. Asserting
+        // the document CHANGED rather than that it now contains something, because the second
+        // is true whenever the text was already there - `docs/lessons.md`.
+        Assert.NotEqual(Model, flown);
+
+        File.WriteAllText(_model, flown);
+
+        // EinzelException by name rather than ThrowsAny: the refusal is part of
+        // ViewportCommand.Watch's declared contract, and a broad catch would also pass on an
+        // IO failure or a parse error whose message happened to mention a density.
+        var error = Assert.Throws<EinzelException>(
             () => ViewportCommand.Watch(_model, new Watcher(_ => { }, TimeSpan.Zero)));
 
         output.WriteLine(error.Message);

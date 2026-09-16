@@ -101,6 +101,104 @@ public sealed class FramingTests(ITestOutputHelper output)
         Assert.True(worst <= 1.0, $"a corner of the instrument lands at {worst:F4}, outside the clip box");
     }
 
+    /// <summary>
+    /// A diffusive model with no electrodes is framed by its packet, not by a millimetre at
+    /// the origin.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The case this misses is the one the watch exists for.</b> RND-8 means a diffusive
+    /// model produces no trajectories, and it need not declare electrodes either - the drift
+    /// tube these tests use has a uniform analytic field and no metal at all. Measured from
+    /// conductors and paths alone that scene is empty, the framing falls back to a
+    /// millimetre, and a packet spanning forty is drawn entirely outside the frustum.
+    /// </para>
+    /// <para>
+    /// The control is the second assertion: the same scene WITHOUT the density still falls
+    /// back, so this is the density being measured rather than the fallback having changed.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ADensityWithNoMetalAroundItIsStillFramed()
+    {
+        var packet = Scene([], null) with { Density = [Shell(2.0, 40.0)] };
+
+        var framing = Framing.Measure(packet, 0.0, 0.0);
+        var nothing = Framing.Measure(Scene([], null), 0.0, 0.0);
+
+        output.WriteLine($"radius with the packet {framing.RadiusMm:F3} mm, "
+            + $"with neither metal nor packet {nothing.RadiusMm:F3} mm");
+
+        Assert.True(
+            framing.RadiusMm > 15.0,
+            $"a packet spanning 38 mm was framed at {framing.RadiusMm:F3} mm");
+
+        Assert.Equal(1.0, nothing.RadiusMm, 12);
+
+        // And it is centred on the packet rather than on the origin it was launched from.
+        Assert.Equal(21.0, framing.CenterMm.X, 6);
+    }
+
+    /// <summary>
+    /// A frame only grows, so a packet that drifts out of its opening box is still drawn.
+    /// </summary>
+    /// <remarks>
+    /// A TIMS elution is seeded near the entrance and elutes forty millimetres away. Framing
+    /// each arriving frame on its own would keep the packet centred and make the camera
+    /// breathe with it; framing once loses it. The union does neither.
+    /// </remarks>
+    [Fact]
+    public void TheFrameGrowsWithThePacketAndNeverShrinks()
+    {
+        var opening = Framing.Measure(
+            Scene([], null) with { Density = [Shell(1.0, 3.0)] }, 0.0, 0.0);
+
+        var later = Framing.Measure(
+            Scene([], null) with { Density = [Shell(38.0, 42.0)] }, 0.0, 0.0);
+
+        var grown = opening.Union(later);
+
+        output.WriteLine($"opening {opening.RadiusMm:F3} mm at {opening.CenterMm.X:F2}, "
+            + $"later {later.RadiusMm:F3} at {later.CenterMm.X:F2}, "
+            + $"grown {grown.RadiusMm:F3} at {grown.CenterMm.X:F2}");
+
+        // Both instants are inside the grown frame, which is what "never loses the packet"
+        // means - asserted as containment rather than as a radius, so it cannot pass by
+        // being merely large.
+        Assert.True(Holds(grown, opening), "the grown frame dropped where the packet started");
+        Assert.True(Holds(grown, later), "the grown frame dropped where the packet ended");
+
+        // And it does not shrink back when a later frame is smaller: a packet collected at
+        // the detector leaves almost nothing, and the camera must not snap onto the remnant.
+        Assert.True(Holds(grown.Union(opening), later));
+
+        // Taking in something already inside changes nothing at all, so repeated application
+        // cannot drift the frame outward over a run of thousands of steps.
+        var settled = grown.Union(opening).Union(later).Union(opening);
+
+        Assert.Equal(grown.RadiusMm, settled.RadiusMm, 12);
+        Assert.Equal(grown.CenterMm.X, settled.CenterMm.X, 12);
+    }
+
+    private static bool Holds(Framing outer, Framing inner)
+    {
+        var (ax, ay, az) = outer.CenterMm;
+        var (bx, by, bz) = inner.CenterMm;
+
+        double dx = bx - ax, dy = by - ay, dz = bz - az;
+        var apart = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+        return apart + inner.RadiusMm <= outer.RadiusMm + 1e-9;
+    }
+
+    private static DensityShell Shell(double low, double high) =>
+        new(
+            DensityPerCubicMetre: 1e10,
+            DecadesBelowPeak: 0,
+            VerticesMm: [low, -1.0, -1.0, high, -1.0, -1.0, high, 1.0, 1.0, low, 1.0, 1.0],
+            Normals: [.. Enumerable.Repeat(0.0, 12)],
+            Triangles: [0, 1, 2, 0, 2, 3]);
+
     private static ConductorSurface Box(double low, double high) =>
         new(
             Name: "box",

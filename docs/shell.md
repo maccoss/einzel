@@ -906,3 +906,62 @@ shell's own tests have. Eleven tests, none of which opens a window:
 What is not tested without a window is the GL path itself - the shader, the uploads, the
 depth state. That needs a context, and the ANGLE defect above is exactly the class of
 thing it would catch. A headless GL context in CI is the honest answer and is not built.
+
+### Seven defects a review found, and two of them drew the wrong picture
+
+The Avalonia shell went up for review before it merged. Two findings are worth keeping for
+what they say about porting rather than about this window.
+
+**Every driven electrode was painted the same color.** The port kept the intent — an
+electrode is colored by the peak its drive reaches, not the DC it sits at, which is the
+mistake this project has made six times — and lost it in the arithmetic:
+
+```csharp
+// Wrong. Math.Sign(1.0) is +1, so a -500 V tap became +500 V.
+var peak = conductor.PotentialVolts
+    + (Math.Sign(conductor.PotentialVolts is 0.0 ? 1.0 : conductor.PotentialVolts)
+       * Math.Abs(conductor.DriveAmplitudeVolts));
+```
+
+`DriveAmplitudeVolts` is **signed**, and the sign is what makes a quadrupole's two pairs
+exact negatives — one basis channel, and the single most informative thing in the picture.
+Taking its absolute value and recovering the sign from the DC works for a DC-biased
+electrode and fails completely for a purely driven one, where the DC is zero and the
+ternary substitutes `+1`. Every rod of `quadrupole-rf` came back at `+500 V` and the same
+saturated red. The WPF shell it was ported from computes `PotentialVolts +
+DriveAmplitudeVolts` and is correct.
+
+**So this is the seventh appearance of that defect and the first to survive into a
+viewport** — and it survived because the decision lived inside an `OpenGlControlBase`, where
+checking it needs a GL context. It is `Shading` now, which needs none, and
+`ShadingTests.AntiphaseDrivenRodsAreDrawnAtOppositeEnds` fails with the old expression
+restored. **A decision that needs a platform to observe is a decision nothing will check.**
+
+**And a diffusive model with no electrodes was framed at a millimetre.** `Framing.Measure`
+spanned conductors and trajectories. RND-8 means a diffusive model has no trajectories by
+construction, and it need not declare electrodes either — the drift tube in this assembly's
+own test has a uniform analytic field and no metal at all. Nothing was measured, the
+framing fell back to `radius 1.0` at the origin, and a packet spanning 42 mm was drawn
+entirely outside the frustum: **a blank viewport for exactly the model class `Watch run`
+exists to serve**, and the test suite contained the model that would do it.
+
+The density is measured now, and a second half was needed with it: a packet that *drifts*
+leaves the box it was framed in. Re-measuring per frame is the obvious answer and is worse
+— the box would breathe with the packet, which reads as a lurching camera rather than a
+moving packet. `Framing.Union` grows the frame and never shrinks it, as the bounding sphere
+of two spheres so that repeated application cannot drift it outward.
+
+The other five, briefly:
+
+| | |
+| --- | --- |
+| The finished-watch caption printed `final.Density.Count` while the viewport showed `LastWithPacket` — "0 density contours" over a picture of five, in the case that mechanism exists for | counted off the frame actually shown |
+| The watch path replaced the status line and surfaced none of the run's warnings (GRD-2, and the eighth drop-at-a-seam here) | one `Worst` shared with the open path |
+| Translucent conductors and density shells blended with depth writes still on, so "see through metal" revealed only whatever was drawn first | `DepthMask(false)` for both passes, depth still *tested* so the paths drawn beforehand read through |
+| The window solved and flew synchronously in its constructor — no window at all for nine seconds on the C-trap, which is what `Watch`'s own comment forbids twelve lines above | measured on a background thread, drawn on the UI one |
+| `AFlightIsRefusedRatherThanWatched` edited its model by string replacement without asserting the edit happened, against a rule `docs/lessons.md` records twice | `Assert.NotEqual(Model, flown)`, and `Assert.Throws<EinzelException>` rather than `ThrowsAny` |
+
+Plus two allocations: the diverging ramp's five anchors were a method-local literal rebuilt
+on every call while the viridis table forty lines above was already `static readonly`, and
+the equipotential upload re-wrapped every point into its own `double[3]` to reach an
+overload that flattened it again.

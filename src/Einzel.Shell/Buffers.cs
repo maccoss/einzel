@@ -166,18 +166,29 @@ public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float
     public static Line Upload(GL api, IReadOnlyList<double> pointsMm, float r, float g, float b)
     {
         ArgumentNullException.ThrowIfNull(pointsMm);
+        ArgumentNullException.ThrowIfNull(api);
 
-        var triples = new List<IReadOnlyList<double>>(pointsMm.Count / 3);
+        // Walked straight into the interleaved buffer. A first version re-wrapped every
+        // point into its own three-element array so it could share the trajectory's
+        // overload - thousands of short-lived allocations per equipotential level, to
+        // rebuild a layout the flat array already has.
+        var points = pointsMm.Count / 3;
+        var interleaved = new float[points * 6];
 
-        for (var i = 0; i + 2 < pointsMm.Count; i += 3)
+        for (var p = 0; p < points; p++)
         {
-            triples.Add([pointsMm[i], pointsMm[i + 1], pointsMm[i + 2]]);
+            interleaved[(p * 6) + 0] = (float)pointsMm[(p * 3) + 0];
+            interleaved[(p * 6) + 1] = (float)pointsMm[(p * 3) + 1];
+            interleaved[(p * 6) + 2] = (float)pointsMm[(p * 3) + 2];
+            interleaved[(p * 6) + 3] = 0f;
+            interleaved[(p * 6) + 4] = 0f;
+            interleaved[(p * 6) + 5] = 1f;
         }
 
-        return Upload(api, triples, r, g, b);
+        return Strip(api, interleaved, points, r, g, b);
     }
 
-    private static unsafe Line Upload(
+    private static Line Upload(
         GL api, IReadOnlyList<IReadOnlyList<double>> points, float r, float g, float b)
     {
         ArgumentNullException.ThrowIfNull(api);
@@ -194,6 +205,12 @@ public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float
             interleaved[(p * 6) + 5] = 1f;
         }
 
+        return Strip(api, interleaved, points.Count, r, g, b);
+    }
+
+    /// <summary>Hands an already-interleaved strip to OpenGL.</summary>
+    private static unsafe Line Strip(GL api, float[] interleaved, int points, float r, float g, float b)
+    {
         var vao = api.GenVertexArray();
         api.BindVertexArray(vao);
 
@@ -216,6 +233,6 @@ public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float
 
         api.BindVertexArray(0);
 
-        return new Line(vao, vbo, points.Count, r, g, b);
+        return new Line(vao, vbo, points, r, g, b);
     }
 }
