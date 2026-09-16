@@ -66,7 +66,7 @@
       Silk.NET.OpenGL wraps the function pointers Avalonia's GlInterface hands over; it
       is a binding rather than an engine, and nothing below the shell sees it.
 
-      Licences verified rather than assumed, per section 20 and r06's own caveat. Both
+      Licenses verified rather than assumed, per section 20 and r06's own caveat. Both
       are MIT: Avalonia declares MIT in its nuspec and Silk.NET is MIT under the .NET
       Foundation. LIC-1 clear. Versions are the ones the spike proved on both platforms
       rather than the newest available, and the spike is the evidence that this path

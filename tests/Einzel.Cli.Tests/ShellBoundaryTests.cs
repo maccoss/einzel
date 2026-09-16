@@ -17,22 +17,15 @@ namespace Einzel.Cli.Tests;
 /// do so — what it checks is that nothing else does either.
 /// </para>
 /// <para>
-/// Windows-only applies to the shell and to nothing else, and that is the misreading to
-/// guard against: "the GUI is Windows-only" and "the project is Windows-only" are one
-/// word apart, and the second would undo the Linux CI that keeps the first one cheap.
+/// There are two shells now - WPF for Windows and Avalonia for everywhere - so the rule
+/// is checked against each of them rather than against whichever the scan happened to
+/// pick up. The misreading to guard against is still the same: "the WPF shell is
+/// Windows-only" and "the project is Windows-only" are a few words apart, and the second
+/// would undo the Linux CI that made the cross-platform shell cheap to build.
 /// </para>
 /// </remarks>
 public sealed class ShellBoundaryTests(ITestOutputHelper output)
 {
-    /// <summary>Assemblies that must be present, so the check cannot pass vacuously.</summary>
-    /// <remarks>
-    /// The scan below is over whatever is actually beside the test assembly, which is the
-    /// honest thing to check - a transitive reference through a third assembly would not
-    /// appear in any csproj and is exactly as much of a violation. But a scan that found
-    /// nothing would pass, which is the vacuous truth this project has found four times
-    /// (`einzel test` passing with no tests, `einzel solve` converging over no elements),
-    /// so these must be among what it found.
-    /// </remarks>
     /// <summary>Every name a shell assembly or project goes under.</summary>
     /// <remarks>
     /// Project name and assembly name both, because a <c>ProjectReference</c> is declared
@@ -43,6 +36,15 @@ public sealed class ShellBoundaryTests(ITestOutputHelper output)
         "Einzel.Wpf", "einzel-shell-wpf", "Einzel.Shell", "einzel-shell",
     };
 
+    /// <summary>Assemblies that must be present, so the check cannot pass vacuously.</summary>
+    /// <remarks>
+    /// The scan below is over whatever is actually beside the test assembly, which is the
+    /// honest thing to check - a transitive reference through a third assembly would not
+    /// appear in any csproj and is exactly as much of a violation. But a scan that found
+    /// nothing would pass, which is the vacuous truth this project has found four times
+    /// (`einzel test` passing with no tests, `einzel solve` converging over no elements),
+    /// so these must be among what it found.
+    /// </remarks>
     private static readonly string[] MustBePresent =
     [
         "Einzel.Core",

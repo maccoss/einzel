@@ -5,7 +5,7 @@ namespace Einzel.Shell;
 /// <summary>
 /// Where the camera sits and how much of the instrument it holds.
 /// </summary>
-/// <param name="CentreMm">The middle of everything drawn, in millimetres.</param>
+/// <param name="CenterMm">The middle of everything drawn, in millimetres.</param>
 /// <param name="RadiusMm">Half the diagonal of what is drawn, in millimetres.</param>
 /// <param name="Azimuth">Turn about the vertical, in degrees. Zero is the side view.</param>
 /// <param name="Elevation">Tilt above the horizontal, in degrees.</param>
@@ -23,7 +23,7 @@ namespace Einzel.Shell;
 /// </para>
 /// </remarks>
 public sealed record Framing(
-    (double X, double Y, double Z) CentreMm,
+    (double X, double Y, double Z) CenterMm,
     double RadiusMm,
     double Azimuth,
     double Elevation)
@@ -79,13 +79,13 @@ public sealed record Framing(
             return new Framing((0.0, 0.0, 0.0), 1.0, azimuth, elevation);
         }
 
-        var centre = ((lowX + highX) / 2.0, (lowY + highY) / 2.0, (lowZ + highZ) / 2.0);
+        var center = ((lowX + highX) / 2.0, (lowY + highY) / 2.0, (lowZ + highZ) / 2.0);
         var radius = 0.5 * Math.Sqrt(
             ((highX - lowX) * (highX - lowX))
             + ((highY - lowY) * (highY - lowY))
             + ((highZ - lowZ) * (highZ - lowZ)));
 
-        return new Framing(centre, Math.Max(radius, 1e-6), azimuth, elevation);
+        return new Framing(center, Math.Max(radius, 1e-6), azimuth, elevation);
     }
 
     /// <summary>The identity, for a control with nothing to draw.</summary>
@@ -126,7 +126,7 @@ public sealed record Framing(
 
         double sx = 1.0 / halfX, sy = 1.0 / halfY, sz = -1.0 / depth;
 
-        var (cx, cy, cz) = CentreMm;
+        var (cx, cy, cz) = CenterMm;
 
         // Column-major: element [column * 4 + row].
         return

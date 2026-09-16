@@ -73,7 +73,7 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
     /// <summary>The viewport is filled repeatedly, and the packet is somewhere new each time.</summary>
     /// <remarks>
     /// <b>Two assertions, and the second is what makes the first mean anything.</b> That
-    /// frames arrive says the callback is wired; that the packet's centre MOVES says they
+    /// frames arrive says the callback is wired; that the packet's center MOVES says they
     /// are frames of a run rather than the same instant handed over repeatedly, which is
     /// what a watch that had accidentally captured its first frame would look like.
     /// </remarks>
@@ -82,7 +82,7 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
     {
         File.WriteAllText(_model, Model);
 
-        var centres = new List<double>();
+        var centers = new List<double>();
 
         var watcher = new Watcher(
             frame =>
@@ -91,24 +91,24 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
                 {
                     // The leading edge of the deepest contour stands in for where the
                     // packet is: the outcome carries shells rather than a centroid.
-                    centres.Add(frame.Density.Max(d => Reach(d.VerticesMm)));
+                    centers.Add(frame.Density.Max(d => Reach(d.VerticesMm)));
                 }
             },
             TimeSpan.FromMilliseconds(20));
 
         var final = ViewportCommand.Watch(_model, watcher);
 
-        output.WriteLine($"{centres.Count} frames with a packet; "
-            + $"leading edge {string.Join(" -> ", centres.Take(6).Select(c => c.ToString("F2")))}");
+        output.WriteLine($"{centers.Count} frames with a packet; "
+            + $"leading edge {string.Join(" -> ", centers.Take(6).Select(c => c.ToString("F2")))}");
         output.WriteLine($"final frame has {final.Density.Count} contours");
 
-        Assert.True(centres.Count >= 2, $"only {centres.Count} frames carried a packet");
+        Assert.True(centers.Count >= 2, $"only {centers.Count} frames carried a packet");
 
         // It drifts, so the leading edge advances. Asserted as a real distance rather than
         // as "not equal", because two frames differing in the last bit would pass that.
         Assert.True(
-            centres[^1] - centres[0] > 1.0,
-            $"the packet's leading edge moved {centres[^1] - centres[0]:F3} mm across the run");
+            centers[^1] - centers[0] > 1.0,
+            $"the packet's leading edge moved {centers[^1] - centers[0]:F3} mm across the run");
     }
 
     /// <summary>A trajectory model is refused, with a reason.</summary>

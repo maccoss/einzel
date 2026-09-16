@@ -1,13 +1,13 @@
 namespace Einzel.Shell;
 
-/// <summary>A colour scale for a scalar, as red, green and blue in zero to one.</summary>
+/// <summary>A color scale for a scalar, as red, green and blue in zero to one.</summary>
 /// <remarks>
 /// <para>
-/// <b>Viridis, and the reason is not taste.</b> §16 asks for trajectory bundles coloured
+/// <b>Viridis, and the reason is not taste.</b> §16 asks for trajectory bundles colored
 /// by energy, m/z or fate, which makes the ramp part of how a quantity is read. A
 /// rainbow — the default almost everywhere, and what a naive blue-to-red gives — has
 /// non-monotone lightness, so it invents boundaries where the data is smooth and hides
-/// them where it is not, and it collapses under the commonest colour vision deficiencies.
+/// them where it is not, and it collapses under the commonest color vision deficiencies.
 /// Viridis is monotone in lightness and stays ordered under deuteranopia and protanopia,
 /// so a reader who cannot distinguish two hues can still tell which is larger.
 /// </para>
@@ -15,7 +15,7 @@ namespace Einzel.Shell;
 /// <b>Presentation, so it lives in the shell.</b> UI-1 gives the shell layout and the
 /// interactive viewport; the <em>range</em> the ramp is stretched over is not the shell's
 /// and is reported by <c>ViewportCommand</c> over the whole bundle, because a scale taken
-/// per path would give every ion the same colours whatever its energy.
+/// per path would give every ion the same colors whatever its energy.
 /// </para>
 /// <para>
 /// Eight anchors linearly interpolated rather than the published 256-entry table: the
@@ -23,7 +23,7 @@ namespace Einzel.Shell;
 /// inside what a screen and an eye resolve, and it is a table anyone can read.
 /// </para>
 /// </remarks>
-public static class ColourRamp
+public static class ColorRamp
 {
     /// <summary>The ground both ramps are drawn against, as red, green and blue.</summary>
     /// <remarks>
@@ -81,7 +81,7 @@ public static class ColourRamp
         (0.993, 0.906, 0.144),
     ];
 
-    /// <summary>A diverging scale, blue through grey to red.</summary>
+    /// <summary>A diverging scale, blue through gray to red.</summary>
     /// <param name="fraction">Where on the scale, from zero to one.</param>
     /// <returns>Red, green and blue, each from zero to one.</returns>
     /// <remarks>
@@ -89,16 +89,16 @@ public static class ColourRamp
     /// <b>A potential is signed and a sequential ramp cannot say so.</b> Viridis is right
     /// for an energy, which has a floor at zero; a quadrupole's rods sit at plus and minus
     /// the same voltage about an earth that is the interesting value, and a scale with no
-    /// middle puts that middle at an arbitrary colour. This one is pale at the centre and
+    /// middle puts that middle at an arbitrary color. This one is pale at the center and
     /// saturated at both ends, so earth reads as earth.
     /// </para>
     /// <para>
     /// Cool for negative and warm for positive, which is the convention in every field plot
-    /// this platform's users have seen, and it survives the commonest colour vision
+    /// this platform's users have seen, and it survives the commonest color vision
     /// deficiencies because the hues differ in more than one channel.
     /// </para>
     /// <para>
-    /// <b>Saturated at both ends and grey in the middle, because the viewport draws on
+    /// <b>Saturated at both ends and gray in the middle, because the viewport draws on
     /// white.</b> A ramp bright at both ends washes out against a light ground - the ends of
     /// the scale, which are the electrodes doing the most, become the hardest things to see -
     /// and a near-white neutral makes earth invisible, which is the one value a reader looks
@@ -114,14 +114,14 @@ public static class ColourRamp
 
         var t = Math.Clamp(fraction, 0.0, 1.0);
 
-        // Cool-warm for a light ground: a deep blue, a mid blue, a MID-GREY neutral at
+        // Cool-warm for a light ground: a deep blue, a mid blue, a MID-GRAY neutral at
         // earth, a warm terracotta, a deep red.
         //
-        // The neutral is the anchor that decides this. A near-white centre is right on a
+        // The neutral is the anchor that decides this. A near-white center is right on a
         // dark ground and disappears on a light one - and it is earth, the value a reader
         // looks for first. Measured against white, worst contrast anywhere on the ramp is
         // 3.03 here, against 1.09 for the bright dark-ground anchors and 1.26 for the
-        // print-standard cool-warm, whose neutral is a light grey for paper that is being
+        // print-standard cool-warm, whose neutral is a light gray for paper that is being
         // printed on rather than displayed against.
         (double R, double G, double B)[] anchors =
         [
@@ -145,7 +145,7 @@ public static class ColourRamp
             a.B + ((b.B - a.B) * step));
     }
 
-    /// <summary>The colour at a point on the scale.</summary>
+    /// <summary>The color at a point on the scale.</summary>
     /// <param name="fraction">Where on the scale, from zero to one.</param>
     /// <returns>Red, green and blue, each from zero to one.</returns>
     /// <remarks>
@@ -171,7 +171,7 @@ public static class ColourRamp
         var b = Anchors[lower + 1];
 
         // Darkened by an amount that falls to zero at the dark end, so the ramp keeps its
-        // hue order and its bottom colour exactly.
+        // hue order and its bottom color exactly.
         var shade = BrightEndDarkened * f;
 
         double Toward(double low, double high)

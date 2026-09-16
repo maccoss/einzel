@@ -232,7 +232,7 @@ public sealed class SceneView : OpenGlControlBase
 
         // Avalonia composites this control, so it hands over a framebuffer object and
         // every draw has to name it. Drawing without binding it gives a frame that is
-        // black even where the clear colour should be, which reads as a renderer that
+        // black even where the clear color should be, which reads as a renderer that
         // drew nothing at all.
         api.BindFramebuffer(FramebufferTarget.Framebuffer, (uint)fb);
         api.Viewport(0, 0, (uint)width, (uint)height);
@@ -240,7 +240,7 @@ public sealed class SceneView : OpenGlControlBase
         // White, because a frame from here ends up in a report or a slide, and a plot on
         // near-black is usable only on the page it was made for. The cost is that the
         // shading carries the shape unaided by contrast against the ground.
-        var (gr, gg, gb) = ColourRamp.Ground;
+        var (gr, gg, gb) = ColorRamp.Ground;
         api.ClearColor((float)gr, (float)gg, (float)gb, 1.0f);
         api.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
         api.Enable(EnableCap.DepthTest);
@@ -384,9 +384,9 @@ public sealed class SceneView : OpenGlControlBase
     private void UploadConductors(GL api, ViewportOutcome scene)
     {
         // A potential is signed, so the ramp is diverging and symmetric about earth:
-        // stretching it across the observed range puts the neutral colour at the
+        // stretching it across the observed range puts the neutral color at the
         // arithmetic middle, and an earthed tube gets painted the same as a genuinely
-        // negative one. An electrode is coloured by the peak its drive reaches rather
+        // negative one. An electrode is colored by the peak its drive reaches rather
         // than by the DC it sits at - reading only the DC of a driven electrode is a
         // mistake this project has made six times.
         var span = scene.Conductors.Count == 0
@@ -405,7 +405,7 @@ public sealed class SceneView : OpenGlControlBase
                    * Math.Abs(conductor.DriveAmplitudeVolts));
 
             var fraction = span > 0.0 ? 0.5 + (0.5 * Math.Clamp(peak / span, -1.0, 1.0)) : 0.5;
-            var (r, g, b) = ColourRamp.Diverging(fraction);
+            var (r, g, b) = ColorRamp.Diverging(fraction);
 
             _conductors.Add(Mesh.Upload(api, conductor, (float)r, (float)g, (float)b));
         }
@@ -414,7 +414,7 @@ public sealed class SceneView : OpenGlControlBase
     private void UploadField(GL api, ViewportOutcome scene)
     {
         // The same diverging ramp the conductors take, and symmetric about earth for the
-        // same reason: stretching it across the observed range puts the neutral colour at
+        // same reason: stretching it across the observed range puts the neutral color at
         // the arithmetic middle, so an earthed contour would be painted like a negative one.
         var span = Math.Max(
             Math.Abs(scene.LowestPotentialVolts ?? 0.0),
@@ -426,7 +426,7 @@ public sealed class SceneView : OpenGlControlBase
                 ? 0.5 + (0.5 * Math.Clamp(level.PotentialVolts / span, -1.0, 1.0))
                 : 0.5;
 
-            var (r, g, b) = ColourRamp.Diverging(fraction);
+            var (r, g, b) = ColorRamp.Diverging(fraction);
 
             foreach (var polyline in level.PathsMm)
             {
@@ -457,7 +457,7 @@ public sealed class SceneView : OpenGlControlBase
                 ? 1.0 - (Math.Clamp(shell.DecadesBelowPeak, 0, deepest) / (double)deepest)
                 : 1.0;
 
-            var (r, g, b) = ColourRamp.At(fraction);
+            var (r, g, b) = ColorRamp.At(fraction);
             _density.Add(Mesh.Upload(api, shell, (float)r, (float)g, (float)b));
         }
     }
@@ -481,7 +481,7 @@ public sealed class SceneView : OpenGlControlBase
 
             var mean = path.EnergyEv.Count > 0 ? path.EnergyEv.Average() : low;
             var fraction = width > 0.0 ? Math.Clamp((mean - low) / width, 0.0, 1.0) : 0.5;
-            var (r, g, b) = ColourRamp.At(fraction);
+            var (r, g, b) = ColorRamp.At(fraction);
 
             _paths.Add(Line.Upload(api, path, (float)r, (float)g, (float)b));
         }

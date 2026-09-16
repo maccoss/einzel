@@ -141,7 +141,7 @@ public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float
     /// The normal attribute is filled with a constant rather than dropped, so one shader
     /// draws both meshes and paths. A second program for lines would be two shaders to keep
     /// in step for no gain: the fragment stage takes the absolute lambert, so a constant
-    /// normal simply gives a flat colour.
+    /// normal simply gives a flat color.
     /// </remarks>
     public static Line Upload(GL api, TrajectoryPath path, float r, float g, float b)
     {

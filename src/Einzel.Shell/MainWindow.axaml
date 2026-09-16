@@ -53,7 +53,7 @@
       <!--
         An ItemsControl rather than a DataGrid, which in Avalonia is a separate package. A
         table does not justify another dependency: every entry in Directory.Packages.props
-        carries a verified licence note (LIC-1), and the last one added brought a
+        carries a verified license note (LIC-1), and the last one added brought a
         high-severity advisory with it.
       -->
       <DockPanel Grid.Column="0" Background="#181818">
