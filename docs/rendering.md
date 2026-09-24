@@ -650,15 +650,76 @@ at 25, which is exactly the mistake that prompted this.
 the plane the ion flies in, so the default section — the one containing the trajectory — is
 correctly empty of metal. The plane is moved with a render spec's `plane` block.
 
+## `render still` - the viewport's picture, as a PNG
+
+```bash
+einzel render still models/mirror.json --view iso --width-px 1600 --height-px 1000 [--see-through] [--out f.png] [--json]
+```
+
+A shaded three-dimensional raster, headless, and **the picture the interactive viewport
+shows** rather than one like it. That is the whole reason it exists: an agent could run
+every analysis the window runs and could not see what the window shows, so a person
+looking at a viewport and an agent reasoning about the same model were looking at
+different things (AGT-2's missing half).
+
+**One composition, two consumers.** The scene is `ViewportCommand`'s; the colors, the layers
+and their order, which are translucent and whether they hide what is drawn after them, and
+the lighting are `ViewportPicture.Compose`; the camera is `Framing`. The window's GL control
+uploads exactly that composition and builds its fragment shader from the same lighting
+constants; the still hands it to `Rasterizer`. Before this, every one of those decisions
+lived inside the GL control, where a still would have had to make them again - and two
+copies of one decision are how `run` and `test` came to disagree twice.
+
+**Where each half lives is UI-1's.** The shell may reach the engine through
+`Einzel.Commands` alone and may not use `Einzel.Render` types - checked on the compiled
+assembly - so the decisions live in the command layer and `Einzel.Render` got a rasterizer
+that decides nothing: triangles, lines, colors and a matrix in; pixels out, with a depth
+buffer, per-pixel lighting from interpolated normals, 2x2 supersampling, and the window's
+blend and depth-write rules. About three hundred lines, managed, no GPU, no native
+dependency. The PNG writer is hand-written over the base library's zlib, for the reason the
+PDF writer is (LIC-1).
+
+**Orthographic**, because the viewport is - an ion-optics drawing is read for where things
+are along the axis. RND-4 says "perspective"; the disagreement is SPEC.md Amendment 54.
+
+**Fitted to what the view sees.** The camera used to frame half the bounding diagonal, which
+never jumps when the view turns and put a 767 mm by 30 mm mirror pair across the middle third
+of the picture. It now fits the box each named view sees, field lines included, as the WPF
+viewport always did.
+
+**Provenance travels in the file** - `iTXt` chunks carry the engine and solver-behaviour
+versions, the model and its hash, the view, and every warning the viewport earned, in UTF-8
+because warnings quote microseconds. **A validity violation hatches the bottom of the
+picture** (RND-11). What it does not draw is RND-11's `QUALIFIED` line naming the code: a
+raster needs glyphs, nothing here rasterizes text, and the codes are in the text chunks and
+on stderr instead.
+
+**What it cannot check** is the window's own GPU half - shader compilation, uploads, depth
+state - which needs a GL context. The still shares every decision with the window and none of
+its pixels; the ANGLE dialect defect in `docs/shell.md` is exactly the kind of thing only the
+window can show.
+
+### What drawing it found
+
+- **Printed boards were invisible.** An edge profile has no interior, so the level-set
+  extraction every other shape uses found nothing, and the planar mirror pair was drawn as
+  its end cap alone. Boards are now sheets on the domain edge, over the whole edge because
+  that is what `RasteriseEdgeProfile` fixes, in pieces broken at every profile knot and
+  colored by the profile at each piece's middle.
+- **A reflected solve was drawn as half an instrument.** The field composes `reflectAboutX`
+  with the mirror image and the viewport did not, so a mirror pair had one mirror. Both halves
+  are drawn now, the image mirrored exactly as the field is (`x -> 2p - x`) with its winding
+  reversed so it is not lit from inside.
+- **A sheet had no normals.** `Surfaces.Orient` left a zero normal wherever the gradient of the
+  signed distance vanished and called the result a flat-shaded facet. On a zero-width cap that
+  is every vertex, and neither window shades a zero normal as a facet. It gets the area-weighted
+  normal of its facets now, and only where the gradient really vanished.
+
 ## Not built
 
-- **`render still`** - a raster projection. Nothing in this build rasterises.
-- **Filled density bands, and a colour scale.** Contour lines carry the levels in
-  the provenance; a filled and keyed plot would carry them on the page.
-
-`render still` is named by the CLI and refused with a reason rather than falling
-through as an unknown command, because "not built yet" and "you spelled it wrong" are
-different problems and an agent should not have to guess which it hit.
+- **Filled density bands, and a color scale.** Contour lines carry the levels in the
+  provenance; a filled and keyed plot would carry them on the page.
+- **Text in a raster.** See above.
 
 Also not built for animations: **geometry that moves**. A stage may change what an
 electrode holds and not where it is, which is a rule the sequencer already enforces, so

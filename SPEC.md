@@ -20,19 +20,19 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,449 tests across twelve assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,527 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
-| **Met**, with evidence | 82 |
+| **Met**, with evidence | 83 |
 | **Partial**, with a stated gap | 13 |
-| **Not built** | 21 |
+| **Not built** | 20 |
 | **Unverified** — plausible but unmeasured | 2 |
 | Total tagged in r06 | 118 |
 
-A count is a weak summary and it flatters the project: **fourteen of the 21 not
+A count is a weak summary and it flatters the project: **fourteen of the 20 not
 built are the update mechanism and distribution**, which is one assembly that does
-not exist, while the 78 met are spread across the parts that carry numbers. The
+not exist, while the 83 met are spread across the parts that carry numbers. The
 useful reading is the register, not the total.
 
 **This table had drifted badly, and a test now counts it.** It read 64 / 14 / 37 / 3
@@ -154,6 +154,61 @@ Einzel. **That, rather than a date, is the trigger.**
 ---
 
 ## Amendments to the specification
+
+### 54 - A raster still is the viewport's picture, orthographic, and the window draws from the same composition
+
+**RND-4, RND-1, AGT-2, UI-1.** r06 lists `einzel render still` as "shaded 3D raster still to
+PNG" and RND-4 says "shaded 3D perspective is raster". It is built, and it departs from RND-4
+in one word and adds one requirement r06 did not have.
+
+**Orthographic, not perspective.** The viewport was made orthographic by a recorded decision -
+an ion-optics drawing is read for where things are along the axis, which is precisely what
+perspective distorts - and a still that is not the viewport's picture has no reason to exist.
+RND-4's point was that shaded 3D is raster rather than vector; the projection was incidental,
+and the one this project already argued for is kept.
+
+**The still and the window draw from one composition, and that is the requirement r06 lacks.**
+Its purpose is the half of AGT-2 the command layer could not reach: an agent could run every
+analysis the window runs and could not see what the window shows. A still earns that only if
+it IS the window's picture. So every decision that makes the picture - the camera, the color
+ramps, how an electrode is colored, which layers exist and in what order, which are
+translucent and whether they hide what is drawn after them, and the lighting constants the
+shader uses - moved out of the shell's GL control into `ViewportPicture` and `Framing` in
+`Einzel.Commands`. The window uploads that composition; the still hands it to a rasterizer.
+Two consumers of one set of decisions, where before there was one consumer holding them all.
+
+**Where each half lives is UI-1's, and the boundary test decided it.** The shell may reach the
+engine through `Einzel.Commands` only and may not *use* `Einzel.Render` types - checked on the
+compiled assembly, not only the project file. So the decisions live in the command layer, and
+`Einzel.Render` got a rasterizer that decides nothing: triangles, lines, colors and a matrix
+in, pixels out, with a depth buffer, supersampling and the window's own blend rules. The PNG
+writer is hand-written over the base library's zlib, so there is no new dependency (LIC-1).
+The two sets of record types - a picture layer and a raster layer - are a copy of shape with
+no decision in either, and exist separately only because the two assemblies may not see each
+other.
+
+**What building it found, before it drew anything useful:**
+
+- **A printed board has no interior**, so the level-set extraction every other shape goes
+  through found no surface, and the planar mirror pair - the memo's own analyzer - was drawn
+  as its end cap alone. Boards are drawn from their declaration now, as sheets on the domain
+  edge in pieces colored by the profile along them, broken at every knot.
+- **A reflected solve was drawn as its declared half.** The field builder composes
+  `reflectAboutX` with the mirror image; the viewport did not, so a mirror pair had one mirror.
+  Both halves now, in both dimensions, with the image wound to match and the extent taking it in.
+- **A sheet had no normals.** A zero-width cap's signed distance is `|x - X|`, whose central
+  difference on the sheet is exactly zero, and `Surfaces.Orient` said the result was a
+  flat-shaded facet. It was not, in either window. It gets its facets' normal now.
+- **The camera framed a sphere.** Half the bounding diagonal is turn-invariant and put a
+  767 mm by 30 mm analyzer across the middle third of the picture. The window offers named
+  views, not free rotation, so it now fits the box the current view sees - as the WPF viewport
+  always did - and the field lines are inside the frame too.
+
+**What it does not do.** It cannot test the window's own GPU path - shader, uploads, depth
+state - which needs a GL context; the still shares every decision with the window and none of
+its pixels. And RND-11's `QUALIFIED` line naming the code is not drawn, because a raster needs
+glyphs and nothing here rasterizes text: a violation hatches the bottom of the picture, and the
+codes travel in the file's text chunks and on stderr.
 
 ### 53 - The shell runs where the engine runs, and Amendment 26's bet was called
 
@@ -2339,14 +2394,14 @@ in a table.
 | `RND-1` | Rendering is an engine capability, not a shell feature. Einzel.Render sits below the shell; the figure composer and einzel render are peer consumers of ... | **Met** | `Einzel.Render` sits below any shell and draws headlessly on the Linux CI runner with no display, window manager or font server. **And the conductor surfaces now leave the program**: the surface-nets extraction was headless, tested on Linux, and consumed only by the Windows viewport, so the artifact that lets an external renderer draw a three-dimensional geometry needed the shell - invariant 1 pointing the wrong way. `einzel export --mesh` writes them as OBJ, one named object per electrode. Building it found the sub-cell failure returning through the *electrode's own aspect ratio*: a 4 x 635 mm stripe meshes to nothing at 48 cells across its longest span, and resolving by the thinnest instead gives 1.16 M triangles and a 77 MB file. Per-axis now; bit-identical on an isotropic shape. |
 | `RND-2` | A render spec is text , lives in figures/ , and is versioned with the model. The figure in a paper is regenerable from the repository rather than being a ... | **Met** | A render spec is text in `figures/`, versioned with the model. |
 | `RND-3` | 2D sections and orthographic projections emit SVG and PDF , through a geometric projection pipeline that produces paths rather than pixels. This is a ... | **Met** | SVG and PDF from a path pipeline. Both writers are hand-authored; a test walks every PDF cross-reference offset. |
-| `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | Not built | No raster path at all, so neither shaded 3D nor `render still`. Section 23 leaves open whether hidden-line vector output is worth building. |
+| `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | **Met, orthographic** | `einzel render still` draws a shaded 3D raster to PNG, headlessly, and it is **the viewport's picture**: the scene, colors, layers, translucency, lighting and camera come from the same `ViewportPicture` and `Framing` the window draws from, and only the rasterization differs - a managed rasterizer with a depth buffer and supersampling, no GPU, no dependency. Orthographic rather than perspective, because the viewport is, for the reason recorded against it. Provenance and every warning ride in the PNG's text chunks; a validity violation hatches the bottom of the picture. Checked on the Linux runner: both mirrors of the planar pair land at the pixels the camera predicts. Section 23 still leaves open whether hidden-line vector output is worth building. See Amendment 54. |
 | `RND-5` | Trajectories are decimated with a stated geometric tolerance ( | **Met** | Stated and measured, and the point-to-segment distance is clamped - a reflectron is why. |
 | `RND-6` | Text stays text. Labels, dimensions, and axis annotations are selectable and editable in the output, so a figure can be relabelled for a different venue ... | **Met** | Labels are text runs in both SVG and PDF, asserted in both. |
 | `RND-7` | ), scrubbing, and frame export. Model tree with parameter editing, live validation, units on every field, template instantiation. Sequence editor : the ... | **Met** | Both halves, and neither is optional in the interface either. A mapping is declared as phases in a render spec, each naming the simulated time it runs to and the rate it plays at - and an animation can only be asked for through a spec, with no `--rate` flag, so **there is no command line that produces one without a declared mapping**. The rate is stamped on every frame in two readings (`500 ns of flight per second of playback - 2,000,000x slower than real time`), written by the renderer rather than offered as a styling option. On the shipped reflectron the turn-around is a fifth of the flight and 69% of the film. |
 | `RND-8` | Diffusive regions animate as evolving density fields , never as particles ( | **Met** | Enforced rather than stated: the renderer asks the mode and draws no trajectories when it says no. **And now draws the density instead**, which the prohibition previously left empty. |
 | `RND-9` | Native output is an image sequence. Encoding to a video container is an optional out-of-process step using a tool the user supplies. | **Met** | `render animation` writes numbered vector frames and a `frames.json` schedule, and nothing here encodes video. **That is the requirement rather than a shortfall** - and it is LIC-1's argument as much as an architectural one, since ffmpeg is exactly what would otherwise be reached for. **This row was previously registered wrong in both columns**: its requirement text was a fragment of section 15's CLI table that cites RND-9 in passing, and its evidence was DST-7's ("no video, so no external encoder to detect"), so it read as Not built while the thing it asks for had shipped. |
 | `RND-10` | Videos carry provenance visibly, as a corner stamp with engine version and model hash, in addition to container metadata. | **Met, for the artifact that exists** | There is no video container by RND-9's own design, so the artifact this governs is the frame sequence. Every frame is a `Scene`, and a `Scene` carries provenance - engine version, model hash, decimation tolerance and any active warnings - written **both** as a comment in the file and as a visible stamp on the page, which is GRD-12's rule and the reason this requirement exists: metadata nobody opens is not provenance. An animation frame additionally stamps its own flight time and the playback rate in force, which is RND-7. What is not exercised is container metadata, there being no container. |
-| `RND-11` | Preview-tier results are visually distinguishable in any rendered output ( | **Met** | A hatched rule the width of the page and a QUALIFIED line naming the code. |
+| `RND-11` | Preview-tier results are visually distinguishable in any rendered output ( | **Met** | A hatched rule the width of the page and a QUALIFIED line naming the code. **A raster still carries the band and not the line**: nothing here rasterizes text, so the codes travel in the PNG's text chunks and on stderr, and the picture is marked by a hatched strip along its bottom. Stated rather than claimed met for the still - see Amendment 54. |
 | `RND-12` | Fields, trajectories, and density clouds export to VTK/VTU. The consequence is deliberate and worth stating as a scope decision rather than leaving ... | **Met** | Fields export as `.vti`, trajectories as `.vtu`, and densities as `.vti` - the last only since the density became an output at all. |
 | `RND-13` | Gmsh MSH is supported for import and interchange, through an Einzel-authored reader and writer. GPL attaches to Gmsh's implementation, not to the format; ... | Not built | No MSH reader or writer. Phase 5. |
 | `RND-14` | MSH is interchange, never the native representation , for the reason given in §9: a mesh is already discretized and cannot carry the parametric intent ... | **Met** | Vacuously, and by design: the native representation is parametric JSON and there is no mesh path to be tempted by. |

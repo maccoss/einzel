@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Avalonia;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
@@ -22,6 +24,14 @@ namespace Einzel.Shell;
 /// of the shell running where the engine runs, and it is small because the hard part
 /// stayed where UI-1 put it: <see cref="ViewportCommand"/> extracts the conductor
 /// surfaces and flies the ions, and this control draws what it is handed.
+/// </para>
+/// <para>
+/// <b>It decides nothing about what the picture looks like.</b> Colors, layers, their order,
+/// which are translucent and whether they hide what is behind them all come from
+/// <see cref="ViewportPicture.Compose"/>, and the lighting in the shader is built from the
+/// same constants - because <c>einzel render still</c> draws from that composition too, and a
+/// still that is not the window's picture is no use to an agent trying to see what a person
+/// sees. This control uploads layers and draws them in order.
 /// </para>
 /// <para>
 /// <b>Three things a spike found the hard way, all of which look like a black window.</b>
@@ -50,28 +60,10 @@ public sealed class SceneView : OpenGlControlBase
     }
     """;
 
-    // Two-sided lambert with a little ambient. Surfaces are oriented from the signed
-    // distance's own gradient, so the winding is right - but a viewport should not go
-    // dark because one normal is backwards.
-    private const string FragmentBody = """
-    in vec3 vNormal;
-    uniform vec3 uColor;
-    uniform float uAlpha;
-    out vec4 fragColor;
-    void main()
-    {
-        vec3 light = normalize(vec3(0.4, 0.7, 1.0));
-        float lambert = abs(dot(normalize(vNormal), light));
-        fragColor = vec4(uColor * (0.25 + 0.75 * lambert), uAlpha);
-    }
-    """;
-
-    private readonly List<Mesh> _conductors = [];
-    private readonly List<Mesh> _density = [];
-    private readonly List<Line> _paths = [];
-    private readonly List<Line> _field = [];
+    private readonly List<(List<Mesh> Meshes, List<Line> Lines)> _uploaded = [];
     private readonly Lock _gate = new();
 
+    private IReadOnlyList<PictureLayer> _picture = [];
     private ViewportOutcome? _pending;
 
     private GL? _gl;
@@ -83,7 +75,7 @@ public sealed class SceneView : OpenGlControlBase
 
     /// <summary>What to draw, as the command layer measured it.</summary>
     /// <remarks>
-    /// Set before the control is first realised. A viewport that changed scene mid-flight
+    /// Set before the control is first realized. A viewport that changed scene mid-flight
     /// would have to tear down its buffers on the render thread, which is the next piece
     /// of work rather than this one.
     /// </remarks>
@@ -91,10 +83,11 @@ public sealed class SceneView : OpenGlControlBase
 
     /// <summary>How opaque the conductors are, from zero to one.</summary>
     /// <remarks>
-    /// <b>Opaque by default.</b> Transparency with no depth sort draws every buried
-    /// interface where conductors touch or overlap - a segmented chain reads as a heap
-    /// rather than as a rod - so it is asked for where it earns its keep, which is a lens
-    /// or a guide whose ion flies down the bore.
+    /// <b>Opaque by default.</b> Transparency draws every buried interface where conductors
+    /// touch or overlap - a segmented chain reads as a heap rather than as a rod - so it is
+    /// asked for where it earns its keep, which is a lens or a guide whose ion flies down the
+    /// bore. Changing it recomposes the layers' rules and re-uploads nothing, because the
+    /// colors do not depend on it.
     /// </remarks>
     public double ConductorOpacity
     {
@@ -102,11 +95,22 @@ public sealed class SceneView : OpenGlControlBase
         set
         {
             field = value;
+
+            if (Scene is { } scene)
+            {
+                var recomposed = ViewportPicture.Compose(scene, value);
+
+                // The density may have moved on since the scene was measured, and it is the
+                // one layer a watch replaces - so it is carried over rather than reset.
+                _picture = [.. recomposed.Select(layer =>
+                    layer.Name == "density" && Find(_picture, "density") is { } live ? live : layer)];
+            }
+
             RequestNextFrameRendering();
         }
     } = 1.0;
 
-    private (double Azimuth, double Elevation) _view = (-32.0, 24.0);
+    private (double Azimuth, double Elevation) _view = ViewportPicture.Views["iso"];
 
     /// <summary>Where the camera sits, in degrees of azimuth and elevation.</summary>
     /// <remarks>
@@ -120,9 +124,9 @@ public sealed class SceneView : OpenGlControlBase
     /// trap, where the section view drew 300 flights and none of the 11 electrodes.
     /// </para>
     /// <para>
-    /// So the most informative direction for a cross-section is exactly the one an honest
-    /// geometry cannot draw, and the answer is to come off the axis rather than to cap the
-    /// prism. The named views make that a choice rather than a default nobody can change.
+    /// <b>The frame is fitted to what the new view sees and keeps what a watch has grown
+    /// into.</b> Re-measured from the scene alone, turning the camera during a watch would
+    /// drop the packet that had drifted out of the box the scene opened in.
     /// </para>
     /// </remarks>
     public (double Azimuth, double Elevation) View
@@ -136,7 +140,8 @@ public sealed class SceneView : OpenGlControlBase
             {
                 // Re-measuring is cheap and the upload is not: the meshes do not move when
                 // the camera does, so only the framing is rebuilt.
-                _framing = Framing.Measure(scene, value.Azimuth, value.Elevation);
+                var fitted = Framing.Measure(scene, value.Azimuth, value.Elevation);
+                _framing = _framing is { } grown ? fitted.Union(grown) : fitted;
                 RequestNextFrameRendering();
             }
         }
@@ -183,10 +188,13 @@ public sealed class SceneView : OpenGlControlBase
             return;
         }
 
-        UploadConductors(_gl, scene);
-        UploadField(_gl, scene);
-        UploadDensity(_gl, scene);
-        UploadPaths(_gl, scene);
+        _picture = ViewportPicture.Compose(scene, ConductorOpacity);
+
+        foreach (var layer in _picture)
+        {
+            _uploaded.Add(Upload(_gl, layer));
+        }
+
         _framing = Framing.Measure(scene, _view.Azimuth, _view.Elevation);
 
         _gl.Enable(EnableCap.DepthTest);
@@ -212,25 +220,7 @@ public sealed class SceneView : OpenGlControlBase
 
         if (arrived is { } frame)
         {
-            // Only the density is rebuilt. The sequencer refuses a stage that moves an
-            // electrode, so the conductors are identical at every instant by construction -
-            // and re-uploading a trap's whole mesh every frame is what makes a watch stutter.
-            foreach (var shell in _density)
-            {
-                api.DeleteVertexArray(shell.Vao);
-                api.DeleteBuffer(shell.Vbo);
-                api.DeleteBuffer(shell.Ebo);
-            }
-
-            _density.Clear();
-            UploadDensity(api, frame);
-
-            // The frame only grows. A packet that drifts out of the box it was framed in
-            // leaves an empty viewport, and re-measuring per frame would make the camera
-            // breathe with the packet instead of letting the packet move.
-            _framing = _framing is { } held
-                ? held.Union(Framing.Measure(frame, _view.Azimuth, _view.Elevation))
-                : Framing.Measure(frame, _view.Azimuth, _view.Elevation);
+            Arrive(api, frame);
         }
 
         var scaling = (this.GetVisualRoot() as IRenderRoot)?.RenderScaling ?? 1.0;
@@ -244,9 +234,6 @@ public sealed class SceneView : OpenGlControlBase
         api.BindFramebuffer(FramebufferTarget.Framebuffer, (uint)fb);
         api.Viewport(0, 0, (uint)width, (uint)height);
 
-        // White, because a frame from here ends up in a report or a slide, and a plot on
-        // near-black is usable only on the page it was made for. The cost is that the
-        // shading carries the shape unaided by contrast against the ground.
         var (gr, gg, gb) = ColorRamp.Ground;
         api.ClearColor((float)gr, (float)gg, (float)gb, 1.0f);
         api.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
@@ -264,88 +251,11 @@ public sealed class SceneView : OpenGlControlBase
             api.UniformMatrix4(_mvpLocation, 1, false, m);
         }
 
-        // THE PATHS FIRST, AND THE ORDER IS THE POINT. An ion flies down the bore, so it
-        // is inside every electrode it passes; drawn after opaque metal it sits behind the
-        // near wall at every pixel and the flight is simply not in the picture. Drawn
-        // first, into depth, the conductors blend over it and the trajectory reads through.
-        //
-        // RND-8 is not this control's decision: a diffusive model has no paths in the
-        // bundle at all, so an empty list is the transport mode's answer carried through
-        // rather than something to re-derive from a pressure.
-        api.Uniform1(_alphaLocation, 1.0f);
+        var picture = _picture;
 
-        // The field with the paths and before the metal, for the same reason: an
-        // equipotential is drawn on the section plane, which runs through the bore, so
-        // drawn after opaque conductors it is behind the near wall at every pixel.
-        foreach (var contour in _field)
+        for (var i = 0; i < picture.Count && i < _uploaded.Count; i++)
         {
-            api.Uniform3(_colorLocation, contour.R, contour.G, contour.B);
-            api.BindVertexArray(contour.Vao);
-            api.DrawArrays(PrimitiveType.LineStrip, 0, (uint)contour.Count);
-        }
-
-        foreach (var path in _paths)
-        {
-            api.Uniform3(_colorLocation, path.R, path.G, path.B);
-            api.BindVertexArray(path.Vao);
-            api.DrawArrays(PrimitiveType.LineStrip, 0, (uint)path.Count);
-        }
-
-        var alpha = (float)Math.Clamp(ConductorOpacity, 0.0, 1.0);
-
-        if (alpha < 1.0f)
-        {
-            api.Enable(EnableCap.Blend);
-            api.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
-
-            // AND DEPTH WRITES OFF, WHICH IS WHAT MAKES THE TOGGLE WORK. A translucent
-            // surface that writes depth occludes everything drawn behind it afterwards, so
-            // "see through metal" would reveal only whatever happened to be drawn first -
-            // the near rod of a segmented chain hiding the far one, which is the pair a
-            // reader is looking through the metal to compare. Depth is still TESTED, so the
-            // paths and the field drawn before this still read through correctly.
-            api.DepthMask(false);
-        }
-
-        api.Uniform1(_alphaLocation, alpha);
-
-        foreach (var mesh in _conductors)
-        {
-            api.Uniform3(_colorLocation, mesh.R, mesh.G, mesh.B);
-            api.BindVertexArray(mesh.Vao);
-            api.DrawElements(PrimitiveType.Triangles, (uint)mesh.Count, DrawElementsType.UnsignedInt, null);
-        }
-
-        if (alpha < 1.0f)
-        {
-            api.Disable(EnableCap.Blend);
-            api.DepthMask(true);
-        }
-
-        // The density last and translucent, because it is what moves and it sits inside the
-        // metal. Contours at decades below the peak rather than at even fractions: a density
-        // spans orders of magnitude, so even spacing draws the top decade several times and
-        // the extent not at all.
-        if (_density.Count > 0)
-        {
-            api.Enable(EnableCap.Blend);
-            api.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
-            api.Uniform1(_alphaLocation, 0.30f);
-
-            // Nested shells, so depth writes would have the outermost hide every one inside
-            // it - drawing a packet's tail and nothing of its core, which is the opposite of
-            // what the contours are for.
-            api.DepthMask(false);
-
-            foreach (var shell in _density)
-            {
-                api.Uniform3(_colorLocation, shell.R, shell.G, shell.B);
-                api.BindVertexArray(shell.Vao);
-                api.DrawElements(PrimitiveType.Triangles, (uint)shell.Count, DrawElementsType.UnsignedInt, null);
-            }
-
-            api.Disable(EnableCap.Blend);
-            api.DepthMask(true);
+            Draw(api, picture[i], _uploaded[i]);
         }
     }
 
@@ -357,30 +267,12 @@ public sealed class SceneView : OpenGlControlBase
             return;
         }
 
-        foreach (var mesh in _conductors)
+        foreach (var layer in _uploaded)
         {
-            api.DeleteVertexArray(mesh.Vao);
-            api.DeleteBuffer(mesh.Vbo);
-            api.DeleteBuffer(mesh.Ebo);
+            Release(api, layer);
         }
 
-        foreach (var shell in _density)
-        {
-            api.DeleteVertexArray(shell.Vao);
-            api.DeleteBuffer(shell.Vbo);
-            api.DeleteBuffer(shell.Ebo);
-        }
-
-        foreach (var path in _paths.Concat(_field))
-        {
-            api.DeleteVertexArray(path.Vao);
-            api.DeleteBuffer(path.Vbo);
-        }
-
-        _field.Clear();
-        _density.Clear();
-        _conductors.Clear();
-        _paths.Clear();
+        _uploaded.Clear();
 
         if (_program != 0)
         {
@@ -403,107 +295,150 @@ public sealed class SceneView : OpenGlControlBase
             ? "#version 300 es\nprecision highp float;\n\n"
             : "#version 330 core\n\n";
 
-    private void UploadConductors(GL api, ViewportOutcome scene)
+    /// <summary>The fragment shader, with the lighting the rasterizer uses written into it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Built from <see cref="ViewportPicture.Light"/> and <see cref="ViewportPicture.Ambient"/>
+    /// rather than written out</b>, so a still and the window cannot light the same surface
+    /// differently: a number typed into GLSL is a second copy of a decision.
+    /// </para>
+    /// <para>
+    /// Two-sided lambert with the ambient term, and a zero normal gets the ambient alone - GLSL
+    /// leaves the normalization of a zero vector undefined, which is not a direction.
+    /// </para>
+    /// </remarks>
+    private static string FragmentBody()
     {
-        // A potential is signed, so the ramp is diverging and symmetric about earth. Both
-        // the span and each conductor's place on it come from `Shading`, which lives outside
-        // this control so that it can be checked without a GL context - the sign defect it
-        // records was invisible from here for exactly that reason.
-        var span = Shading.Span(scene.Conductors);
+        var (lx, ly, lz) = ViewportPicture.Light;
+        var ambient = ViewportPicture.Ambient;
 
-        foreach (var conductor in scene.Conductors)
-        {
-            if (conductor.Triangles.Count == 0)
+        return $$"""
+            in vec3 vNormal;
+            uniform vec3 uColor;
+            uniform float uAlpha;
+            out vec4 fragColor;
+            void main()
             {
-                continue;
+                vec3 light = normalize(vec3({{Float(lx)}}, {{Float(ly)}}, {{Float(lz)}}));
+                float size = length(vNormal);
+                float lambert = size > 0.0 ? abs(dot(vNormal / size, light)) : 0.0;
+                fragColor = vec4(uColor * ({{Float(ambient)}} + {{Float(1.0 - ambient)}} * lambert), uAlpha);
             }
+            """;
+    }
 
-            var (r, g, b) = ColorRamp.Diverging(Shading.Fraction(conductor, span));
+    /// <summary>A GLSL float literal.</summary>
+    /// <remarks>
+    /// Always with a decimal point, because GLSL ES does not convert an integer in float
+    /// arithmetic - a constant that happened to be whole would print as <c>1</c>, and
+    /// <c>1 * lambert</c> is a compile error that Avalonia reports as a black window.
+    /// </remarks>
+    private static string Float(double value) =>
+        value.ToString("0.0###############", CultureInfo.InvariantCulture);
 
-            _conductors.Add(Mesh.Upload(api, conductor, (float)r, (float)g, (float)b));
+    private static PictureLayer? Find(IReadOnlyList<PictureLayer> picture, string name) =>
+        picture.FirstOrDefault(layer => layer.Name == name);
+
+    private static (List<Mesh> Meshes, List<Line> Lines) Upload(GL api, PictureLayer layer) =>
+        ([.. layer.Meshes.Select(m => Mesh.Upload(api, m))], [.. layer.Lines.Select(l => Line.Upload(api, l))]);
+
+    private static void Release(GL api, (List<Mesh> Meshes, List<Line> Lines) layer)
+    {
+        foreach (var mesh in layer.Meshes)
+        {
+            api.DeleteVertexArray(mesh.Vao);
+            api.DeleteBuffer(mesh.Vbo);
+            api.DeleteBuffer(mesh.Ebo);
+        }
+
+        foreach (var line in layer.Lines)
+        {
+            api.DeleteVertexArray(line.Vao);
+            api.DeleteBuffer(line.Vbo);
         }
     }
 
-    private void UploadField(GL api, ViewportOutcome scene)
+    /// <summary>Takes in a frame of a run that is still going.</summary>
+    /// <remarks>
+    /// <para>
+    /// Only the density is rebuilt. The sequencer refuses a stage that moves an electrode, so
+    /// the conductors are identical at every instant by construction - and re-uploading a
+    /// trap's whole mesh every frame is what makes a watch stutter.
+    /// </para>
+    /// <para>
+    /// The frame only grows. A packet that drifts out of the box it was framed in leaves an
+    /// empty viewport, and re-measuring per frame would make the camera breathe with the
+    /// packet instead of letting the packet move.
+    /// </para>
+    /// </remarks>
+    private void Arrive(GL api, ViewportOutcome frame)
     {
-        // The same diverging ramp the conductors take, and symmetric about earth for the
-        // same reason: stretching it across the observed range puts the neutral color at
-        // the arithmetic middle, so an earthed contour would be painted like a negative one.
-        var span = Math.Max(
-            Math.Abs(scene.LowestPotentialVolts ?? 0.0),
-            Math.Abs(scene.HighestPotentialVolts ?? 0.0));
+        var density = ViewportPicture.DensityLayer(frame);
+        var index = _picture.ToList().FindIndex(layer => layer.Name == "density");
 
-        foreach (var level in scene.Equipotentials)
+        if (index < 0 || index >= _uploaded.Count)
         {
-            var fraction = span > 0.0
-                ? 0.5 + (0.5 * Math.Clamp(level.PotentialVolts / span, -1.0, 1.0))
-                : 0.5;
-
-            var (r, g, b) = ColorRamp.Diverging(fraction);
-
-            foreach (var polyline in level.PathsMm)
-            {
-                if (polyline.Count >= 6)
-                {
-                    _field.Add(Line.Upload(api, polyline, (float)r, (float)g, (float)b));
-                }
-            }
+            return;
         }
+
+        Release(api, _uploaded[index]);
+        _uploaded[index] = Upload(api, density);
+
+        var layers = _picture.ToArray();
+        layers[index] = density;
+        _picture = layers;
+
+        var measured = Framing.Measure(frame, _view.Azimuth, _view.Elevation);
+        _framing = _framing is { } held ? held.Union(measured) : measured;
     }
 
-    private void UploadDensity(GL api, ViewportOutcome scene)
+    /// <summary>Draws one layer by the rules the composition gave it.</summary>
+    private unsafe void Draw(GL api, PictureLayer layer, (List<Mesh> Meshes, List<Line> Lines) uploaded)
     {
-        // Anchored on the decade rather than on this frame's own peak. A diffusing packet's
-        // peak falls as it spreads, so levels taken per frame would fall with it, the
-        // contours would stay the same size, and a film of a packet spreading would show a
-        // packet doing nothing - which is not flicker, it is a lie.
-        var deepest = scene.Density.Count == 0 ? 1 : scene.Density.Max(d => d.DecadesBelowPeak);
+        var translucent = layer.Alpha < 1.0;
 
-        foreach (var shell in scene.Density)
+        if (translucent)
         {
-            if (shell.Triangles.Count == 0)
-            {
-                continue;
-            }
-
-            var fraction = deepest > 0
-                ? 1.0 - (Math.Clamp(shell.DecadesBelowPeak, 0, deepest) / (double)deepest)
-                : 1.0;
-
-            var (r, g, b) = ColorRamp.At(fraction);
-            _density.Add(Mesh.Upload(api, shell, (float)r, (float)g, (float)b));
+            api.Enable(EnableCap.Blend);
+            api.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
         }
-    }
 
-    private void UploadPaths(GL api, ViewportOutcome scene)
-    {
-        var low = scene.LowestEnergyEv ?? 0.0;
-        var high = scene.HighestEnergyEv ?? low;
-
-        // A degenerate range gives a half, not a division: a monoenergetic beam in a
-        // field-free drift is the simplest model anyone writes, and dividing by a zero
-        // width paints the bundle NaN.
-        var width = high - low;
-
-        foreach (var path in scene.Trajectories)
+        if (!layer.WritesDepth)
         {
-            if (path.PointsMm.Count < 2)
-            {
-                continue;
-            }
+            api.DepthMask(false);
+        }
 
-            var mean = path.EnergyEv.Count > 0 ? path.EnergyEv.Average() : low;
-            var fraction = width > 0.0 ? Math.Clamp((mean - low) / width, 0.0, 1.0) : 0.5;
-            var (r, g, b) = ColorRamp.At(fraction);
+        api.Uniform1(_alphaLocation, (float)layer.Alpha);
 
-            _paths.Add(Line.Upload(api, path, (float)r, (float)g, (float)b));
+        foreach (var line in uploaded.Lines)
+        {
+            api.Uniform3(_colorLocation, line.R, line.G, line.B);
+            api.BindVertexArray(line.Vao);
+            api.DrawArrays(PrimitiveType.LineStrip, 0, (uint)line.Count);
+        }
+
+        foreach (var mesh in uploaded.Meshes)
+        {
+            api.Uniform3(_colorLocation, mesh.R, mesh.G, mesh.B);
+            api.BindVertexArray(mesh.Vao);
+            api.DrawElements(PrimitiveType.Triangles, (uint)mesh.Count, DrawElementsType.UnsignedInt, null);
+        }
+
+        if (!layer.WritesDepth)
+        {
+            api.DepthMask(true);
+        }
+
+        if (translucent)
+        {
+            api.Disable(EnableCap.Blend);
         }
     }
 
     private static uint Link(GL api, string header)
     {
         var vertex = Compile(api, ShaderType.VertexShader, header + VertexBody);
-        var fragment = Compile(api, ShaderType.FragmentShader, header + FragmentBody);
+        var fragment = Compile(api, ShaderType.FragmentShader, header + FragmentBody());
 
         var program = api.CreateProgram();
         api.AttachShader(program, vertex);

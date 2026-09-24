@@ -1,9 +1,8 @@
 using Einzel.Commands;
-using Einzel.Shell;
 
 using Xunit.Abstractions;
 
-namespace Einzel.Shell.Tests;
+namespace Einzel.Cli.Tests;
 
 /// <summary>What color an electrode is drawn in, checked without a viewport.</summary>
 public sealed class ShadingTests(ITestOutputHelper output)
