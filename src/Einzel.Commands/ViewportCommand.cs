@@ -156,7 +156,25 @@ public sealed record ViewportOutcome(
     double? PeakDensityPerCubicMetre,
     double? DensityAtUs,
     FlightEnds? Ends,
-    IReadOnlyList<ValidityWarning> Warnings);
+    IReadOnlyList<ValidityWarning> Warnings)
+{
+    /// <summary>How many declared electrodes are drawn, which is not how many surfaces.</summary>
+    /// <returns>The distinct electrode names among <see cref="Conductors"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>A surface is not an electrode.</b> A printed board arrives as a run of pieces,
+    /// each carrying the potential at its own position along the edge, and a reflected
+    /// solve arrives twice. Counting surfaces put "200 electrodes" on a mirror pair that
+    /// declares three.
+    /// </para>
+    /// <para>
+    /// Here rather than in each window, because two windows counting for themselves is how
+    /// they come to say different things about one model.
+    /// </para>
+    /// </remarks>
+    public int ElectrodeCount() =>
+        Conductors.Select(c => c.Name).Distinct(StringComparer.Ordinal).Count();
+}
 
 /// <summary>
 /// The data an interactive viewport draws, for anything that needs it.
@@ -1033,12 +1051,27 @@ public static class ViewportCommand
 
                 Cover(plane.MinX, Math.Min(plane.MinY, -radius), -radius);
                 Cover(plane.MaxX, Math.Max(plane.MaxY, radius), radius);
+
+                // The mirrored half is part of the instrument, so it is part of what is
+                // drawn - and the field is sampled over this box, so leaving it out would
+                // draw equipotentials through one mirror of a pair.
+                if (plane.ReflectAboutX is { } mirror)
+                {
+                    Cover((2.0 * mirror) - plane.MaxX, Math.Min(plane.MinY, -radius), -radius);
+                    Cover((2.0 * mirror) - plane.MinX, Math.Max(plane.MaxY, radius), radius);
+                }
             }
 
             if (element.Solve3D is { } volume)
             {
                 Cover(volume.MinX, volume.MinY, volume.MinZ);
                 Cover(volume.MaxX, volume.MaxY, volume.MaxZ);
+
+                if (volume.ReflectAboutX is { } mirror)
+                {
+                    Cover((2.0 * mirror) - volume.MaxX, volume.MinY, volume.MinZ);
+                    Cover((2.0 * mirror) - volume.MinX, volume.MaxY, volume.MaxZ);
+                }
             }
         }
 
@@ -1164,26 +1197,49 @@ public static class ViewportCommand
                         WarningSeverity.Provenance));
                 }
 
+                var drawn = new List<Drawn>();
+
                 foreach (var electrode in plane.Electrodes)
                 {
+                    // A printed board has no interior, so the level-set extraction every
+                    // other shape goes through finds nothing - which is how the planar
+                    // mirror pair was drawn as its end cap and nothing else. It is drawn
+                    // from its declaration instead: a sheet lying on the domain edge.
+                    if (electrode.Shape == ElectrodeShape.EdgeProfile)
+                    {
+                        foreach (var (mesh, potential) in Board(electrode, plane, nearZ, farZ))
+                        {
+                            Cover(potential);
+                            Cover(potential + electrode.DriveAmplitude);
+                            Cover(potential - electrode.DriveAmplitude);
+
+                            drawn.Add(new Drawn(electrode.Name, potential, electrode.DriveAmplitude, mesh));
+                        }
+
+                        continue;
+                    }
+
                     Cover(electrode.Potential);
                     Cover(electrode.Potential + electrode.DriveAmplitude);
                     Cover(electrode.Potential - electrode.DriveAmplitude);
 
-                    var mesh = plane.Symmetry == SolveSymmetry.Cylindrical
+                    var solid = plane.Symmetry == SolveSymmetry.Cylindrical
                         ? Revolved(electrode, plane)
                         : Extruded(electrode, plane, nearZ, farZ);
 
-                    if (mesh.TriangleCount > 0)
+                    if (solid.TriangleCount > 0)
                     {
-                        surfaces.Add(Surface(
-                            electrode.Name, electrode.Potential, electrode.DriveAmplitude, mesh));
+                        drawn.Add(new Drawn(electrode.Name, electrode.Potential, electrode.DriveAmplitude, solid));
                     }
                 }
+
+                AddWithReflection(drawn, plane.ReflectAboutX, surfaces);
             }
 
             if (element.Solve3D is { } volume)
             {
+                var drawn = new List<Drawn>();
+
                 foreach (var electrode in volume.Electrodes)
                 {
                     Cover(electrode.Potential);
@@ -1215,10 +1271,11 @@ public static class ViewportCommand
 
                     if (mesh.TriangleCount > 0)
                     {
-                        surfaces.Add(Surface(
-                            electrode.Name, electrode.Potential, electrode.DriveAmplitude, mesh));
+                        drawn.Add(new Drawn(electrode.Name, electrode.Potential, electrode.DriveAmplitude, mesh));
                     }
                 }
+
+                AddWithReflection(drawn, volume.ReflectAboutX, surfaces);
             }
         }
 
@@ -1271,6 +1328,177 @@ public static class ViewportCommand
         var pad = 0.05 * (high - low);
 
         return high - low > 0.0 ? (low - pad, high + pad) : null;
+    }
+
+    /// <summary>One conductor surface on its way out, before the reflection is taken.</summary>
+    private sealed record Drawn(string Name, double Potential, double Amplitude, SurfaceMesh Mesh);
+
+    /// <summary>Adds an element's surfaces, and their mirror image if the solve declares one.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A reflected solve is the instrument and its mirror image, and the field already
+    /// says so.</b> <c>GeometryBuilder</c> composes the half with <c>ReflectedField</c>
+    /// about the declared plane, so the ion flies through both mirrors of a mirror pair -
+    /// and the viewport drew only the one that was declared, a mirror pair with one mirror
+    /// in it. The two templates that reflect are the two whose whole subject is the pair.
+    /// </para>
+    /// <para>
+    /// Mirrored exactly as the field is, <c>x -> 2p - x</c>, so the drawing and the solve
+    /// cannot disagree about where the second half sits. A reflection reverses orientation,
+    /// so each triangle's winding is reversed with it and the normal's x component flips -
+    /// otherwise the image is lit from inside.
+    /// </para>
+    /// </remarks>
+    private static void AddWithReflection(
+        List<Drawn> drawn, double? reflectAboutX, List<ConductorSurface> surfaces)
+    {
+        foreach (var d in drawn)
+        {
+            surfaces.Add(Surface(d.Name, d.Potential, d.Amplitude, d.Mesh));
+        }
+
+        if (reflectAboutX is not { } plane)
+        {
+            return;
+        }
+
+        foreach (var d in drawn)
+        {
+            surfaces.Add(Surface(d.Name, d.Potential, d.Amplitude, Mirrored(d.Mesh, plane)));
+        }
+    }
+
+    /// <summary>A mesh reflected about the plane <c>x = plane</c>.</summary>
+    /// <param name="mesh">The mesh, in metres.</param>
+    /// <param name="plane">Where the mirror plane crosses the x axis, in metres.</param>
+    /// <returns>The image, with its winding and normals reversed to match.</returns>
+    internal static SurfaceMesh Mirrored(SurfaceMesh mesh, double plane)
+    {
+        var vertices = new double[mesh.Vertices.Count];
+        var normals = new double[mesh.Normals.Count];
+
+        for (var i = 0; i + 2 < vertices.Length; i += 3)
+        {
+            vertices[i] = (2.0 * plane) - mesh.Vertices[i];
+            vertices[i + 1] = mesh.Vertices[i + 1];
+            vertices[i + 2] = mesh.Vertices[i + 2];
+        }
+
+        for (var i = 0; i + 2 < normals.Length; i += 3)
+        {
+            normals[i] = -mesh.Normals[i];
+            normals[i + 1] = mesh.Normals[i + 1];
+            normals[i + 2] = mesh.Normals[i + 2];
+        }
+
+        var triangles = new int[mesh.Triangles.Count];
+
+        for (var t = 0; t + 2 < triangles.Length; t += 3)
+        {
+            triangles[t] = mesh.Triangles[t];
+            triangles[t + 1] = mesh.Triangles[t + 2];
+            triangles[t + 2] = mesh.Triangles[t + 1];
+        }
+
+        return new SurfaceMesh(vertices, normals, triangles);
+    }
+
+    /// <summary>
+    /// A printed board, drawn as the sheet on the domain edge it is, in pieces colored by
+    /// the potential along it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Over the whole edge, because that is what the solve holds.</b>
+    /// <c>RasteriseEdgeProfile</c> fixes every node of the edge from
+    /// <see cref="CompiledElectrode.ProfileAt"/>, which continues the end values past the
+    /// first and last profile points - so a board drawn only between its knots would be
+    /// shorter than the boundary condition actually applied.
+    /// </para>
+    /// <para>
+    /// <b>In pieces, because one surface carries one potential.</b> A board is a resistive
+    /// divider whose potential varies continuously, and the surface record a window draws
+    /// holds a single value. Broken at every profile knot - where the slope changes - and
+    /// subdivided between them, each piece taking the profile at its midpoint, so a
+    /// mirror's ramp reads as a ramp rather than as one flat color at its mean.
+    /// </para>
+    /// <para>
+    /// <b>A sheet with no thickness, because the model declares none.</b> Drawing a slab
+    /// would invent a dimension; the edge is where the metal begins and the model says
+    /// nothing about where it ends. Its normal faces into the domain, which is the side a
+    /// reader is looking at it from.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<(SurfaceMesh Mesh, double Potential)> Board(
+        CompiledElectrode electrode, CompiledSolvedField plane, double nearZ, double farZ)
+    {
+        var alongX = electrode.Edge is GridEdge.Top or GridEdge.Bottom;
+        var (start, end) = alongX ? (plane.MinX, plane.MaxX) : (plane.MinY, plane.MaxY);
+
+        var fixedAt = electrode.Edge switch
+        {
+            GridEdge.Top => plane.MaxY,
+            GridEdge.Bottom => plane.MinY,
+            GridEdge.Left => plane.MinX,
+            GridEdge.Right => plane.MaxX,
+            _ => throw new InvalidOperationException($"unhandled edge {electrode.Edge}"),
+        };
+
+        // Zero on the sheet, positive on the domain's side of it, so Orient points each
+        // normal into the domain.
+        Func<double, double, double> distance = electrode.Edge switch
+        {
+            GridEdge.Top => (_, y) => plane.MaxY - y,
+            GridEdge.Bottom => (_, y) => y - plane.MinY,
+            GridEdge.Left => (x, _) => x - plane.MinX,
+            _ => (x, _) => plane.MaxX - x,
+        };
+
+        var breaks = new List<double> { start, end };
+        breaks.AddRange(electrode.Profile.Select(k => k.At).Where(at => at > start && at < end));
+        breaks.Sort();
+
+        var longest = (end - start) / BoardPieces;
+        var cylindrical = plane.Symmetry == SolveSymmetry.Cylindrical;
+
+        for (var k = 0; k + 1 < breaks.Count; k++)
+        {
+            var span = breaks[k + 1] - breaks[k];
+
+            if (span <= 0.0)
+            {
+                continue;
+            }
+
+            var pieces = Math.Max(1, (int)Math.Ceiling(span / longest));
+
+            for (var n = 0; n < pieces; n++)
+            {
+                var a = breaks[k] + (span * n / pieces);
+                var b = breaks[k] + (span * (n + 1) / pieces);
+
+                (double, double)[] line = alongX
+                    ? [(a, fixedAt), (b, fixedAt)]
+                    : [(fixedAt, a), (fixedAt, b)];
+
+                var raw = cylindrical
+                    ? Surfaces.Revolve(line, RevolutionFacets)
+                    : Surfaces.Extrude(line, nearZ, farZ);
+
+                // A board on the axis of an axisymmetric solve revolves into a line and
+                // has no area; Revolve drops the degenerate triangles, and so does this.
+                if (raw.TriangleCount == 0)
+                {
+                    continue;
+                }
+
+                var mesh = cylindrical
+                    ? Surfaces.Orient(raw, (x, y, z) => distance(x, Math.Sqrt((y * y) + (z * z))), OrientStepMetres)
+                    : Surfaces.Orient(raw, (x, y, _) => distance(x, y), OrientStepMetres);
+
+                yield return (mesh, electrode.ProfileAt(0.5 * (a + b)));
+            }
+        }
     }
 
     /// <summary>A cross-section's conductor, drawn as the prism the solve says it is.</summary>
@@ -1573,6 +1801,12 @@ public static class ViewportCommand
 
     /// <summary>Facets around a solid of revolution.</summary>
     private const int RevolutionFacets = 48;
+
+    /// <summary>
+    /// How many pieces a printed board's edge is cut into at most, before its knots are
+    /// added. Enough that a mirror's potential ramp reads as a ramp.
+    /// </summary>
+    private const int BoardPieces = 96;
 
     /// <summary>Columns the density is resampled onto before contouring.</summary>
     /// <remarks>

@@ -238,11 +238,11 @@
     },
     "densityGrid": {
       "minX": {
-        "value": -2,
+        "expression": "domainMinX",
         "unit": "mm"
       },
       "maxX": {
-        "value": 102,
+        "expression": "detectorX",
         "unit": "mm"
       },
       "minY": {
