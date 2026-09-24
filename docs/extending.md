@@ -40,7 +40,7 @@ integrator, or the transport core.
 | TIMS front end | `fringe` on a bounded element's region | attribute |
 | rectilinear trap | start at rest; parametric vector placement; a dimensionless zero | attributes |
 
-Three kinds, and that is the whole list. **Twenty-two device templates have cost fourteen
+Three kinds, and that is the whole list. **Twenty-three device templates have cost fourteen
 schema versions, all purely additive.** Roughly half the templates needed nothing below the
 library at all.
 

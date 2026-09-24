@@ -1204,7 +1204,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **The reversal threshold is a fourth-power law in the injection angle**: 11.447 mm at 2°, 0.4638 mm at 1°, under 0.05 mm at 0.5° — 24.7x per halving, bisected by `einzel boundary`. Halving the angle doubles the reflections *and* quarters the axial energy, which predicts a cube; the measurement says more, and two points cannot say what else.
 
-  ~~**Not reconciled with the published instrument**~~ — **it reconciles.** That line was written when the gap was 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4, and the remainder was in the guesses: `d1..d4` free, the board gap assumed. Reading the electrode positions off the published figure instead of guessing depths puts the reversal at **336.15 mm with 24 outbound**, against a published **310 to 360 mm, mean 335, and 24 to 26**, and the flight time at **786.44 µs** against 783.2 by arithmetic. The tilt on its own reverses at 404 mm and the published stripe shape brings it to 336, which is the design paper's own account of the mechanism rather than a discrepancy.
+  ~~**Not reconciled with the published instrument**~~ — **it reconciles.** That line was written when the gap was 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4, and the remainder was in the guesses: `d1..d4` free, the board gap assumed. Reading the electrode positions off the published figure instead of guessing depths puts the reversal at **336.06 mm with 24 outbound**, against a published **310 to 360 mm, mean 335, and 24 to 26**, and the flight time at **784.90 µs** on the shipped foil mesh, about 775 mesh-converged, against 783.2 by arithmetic. (It read 336.15 mm and 786.44 µs until the compact analyzer showed the second was a rounding coin toss - see the `compact-astral-3d` entry at the end of this list.) The tilt on its own reverses at 404 mm and the published stripe shape brings it to 336, which is the design paper's own account of the mechanism rather than a discrepancy.
 
   **And the convergence it fitted was published all along**, in a paper already sitting unread in `papers/`: its table states the angle, which is 196 µm over the 250 mm mirror body — the spacer — and 503 µm across the 641 mm effective separation, against the 0.56 mm the model fitted knowing none of it. What does not yet agree is the injection angle: published 1.78°, fitted 2.29°, and the reversal distance goes as its fourth power.
 
@@ -2264,6 +2264,48 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   both instruments have two, so the -x slit gets a named absorber and a scan-out is the arrivals
   plus the ions itemised against `detectorLeft`. A LIB-1 signal with a second real device behind
   it. Details in `docs/device-templates.md` and `docs/literature-targets.md` §2.
+
+- **`compact-astral-3d` — the compact analyzer as an instrument, and the coin toss it found in
+  the published one.** The compact analyzer this project is designing had only
+  `planar-mirror-pair` to stand for it: one plane of a mirror pair, no drift, no tilt, no
+  reversal. It is now `astral-3d` whole at a chosen scale, one fifth as shipped, **generated**
+  by `generators/compact-astral-3d.py` so every published length keeps its value and
+  provenance as `<name>FullSize` beside one `scale` that multiplies it. The meshes are lengths
+  too, so the compact solve is the full-size discrete problem node for node and costs the same;
+  a cell held fixed would have been a five times coarser model that looked like a worse
+  instrument. `planar-mirror-pair` and `astral-mirror` are relabeled as the cross-section
+  studies they are.
+
+  **Similarity is exact, so it was tested exactly - and it failed.** Scales of 0.5, 0.25 and
+  0.2000001 reproduced the full-size flight to the bit; 0.2 moved it **0.27 percent** and
+  0.1999999 a different 0.03. The foil's sixteen slices hold sixteen potentials and share a
+  face every 28.125 mm, and three of those faces sat exactly on nodes of the 4 mm foil mesh, so
+  which slice owned a node - or neither, leaving a free node mixing the two in whatever ratio
+  the rounding set - was the last bit of arithmetic that 0.2 rounds differently. 454 nodes and
+  1,586 cut links changed hands. **No refinement ladder finds this**: every rung can sit on the
+  same faces. `meshShiftZ` moves the foil mesh 0.3 mm, a tenth of a cell off every shared face,
+  and similarity then holds to **1.6e-8**, the integrator's tolerance.
+
+  **Removing the coin toss exposed an ordinary error four times larger.** The stripe is thinner
+  than a cell and holds no node, so it exists only where its surfaces cut links, and moving the
+  mesh in fifths of a cell moves the flight time over **0.83 percent at 4 mm and 0.22 at 2 mm**
+  - second order, and the means fall 6.4 µs with it, extrapolating to **about 775 µs**, a percent
+  below the arithmetic's 783.2. The "0.4 percent" agreement recorded for months was one draw from
+  that spread. Still inside the register test's 2 percent and clear of K = 25, but an agreement
+  quoted finer than where the mesh sits is not an agreement (SPEC.md Amendment 55).
+
+  `CompactAstralTests` checks it at the mesh, where it is exact and affordable rather than at the
+  flight, which takes a minute: every resolved quantity scales as its dimension says (length one,
+  potential none, field minus one - current carries minus one, because charge is fixed), a scale
+  of one is `astral-3d` to the bit, the three meshes match node for node, and no shared face sits
+  within a twentieth of a cell of a node. **What does not scale is the design question**:
+  turn-around time and detector response are absolute, so their resolving-power limit falls by
+  five; a machining error is five times larger against the geometry; and the packet's own field
+  grows as 1/s² against the applied field's 1/s, so the same space charge comes at a fifth of the
+  population. Two engine follow-ups are proposed rather than built: a warning when any solve has a
+  node on a face two disagreeing conductors share, and a bounding-box cull in the 3-D mask builder,
+  which tests every link against all 86 electrodes and spends about a minute per mask in a Debug test run. Details
+  in `docs/device-templates.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

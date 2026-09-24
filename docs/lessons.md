@@ -5008,3 +5008,38 @@ The general rule: **a geometry in a template is a claim about a physical device,
 name which device.** Every slot parameter now says whether it is the prototype's or the
 released instrument's, and the prototype is one override away rather than lost.
 
+
+## A node on a face two conductors share is decided by rounding, and no refinement ladder can see it
+
+`astral-3d`'s foil is sixteen slices at sixteen potentials, sharing a face every 28.125 mm,
+and three of those faces sat exactly on rows of nodes in the 4 mm foil mesh. A node exactly
+on the face between two conductors that disagree is inside one, the other, or neither
+according to the last bit of that face's arithmetic - and a free node with a vanishing arm to
+each side takes whatever mixture of the two potentials the rounding picked. It is not
+discretization error. It is a coin toss, and at this mesh it was worth 0.27 percent of the
+flight time.
+
+**The convergence tier could never have found it.** Grid intervals are powers of two over a
+fixed domain, so a face on node k at one rung is on node 2k at the next: every mesh in a
+refinement ladder sits on the same faces, and each rung tosses the same coin. What found it
+was an **exact symmetry the arithmetic does not share**. Electrostatic similarity says an
+instrument scaled by 0.2 flies the same path in 0.2 of the time; 0.2 is not representable, so
+every coordinate moves by rounding and nothing else. Binary-exact scales (0.5, 0.25)
+reproduced the flight to the bit, 0.2 moved it 0.27 percent, and 0.1999999 moved it a
+different 0.03. A physical invariance that perturbs only the last bit is a probe of every
+knife-edge in a discretization at once.
+
+**And a coin toss can hide a larger error behind it.** With the foil mesh moved a tenth of a
+cell off every shared face, the flight time was deterministic - and moving the mesh further,
+in fifths of a cell, moved it over 0.83 percent, because the stripe is thinner than a cell
+and exists only where its surfaces cut links. That is ordinary second-order error (0.22 per
+cent at 2 mm), but a ladder reports one point per rung and so presents a spread of that size
+as a resolved number. The published agreement this template carried, "0.4 percent", was one
+draw from it.
+
+The rules. **Where conductors that disagree share a face, keep the face off the nodes** - a
+margin of a tenth of a cell is plenty, and it has to be checked, because the mesh's own
+rounding decides where the nodes fall. **Where a feature is smaller than a cell, where the
+mesh sits is a convergence dimension** as much as how fine it is, and an agreement quoted
+finer than the placement spread is not an agreement. And after removing a source of
+nondeterminism, measure what it was sitting on top of before quoting the number it now gives.
