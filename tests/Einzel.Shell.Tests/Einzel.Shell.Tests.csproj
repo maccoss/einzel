@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The WPF shell's tests target net10.0-windows and a solution-wide `dotnet test` walks
+    past them on Linux, so what they check is checked on one platform. These target plain
+    net10.0 and run on both, which is the point of the shell they cover.
+
+    Nothing here touches a window. What is testable without one is the part that carries
+    the decisions: where the camera goes, how often a watched run is sampled, and which
+    frame a finished run is left showing.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Einzel.Shell\Einzel.Shell.csproj" />
+  </ItemGroup>
+
+</Project>

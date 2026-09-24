@@ -155,6 +155,86 @@ Einzel. **That, rather than a date, is the trigger.**
 
 ## Amendments to the specification
 
+### 53 - The shell runs where the engine runs, and Amendment 26's bet was called
+
+**UI-1, Amendment 25, Amendment 26.** r06 names `Einzel.Wpf` and this file recorded the
+reasoning: Windows-only was *the decision rather than an accident of WPF*, Avalonia was
+considered and not chosen "because the shell is not planned for use outside Windows", and
+that would "get revisited if the need appears". The need appeared - a user asked for the
+platform to run outside Windows - so it was revisited, and the answer was the one the
+original note predicted: **a replacement of a presentation layer rather than a rewrite.**
+
+`Einzel.Shell` is that layer. It targets plain `net10.0` rather than `net10.0-windows`,
+builds its window on Avalonia and its viewport on an OpenGL control, and references
+**`Einzel.Commands` and nothing else** - which is what made the swap cheap. Invariant 1
+kept every physics assembly free of UI types, and Amendment 25 made every shell action a
+CLI invocation, so there was no capability living in the old window that had to be
+excavated before a new one could have it.
+
+**What it cost is the measure of whether those two rules were worth keeping.** Four of
+§16's views carried across - the 3-D viewport, the live-run watch, the model tree and the
+field as equipotentials - at 2,167 lines, of which the physics is zero. No assembly below
+the shell changed. The one file ported verbatim from `Einzel.Wpf` was the color ramp, and
+only its namespace differed.
+
+**The WPF shell is untouched and still builds.** Its assembly was renamed
+`einzel-shell-wpf`, because two projects producing one assembly identity is a latent
+collision and it had already made the boundary test ambiguous about which shell it had
+found. Which of the two is the survivor is not settled here: what is settled is that the
+cross-platform one exists, its claim to run anywhere is *checked* rather than asserted, and
+nothing was lost to get it.
+
+**Three things are genuinely different rather than merely ported.**
+
+**The invariant is now tested from a test project that runs on Linux.** `Einzel.Wpf.Tests`
+is Windows-only, so the shell's own tests only ever ran on one platform;
+`Einzel.Shell.Tests` targets plain `net10.0` and its eleven tests run on both runners. A
+cross-platform claim checked only on Windows is a cross-platform claim nobody is checking.
+
+**ANGLE hands back an OpenGL ES context on Windows, and a `#version 330 core` shader does
+not fail loudly there - Avalonia silently disables the control.** So the shader body is
+written once and a dialect header is chosen from the context the platform actually
+supplied. The failure mode is the one this project keeps recording: not an error, but a
+capability that quietly is not there.
+
+**A high-severity advisory arrived with a transitive package, and the build refused it.**
+Avalonia 11.2.3 pulls `Tmds.DBus.Protocol` 0.20.0 for the Linux session bus, which carries
+GHSA-xrw6-gwf8-vvr9; 0.21.2 is affected too. Warnings-as-errors with NuGet auditing turned
+it into a build failure rather than a note, which is the guard working, and central
+transitive pinning names the fixed 0.95.1 once for every project. LIC-1 is clear -
+Avalonia and Silk.NET are both MIT, verified in their nuspecs rather than assumed.
+
+**What is not carried across**: the journal, results by accuracy class, the regime
+inspector, the sequence editor, the project view and the extension manager. Each is
+presentation over a command that already works, which is the same observation
+`docs/shell.md` makes about the WPF shell's own remaining rows - and is the evidence for
+AGT-2 that matters, since it means the second window is a drawing exercise rather than a
+capability exercise.
+
+**A review found seven defects before it merged, and two drew the wrong picture.** Every
+driven electrode was painted the same color - the port kept the intent (color by the peak
+the drive reaches, not the DC) and lost it in the arithmetic, taking `Math.Abs` of a
+**signed** drive amplitude and recovering the sign from a DC that is zero for a purely
+driven electrode. All four rods of `quadrupole-rf` came back at +500 V. That is the seventh
+appearance of that defect and the first to reach a viewport, and it survived because the
+decision sat inside a GL control where checking it needs a platform. **A decision that needs
+a platform to observe is a decision nothing will check** - it is `Shading` now, and its test
+fails with the old expression restored.
+
+And `Framing` spanned conductors and trajectories, so a diffusive model with no electrodes -
+which has neither, and which this assembly's own test model is - framed at a millimetre at
+the origin and drew its packet entirely off screen. The density is measured now, and
+`Framing.Union` grows the frame as the packet drifts without letting it breathe. The other
+five and the reasoning are in `docs/shell.md`.
+
+**What is open**: `Watch run` applies to diffusive models only, and is refused with a
+reason for a trajectory model because the whole bundle arrives faster than the first frame
+of a watch. That is correct, and it means "watch the analysis happen" is true for a density
+and not for a scan, a sweep or an optimization - which are the study drivers. Making those
+watchable is a command-layer question before it is a window one. The GL path itself is
+untested - shader, uploads, depth state need a context, and the ANGLE dialect defect is
+exactly what a headless GL context in CI would catch.
+
 ### 52 - An error raised where the location is unknown is located by whoever caught it
 
 **AGT-3.** `EinzelError` carries a JSON Pointer because an error here is a *recovery
@@ -1958,6 +2038,24 @@ run there and is not meant to. Only `Einzel.Wpf.Tests` is Windows-only, and on a
 it builds as an ordinary `net10.0` assembly with no sources, so a solution-wide
 `dotnet test` walks past it.
 
+**There are two shells now, and the second one runs where the engine runs.** `Einzel.Shell`
+is the same §16 views on Avalonia and an OpenGL viewport, targeting plain `net10.0` and
+referencing `Einzel.Commands` and nothing else - so a user who asked for the platform
+outside Windows gets a window there, and the WPF shell is untouched. **Four of the eleven
+views are across**: the 3-D viewport, the model tree, the field as equipotentials, and a
+live run watched while it steps. The other seven are presentation over commands that
+already work, which is the same thing this section says about the WPF shell's own remaining
+rows.
+
+**This is Amendment 26's bet being called, and it paid.** The Windows-only decision was
+recorded as a decision with a condition on it - "revisited if the need appears" - resting
+on invariant 1 and Amendment 25 to make a later cross-platform shell a swap of a
+presentation layer. It was: 2,167 lines, no assembly below the shell changed, one file
+ported verbatim. See Amendment 53. What is new rather than ported is that
+`Einzel.Shell.Tests` targets plain `net10.0`, so for the first time a shell's own tests run
+on both runners - a cross-platform claim checked only on Windows is one nobody is
+checking.
+
 **Both invariants are enforced by tests from the first commit**, which is the point of
 building the scaffolding before any view. `NothingBelowTheShellReferencesIt` scans every
 platform assembly beside the Linux-running test project - an invariant only ever checked
@@ -2296,7 +2394,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `UI-1` | The shell owns layout, input, the interactive viewport, and the update check. It owns no physics, no validation rules, no file format knowledge, and no ... | **Partial** | **The shell exists**, and the prohibition is now checked rather than honoured by construction: `ShellBoundaryTests` runs from the Linux-running test project over the assemblies actually present, with a `MustBePresent` guard so a scan that found nothing cannot pass. **Two different checks were needed**, and the difference cost a mutation - `GetReferencedAssemblies` reports what the compiler *emitted*, so declaring a ProjectReference to the transport engine left no trace and the test passed; UI-1 is about what the shell may reach **for**, so the project file is checked too. Every view is built on a command object, and twice a view could not be built until a command existed (`einzel outline`, `ViewportCommand`) - which is Amendment 25 running in the direction it was not designed for. **Partial rather than Met** because the shell does not own the update check: there is nothing to check. |
+| `UI-1` | The shell owns layout, input, the interactive viewport, and the update check. It owns no physics, no validation rules, no file format knowledge, and no ... | **Partial** | **The shell exists**, and the prohibition is now checked rather than honoured by construction: `ShellBoundaryTests` runs from the Linux-running test project over the assemblies actually present, with a `MustBePresent` guard so a scan that found nothing cannot pass. **Two different checks were needed**, and the difference cost a mutation - `GetReferencedAssemblies` reports what the compiler *emitted*, so declaring a ProjectReference to the transport engine left no trace and the test passed; UI-1 is about what the shell may reach **for**, so the project file is checked too. Every view is built on a command object, and twice a view could not be built until a command existed (`einzel outline`, `ViewportCommand`) - which is Amendment 25 running in the direction it was not designed for. **Partial rather than Met** because the shell does not own the update check: there is nothing to check. **And the prohibition has now been paid for rather than merely kept**: a second shell, `Einzel.Shell`, puts the same views on Avalonia for Linux and macOS, targets plain `net10.0`, and reaches the engine through `Einzel.Commands` alone - 2,167 lines with no change to any assembly below it, which is what UI-1 plus Amendment 25 were being banked for. Its tests target plain `net10.0` too, so a shell's own tests run on both runners for the first time. See Amendment 53. |
 
 ### Update (§18)
 
