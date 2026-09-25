@@ -1,5 +1,7 @@
 # Unreleased
 
+- Build a volume solve's conductor mask by asking each electrode only about the nodes and links its bounding box reaches. Every electrode used to be tested against every node and every link, which on `astral-3d`'s ion-foil solve (1.1 million nodes, 86 electrodes) was about half a billion closed-form entry tests per mask. In Release that mask now takes 0.15 s where it took 10.3 s, and `einzel solve` on the template takes 11.0 s where it took 20.6 s, with every reported figure unchanged. The mask is bit-identical to the unculled one - every fixed node, fixed value, cut fraction and cut potential - on every shipped volume template and the corpus's 3-D example, at the shipped mesh and at every coarse level, checked against the unculled loops, which are kept as the reference.
+
 - Reuse diffusion coefficient and face-operator buffers, separately per species. A 513 x 65 rebuild allocates about 3.4 kB instead of 7.47 MB in a warmed probe; operator values remain bit-identical. This is an allocation reduction, not a claimed end-to-end speedup.
 
 - Record imported gas files and study files in run manifests. `verify` detects changed, missing or retargeted inputs and no longer certifies legacy manifests that did not record them.
