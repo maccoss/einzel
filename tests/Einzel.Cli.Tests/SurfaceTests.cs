@@ -224,6 +224,43 @@ public sealed class SurfaceTests : IDisposable
     }
 
     [Fact]
+    public void SolveNamesTheChannelWhenAnElementHasSeveral()
+    {
+        // A driven element is one solve per basis channel. The terminal printed each
+        // as "field 0" and nothing else, so the RF funnel's two channels came out as
+        // two identical blocks while --json numbered them 0 and 1.
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        var funnel = Path.Combine(_root, "models", "funnel.json");
+        Assert.Equal(0, Run("new", funnel, "--from-example", "ion-funnel-rf").ExitCode);
+
+        var (exitCode, stdout, _) = Run("solve", funnel);
+        Assert.Equal(0, exitCode);
+
+        Assert.Equal(["field 0 channel 0", "field 0 channel 1"], Headers(stdout));
+
+        // The control: a static element has one channel and carries no number,
+        // so the label changes only where there is something to tell apart.
+        var quadrupole = Path.Combine(_root, "models", "quad.json");
+        Assert.Equal(0, Run("new", quadrupole, "--from-template", "quadrupole").ExitCode);
+
+        var (quadrupoleExit, quadrupoleOut, _) = Run("solve", quadrupole);
+        Assert.Equal(0, quadrupoleExit);
+
+        Assert.Equal(["field 0"], Headers(quadrupoleOut));
+    }
+
+    /// <summary>
+    /// The label of each block <c>einzel solve</c> prints: a header line up to the
+    /// two spaces that separate it from the grid.
+    /// </summary>
+    private static List<string> Headers(string stdout) =>
+        stdout.Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.StartsWith("field ", StringComparison.Ordinal))
+            .Select(line => line[..line.IndexOf("  ", StringComparison.Ordinal)])
+            .ToList();
+
+    [Fact]
     public void EstimateCostsNothingAndSaysHowItGuessed()
     {
         Assert.Equal(0, Run("init", _root).ExitCode);

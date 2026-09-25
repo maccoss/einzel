@@ -9,7 +9,13 @@ _Nothing yet._
 
 ## Fixed
 
-_Nothing yet._
+- **`einzel solve` printed a volume as a plane.** The terminal output gave only the first two
+  node counts and spacings, so a 257x17x257 solve read as 257x17 with no z spacing. It now
+  prints every axis. `--json` was always correct.
+- **`einzel solve` printed a driven element's channels as identical blocks.** A driven
+  structure is one solve per basis channel, and each was labeled only `field 0`, so the RF
+  funnel's two channels looked like one solve printed twice. Each is now labeled
+  `field 0 channel 0`, `field 0 channel 1`, matching the `channel` field in `--json`.
 
 ## Known limits
 
