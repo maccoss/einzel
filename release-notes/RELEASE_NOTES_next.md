@@ -25,11 +25,19 @@ become a feature release without being renamed twice.
 
 - **`astral-3d`'s flight time depended on rounding.** Three faces shared by foil slices at
   different voltages lay exactly on planes of mesh nodes, so which voltage the stencil arms in
-  those planes took was decided by the last bit of arithmetic - worth 0.27 percent. The foil mesh now sits a tenth of a cell
-  off every such face (`meshShiftZ`). The shipped flight time is 784.90 us (was 786.44) and the
-  drift reversal 336.06 mm (was 336.15). Moving the mesh also showed that the foil's coarse mesh
-  carries a 0.83 percent spread by placement alone; the mesh-converged flight time is about
-  775 us, a percent below the published arithmetic rather than the 0.4 previously quoted.
+  those planes took was decided by the last bit of arithmetic - worth 0.27 percent. The foil
+  mesh now sits a tenth of a cell off every such face (`meshShiftZ`). The shipped flight time is
+  784.90 us (was 786.44) and the drift reversal 336.06 mm (was 336.15). Moving the mesh also
+  showed that the foil's coarse mesh carries a 0.83 percent spread by placement alone; the
+  mesh-converged flight time is about 775 us, a percent below the published arithmetic rather
+  than the 0.4 previously quoted.
+- **`einzel solve` printed a volume as a plane.** The terminal output gave only the first two
+  node counts and spacings, so a 257x17x257 solve read as 257x17 with no z spacing. It now
+  prints every axis. `--json` was always correct.
+- **`einzel solve` printed a driven element's channels as identical blocks.** A driven
+  structure is one solve per basis channel, and each was labeled only `field 0`, so the RF
+  funnel's two channels looked like one solve printed twice. Each is now labeled
+  `field 0 channel 0`, `field 0 channel 1`, matching the `channel` field in `--json`.
 
 ## Known limits
 
