@@ -303,6 +303,10 @@ public static class GeometryBuilder3D
     /// <param name="geometry">The geometry.</param>
     /// <returns>The field, and the worst of the basis solves.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The mesh has more nodes than a volume solve may hold; see
+    /// <see cref="Core.Errors.ErrorCodes.GridTooLarge"/>. Refused before anything is allocated.
+    /// </exception>
     /// <remarks>
     /// The channel decomposition is the same code the plane uses, because nothing
     /// about it is dimensional: what makes a channel a channel is how the electrodes
@@ -312,6 +316,12 @@ public static class GeometryBuilder3D
     public static (IElectrostaticField Field, SolveReport Report) BuildField(Geometry3D geometry)
     {
         ArgumentNullException.ThrowIfNull(geometry);
+
+        // At the entry, not only in the allocators. Each per-node allocator also refuses, but
+        // that holds only while the mask happens to be the first thing a solve allocates: a
+        // stencil or a scratch buffer moved ahead of it would be gigabytes spent before the
+        // refusal again. Asked here, the order inside the solve stops mattering.
+        BuildGrid(geometry).ThrowIfTooLargeToSolve();
 
         if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {

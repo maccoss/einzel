@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using Einzel.Core.Errors;
 using Einzel.Core.Units;
 
@@ -31,7 +32,7 @@ public static class VolumeMesh
     /// <summary>The most nodes a volume solve may hold.</summary>
     /// <remarks>
     /// <para>
-    /// A judgement rather than a measurement, and stated as one. It was set when the volume
+    /// A judgment rather than a measurement, and stated as one. It was set when the volume
     /// solver was written, against the observation that 1024 cubed is a billion nodes and
     /// eight gigabytes for a single field. A field is the <em>smallest</em> per-node array a
     /// solve holds, though: the finest level also carries a conductor mask, six cut-link arms
@@ -50,14 +51,31 @@ public static class VolumeMesh
     /// <summary>The largest interval count this arithmetic reports, a power of two.</summary>
     /// <remarks>
     /// A saturation rather than a limit anybody meets: a count this large is refused whatever
-    /// it is, and saturating keeps a cell size of a picometre over a metre from overflowing the
+    /// it is, and saturating keeps a cell size of a picometer over a meter from overflowing the
     /// doubling - which, as an <see cref="int"/>, wrapped to zero and never terminated.
     /// </remarks>
     private const long LargestIntervals = 1L << 62;
 
+    /// <summary>The most nodes a cube may have along each side and still be solved.</summary>
+    /// <remarks>
+    /// <para>
+    /// A particle-in-cell grid is a cube declared by its node count across, and each side
+    /// rounds up to a power of two like any other volume axis - so only a power of two can be
+    /// the largest that fits, and it is 256: 257 cubed is 17 M nodes and 513 cubed is 135 M.
+    /// Computed from <see cref="MaximumNodes"/> rather than written down, so the two cannot
+    /// disagree if the limit moves.
+    /// </para>
+    /// <para>
+    /// <b>Read by the validator and by the advice a run gives.</b> The space-charge warning
+    /// names the node count that would match the packet, and that count can be past this;
+    /// advice that walks straight into a refusal is worse than none.
+    /// </para>
+    /// </remarks>
+    public static int MostNodesAcrossACube { get; } = LargestFittingCube();
+
     /// <summary>How many intervals a requested cell size gives one axis.</summary>
-    /// <param name="span">The axis extent, in metres.</param>
-    /// <param name="cellSize">The requested node spacing, in metres.</param>
+    /// <param name="span">The axis extent, in meters.</param>
+    /// <param name="cellSize">The requested node spacing, in meters.</param>
     /// <returns>A power of two, at least two, covering the span at no coarser than asked.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The span or the cell size is not positive.</exception>
     /// <remarks>
@@ -80,33 +98,40 @@ public static class VolumeMesh
             return LargestIntervals;
         }
 
-        var wanted = Math.Max(2L, (long)ratio);
-        var intervals = 2L;
-
-        while (intervals < wanted)
-        {
-            intervals *= 2;
-        }
-
-        return intervals;
+        return (long)BitOperations.RoundUpToPowerOf2((ulong)Math.Max(2L, (long)ratio));
     }
 
     /// <summary>Nodes along each axis for a requested cell size.</summary>
-    /// <param name="spanX">Extent along x, in metres.</param>
-    /// <param name="spanY">Extent along y, in metres.</param>
-    /// <param name="spanZ">Extent along z, in metres.</param>
-    /// <param name="cellSize">Requested node spacing, in metres.</param>
+    /// <param name="spanX">Extent along x, in meters.</param>
+    /// <param name="spanY">Extent along y, in meters.</param>
+    /// <param name="spanZ">Extent along z, in meters.</param>
+    /// <param name="cellSize">Requested node spacing, in meters.</param>
     /// <returns>One more than each axis's interval count.</returns>
     /// <exception cref="ArgumentOutOfRangeException">A span or the cell size is not positive.</exception>
     public static (long X, long Y, long Z) Counts(
         double spanX, double spanY, double spanZ, double cellSize) =>
         (Intervals(spanX, cellSize) + 1, Intervals(spanY, cellSize) + 1, Intervals(spanZ, cellSize) + 1);
 
+    /// <summary>Nodes in a mesh of these counts, saturating rather than overflowing.</summary>
+    /// <param name="x">Nodes along x.</param>
+    /// <param name="y">Nodes along y.</param>
+    /// <param name="z">Nodes along z.</param>
+    /// <returns>The product, or <see cref="long.MaxValue"/> past about a quintillion.</returns>
+    /// <remarks>
+    /// Public because <c>Grid3D.NodeCount</c> uses it. That was an unchecked product of three
+    /// counts, and a grid of 1073741825 x 1073741825 x 9 wrapped to a negative count - which
+    /// is at most the limit, so the allocation guard waved it through to an allocation that
+    /// failed as a defect. Past a quintillion the exact value is irrelevant, since it is
+    /// refused either way, and below it the long product cannot overflow.
+    /// </remarks>
+    public static long Product(long x, long y, long z) =>
+        (double)x * y * z > 1e18 ? long.MaxValue : x * y * z;
+
     /// <summary>Total nodes for a requested cell size.</summary>
-    /// <param name="spanX">Extent along x, in metres.</param>
-    /// <param name="spanY">Extent along y, in metres.</param>
-    /// <param name="spanZ">Extent along z, in metres.</param>
-    /// <param name="cellSize">Requested node spacing, in metres.</param>
+    /// <param name="spanX">Extent along x, in meters.</param>
+    /// <param name="spanY">Extent along y, in meters.</param>
+    /// <param name="spanZ">Extent along z, in meters.</param>
+    /// <param name="cellSize">Requested node spacing, in meters.</param>
     /// <returns>The node count, saturating at <see cref="long.MaxValue"/>.</returns>
     /// <exception cref="ArgumentOutOfRangeException">A span or the cell size is not positive.</exception>
     public static long Nodes(double spanX, double spanY, double spanZ, double cellSize)
@@ -119,13 +144,13 @@ public static class VolumeMesh
     /// <summary>
     /// The finest cell size, no finer than requested, whose mesh fits within the limit.
     /// </summary>
-    /// <param name="spanX">Extent along x, in metres.</param>
-    /// <param name="spanY">Extent along y, in metres.</param>
-    /// <param name="spanZ">Extent along z, in metres.</param>
-    /// <param name="requested">The cell size asked for, in metres.</param>
+    /// <param name="spanX">Extent along x, in meters.</param>
+    /// <param name="spanY">Extent along y, in meters.</param>
+    /// <param name="spanZ">Extent along z, in meters.</param>
+    /// <param name="requested">The cell size asked for, in meters.</param>
     /// <param name="limit">The node limit; <see cref="MaximumNodes"/> unless a test says otherwise.</param>
     /// <returns>
-    /// A cell size in metres: the requested one if its mesh already fits, and otherwise one
+    /// A cell size in meters: the requested one if its mesh already fits, and otherwise one
     /// sitting exactly on a power-of-two boundary.
     /// </returns>
     /// <exception cref="ArgumentOutOfRangeException">A span or the requested size is not positive, or the limit is below 27.</exception>
@@ -192,13 +217,13 @@ public static class VolumeMesh
     /// <param name="countX">Nodes along x the mesh would have.</param>
     /// <param name="countY">Nodes along y.</param>
     /// <param name="countZ">Nodes along z.</param>
-    /// <param name="spanX">Extent along x, in metres.</param>
-    /// <param name="spanY">Extent along y, in metres.</param>
-    /// <param name="spanZ">Extent along z, in metres.</param>
-    /// <param name="requested">The cell size asked for, in metres.</param>
+    /// <param name="spanX">Extent along x, in meters.</param>
+    /// <param name="spanY">Extent along y, in meters.</param>
+    /// <param name="spanZ">Extent along z, in meters.</param>
+    /// <param name="requested">The cell size asked for, in meters.</param>
     /// <param name="unit">
     /// The length unit the document wrote the cell size in, so the suggestion can be pasted
-    /// back. Millimetres when absent or not a length.
+    /// back. Millimeters when absent or not a length.
     /// </param>
     /// <returns>The error.</returns>
     /// <remarks>
@@ -233,11 +258,28 @@ public static class VolumeMesh
         // that fits: "the finest that fits" has to be true of the number on the page.
         var finest = FinestFittingCell(spanX, spanY, spanZ, requested);
         var mesh = Counts(spanX, spanY, spanZ, finest);
-        var printed = PrintableAtLeast(finest / perUnit, value =>
+        var onFinest = PrintableAtLeast(finest / perUnit, value =>
             Counts(spanX, spanY, spanZ, Quantity.From(value, symbol).SiValue) == mesh);
 
-        var (fx, fy, fz) = Counts(spanX, spanY, spanZ, Quantity.From(printed, symbol).SiValue);
+        // THE SAME STEP CAN BE TOO NARROW TO PRINT. Two spans an ulp apart - 200 mm written as a
+        // literal and as 300 mm less 100 - put two power-of-two boundaries an ulp apart, and no
+        // decimal need land between them. Then the claim is weakened to one that is still
+        // checked, rather than printing a number that was not: a size that fits, said as such.
+        var printed = onFinest
+            ?? PrintableAtLeast(finest / perUnit, value =>
+                Nodes(spanX, spanY, spanZ, Quantity.From(value, symbol).SiValue) <= MaximumNodes);
+
+        // Unreachable: a candidate a thousandth above the finest fitting size always fits,
+        // because the node count only falls as the cell grows. Said rather than assumed.
+        if (printed is not { } size)
+        {
+            throw new InvalidOperationException(
+                $"no printable cell size at or above {finest:R} m fits within {MaximumNodes:N0} nodes");
+        }
+
+        var (fx, fy, fz) = Counts(spanX, spanY, spanZ, Quantity.From(size, symbol).SiValue);
         var fitted = Product(fx, fy, fz);
+        var claim = onFinest is null ? "fits" : "is the finest that fits";
 
         var invariant = CultureInfo.InvariantCulture;
 
@@ -254,18 +296,23 @@ public static class VolumeMesh
             Observed = new ObservedValue(observed, "nodes"),
             Suggestion = string.Create(
                 invariant,
-                $"a cell size of {printed.ToString("R", invariant)} {symbol} is the finest that fits, "
+                $"a cell size of {size.ToString("R", invariant)} {symbol} {claim}, "
                 + $"giving {fx} x {fy} x {fz} = {fitted:N0} nodes, and anything coarser fits too; "
                 + $"or shrink the domain"),
         };
     }
 
-    /// <summary>A saturating product of three node counts.</summary>
-    private static long Product(long x, long y, long z)
+    /// <summary>The largest power of two a cube may have along each side within the limit.</summary>
+    private static int LargestFittingCube()
     {
-        // Past a quintillion the exact value is irrelevant - it is refused either way - and
-        // below it the long product cannot overflow.
-        return (double)x * y * z > 1e18 ? long.MaxValue : x * y * z;
+        var most = 2;
+
+        while (Product(2L * most + 1, 2L * most + 1, 2L * most + 1) <= MaximumNodes)
+        {
+            most *= 2;
+        }
+
+        return most;
     }
 
     /// <summary>The unit a suggestion is written in: the document's own if it is a length.</summary>
@@ -291,7 +338,10 @@ public static class VolumeMesh
     /// </summary>
     /// <param name="value">The value to round up.</param>
     /// <param name="accepts">Whether a candidate is acceptable.</param>
-    /// <returns>The candidate, exactly as it parses from its printed digits.</returns>
+    /// <returns>
+    /// The candidate, exactly as it parses from its printed digits, or null when none of up
+    /// to seventeen figures is accepted - never the unchecked value.
+    /// </returns>
     /// <remarks>
     /// <para>
     /// <b>As many digits as it takes, starting from three.</b> Rounding up to a fixed three
@@ -302,14 +352,15 @@ public static class VolumeMesh
     /// rounded-up value the check accepts is taken.
     /// </para>
     /// <para>
-    /// <b>Rounded up, then checked rather than trusted</b>: the value sits on a boundary where
+    /// <b>Rounded up, then checked rather than trusted</b>, and when nothing passes the check
+    /// the answer is that nothing did: the value sits on a boundary where
     /// one ulp decides the mesh, and both the decimal rounding and the unit conversion move it
     /// by about that much. Built from its own decimal text, so the number checked is the
     /// number a reader types back: "1465E-3" parses to the same double as 1.465 in a
     /// document.
     /// </para>
     /// </remarks>
-    private static double PrintableAtLeast(double value, Func<double, bool> accepts)
+    internal static double? PrintableAtLeast(double value, Func<double, bool> accepts)
     {
         var invariant = CultureInfo.InvariantCulture;
         var magnitude = (int)Math.Floor(Math.Log10(value));
@@ -332,6 +383,8 @@ public static class VolumeMesh
             }
         }
 
-        return value;
+        // A value that was not accepted is not returned as though it had been. This is the
+        // function whose whole purpose is that the number printed is the number checked.
+        return null;
     }
 }

@@ -34,7 +34,13 @@ public static class Program
         }
         catch (EinzelException failure)
         {
-            Console.Error.WriteLine(failure.Error.ToString());
+            // Every error, not the first: a command that validated on its way to something
+            // else found them all, and a caller fixing one per round trip is a caller who was
+            // told less than the platform knew.
+            foreach (var error in failure.Errors)
+            {
+                Console.Error.WriteLine(error.ToString());
+            }
 
             // CLI-3 wants a distinct exit code per failure class, and the class is
             // in the error rather than in how it reached here. A regime violation
@@ -831,27 +837,6 @@ public static class Program
 
     private static int Estimate(CommandLine options)
     {
-        // --threshold is a flag on one invocation, and the threshold it moves is process-wide.
-        // In a process that runs one command that is the same thing; in anything that runs
-        // several - a test assembly driving Main, a host embedding the CLI - a threshold left
-        // behind is inherited by the next estimate, which then passes or refuses on a number
-        // nobody gave it. That happened: a test asking for 1e12 made the next test's cost gate
-        // pass. So it is put back however the invocation ends, rather than by convention in
-        // every caller.
-        var previous = EstimateCommand.Threshold;
-
-        try
-        {
-            return EstimateOnce(options);
-        }
-        finally
-        {
-            EstimateCommand.Threshold = previous;
-        }
-    }
-
-    private static int EstimateOnce(CommandLine options)
-    {
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(
@@ -864,6 +849,8 @@ public static class Program
         // GRD-8 asks for a *configurable* threshold and it was a constant. Somebody who
         // knows their study is worth an hour needs a way to say so; without one the
         // observed response was to make the study smaller.
+        var threshold = EstimateCommand.ThresholdSeconds;
+
         if (options.Value("threshold") is { } declared)
         {
             if (!double.TryParse(
@@ -876,7 +863,7 @@ public static class Program
                 return (int)ExitCode.ValidationFailure;
             }
 
-            EstimateCommand.Threshold = seconds;
+            threshold = seconds;
         }
 
         // Calibration is on unless refused: an estimate is worth having about the
@@ -889,8 +876,8 @@ public static class Program
         // disagree - the cost of getting that wrong is a plan short by a factor of
         // the evaluation count.
         var outcome = IsStudy(path)
-            ? EstimateCommand.ForStudy(path, calibrate)
-            : EstimateCommand.Execute(path, calibrate);
+            ? EstimateCommand.ForStudy(path, calibrate, threshold)
+            : EstimateCommand.Execute(path, calibrate, threshold);
 
         if (options.Has("json"))
         {

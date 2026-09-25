@@ -182,6 +182,102 @@ public sealed class GridTooLargeSurfaceTests(ITestOutputHelper output) : IDispos
         Assert.Equal(0, Cli("validate", SpaceCharge(256)).ExitCode);
     }
 
+    /// <summary>
+    /// A cell size or bound that is not a number is refused as one, not crashed on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A literal is refused as non-finite when it is read, but a derived bound or cell size
+    /// is an expression's result, and a division by a parameter set to zero or the square
+    /// root of a negative ratio gives infinity or NaN. Every comparison with NaN is false, so
+    /// the positivity checks let it through, and the new mesh arithmetic then threw from
+    /// inside validation: <c>einzel validate</c> itself printed <c>INTERNAL_ERROR</c>, where it
+    /// had printed OK before and left the crash to <c>run</c>.
+    /// </para>
+    /// <para>
+    /// Infinity was quieter and worse: it passed every check and solved on a mesh of two
+    /// intervals an axis, silently. All three are refused at the offending field.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("cellSize", "domainY / zeroRatio")]
+    [InlineData("cellSize", "domainY * sqrt(negativeRatio)")]
+    [InlineData("minZ", "zPad * sqrt(negativeRatio)")]
+    public void ANonFiniteCellSizeOrBoundIsRefusedNotCrashedOn(string field, string expression)
+    {
+        var model = Astral(4.0, document =>
+        {
+            var parameters = document["parameters"]!.AsObject();
+            parameters["zeroRatio"] = new JsonObject { ["value"] = 0.0, ["unit"] = "1" };
+            parameters["negativeRatio"] = new JsonObject { ["value"] = -1.0, ["unit"] = "1" };
+            document["fields"]![2]!["solve3d"]![field] = new JsonObject
+            {
+                ["expression"] = expression,
+                ["unit"] = "mm",
+            };
+        });
+
+        var (exit, stdout, stderr) = Cli("validate", model, "--json");
+
+        output.WriteLine(stdout);
+
+        Assert.Equal((int)ExitCode.ValidationFailure, exit);
+        Assert.DoesNotContain(ErrorCodes.InternalError, stderr, StringComparison.Ordinal);
+
+        using var document = JsonDocument.Parse(stdout);
+        Assert.Contains(
+            document.RootElement.GetProperty("errors").EnumerateArray(),
+            e => e.GetProperty("code").GetString() == ErrorCodes.ValueOutOfBounds
+                && e.GetProperty("path").GetString() == $"/fields/2/solve3d/{field}");
+    }
+
+    /// <summary>
+    /// The space-charge advice never names a grid the validator refuses.
+    /// </summary>
+    /// <remarks>
+    /// The warning names the node count that would match the packet, and that count can be
+    /// past what a volume solve holds: at padding 100 and 40 trajectories it is 1024, and a
+    /// grid of 1024 across is refused. So the advice is capped at the most that fits and says
+    /// where the rest has to come from.
+    /// </remarks>
+    [Fact]
+    public void TheSpaceChargeAdviceNeverNamesAGridTheValidatorRefuses()
+    {
+        var (exit, _, stderr) = Cli("run", SpaceCharge(32, padding: 100.0), "--progress", "0");
+
+        output.WriteLine(stderr);
+
+        Assert.True(exit == 0, stderr);
+        Assert.Contains($"Try {Einzel.Core.Numerics.VolumeMesh.MostNodesAcrossACube} nodes", stderr, StringComparison.Ordinal);
+        Assert.Contains("the most a volume solve can hold", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("Try 1024 nodes", stderr, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// <c>estimate</c> reports every error validation found, so a refused mesh is never hidden
+    /// behind an earlier mistake.
+    /// </summary>
+    /// <remarks>
+    /// It threw the first error alone - as eleven other call sites did - so a model with a bad
+    /// plane cell size and an oversized volume was told about the plane, fixed it, and only
+    /// then learned its solve would be refused.
+    /// </remarks>
+    [Fact]
+    public void EstimateReportsEveryErrorNotOnlyTheFirst()
+    {
+        var model = Astral(1.0, document =>
+            document["fields"]![0]!["solve"]!["cellSize"] = new JsonObject { ["value"] = -1.0, ["unit"] = "mm" });
+
+        var (exit, _, stderr) = Cli("estimate", model, "--no-calibrate");
+
+        output.WriteLine(stderr);
+
+        Assert.Equal((int)ExitCode.ValidationFailure, exit);
+        Assert.Contains("/fields/0/solve/cellSize", stderr, StringComparison.Ordinal);
+        Assert.Contains(ErrorCodes.GridTooLarge, stderr, StringComparison.Ordinal);
+        Assert.Contains(CellSizePath, stderr, StringComparison.Ordinal);
+    }
+
     private static JsonElement OnlyGridError(string validateJson)
     {
         using var document = JsonDocument.Parse(validateJson);
@@ -193,7 +289,7 @@ public sealed class GridTooLargeSurfaceTests(ITestOutputHelper output) : IDispos
     }
 
     /// <summary>The shipped Astral with its volume solve at a given cell size, in mm.</summary>
-    private string Astral(double cellMm)
+    private string Astral(double cellMm, Action<JsonNode>? edit = null)
     {
         Directory.CreateDirectory(_root);
 
@@ -203,20 +299,23 @@ public sealed class GridTooLargeSurfaceTests(ITestOutputHelper output) : IDispos
         Assert.Equal("solved3d", model["fields"]![2]!["type"]!.GetValue<string>());
 
         solve["cellSize"] = new JsonObject { ["value"] = cellMm, ["unit"] = "mm" };
+        edit?.Invoke(model);
 
         var path = Path.Combine(
-            _root, "astral-" + cellMm.ToString("R", CultureInfo.InvariantCulture).Replace('.', 'p') + ".json");
+            _root, "astral-" + cellMm.ToString("R", CultureInfo.InvariantCulture).Replace('.', 'p')
+            + "-" + Guid.NewGuid().ToString("N")[..8] + ".json");
 
         File.WriteAllText(path, model.ToJsonString());
 
         return path;
     }
 
-    private string SpaceCharge(int nodes)
+    private string SpaceCharge(int nodes, double padding = 4.0)
     {
         Directory.CreateDirectory(_root);
 
-        var path = Path.Combine(_root, $"pic-{nodes}.json");
+        var path = Path.Combine(_root, $"pic-{nodes}-{padding:F0}.json");
+        var paddingText = padding.ToString("R", CultureInfo.InvariantCulture);
 
         File.WriteAllText(path, $$"""
             {
@@ -245,7 +344,7 @@ public sealed class GridTooLargeSurfaceTests(ITestOutputHelper output) : IDispos
                 "relativeTolerance": 1e-9,
                 "maximumFlightTime": { "value": 100.0, "unit": "us" },
                 "spaceCharge": "pic",
-                "spaceChargeGrid": { "nodes": {{nodes}} }
+                "spaceChargeGrid": { "nodes": {{nodes}}, "padding": {{paddingText}} }
               }
             }
             """);

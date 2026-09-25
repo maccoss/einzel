@@ -113,6 +113,23 @@ public sealed class GridTooLargeTests
         Assert.True(allocated < 1_000_000, $"allocated {allocated:N0} bytes before refusing");
     }
 
+    /// <summary>A node count that would overflow saturates, and is refused rather than wrapped.</summary>
+    /// <remarks>
+    /// <c>OverBox</c> builds axes of up to 2^30 + 1 nodes, and the count was an unchecked product:
+    /// 1073741825 x 1073741825 x 9 wrapped to a negative number, which the guard read as within
+    /// its limit and passed to an allocation that failed as a defect. The nine is chosen for
+    /// that - seventeen would have wrapped to a large positive count and been refused anyway,
+    /// which is a test that passes with the bug in.
+    /// </remarks>
+    [Fact]
+    public void ANodeCountThatWouldOverflowIsRefusedNotWrapped()
+    {
+        var grid = new Grid3D(0.0, 0.0, 0.0, 1e-9, 1e-9, 1e-9, 1_073_741_825, 1_073_741_825, 9);
+
+        Assert.Equal(long.MaxValue, grid.NodeCount);
+        Assert.Equal(ErrorCodes.GridTooLarge, Refused(() => _ = new ScalarField3D(grid)).Error.Code);
+    }
+
     /// <summary>
     /// The suggestion from the backstop is a cell size that fits the grid's own extents.
     /// </summary>
@@ -130,13 +147,13 @@ public sealed class GridTooLargeTests
     /// </summary>
     /// <remarks>
     /// <c>OverBox</c> doubled an <see cref="int"/> interval count until it covered the span, and
-    /// past 2^30 the doubling wrapped to zero and stayed there: a picometre over a metre hung the
+    /// past 2^30 the doubling wrapped to zero and stayed there: a picometer over a meter hung the
     /// solve. It now counts in the shared, saturating arithmetic and refuses a count an index
     /// cannot hold. Run on another thread with a deadline, because the regression this guards
     /// against is a hang rather than a wrong answer.
     /// </remarks>
     [Fact]
-    public async Task APicometreCellIsRefusedRatherThanHanging()
+    public async Task APicometerCellIsRefusedRatherThanHanging()
     {
         EinzelException? thrown = null;
 

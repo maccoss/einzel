@@ -207,7 +207,7 @@ public static class ViewportCommand
 
         if (!validation.IsValid)
         {
-            throw new Core.Errors.EinzelException(validation.Errors[0]);
+            throw new Core.Errors.EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;
@@ -413,7 +413,7 @@ public static class ViewportCommand
 
         if (!validation.IsValid)
         {
-            throw new Core.Errors.EinzelException(validation.Errors[0]);
+            throw new Core.Errors.EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;

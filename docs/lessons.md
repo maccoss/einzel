@@ -117,7 +117,7 @@ printed for a person to type back into a step function has to be checked after t
 through its own text and its own unit.**
 
 A fifth thing came out underneath: `Grid3D` doubled an `int` interval count, which for a
-picometre cell wrapped to zero and never returned. Harmless while only a solve called it; a
+picometer cell wrapped to zero and never returned. Harmless while only a solve called it; a
 validator that counts nodes calls it on every document. **A function safe for its one caller
 stops being safe when it is moved to where everything calls it.**
 
@@ -125,9 +125,32 @@ stops being safe when it is moved to where everything calls it.**
 to `estimate`, and the threshold is process-wide: the CLI tests drive `Program.Main` in one
 process, so `CostGateTests`' refusal test, running later, inherited a cost gate of ten to the
 twelve seconds and exited 0. That class resets the threshold in its own `Dispose` and says why,
-which is a convention every caller has to remember - and the next caller, me, did not. The flag
-now restores it however the invocation ends. **A process-wide setting moved by a per-invocation
-flag is scoped by the code that moves it, not by the callers that happen to know.**
+which is a convention every caller has to remember - and the next caller, me, did not. My first
+fix restored it however the invocation ended, which a review rightly called a patch on a global:
+it fixed the one caller and left the setting for the next. It is a parameter now. **A
+per-invocation choice belongs in the invocation's arguments; a process-wide setting that one
+call moves is a setting every other call has to defend against.**
+
+### And a review of the fix found the fix's own crash
+
+Moving the mesh arithmetic into validation is what made it correct, and also what exposed it
+to documents it had never met. A derived cell size or bound can be NaN - a division by a
+parameter set to zero, the square root of a negative ratio - and every comparison with NaN is
+false, so `cell <= 0.0` and `max <= min` let it straight through. Before, the solver's own
+argument check caught it at `run`; now the validator's mesh count threw from inside
+`validate`, so the command whose job is to report what is wrong with a model printed
+`INTERNAL_ERROR` instead. Infinity was quieter: it passed every check and solved on two
+intervals an axis. **A check moved earlier meets every input the later stage never saw, and
+the inputs a later guard used to filter now arrive unfiltered. And `x <= 0` is not a
+positivity check: `!(x > 0)` is, and a finite value is a separate question.**
+
+The same review found three smaller things with one shape - each was the fix disagreeing with
+something near it. The space-charge warning still advised grids of 1024 across that the new
+validation refuses. `estimate`, like eleven other call sites, reported only the first
+validation error, so a refused mesh could hide behind an earlier mistake. And `estimate`'s
+mesh note kept its own copy of the rounding rule, with a different minimum, a few hundred lines
+from the shared one it now uses. **After adding a limit, ask what else names a quantity that
+limit applies to**; advice, reports and restatements do not update themselves.
 
 ## A confinement test on a geometry that cannot confine
 

@@ -39,7 +39,7 @@ public sealed class VolumeMeshTests
     public void IntervalsRoundUpToAPowerOfTwoAndNeverBelowTwo(double span, double cell, long expected) =>
         Assert.Equal(expected, VolumeMesh.Intervals(span, cell));
 
-    /// <summary>A picometre over a metre saturates rather than overflowing.</summary>
+    /// <summary>A picometer over a meter saturates rather than overflowing.</summary>
     /// <remarks>
     /// The doubling this replaced was an <see cref="int"/>, and past 2^30 it wrapped to zero
     /// and never terminated. That was harmless while only a solve called it; a validator that
@@ -183,6 +183,35 @@ public sealed class VolumeMeshTests
 
         Assert.Matches(" um is the finest", inMicrons.Suggestion!);
         Assert.Matches(" mm is the finest", unitless.Suggestion!);
+    }
+
+    /// <summary>A suggestion that nothing accepts is reported as such, never printed unchecked.</summary>
+    /// <remarks>
+    /// The printing search used to return the value it was given when no rounded candidate
+    /// passed the check - so the one path where the check failed was the one path that printed
+    /// a number without it. Two spans an ulp apart can make that window too narrow for any
+    /// decimal; the refusal then falls back to a size that is checked to fit.
+    /// </remarks>
+    [Fact]
+    public void APrintingSearchThatFindsNothingSaysSo()
+    {
+        Assert.Null(VolumeMesh.PrintableAtLeast(1.4648, _ => false));
+        Assert.Equal(1.47, VolumeMesh.PrintableAtLeast(1.4648, value => value >= 1.47));
+    }
+
+    /// <summary>The largest cube that fits is a power of two, and 256 at the present limit.</summary>
+    /// <remarks>
+    /// 257 cubed is 17 M nodes and 513 cubed is 135 M, and nothing between rounds to anything
+    /// else, since each side rounds up to a power of two.
+    /// </remarks>
+    [Fact]
+    public void TheLargestCubeThatFitsIsTwoHundredAndFiftySixAcross()
+    {
+        var most = VolumeMesh.MostNodesAcrossACube;
+
+        Assert.Equal(256, most);
+        Assert.True(VolumeMesh.Nodes(2.0, 2.0, 2.0, 2.0 / most) <= VolumeMesh.MaximumNodes);
+        Assert.True(VolumeMesh.Nodes(2.0, 2.0, 2.0, 2.0 / (most + 1)) > VolumeMesh.MaximumNodes);
     }
 
     private static double Suggested(EinzelError error)

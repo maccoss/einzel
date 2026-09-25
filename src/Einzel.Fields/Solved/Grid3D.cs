@@ -85,8 +85,13 @@ public sealed class Grid3D
     /// <summary>Nodes along z.</summary>
     public int CountZ { get; }
 
-    /// <summary>Total nodes.</summary>
-    public long NodeCount => (long)CountX * CountY * CountZ;
+    /// <summary>Total nodes, saturating at <see cref="long.MaxValue"/> rather than overflowing.</summary>
+    /// <remarks>
+    /// It was an unchecked product, and <see cref="OverBox"/> builds axes of up to 2^30 + 1
+    /// nodes - so 1073741825 x 1073741825 x 9 wrapped to a negative count, which the solve
+    /// guard read as within its limit and passed to an allocation that failed as a defect.
+    /// </remarks>
+    public long NodeCount => VolumeMesh.Product(CountX, CountY, CountZ);
 
     /// <summary>The finest spacing, which is what a step may not outrun.</summary>
     public double MinimumSpacing => Math.Min(SpacingX, Math.Min(SpacingY, SpacingZ));

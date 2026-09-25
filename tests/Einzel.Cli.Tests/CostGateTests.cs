@@ -19,10 +19,6 @@ public sealed class CostGateTests(ITestOutputHelper output) : IDisposable
 
     public void Dispose()
     {
-        // The threshold is process-wide, so a test that moves it must put it back or the
-        // next one in the same run inherits it.
-        Einzel.Commands.EstimateCommand.Threshold = Einzel.Commands.EstimateCommand.ThresholdSeconds;
-
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
@@ -115,21 +111,23 @@ public sealed class CostGateTests(ITestOutputHelper output) : IDisposable
 
     /// <summary>A threshold given on one invocation does not outlive it.</summary>
     /// <remarks>
-    /// The threshold is process-wide and <c>--threshold</c> is a flag, so every caller that
-    /// moved it had to remember to put it back - this class's own <c>Dispose</c> does. A test in
+    /// The threshold was a process-wide static that <c>--threshold</c> moved and nothing put
+    /// back, so every caller had to remember to - this class's own <c>Dispose</c> did. A test in
     /// another class passing <c>--threshold 1e12</c> did not, and the refusal test here then
-    /// exited 0 on the next estimate, having inherited a gate of ten to the twelve seconds.
-    /// Asserted directly rather than through test order, which is the test framework's to pick.
+    /// exited 0, having inherited a gate of ten to the twelve seconds. It is a parameter now.
+    /// Asserted as the failure was seen - two estimates in one process, the second with no
+    /// flag - rather than through test order, which is the framework's to pick.
     /// </remarks>
     [Fact]
     public void AThresholdGivenOnOneInvocationDoesNotOutliveIt()
     {
-        var (exit, _, stderr) = Run("estimate", Study("flightTime", 2000), "--threshold", "1e12");
+        var study = Study("flightTime", 200_000);
 
-        Assert.True(exit == 0, stderr);
-        Assert.Equal(
-            Einzel.Commands.EstimateCommand.ThresholdSeconds,
-            Einzel.Commands.EstimateCommand.Threshold);
+        var (raised, _, raisedErr) = Run("estimate", study, "--threshold", "1e12");
+        var (plain, _, plainErr) = Run("estimate", study);
+
+        Assert.True(raised == 0, raisedErr);
+        Assert.True(plain == 3, $"the second estimate inherited the first one's threshold: {plainErr}");
     }
 
     /// <summary>A threshold that is not a positive number is refused, not silently ignored.</summary>

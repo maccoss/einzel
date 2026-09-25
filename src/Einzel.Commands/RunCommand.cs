@@ -842,7 +842,17 @@ public static class RunCommand
         var matched = 2.0 * grid.Padding * Math.Cbrt(macroparticles);
         var ratio = matched / grid.Nodes;
 
-        var advice = (int)Math.Pow(2.0, Math.Max(3.0, Math.Ceiling(Math.Log2(matched))));
+        var matchedNodes = (int)Math.Pow(2.0, Math.Max(3.0, Math.Ceiling(Math.Log2(matched))));
+
+        // NEVER PAST WHAT A SOLVE CAN HOLD. The matched count can be past it - padding 4 and
+        // 40,000 trajectories match at 512 - and validation refuses a grid over 256 across, so
+        // advice naming the matched count walked straight into a refusal. What cannot come
+        // from nodes has to come from the other two numbers in the ratio.
+        var advice = Math.Min(matchedNodes, Core.Numerics.VolumeMesh.MostNodesAcrossACube);
+        var unreachable = advice < matchedNodes
+            ? $" - the most a volume solve can hold, where matching the packet would need "
+                + $"{matchedNodes}, so the rest has to come from fewer trajectories or a smaller padding"
+            : string.Empty;
 
         var band = ratio is >= 0.7 and <= 2.0
             ? "which is the band this method was measured in"
@@ -852,7 +862,7 @@ public static class RunCommand
                     + $"a density and the mutual force comes out too strong. Try {advice} nodes, or "
                     + "raise \"ions\""
                 : $"which over-smooths the packet: the gathered force is too weak and the packet "
-                    + $"comes out narrow. Try {advice} nodes";
+                    + $"comes out narrow. Try {advice} nodes{unreachable}";
 
         return
         [

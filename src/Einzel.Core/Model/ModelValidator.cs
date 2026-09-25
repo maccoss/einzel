@@ -2455,15 +2455,58 @@ public static class ModelValidator
             return null;
         }
 
+        // FINITE FIRST. A literal is refused as non-finite when it is read, but a derived
+        // bound or cell size is an expression's result, and the square root of a negative
+        // ratio or a division by a parameter set to zero gives NaN or infinity. Every
+        // comparison with NaN is false, so `max <= min` and `cell <= 0` below both let it
+        // through - and the mesh arithmetic then threw from inside validation, which the CLI
+        // can only report as a defect in the engine. An infinite cell size was quieter and
+        // worse: it validated and solved on a three-node mesh.
+        var nonFinite = false;
+
+        foreach (var (name, bound) in new[]
+        {
+            ("minX", minX.Value), ("maxX", maxX.Value), ("minY", minY.Value),
+            ("maxY", maxY.Value), ("minZ", minZ.Value), ("maxZ", maxZ.Value), ("cellSize", cell.Value),
+        })
+        {
+            if (!double.IsFinite(bound.SiValue))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/{name}",
+                    Constraint = "a solve domain bound and its cell size must be finite numbers",
+                    Observed = new ObservedValue(bound.SiValue, "m"),
+                    Suggestion =
+                        "check the expression it is computed from: a division by a parameter set to "
+                        + "zero, or the square root of a negative ratio, gives no number at all",
+                });
+
+                nonFinite = true;
+            }
+        }
+
+        if (nonFinite)
+        {
+            return null;
+        }
+
+        // Finite bounds can still be an infinite extent apart - a subtraction of two very
+        // large numbers of opposite sign overflows - and an infinite span is no more a mesh
+        // than an infinite bound is.
         if (maxX.Value.SiValue <= minX.Value.SiValue
             || maxY.Value.SiValue <= minY.Value.SiValue
-            || maxZ.Value.SiValue <= minZ.Value.SiValue)
+            || maxZ.Value.SiValue <= minZ.Value.SiValue
+            || !double.IsFinite(maxX.Value.SiValue - minX.Value.SiValue)
+            || !double.IsFinite(maxY.Value.SiValue - minY.Value.SiValue)
+            || !double.IsFinite(maxZ.Value.SiValue - minZ.Value.SiValue))
         {
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.ValueOutOfBounds,
                 Path = path,
-                Constraint = "a solve domain must have positive extent on every axis",
+                Constraint = "a solve domain must have positive, finite extent on every axis",
                 Observed = new ObservedValue(maxX.Value.SiValue - minX.Value.SiValue, "m"),
                 Suggestion = "check that each max exceeds its min",
             });
@@ -2498,7 +2541,7 @@ public static class ModelValidator
         var spanZ = maxZ.Value.SiValue - minZ.Value.SiValue;
         var (countX, countY, countZ) = VolumeMesh.Counts(spanX, spanY, spanZ, cell.Value.SiValue);
 
-        if (VolumeMesh.Nodes(spanX, spanY, spanZ, cell.Value.SiValue) > VolumeMesh.MaximumNodes)
+        if (VolumeMesh.Product(countX, countY, countZ) > VolumeMesh.MaximumNodes)
         {
             errors.Add(VolumeMesh.Refusal(
                 $"{path}/cellSize",
@@ -4287,12 +4330,7 @@ public static class ModelValidator
             // packet's grid is a volume solve, allocated by the same field type, so past the
             // limit it would have reached the same argument exception mid-run - after its mask.
             var intervals = VolumeMesh.Intervals(2.0, 2.0 / nodes);
-            var most = 2;
-
-            while (PicNodes(most * 2) <= VolumeMesh.MaximumNodes)
-            {
-                most *= 2;
-            }
+            var most = VolumeMesh.MostNodesAcrossACube;
 
             errors.Add(new EinzelError
             {

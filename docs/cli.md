@@ -941,7 +941,11 @@ place to be clever.
 ```
 
 Every error found is reported, not just the first — the recovery an agent wants
-is the whole list.
+is the whole list. **That now holds for every verb, not only `validate` and `run`.** Twelve
+call sites - in `estimate`, `export`, `preview`, `compare`, `render` and others - validated and
+then refused with the first error alone, so a model with a bad plane cell size and an
+oversized volume mesh was told about the plane, fixed it, and only then learned its solve
+would be refused. They pass the whole list now, and the CLI prints one line per error.
 
 ## Files a run writes
 
@@ -1094,10 +1098,10 @@ GRD-8 asks for the threshold to be configurable and it was a constant. Somebody 
 their study is worth an hour needs a way to say so; without one, the observed response was
 to make the study smaller.
 
-**It applies to that invocation and no other.** The threshold is process-wide, and a flag
-that moved it without putting it back made the next estimate in the same process pass or
-refuse on a number nobody gave it - found when a test asking for `1e12` made another test's
-cost gate pass. It is restored however the invocation ends.
+**It applies to that invocation and no other.** It was a process-wide setting the flag moved
+and nothing put back, so the next estimate in the same process passed or refused on a number
+nobody gave it - found when a test asking for `1e12` made another test's cost gate pass. It
+is now a parameter of the estimate itself, so there is nothing left over to restore.
 
 **A refusal here is a refusal to proceed silently, not a refusal to proceed.** `sweep`,
 `scan`, `boundary` and `optimise` run whatever `estimate` says — only `estimate` itself
@@ -1206,7 +1210,18 @@ eight-interval boundary at exactly 2.75 mm, and 22 mm over 2.75 mm converted thr
 **A particle-in-cell grid is a volume solve too**, so `spaceChargeGrid.nodes` past 256 - which
 rounds up to 512 intervals a side, 135 M nodes - is refused at
 `/transport/spaceChargeGrid/nodes` with the same code. By the code's own path it would have
-reached the same argument exception mid-run, after allocating its mask.
+reached the same argument exception mid-run, after allocating its mask. And the run's own
+advice respects the same limit: `spacecharge.grid-resolution` names the node count that would
+match the packet, which at padding 100 and 40 trajectories is 1024 - so it now says "Try 256
+nodes, the most a volume solve can hold" and where the rest has to come from, rather than
+naming a grid validation would refuse.
+
+**A cell size or bound that is not a number is refused as one.** A derived value can be NaN
+or infinite - a division by a parameter set to zero, the square root of a negative ratio - and
+every comparison with NaN is false, so the positivity checks let it through. The new mesh
+arithmetic then threw from inside validation, and `validate` itself printed `INTERNAL_ERROR`;
+an infinite cell size passed everything and solved on two intervals an axis. Both are now
+`VALUE_OUT_OF_BOUNDS` at the offending field.
 
 ### A study's flight is sampled across its own range
 

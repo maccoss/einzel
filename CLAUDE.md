@@ -2282,7 +2282,18 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   limit at all** - an absurd cell size validates and then exits 6 on an `int` overflow - and is
   left for its own change. And the test written for this broke another class's: `--threshold`
   moved a process-wide static and never put it back, so a later estimate in the same process
-  inherited a gate of 1e12 s; it is now scoped to its invocation. `docs/lessons.md`, `docs/cli.md`.
+  inherited a gate of 1e12 s; it is now a parameter of the estimate.
+
+  **A review of the fix found the fix's own crash.** A derived cell size or bound can be NaN
+  (a division by a parameter set to zero, the square root of a negative ratio), and every
+  comparison with NaN is false, so `cell <= 0` let it through and the new mesh count threw from
+  inside `validate` - `INTERNAL_ERROR` from the command whose job is to say what is wrong.
+  Infinity passed everything and solved on two intervals an axis. Both are now refused at the
+  field. Also from that review: the space-charge advice named grids the new limit refuses (now
+  capped at 256), twelve call sites validated and threw the first error alone (now all of
+  them, so a refused mesh cannot hide behind an earlier mistake), `Grid3D.NodeCount` wrapped
+  negative past 2^63 and slipped the guard (now saturates), and the estimate's mesh note used
+  its own copy of the rounding rule. `docs/lessons.md`, `docs/cli.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
