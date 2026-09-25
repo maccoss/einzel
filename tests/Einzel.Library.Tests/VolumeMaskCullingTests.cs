@@ -31,7 +31,7 @@ namespace Einzel.Library.Tests;
 /// </para>
 /// <para>
 /// <b>At the shipped mesh, and at every coarse level beneath it.</b> Both are built by the
-/// same rasteriser, so both are culled; the coarse levels carry no cuts and are cheap.
+/// same rasterizer, so both are culled; the coarse levels carry no cuts and are cheap.
 /// </para>
 /// <para>
 /// <b>One exception, and it is the reference's cost rather than the claim's.</b> The linear
@@ -141,13 +141,22 @@ public sealed class VolumeMaskCullingTests(ITestOutputHelper output)
     /// box sharing a face with another at a different potential, so that the order in
     /// which the two are written is visible in the values.
     /// </para>
+    /// <para>
+    /// <b>Every axis a shape can take, not only the one the templates happen to use.</b>
+    /// Every shipped template runs its cylinders, prisms and revolves along z, and each
+    /// shape's bounding box is a switch on its axis - so a transposed arm for a y-axis
+    /// cylinder would cull away nodes the metal occupies, and nothing shipped would notice.
+    /// Each of cylinder, prism, revolve and tilt appears here on all three axes, and every
+    /// electrode that touches the grid is asserted to be represented in the reference, so
+    /// none of them can pass by contributing nothing.
+    /// </para>
     /// </remarks>
     [Fact]
     public void FacesLyingExactlyOnNodesAreCulledExactlyAsTheReferenceAsksThem()
     {
-        var grid = Grid3D.OverBox(0.0, 0.0, 0.0, 0.016, 0.016, 0.016, 0.001);
+        var grid = Grid3D.OverBox(0.0, 0.0, 0.0, 0.032, 0.032, 0.032, 0.001);
 
-        Assert.Equal(17, grid.CountX);
+        Assert.Equal(33, grid.CountX);
 
         double X(int i) => grid.X(i);
         double Y(int j) => grid.Y(j);
@@ -206,8 +215,66 @@ public sealed class VolumeMaskCullingTests(ITestOutputHelper output)
             new()
             {
                 Name = "overhanging", Shape = Electrode3DShape.Box,
-                MinX = X(14), MaxX = X(16) + 0.004, MinY = Y(13), MaxY = Y(16) + 0.004,
+                MinX = X(30), MaxX = X(32) + 0.004, MinY = Y(29), MaxY = Y(32) + 0.004,
                 MinZ = -0.004, MaxZ = Z(1),
+            },
+
+            // The same shapes on the axes the templates do not use.
+            new()
+            {
+                Name = "cylinder-x", Shape = Electrode3DShape.Cylinder, Axis = CylinderAxis.X,
+                CentreY = Y(20), CentreZ = Z(4), Radius = Y(22) - Y(20), Lower = X(18), Upper = X(24),
+            },
+
+            new()
+            {
+                Name = "cylinder-y", Shape = Electrode3DShape.Cylinder, Axis = CylinderAxis.Y,
+                CentreX = X(28), CentreZ = Z(4), Radius = X(30) - X(28), Lower = Y(18), Upper = Y(24),
+            },
+
+            new()
+            {
+                Name = "prism-y", Shape = Electrode3DShape.Prism, Axis = CylinderAxis.Y,
+                Lower = Y(26), Upper = Y(31),
+                Vertices = [(X(18), Z(10)), (X(21), Z(10)), (X(21), Z(13)), (X(18), Z(13))],
+            },
+
+            // A triangle, so the outline is not its own bounding box.
+            new()
+            {
+                Name = "prism-z", Shape = Electrode3DShape.Prism, Axis = CylinderAxis.Z,
+                Lower = Z(10), Upper = Z(15),
+                Vertices = [(X(24), Y(18)), (X(28), Y(18)), (X(24), Y(22))],
+            },
+
+            // About the x axis through the origin, from 45 to 225 degrees: the sweep crosses
+            // two quarter turns, and part of it lies below the grid.
+            new()
+            {
+                Name = "revolve-x", Shape = Electrode3DShape.Revolve, Axis = CylinderAxis.X,
+                Vertices = [(0.002, X(26)), (0.004, X(26)), (0.004, X(30)), (0.002, X(30))],
+                FromHalfTurns = 0.25, ToHalfTurns = 1.25,
+            },
+
+            new()
+            {
+                Name = "revolve-y", Shape = Electrode3DShape.Revolve, Axis = CylinderAxis.Y,
+                Vertices = [(0.002, Y(26)), (0.004, Y(26)), (0.004, Y(30)), (0.002, Y(30))],
+                FromHalfTurns = 0.0, ToHalfTurns = 0.5,
+            },
+
+            new()
+            {
+                Name = "tilted-x", Shape = Electrode3DShape.Box,
+                MinX = X(18), MaxX = X(22), MinY = Y(26), MaxY = Y(28), MinZ = Z(20), MaxZ = Z(26),
+                TiltAxis = CylinderAxis.X, TiltHalfTurns = 0.04,
+            },
+
+            new()
+            {
+                Name = "tilted-z", Shape = Electrode3DShape.Box,
+                MinX = X(26), MaxX = X(30), MinY = Y(24), MaxY = Y(28), MinZ = Z(20), MaxZ = Z(22),
+                TiltAxis = CylinderAxis.Z, TiltHalfTurns = -0.05,
             },
 
             // Nowhere on the grid at all: an empty range, and on a coarse level the pin.
@@ -218,7 +285,7 @@ public sealed class VolumeMaskCullingTests(ITestOutputHelper output)
             },
         ];
 
-        var geometry = new Geometry3D(0.0, 0.0, 0.0, 0.016, 0.016, 0.016, 0.001, electrodes);
+        var geometry = new Geometry3D(0.0, 0.0, 0.0, 0.032, 0.032, 0.032, 0.001, electrodes);
         var label = Labels(geometry);
 
         var reference = GeometryBuilder3D.BuildMask(geometry, grid, label, MaskCulling.None);
@@ -229,6 +296,17 @@ public sealed class VolumeMaskCullingTests(ITestOutputHelper output)
         Assert.True(reference.IsFixed(3, 2, 4), "a box's corner node is not fixed");
         Assert.True(reference.IsFixed(14, 11, 11), "the sphere's extreme node is not fixed");
         Assert.Equal(label(electrodes[1]), reference.Value(6, 3, 5));
+
+        // Against an electrode that passes by contributing nothing: each one that touches
+        // the grid holds a node or a cut arm in the reference.
+        var present = Labelled(reference);
+
+        foreach (var electrode in electrodes.Where(e => e.Name != "outside"))
+        {
+            Assert.True(
+                present.Contains(label(electrode)),
+                $"{electrode.Name} is represented nowhere in the reference mask");
+        }
 
         AssertIdentical(reference, culled, "synthetic, fine");
 
@@ -280,6 +358,37 @@ public sealed class VolumeMaskCullingTests(ITestOutputHelper output)
         }
 
         return electrode => labels[electrode];
+    }
+
+    /// <summary>Every electrode label a mask holds, on a fixed node or on a cut arm.</summary>
+    private static HashSet<double> Labelled(DirichletMask3D mask)
+    {
+        var grid = mask.Grid;
+        var seen = new HashSet<double>();
+
+        for (var k = 0; k < grid.CountZ; k++)
+        {
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    if (mask.IsFixed(i, j, k))
+                    {
+                        seen.Add(mask.Value(i, j, k));
+                    }
+
+                    foreach (var arm in Enum.GetValues<Arm3D>())
+                    {
+                        if (mask.Cuts is { } cuts && cuts.Fraction(i, j, k, arm, out var held) < 1.0)
+                        {
+                            seen.Add(held);
+                        }
+                    }
+                }
+            }
+        }
+
+        return seen;
     }
 
     /// <summary>How many distinct electrode labels a mask holds on its fixed nodes.</summary>

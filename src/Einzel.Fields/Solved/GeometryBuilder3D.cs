@@ -1088,7 +1088,7 @@ public static class GeometryBuilder3D
                 continue;
             }
 
-            // A surface at zero is the node itself, which rasterisation has already
+            // A surface at zero is the node itself, which rasterization has already
             // decided; see the reference for why accepting it is expensive.
             if (entry <= 0.0)
             {
