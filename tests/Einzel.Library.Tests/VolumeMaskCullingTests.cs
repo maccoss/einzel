@@ -33,27 +33,42 @@ namespace Einzel.Library.Tests;
 /// <b>At the shipped mesh, and at every coarse level beneath it.</b> Both are built by the
 /// same rasteriser, so both are culled; the coarse levels carry no cuts and are cheap.
 /// </para>
+/// <para>
+/// <b>One exception, and it is the reference's cost rather than the claim's.</b> The linear
+/// ion trap is compared at twice its shipped cell. At the shipped cell its unculled mask is
+/// about two hundred million prism entry tests, each allocating a list of crossings - 29 s
+/// on a desktop and 2 min 38 s on a four-core CI runner, where it starved the parallel test
+/// assemblies badly enough that an MCP handshake timed out. It was compared at the shipped
+/// cell once, bit for bit, when the cull was written; what this keeps checking is the same
+/// geometry, primitives and range arithmetic on an eighth of the nodes.
+/// </para>
 /// </remarks>
 public sealed class VolumeMaskCullingTests(ITestOutputHelper output)
 {
-    /// <summary>Every shipped volume geometry: four device templates and one corpus example.</summary>
-    public static TheoryData<string, string> Models => new()
+    /// <summary>
+    /// Every shipped volume geometry: four device templates and one corpus example, each with
+    /// the multiple of its shipped cell it is compared at.
+    /// </summary>
+    public static TheoryData<string, string, double> Models => new()
     {
-        { "template", "c-trap" },
-        { "template", "astral-3d" },
-        { "template", "linear-ion-trap-3d" },
-        { "template", "segmented-quadrupole" },
-        { "example", "parallel-plate-gap-3d" },
+        { "template", "c-trap", 1.0 },
+        { "template", "astral-3d", 1.0 },
+        { "template", "linear-ion-trap-3d", 2.0 },
+        { "template", "segmented-quadrupole", 1.0 },
+        { "example", "parallel-plate-gap-3d", 1.0 },
     };
 
     /// <summary>A shipped volume geometry gives the reference mask exactly, culled.</summary>
     /// <param name="source">Whether the model is a device template or a corpus example.</param>
     /// <param name="name">Its name.</param>
+    /// <param name="cellScale">The multiple of the shipped cell size to compare at.</param>
     [Theory]
     [MemberData(nameof(Models))]
-    public void AShippedVolumeGeometryGivesTheReferenceMaskBitForBit(string source, string name)
+    public void AShippedVolumeGeometryGivesTheReferenceMaskBitForBit(
+        string source, string name, double cellScale)
     {
-        var geometry = GeometryOf(source == "template" ? DeviceTemplates.Read(name) : ExampleModels.Read(name));
+        var shipped = GeometryOf(source == "template" ? DeviceTemplates.Read(name) : ExampleModels.Read(name));
+        var geometry = shipped with { CellSize = shipped.CellSize * cellScale };
         var label = Labels(geometry);
         var grid = GeometryBuilder3D.BuildGrid(geometry);
 
