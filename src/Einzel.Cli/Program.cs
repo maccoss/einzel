@@ -963,10 +963,17 @@ public static class Program
         {
             var shape = element.SquareCells ? "square" : "stretched";
 
+            // Every axis the element has, not the first two. A volume printed as its
+            // x and y alone reads as a plane: a 257x17x257 solve reported as 257x17
+            // understates the node count by the whole third axis, and drops the z
+            // spacing that says whether the cells are the size that was asked for.
+            var nodes = string.Join("x", element.Nodes);
+            var spacing = string.Join(
+                " x ", element.SpacingMm.Select(s => s.ToString("F4", invariant)));
+
             Console.Out.WriteLine(string.Create(
                 invariant,
-                $"field {element.Index}  {element.Nodes[0]}x{element.Nodes[1]} at "
-                + $"{element.SpacingMm[0]:F4} x {element.SpacingMm[1]:F4} mm ({shape})"));
+                $"field {element.Index}  {nodes} at {spacing} mm ({shape})"));
 
             Console.Out.WriteLine(string.Create(
                 invariant,

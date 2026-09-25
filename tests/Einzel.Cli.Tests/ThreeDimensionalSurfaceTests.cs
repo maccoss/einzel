@@ -136,6 +136,23 @@ public sealed class ThreeDimensionalSurfaceTests : IDisposable
     }
 
     [Fact]
+    public void SolvePrintsEveryAxisOfAVolume()
+    {
+        // The terminal printer indexed Nodes[0] and Nodes[1] and SpacingMm[0] and
+        // SpacingMm[1], so a volume came out as a plane: this ring printed as 17x17
+        // at 1.2500 x 1.2500 mm while --json said three axes. The JSON test above
+        // cannot see that, because it never reads the human output.
+        var model = WriteRing();
+
+        var (exitCode, stdout, _) = Run("solve", model);
+        Assert.Equal(0, exitCode);
+
+        // 20 mm at a requested 1.5 mm rounds up to 16 intervals an axis, so 17 nodes
+        // at 1.25 mm - the same numbers ExportWritesAVolume finds in the .vti.
+        Assert.Contains("17x17x17 at 1.2500 x 1.2500 x 1.2500 mm", stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SolveWillNotCallAModelWithNothingToSolveConverged()
     {
         // The reflectron `init` scaffolds is analytic. Before this, `solve` returned

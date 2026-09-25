@@ -22,7 +22,7 @@ public sealed record SolvedElement
     /// </remarks>
     public int Channel { get; init; }
 
-    /// <summary>Node counts, x then y.</summary>
+    /// <summary>Node counts, one per axis: x then y, then z for a volume.</summary>
     public required IReadOnlyList<int> Nodes { get; init; }
 
     /// <summary>Node spacing along each axis, in millimetres.</summary>

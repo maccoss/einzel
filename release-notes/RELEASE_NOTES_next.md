@@ -9,7 +9,9 @@ _Nothing yet._
 
 ## Fixed
 
-_Nothing yet._
+- **`einzel solve` printed a volume as a plane.** The terminal output gave only the first two
+  node counts and spacings, so a 257x17x257 solve read as 257x17 with no z spacing. It now
+  prints every axis. `--json` was always correct.
 
 ## Known limits
 
