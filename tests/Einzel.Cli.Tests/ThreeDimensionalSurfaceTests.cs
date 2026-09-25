@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Einzel.Project;
 
@@ -133,6 +134,77 @@ public sealed class ThreeDimensionalSurfaceTests : IDisposable
         Assert.InRange(element.GetProperty("peakPotentialVolts").GetDouble(), 99.999, 100.001);
 
         Assert.True(document.RootElement.GetProperty("converged").GetBoolean());
+    }
+
+    [Fact]
+    public void SolvePrintsEveryAxisOfAVolume()
+    {
+        // The terminal printer indexed Nodes[0] and Nodes[1] and SpacingMm[0] and
+        // SpacingMm[1], so a volume came out as a plane: this ring printed as 17x17
+        // at 1.2500 x 1.2500 mm while --json said three axes. The JSON test above
+        // cannot see that, because it never reads the human output.
+        var model = WriteRing();
+
+        var (exitCode, stdout, _) = Run("solve", model);
+        Assert.Equal(0, exitCode);
+
+        // 20 mm at a requested 1.5 mm rounds up to 16 intervals an axis, so 17 nodes
+        // at 1.25 mm - the same 17 nodes an axis ExportWritesAVolume asserts from the
+        // .vti extent. Equal spacings on a volume are cubic cells, not square ones.
+        Assert.Contains(
+            "17x17x17 at 1.2500 x 1.2500 x 1.2500 mm (cubic)", stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SolvePrintsTheAxesInTheOrderJsonGivesThem()
+    {
+        // The ring is a cube, so the test above passes against a printer that
+        // reverses the axes or pairs a spacing with the wrong count. Stretched here
+        // so that no two axes agree on either, and the expected line is built from
+        // --json rather than worked out by hand, so what is checked is that the two
+        // surfaces describe the same grid.
+        var model = WriteRing();
+        var text = File.ReadAllText(model);
+
+        text = Replace(text, "\"minX\": { \"value\": -10,", "\"minX\": { \"value\": -6,");
+        text = Replace(text, "\"maxX\": { \"value\": 10,", "\"maxX\": { \"value\": 6,");
+        text = Replace(text, "\"minY\": { \"value\": -10,", "\"minY\": { \"value\": -15,");
+        text = Replace(text, "\"maxY\": { \"value\": 10,", "\"maxY\": { \"value\": 15,");
+        File.WriteAllText(model, text);
+
+        var (jsonExit, json, _) = Run("solve", model, "--json");
+        Assert.Equal(0, jsonExit);
+
+        using var document = JsonDocument.Parse(json);
+        var element = document.RootElement.GetProperty("elements")[0];
+
+        var nodes = element.GetProperty("nodes").EnumerateArray()
+            .Select(n => n.GetInt32().ToString(CultureInfo.InvariantCulture))
+            .ToList();
+        var spacing = element.GetProperty("spacingMm").EnumerateArray()
+            .Select(s => s.GetDouble().ToString("F4", CultureInfo.InvariantCulture))
+            .ToList();
+
+        // The guard that gives the comparison teeth: if any two axes agreed, a
+        // printer swapping them would still match.
+        Assert.Equal(3, nodes.Distinct().Count());
+        Assert.Equal(3, spacing.Distinct().Count());
+
+        var (exitCode, stdout, _) = Run("solve", model);
+        Assert.Equal(0, exitCode);
+
+        Assert.Contains(
+            $"{string.Join("x", nodes)} at {string.Join(" x ", spacing)} mm",
+            stdout,
+            StringComparison.Ordinal);
+    }
+
+    private static string Replace(string text, string oldValue, string newValue)
+    {
+        // An edit that matches nothing leaves the model unchanged and the test
+        // quietly testing the cube again.
+        Assert.Contains(oldValue, text, StringComparison.Ordinal);
+        return text.Replace(oldValue, newValue, StringComparison.Ordinal);
     }
 
     [Fact]
