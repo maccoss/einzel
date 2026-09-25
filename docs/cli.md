@@ -884,7 +884,7 @@ parsing output:
 | Code | Meaning |
 | --- | --- |
 | 0 | Success — though warnings may still be attached |
-| 1 | Validation failure: schema, units, bounds, solvability |
+| 1 | Validation failure: schema, units, bounds, solvability - including a mesh too large to solve (`GRID_TOO_LARGE`) |
 | 2 | Regime violation: the transport mode is outside its validity |
 | 3 | Cost-gate refusal |
 | 4 | Convergence failure |
@@ -950,7 +950,11 @@ place to be clever.
 ```
 
 Every error found is reported, not just the first — the recovery an agent wants
-is the whole list.
+is the whole list. **That now holds for every verb, not only `validate` and `run`.** Twelve
+call sites - in `estimate`, `export`, `preview`, `compare`, `render` and others - validated and
+then refused with the first error alone, so a model with a bad plane cell size and an
+oversized volume mesh was told about the plane, fixed it, and only then learned its solve
+would be refused. They pass the whole list now, and the CLI prints one line per error.
 
 ## Files a run writes
 
@@ -1103,6 +1107,11 @@ GRD-8 asks for the threshold to be configurable and it was a constant. Somebody 
 their study is worth an hour needs a way to say so; without one, the observed response was
 to make the study smaller.
 
+**It applies to that invocation and no other.** It was a process-wide setting the flag moved
+and nothing put back, so the next estimate in the same process passed or refused on a number
+nobody gave it - found when a test asking for `1e12` made another test's cost gate pass. It
+is now a parameter of the estimate itself, so there is nothing left over to restore.
+
 **A refusal here is a refusal to proceed silently, not a refusal to proceed.** `sweep`,
 `scan`, `boundary` and `optimise` run whatever `estimate` says — only `estimate` itself
 exits 3, and what the gate buys is that the cost was seen first. The message says so in its
@@ -1170,6 +1179,58 @@ wrong side of it: 1.24 mm against a 1 mm request produced the **identical** mesh
 advice was a no-op that looked authoritative. The candidate now goes through the same
 arithmetic the grid uses, and a test asks for the suggested size and checks the node count
 really falls by the promised factor — promised 7.9x, delivered 7.9x.
+
+### A mesh too large to solve is refused, by `estimate` as by everything else
+
+A volume solve may hold at most **64,000,000 nodes**. Since the node count is the product of
+three power-of-two roundings, it is arithmetic on the document, so **validation refuses** a
+mesh past it - and `validate`, `estimate`, `run` and every other verb that reads the model
+meet the same refusal from the same check against the same constant (`VolumeMesh.MaximumNodes`,
+which the solver's own allocation guard also reads):
+
+```
+  GRID_TOO_LARGE
+    at         /fields/2/solve3d/cellSize
+    constraint a volume solve may hold at most 64,000,000 nodes, and this mesh is
+               1025 x 65 x 1025 = 68,290,625: each axis rounds its interval count up to a
+               power of two from the requested cell size, so the node count is the product
+               of three such roundings
+    observed   6.82906E+07 nodes
+    try        a cell size of 1.465 mm is the finest that fits, giving 1025 x 65 x 513 =
+               34,178,625 nodes, and anything coarser fits too; or shrink the domain
+```
+
+That is the shipped Astral with its volume solve at 1 mm, and exit code 1. **Before, it was
+the one case where the model was the problem and every verb said otherwise**: `validate`
+passed it, `estimate` priced it at 35 minutes and exited 3 on the cost gate, and `run` spent
+more than five minutes assembling a conductor mask of that size before the field
+constructor threw an argument exception - which the process boundary can only print as
+`INTERNAL_ERROR`, "a defect in einzel, not in your model", on exit code 6.
+
+**The suggestion is evaluated, and it has two traps in it.** The finest fitting size sits
+exactly on a power-of-two boundary - here z's, 750 mm over 512 = 1.46484 mm - so it is printed with as many
+digits as it takes to stay on the same step of the mesh, rounded up, and checked after
+converting back through the document's own unit. Three fixed figures gave 1.47 mm, which also
+crosses x's boundary, 752 mm over 512 = 1.46875 mm, and names a mesh with half the nodes while calling it the
+finest that fits. And an exact decimal is not safe either: a box from -1.5 to 20.5 mm has its
+eight-interval boundary at exactly 2.75 mm, and 22 mm over 2.75 mm converted through `mm` is
+8.000000000000002 intervals, which rounds up to sixteen - the refused mesh again.
+
+**A particle-in-cell grid is a volume solve too**, so `spaceChargeGrid.nodes` past 256 - which
+rounds up to 512 intervals a side, 135 M nodes - is refused at
+`/transport/spaceChargeGrid/nodes` with the same code. By the code's own path it would have
+reached the same argument exception mid-run, after allocating its mask. And the run's own
+advice respects the same limit: `spacecharge.grid-resolution` names the node count that would
+match the packet, which at padding 100 and 40 trajectories is 1024 - so it now says "Try 256
+nodes, the most a volume solve can hold" and where the rest has to come from, rather than
+naming a grid validation would refuse.
+
+**A cell size or bound that is not a number is refused as one.** A derived value can be NaN
+or infinite - a division by a parameter set to zero, the square root of a negative ratio - and
+every comparison with NaN is false, so the positivity checks let it through. The new mesh
+arithmetic then threw from inside validation, and `validate` itself printed `INTERNAL_ERROR`;
+an infinite cell size passed everything and solved on two intervals an axis. Both are now
+`VALUE_OUT_OF_BOUNDS` at the offending field.
 
 ### A study's flight is sampled across its own range
 

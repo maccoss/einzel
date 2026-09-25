@@ -182,7 +182,7 @@ public static class ExportCommand
 
         if (!validation.IsValid)
         {
-            throw new EinzelException(validation.Errors[0]);
+            throw new EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;

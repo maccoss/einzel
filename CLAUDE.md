@@ -2305,8 +2305,9 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   grows as 1/s² against the applied field's 1/s, so the same space charge comes at a fifth of the
   population. Two engine follow-ups were proposed: a warning when a solve's mesh samples a face two
   disagreeing conductors share (**built** - next entry), and a bounding-box cull in the 3-D mask
-  builder, which tests every link against all 86 electrodes and spends about a minute per mask in a
-  Debug test run. Details in `docs/device-templates.md`.
+  builder, which tested every link against all 86 electrodes and spent about a minute per mask in a
+  Debug test run (**built** in PR #49: 10.3 s to 0.15 s per mask in Release, bit-identical to the
+  unculled build). Details in `docs/device-templates.md`.
 
 - **`mesh.node-on-shared-face` - and the check as specified reported its own motivating case
   clean.** Built first exactly as proposed above - nodes within a rounding of two disagreeing
@@ -2345,6 +2346,36 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   three arm tests and the Astral control fail - the nodes-only check, measured)**, base state only
   (the stage test fails), and the warning dropped at `FieldAssembly.Note` or in `SolveCommand` (the
   end-to-end tests fail).
+
+- **A mesh too large to solve is a refusal about the model, and validation makes it.** The Astral
+  at a 1 mm cell is 1025 x 65 x 1025 = 68.3 M nodes against a 64 M limit: `validate` said OK,
+  `estimate` priced it at 35 minutes, and `run` spent more than five minutes building a conductor
+  mask before the field constructor threw an argument exception, printed as `INTERNAL_ERROR` -
+  "a defect in einzel, not in your model" - on exit 6. Now `GRID_TOO_LARGE` at
+  `/fields/2/solve3d/cellSize`, exit 1, in about two seconds, from every verb that reads the
+  model. **One limit and one rounding rule** (`src/Einzel.Core/Numerics/VolumeMesh.cs`), read by the
+  validator, by `Grid3D.OverBox`, and by a backstop that now sits on the **mask**, the first
+  per-node allocation, rather than on the field, which came after several gigabytes. The
+  suggestion names the finest cell size that fits and is **checked after the round trip through
+  its own text and unit**: three fixed figures printed 1.47 mm for 1.46484, crossing a second
+  axis's boundary and naming half the mesh, and an exact decimal can sit a rounding below a
+  boundary (2.75 mm over 22 mm is 8.000000000000002 intervals). The particle-in-cell grid meets
+  the same limit at `/transport/spaceChargeGrid/nodes`. **The 2-D path has the same hole and no
+  limit at all** - an absurd cell size validates and then exits 6 on an `int` overflow - and is
+  left for its own change. And the test written for this broke another class's: `--threshold`
+  moved a process-wide static and never put it back, so a later estimate in the same process
+  inherited a gate of 1e12 s; it is now a parameter of the estimate.
+
+  **A review of the fix found the fix's own crash.** A derived cell size or bound can be NaN
+  (a division by a parameter set to zero, the square root of a negative ratio), and every
+  comparison with NaN is false, so `cell <= 0` let it through and the new mesh count threw from
+  inside `validate` - `INTERNAL_ERROR` from the command whose job is to say what is wrong.
+  Infinity passed everything and solved on two intervals an axis. Both are now refused at the
+  field. Also from that review: the space-charge advice named grids the new limit refuses (now
+  capped at 256), twelve call sites validated and threw the first error alone (now all of
+  them, so a refused mesh cannot hide behind an earlier mistake), `Grid3D.NodeCount` wrapped
+  negative past 2^63 and slipped the guard (now saturates), and the estimate's mesh note used
+  its own copy of the rounding rule. `docs/lessons.md`, `docs/cli.md`.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

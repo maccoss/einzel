@@ -160,7 +160,7 @@ public static class SolveCommand
 
         if (!validation.IsValid)
         {
-            throw new Core.Errors.EinzelException(validation.Errors[0]);
+            throw new Core.Errors.EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;
@@ -207,7 +207,12 @@ public static class SolveCommand
                 var volume = GeometryBuilder3D.BuildGrid(geometry);
                 var volumeChannels = GeometryBuilder3D.SolveChannels(geometry);
 
-                Note(index, "solved3d", volumeChannels[0].Report.Warnings);
+                // Guarded as the plane path is: a driven geometry with nothing energised has no
+                // channels, and indexing the first would turn "nothing to solve" into a crash.
+                if (volumeChannels.Count > 0)
+                {
+                    Note(index, "solved3d", volumeChannels[0].Report.Warnings);
+                }
 
                 foreach (var channel in volumeChannels)
                 {
