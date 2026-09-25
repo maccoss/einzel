@@ -634,7 +634,22 @@ public static class GeometryBuilder
     /// <param name="Potential">The solved potential.</param>
     /// <param name="Report">How the solve went.</param>
     public sealed record ChannelSolve(
-        int Index, DirichletMask Mask, ScalarField2D Potential, SolveReport Report);
+        int Index, DirichletMask Mask, ScalarField2D Potential, SolveReport Report)
+    {
+        /// <summary>
+        /// Electrode name to what it holds in this solve: volts, or for an edge profile a scale
+        /// on the profile that holds its volts.
+        /// </summary>
+        /// <remarks>
+        /// The declared potentials for a static geometry, and for a driven or sequenced one
+        /// the channel's spatial pattern with its leading electrode at one volt - which is
+        /// what a reader of an exported channel needs to know it is looking at, since two
+        /// files called <c>channel0</c> and <c>channel1</c> say nothing about which is the DC
+        /// chain and which the RF.
+        /// </remarks>
+        public IReadOnlyDictionary<string, double> Pattern { get; init; } =
+            new Dictionary<string, double>(StringComparer.Ordinal);
+    }
 
     /// <summary>Solves a geometry channel by channel, and hands back the diagnostics.</summary>
     /// <param name="solve">The compiled solve.</param>
@@ -680,7 +695,10 @@ public static class GeometryBuilder
             // same mesh round the same conductors; einzel solve reports it once per element.
             warnings ??= SharedFaceNodes.Warnings(NodesOnSharedFaces(solve, grid, mask));
 
-            solves.Add(new ChannelSolve(index++, mask, potential, report with { Warnings = warnings }));
+            solves.Add(new ChannelSolve(index++, mask, potential, report with { Warnings = warnings })
+            {
+                Pattern = pattern,
+            });
         }
 
         return solves;
@@ -700,9 +718,13 @@ public static class GeometryBuilder
         {
             var single = new Dictionary<string, double>(StringComparer.Ordinal);
 
+            // DirectOf rather than Potential, for the reason it exists: an edge profile keeps
+            // its volts in its profile and its scalar is zero, and a zero here is a zero scale
+            // on the profile. This arm read Potential after the driven one had been fixed, so
+            // einzel solve on the planar mirror pair solved a mirror with no boards.
             foreach (var electrode in solve.Electrodes)
             {
-                single[electrode.Name] = electrode.Potential;
+                single[electrode.Name] = DirectOf(electrode);
             }
 
             return [single];

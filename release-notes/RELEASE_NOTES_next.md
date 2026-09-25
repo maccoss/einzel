@@ -20,6 +20,8 @@ become a feature release without being renamed twice.
   shipped template and example is clear of it.
 - **`einzel solve` reports warnings**, in `--json` and on stderr. It reported residuals and node
   counts and nothing else.
+- **`einzel export` carries a solve's warnings** into each field file's header and into its
+  `--json` output, and prints them on stderr.
 
 ## Fixed
 
@@ -30,6 +32,19 @@ become a feature release without being renamed twice.
   drift reversal 336.06 mm (was 336.15). Moving the mesh also showed that the foil's coarse mesh
   carries a 0.83 percent spread by placement alone; the mesh-converged flight time is about
   775 us, a percent below the published arithmetic rather than the 0.4 previously quoted.
+- **`einzel export` wrote an RF cross-section as a grounded box.** A two-dimensional geometry
+  whose electrodes hold their potential as drive rather than DC exported every node at zero -
+  `quadrupole-rf`, `linear-ion-trap`, `stellar-ion-trap`, `multipole-guide`, `paul-trap` and
+  `travelling-wave-guide` - and one with a DC chain as well exported the chain alone, dropping
+  the RF (`ion-funnel`, `pnnl-ion-funnel`, `tims-front-end`, `tims-tandem`). It now writes one file per basis channel, as
+  three-dimensional export already did, named `.channel0.vti`, `.channel1.vti` where there is
+  more than one. A driven channel is a pattern with its leading electrode at 1 V rather than a
+  potential, so its array is named `channelN_V_per_V` and its header says which electrodes carry
+  it; a static geometry's values are unchanged, and every file now carries its provenance and
+  warnings in a header.
+- **`einzel solve` reported the planar mirror pair without its boards.** A static geometry's
+  edge-profile electrodes were solved at zero; the peak it printed was the cap's, so it looked
+  right. Runs were never affected.
 
 ## Known limits
 

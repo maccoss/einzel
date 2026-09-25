@@ -688,7 +688,17 @@ public static class GeometryBuilder3D
     /// <param name="Potential">The solved potential.</param>
     /// <param name="Report">How the solve went.</param>
     public sealed record ChannelSolve(
-        int Index, DirichletMask3D Mask, ScalarField3D Potential, SolveReport Report);
+        int Index, DirichletMask3D Mask, ScalarField3D Potential, SolveReport Report)
+    {
+        /// <summary>Electrode name to the potential it holds in this solve, in volts.</summary>
+        /// <remarks>
+        /// The declared potentials for a static geometry, and for a driven or sequenced one
+        /// the channel's spatial pattern with its leading electrode at one volt. See the
+        /// two-dimensional <see cref="GeometryBuilder.ChannelSolve.Pattern"/>.
+        /// </remarks>
+        public IReadOnlyDictionary<string, double> Pattern { get; init; } =
+            new Dictionary<string, double>(StringComparer.Ordinal);
+    }
 
     /// <summary>Solves a geometry channel by channel, and hands back the diagnostics.</summary>
     /// <param name="geometry">The geometry.</param>
@@ -715,7 +725,10 @@ public static class GeometryBuilder3D
             [
                 new ChannelSolve(
                     0, mask, potential,
-                    report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) }),
+                    report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) })
+                {
+                    Pattern = DeclaredPotentials(geometry),
+                },
             ];
         }
 
@@ -728,6 +741,19 @@ public static class GeometryBuilder3D
             : null);
 
         return [.. solves.Select(channel => channel with { Report = channel.Report with { Warnings = warnings } })];
+    }
+
+    /// <summary>Each electrode's declared potential, by name: a static geometry's one pattern.</summary>
+    private static Dictionary<string, double> DeclaredPotentials(Geometry3D geometry)
+    {
+        var pattern = new Dictionary<string, double>(StringComparer.Ordinal);
+
+        foreach (var electrode in geometry.Electrodes)
+        {
+            pattern[electrode.Name] = electrode.Potential;
+        }
+
+        return pattern;
     }
 
     /// <summary>
@@ -819,7 +845,7 @@ public static class GeometryBuilder3D
                 maximumCycles: 200,
                 coarsen: Coarsener(geometry, Weight));
 
-            solves.Add(new ChannelSolve(index, mask, potential, report));
+            solves.Add(new ChannelSolve(index, mask, potential, report) { Pattern = pattern });
         }
 
         return solves;
