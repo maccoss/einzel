@@ -2279,11 +2279,12 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   **Similarity is exact, so it was tested exactly - and it failed.** Scales of 0.5, 0.25 and
   0.2000001 reproduced the full-size flight to the bit; 0.2 moved it **0.27 percent** and
   0.1999999 a different 0.03. The foil's sixteen slices hold sixteen potentials and share a
-  face every 28.125 mm, and three of those faces sat exactly on nodes of the 4 mm foil mesh, so
-  which slice owned a node - or neither, leaving a free node mixing the two in whatever ratio
-  the rounding set - was the last bit of arithmetic that 0.2 rounds differently. 454 nodes and
-  1,586 cut links changed hands. **No refinement ladder finds this**: every rung can sit on the
-  same faces. `meshShiftZ` moves the foil mesh 0.3 mm, a tenth of a cell off every shared face,
+  face every 28.125 mm, and three of those faces sat exactly on node planes of the 4 mm foil
+  mesh, so which slice the 180 stencil arms lying in those planes were cut against was the
+  last bit of arithmetic that 0.2 rounds differently. (The masks also differ in 454 nodes and
+  1,406 more links, all on the domain's upper face where grounded boards end - a harmless flip
+  measured separately; see the next entry.) **No refinement ladder finds this**: every rung
+  can sit on the same faces. `meshShiftZ` moves the foil mesh 0.3 mm, a tenth of a cell off every shared face,
   and similarity then holds to **1.6e-8**, the integrator's tolerance.
 
   **Removing the coin toss exposed an ordinary error four times larger.** The stripe is thinner
@@ -2302,10 +2303,48 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   turn-around time and detector response are absolute, so their resolving-power limit falls by
   five; a machining error is five times larger against the geometry; and the packet's own field
   grows as 1/s² against the applied field's 1/s, so the same space charge comes at a fifth of the
-  population. Two engine follow-ups are proposed rather than built: a warning when any solve has a
-  node on a face two disagreeing conductors share, and a bounding-box cull in the 3-D mask builder,
-  which tests every link against all 86 electrodes and spends about a minute per mask in a Debug test run. Details
-  in `docs/device-templates.md`.
+  population. Two engine follow-ups were proposed: a warning when a solve's mesh samples a face two
+  disagreeing conductors share (**built** - next entry), and a bounding-box cull in the 3-D mask
+  builder, which tests every link against all 86 electrodes and spends about a minute per mask in a
+  Debug test run. Details in `docs/device-templates.md`.
+
+- **`mesh.node-on-shared-face` - and the check as specified reported its own motivating case
+  clean.** Built first exactly as proposed above - nodes within a rounding of two disagreeing
+  conductors' surfaces - it swept every template and example clean, and then, run against
+  `astral-3d` with its mesh shift removed, **reported that clean too**. The foil stripe is 0.715 mm
+  on a 2.9-3.8 mm mesh and holds no node: the coin was tossed on the **stencil arms** lying in the
+  plane of each shared face. So the rule is stated in terms of both places a mesh samples a
+  geometry - no node, and no point where an arm from a free node first meets metal, on a face shared
+  by conductors that disagree in any state - and the Astral with its shift removed reports **180
+  arms, 0 nodes**. SPEC.md Amendment 56; `docs/numerics.md`, "A face two conductors share".
+
+  `GeometryBuilder`/`GeometryBuilder3D.NodesOnSharedFaces` run before every solve and put it on the
+  `SolveReport` (a new `Warnings` list), so `FieldAssembly.BuildReported` carries it to `run`,
+  `preview` and every figure; **`einzel solve` carried no warnings at all** and now reports it once
+  per element. Tolerance 1e-9 of the finest spacing; "disagree" is `ElectrodeOverlap.StatesOf` /
+  `Agrees`, made public so the two questions asked of a pair cannot drift apart. **The arm test asks
+  a distance, not a pair of entry fractions**: nudge the face one ulp and the arm grazes one stripe
+  instead of entering it while its cut has already flipped - an entry fraction is discontinuous in
+  exactly the case the test is for.
+
+  **Survey: 44 solved elements across every template and example, all clean**, kept so by
+  `SharedFaceCorpusTests` with the shift-removed Astral as the control. **What it was worth**, by
+  moving the foil mesh across the node: 786.4372 us at -1e-7 of the extent, 784.3191 at +1e-7 - a
+  **2.118 us step (0.27%)** on a slope of 5.4 us per cell, five orders above each run's own stated
+  uncertainty. And it corrected the record: of the 454 nodes and 1,586 links differing between the
+  full and compact masks, **only 180 links are the foil**; the rest are grounded boards' ends on the
+  domain's upper face, where the last node plane rounds either side of the declared maximum -
+  checked to be a flip the flight does not see.
+
+  **Two limits, stated.** The tolerance flags coincidence, not proximity: a face 2.6e-5 of a cell
+  off a node is on a determinate side of the same 0.27% step with no warning, which a geometric
+  sweep would cross silently - the fix the warning names is a tenth of a cell. And a conductor flush
+  with a **Dirichlet** domain face is the same coin toss against the grounded boundary, unchecked.
+  Mutation-checked five ways: detector disabled (11 of 14 unit tests fail; the three that pass are
+  the should-not-warn controls), tolerance zero (the four near-miss tests fail), **arms disabled (the
+  three arm tests and the Astral control fail - the nodes-only check, measured)**, base state only
+  (the stage test fails), and the warning dropped at `FieldAssembly.Note` or in `SolveCommand` (the
+  end-to-end tests fail).
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

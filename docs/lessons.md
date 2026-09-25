@@ -5043,3 +5043,39 @@ rounding decides where the nodes fall. **Where a feature is smaller than a cell,
 mesh sits is a convergence dimension** as much as how fine it is, and an agreement quoted
 finer than the placement spread is not an agreement. And after removing a source of
 nondeterminism, measure what it was sitting on top of before quoting the number it now gives.
+
+
+## A check specified from a description of the case reported that case clean
+
+The previous entry describes the foil's coin toss as *nodes* on shared faces, and the engine
+check proposed after it was specified the same way: find nodes within a rounding of two
+disagreeing conductors' surfaces. Built exactly so, it swept every shipped template and
+example and found all of them clean - which was the answer hoped for, and would have been
+recorded as the result.
+
+**The sweep was only worth something if the detector fired on the case that motivated it,
+so that ran first: `astral-3d` with its mesh shift removed. It reported that clean too.**
+The foil stripe is 0.715 mm thick on a 2.9 to 3.8 mm mesh and holds **no node at all**; the
+three faces lie on node *planes*, and what the rounding decided was which slice's potential
+the stencil arms lying in each plane were cut against. 180 arms, 0 nodes. Comparing the
+full-size and compact masks cell by cell settled where the rest of the recorded "454 nodes
+and 1,586 cut links" were: every node and 1,406 of the links sit on the domain's upper face,
+where grounded boards' ends meet it - a separate, harmless flip between two states both near
+zero volts - and the 180 arms are the whole of the 0.27 percent. The description had merged
+two effects and named the wrong one, and a check built from the description inherited it.
+
+Two smaller things came with it. **A test on entry fractions is discontinuous where a test
+on distance is not**: "both conductors entered at the same fraction" misses the face nudged
+one ulp, because then the arm grazes one conductor instead of entering it while the cut has
+already flipped - so the arm test asks whether the point met is within tolerance of the
+other surface. And **a tolerance that flags coincidence does not flag the step it sits on**:
+a face 2.6e-5 of a cell off a node draws no warning and is still on the edge of a 0.27
+percent discontinuity, which a sweep across it would cross silently.
+
+The rules. **Run a detector against the case that motivated it before trusting what it says
+about anything else** - a clean sweep from a check that cannot see its own reason for
+existing is the most convincing wrong answer there is. **Specify a check from the mechanism,
+not from the account of the incident**: the account said nodes because nodes are how one
+talks about a mesh, and the mechanism was "the mesh samples the geometry, and a sample landed
+on a discontinuity of the boundary data" - which names nodes *and* arms. And when a
+recorded number is quoted as evidence, find out what it counted.

@@ -750,6 +750,15 @@ is `true`. So the verb whose whole job is to report a residual answered
 the shape of answer an agent stops investigating on, which makes it worse than a
 failure.
 
+**It carries warnings, once per field element.** `solve` reported residuals and node
+counts and nothing else, so a mesh that sampled a face two disagreeing conductors
+share - `mesh.node-on-shared-face`, see `docs/numerics.md` - came back converged and
+clean from the one verb whose job is to say how the discretization went. The
+outcome's `warnings` list holds what the geometry builders found, prefixed with the
+element; the terminal prints them on stderr like every other verb. A qualified
+warning does not change the exit code: the solve succeeded, and the caveat is on
+the field.
+
 ### Why `export` writes ImageData
 
 A uniform Cartesian grid *is* VTK image data. An unstructured grid would carry

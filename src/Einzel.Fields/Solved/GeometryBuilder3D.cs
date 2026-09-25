@@ -294,7 +294,274 @@ public static class GeometryBuilder3D
             maximumCycles: 200,
             coarsen: Coarsener(geometry));
 
-        return (new SolvedField3D(potential, geometry.Electrodes), report);
+        return (
+            new SolvedField3D(potential, geometry.Electrodes),
+            report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) });
+    }
+
+    /// <summary>
+    /// Finds where a mesh samples a face two conductors share while holding different
+    /// excitations - a node on it, or a stencil arm that first meets metal on it - so that
+    /// which conductor the sample is credited to is decided by rounding.
+    /// </summary>
+    /// <param name="geometry">The geometry.</param>
+    /// <param name="grid">The finest grid it is solved on.</param>
+    /// <param name="mask">
+    /// Any finest-level mask of this geometry on this grid, for which nodes are fixed; asked of
+    /// the geometry node by node when omitted. Every channel's mask fixes the same nodes - an
+    /// electrode's nodes are fixed whatever its weight in the channel - so whichever the
+    /// caller has will do.
+    /// </param>
+    /// <returns>What was found, or null when the mesh samples no such face.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// A mesh samples the geometry in two places, and each gets its own test. A <b>node</b>
+    /// is on a surface when its signed distance is within
+    /// <see cref="SharedFaceNodes.ToleranceFraction"/> of the finest spacing. An <b>arm</b>
+    /// from a free node samples a face when the point where it first meets one conductor is
+    /// within the same distance of the other's surface, and nothing is nearer along it - that
+    /// is the entry the cut link records, and which of the two conductors it records is then
+    /// whichever the rounding put in front.
+    /// </para>
+    /// <para>
+    /// <b>The arms are the case that mattered.</b> <c>astral-3d</c>'s foil stripes are thinner
+    /// than a cell and hold no node at all, so with its mesh shift removed the node test finds
+    /// nothing; the coin was tossed on the arms lying in the plane of each shared face.
+    /// </para>
+    /// <para>
+    /// A pair counts when it disagrees in <em>any</em> state the instrument has - asked
+    /// through <see cref="ElectrodeOverlap3D.StatesOf"/> and
+    /// <see cref="ElectrodeOverlap3D.Agrees"/>, the overlap check's own functions, so the two
+    /// questions asked of a pair cannot come to disagree about what "different excitations"
+    /// means. A pair that agrees everywhere shares a face harmlessly: either answer to the
+    /// coin toss is the same potential.
+    /// </para>
+    /// <para>
+    /// <b>Only nodes near both bounding boxes are visited</b>: a point on both surfaces is in
+    /// both boxes, and an arm's entry is within one cell of its node, so the box is widened by
+    /// a cell and nothing further. For abutting conductors that is a slab three nodes thick
+    /// round the shared face, and a node is let through to the arm test only when it is within
+    /// a cell of both surfaces - so the cost is a face's worth of signed distances per
+    /// touching pair, on a geometry whose rasterization makes a pass over the whole grid per
+    /// electrode.
+    /// </para>
+    /// <para>
+    /// Only the finest grid. The coarse levels exist to accelerate, their Dirichlet values
+    /// are not used, and the answer is decided where the cut cells are.
+    /// </para>
+    /// </remarks>
+    public static SharedFaceNodes? NodesOnSharedFaces(
+        Geometry3D geometry, Grid3D grid, DirichletMask3D? mask = null)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var electrodes = geometry.Electrodes;
+        var states = ElectrodeOverlap3D.StatesOf(electrodes, geometry.Stages);
+        var tolerance = SharedFaceNodes.ToleranceFraction * grid.MinimumSpacing;
+        var reach = Math.Max(grid.SpacingX, Math.Max(grid.SpacingY, grid.SpacingZ));
+
+        var nodes = new HashSet<long>();
+        var arms = new HashSet<long>();
+        (string First, string Second, double X, double Y, double Z)? nodeExample = null;
+        (string First, string Second, double X, double Y, double Z)? armExample = null;
+
+        for (var i = 0; i < electrodes.Count; i++)
+        {
+            for (var j = i + 1; j < electrodes.Count; j++)
+            {
+                var (i1, i2) = (i, j);
+
+                if (states.All(state => ElectrodeOverlap3D.Agrees(state[i1], state[i2])))
+                {
+                    continue;
+                }
+
+                var a = electrodes[i];
+                var b = electrodes[j];
+
+                var (aMinX, aMinY, aMinZ, aMaxX, aMaxY, aMaxZ) = a.Bounds;
+                var (bMinX, bMinY, bMinZ, bMaxX, bMaxY, bMaxZ) = b.Bounds;
+
+                var x0 = Math.Max(aMinX, bMinX) - tolerance;
+                var x1 = Math.Min(aMaxX, bMaxX) + tolerance;
+                var y0 = Math.Max(aMinY, bMinY) - tolerance;
+                var y1 = Math.Min(aMaxY, bMaxY) + tolerance;
+                var z0 = Math.Max(aMinZ, bMinZ) - tolerance;
+                var z1 = Math.Min(aMaxZ, bMaxZ) + tolerance;
+
+                // Boxes that do not meet cannot share a surface, and that settles almost
+                // every pair - on the Astral, all but a few dozen of three thousand.
+                if (x1 < x0 || y1 < y0 || z1 < z0)
+                {
+                    continue;
+                }
+
+                var (iLo, iHi) = SharedFaceNodes.Range(grid.OriginX, grid.SpacingX, grid.CountX, x0 - reach, x1 + reach);
+                var (jLo, jHi) = SharedFaceNodes.Range(grid.OriginY, grid.SpacingY, grid.CountY, y0 - reach, y1 + reach);
+                var (kLo, kHi) = SharedFaceNodes.Range(grid.OriginZ, grid.SpacingZ, grid.CountZ, z0 - reach, z1 + reach);
+
+                for (var k = kLo; k <= kHi; k++)
+                {
+                    var z = grid.Z(k);
+
+                    for (var jj = jLo; jj <= jHi; jj++)
+                    {
+                        var y = grid.Y(jj);
+
+                        for (var ii = iLo; ii <= iHi; ii++)
+                        {
+                            var x = grid.X(ii);
+
+                            // The same coordinates the rasterizer and the cut links use,
+                            // which is the point: the coin is tossed in this arithmetic.
+                            var da = Math.Abs(a.SignedDistance(x, y, z));
+
+                            if (da > reach + tolerance)
+                            {
+                                continue;
+                            }
+
+                            var db = Math.Abs(b.SignedDistance(x, y, z));
+
+                            if (db > reach + tolerance)
+                            {
+                                continue;
+                            }
+
+                            var node = ((((long)k * grid.CountY) + jj) * grid.CountX) + ii;
+
+                            if (da <= tolerance && db <= tolerance)
+                            {
+                                if (nodes.Add(node))
+                                {
+                                    nodeExample ??= (a.Name, b.Name, x, y, z);
+                                }
+
+                                continue;
+                            }
+
+                            for (var arm = 0; arm < 6; arm++)
+                            {
+                                var (di, dj, dk) = Arms[arm];
+                                var (ni, nj, nk) = (ii + di, jj + dj, k + dk);
+
+                                if (ni < 0 || nj < 0 || nk < 0
+                                    || ni >= grid.CountX || nj >= grid.CountY || nk >= grid.CountZ)
+                                {
+                                    continue;
+                                }
+
+                                var (tx, ty, tz) = (grid.X(ni), grid.Y(nj), grid.Z(nk));
+
+                                // Where the arm meets one of them, if that point is on the other's
+                                // surface too - the nearer such point, when both qualify.
+                                var entry = double.PositiveInfinity;
+
+                                if (SharedFaceNodes.Interior(a.FirstEntry(x, y, z, tx, ty, tz), out var ea)
+                                    && Math.Abs(b.SignedDistance(
+                                        x + (ea * (tx - x)), y + (ea * (ty - y)), z + (ea * (tz - z)))) <= tolerance)
+                                {
+                                    entry = ea;
+                                }
+
+                                if (SharedFaceNodes.Interior(b.FirstEntry(x, y, z, tx, ty, tz), out var eb)
+                                    && Math.Abs(a.SignedDistance(
+                                        x + (eb * (tx - x)), y + (eb * (ty - y)), z + (eb * (tz - z)))) <= tolerance)
+                                {
+                                    entry = Math.Min(entry, eb);
+                                }
+
+                                if (double.IsPositiveInfinity(entry))
+                                {
+                                    continue;
+                                }
+
+                                // A fixed node has no stencil to cut. Asked of the mask when the
+                                // caller has one, and otherwise of the geometry the way the finest
+                                // mask is built - which costs one pass over the electrodes for a
+                                // candidate, where building the mask costs a pass over the grid
+                                // for every electrode: on astral-3d, minutes.
+                                if (mask?.IsFixed(ii, jj, k) ?? IsFixedFine(geometry, grid, ii, jj, k))
+                                {
+                                    break;
+                                }
+
+                                if (Shadowed(electrodes, x, y, z, tx, ty, tz, entry))
+                                {
+                                    continue;
+                                }
+
+                                if (arms.Add((node * 6) + arm))
+                                {
+                                    armExample ??= (
+                                        a.Name, b.Name,
+                                        x + (entry * (tx - x)), y + (entry * (ty - y)), z + (entry * (tz - z)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return (nodeExample ?? armExample) is { } first
+            ? new SharedFaceNodes(
+                nodes.Count, arms.Count, first.First, first.Second, first.X, first.Y, first.Z,
+                ExampleIsArm: nodeExample is null)
+            : null;
+    }
+
+    /// <summary>
+    /// Whether the finest mask would fix a node: inside a conductor, or on a Dirichlet face.
+    /// </summary>
+    /// <remarks>
+    /// The same two rules <see cref="Assemble"/> applies on the finest level -
+    /// <see cref="Rasterise"/> by <c>Contains</c>, then <see cref="PinFaces"/> - asked of
+    /// one node. The coarse-level pinning of an electrode too small to hold a node does not
+    /// happen on the finest level, so it has no part here.
+    /// </remarks>
+    private static bool IsFixedFine(Geometry3D geometry, Grid3D grid, int i, int j, int k)
+    {
+        bool Dirichlet(int face) =>
+            geometry.Faces.Count != 6 || geometry.Faces[face] == EdgeCondition.Dirichlet;
+
+        if ((i == 0 && Dirichlet(0)) || (i == grid.CountX - 1 && Dirichlet(1))
+            || (j == 0 && Dirichlet(2)) || (j == grid.CountY - 1 && Dirichlet(3))
+            || (k == 0 && Dirichlet(4)) || (k == grid.CountZ - 1 && Dirichlet(5)))
+        {
+            return true;
+        }
+
+        var (x, y, z) = (grid.X(i), grid.Y(j), grid.Z(k));
+
+        return geometry.Electrodes.Any(electrode => electrode.Contains(x, y, z));
+    }
+
+    /// <summary>The six stencil arms, in the order <see cref="AddCuts"/> visits them.</summary>
+    private static readonly (int Di, int Dj, int Dk)[] Arms =
+        [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)];
+
+    /// <summary>
+    /// Whether some conductor meets the arm clearly before <paramref name="entry"/>, so the
+    /// cut records that one and a tie at <paramref name="entry"/> is in its shadow.
+    /// </summary>
+    private static bool Shadowed(
+        IReadOnlyList<CompiledElectrode3D> electrodes,
+        double fromX, double fromY, double fromZ, double toX, double toY, double toZ, double entry)
+    {
+        foreach (var electrode in electrodes)
+        {
+            if (electrode.FirstEntry(fromX, fromY, fromZ, toX, toY, toZ) is { } nearer
+                && nearer > 0.0
+                && nearer < entry - SharedFaceNodes.ToleranceFraction)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -322,6 +589,12 @@ public static class GeometryBuilder3D
         var groups = Groups(geometry);
         var solves = SolveGroups(geometry, groups);
 
+        // Once per geometry rather than per channel: which nodes sit on a shared face is a
+        // property of the mesh and the conductors, and every channel solves on both.
+        var meshWarnings = SharedFaceNodes.Warnings(solves.Count > 0
+            ? NodesOnSharedFaces(geometry, solves[0].Mask.Grid, solves[0].Mask)
+            : null);
+
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
         var harmonics = new List<IReadOnlyList<WeightTerm>>(groups.Count);
@@ -345,6 +618,8 @@ public static class GeometryBuilder3D
         }
 
         var (frequencies, waveforms, quadrature) = Clocks(geometry.Drives);
+
+        worst = worst with { Warnings = meshWarnings };
 
         if (geometry.Stages.Count == 0)
         {
@@ -436,10 +711,23 @@ public static class GeometryBuilder3D
             var (potential, report) = PoissonSolver3D.Solve(
                 mask, geometry.Tolerance, maximumCycles: 200, coarsen: Coarsener(geometry));
 
-            return [new ChannelSolve(0, mask, potential, report)];
+            return
+            [
+                new ChannelSolve(
+                    0, mask, potential,
+                    report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) }),
+            ];
         }
 
-        return SolveGroups(geometry, Groups(geometry));
+        // Every channel carries the same finding, because every channel solves on the same
+        // mesh round the same conductors; einzel solve reports it once per element.
+        var solves = SolveGroups(geometry, Groups(geometry));
+
+        var warnings = SharedFaceNodes.Warnings(solves.Count > 0
+            ? NodesOnSharedFaces(geometry, solves[0].Mask.Grid, solves[0].Mask)
+            : null);
+
+        return [.. solves.Select(channel => channel with { Report = channel.Report with { Warnings = warnings } })];
     }
 
     /// <summary>

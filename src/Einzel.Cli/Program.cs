@@ -1002,6 +1002,8 @@ public static class Program
 
         Console.Out.WriteLine(string.Create(invariant, $"solved in {outcome.ElapsedMs:F0} ms"));
 
+        Warn(outcome.Warnings);
+
         return (int)(outcome.Converged ? ExitCode.Success : ExitCode.ConvergenceFailure);
     }
 

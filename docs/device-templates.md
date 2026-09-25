@@ -614,10 +614,11 @@ is not finer than a percent, whatever the table once said**: the next section is
 These figures were 786.44 us and 336.15 mm until the compact analyzer was generated from this
 template, and **the first of them was a coin toss**. The sixteen foil slices hold sixteen
 different potentials and share a face every 28.125 mm, and at the shipped 4 mm foil mesh
-three of those faces sat exactly on a row of nodes. A node exactly on the face between two
-conductors belongs to one of them, the other, or neither according to the last bit of the
-face's arithmetic - and a free node with a vanishing arm to each side takes whatever mixture
-of the two potentials the rounding set. So a change that should change nothing did not:
+three of those faces sat exactly on a plane of nodes. The stripe is thinner than a cell and
+holds no node, so what the rounding decided was which slice each stencil arm lying in such a
+plane was cut against - 180 arms, carrying one slice's potential or its neighbor's according
+to the last bit of the face's arithmetic. (A node on such a face would be the same coin: in
+one conductor, the other, or neither.) So a change that should change nothing did not:
 
 | full-size flight time, derived from | us |
 | --- | --- |
@@ -627,13 +628,19 @@ of the two potentials the rounding set. So a change that should change nothing d
 | at 0.2000001, and at 0.5 and 0.25 | 786.44 |
 
 Electrostatic similarity says all four are the same number. Binary-exact scales reproduce
-it to the bit; 0.2, which is not representable, moved 454 nodes and 1,586 cut links of the
-foil mesh to the other side of a face and the flight time by 0.27 percent. **The template
-now moves the foil's mesh 0.3 mm along the drift** (`meshShiftZ`, with the grounded boards
-following it so each still spans the domain), which puts every shared face a tenth of a cell
-from the nearest node - the best any placement can do, since the faces' positions within a
-cell repeat every fifth of one. `CompactAstralTests` checks the margin and the node-for-node
-identity of the scaled mesh.
+it to the bit; 0.2, which is not representable, moved the flight time by 0.27 percent. The
+masks differ in 454 nodes and 1,586 cut links, and **only 180 of those links are the foil**:
+every node and the other 1,406 links sit on the domain's upper z face, where the grounded
+boards' ends meet it and the last node plane rounds to either side of the declared maximum -
+a flip between two states both near zero volts, which the flight does not see (checked in
+`docs/numerics.md`, where moving the mesh by 1e-7 of the extent flips the 180 arms alone
+and reproduces both flight times). **The template now moves the foil's mesh 0.3 mm along
+the drift** (`meshShiftZ`, with the grounded boards following it so each still spans the
+domain), which puts every shared face a tenth of a cell from the nearest node - the best any
+placement can do, since the faces' positions within a cell repeat every fifth of one.
+`CompactAstralTests` checks the margin and the node-for-node identity of the scaled mesh,
+and **the engine now warns** (`mesh.node-on-shared-face`) on any solve whose mesh samples a
+face two disagreeing conductors share: with the shift removed it reports the 180 arms.
 
 **Removing the coin toss exposed an ordinary discretization error four times larger.** The
 foil stripe is 0.715 mm thick against a 3.84 mm cell across it and holds no node at all, so

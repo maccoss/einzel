@@ -155,6 +155,42 @@ Einzel. **That, rather than a date, is the trigger.**
 
 ## Amendments to the specification
 
+### 56 - A mesh samples a geometry at nodes and at arms, and a shared face must be clear of both
+
+**ACC-3, GRD-2, and Amendment 55.** Amendment 55 found that a node lying on a face two
+disagreeing conductors share is a coin toss rather than a discretization error, and proposed
+an engine check for it. Built as described - nodes within a rounding of both surfaces - the
+check **reported the case that motivated it clean**. The Astral's foil stripes are thinner
+than a cell and hold no node; the three shared faces lie on node *planes*, and what the
+rounding decided was which slice's potential the stencil arms in each plane were cut against.
+So the condition r06's convergence tier cannot see is stated in terms of both places a mesh
+samples a geometry: **no node, and no point where a stencil arm from a free node first meets
+metal, may lie on a face shared by conductors that disagree in any state.**
+
+`GeometryBuilder` and `GeometryBuilder3D` check it before every solve and put
+`mesh.node-on-shared-face` (Qualified) on the `SolveReport`, so it reaches `run`, `preview`,
+every figure and `solve` (which carried no warnings before). Tolerance 1e-9 of the finest
+spacing, the overlap checks' tangency tolerance; "disagree" is theirs too, the potential and
+every tap over every state, through the same functions. The arm test asks whether the point
+met is within tolerance of the *other* surface rather than whether both are entered at one
+fraction, because the second is discontinuous in exactly the case it exists for.
+
+**What it found.** Every shipped template and corpus example is clean - 44 solved elements -
+and `SharedFaceCorpusTests` keeps them so; `astral-3d` with its mesh shift removed reports
+**180 arms and 0 nodes**, and is the control that must trip. Moving that mesh by 1e-7 of its
+extent either side of the node gives 786.4372 and 784.3191 us: a **2.118 us step, 0.27
+percent**, five orders above each run's stated uncertainty, on an ordinary slope of 5.4 us per
+cell. It also corrects Amendment 55's evidence: of the 454 nodes and 1,586 links that differ
+between the full-size and compact masks, only **180 links are the foil**; every node and the
+other 1,406 links are grounded boards' ends meeting the domain's upper face, a flip between
+two states near zero volts that the flight does not see.
+
+**Two limits, stated.** The tolerance flags coincidence, not proximity: a face 2.6e-5 of a
+cell off a node draws no warning and sits on the edge of the same step, which a geometric
+sweep or sensitivity field would cross silently - so the fix the warning names is a tenth of
+a cell, not the tolerance. And a conductor flush with a **Dirichlet** domain face is the same
+coin toss against the grounded boundary at zero volts, and is not checked.
+
 ### 55 - Where a mesh sits is part of its error, and a node on a shared face is not error at all
 
 **ACC-3, §19's convergence tier.** r06 makes grid convergence a first-class test: refine the
@@ -190,9 +226,8 @@ two-mesh extrapolation (the next refinement is 68 million nodes and is refused).
 where the mesh sits as well as how fine it is, and an agreement quoted finer than that spread
 is not an agreement. A shared face between conductors that disagree must not lie on a node;
 `astral-3d` now declares `meshShiftZ` for it, and `CompactAstralTests` checks the margin.
-**Not yet built: an engine check** that warns when any solve has a node on such a face -
-proposed separately, since whether the other shipped templates carry the same condition has
-not been surveyed.
+**The engine check is built, and the survey done** - Amendment 56, which also corrects what
+this entry says the coin was tossed on: arms, not nodes.
 
 ### 53 - The shell runs where the engine runs, and Amendment 26's bet was called
 

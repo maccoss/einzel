@@ -66,6 +66,22 @@ public sealed record SolveReport(
     /// from a level count.
     /// </remarks>
     public bool Galerkin { get; init; }
+
+    /// <summary>What the geometry builder found wrong with the mesh before solving it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Empty from the solver itself, which sees a mask and not the conductors that made it.
+    /// The builders put here what only the geometry can say - so far, nodes sitting on a
+    /// face two disagreeing conductors share (<see cref="SharedFaceNodes"/>) - and
+    /// <c>FieldAssembly.BuildReported</c> carries it onto every result (GRD-2).
+    /// </para>
+    /// <para>
+    /// On the report because the report is the one thing every consumer of a solve already
+    /// reads: a warning returned beside it would need every caller taught to look, and the
+    /// callers that were not taught are exactly where this project has lost evidence before.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
 }
 
 /// <summary>

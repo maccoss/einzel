@@ -6160,3 +6160,32 @@ is 0.0976 of a cell from the nearest node. Flight 784.9047 us, reversal 336.061 
 336.15), 24 outbound. The compact analyzer: 156.9809 us and 67.212 mm, ratios 0.99999998 and
 0.999998 - the integrator's tolerance and the trajectory samples' resolution. The mirror
 cross-sections had no face on a node and nothing about the mirror comparison moves.
+
+## 80. What the 454 nodes were, and the engine check that section 79 proposed
+
+Section 79 says 454 nodes and 1,586 cut links "changed hands between adjacent slices". **The
+nodes did not, and nor did most of the links.** No node lies inside any foil slice at this
+mesh - the stripe is 0.715 mm across a 3.84 mm cell - and comparing the full-size and compact
+masks cell by cell puts **every one of the 454 nodes, and 1,406 of the links, on the domain's
+upper z face** (node plane 256), where the grounded boards' ends meet it. The last node plane
+is `origin + 256 * spacing`, exactly on the declared maximum at full size and 1.4e-14 mm over
+it in the compact analyzer, so those nodes are inside the boards in one and free beside them
+in the other: a flip between two states both near zero volts. The foil's own share is **180
+cut links**, 30 at each of node planes 80, 128 and 176 in each direction - the arms lying in
+those planes, cut against one slice or the next. That is consistent with section 79's own
+observation that the faces on the domain's edges were exonerated.
+
+**The 180 arms are the whole 0.27 percent.** Moving the foil mesh by 1e-7 of the z extent
+(75 nm, 2.6e-5 of a cell), which flips the arms and leaves all 454 boundary nodes inside the
+boards at both signs:
+
+| shift | -1e-2 cell | -1e-3 | -2.6e-5 | 0 | +2.6e-5 | +1e-3 | +1e-2 | 0.1024 (shipped) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| flight, us | 786.3828 | 786.4319 | 786.4372 | 786.4373 | 784.3191 | 784.3246 | 784.3760 | 784.9047 |
+
+A 2.118 us step at the node on a slope of about 5.4 us per cell; the compact analyzer's 784.32
+equals the upper side with its boundary nodes in the other state.
+
+**The engine check is built** (`mesh.node-on-shared-face`, SPEC.md Amendment 56) and reports
+this geometry with the shift removed as **180 arms and 0 nodes**. Specified as a check on
+nodes alone, which is how section 79 described the defect, it reported the template clean.
