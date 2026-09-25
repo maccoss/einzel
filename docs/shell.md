@@ -965,3 +965,35 @@ Plus two allocations: the diverging ramp's five anchors were a method-local lite
 on every call while the viridis table forty lines above was already `static readonly`, and
 the equipotential upload re-wrapped every point into its own `double[3]` to reach an
 overload that flattened it again.
+
+### The viewport no longer decides what its picture looks like
+
+Every decision that made the cross-platform viewport's picture - the camera, the color
+ramps, how an electrode is colored, which layers exist and in what order, which are
+translucent and whether they write depth, and the lighting - lived inside `SceneView`. They
+now live in `ViewportPicture` and `Framing` in `Einzel.Commands`, and `SceneView` uploads the
+composition it is handed and draws its layers in order; even its fragment shader is built
+from `ViewportPicture.Light` and `ViewportPicture.Ambient` rather than typed numbers.
+
+The reason is `einzel render still`, which draws the same composition to a PNG with a
+software rasterizer: a still is worth having only if it is the window's picture, and two
+copies of a decision drift. UI-1 decided where the decisions could go - the boundary test
+forbids the shell from using `Einzel.Render` types at all - so they sit in the one engine
+assembly the shell may reach. The detail is in `docs/rendering.md` and SPEC.md Amendment 54.
+
+Two things changed for a person using the window, both found by looking at stills. **Printed
+boards and reflected halves are drawn**: the planar mirror pair was one end cap and nothing
+else. And **the frame is fitted to what each named view sees** rather than to a sphere round
+the instrument, so a long analyzer runs edge to edge instead of across the middle third.
+
+**Fitting per view broke turning between views, and a review caught it before it shipped.**
+`SceneView` unioned the frame fitted for the new view with the previous view's frame, to keep
+whatever a watched packet had drifted into. But a frame is now a box in its own view's
+coordinates, and the union carried the old box's rotated corners across - so the frame never
+shrank, and grew on every click of a named view. A cube filled about half the side view after
+one switch from iso, and less after each round trip. The sphere it replaced was the same from
+every angle, which is why the union had been harmless before. The bookkeeping now lives in
+`ViewportCamera` in `Einzel.Commands`, where it can be tested without a GL context: what a
+watch adds is kept as a box in model coordinates, which does not depend on the view, and each
+turn fits the scene afresh and takes that box in at the new angles. Turning away and back
+gives the frame you started with, to 1e-9 over five round trips.

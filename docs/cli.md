@@ -102,6 +102,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel report [dir]` | An account of what has been run, as one self-contained page (Amendment 43) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
+| `einzel render still <model.json>` | Draw the viewport's shaded 3D picture to a PNG, headlessly - the same composition and camera the window uses |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
 | `einzel --version` | Engine version |
@@ -112,6 +113,9 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
 | `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
+| `--view iso\|side\|top\|front` | `render still` only: the named view, the same names as the window's buttons |
+| `--width-px N`, `--height-px N` | `render still` only: the picture's size, 16 to 8192 pixels; the unit is in the name, as `--width-mm` does it |
+| `--see-through` | `render still` only: draw the conductors translucent, as the window's toggle does |
 | `--progress <seconds>` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default, `0` for silence |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 

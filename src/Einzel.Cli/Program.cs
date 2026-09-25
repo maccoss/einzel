@@ -1461,13 +1461,12 @@ public static class Program
     }
 
     /// <summary>
-    /// Draws a model, headlessly, into vector files.
+    /// Draws a model, headlessly: vector sections and animations, and raster stills.
     /// </summary>
     /// <remarks>
-    /// Sections and animations. <c>still</c> is a raster projection and nothing in this
-    /// build rasterises; it is named here and refused with a reason rather than left to
-    /// fail as an unknown verb, because "not built yet" and "you spelled it wrong" are
-    /// different problems and an agent should not have to guess which it hit.
+    /// <c>still</c> was named here and refused for as long as nothing rasterized, because
+    /// "not built yet" and "you spelled it wrong" are different problems. It is built now,
+    /// and it draws what the interactive viewport draws.
     /// </remarks>
     private static int Render(string[] args, CommandLine options)
     {
@@ -1475,14 +1474,7 @@ public static class Program
 
         if (kind is "still")
         {
-            Console.Error.WriteLine(
-                "'einzel render still' is not built yet. Vector output is: "
-                + "'einzel render section <model.json>' or 'einzel render animation <spec.json>'.");
-
-            Console.Error.WriteLine(
-                "A still is a raster projection; nothing in this build rasterises.");
-
-            return (int)ExitCode.ValidationFailure;
+            return Still(options);
         }
 
         if (kind is "animation")
@@ -1582,6 +1574,115 @@ public static class Program
 
         return (int)ExitCode.Success;
     }
+
+    /// <summary>Draws a model to a PNG, as the interactive viewport would show it.</summary>
+    /// <remarks>
+    /// <para>
+    /// The pixel sizes carry their unit in the flag's name, the way <c>--width-mm</c> and
+    /// <c>--at-us</c> do: a bare <c>--width</c> beside a section's millimetres would be one
+    /// word meaning two things in one verb.
+    /// </para>
+    /// <para>
+    /// Warnings go to stderr (CLI-2) and into the PNG itself (GRD-2), and a validity
+    /// violation also puts a hatched band across the bottom of the picture (RND-11).
+    /// </para>
+    /// </remarks>
+    private static int Still(CommandLine options)
+    {
+        var positional = options.Positional.Skip(1).ToList();
+
+        if (positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel render still <model.json> [--out <file.png>] "
+                + "[--view " + string.Join("|", ViewportPicture.Views.Keys) + "]");
+            Console.Error.WriteLine(
+                "       [--width-px N] [--height-px N] [--see-through] [--dry-run] [--json]");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var modelPath = positional[0];
+        var view = options.Value("view") ?? "iso";
+
+        if (!ViewportPicture.Views.ContainsKey(view))
+        {
+            Console.Error.WriteLine(
+                $"no view named '{view}'; the named views are "
+                + string.Join(", ", ViewportPicture.Views.Keys));
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        // TryParse rather than Parse: a typo such as "1600px" is the caller's mistake, and
+        // Parse would throw it through to the handler for defects in the engine, exit 6.
+        int? Pixels(string flag, int otherwise)
+        {
+            if (options.Value(flag) is not { } given)
+            {
+                return otherwise;
+            }
+
+            if (int.TryParse(given, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out var pixels))
+            {
+                return pixels;
+            }
+
+            Console.Error.WriteLine($"--{flag} '{given}' is not a whole number of pixels; a still is between 16 and 8192 pixels on each side");
+
+            return null;
+        }
+
+        if (Pixels("width-px", 1600) is not { } width || Pixels("height-px", 1000) is not { } height)
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (width is < 16 or > 8192 || height is < 16 or > 8192)
+        {
+            Console.Error.WriteLine("a still is between 16 and 8192 pixels on each side");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+
+        var outcome = StillCommand.Execute(
+            modelPath,
+            new ProjectLayout(root),
+            view,
+            width,
+            height,
+            options.Has("see-through"),
+            options.Value("out"),
+            options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(outcome.Written ? $"wrote {outcome.Artifact}" : $"would write {outcome.Artifact}");
+
+        Console.Out.WriteLine(
+            $"{outcome.Width} by {outcome.Height} px, {outcome.View} view"
+            + (outcome.SeeThrough ? ", conductors translucent" : string.Empty)
+            + $"; {outcome.Electrodes} electrodes, {outcome.FieldLevels} equipotential levels, "
+            + $"{outcome.Trajectories} trajectories, {outcome.DensityShells} density contours"
+            + (outcome.Tainted ? "; marked with a hatched band for a validity violation" : string.Empty));
+
+        // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>
+    /// Draws a flight as a numbered sequence of vector frames (RND-7).
+    /// </summary>
 
     /// <summary>
     /// Draws a flight as a numbered sequence of vector frames (RND-7).
