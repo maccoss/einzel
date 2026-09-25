@@ -2904,6 +2904,21 @@ chain - so an amplitude scan or a frequency scan re-solves nothing. The ring sta
 `repeat` electrode whose inner radius is `entranceRadius - max(0, ring - 57) * taperPerRing`,
 which is the whole geometry in one expression.
 
+### The detector had drifted off the grid, and nothing ran
+
+The template shipped in the diffusive mode and, for a while, could not be run in it. When
+diffusive collection was restricted to an aligned grid face - an internal detector refused
+rather than silently moved - this template's detector sat one pitch behind the conductance
+limit at **101.5 mm**, while its density grid ended at a literal **102 mm**. Every run was
+refused, the viewport drew no density, and none of the template's three tests runs it, so
+nothing noticed. The literature register went on quoting a threshold measured before the rule.
+
+The grid's ends are now the template's own expressions - `domainMinX` and `detectorX` - so the
+collecting face is where the detector is by construction and cannot drift from it when a ring
+count or a pitch changes. It is the same fault the TIMS front end had, fixed the same way.
+Re-measured at the five published amplitudes, the threshold moved by at most 0.013; the
+numbers and the two validity violations they carry are in `docs/literature-targets.md` §5.
+
 ### The exit had to have something behind it
 
 The first version lost every ion, in both transport modes, on the conductance limit - and not

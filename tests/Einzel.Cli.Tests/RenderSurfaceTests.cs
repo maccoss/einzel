@@ -243,20 +243,21 @@ public sealed class RenderSurfaceTests : IDisposable
     }
 
     [Fact]
-    public void TheUnbuiltKindSaysWhyRatherThanFailingAsATypo()
+    public void NoRenderKindStillSaysItIsUnbuilt()
     {
-        // "Not built yet" and "you spelled it wrong" are different problems, and an
-        // agent should not have to guess which it hit. Only 'still' is left: it is a
-        // raster projection and nothing in this build rasterises.
+        // "Not built yet" and "you spelled it wrong" are different problems, so an unbuilt
+        // kind was named and refused with a reason. None is left: 'animation' was built,
+        // and 'still' draws the viewport's picture to a PNG. A refusal left behind after
+        // the thing was built is the same defect as one missing before it was - both send
+        // a caller somewhere the platform is not.
         var (exitCode, _, stderr) = Run("render", "still", "whatever.json");
 
         Assert.NotEqual(0, exitCode);
-        Assert.Contains("not built yet", stderr, StringComparison.Ordinal);
-        Assert.Contains("render section", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("not built yet", stderr, StringComparison.Ordinal);
 
-        // And 'animation' no longer says it. A refusal left behind after the thing was
-        // built is the same defect as one missing before it was - both send a caller
-        // somewhere the platform is not.
+        // What it says instead is what is actually wrong: there is no such model.
+        Assert.Contains("whatever.json", stderr, StringComparison.Ordinal);
+
         var (_, _, animation) = Run("render", "animation");
 
         Assert.DoesNotContain("not built yet", animation, StringComparison.Ordinal);

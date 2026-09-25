@@ -1,10 +1,9 @@
 using Einzel.Commands;
 using Einzel.Core.Results;
-using Einzel.Shell;
 
 using Xunit.Abstractions;
 
-namespace Einzel.Shell.Tests;
+namespace Einzel.Cli.Tests;
 
 /// <summary>Where the camera goes, and what it is told to hold.</summary>
 public sealed class FramingTests(ITestOutputHelper output)
@@ -32,14 +31,12 @@ public sealed class FramingTests(ITestOutputHelper output)
         var withFlight = Framing.Measure(scene, 0.0, 0.0);
         var metalOnly = Framing.Measure(Scene([Box(-5, 5)], null), 0.0, 0.0);
 
-        output.WriteLine($"radius with the flight {withFlight.RadiusMm:F3} mm, "
-            + $"metal alone {metalOnly.RadiusMm:F3} mm");
+        output.WriteLine($"half width with the flight {withFlight.HalfWidthMm:F3} mm, "
+            + $"metal alone {metalOnly.HalfWidthMm:F3} mm");
 
-        Assert.True(
-            withFlight.RadiusMm > 45.0,
-            $"the frame is {withFlight.RadiusMm:F3} mm across a flight that reaches 100 mm");
-
-        Assert.True(withFlight.RadiusMm > 5.0 * metalOnly.RadiusMm);
+        // The side view looks along z, so screen width is x: -5 to 100 mm, half of 105.
+        Assert.Equal(52.5, withFlight.HalfWidthMm, 9);
+        Assert.Equal(5.0, metalOnly.HalfWidthMm, 9);
     }
 
     /// <summary>A scene with nothing in it frames without dividing by zero.</summary>
@@ -52,7 +49,7 @@ public sealed class FramingTests(ITestOutputHelper output)
     {
         var framing = Framing.Measure(Scene([], null), 0.0, 0.0);
 
-        Assert.True(framing.RadiusMm > 0.0);
+        Assert.True(framing.HalfWidthMm > 0.0 && framing.HalfHeightMm > 0.0);
         Assert.All(framing.Project(1.5), v => Assert.True(float.IsFinite(v)));
     }
 
@@ -126,14 +123,11 @@ public sealed class FramingTests(ITestOutputHelper output)
         var framing = Framing.Measure(packet, 0.0, 0.0);
         var nothing = Framing.Measure(Scene([], null), 0.0, 0.0);
 
-        output.WriteLine($"radius with the packet {framing.RadiusMm:F3} mm, "
-            + $"with neither metal nor packet {nothing.RadiusMm:F3} mm");
+        output.WriteLine($"half width with the packet {framing.HalfWidthMm:F3} mm, "
+            + $"with neither metal nor packet {nothing.HalfWidthMm:F3} mm");
 
-        Assert.True(
-            framing.RadiusMm > 15.0,
-            $"a packet spanning 38 mm was framed at {framing.RadiusMm:F3} mm");
-
-        Assert.Equal(1.0, nothing.RadiusMm, 12);
+        Assert.Equal(19.0, framing.HalfWidthMm, 9);
+        Assert.Equal(1.0, nothing.HalfWidthMm, 12);
 
         // And it is centred on the packet rather than on the origin it was launched from.
         Assert.Equal(21.0, framing.CenterMm.X, 6);
@@ -158,9 +152,9 @@ public sealed class FramingTests(ITestOutputHelper output)
 
         var grown = opening.Union(later);
 
-        output.WriteLine($"opening {opening.RadiusMm:F3} mm at {opening.CenterMm.X:F2}, "
-            + $"later {later.RadiusMm:F3} at {later.CenterMm.X:F2}, "
-            + $"grown {grown.RadiusMm:F3} at {grown.CenterMm.X:F2}");
+        output.WriteLine($"opening {opening.HalfWidthMm:F3} mm at {opening.CenterMm.X:F2}, "
+            + $"later {later.HalfWidthMm:F3} at {later.CenterMm.X:F2}, "
+            + $"grown {grown.HalfWidthMm:F3} at {grown.CenterMm.X:F2}");
 
         // Both instants are inside the grown frame, which is what "never loses the packet"
         // means - asserted as containment rather than as a radius, so it cannot pass by
@@ -176,20 +170,72 @@ public sealed class FramingTests(ITestOutputHelper output)
         // cannot drift the frame outward over a run of thousands of steps.
         var settled = grown.Union(opening).Union(later).Union(opening);
 
-        Assert.Equal(grown.RadiusMm, settled.RadiusMm, 12);
-        Assert.Equal(grown.CenterMm.X, settled.CenterMm.X, 12);
+        Assert.Equal(grown.HalfWidthMm, settled.HalfWidthMm, 9);
+        Assert.Equal(grown.CenterMm.X, settled.CenterMm.X, 9);
     }
 
-    private static bool Holds(Framing outer, Framing inner)
+    /// <summary>Whether one box holds another, for framings taken from the side view.</summary>
+    /// <remarks>At zero azimuth and elevation the view axes are the model's, so a box is axis-aligned.</remarks>
+    private static bool Holds(Framing outer, Framing inner) =>
+        Math.Abs(inner.CenterMm.X - outer.CenterMm.X) + inner.HalfWidthMm <= outer.HalfWidthMm + 1e-9
+        && Math.Abs(inner.CenterMm.Y - outer.CenterMm.Y) + inner.HalfHeightMm <= outer.HalfHeightMm + 1e-9
+        && Math.Abs(inner.CenterMm.Z - outer.CenterMm.Z) + inner.HalfDepthMm <= outer.HalfDepthMm + 1e-9;
+
+    /// <summary>A long, thin instrument fills its frame along the axis that binds.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The reason the framing is a box and not a sphere.</b> Framed by half its diagonal, a
+    /// 767 mm by 30 mm mirror pair was drawn across the middle third of the picture: the
+    /// diagonal of a long thin thing is its length, and the screen's height was sized to that
+    /// as well as its width. Fitted to the box this view sees, it runs edge to edge.
+    /// </para>
+    /// <para>
+    /// Measured by carrying the instrument's own ends through the projection, so what is
+    /// checked is where they land on the screen rather than a number inside the framing.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(-32.0, 24.0)]
+    public void ALongThinInstrumentFillsItsFrame(double azimuth, double elevation)
     {
-        var (ax, ay, az) = outer.CenterMm;
-        var (bx, by, bz) = inner.CenterMm;
+        // The planar mirror pair's proportions: 767 mm long, 30 mm between its boards.
+        var scene = Scene([Slab(-383.5, 383.5, -15.0, 15.0, -15.0, 15.0)], null);
+        var framing = Framing.Measure(scene, azimuth, elevation);
+        var m = framing.Matrix(2.0);
 
-        double dx = bx - ax, dy = by - ay, dz = bz - az;
-        var apart = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz));
+        var reach = 0.0;
 
-        return apart + inner.RadiusMm <= outer.RadiusMm + 1e-9;
+        foreach (var x in new[] { -383.5, 383.5 })
+        {
+            foreach (var y in new[] { -15.0, 15.0 })
+            {
+                foreach (var z in new[] { -15.0, 15.0 })
+                {
+                    reach = Math.Max(reach, Math.Abs((m[0] * x) + (m[4] * y) + (m[8] * z) + m[12]));
+                }
+            }
+        }
+
+        output.WriteLine($"azimuth {azimuth}, elevation {elevation}: the ends reach {reach:F3} of the half width");
+
+        Assert.True(reach > 0.9, $"a 767 mm instrument reaches only {reach:P0} of the frame's half width");
+        Assert.True(reach <= 1.0, $"a 767 mm instrument overruns the frame, reaching {reach:F3}");
     }
+
+    private static ConductorSurface Slab(
+        double lowX, double highX, double lowY, double highY, double lowZ, double highZ) =>
+        new(
+            Name: "slab",
+            PotentialVolts: 0.0,
+            DriveAmplitudeVolts: 0.0,
+            VerticesMm:
+            [
+                lowX, lowY, lowZ, highX, lowY, lowZ, highX, highY, lowZ, lowX, highY, lowZ,
+                lowX, lowY, highZ, highX, lowY, highZ, highX, highY, highZ, lowX, highY, highZ,
+            ],
+            Normals: [.. Enumerable.Repeat(0.0, 24)],
+            Triangles: [0, 1, 2, 0, 2, 3]);
 
     private static DensityShell Shell(double low, double high) =>
         new(

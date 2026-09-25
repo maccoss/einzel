@@ -1,14 +1,18 @@
-using Einzel.Commands;
-
-namespace Einzel.Shell;
+namespace Einzel.Commands;
 
 /// <summary>Where a conductor sits on the potential scale.</summary>
 /// <remarks>
 /// <para>
 /// <b>Separate from the viewport so it can be checked without one.</b> Deciding what color
 /// an electrode is drawn in needs no GL context, no window and no platform, and leaving it
-/// inside <see cref="SceneView"/> put it behind all three - which is why the defect below
+/// inside the shell's GL control put it behind all three - which is why the defect below
 /// lived in a viewport nothing could test.
+/// </para>
+/// <para>
+/// <b>In the command layer rather than the shell, because two things now draw with it.</b>
+/// The window and <c>einzel render still</c> must color one model the same way, and UI-1
+/// forbids the shell from producing render output - so the decision lives where both can
+/// reach it and neither owns it.
 /// </para>
 /// </remarks>
 public static class Shading
