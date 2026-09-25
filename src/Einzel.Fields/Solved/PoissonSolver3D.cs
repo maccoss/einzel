@@ -284,9 +284,17 @@ public static class PoissonSolver3D
     /// </para>
     /// </remarks>
     private static bool Representable(Grid3D coarse, DirichletMask3D mask) =>
-        mask.InteriorFixedCount == 0
-        || double.IsPositiveInfinity(mask.SmallestFeature)
-        || coarse.MaximumSpacing <= ResolvedBy * mask.SmallestFeature;
+        Representable(coarse, mask.SmallestFeature, mask.InteriorFixedCount > 0);
+
+    /// <summary>The same test, on what a mask records rather than on the mask itself.</summary>
+    /// <remarks>
+    /// Split out so that <see cref="UsesGalerkin"/> can ask it of a geometry that has not
+    /// been rasterized, and so that there is one statement of the rule rather than two.
+    /// </remarks>
+    private static bool Representable(Grid3D coarse, double smallestFeature, bool interiorElectrodes) =>
+        !interiorElectrodes
+        || double.IsPositiveInfinity(smallestFeature)
+        || coarse.MaximumSpacing <= ResolvedBy * smallestFeature;
 
     /// <summary>
     /// How well a coarse level must still resolve an electrode to be worth
@@ -349,11 +357,48 @@ public static class PoissonSolver3D
     /// rather than a derived one.
     /// </para>
     /// </remarks>
-    private static bool WorthGalerkin(DirichletMask3D mask)
-    {
-        var at = mask.Grid;
+    private static bool WorthGalerkin(DirichletMask3D mask) =>
+        UsesGalerkin(mask.Grid, mask.SmallestFeature, mask.InteriorFixedCount > 0);
 
-        while (at.CanCoarsen && Representable(at.Coarsen(), mask))
+    /// <summary>
+    /// Whether a solve over this grid will build its coarse levels by Galerkin, decided
+    /// from what the geometry declares rather than from a rasterized mask.
+    /// </summary>
+    /// <param name="grid">The finest grid.</param>
+    /// <param name="smallestFeature">
+    /// The smallest half-extent of any interior electrode, in meters; positive infinity
+    /// when there is none. <see cref="DirichletMask3D.SmallestFeature"/> is set from the
+    /// same quantity, the electrodes' characteristic sizes.
+    /// </param>
+    /// <param name="interiorElectrodes">
+    /// Whether any electrode fixes a node away from the domain faces. A caller that has
+    /// not rasterized cannot know this exactly and should pass <see langword="true"/>
+    /// whenever the geometry has electrodes, which errs toward the Galerkin hierarchy.
+    /// </param>
+    /// <returns><see langword="true"/> when the solve will take the Galerkin hierarchy.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Public because what a solve costs depends on it, and the cost has to be known
+    /// before the solve.</b> The two hierarchies hold different amounts at their peak - the
+    /// Galerkin one assembles the fine operator as a stored stencil and forms the first
+    /// coarse level from it, the rediscretized one does neither - so <c>einzel estimate</c>
+    /// cannot say what memory a volume solve needs without knowing which it will take.
+    /// Answering that with a second copy of this rule would be a second decision, and the
+    /// two would part company the first time either was tuned.
+    /// </para>
+    /// <para>
+    /// <see cref="Solve"/> calls this with the mask's own record of both quantities, so
+    /// the answer here and the choice there are the same function of the same inputs.
+    /// </para>
+    /// </remarks>
+    public static bool UsesGalerkin(Grid3D grid, double smallestFeature, bool interiorElectrodes)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var at = grid;
+
+        while (at.CanCoarsen && Representable(at.Coarsen(), smallestFeature, interiorElectrodes))
         {
             at = at.Coarsen();
         }

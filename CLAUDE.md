@@ -1127,6 +1127,21 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **A measurement mistake worth keeping:** an end-to-end check timed a scan at 50.6 s against 31.0 s minutes earlier, which reads as the estimate being badly wrong. The full test suite was running in parallel. **A wall-clock comparison on a loaded machine measures the load**, and the estimate is the one number in this project most likely to be validated that way.
 
+- **The estimate's memory figure was a fifth of the truth, and measuring it found a driven solve holding every channel's geometry.** `einzel estimate` billed 48 bytes a node for every solve, from a comment listing three fields and some restriction buffers. Sampling the live set through real builds - a forced full collection from a second thread every few milliseconds - gives **240 bytes a node on the Galerkin hierarchy, 141.7 on the rediscretized one, 153 on a plane**, and the fields are 24 of the 240: the conductor mask and six cut-link arms of two doubles each are 105 before a field exists, and the Galerkin build stores the fine operator (64) and forms its first coarse level with scratch over the fine grid. **The Astral at a 1 mm cell was billed 3.1 GiB and needs 15.3.**
+
+  | | predicted | measured, bytes a node |
+  | --- | --- | --- |
+  | Astral, 1.12 M and 8.68 M nodes (Galerkin) | 240.0 | 241.3, 240.9 |
+  | segmented quadrupole, 1.09 M and 4.28 M (rediscretized) | 141.7 | 141.9, 141.8 |
+  | linear ion trap, two channels | 248.0 | **353.7** before, **248.7** after |
+  | diffusive run, per density node | - | 263, where 16 was billed |
+
+  **The live set is what has to fit**, checked two ways: under a hard heap limit the Astral at 4 mm completed at 279 MiB and failed at 275 against a live 259, while unconstrained its heap reached 1.6x that, because the collector frees large arrays lazily. The statement lives beside the arrays (`SolveMemoryModel`), the hierarchy is asked of the solver (`PoissonSolver3D.UsesGalerkin`) rather than decided twice, and `SolveMemoryTests` pins it as a slope between two meshes - band 0.90 to 1.02, which one extra field fails.
+
+  **Two channels held 353.7 where 248 was right, for two reasons in turn.** The channel loop kept each finished channel's mask in the record it returned, to report two integers. Removing that took it to 344.7, and the remaining 96 was the previous channel's cut links held by **a temporary with no name**: `mask.Cuts?.CutCount` puts `mask.Cuts` in a stack slot, and a method run once executes as first-tier JIT code, which keeps every such slot reachable until it is reused. **When a loop body allocates something large that must not outlive the iteration, give the body a frame of its own.** Both in `docs/lessons.md`.
+
+  **The 64 M-node limit is the wrong kind of rule for memory**: at 240 bytes a node it is 14.3 GiB, ten times what `ScalarField3D`'s message says, and memory is a property of the machine while validation is a property of the document. What the code cannot index is about 358 M nodes (`node * 6` in an `int`). Recorded in `docs/cli.md` and not changed, because the limit lives on the unmerged `fix/grid-too-large-is-a-refusal` branch.
+
 
 - **A box may be tilted, and the Astral's convergence is the reason.** Every three-dimensional primitive is axis-aligned, which builds the devices §1's table asks for and cannot express one thing: a plate deliberately **not** parallel to another. An asymmetric-track analyser's two mirrors converge by a couple of hundred microns over a third of a metre, and that convergence is the **mechanism** rather than a tolerance — it is what makes the drift decelerate and reverse. Without it the model validates, solves, converges, and produces a drift that never reverses.
 

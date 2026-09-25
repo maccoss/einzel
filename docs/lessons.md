@@ -5008,3 +5008,61 @@ The general rule: **a geometry in a template is a claim about a physical device,
 name which device.** Every slot parameter now says whether it is the prototype's or the
 released instrument's, and the prototype is one override away rather than lost.
 
+
+
+## A memory figure written from a list of fields, and the geometry it left out
+
+`einzel estimate` billed every solve 48 bytes a node, from a comment naming what the solver
+allocates: potential, right-hand side, residual, "and the correction and restriction buffers
+down the V-cycle hierarchy". Nothing measured it, and it was a fifth of what a volume solve
+holds. Sampling the live set through real builds - a full collection forced from a second
+thread every few milliseconds, keeping the largest - gives **240 bytes a node** on the Galerkin
+hierarchy, 142 on the rediscretized one, and 143 to 150 for a plane solve.
+
+**The fields the comment listed are 24 of the 240.** The largest terms are the geometry: a
+conductor mask (9 bytes a node) and six cut-link arms of two doubles each (96), allocated in
+full although about 4 per cent of the arms are cut. The Galerkin hierarchy then stores the fine
+operator as eight doubles a node and forms its first coarse level from it with three scratch
+arrays over the fine grid - 64, 20 and 27 more, all live at once at the peak. **A list of what
+a solver allocates, written by someone thinking about the numerics, lists the numerics.** The
+Astral at a 1 mm cell was billed 3.1 GiB and needs 15.3.
+
+Two checks said the live set was the right quantity. Under a hard heap limit the Astral at 4 mm
+completed at 279 MiB and ran out at 275, against a sampled live peak of 259 - so the collector
+gives back its garbage when it must, and the live set plus a few per cent is the floor. And
+with memory to spare the same build's heap reached 390 bytes a node, because the collector
+frees large arrays lazily. **What has to fit is the live set; what a process shows is higher
+and depends on the machine**, so the estimate states the first and says the second is higher.
+
+The statement now lives beside the arrays (`SolveMemoryModel`), one named term per array, and
+a test measures a real build against it as a slope between two meshes, so the runtime's fixed
+cost cancels. The band is 0.90 to 1.02: tight above, because an estimate that runs under is
+discovered by the run failing, and one extra field is 3.3 per cent - a mutation adding one
+fails both volume tests.
+
+
+## A method run once keeps every temporary it ever made
+
+A driven volume geometry is solved one basis channel at a time, and each channel should keep
+only its potential. The linear ion trap, two channels, measured **353.7 bytes a node** at its
+peak against 248. The first cause was ordinary: the loop kept each finished channel's mask in
+the record it returned, 105 bytes a node, to report two integers. Replacing the mask with its
+counts took it to **344.7** - nine bytes, which is the mask's own flags and values, and not the
+96 of cut links hanging off it.
+
+The cut links were held by **a temporary with no name**. The record was built as
+`new ChannelSolve(index, mask.FixedCount, mask.Cuts?.CutCount ?? 0, ...)`, and the null check
+puts `mask.Cuts` into a stack slot. A method called once runs as first-tier JIT code, and
+first-tier code reports every such slot live until it is reused or the method returns - so the
+previous channel's cut links stayed reachable through the whole of the next channel's solve.
+Moving the loop body into a method of its own, so the slot dies with the frame, gave **248.2**
+against 248 predicted.
+
+Three things generalise. **Setting a local to null does not reach it**, because the reference
+is not in the local. **A test in Debug sees it and a benchmark in a hot loop does not**: the
+channel loop runs twice, never tiers up, and behaves in production exactly as it does
+unoptimized - which is the regime to measure a one-shot build in. And the fix is structural
+rather than clever: **when a loop body allocates something large that must not outlive the
+iteration, give the body a frame of its own.** The test for it compares a two-channel build
+with the same geometry undriven; putting the inline loop back makes the second channel cost
+102.8 bytes a node against a limit of 30.

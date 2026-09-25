@@ -400,11 +400,17 @@ public static class GeometryBuilder
 
     /// <summary>One basis channel of a solve, with the evidence that solve produced.</summary>
     /// <param name="Index">Which channel, in the order the decomposition found them.</param>
-    /// <param name="Mask">The finest-level mask, for the node and cut counts.</param>
+    /// <param name="FixedNodes">How many finest-level nodes the channel's mask held fixed.</param>
+    /// <param name="CutLinks">How many stencil arms a conductor surface cut.</param>
     /// <param name="Potential">The solved potential.</param>
     /// <param name="Report">How the solve went.</param>
+    /// <remarks>
+    /// The mask's two counts rather than the mask, for the reason the three-dimensional
+    /// record gives: a list of these built channel by channel kept every earlier channel's
+    /// mask and cut links alive through every later solve, to report two integers.
+    /// </remarks>
     public sealed record ChannelSolve(
-        int Index, DirichletMask Mask, ScalarField2D Potential, SolveReport Report);
+        int Index, int FixedNodes, int CutLinks, ScalarField2D Potential, SolveReport Report);
 
     /// <summary>Solves a geometry channel by channel, and hands back the diagnostics.</summary>
     /// <param name="solve">The compiled solve.</param>
@@ -445,10 +451,30 @@ public static class GeometryBuilder
                 maximumCycles: 400,
                 coarsen: coarse => BuildMask(solve, coarse, e => pattern.GetValueOrDefault(e.Name, 0.0)));
 
-            solves.Add(new ChannelSolve(index++, mask, potential, report));
+            solves.Add(new ChannelSolve(
+                index++, mask.FixedCount, mask.Cuts?.CutCount ?? 0, potential, report));
         }
 
         return solves;
+    }
+
+    /// <summary>What building a declared geometry will hold in memory, worked out without building it.</summary>
+    /// <param name="solve">The declared geometry.</param>
+    /// <returns>The node and channel counts and the bytes.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="solve"/> is null.</exception>
+    /// <remarks>
+    /// The channels come from the same decomposition <see cref="Build"/> makes, so the count
+    /// this uses and the solves that run cannot disagree. A plane build solves them one at a
+    /// time and keeps each potential, and no channel's mask outlives its solve.
+    /// </remarks>
+    public static SolveMemory Memory(CompiledSolvedField solve)
+    {
+        ArgumentNullException.ThrowIfNull(solve);
+
+        var grid = BuildGrid(solve);
+
+        return SolveMemoryModel.For(
+            grid.NodeCount, Math.Max(1, Patterns(solve).Count), SolveMemoryModel.PlanePeak, galerkin: false);
     }
 
     /// <summary>The relative potentials of each independent channel.</summary>

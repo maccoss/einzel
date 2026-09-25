@@ -23,7 +23,14 @@ public sealed record ElementEstimate
     /// </remarks>
     public required long NodeCount { get; init; }
 
-    /// <summary>Working memory for the solve, in mebibytes.</summary>
+    /// <summary>The most this element's solve holds live at once, in mebibytes.</summary>
+    /// <remarks>
+    /// The solver's own statement of what it allocates (<c>SolveMemoryModel</c>), measured
+    /// against real builds: about 240 bytes a node for a volume solve on the Galerkin
+    /// hierarchy, 142 on the rediscretized one, 153 for a plane solve, plus 8 a node for each
+    /// basis channel solved before the last. It was 48 for all three, which put the Astral at
+    /// a 1 mm cell at 3.1 GiB where it needs 15.4.
+    /// </remarks>
     public required double MemoryMiB { get; init; }
 
     /// <summary>Estimated seconds to solve.</summary>
@@ -95,7 +102,19 @@ public sealed record EstimateOutcome
     /// <summary>Estimated total seconds.</summary>
     public required double Seconds { get; init; }
 
-    /// <summary>Estimated peak working memory, in mebibytes.</summary>
+    /// <summary>Estimated peak live memory, in mebibytes.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What has to fit, not what the process will show.</b> Elements are built in order and
+    /// each keeps its solved potentials, so this is the largest of what every earlier element
+    /// retains plus what the next one holds while it solves.
+    /// </para>
+    /// <para>
+    /// The collector frees a large array lazily when memory is plentiful, so the working set
+    /// of a real run is higher - 1.6x on the Astral at 4 mm - and it gives that back under
+    /// pressure: the same solve completed under a hard heap limit 7 per cent above this.
+    /// </para>
+    /// </remarks>
     public required double MemoryMiB { get; init; }
 
     /// <summary>Whether this exceeds the cost threshold and should be confirmed.</summary>
@@ -212,14 +231,6 @@ public static class EstimateCommand
     /// <summary>A bound on the pilot itself, so an estimate cannot become the run.</summary>
     private const int PilotStepCeiling = 400_000;
 
-    /// <summary>Fields the solver allocates per node, at eight bytes each.</summary>
-    /// <remarks>
-    /// Potential, right-hand side, residual, and the correction and restriction
-    /// buffers down the V-cycle hierarchy, which add about a third again since
-    /// each level is a quarter of the one above.
-    /// </remarks>
-    private const double BytesPerNode = 8.0 * 6.0;
-
     /// <summary>Above this, GRD-8 asks for confirmation rather than proceeding.</summary>
     public const double ThresholdSeconds = 30.0;
 
@@ -242,6 +253,28 @@ public static class EstimateCommand
     /// over, because the first is discovered by waiting.
     /// </remarks>
     private const double MegaCellsPerSecond = 2.4;
+
+    /// <summary>What a diffusive run holds per density node, measured.</summary>
+    /// <remarks>
+    /// <para>
+    /// 248 and 259 bytes a node on the drift-tube example at 513 x 129 and 1025 x 257, a slope
+    /// of 263 between them, live-set sampled with the solved field excluded. This used to be
+    /// 16 - "two density fields, current and next" - which is a sixteenth of it.
+    /// </para>
+    /// <para>
+    /// 216 bytes a node are named arrays: the seed, the density and the next step, 24; six
+    /// coefficients, 48; the face operator, four faces of four doubles and two flags plus an
+    /// outward rate, 144. The rest is not attributed, which is why the figure is the
+    /// measurement rather than that sum - an estimate that runs under is discovered by the run
+    /// failing. An explicit run with one species and no self-field: a mixture multiplies the
+    /// per-species terms, and a mean-field solve adds its own grids.
+    /// </para>
+    /// </remarks>
+    private const double DiffusiveBytesPerNode = 263.0;
+
+    /// <summary>The ponderomotive well cache, seven arrays over the density grid.</summary>
+    /// <remarks>Built only when the run steps through a cycle average.</remarks>
+    private const double WellCacheBytesPerNode = 7.0 * sizeof(double);
 
     /// <summary>
     /// Gauss-Seidel sweeps an implicit density step is assumed to take.
@@ -550,6 +583,11 @@ public static class EstimateCommand
         var seconds = 0.0;
         var memory = 0.0;
 
+        // Elements are built in document order and each one's solved potentials stay live
+        // while the next is solving, so the model's peak is not the largest element's alone.
+        var retained = 0.0;
+        (int Index, SolveMemory Memory)? largest = null;
+
         // Measured once, and only for the kinds this model contains: a plane-only model
         // must not pay for a volume pilot it will never use.
         var firstPlane = model.Fields.FirstOrDefault(f => f.Solve is not null)?.Solve;
@@ -642,21 +680,24 @@ public static class EstimateCommand
             // number that is always nought is worse than none: it reads as an answer.
             if (element.Solve3D is { } volume)
             {
-                // Node counts only - BuildGrid meshes the declared box and never solves,
-                // so the boundary conditions cannot change its answer. Carried anyway, so
-                // that a later reader does not have to establish that, and so this stays
-                // one line from being a geometry that could be solved.
-                var space = Fields.Solved.GeometryBuilder3D.BuildGrid(
-                    new Fields.Solved.Geometry3D(
-                        volume.MinX, volume.MinY, volume.MinZ,
-                        volume.MaxX, volume.MaxY, volume.MaxZ,
-                        volume.CellSize,
-                        volume.Electrodes,
-                        volume.Tolerance)
-                    {
-                        Faces = Fields.Solved.Geometry3D.FacesOf(volume.Faces),
-                        ReflectAboutX = volume.ReflectAboutX,
-                    });
+                // The whole geometry, drives and stages included, though nothing here is
+                // solved: BuildGrid is arithmetic on the box, and the memory statement needs
+                // the channel count, which is a decomposition of the drives and the stages. A
+                // geometry copied without them reads as one channel whatever it declares.
+                var declared = new Fields.Solved.Geometry3D(
+                    volume.MinX, volume.MinY, volume.MinZ,
+                    volume.MaxX, volume.MaxY, volume.MaxZ,
+                    volume.CellSize,
+                    volume.Electrodes,
+                    volume.Tolerance)
+                {
+                    Drives = volume.Drives,
+                    Stages = volume.Stages,
+                    Faces = Fields.Solved.Geometry3D.FacesOf(volume.Faces),
+                    ReflectAboutX = volume.ReflectAboutX,
+                };
+
+                var space = Fields.Solved.GeometryBuilder3D.BuildGrid(declared);
 
                 var volumeNodes = space.NodeCount;
 
@@ -666,7 +707,24 @@ public static class EstimateCommand
                 // rediscretised. Said in the basis line rather than fudged by a factor
                 // nobody measured.
                 var volumeSeconds = volumeRate.Item1 * volumeNodes / 1e6;
-                var volumeMemory = BytesPerNode * volumeNodes / (1024.0 * 1024.0);
+
+                // THE SOLVER'S OWN STATEMENT OF WHAT IT HOLDS, not a constant here. This was
+                // 48 bytes a node - three fields and some restriction buffers - and a volume
+                // solve holds five times that: the conductor mask and its six cut-link arms
+                // are 105 bytes before a field is allocated, and the Galerkin hierarchy then
+                // stores the fine operator and forms its first coarse level from it. Measured
+                // at 241.8 bytes a node on the Astral; the Astral at a 1 mm cell was billed
+                // 3.1 GiB and needs about 15.
+                var volumePlan = Fields.Solved.GeometryBuilder3D.Memory(declared);
+                var volumeMemory = volumePlan.PeakBytes / Mebibyte;
+
+                memory = Math.Max(memory, (retained + volumePlan.PeakBytes) / Mebibyte);
+                retained += volumePlan.RetainedBytes;
+
+                if (largest is null || volumePlan.PeakBytes > largest.Value.Memory.PeakBytes)
+                {
+                    largest = (index, volumePlan);
+                }
 
                 elements.Add(new ElementEstimate
                 {
@@ -681,7 +739,6 @@ public static class EstimateCommand
                 });
 
                 seconds += volumeSeconds;
-                memory = Math.Max(memory, volumeMemory);
 
                 continue;
             }
@@ -706,7 +763,21 @@ public static class EstimateCommand
             var grid = GeometryBuilder.BuildGrid(element.Solve);
             var nodes = grid.NodeCount;
             var elementSeconds = planeRate.Item1 * nodes / 1e6;
-            var elementMemory = BytesPerNode * nodes / (1024.0 * 1024.0);
+
+            // Three times the 48 bytes a node this used to assume, for the same reason as a
+            // volume: the mask and four cut-link arms were not in it, nor the coarse levels,
+            // which a plane V-cycle rebuilds from the geometry and holds all at once at the
+            // bottom of the V. Measured at 143 to 150 bytes a node.
+            var planePlan = GeometryBuilder.Memory(element.Solve);
+            var elementMemory = planePlan.PeakBytes / Mebibyte;
+
+            memory = Math.Max(memory, (retained + planePlan.PeakBytes) / Mebibyte);
+            retained += planePlan.RetainedBytes;
+
+            if (largest is null || planePlan.PeakBytes > largest.Value.Memory.PeakBytes)
+            {
+                largest = (index, planePlan);
+            }
 
             elements.Add(new ElementEstimate
             {
@@ -721,7 +792,6 @@ public static class EstimateCommand
             });
 
             seconds += elementSeconds;
-            memory = Math.Max(memory, elementMemory);
         }
 
         // A diffusive run is a time-stepped solve over a whole grid, and its step is
@@ -733,7 +803,10 @@ public static class EstimateCommand
             var (diffusiveSeconds, diffusiveMemory, diffusiveBasis) = Diffusive(model, Path.GetDirectoryName(absolute) ?? Directory.GetCurrentDirectory());
 
             seconds += diffusiveSeconds;
-            memory = Math.Max(memory, diffusiveMemory);
+
+            // On top of the solved fields, which the density is stepped through and which
+            // stay live for the whole run.
+            memory = Math.Max(memory, (retained / Mebibyte) + diffusiveMemory);
             basis = diffusiveBasis;
         }
 
@@ -762,6 +835,13 @@ public static class EstimateCommand
         if (mesh.Length > 0)
         {
             basis = basis + " " + mesh;
+        }
+
+        var held = MemoryNote(largest, memory, elements);
+
+        if (held.Length > 0)
+        {
+            basis = basis + " " + held;
         }
 
         if (model.ModelsSpaceCharge)
@@ -1282,6 +1362,100 @@ public static class EstimateCommand
             + $"{worst.NodeCount / 1e6:G3} M, which is {(double)worst.NodeCount / best:F1}x less.");
     }
 
+    /// <summary>Bytes in a mebibyte, the unit the estimate reports memory in.</summary>
+    private const double Mebibyte = 1024.0 * 1024.0;
+
+    /// <summary>A byte count, spelled the way the table beside it spells it.</summary>
+    private static string Size(double bytes) => MemorySize(bytes / Mebibyte);
+
+    /// <summary>A memory figure in mebibytes, as something a person sizes a machine against.</summary>
+    /// <param name="mebibytes">The figure, in mebibytes - the unit the estimate reports it in.</param>
+    /// <returns>Mebibytes to one decimal below a gibibyte, gibibytes to one decimal above.</returns>
+    /// <remarks>
+    /// Public for the reason <see cref="Duration"/> is: the CLI prints the same quantity beside
+    /// the basis sentence that contains it, and two spellings of one number on one page is a
+    /// reader's problem. "15630.5 MiB" answers "will this fit in 16 GB" less directly than
+    /// "15.3 GiB" does.
+    /// </remarks>
+    public static string MemorySize(double mebibytes) => mebibytes switch
+    {
+        < 1024.0 => string.Create(Inv, $"{mebibytes:F1} MiB"),
+        _ => string.Create(Inv, $"{mebibytes / 1024.0:F1} GiB"),
+    };
+
+    /// <summary>Says what the largest solve holds and why, and whether it fits this machine.</summary>
+    /// <param name="largest">The element whose solve holds the most, and what it holds.</param>
+    /// <param name="peakMiB">The model's peak, in mebibytes.</param>
+    /// <param name="elements">The per-element estimates, for the element's kind.</param>
+    /// <returns>A sentence for the basis line, or empty when nothing is solved.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The basis of the memory number, stated for the same reason the time's is.</b> This
+    /// figure was 48 bytes a node with nothing on the page to say so, and it was a fifth of
+    /// what a volume solve holds. A number somebody sizes a machine against has to say what it
+    /// counted.
+    /// </para>
+    /// <para>
+    /// <b>Compared with this machine only when it matters</b> - above half of what the process
+    /// may use - so an ordinary estimate carries no statement about the hardware, and one that
+    /// is about to run out of memory says so before the run rather than twenty minutes in.
+    /// </para>
+    /// </remarks>
+    private static string MemoryNote(
+        (int Index, SolveMemory Memory)? largest,
+        double peakMiB,
+        IReadOnlyList<ElementEstimate> elements)
+    {
+        if (largest is not { } found || found.Memory.Nodes <= 0)
+        {
+            return string.Empty;
+        }
+
+        var plan = found.Memory;
+        var volume = elements.FirstOrDefault(e => e.Index == found.Index)?.Nodes.Count == 3;
+        var perNode = plan.PeakBytes / plan.Nodes;
+
+        var hierarchy = !volume
+            ? string.Empty
+            : plan.Galerkin
+                ? " on the Galerkin multigrid hierarchy"
+                : " on the rediscretized multigrid hierarchy";
+
+        var channels = plan.Channels > 1
+            ? string.Create(
+                Inv, $" with {plan.Channels} basis channels solved one at a time, each keeping its potential")
+            : string.Empty;
+
+        var parts = volume && plan.Galerkin
+            ? ", and the stored operator while its first coarse level is formed"
+            : ", and the coarse levels";
+
+        var note = string.Create(
+                Inv,
+                $"Memory: field {found.Index} holds {Size(plan.PeakBytes)} at its peak, {perNode:F0} bytes a node")
+            + hierarchy
+            + channels
+            + " - the conductor mask and its cut links, three fields"
+            + parts
+            + ", counted from what the solver allocates and measured against real builds. That is "
+            + "the live set, which is what has to fit; a run's working set is higher on a machine "
+            + "with memory to spare, because the collector frees large arrays lazily.";
+
+        var available = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        var peak = peakMiB * Mebibyte;
+
+        if (available > 0 && peak > 0.5 * available)
+        {
+            var share = peak / available;
+
+            note += string.Create(
+                    Inv, $" That is {share:P0} of the {Size(available)} this process may use on this machine")
+                + (share >= 1.0 ? ", so it will not fit here." : ", which leaves little room.");
+        }
+
+        return note;
+    }
+
     /// <summary>How many nodes a requested cell size actually produces over given extents.</summary>
     /// <remarks>
     /// The grid's own rule, restated: each axis takes the interval count that covers its
@@ -1585,10 +1759,14 @@ public static class EstimateCommand
             instants.Add(phase.EndsAtSeconds);
         }
 
+        // Whether the run will step through a cycle average, which is also whether it builds
+        // the ponderomotive well cache - seven arrays over the density grid.
+        var averaged = false;
+
         foreach (var atSeconds in instants)
         {
             var field = built;
-            _ = DiffusionRun.Effective(ref field, species, declaredMobility, gas, atSeconds);
+            averaged |= DiffusionRun.Effective(ref field, species, declaredMobility, gas, atSeconds) is not null;
 
             // Every node where the gas is graded, every other one where it is not. The run
             // samples all of them; a stride is harmless on a field that is smooth between
@@ -1649,8 +1827,13 @@ public static class EstimateCommand
 
         var seconds = cells / (MegaCellsPerSecond * 1e6);
 
-        // Two density fields, current and next, at eight bytes a node.
-        var memory = 2.0 * 8.0 * grid.NodeCount / (1024.0 * 1024.0);
+        // Measured, not the two density fields this used to count. A step holds the seed, the
+        // density and the next one, six stored coefficients a node and the face operator -
+        // four faces of four doubles and two flags, which is Amendment 49's workspace - and
+        // the run holds more than those name.
+        var memory = grid.NodeCount
+            * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0))
+            / Mebibyte;
 
         return (
             seconds,
