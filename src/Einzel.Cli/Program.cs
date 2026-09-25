@@ -831,6 +831,27 @@ public static class Program
 
     private static int Estimate(CommandLine options)
     {
+        // --threshold is a flag on one invocation, and the threshold it moves is process-wide.
+        // In a process that runs one command that is the same thing; in anything that runs
+        // several - a test assembly driving Main, a host embedding the CLI - a threshold left
+        // behind is inherited by the next estimate, which then passes or refuses on a number
+        // nobody gave it. That happened: a test asking for 1e12 made the next test's cost gate
+        // pass. So it is put back however the invocation ends, rather than by convention in
+        // every caller.
+        var previous = EstimateCommand.Threshold;
+
+        try
+        {
+            return EstimateOnce(options);
+        }
+        finally
+        {
+            EstimateCommand.Threshold = previous;
+        }
+    }
+
+    private static int EstimateOnce(CommandLine options)
+    {
         if (options.Positional.Count == 0)
         {
             Console.Error.WriteLine(

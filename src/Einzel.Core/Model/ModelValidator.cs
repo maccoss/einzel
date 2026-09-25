@@ -1,5 +1,6 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
+using Einzel.Core.Numerics;
 using Einzel.Core.Units;
 
 namespace Einzel.Core.Model;
@@ -2484,6 +2485,29 @@ public static class ModelValidator
             return null;
         }
 
+        // THE MESH IS ARITHMETIC ON THE DOCUMENT, so a mesh too large to solve is refused
+        // here rather than discovered by the solver. It was discovered by the solver, and
+        // late: the guard sat in the field constructor, a solve builds its conductor mask
+        // first, and the refusal then arrived as an argument exception the CLI could only
+        // call a defect in the engine - after `validate` had passed the model and `estimate`
+        // had priced it. The same rounding rule and the same limit the grid uses, so the
+        // three verbs cannot disagree. Accumulated rather than returned, so a document with
+        // this and another mistake is told about both in one pass.
+        var spanX = maxX.Value.SiValue - minX.Value.SiValue;
+        var spanY = maxY.Value.SiValue - minY.Value.SiValue;
+        var spanZ = maxZ.Value.SiValue - minZ.Value.SiValue;
+        var (countX, countY, countZ) = VolumeMesh.Counts(spanX, spanY, spanZ, cell.Value.SiValue);
+
+        if (VolumeMesh.Nodes(spanX, spanY, spanZ, cell.Value.SiValue) > VolumeMesh.MaximumNodes)
+        {
+            errors.Add(VolumeMesh.Refusal(
+                $"{path}/cellSize",
+                countX, countY, countZ,
+                spanX, spanY, spanZ,
+                cell.Value.SiValue,
+                solve.CellSize?.Unit));
+        }
+
         // Before the electrodes, because an electrode's taps name the generators they
         // are taps on. It read the other way round when a solve could only have one.
         var drives = Drives(solve.Drive, solve.Drives, path, p, errors);
@@ -4257,6 +4281,35 @@ public static class ModelValidator
                 Suggestion = "32 is the default and resolves a packet's radius with a few cells",
             });
         }
+        else if (PicNodes(nodes) > VolumeMesh.MaximumNodes)
+        {
+            // The same limit a solve3d meets, and for the same reason it is refused here: the
+            // packet's grid is a volume solve, allocated by the same field type, so past the
+            // limit it would have reached the same argument exception mid-run - after its mask.
+            var intervals = VolumeMesh.Intervals(2.0, 2.0 / nodes);
+            var most = 2;
+
+            while (PicNodes(most * 2) <= VolumeMesh.MaximumNodes)
+            {
+                most *= 2;
+            }
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.GridTooLarge,
+                Path = "/transport/spaceChargeGrid/nodes",
+                Constraint = string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"a volume solve may hold at most {VolumeMesh.MaximumNodes:N0} nodes, and "
+                    + $"{nodes} nodes across rounds up to {intervals} intervals a side, which is "
+                    + $"{PicNodes(nodes):N0}"),
+                Observed = new ObservedValue(PicNodes(nodes), "nodes"),
+                Suggestion = string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"{most} is the most that fits, {PicNodes(most):N0} nodes; above it the count "
+                    + $"rounds to the next power of two"),
+            });
+        }
 
         if (padding <= 1.0)
         {
@@ -4288,6 +4341,14 @@ public static class ModelValidator
 
         return errors.Count > 0 ? null : new CompiledSpaceChargeGrid(nodes, padding, refresh);
     }
+
+    /// <summary>Nodes in a particle-in-cell grid declared with this many nodes across.</summary>
+    /// <remarks>
+    /// The packet's grid is a cube meshed at its width over the declared count, by the same
+    /// rounding every volume grid uses - so this asks that rule, rather than cubing the count,
+    /// which would be the declared number and not the one allocated.
+    /// </remarks>
+    private static long PicNodes(int nodes) => VolumeMesh.Nodes(2.0, 2.0, 2.0, 2.0 / nodes);
 
     private static void ValidateSpaceChargeIsComputable(CompiledModel model, List<EinzelError> errors)
     {

@@ -113,6 +113,25 @@ public sealed class CostGateTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(expected, exit);
     }
 
+    /// <summary>A threshold given on one invocation does not outlive it.</summary>
+    /// <remarks>
+    /// The threshold is process-wide and <c>--threshold</c> is a flag, so every caller that
+    /// moved it had to remember to put it back - this class's own <c>Dispose</c> does. A test in
+    /// another class passing <c>--threshold 1e12</c> did not, and the refusal test here then
+    /// exited 0 on the next estimate, having inherited a gate of ten to the twelve seconds.
+    /// Asserted directly rather than through test order, which is the test framework's to pick.
+    /// </remarks>
+    [Fact]
+    public void AThresholdGivenOnOneInvocationDoesNotOutliveIt()
+    {
+        var (exit, _, stderr) = Run("estimate", Study("flightTime", 2000), "--threshold", "1e12");
+
+        Assert.True(exit == 0, stderr);
+        Assert.Equal(
+            Einzel.Commands.EstimateCommand.ThresholdSeconds,
+            Einzel.Commands.EstimateCommand.Threshold);
+    }
+
     /// <summary>A threshold that is not a positive number is refused, not silently ignored.</summary>
     [Theory]
     [InlineData("banana")]

@@ -73,6 +73,62 @@ Guards written from first principles rather than from a requirement are worth
 re-reading when a new requirement arrives, because the argument that justified them
 is usually still true and still outweighed.
 
+## A refusal about the model, thrown as an argument exception, is reported as a defect in the engine
+
+The shipped Astral with its volume solve at a 1 mm cell is 1025 x 65 x 1025 = 68.3 M nodes
+against a 64 M limit. `validate` said OK, `estimate` priced it at 35 minutes, and `run`
+spent more than five minutes and several gigabytes before printing `INTERNAL_ERROR:
+ArgumentOutOfRangeException ... coarsen it or shrink the domain` above "This is a defect in
+einzel, not in your model", on exit code 6. The message was right. Everything around it was
+wrong, and there were four separate mistakes in one guard.
+
+**The exception type decides the whole presentation.** `ArgumentOutOfRangeException` is the
+natural spelling in a constructor, and at the process boundary an unrecognised exception can
+only be a defect - that is what the catch-all is for. So a limit a *document* can exceed is a
+refusal about the document: an `EinzelException` with a code a caller branches on, and it
+belongs where the document is read. The second time this exact shape has happened here, after
+Amendment 15's "a peak needs at least two arrivals", which also made a run report *itself* as
+broken.
+
+**The guard ran after the cost it guarded against.** It sat in `ScalarField3D`, and a solve
+builds its conductor mask first - `DirichletMask3D` and `CutLinks3D`, 105 bytes a node against
+a field's eight. Measured by moving the guard back: refusing a single-sphere geometry at the
+Astral's mesh became a **3.5 minute** test run, build included; with the guard on the mask it is
+refused having allocated under a megabyte, which is what the test asserts. A resource guard
+belongs at the *first* allocation, not at the one whose type sounds like the resource.
+
+**Three verbs had three answers to one question.** `validate` never counted nodes, `estimate`
+counted them and priced them, and only the solver refused - and the mesh is arithmetic on the
+document, so all three could have known. The same vacuous clean bill of health as `solve`
+answering `converged: true` over nothing, and a source inside an electrode validating: **a
+refusal that is computable from the document and is not made by validation is a refusal made
+too late**. One constant in `Einzel.Core`, read by the validator and the solver's backstop, and
+`estimate` validates first, so it cannot drift.
+
+**And the suggestion needed its own care, in two directions.** The finest fitting cell size
+sits exactly on a power-of-two boundary. Three significant figures rounded 1.46484 mm up to
+1.47 mm, which also crossed the *other* axis's boundary at 1.46875 mm, so the suggestion named a mesh
+with half the nodes while calling it the finest that fits - the opposite of the estimate's own
+earlier trap, where twice the spacing landed *on* the boundary and changed nothing. And an exact
+decimal is not safe either: over a box from -1.5 to 20.5 mm, 2.75 mm is the eight-interval
+boundary, and converted through `mm` it gives 8.000000000000002 intervals - sixteen, the refused
+mesh. That case was found by searching boxes for one, not by thinking about it. **A number
+printed for a person to type back into a step function has to be checked after the round trip
+through its own text and its own unit.**
+
+A fifth thing came out underneath: `Grid3D` doubled an `int` interval count, which for a
+picometre cell wrapped to zero and never returned. Harmless while only a solve called it; a
+validator that counts nodes calls it on every document. **A function safe for its one caller
+stops being safe when it is moved to where everything calls it.**
+
+**And the test written for it broke a test in another class.** It passed `--threshold 1e12`
+to `estimate`, and the threshold is process-wide: the CLI tests drive `Program.Main` in one
+process, so `CostGateTests`' refusal test, running later, inherited a cost gate of ten to the
+twelve seconds and exited 0. That class resets the threshold in its own `Dispose` and says why,
+which is a convention every caller has to remember - and the next caller, me, did not. The flag
+now restores it however the invocation ends. **A process-wide setting moved by a per-invocation
+flag is scoped by the code that moves it, not by the callers that happen to know.**
+
 ## A confinement test on a geometry that cannot confine
 
 Checking that a driven geometry in a diffusive phase gets the *cycle-averaged* field

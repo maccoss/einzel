@@ -2265,6 +2265,25 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   plus the ions itemised against `detectorLeft`. A LIB-1 signal with a second real device behind
   it. Details in `docs/device-templates.md` and `docs/literature-targets.md` §2.
 
+- **A mesh too large to solve is a refusal about the model, and validation makes it.** The Astral
+  at a 1 mm cell is 1025 x 65 x 1025 = 68.3 M nodes against a 64 M limit: `validate` said OK,
+  `estimate` priced it at 35 minutes, and `run` spent more than five minutes building a conductor
+  mask before the field constructor threw an argument exception, printed as `INTERNAL_ERROR` -
+  "a defect in einzel, not in your model" - on exit 6. Now `GRID_TOO_LARGE` at
+  `/fields/2/solve3d/cellSize`, exit 1, in about two seconds, from every verb that reads the
+  model. **One limit and one rounding rule** (`src/Einzel.Core/Numerics/VolumeMesh.cs`), read by the
+  validator, by `Grid3D.OverBox`, and by a backstop that now sits on the **mask**, the first
+  per-node allocation, rather than on the field, which came after several gigabytes. The
+  suggestion names the finest cell size that fits and is **checked after the round trip through
+  its own text and unit**: three fixed figures printed 1.47 mm for 1.46484, crossing a second
+  axis's boundary and naming half the mesh, and an exact decimal can sit a rounding below a
+  boundary (2.75 mm over 22 mm is 8.000000000000002 intervals). The particle-in-cell grid meets
+  the same limit at `/transport/spaceChargeGrid/nodes`. **The 2-D path has the same hole and no
+  limit at all** - an absurd cell size validates and then exits 6 on an `int` overflow - and is
+  left for its own change. And the test written for this broke another class's: `--threshold`
+  moved a process-wide static and never put it back, so a later estimate in the same process
+  inherited a gate of 1e12 s; it is now scoped to its invocation. `docs/lessons.md`, `docs/cli.md`.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

@@ -46,6 +46,17 @@ public static class ErrorCodes
     /// </summary>
     public const string EnginePinMismatch = "ENGINE_PIN_MISMATCH";
 
+    /// <summary>
+    /// A solve's mesh has more nodes than a solve may hold. A refusal about the model, and
+    /// raised by validation, because the mesh is arithmetic on the document and is known before
+    /// anything is built. Exits as a validation failure.
+    /// </summary>
+    /// <remarks>
+    /// It was an argument exception deep in the solver, so the one thing the platform could
+    /// say about a model with too fine a cell was that the platform itself was defective.
+    /// </remarks>
+    public const string GridTooLarge = "GRID_TOO_LARGE";
+
     /// <summary>A defect in the platform. Always a bug report.</summary>
     public const string InternalError = "INTERNAL_ERROR";
 }
