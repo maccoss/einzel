@@ -41,14 +41,15 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
     /// 1024, 48 rounds to 64, 350 rounds to 512. That is the Astral analyser's own aspect
     /// ratio, which is what made the effect worth reporting.
     /// </remarks>
-    private string Model(double cellMm)
+    private string Model(double cellMm, double depthMm = 350.0)
     {
         Directory.CreateDirectory(_root);
 
         // The cell size is made filename-safe BEFORE the extension is appended - applying
         // the replace afterwards eats the dot in ".json" too and writes files that are not
         // recognisably models.
-        var path = Path.Combine(_root, $"box-{cellMm:F2}".Replace('.', 'p') + ".json");
+        var path = Path.Combine(_root, $"box-{cellMm:F2}-{depthMm:F2}".Replace('.', 'p') + ".json");
+        var middle = Math.Min(10.0, depthMm / 2.0);
 
         var text = """
             {
@@ -56,7 +57,7 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
               "name": "long-thin-box",
               "ion": { "massToCharge": { "value": 500, "unit": "Da" }, "chargeNumber": 1 },
               "source": {
-                "position": { "value": [10, 0, 10], "unit": "mm" },
+                "position": { "value": [10, 0, MIDDLE], "unit": "mm" },
                 "direction": { "value": [1, 0, 0] },
                 "accelerationPotential": { "value": 4000, "unit": "V" }
               },
@@ -69,7 +70,7 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
                     "minY": { "value": -24, "unit": "mm" },
                     "maxY": { "value": 24, "unit": "mm" },
                     "minZ": { "value": 0, "unit": "mm" },
-                    "maxZ": { "value": 350, "unit": "mm" },
+                    "maxZ": { "value": DEPTH, "unit": "mm" },
                     "cellSize": { "value": CELL, "unit": "mm" },
                     "electrodes": [
                       {
@@ -80,7 +81,7 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
                         "minY": { "value": -24, "unit": "mm" },
                         "maxY": { "value": -20, "unit": "mm" },
                         "minZ": { "value": 0, "unit": "mm" },
-                        "maxZ": { "value": 350, "unit": "mm" },
+                        "maxZ": { "value": DEPTH, "unit": "mm" },
                         "potential": { "value": 1000, "unit": "V" }
                       }
                     ]
@@ -88,7 +89,7 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
                 }
               ],
               "detector": {
-                "planePoint": { "value": [600, 0, 10], "unit": "mm" },
+                "planePoint": { "value": [600, 0, MIDDLE], "unit": "mm" },
                 "normal": { "value": [-1, 0, 0] }
               },
               "transport": {
@@ -96,9 +97,10 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
                 "relativeTolerance": 1e-10
               }
             }
-            """.Replace(
-            "CELL", cellMm.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-            StringComparison.Ordinal);
+            """
+            .Replace("CELL", cellMm.ToString("R", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("DEPTH", depthMm.ToString("R", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("MIDDLE", middle.ToString("R", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
         File.WriteAllText(path, text);
 
@@ -146,11 +148,20 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
     /// So what is asserted is the claim itself: take the estimate's own suggested cell size,
     /// ask for it, and check the node count really falls by about the factor it promised.
     /// </para>
+    /// <para>
+    /// <b>The thin box is the case the estimate's own copy of the rounding rule got wrong.</b>
+    /// One millimeter deep at a 0.9 mm cell, the depth is two intervals, and at the suggested
+    /// size it wants less than one - which that copy counted as one interval, two nodes, where
+    /// the grid never builds fewer than two intervals, three nodes. It promised 5.9x and the
+    /// grid delivered 3.9x.
+    /// </para>
     /// </remarks>
-    [Fact]
-    public void TheSuggestedCellSizeActuallyCostsWhatItSays()
+    [Theory]
+    [InlineData(1.0, 350.0)]
+    [InlineData(0.9, 1.0)]
+    public void TheSuggestedCellSizeActuallyCostsWhatItSays(double cellMm, double depthMm)
     {
-        var estimate = EstimateCommand.Execute(Model(1.0), calibrate: false);
+        var estimate = EstimateCommand.Execute(Model(cellMm, depthMm), calibrate: false);
 
         var basis = estimate.Basis;
         var marker = "asking for ";
@@ -165,7 +176,7 @@ public sealed class MeshCliffTests(ITestOutputHelper output) : IDisposable
         var factor = double.Parse(
             promised.Split('x')[0], System.Globalization.CultureInfo.InvariantCulture);
 
-        var coarser = EstimateCommand.Execute(Model(suggested), calibrate: false);
+        var coarser = EstimateCommand.Execute(Model(suggested, depthMm), calibrate: false);
 
         var actual = (double)estimate.Elements[0].NodeCount / coarser.Elements[0].NodeCount;
 

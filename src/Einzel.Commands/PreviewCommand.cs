@@ -98,7 +98,7 @@ public static class PreviewCommand
 
         if (!validation.IsValid)
         {
-            throw new Core.Errors.EinzelException(validation.Errors[0]);
+            throw new Core.Errors.EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;

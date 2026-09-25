@@ -98,7 +98,7 @@ public static class SequenceCommand
 
         if (!validation.IsValid)
         {
-            throw new EinzelException(validation.Errors[0]);
+            throw new EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;

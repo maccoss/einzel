@@ -1,5 +1,6 @@
 using Einzel.Core.Errors;
 using Einzel.Core.Geometry;
+using Einzel.Core.Numerics;
 using Einzel.Core.Units;
 
 namespace Einzel.Core.Model;
@@ -2454,15 +2455,58 @@ public static class ModelValidator
             return null;
         }
 
+        // FINITE FIRST. A literal is refused as non-finite when it is read, but a derived
+        // bound or cell size is an expression's result, and the square root of a negative
+        // ratio or a division by a parameter set to zero gives NaN or infinity. Every
+        // comparison with NaN is false, so `max <= min` and `cell <= 0` below both let it
+        // through - and the mesh arithmetic then threw from inside validation, which the CLI
+        // can only report as a defect in the engine. An infinite cell size was quieter and
+        // worse: it validated and solved on a three-node mesh.
+        var nonFinite = false;
+
+        foreach (var (name, bound) in new[]
+        {
+            ("minX", minX.Value), ("maxX", maxX.Value), ("minY", minY.Value),
+            ("maxY", maxY.Value), ("minZ", minZ.Value), ("maxZ", maxZ.Value), ("cellSize", cell.Value),
+        })
+        {
+            if (!double.IsFinite(bound.SiValue))
+            {
+                errors.Add(new EinzelError
+                {
+                    Code = ErrorCodes.ValueOutOfBounds,
+                    Path = $"{path}/{name}",
+                    Constraint = "a solve domain bound and its cell size must be finite numbers",
+                    Observed = new ObservedValue(bound.SiValue, "m"),
+                    Suggestion =
+                        "check the expression it is computed from: a division by a parameter set to "
+                        + "zero, or the square root of a negative ratio, gives no number at all",
+                });
+
+                nonFinite = true;
+            }
+        }
+
+        if (nonFinite)
+        {
+            return null;
+        }
+
+        // Finite bounds can still be an infinite extent apart - a subtraction of two very
+        // large numbers of opposite sign overflows - and an infinite span is no more a mesh
+        // than an infinite bound is.
         if (maxX.Value.SiValue <= minX.Value.SiValue
             || maxY.Value.SiValue <= minY.Value.SiValue
-            || maxZ.Value.SiValue <= minZ.Value.SiValue)
+            || maxZ.Value.SiValue <= minZ.Value.SiValue
+            || !double.IsFinite(maxX.Value.SiValue - minX.Value.SiValue)
+            || !double.IsFinite(maxY.Value.SiValue - minY.Value.SiValue)
+            || !double.IsFinite(maxZ.Value.SiValue - minZ.Value.SiValue))
         {
             errors.Add(new EinzelError
             {
                 Code = ErrorCodes.ValueOutOfBounds,
                 Path = path,
-                Constraint = "a solve domain must have positive extent on every axis",
+                Constraint = "a solve domain must have positive, finite extent on every axis",
                 Observed = new ObservedValue(maxX.Value.SiValue - minX.Value.SiValue, "m"),
                 Suggestion = "check that each max exceeds its min",
             });
@@ -2482,6 +2526,29 @@ public static class ModelValidator
             });
 
             return null;
+        }
+
+        // THE MESH IS ARITHMETIC ON THE DOCUMENT, so a mesh too large to solve is refused
+        // here rather than discovered by the solver. It was discovered by the solver, and
+        // late: the guard sat in the field constructor, a solve builds its conductor mask
+        // first, and the refusal then arrived as an argument exception the CLI could only
+        // call a defect in the engine - after `validate` had passed the model and `estimate`
+        // had priced it. The same rounding rule and the same limit the grid uses, so the
+        // three verbs cannot disagree. Accumulated rather than returned, so a document with
+        // this and another mistake is told about both in one pass.
+        var spanX = maxX.Value.SiValue - minX.Value.SiValue;
+        var spanY = maxY.Value.SiValue - minY.Value.SiValue;
+        var spanZ = maxZ.Value.SiValue - minZ.Value.SiValue;
+        var (countX, countY, countZ) = VolumeMesh.Counts(spanX, spanY, spanZ, cell.Value.SiValue);
+
+        if (VolumeMesh.Product(countX, countY, countZ) > VolumeMesh.MaximumNodes)
+        {
+            errors.Add(VolumeMesh.Refusal(
+                $"{path}/cellSize",
+                countX, countY, countZ,
+                spanX, spanY, spanZ,
+                cell.Value.SiValue,
+                solve.CellSize?.Unit));
         }
 
         // Before the electrodes, because an electrode's taps name the generators they
@@ -4257,6 +4324,30 @@ public static class ModelValidator
                 Suggestion = "32 is the default and resolves a packet's radius with a few cells",
             });
         }
+        else if (PicNodes(nodes) > VolumeMesh.MaximumNodes)
+        {
+            // The same limit a solve3d meets, and for the same reason it is refused here: the
+            // packet's grid is a volume solve, allocated by the same field type, so past the
+            // limit it would have reached the same argument exception mid-run - after its mask.
+            var intervals = VolumeMesh.Intervals(2.0, 2.0 / nodes);
+            var most = VolumeMesh.MostNodesAcrossACube;
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.GridTooLarge,
+                Path = "/transport/spaceChargeGrid/nodes",
+                Constraint = string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"a volume solve may hold at most {VolumeMesh.MaximumNodes:N0} nodes, and "
+                    + $"{nodes} nodes across rounds up to {intervals} intervals a side, which is "
+                    + $"{PicNodes(nodes):N0}"),
+                Observed = new ObservedValue(PicNodes(nodes), "nodes"),
+                Suggestion = string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"{most} is the most that fits, {PicNodes(most):N0} nodes; above it the count "
+                    + $"rounds to the next power of two"),
+            });
+        }
 
         if (padding <= 1.0)
         {
@@ -4288,6 +4379,14 @@ public static class ModelValidator
 
         return errors.Count > 0 ? null : new CompiledSpaceChargeGrid(nodes, padding, refresh);
     }
+
+    /// <summary>Nodes in a particle-in-cell grid declared with this many nodes across.</summary>
+    /// <remarks>
+    /// The packet's grid is a cube meshed at its width over the declared count, by the same
+    /// rounding every volume grid uses - so this asks that rule, rather than cubing the count,
+    /// which would be the declared number and not the one allocated.
+    /// </remarks>
+    private static long PicNodes(int nodes) => VolumeMesh.Nodes(2.0, 2.0, 2.0, 2.0 / nodes);
 
     private static void ValidateSpaceChargeIsComputable(CompiledModel model, List<EinzelError> errors)
     {
