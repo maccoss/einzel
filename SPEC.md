@@ -155,6 +155,80 @@ Einzel. **That, rather than a date, is the trigger.**
 
 ## Amendments to the specification
 
+### 56 - A mesh samples a geometry at nodes and at arms, and a shared face must be clear of both
+
+**ACC-3, GRD-2, and Amendment 55.** Amendment 55 found that a node lying on a face two
+disagreeing conductors share is a coin toss rather than a discretization error, and proposed
+an engine check for it. Built as described - nodes within a rounding of both surfaces - the
+check **reported the case that motivated it clean**. The Astral's foil stripes are thinner
+than a cell and hold no node; the three shared faces lie on node *planes*, and what the
+rounding decided was which slice's potential the stencil arms in each plane were cut against.
+So the condition r06's convergence tier cannot see is stated in terms of both places a mesh
+samples a geometry: **no node, and no point where a stencil arm from a free node first meets
+metal, may lie on a face shared by conductors that disagree in any state.**
+
+`GeometryBuilder` and `GeometryBuilder3D` check it before every solve and put
+`mesh.node-on-shared-face` (Qualified) on the `SolveReport`, so it reaches `run`, `preview`,
+every figure and `solve` (which carried no warnings before). Tolerance 1e-9 of the finest
+spacing, the overlap checks' tangency tolerance; "disagree" is theirs too, the potential and
+every tap over every state, through the same functions. The arm test asks whether the point
+met is within tolerance of the *other* surface rather than whether both are entered at one
+fraction, because the second is discontinuous in exactly the case it exists for.
+
+**What it found.** Every shipped template and corpus example is clean - 44 solved elements -
+and `SharedFaceCorpusTests` keeps them so; `astral-3d` with its mesh shift removed reports
+**180 arms and 0 nodes**, and is the control that must trip. Moving that mesh by 1e-7 of its
+extent either side of the node gives 786.4372 and 784.3191 us: a **2.118 us step, 0.27
+percent**, five orders above each run's stated uncertainty, on an ordinary slope of 5.4 us per
+cell. It also corrects Amendment 55's evidence: of the 454 nodes and 1,586 links that differ
+between the full-size and compact masks, only **180 links are the foil**; every node and the
+other 1,406 links are grounded boards' ends meeting the domain's upper face, a flip between
+two states near zero volts that the flight does not see.
+
+**Two limits, stated.** The tolerance flags coincidence, not proximity: a face 2.6e-5 of a
+cell off a node draws no warning and sits on the edge of the same step, which a geometric
+sweep or sensitivity field would cross silently - so the fix the warning names is a tenth of
+a cell, not the tolerance. And a conductor flush with a **Dirichlet** domain face is the same
+coin toss against the grounded boundary at zero volts, and is not checked.
+
+### 55 - Where a mesh sits is part of its error, and a node on a shared face is not error at all
+
+**ACC-3, §19's convergence tier.** r06 makes grid convergence a first-class test: refine the
+mesh and watch the answer settle. That measures how fine a mesh is. It does not measure where
+the mesh sits, and on a geometry with features smaller than a cell the two are different
+errors. Both were found by generating a compact analyzer from the published Astral
+(`compact-astral-3d`), where electrostatic similarity makes the right answer exact: every
+length times 0.2, every flight time times 0.2, and nothing else moved.
+
+**It did not hold, and the reason is not discretization error.** The Astral's foil is sixteen
+slices at sixteen potentials sharing a face every 28.125 mm, and at the shipped mesh three of
+those faces lay exactly on rows of nodes. A node exactly on the face between two conductors
+at different potentials belongs to one, the other, or neither according to the last bit of
+the face's arithmetic; a free node with a vanishing arm to each side takes whatever mixture
+of the two the rounding set. Scaling by 0.2 - not representable, so it rounds differently from
+1.0 - moved 454 nodes and 1,586 cut links to the other side and the flight time by
+**0.27 percent**; 0.1999999 moved it by a different 0.03, while 0.5, 0.25 and 0.2000001
+reproduced it to the bit. That is a coin toss inside a converged-looking result, and **no
+refinement study would have found it**: every mesh in a ladder can sit on the same faces.
+Moving the foil mesh a tenth of a cell along the drift restores similarity to 1.6e-8, the
+integrator's tolerance.
+
+**And removing it exposed an error of the kind r06 does anticipate, four times larger.** The
+stripe is thinner than a cell and holds no node, so it is represented only by where its
+surfaces cut links. Moved in fifths of a cell, well clear of every shared face, the flight
+time spans **0.83 percent at 4 mm and 0.22 at 2 mm**: second-order, as a refinement ladder
+would say, but the ladder alone reports one point per rung and so reports a spread of this
+size as if it were resolved. The "0.4 percent agreement" with the published flight time that
+item 6 carried was one draw from it; the mesh-converged figure is about 1 percent below, on a
+two-mesh extrapolation (the next refinement is 68 million nodes and is refused).
+
+**What this changes.** A convergence claim on a geometry with sub-cell features should vary
+where the mesh sits as well as how fine it is, and an agreement quoted finer than that spread
+is not an agreement. A shared face between conductors that disagree must not lie on a node;
+`astral-3d` now declares `meshShiftZ` for it, and `CompactAstralTests` checks the margin.
+**The engine check is built, and the survey done** - Amendment 56, which also corrects what
+this entry says the coin was tossed on: arms, not nodes.
+
 ### 54 - A raster still is the viewport's picture, orthographic, and the window draws from the same composition
 
 **RND-4, RND-1, AGT-2, UI-1.** r06 lists `einzel render still` as "shaded 3D raster still to
@@ -2337,7 +2411,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Twenty-two device templates, all data in the model schema. **The signal has fired about twelve times and every one was vocabulary, not architecture** - nothing has ever required a change to the solver, the integrator or the transport core. Three kinds, enumerated with their instances in `docs/extending.md`: a *function* in the expression grammar (`log` for the Kingdon trap, `cosPi`/`sinPi` for any multipole above four rods, `asinPi` for the C-trap's slot, `floor`/`mod` for a repeated ring), an *attribute* on an existing element (`drivePhase` as an expression for the travelling wave, `repeat`, a tilt on a box, Neumann faces on `solve3d`, `axis` on the analytic RF element, `fringe` on a region, a parametric launch direction), and a *primitive* (`polygon` for the linear ion trap's hyperbolic rod, `prism` for its three axial sections, `revolve` for the C-trap's bent one). Twenty-two templates have cost fourteen schema versions, all purely additive, and roughly half needed nothing below the library at all. **Two entries are worth distinguishing from the rest.** The Paul trap's was not a missing capability but a *wrong validator*: `CanDoWork` asked whether any electrode held non-zero DC, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion - the rule says to believe the signal, and telling "there is a bug here" from "the abstraction is wrong" is part of using it. And `revolve` arrived late for a device that had shipped for months: `c-trap` modeled its bent rods as chains of overlapping spheres because no primitive could express one, which is the format's limit correctly worked around and then **not revisited when the limit moved**. See Amendment 50 for what that cost. |
+| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Twenty-three device templates, all data in the model schema. **The signal has fired about twelve times and every one was vocabulary, not architecture** - nothing has ever required a change to the solver, the integrator or the transport core. Three kinds, enumerated with their instances in `docs/extending.md`: a *function* in the expression grammar (`log` for the Kingdon trap, `cosPi`/`sinPi` for any multipole above four rods, `asinPi` for the C-trap's slot, `floor`/`mod` for a repeated ring), an *attribute* on an existing element (`drivePhase` as an expression for the travelling wave, `repeat`, a tilt on a box, Neumann faces on `solve3d`, `axis` on the analytic RF element, `fringe` on a region, a parametric launch direction), and a *primitive* (`polygon` for the linear ion trap's hyperbolic rod, `prism` for its three axial sections, `revolve` for the C-trap's bent one). Twenty-three templates have cost fourteen schema versions, all purely additive, and roughly half needed nothing below the library at all. **Two entries are worth distinguishing from the rest.** The Paul trap's was not a missing capability but a *wrong validator*: `CanDoWork` asked whether any electrode held non-zero DC, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion - the rule says to believe the signal, and telling "there is a bug here" from "the abstraction is wrong" is part of using it. And `revolve` arrived late for a device that had shipped for months: `c-trap` modeled its bent rods as chains of overlapping spheres because no primitive could express one, which is the format's limit correctly worked around and then **not revisited when the limit moved**. See Amendment 50 for what that cost. |
 
 ### Licensing (§20)
 
@@ -2978,8 +3052,8 @@ project's author needs to run it and more than any physics the moment one does.
     | | model | published |
     | --- | --- | --- |
     | resolving power, mirror alone, over ±2.5 per cent | 120,000 to 220,000 | ~180,000 |
-    | drift reversal | 336.15 mm | 310-360, mean 335 |
-    | flight time | 786.44 µs | 783.2 by arithmetic at 24 reflections |
+    | drift reversal | 336.06 mm | 310-360, mean 335 |
+    | flight time | 784.90 µs on the shipped foil mesh, about 775 mesh-converged | 783.2 by arithmetic at 24 reflections |
     | on-axis potential, 16 points | 0.159 kV rms | read off the figure |
 
     Three numbers are solved rather than published - the board gap, and `U3` and `U4`, which
@@ -2997,10 +3071,15 @@ project's author needs to run it and more than any physics the moment one does.
     - **The geometry had to be measured out of a figure**, and the platform had no way to
       say so. That is now Amendment 40 and it is built: a parameter declares a `provenance`
       and a `source`, and the shipped template carries them — **3 published, 13 drawn,
-      18 fitted, 28 chosen**, so which results would move if a better source turned up is a
+      18 fitted, 29 chosen**, so which results would move if a better source turned up is a
       question the document answers rather than one its prose does.
     - **A grounded domain edge is a third electrode**, met again here: the edge behind a flat
       electrode moved `c3` by 0.17 on its own.
+    - **The flight-time agreement is a percent, not four tenths of one** (Amendment 55). Three
+      foil faces sat on nodes, which made the shipped figure a coin toss at 0.27 percent;
+      moved off them, where the foil mesh sits still spans 0.83 percent at the shipped 4 mm
+      cell and 0.22 at 2 mm, and the mesh-converged flight time is about 775 µs against 783.2.
+      Still inside the register test's 2 percent, and still clear of K = 25.
     - **Two measurement floors bound any further work.** Flight-time differencing floors the
       drift coefficients at ±0.02 whatever the mesh, because it is a 330 ns signal on a 3 µs
       error that only 60 per cent cancels; a quadrature screen over per-slice basis wells

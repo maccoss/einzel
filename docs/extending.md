@@ -40,7 +40,7 @@ integrator, or the transport core.
 | TIMS front end | `fringe` on a bounded element's region | attribute |
 | rectilinear trap | start at rest; parametric vector placement; a dimensionless zero | attributes |
 
-Three kinds, and that is the whole list. **Twenty-two device templates have cost fourteen
+Three kinds, and that is the whole list. **Twenty-three device templates have cost fourteen
 schema versions, all purely additive.** Roughly half the templates needed nothing below the
 library at all.
 
@@ -125,6 +125,16 @@ geometry — a function is best tested through something that would visibly brea
   rather than exactly, so an exact test would refuse a geometry whose author did nothing
   wrong — and tangency is not a corner case, it is how every segmented chain in this library
   is written.
+
+  **Tangency is allowed; a mesh sampling the tangent face is warned about.** A face two
+  disagreeing conductors share is legitimate geometry and an ill-posed place for a node, or
+  for the point where a stencil arm first meets metal: which conductor it is credited to is
+  decided by rounding, and no refinement ladder sees it. The geometry builders check that
+  before every solve (`mesh.node-on-shared-face`, `docs/numerics.md`) using the overlap
+  checks' own `StatesOf` and `Agrees`, so a new primitive is covered by the same two queries
+  it already owes - a bounding box and a signed distance - plus the first entry the cut links
+  already need. A primitive whose bounding box does not contain its surface would make that
+  check miss, silently, which is one more reason the box has to be right.
 
   **Both checks ask about every state the instrument has.** A stage changes what an electrode
   *holds* and may not change where it *is*, so "do these two agree" has as many answers as

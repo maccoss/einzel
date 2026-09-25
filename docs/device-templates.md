@@ -11,7 +11,7 @@ physics or the abstraction is wrong, and almost always the second.
 
 | Template | What it is |
 | --- | --- |
-| `planar-mirror-pair` | **A compact Astral-type analyser**: two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair. The same class of instrument as `astral-3d` below: an asymmetric-track multi-reflection time-of-flight analyser, at a compact scale |
+| `planar-mirror-pair` | **A cross-section study of a compact mirror pair**: two printed-circuit ion mirrors facing each other, solved across the board gap and reflected to make the pair. The mirrors' energy focusing, with no drift, no tilt and no reversal - the compact analyzer as an instrument is `compact-astral-3d` |
 | `quadrupole` | Four round rods in cross-section, alternating potential |
 | `rectilinear-trap` | Four flat plates around a square aperture, the front one split by an extraction slot |
 | `einzel-lens` | Three coaxial tubes, outer two earthed, solved axisymmetrically |
@@ -28,10 +28,11 @@ physics or the abstraction is wrong, and almost always the second.
 | `linear-ion-trap` | The radial-ejection linear ion trap of Schwartz, Senko and Syka (2002) in cross-section: hyperbolic rods as polygons, a 0.25 mm ejection slot, the x pair stretched 0.75 mm, main RF and a dipole excitation on two generators, helium |
 | `stellar-ion-trap` | The Stellar's analysing cell from its paper (Remes 2024): the Velos Pro trap, four-fold stretch of 0.76 mm, slots in all four rods for symmetric RF with a detector behind each of the x pair, helium at 0.5 mTorr - from the same generator as the LTQ |
 | `linear-ion-trap-3d` | The 2002 trap as a volume: the same hyperbolic half-rods as prisms in three axial sections at their own DC, the slot only in the centre, a plate lens at each end |
-| `astral-mirror` | One mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction |
+| `astral-mirror` | A cross-section study of one mirror of the published Thermo Astral analyser at its published potentials (Stewart 2024): five electrodes, one earthed, one strongly accelerating for spatial focusing, three reflecting. The electrode *lengths* are in no paper and are this model's own reconstruction. The instrument is `astral-3d` |
 | `tims-front-end` | The analyser with Hernandez's entrance funnel and gate in front of it: a 50 mm funnel tapering 26 to 8 mm with plate-alternating RF delivers a wide packet to the tunnel's own balance point at 99.8 per cent, and the fill-trap-ramp sequence runs as phases |
 | `tims-analyzer` | The separating tunnel of a trapped ion mobility spectrometer, which is the Bruker timsTOF analyser: 27 rings over 46 mm of 8 mm bore, holding ions still against a 50 m/s counterflow while a quadrupolar RF on the ring segments — entering as its pseudopotential, 1.27 of a hyperbolic quadrupole by the solved cross-section — holds them off the bore. Each mobility parks at its own position, which is the elution relation `E_e = v_g / K`, and a ramped phase elutes them in mobility order |
 | `astral-3d` | The whole published analyser: two elongated mirrors facing each other across a 41.43 mm board gap, ions oscillating between them while drifting along their length, the mirrors **converging** so the drift decelerates and reverses. Modelled entirely from public information |
+| `compact-astral-3d` | **The compact analyzer this project is designing**: `astral-3d` at a chosen scale, one fifth as shipped, as a complete three-dimensional instrument. Generated from `astral-3d.json`, with every published length kept beside the one scale that multiplies it, so it is exactly similar rather than approximately - the compact solve is the full-size discrete problem node for node, and every flight time is the full-size one times the scale |
 
 They **share no code at all**. They name the same electrode primitives in
 different arrangements; everything below reads a Dirichlet mask without knowing
@@ -508,19 +509,19 @@ which is the property that makes a quadrupole a mass filter once the potential i
 made to oscillate, and the premise the Mathieu equation rests on. The 0.926 ratio
 to the ideal hyperbolic field is the expected round-rod approximation.
 
-## The mirror pair, which is a compact Astral analyser
+## The mirror pair: one plane of a compact mirror
 
-`planar-mirror-pair` is not a generic pair of mirrors. It is **an asymmetric-track
-multi-reflection time-of-flight analyser of the same family as the published Astral**
-(`astral-3d` below), at a compact scale: ions bounce between two planar printed-circuit
-mirrors while drifting slowly along them, so the flight path is folded many times into a
-short instrument. What differs between this template and `astral-3d` is scale and
-provenance, not principle - this one is a design being explored, and that one is a
-published instrument being reproduced.
+`planar-mirror-pair` is **a cross-section study, not an instrument**. The compact analyzer
+this project is designing is an asymmetric-track multi-reflection time-of-flight
+instrument of the Astral's family: ions bounce between two planar printed-circuit mirrors
+while drifting slowly along them, so the flight path is folded many times into a short
+instrument. This template models one plane of that - the mirrors' energy focusing - and
+nothing that makes it an instrument: no drift, no mirror tilt, no reversal, no foil. The
+instrument is `compact-astral-3d` (below), which is the published `astral-3d` at a fifth of
+its size.
 
-The template models one plane of it. Stripe electrodes run along the drift direction, so
-the potential does not depend on that direction and a cross-section is exact away from the
-ends; the drift itself is what `astral-3d` adds. `firstStageFraction` moves between a
+Stripe electrodes run along the drift direction, so the potential does not depend on that
+direction and a cross-section is exact away from the ends. `firstStageFraction` moves between a
 single-stage ramp and the Mamyrin two-stage arrangement, and `capToCap` tunes the
 first-order energy focus:
 
@@ -595,16 +596,73 @@ published injection angle:
 
 | | model | published |
 | --- | --- | --- |
-| drift reversal | **336.15 mm** | 310-360 mm, mean 335 |
+| drift reversal | **336.06 mm** | 310-360 mm, mean 335 |
 | oscillations outbound | **24** | 24-26 |
 | half-oscillation | 16.296 us, so `L_eff` 640.3 mm | 641 mm |
-| flight time | **786.44 us** | 783.2 us by `2 K L_eff / v` at K = 24; ~779 reported |
+| flight time | **784.90 us** at the shipped foil mesh; about 775 mesh-converged (below) | 783.2 us by `2 K L_eff / v` at K = 24; ~779 reported |
 | tilt term | 0.8299 | 0.84 |
 
 The tilt on its own reverses at 404 mm; the published stripe shape brings it to 336. Sixteen
 per-slice bases fit the published law to a residual of 0.23 per cent. The register test
-expects the K = 24 arithmetic at 2 per cent, which the model meets at 0.4 and which
-*excludes* K = 25 by 4.2 per cent - so it pins the oscillation count and not only the period.
+expects the K = 24 arithmetic at 2 percent, which the model meets - at 0.2 percent on the
+shipped mesh and about 1 percent mesh-converged - while lying 3.8 percent below the K = 25
+value of 815.8 us, so it pins the oscillation count and not only the period. **The agreement
+is not finer than a percent, whatever the table once said**: the next section is why.
+
+### Where the foil's mesh sits moves the flight time
+
+These figures were 786.44 us and 336.15 mm until the compact analyzer was generated from this
+template, and **the first of them was a coin toss**. The sixteen foil slices hold sixteen
+different potentials and share a face every 28.125 mm, and at the shipped 4 mm foil mesh
+three of those faces sat exactly on a plane of nodes. The stripe is thinner than a cell and
+holds no node, so what the rounding decided was which slice each stencil arm lying in such a
+plane was cut against - 180 arms, carrying one slice's potential or its neighbor's according
+to the last bit of the face's arithmetic. (A node on such a face would be the same coin: in
+one conductor, the other, or neither.) So a change that should change nothing did not:
+
+| full-size flight time, derived from | us |
+| --- | --- |
+| the template as it stood | 786.44 |
+| the same, every length scaled by 0.2, flight divided by 0.2 | 784.32 |
+| the same at 0.1999999 | 786.23 |
+| at 0.2000001, and at 0.5 and 0.25 | 786.44 |
+
+Electrostatic similarity says all four are the same number. Binary-exact scales reproduce
+it to the bit; 0.2, which is not representable, moved the flight time by 0.27 percent. The
+masks differ in 454 nodes and 1,586 cut links, and **only 180 of those links are the foil**:
+every node and the other 1,406 links sit on the domain's upper z face, where the grounded
+boards' ends meet it and the last node plane rounds to either side of the declared maximum -
+a flip between two states both near zero volts, which the flight does not see (checked in
+`docs/numerics.md`, where moving the mesh by 1e-7 of the extent flips the 180 arms alone
+and reproduces both flight times). **The template now moves the foil's mesh 0.3 mm along
+the drift** (`meshShiftZ`, with the grounded boards following it so each still spans the
+domain), which puts every shared face a tenth of a cell from the nearest node - the best any
+placement can do, since the faces' positions within a cell repeat every fifth of one.
+`CompactAstralTests` checks the margin and the node-for-node identity of the scaled mesh,
+and **the engine now warns** (`mesh.node-on-shared-face`) on any solve whose mesh samples a
+face two disagreeing conductors share: with the shift removed it reports the 180 arms.
+
+**Removing the coin toss exposed an ordinary discretization error four times larger.** The
+foil stripe is 0.715 mm thick against a 3.84 mm cell across it and holds no node at all, so
+it is represented only by where its surfaces cut links - and where they cut depends on where
+the mesh sits. Moved in steps of a fifth of a cell, all well clear of every shared face:
+
+| foil mesh | placement, in cells | flight time, us |
+| --- | --- | --- |
+| 4 mm (shipped) | 0.1 / 0.3 / 0.5 / 0.7 | 784.89 / 787.10 / 780.56 / 781.80 |
+| 2 mm | 0.1 / 0.3 / 0.5 | 776.44 / 777.08 / 778.18 |
+
+The spread falls from 0.83 percent to 0.22 - a factor of 3.8 for a halving of the cell, which
+is second order - and the mean falls 6.4 us with it, so extrapolating the means puts the
+mesh-converged flight time **near 775 us, about 1 percent below the arithmetic's 783.2**.
+Still well inside the register test's 2 percent and well clear of K = 25. But the "0.4
+percent" this page quoted was one draw from a 0.83 percent placement spread, and it should not
+be read as agreement at that level; neither should the 0.2 the shipped mesh now gives. **The
+extrapolation rests on two meshes**: the next power-of-two refinement, 1 mm, is 68 million
+nodes and the solver refuses it. The drift reversal was not re-measured against placement.
+
+What this does not touch: the two mirror cross-sections are solved at 0.5 mm and had no face
+on a node, and nothing about the mirror comparison below moves.
 
 **The convergence was the most consequential unpublished number, and it turned out to be
 published.** This model fitted it at 0.56 mm knowing only that the papers mention a 200 um
@@ -646,7 +704,7 @@ move if a better source turned up.
 
 **The template declares this rather than only describing it.** Every parameter carries a
 `provenance` and, where that makes a claim, the source it rests on: 3 published, 13 drawn off
-the figure, 18 fitted, and 28 the model's own choices. A run reports the guesses and the
+the figure, 18 fitted, and 29 the model's own choices. A run reports the guesses and the
 fitted values on the result, so a number quoted out of this model arrives with what it rests
 on attached.
 
@@ -672,6 +730,59 @@ about 11 per cent, and the alternative is worse.
 The narrative of how this was reached, including several attributions that turned out to be
 wrong, is `docs/astral-log.md`. The published record it is compared against is
 `docs/literature-targets.md`.
+
+## `compact-astral-3d` — the published analyzer at a fifth of its size
+
+The compact analyzer this project is designing is the Astral's geometry scaled down, and
+until this template it had no model as an instrument: `planar-mirror-pair` is one plane of a
+mirror pair and nothing else. `compact-astral-3d` is `astral-3d`, whole - both converging
+mirrors, the foil, the drift and its reversal - with one knob for its size.
+
+**Generated, not written.** `generators/compact-astral-3d.py` reads `astral-3d.json`. Every
+literal length and duration keeps its value, bounds and provenance under `<name>FullSize`,
+one `scale` parameter multiplies it, and the working name the geometry refers to is derived as
+`<name>FullSize * scale`. The cell sizes and the flight-time ceiling are lifted the same way,
+and the generator refuses to write a document with a literal length or time left outside the
+parameter surface, because a length that silently stays full-size in a shrunken instrument is
+exactly the error it exists to prevent. `einzel outline` then shows what is published and what
+was chosen - a published length times a chosen factor is not published, and relabeling it
+would lose where it came from - and a correction to the reconstruction reaches the compact one
+the next time the generator runs.
+
+**Why it is exact rather than approximate.** Electrostatics has no length scale of its own.
+Multiply every length by s at fixed potentials and an ion of the same energy follows the same
+path scaled by s, arriving s times sooner; the mirror tilt and the injection angle are ratios
+of lengths and do not move. The cell sizes are lengths too, and a solve grid's interval count
+is its extent over its cell rounded up to a power of two - the same number at every scale - so
+the compact solve is the full-size discrete problem in smaller units, and costs the same to
+run. A cell held fixed while the instrument shrank would be a five times coarser model of the
+same device, and would look like one that works worse.
+
+| | full size | compact, 0.2 | compact ÷ (full × 0.2) |
+| --- | --- | --- | --- |
+| flight time | 784.9047 us | 156.9809 us | **0.99999998**, the integrator's tolerance |
+| drift reversal | 336.061 mm | 67.212 mm | 0.999998, the resolution of the trajectory samples |
+| foil mesh, 257 x 17 x 257 | | | **0 nodes and 0 of 244,166 cut links differ** |
+| mirror meshes, 2049 x 129 each | | | **0 nodes and 0 of 7,664 cut links differ** |
+
+`CompactAstralTests` asserts the mesh identity rather than the flight, which is what makes it
+affordable on every change: every resolved quantity is the published one times the scale to
+the power its dimension carries (a length one, a potential none, a field strength minus one),
+the template at a scale of one is `astral-3d` to the bit, and the three meshes match node for
+node. **It failed on the template as first generated**, and what it found is in the previous
+section: three foil faces on nodes, which made the published template's flight time a coin
+toss at 0.27 percent.
+
+**What does not scale is the design question.** Anything with an absolute duration of its own
+keeps it: the ions' turn-around time in the source and the detector's response are the same
+nanoseconds against a flight five times shorter, so the resolving power they allow falls by
+five while the mirrors' energy-aberration limit, which is a ratio, does not move. Three more,
+none modeled here, all following from the same arithmetic: a machining error of a given size
+is five times larger against the geometry; a source's emittance is absolute unless the source
+shrinks too; and at a given ion count the packet's own field grows as 1/s² while the applied
+field grows as 1/s, so the same space-charge effect comes at a fifth of the population. Those
+are what a compact analyzer trades, and this template holds everything else fixed so they can
+be asked about one at a time.
 
 ## `tims-analyzer` — an ion held still against a moving gas
 
