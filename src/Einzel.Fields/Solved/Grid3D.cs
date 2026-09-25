@@ -1,3 +1,6 @@
+using Einzel.Core.Errors;
+using Einzel.Core.Numerics;
+
 namespace Einzel.Fields.Solved;
 
 /// <summary>
@@ -82,8 +85,13 @@ public sealed class Grid3D
     /// <summary>Nodes along z.</summary>
     public int CountZ { get; }
 
-    /// <summary>Total nodes.</summary>
-    public long NodeCount => (long)CountX * CountY * CountZ;
+    /// <summary>Total nodes, saturating at <see cref="long.MaxValue"/> rather than overflowing.</summary>
+    /// <remarks>
+    /// It was an unchecked product, and <see cref="OverBox"/> builds axes of up to 2^30 + 1
+    /// nodes - so 1073741825 x 1073741825 x 9 wrapped to a negative count, which the solve
+    /// guard read as within its limit and passed to an allocation that failed as a defect.
+    /// </remarks>
+    public long NodeCount => VolumeMesh.Product(CountX, CountY, CountZ);
 
     /// <summary>The finest spacing, which is what a step may not outrun.</summary>
     public double MinimumSpacing => Math.Min(SpacingX, Math.Min(SpacingY, SpacingZ));
@@ -177,6 +185,10 @@ public sealed class Grid3D
     /// <param name="cellSize">Requested node spacing, in metres.</param>
     /// <returns>The grid.</returns>
     /// <exception cref="ArgumentOutOfRangeException">The box is empty, or the cell size is not positive.</exception>
+    /// <exception cref="EinzelException">
+    /// An axis would need more intervals than an index can count; see
+    /// <see cref="ErrorCodes.GridTooLarge"/>.
+    /// </exception>
     /// <remarks>
     /// Each axis rounds its own interval count <em>up</em> to a power of two from
     /// the same requested cell size. Deriving one axis from another - which the
@@ -194,27 +206,61 @@ public sealed class Grid3D
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxY, minY);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(maxZ, minZ);
 
-        var nx = IntervalsFor(maxX - minX, cellSize);
-        var ny = IntervalsFor(maxY - minY, cellSize);
-        var nz = IntervalsFor(maxZ - minZ, cellSize);
+        var nx = VolumeMesh.Intervals(maxX - minX, cellSize);
+        var ny = VolumeMesh.Intervals(maxY - minY, cellSize);
+        var nz = VolumeMesh.Intervals(maxZ - minZ, cellSize);
+
+        // A count an index cannot hold is past the node limit by orders of magnitude, so it
+        // is the same refusal rather than an overflow: `Index` is an int, and the doubling
+        // this replaced wrapped to zero and never terminated.
+        if (Math.Max(nx, Math.Max(ny, nz)) >= int.MaxValue)
+        {
+            throw new EinzelException(VolumeMesh.Refusal(
+                "/", nx + 1, ny + 1, nz + 1, maxX - minX, maxY - minY, maxZ - minZ, cellSize, unit: null));
+        }
 
         return new Grid3D(
             minX, minY, minZ,
             (maxX - minX) / nx, (maxY - minY) / ny, (maxZ - minZ) / nz,
-            nx + 1, ny + 1, nz + 1);
+            (int)nx + 1, (int)ny + 1, (int)nz + 1);
     }
 
-    private static int IntervalsFor(double span, double cellSize)
+    /// <summary>Refuses a grid with more nodes than a volume solve may hold.</summary>
+    /// <exception cref="EinzelException">
+    /// <see cref="ErrorCodes.GridTooLarge"/>, located at the document root because a grid has
+    /// no document; a caller that knows the path locates it with <see cref="EinzelError.At"/>.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>A backstop, not the refusal a model meets.</b> <c>ModelValidator</c> refuses such a
+    /// mesh from the document, before anything is built, and names the cell size. This is for
+    /// a grid that reached the solver some other way.
+    /// </para>
+    /// <para>
+    /// <b>Called by every per-node allocation, and the conductor mask is the first of them.</b>
+    /// The guard used to sit in the field constructor alone, and a solve builds its mask
+    /// before any field - so the refusal fired only after a mask of the same node count, with
+    /// six cut-link arms of two doubles a node, had been assembled. A guard that runs after
+    /// the expensive thing it guards against has guarded nothing.
+    /// </para>
+    /// <para>
+    /// Built grids are not refused on construction, deliberately: <c>einzel estimate</c>
+    /// builds one to count its nodes and report its spacing, which is arithmetic, and a grid
+    /// too large to solve is still a grid whose size is worth stating.
+    /// </para>
+    /// </remarks>
+    internal void ThrowIfTooLargeToSolve()
     {
-        var wanted = Math.Max(2, (int)Math.Ceiling(span / cellSize));
-
-        var intervals = 2;
-
-        while (intervals < wanted)
+        if (NodeCount <= VolumeMesh.MaximumNodes)
         {
-            intervals *= 2;
+            return;
         }
 
-        return intervals;
+        throw new EinzelException(VolumeMesh.Refusal(
+            "/",
+            CountX, CountY, CountZ,
+            MaxX - OriginX, MaxY - OriginY, MaxZ - OriginZ,
+            MinimumSpacing,
+            unit: null));
     }
 }
