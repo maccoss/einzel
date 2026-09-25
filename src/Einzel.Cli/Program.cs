@@ -953,27 +953,41 @@ public static class Program
 
         var invariant = CultureInfo.InvariantCulture;
 
-        if (outcome.Elements.Count == 0)
-        {
-            Console.Out.WriteLine("no solved field elements in this model; nothing to solve");
-            return (int)ExitCode.Success;
-        }
+        // No empty case to print: SolveCommand refuses a model with nothing to solve
+        // rather than returning an empty list, and a branch here answering exit 0 for
+        // one would disagree with --json, whose Converged is false over no elements.
+
+        // A driven element is one solve per basis channel, and --json says which is
+        // which. Here each channel prints its own block, so without its number two
+        // channels of one element read as the same solve printed twice, and a
+        // "did not converge" cannot say which spatial pattern failed. The number is
+        // the one --json carries, counted from zero. A static element has a single
+        // channel and prints no number, since there is nothing to tell apart.
+        var channels = outcome.Elements
+            .GroupBy(e => e.Index)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         foreach (var element in outcome.Elements)
         {
-            var shape = element.SquareCells ? "square" : "stretched";
+            var label = channels[element.Index] > 1
+                ? string.Create(invariant, $"field {element.Index} channel {element.Channel}")
+                : string.Create(invariant, $"field {element.Index}");
+
+            var shape = !element.SquareCells ? "stretched"
+                : element.Dimensions == 3 ? "cubic"
+                : "square";
 
             // Every axis the element has, not the first two. A volume printed as its
             // x and y alone reads as a plane: a 257x17x257 solve reported as 257x17
             // understates the node count by the whole third axis, and drops the z
             // spacing that says whether the cells are the size that was asked for.
-            var nodes = string.Join("x", element.Nodes);
+            var nodes = string.Join("x", element.Nodes.Select(n => n.ToString(invariant)));
             var spacing = string.Join(
                 " x ", element.SpacingMm.Select(s => s.ToString("F4", invariant)));
 
             Console.Out.WriteLine(string.Create(
                 invariant,
-                $"field {element.Index}  {nodes} at {spacing} mm ({shape})"));
+                $"{label}  {nodes} at {spacing} mm ({shape})"));
 
             Console.Out.WriteLine(string.Create(
                 invariant,
@@ -1003,7 +1017,7 @@ public static class Program
 
             if (!element.Converged)
             {
-                Console.Error.WriteLine($"field {element.Index} did not converge");
+                Console.Error.WriteLine($"{label} did not converge");
             }
         }
 
