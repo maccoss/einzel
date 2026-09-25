@@ -679,6 +679,17 @@ blend and depth-write rules. About three hundred lines, managed, no GPU, no nati
 dependency. The PNG writer is hand-written over the base library's zlib, for the reason the
 PDF writer is (LIC-1).
 
+**Drawn in horizontal bands, because a whole supersampled canvas does not fit.** A sample is
+three doubles of color and one of depth, 32 bytes, so the largest still the verb accepts -
+8192 pixels a side - needed 8.6 GB at once and ran out of memory, reported as an internal
+error. The rasterizer now draws one band of about four million samples at a time (134 MB)
+into one reused buffer. **The bytes are identical to a single pass**: each sample's color
+depends only on what is drawn over it and in what order, every band draws every layer in
+order, and sample positions stay in the whole picture's coordinates so the arithmetic is the
+same - only the row a band stores into moves. Asserted byte for byte down to one-row bands,
+with a translucent layer over crossing triangles and lines. Measured: an 8192-pixel still of
+the einzel lens takes 11 s at a peak of 381 MB.
+
 **Orthographic**, because the viewport is - an ion-optics drawing is read for where things
 are along the axis. RND-4 says "perspective"; the disagreement is SPEC.md Amendment 54.
 

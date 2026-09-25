@@ -1612,8 +1612,29 @@ public static class Program
             return (int)ExitCode.ValidationFailure;
         }
 
-        var width = options.Value("width-px") is { } w ? int.Parse(w, CultureInfo.InvariantCulture) : 1600;
-        var height = options.Value("height-px") is { } h ? int.Parse(h, CultureInfo.InvariantCulture) : 1000;
+        // TryParse rather than Parse: a typo such as "1600px" is the caller's mistake, and
+        // Parse would throw it through to the handler for defects in the engine, exit 6.
+        int? Pixels(string flag, int otherwise)
+        {
+            if (options.Value(flag) is not { } given)
+            {
+                return otherwise;
+            }
+
+            if (int.TryParse(given, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out var pixels))
+            {
+                return pixels;
+            }
+
+            Console.Error.WriteLine($"--{flag} '{given}' is not a whole number of pixels; a still is between 16 and 8192 pixels on each side");
+
+            return null;
+        }
+
+        if (Pixels("width-px", 1600) is not { } width || Pixels("height-px", 1000) is not { } height)
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
 
         if (width is < 16 or > 8192 || height is < 16 or > 8192)
         {

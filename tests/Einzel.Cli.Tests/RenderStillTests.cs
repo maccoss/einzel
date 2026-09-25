@@ -154,6 +154,29 @@ public sealed class RenderStillTests(ITestOutputHelper output) : IDisposable
         Assert.Contains("iso", stderr, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A pixel size that is not a whole number is the caller's mistake, refused as a
+    /// validation failure that names the flag - not reported as a defect in the engine.
+    /// </summary>
+    /// <param name="flag">The size flag.</param>
+    /// <param name="given">What was typed.</param>
+    /// <remarks>It used to go through <c>int.Parse</c>, which threw and exited 6.</remarks>
+    [Theory]
+    [InlineData("--width-px", "1600px")]
+    [InlineData("--height-px", "99999999999")]
+    [InlineData("--width-px", "1e4")]
+    public void APixelSizeThatIsNotANumberIsAValidationFailure(string flag, string given)
+    {
+        var (code, _, stderr) = Cli("render", "still", Template("einzel-lens"), flag, given);
+
+        output.WriteLine(stderr);
+
+        Assert.Equal(1, code);
+        Assert.Contains(flag, stderr, StringComparison.Ordinal);
+        Assert.Contains(given, stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain("INTERNAL_ERROR", stderr, StringComparison.Ordinal);
+    }
+
     private StillOutcome Still(string model, string name)
     {
         var png = Path.Combine(_root, "figures", name);

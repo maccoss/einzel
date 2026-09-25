@@ -173,6 +173,74 @@ public sealed class RasterTests(ITestOutputHelper output)
         Assert.Equal(0, top);
     }
 
+    /// <summary>
+    /// A picture drawn in bands is the same bytes as one drawn in a single pass, however thin
+    /// the bands and wherever their edges fall.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every kind of thing a band boundary could cut: triangles and lines crossing it,
+    /// overlapping opaque surfaces sorted only by depth, and a translucent layer blending
+    /// over them - the one where a sample drawn twice, or once too few, would show. Lit by
+    /// a normal-dependent function so shading is compared too, and at an odd size so the
+    /// last band is shorter than the rest.
+    /// </para>
+    /// <para>
+    /// Byte equality rather than a tolerance, because the banding keeps each sample in the
+    /// whole picture's coordinates and so does the same arithmetic a single pass does.
+    /// </para>
+    /// </remarks>
+    /// <param name="samplesPerBand">The band budget: one output row, three, or a whole pass.</param>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3 * 37 * 4)]
+    [InlineData(Rasterizer.DefaultSamplesPerBand)]
+    public void ABandedPictureIsTheSameBytesAsOnePass(int samplesPerBand)
+    {
+        var lit = new RasterLighting((nx, ny, nz) => 0.3 + (0.7 * Math.Abs(nz) / Math.Sqrt((nx * nx) + (ny * ny) + (nz * nz))), 0.8);
+
+        RasterLayer[] layers =
+        [
+            new([], [new RasterLine([-9, -9, 2, 9, 7, 2, -4, 9, 2], 0.0, 0.2, 0.9)], 1.0, WritesDepth: true),
+            Layer(new RasterMesh([-10, -10, 0, 8, -6, 4, -3, 10, -2], [0.2, 0, 1, 0, 0.3, 1, -0.4, 0, 1], [0, 1, 2], 0.9, 0.1, 0.1)),
+            Layer(new RasterMesh([10, -9, 3, 6, 10, -1, -10, 2, 1], [0, 0, 1, 0.5, 0, 1, 0, -0.5, 1], [0, 1, 2], 0.1, 0.8, 0.2)),
+            new([Square(z: 6.0, 0.9, 0.9, 0.0)], [], 0.35, WritesDepth: false),
+        ];
+
+        var single = Rasterizer.Draw(layers, Scale(10.0), lit, White, 37, 29, samplesPerBand: int.MaxValue);
+        var banded = Rasterizer.Draw(layers, Scale(10.0), lit, White, 37, 29, samplesPerBand: samplesPerBand);
+
+        Assert.Equal(single, banded);
+        Assert.Contains(single, value => value is > 0 and < 255);
+    }
+
+    /// <summary>
+    /// A large picture holds one band in memory at a time, not the whole supersampled canvas.
+    /// </summary>
+    /// <remarks>
+    /// At 2048 pixels a side and two samples a pixel each way, the whole canvas is 16.8 million
+    /// samples of 32 bytes: 537 MB. The bound here is the output plus one band with room to
+    /// spare, under a third of that - so a canvas allocated whole, or a buffer allocated per
+    /// band rather than reused, fails it. At the 8192 pixels `einzel render still` allows, the
+    /// whole canvas was 8.6 GB and ran out of memory.
+    /// </remarks>
+    [Fact]
+    public void ALargePictureHoldsOneBandAtATime()
+    {
+        const int Side = 2048;
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var rgb = Rasterizer.Draw([Layer(Square(z: 0.0, 1.0, 0.0, 0.0))], Scale(10.0), Flat, White, Side, Side);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        var bound = (3L * Side * Side) + (40L * Rasterizer.DefaultSamplesPerBand);
+
+        output.WriteLine($"allocated {allocated / 1e6:F1} MB, bound {bound / 1e6:F1} MB, whole canvas {32.0 * 4 * Side * Side / 1e6:F1} MB");
+
+        Assert.Equal(3 * Side * Side, rgb.Length);
+        Assert.True(allocated < bound, $"drawing allocated {allocated / 1e6:F1} MB against {bound / 1e6:F1} MB");
+    }
+
     private static RasterLayer Layer(RasterMesh mesh) => new([mesh], [], 1.0, WritesDepth: true);
 
     private static RasterMesh Square(double z, double r, double g, double b) =>

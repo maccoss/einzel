@@ -73,10 +73,29 @@ public static class Rasterizer
     /// <param name="height">Output height in pixels.</param>
     /// <param name="supersample">Samples per output pixel along each axis.</param>
     /// <param name="lineWidth">Line width in output pixels.</param>
+    /// <param name="samplesPerBand">
+    /// The most samples held in memory at once. The picture is drawn in horizontal bands of
+    /// at most this many samples, one band after another into one reused buffer.
+    /// </param>
     /// <returns>Rows top to bottom, three bytes a pixel.</returns>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A size is not positive.</exception>
     /// <exception cref="ArgumentException">The matrix is not 4x4.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>In bands, because a whole supersampled canvas does not fit.</b> Each sample holds
+    /// three doubles of color and one of depth, 32 bytes, so a still at the largest size
+    /// <c>einzel render still</c> accepts - 8192 pixels a side, two samples a pixel each way -
+    /// would need 8.6 GB at once, and ran out of memory as an internal error. A band of
+    /// <see cref="DefaultSamplesPerBand"/> samples is about 134 MB whatever the picture's size.
+    /// </para>
+    /// <para>
+    /// <b>The same bytes as one pass over the whole picture.</b> A sample's color depends only
+    /// on what is drawn over that sample and in what order, and every band draws every layer
+    /// in order. Sample positions stay in the whole picture's coordinates, so each band does
+    /// exactly the arithmetic a single pass would; only the row it stores into moves.
+    /// </para>
+    /// </remarks>
     public static byte[] Draw(
         IReadOnlyList<RasterLayer> layers,
         IReadOnlyList<double> matrix,
@@ -85,7 +104,8 @@ public static class Rasterizer
         int width,
         int height,
         int supersample = 2,
-        double lineWidth = 1.5)
+        double lineWidth = 1.5,
+        int samplesPerBand = DefaultSamplesPerBand)
     {
         ArgumentNullException.ThrowIfNull(layers);
         ArgumentNullException.ThrowIfNull(matrix);
@@ -93,29 +113,47 @@ public static class Rasterizer
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(supersample);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(samplesPerBand);
 
         if (matrix.Count != 16)
         {
             throw new ArgumentException("a projection is a 4x4 matrix", nameof(matrix));
         }
 
-        var canvas = new Canvas(width * supersample, height * supersample, ground, matrix);
+        // Whole output rows to a band, and at least one however small the budget.
+        var samplesPerRow = (long)width * supersample * supersample;
+        var rowsPerBand = (int)Math.Clamp(samplesPerBand / samplesPerRow, 1L, height);
 
-        foreach (var layer in layers)
+        var rgb = new byte[3 * width * height];
+        var canvas = new Canvas(
+            width * supersample, rowsPerBand * supersample, matrix, height * supersample);
+
+        for (var top = 0; top < height; top += rowsPerBand)
         {
-            foreach (var line in layer.Lines)
+            var rows = Math.Min(rowsPerBand, height - top);
+            canvas.Begin(top * supersample, rows * supersample, ground);
+
+            foreach (var layer in layers)
             {
-                canvas.Polyline(line, layer.Alpha, layer.WritesDepth, lighting.Line, lineWidth * supersample);
+                foreach (var line in layer.Lines)
+                {
+                    canvas.Polyline(line, layer.Alpha, layer.WritesDepth, lighting.Line, lineWidth * supersample);
+                }
+
+                foreach (var mesh in layer.Meshes)
+                {
+                    canvas.Mesh(mesh, layer.Alpha, layer.WritesDepth, lighting.Surface);
+                }
             }
 
-            foreach (var mesh in layer.Meshes)
-            {
-                canvas.Mesh(mesh, layer.Alpha, layer.WritesDepth, lighting.Surface);
-            }
+            canvas.Downsample(supersample, rgb, top);
         }
 
-        return canvas.Downsample(supersample);
+        return rgb;
     }
+
+    /// <summary>The samples a band holds at most unless told otherwise: about 134 MB of them.</summary>
+    public const int DefaultSamplesPerBand = 1 << 22;
 
     /// <summary>
     /// Crosses the bottom of an image with a hatched band, marking the figure as carrying a
@@ -149,6 +187,10 @@ public static class Rasterizer
         }
     }
 
+    /// <summary>
+    /// One band of the supersampled picture: the sample rows from <c>_top</c> for
+    /// <c>_rows</c> rows, addressed in the whole picture's coordinates.
+    /// </summary>
     private sealed class Canvas
     {
         private readonly int _width;
@@ -157,17 +199,34 @@ public static class Rasterizer
         private readonly double[] _depth;
         private readonly IReadOnlyList<double> _m;
 
-        public Canvas(int width, int height, (double R, double G, double B) ground, IReadOnlyList<double> matrix)
+        private int _top;
+        private int _rows;
+
+        /// <summary>A buffer for bands of up to <paramref name="capacity"/> sample rows.</summary>
+        /// <param name="width">Samples across the whole picture.</param>
+        /// <param name="capacity">The most sample rows one band holds.</param>
+        /// <param name="matrix">Millimeters to clip space.</param>
+        /// <param name="height">Sample rows in the whole picture, which the projection spans.</param>
+        public Canvas(int width, int capacity, IReadOnlyList<double> matrix, int height)
         {
             _width = width;
             _height = height;
             _m = matrix;
-            _color = new double[3 * width * height];
-            _depth = new double[width * height];
+            _color = new double[3 * width * capacity];
+            _depth = new double[width * capacity];
+        }
 
-            Array.Fill(_depth, double.PositiveInfinity);
+        /// <summary>Clears the buffer for the band starting at a sample row.</summary>
+        public void Begin(int top, int rows, (double R, double G, double B) ground)
+        {
+            _top = top;
+            _rows = rows;
 
-            for (var i = 0; i < width * height; i++)
+            var count = _width * rows;
+
+            Array.Fill(_depth, double.PositiveInfinity, 0, count);
+
+            for (var i = 0; i < count; i++)
             {
                 _color[3 * i] = ground.R;
                 _color[(3 * i) + 1] = ground.G;
@@ -219,8 +278,8 @@ public static class Rasterizer
 
                 var minX = Math.Max(0, (int)Math.Floor(Math.Min(p0.X, Math.Min(p1.X, p2.X))));
                 var maxX = Math.Min(_width - 1, (int)Math.Ceiling(Math.Max(p0.X, Math.Max(p1.X, p2.X))));
-                var minY = Math.Max(0, (int)Math.Floor(Math.Min(p0.Y, Math.Min(p1.Y, p2.Y))));
-                var maxY = Math.Min(_height - 1, (int)Math.Ceiling(Math.Max(p0.Y, Math.Max(p1.Y, p2.Y))));
+                var minY = Math.Max(_top, (int)Math.Floor(Math.Min(p0.Y, Math.Min(p1.Y, p2.Y))));
+                var maxY = Math.Min(_top + _rows - 1, (int)Math.Ceiling(Math.Max(p0.Y, Math.Max(p1.Y, p2.Y))));
 
                 for (var py = minY; py <= maxY; py++)
                 {
@@ -240,7 +299,7 @@ public static class Rasterizer
                         }
 
                         var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z);
-                        var index = (py * _width) + px;
+                        var index = ((py - _top) * _width) + px;
 
                         if (!(depth < _depth[index]))
                         {
@@ -278,8 +337,8 @@ public static class Rasterizer
 
                 var minX = Math.Max(0, (int)Math.Floor(Math.Min(a.X, b.X) - half));
                 var maxX = Math.Min(_width - 1, (int)Math.Ceiling(Math.Max(a.X, b.X) + half));
-                var minY = Math.Max(0, (int)Math.Floor(Math.Min(a.Y, b.Y) - half));
-                var maxY = Math.Min(_height - 1, (int)Math.Ceiling(Math.Max(a.Y, b.Y) + half));
+                var minY = Math.Max(_top, (int)Math.Floor(Math.Min(a.Y, b.Y) - half));
+                var maxY = Math.Min(_top + _rows - 1, (int)Math.Ceiling(Math.Max(a.Y, b.Y) + half));
 
                 var dx = b.X - a.X;
                 var dy = b.Y - a.Y;
@@ -307,7 +366,7 @@ public static class Rasterizer
                         }
 
                         var depth = a.Z + (t * (b.Z - a.Z));
-                        var index = (py * _width) + px;
+                        var index = ((py - _top) * _width) + px;
 
                         if (!(depth < _depth[index]))
                         {
@@ -325,11 +384,11 @@ public static class Rasterizer
             }
         }
 
-        public byte[] Downsample(int factor)
+        /// <summary>Averages this band's samples into its rows of the output.</summary>
+        public void Downsample(int factor, byte[] rgb, int outputTop)
         {
             var width = _width / factor;
-            var height = _height / factor;
-            var rgb = new byte[3 * width * height];
+            var height = _rows / factor;
             var samples = factor * factor;
 
             for (var y = 0; y < height; y++)
@@ -349,14 +408,12 @@ public static class Rasterizer
                         }
                     }
 
-                    var o = 3 * ((y * width) + x);
+                    var o = 3 * (((outputTop + y) * width) + x);
                     rgb[o] = Byte(r / samples);
                     rgb[o + 1] = Byte(g / samples);
                     rgb[o + 2] = Byte(b / samples);
                 }
             }
-
-            return rgb;
         }
 
         private void Put(int index, double r, double g, double b, double alpha)
