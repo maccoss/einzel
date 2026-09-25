@@ -71,7 +71,7 @@ public sealed class SceneView : OpenGlControlBase
     private int _mvpLocation;
     private int _colorLocation;
     private int _alphaLocation;
-    private Framing? _framing;
+    private ViewportCamera? _camera;
 
     /// <summary>What to draw, as the command layer measured it.</summary>
     /// <remarks>
@@ -125,8 +125,9 @@ public sealed class SceneView : OpenGlControlBase
     /// </para>
     /// <para>
     /// <b>The frame is fitted to what the new view sees and keeps what a watch has grown
-    /// into.</b> Re-measured from the scene alone, turning the camera during a watch would
-    /// drop the packet that had drifted out of the box the scene opened in.
+    /// into</b>, which <see cref="ViewportCamera"/> decides: re-measured from the scene alone,
+    /// turning the camera during a watch would drop the packet that had drifted out of the box
+    /// the scene opened in.
     /// </para>
     /// </remarks>
     public (double Azimuth, double Elevation) View
@@ -136,12 +137,12 @@ public sealed class SceneView : OpenGlControlBase
         {
             _view = value;
 
-            if (Scene is { } scene)
+            // Re-measuring is cheap and the upload is not: the meshes do not move when the
+            // camera does, so only the framing is rebuilt. Before the first draw there is no
+            // camera yet, and the one made then starts at this view.
+            if (_camera is { } camera)
             {
-                // Re-measuring is cheap and the upload is not: the meshes do not move when
-                // the camera does, so only the framing is rebuilt.
-                var fitted = Framing.Measure(scene, value.Azimuth, value.Elevation);
-                _framing = _framing is { } grown ? fitted.Union(grown) : fitted;
+                camera.Turn(value);
                 RequestNextFrameRendering();
             }
         }
@@ -195,7 +196,7 @@ public sealed class SceneView : OpenGlControlBase
             _uploaded.Add(Upload(_gl, layer));
         }
 
-        _framing = Framing.Measure(scene, _view.Azimuth, _view.Elevation);
+        _camera = new ViewportCamera(scene, _view);
 
         _gl.Enable(EnableCap.DepthTest);
     }
@@ -242,8 +243,8 @@ public sealed class SceneView : OpenGlControlBase
 
         // Rebuilt per frame because it depends on the window's shape; the expensive half,
         // measuring the instrument, was done once.
-        var mvp = _framing is { } framing
-            ? framing.Project((double)width / height)
+        var mvp = _camera is { } camera
+            ? camera.Framing.Project((double)width / height)
             : Framing.Identity();
 
         fixed (float* m = mvp)
@@ -388,8 +389,7 @@ public sealed class SceneView : OpenGlControlBase
         layers[index] = density;
         _picture = layers;
 
-        var measured = Framing.Measure(frame, _view.Azimuth, _view.Elevation);
-        _framing = _framing is { } held ? held.Union(measured) : measured;
+        _camera?.Take(frame);
     }
 
     /// <summary>Draws one layer by the rules the composition gave it.</summary>

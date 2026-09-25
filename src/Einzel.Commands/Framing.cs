@@ -121,10 +121,13 @@ public sealed record Framing(
     /// ever grows.
     /// </para>
     /// <para>
-    /// Exact when both were measured at the same angles, which is the only way the window
-    /// uses it: two boxes in one set of view coordinates have a union that is a box. At
-    /// different angles the other box's corners are carried across, which still contains it
-    /// and may be a little larger than it needs to be.
+    /// Exact when both were measured at the same angles, which is the only way
+    /// <see cref="ViewportCamera"/> uses it: two boxes in one set of view coordinates have a
+    /// union that is a box. At different angles the other box's corners are carried across,
+    /// which still contains it and can be much larger than it needs to be - an iso box carried
+    /// into the side view of a cube is about twice the cube's height. Applied on every turn of
+    /// the camera that compounds, which is how the window's frame once grew on each click of a
+    /// named view.
     /// </para>
     /// </remarks>
     public Framing Union(Framing other)
@@ -193,7 +196,7 @@ public sealed record Framing(
     }
 
     /// <summary>Everything in a scene that says where the instrument reaches.</summary>
-    private static IEnumerable<(double X, double Y, double Z)> Points(ViewportOutcome scene)
+    internal static IEnumerable<(double X, double Y, double Z)> Points(ViewportOutcome scene)
     {
         foreach (var conductor in scene.Conductors)
         {
