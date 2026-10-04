@@ -748,8 +748,8 @@ now reproduced against the same figure's on-axis potential and period-slope curv
 
 | target | published | status |
 | --- | --- | --- |
-| oscillations / flight path | 24 / 30 m | **24 outbound**, flight time 786.44 us against 783.2 by arithmetic - 0.4 per cent, and the register test excludes 25 by 4.2 per cent |
-| drift reversal distance | 310-360 mm, mean 335 | **336.15 mm**, on the reproduced mirror with the published stripe shape in the model. The tilt alone gives 404 mm; the stripe brings it to 336, which is [C]'s own account of the mechanism - tilt term plus stripe term |
+| oscillations / flight path | 24 / 30 m | **24 outbound**, flight time 784.90 us at the shipped foil mesh against 783.2 by arithmetic, and **about 775 us mesh-converged - 1 percent below**, inside the register test's 2 and 3.8 percent clear of K = 25. The 0.4 percent once recorded here was one draw from a 0.83 percent spread in where the 4 mm foil mesh sits, and at no shift three foil faces sat on nodes and made it a coin toss (`docs/device-templates.md`, "Where the foil's mesh sits") |
+| drift reversal distance | 310-360 mm, mean 335 | **336.06 mm** (336.15 before the foil mesh was moved off the slice faces), on the reproduced mirror with the published stripe shape in the model. The tilt alone gives 404 mm; the stripe brings it to 336, which is [C]'s own account of the mechanism - tilt term plus stripe term |
 | resolving power, mirror alone | ~180,000 over ±2.5 per cent, from the published period-slope curve | **120,000-220,000** on the drawn layout at the paper's three-point condition (the range is a first-order residual at the 1e-4 level, the floor of the solve; log §73), slope amplitude ±0.034 against ±0.035 ppm/eV, on-axis potential to 0.16 kV rms; log §71 |
 | resolving power, drift alone | - | **73,500** over the full ±11 per cent angular acceptance, from the published stripe shape (log §55-56) |
 | energy acceptance | period stationary at 4000 and 4000 ± 100 V | **met by construction** at the solved gap, U3 and U4: c1 = 0.00000, c3 at the fit's noise floor, c2 on the balance point; log §71 |

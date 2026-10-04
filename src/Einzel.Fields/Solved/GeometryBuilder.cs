@@ -280,6 +280,236 @@ public static class GeometryBuilder
         }
     }
 
+    /// <summary>
+    /// Finds where a mesh samples a face two conductors share while holding different
+    /// excitations - a node on it, or a stencil arm that first meets metal on it - so that
+    /// which conductor the sample is credited to is decided by rounding.
+    /// </summary>
+    /// <param name="solve">The declared geometry.</param>
+    /// <param name="grid">The finest grid it is solved on.</param>
+    /// <param name="mask">
+    /// Any finest-level mask of this geometry on this grid, for which nodes are fixed; built
+    /// when omitted, and only if an arm needs confirming. Every channel's mask fixes the same
+    /// nodes, so whichever the caller has will do.
+    /// </param>
+    /// <returns>What was found, or null when the mesh samples no such face.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// The plane half of <see cref="GeometryBuilder3D.NodesOnSharedFaces"/>, with the same
+    /// rules: a node is on a surface within <see cref="SharedFaceNodes.ToleranceFraction"/>
+    /// of the finest spacing; an arm from a free node samples a face when the point where it
+    /// first meets one conductor is that near the other's surface and nothing is nearer; a pair
+    /// counts when it disagrees in any state the instrument has, asked through
+    /// <see cref="ElectrodeOverlap.StatesOf"/> and <see cref="ElectrodeOverlap.Agrees"/>; and
+    /// only nodes within a cell of both bounding boxes are visited.
+    /// </para>
+    /// <para>
+    /// <b>The plane's node coin is tossed a little differently, and it is still a coin.</b> A
+    /// rectangle is rasterized by index, inclusive at both ends so abutting electrodes share
+    /// their contact nodes, and whether the node on a shared face falls inside each range is a
+    /// <c>Floor</c> and a <c>Ceiling</c> of a computed quotient. It is never left free, but it
+    /// holds one potential or the other according to the rounding - or, when both ranges
+    /// include it, according to which electrode was declared last.
+    /// </para>
+    /// <para>
+    /// An edge profile has no surface to be near: it lies along a domain edge and its signed
+    /// distance is infinite, so it takes no part. A profiled board meeting an interior
+    /// electrode at the edge is decided by declaration order rather than by rounding, which is
+    /// a different question and one <see cref="ElectrodeOverlap"/> also leaves aside.
+    /// </para>
+    /// </remarks>
+    public static SharedFaceNodes? NodesOnSharedFaces(
+        CompiledSolvedField solve, Grid2D grid, DirichletMask? mask = null)
+    {
+        ArgumentNullException.ThrowIfNull(solve);
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var electrodes = solve.Electrodes;
+        var states = ElectrodeOverlap.StatesOf(electrodes, solve.Stages);
+        var tolerance = SharedFaceNodes.ToleranceFraction * grid.MinimumSpacing;
+        var reach = Math.Max(grid.SpacingX, grid.SpacingY);
+
+        var nodes = new HashSet<long>();
+        var arms = new HashSet<long>();
+        (string First, string Second, double X, double Y)? nodeExample = null;
+        (string First, string Second, double X, double Y)? armExample = null;
+
+        for (var i = 0; i < electrodes.Count; i++)
+        {
+            for (var j = i + 1; j < electrodes.Count; j++)
+            {
+                var (i1, i2) = (i, j);
+
+                if (states.All(state => ElectrodeOverlap.Agrees(state[i1], state[i2])))
+                {
+                    continue;
+                }
+
+                var a = electrodes[i];
+                var b = electrodes[j];
+
+                if (BoundsOf(a) is not { } boxA || BoundsOf(b) is not { } boxB)
+                {
+                    continue;
+                }
+
+                var x0 = Math.Max(boxA.MinX, boxB.MinX) - tolerance;
+                var x1 = Math.Min(boxA.MaxX, boxB.MaxX) + tolerance;
+                var y0 = Math.Max(boxA.MinY, boxB.MinY) - tolerance;
+                var y1 = Math.Min(boxA.MaxY, boxB.MaxY) + tolerance;
+
+                if (x1 < x0 || y1 < y0)
+                {
+                    continue;
+                }
+
+                var (iLo, iHi) = SharedFaceNodes.Range(grid.OriginX, grid.SpacingX, grid.CountX, x0 - reach, x1 + reach);
+                var (jLo, jHi) = SharedFaceNodes.Range(grid.OriginY, grid.SpacingY, grid.CountY, y0 - reach, y1 + reach);
+
+                for (var jj = jLo; jj <= jHi; jj++)
+                {
+                    var y = grid.Y(jj);
+
+                    for (var ii = iLo; ii <= iHi; ii++)
+                    {
+                        var x = grid.X(ii);
+
+                        var da = Math.Abs(a.SignedDistance(x, y));
+
+                        if (da > reach + tolerance)
+                        {
+                            continue;
+                        }
+
+                        var db = Math.Abs(b.SignedDistance(x, y));
+
+                        if (db > reach + tolerance)
+                        {
+                            continue;
+                        }
+
+                        var node = ((long)jj * grid.CountX) + ii;
+
+                        if (da <= tolerance && db <= tolerance)
+                        {
+                            if (nodes.Add(node))
+                            {
+                                nodeExample ??= (a.Name, b.Name, x, y);
+                            }
+
+                            continue;
+                        }
+
+                        for (var arm = 0; arm < 4; arm++)
+                        {
+                            var (di, dj) = PlaneArms[arm];
+                            var (ni, nj) = (ii + di, jj + dj);
+
+                            if (ni < 0 || nj < 0 || ni >= grid.CountX || nj >= grid.CountY)
+                            {
+                                continue;
+                            }
+
+                            var (tx, ty) = (grid.X(ni), grid.Y(nj));
+
+                            // Where the arm meets one of them, if that point is on the other's
+                            // surface too - the nearer such point, when both qualify.
+                            var entry = double.PositiveInfinity;
+
+                            if (SharedFaceNodes.Interior(a.FirstEntry(x, y, tx, ty), out var ea)
+                                && Math.Abs(b.SignedDistance(x + (ea * (tx - x)), y + (ea * (ty - y)))) <= tolerance)
+                            {
+                                entry = ea;
+                            }
+
+                            if (SharedFaceNodes.Interior(b.FirstEntry(x, y, tx, ty), out var eb)
+                                && Math.Abs(a.SignedDistance(x + (eb * (tx - x)), y + (eb * (ty - y)))) <= tolerance)
+                            {
+                                entry = Math.Min(entry, eb);
+                            }
+
+                            if (double.IsPositiveInfinity(entry))
+                            {
+                                continue;
+                            }
+
+                            // Only now, as in the volume: a fixed node has no stencil to cut, and
+                            // a mask is worth building only once there is something to confirm.
+                            mask ??= BuildMask(solve, grid);
+
+                            if (mask.IsFixed(ii, jj))
+                            {
+                                break;
+                            }
+
+                            if (Shadowed(electrodes, x, y, tx, ty, entry))
+                            {
+                                continue;
+                            }
+
+                            if (arms.Add((node * 4) + arm))
+                            {
+                                armExample ??= (a.Name, b.Name, x + (entry * (tx - x)), y + (entry * (ty - y)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return (nodeExample ?? armExample) is { } first
+            ? new SharedFaceNodes(
+                nodes.Count, arms.Count, first.First, first.Second, first.X, first.Y, null,
+                ExampleIsArm: nodeExample is null)
+            : null;
+    }
+
+    /// <summary>The four stencil arms, in the order <see cref="AddCuts"/> visits them.</summary>
+    private static readonly (int Di, int Dj)[] PlaneArms = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+    /// <summary>
+    /// Whether some conductor meets the arm clearly before <paramref name="entry"/>, so the
+    /// cut records that one and a tie at <paramref name="entry"/> is in its shadow.
+    /// </summary>
+    private static bool Shadowed(
+        IReadOnlyList<CompiledElectrode> electrodes,
+        double fromX, double fromY, double toX, double toY, double entry)
+    {
+        foreach (var electrode in electrodes)
+        {
+            if (electrode.FirstEntry(fromX, fromY, toX, toY) is { } nearer
+                && nearer > 0.0
+                && nearer < entry - SharedFaceNodes.ToleranceFraction)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The box a plane electrode's surface lies within, or null for one with no surface to
+    /// locate.
+    /// </summary>
+    private static (double MinX, double MinY, double MaxX, double MaxY)? BoundsOf(
+        CompiledElectrode electrode) =>
+        electrode.Shape switch
+        {
+            ElectrodeShape.Rectangle or ElectrodeShape.Polygon =>
+                (electrode.MinX, electrode.MinY, electrode.MaxX, electrode.MaxY),
+
+            ElectrodeShape.Disc => (
+                electrode.CentreX - electrode.Radius, electrode.CentreY - electrode.Radius,
+                electrode.CentreX + electrode.Radius, electrode.CentreY + electrode.Radius),
+
+            ElectrodeShape.EdgeProfile => null,
+
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(electrode), electrode.Shape, "unhandled electrode shape"),
+        };
+
     private static EdgeCondition Translate(BoundaryKind kind) =>
         kind == BoundaryKind.Neumann ? EdgeCondition.Neumann : EdgeCondition.Dirichlet;
 
@@ -434,6 +664,7 @@ public static class GeometryBuilder
         var grid = BuildGrid(solve);
         var solves = new List<ChannelSolve>();
         var index = 0;
+        IReadOnlyList<Core.Results.ValidityWarning>? warnings = null;
 
         foreach (var pattern in Patterns(solve))
         {
@@ -445,7 +676,11 @@ public static class GeometryBuilder
                 maximumCycles: 400,
                 coarsen: coarse => BuildMask(solve, coarse, e => pattern.GetValueOrDefault(e.Name, 0.0)));
 
-            solves.Add(new ChannelSolve(index++, mask, potential, report));
+            // Every channel carries the same finding, because every channel solves on the
+            // same mesh round the same conductors; einzel solve reports it once per element.
+            warnings ??= SharedFaceNodes.Warnings(NodesOnSharedFaces(solve, grid, mask));
+
+            solves.Add(new ChannelSolve(index++, mask, potential, report with { Warnings = warnings }));
         }
 
         return solves;
@@ -502,6 +737,8 @@ public static class GeometryBuilder
         var mask = BuildMask(solve, grid);
         var (potential, report) = PoissonSolver2D.Solve(
             mask, solve.Tolerance, maximumCycles: 400, coarsen: coarse => BuildMask(solve, coarse));
+
+        report = report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(solve, grid, mask)) };
 
         IElectrostaticField field = new SolvedField2D(
             potential,
@@ -572,6 +809,7 @@ public static class GeometryBuilder
         var harmonics = new List<IReadOnlyList<WeightTerm>>(groups.Count);
 
         SolveReport worst = new(true, 0, 0.0, 0.0, 0.0);
+        DirichletMask? firstMask = null;
 
         foreach (var group in groups)
         {
@@ -581,6 +819,7 @@ public static class GeometryBuilder
             var pattern = group.Pattern;
 
             var mask = BuildMask(solve, grid, e => pattern.GetValueOrDefault(e.Name, 0.0));
+            firstMask ??= mask;
 
             var (potential, report) = PoissonSolver2D.Solve(
                 mask,
@@ -613,6 +852,10 @@ public static class GeometryBuilder
                 worst = report;
             }
         }
+
+        // Once per geometry rather than per channel: which nodes sit on a shared face is a
+        // property of the mesh and the conductors, and every channel solves on both.
+        worst = worst with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(solve, grid, firstMask)) };
 
         if (solve.Stages.Count == 0)
         {

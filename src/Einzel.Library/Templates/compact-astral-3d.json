@@ -1,8 +1,329 @@
 {
   "schemaVersion": "0.10",
-  "name": "astral-3d",
-  "description": "The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 41.43 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-log.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four plates carrying sixteen slice biases fitted to the published drift pseudopotential with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999. The mirror electrodes are placed from the design paper's Fig. 1 (five per mirror, with gaps, electrode 0 grounded) and carry the crowd-control paper's Table 1 voltages with the sign of U2 corrected to positive; the board gap, U3 and U4 are solved for the design paper's own three-point condition - the drift period stationary at 4000 eV and at 4000 plus or minus 100 - giving a 41.43 mm gap, U3 0.9740 against the table's 0.916 and U4 1.4815 against 1.503. There the mirror reproduces the published period-slope curve, and the published on-axis potential to 0.159 kV rms at sixteen points, which is a check the solve never saw. See docs/astral-log.md sections 58-65.",
+  "name": "compact-astral-3d",
+  "description": "The published Thermo Astral analyzer at a chosen scale - one fifth as shipped - as a complete three-dimensional instrument: the compact asymmetric-track multi-reflection time-of-flight analyzer this project is designing. GENERATED from astral-3d.json by generators/compact-astral-3d.py: every length and duration is its full-size value (kept as a parameter with its provenance) times `scale`, and every potential and angle is the published instrument's. That is exact rather than approximate: electrostatics has no length scale, so at fixed voltages an ion of the same energy follows the same path scaled by the same factor, and every flight time scales with it. The meshes scale too, so the solve is the full-size discrete problem in smaller units and costs the same. What does not scale is anything with an absolute duration - the detector's response and the ions' turn-around time - so this analyzer keeps the full-size one's aberrations and loses resolving power only to those. See astral-3d for what is published and what is reconstructed, and docs/astral-log.md for how. The full-size description follows. The Thermo Astral analyser: an asymmetric-track multi-reflection time-of-flight instrument, modelled entirely from published information. Two elongated mirrors face each other across a 41.43 mm board gap; ions oscillate between them while drifting along their length, and the mirrors converge slightly so the drift decelerates and reverses. Each mirror is a two-dimensional cross-section whose extrusion axis is tilted by half the convergence, which makes the field anisotropy Ez/Ex exactly tan(alpha) instead of a quantity no affordable three-dimensional mesh can resolve - see docs/astral-log.md sections 12 and 13. The two solves carry one mirror at potential with the other grounded, which is the ordinary basis decomposition and therefore exact. The ion foil is not included: its shape is measured in section 11 and the drift force it produced was 5.7 times what the published reversal needs, so it is a study rather than part of the shipped device. The third element is the ion foil: a volume solve carrying the four plates carrying sixteen slice biases fitted to the published drift pseudopotential with every mirror strip grounded, which is the basis field psi_foil. The tilt supplies a0 = 0.84 of the drift pseudopotential and the stripe the remaining 0.16, which Grinfeld et al. give in closed form; an earlier revision of this template said the tilt was only 31 to 38 per cent of what was needed, and that was an artefact of a tilt baseline wrong by a factor of two. Measured here at a0 = 0.8504 against the published 0.83999. The mirror electrodes are placed from the design paper's Fig. 1 (five per mirror, with gaps, electrode 0 grounded) and carry the crowd-control paper's Table 1 voltages with the sign of U2 corrected to positive; the board gap, U3 and U4 are solved for the design paper's own three-point condition - the drift period stationary at 4000 eV and at 4000 plus or minus 100 - giving a 41.43 mm gap, U3 0.9740 against the table's 0.916 and U4 1.4815 against 1.503. There the mirror reproduces the published period-slope curve, and the published on-axis potential to 0.159 kV rms at sixteen points, which is a check the solve never saw. See docs/astral-log.md sections 58-65.",
   "parameters": {
+    "scale": {
+      "value": 0.2,
+      "unit": "1",
+      "minimum": 0.05,
+      "maximum": 1.0,
+      "description": "How large this analyzer is against the published one: every length and duration is its full-size value times this, and every potential and angle is unchanged. 1.0 is the published Astral; 0.2 is the compact analyzer this project is designing. Exact by electrostatic similarity - the trajectory scales with the instrument and every flight time with it - except for anything with an absolute duration of its own, such as the detector's response and the ions' turn-around time.",
+      "provenance": "chosen"
+    },
+    "spacerThicknessFullSize": {
+      "value": 0.2,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 5.0,
+      "description": "The full-size value, before scaling. Thickness of the spacer that tilts the mirrors relative to one another. PUBLISHED: Stewart et al. give 200 microns. What it is not published over is the baseline - see tiltBaseline - and that is the whole of the uncertainty in the drift reversal.",
+      "provenance": "published",
+      "source": "Stewart et al., J. Mass Spectrom. 2024;59(4):e5006, table 1, quoted as a 200 um spacer"
+    },
+    "tiltBaselineFullSize": {
+      "value": 509.3,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 1000.0,
+      "description": "The full-size value, before scaling. Length the spacer tilts each mirror over, so the tilt angle is asin(spacerThickness / tiltBaseline). PUBLISHED as of 2026-09-04: Grinfeld et al. give the convergence as 0.045 deg BETWEEN the mirrors, which over a 0.2 mm spacer is a 509.3 mm baseline. Two independent routes agree - requiring the tilt to supply the published a0 = 0.83999 of the drift pseudopotential wants 515.9 mm, 1.3% away. This was 250 mm and flagged as the most consequential guess in the reconstruction, carrying a 2.8-fold ambiguity; it was wrong by almost exactly a factor of two.",
+      "provenance": "fitted",
+      "source": "fitted against the published drift reversal; the design paper's stated angle is 196 um over the 250 mm mirror body and 503 um across the 641 mm effective separation"
+    },
+    "driftLengthFullSize": {
+      "value": 450.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 800.0,
+      "description": "The full-size value, before scaling. Extent along the drift, and hence the extent of the foil. Published nominal drift is 335 mm, but this must be LONGER: where the stripe ends its contribution to the drift potential decays and partly cancels the tilt's continuing rise, leaving a crest an ion with slightly more sideways energy can clear. With the foil coextensive with a 350 mm drift that crest sat 2.3% above the nominal drift energy while the design's operating range is 2.2%, and the reversal jumped from 338.6 to 409.1 mm for a 1.1% change in injection angle. At 450 mm the crest moves to 435 mm and demands 6.3 V against the ion's 4.8. See docs/astral-log.md section 48."
+    },
+    "capToCapFullSize": {
+      "value": 740.0,
+      "unit": "mm",
+      "minimum": 50.0,
+      "maximum": 3000.0,
+      "description": "The full-size value, before scaling. Cap plate to cap plate. 720 puts the cap 360 mm from the mid-plane, 5 mm past electrode 4. The effective mirror separation the paper quotes (641 mm) is set by the electrode positions and voltages, not by the cap, and measures 656 at this geometry - 2.3 per cent long, section 65."
+    },
+    "boardGapFullSize": {
+      "value": 41.43,
+      "unit": "mm",
+      "minimum": 5.0,
+      "maximum": 120.0,
+      "description": "The full-size value, before scaling. Distance between the two mirror boards across the beam. Published in neither paper. One of the three unknowns solved for the published three-point focusing condition (c1 = 0, c3 = 0, c2 = -1.25e-3 c4; handoff sections 70-71) together with U3 and U4, on a layout whose back wall and electrode-0 gap are read off the figure. It is also the gap at which a voltage fit to the published on-axis potential reproduced U1 to 1 per cent (section 62). Two routes, one number.",
+      "provenance": "fitted",
+      "source": "solved for the design paper's own three-point condition: the drift period stationary at 4000 eV and at 4000 +/- 100"
+    },
+    "boardThicknessFullSize": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0.5,
+      "maximum": 20.0,
+      "description": "The full-size value, before scaling. How thick each board is in y."
+    },
+    "vacuumPadFullSize": {
+      "value": 6.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 60.0,
+      "description": "The full-size value, before scaling. Vacuum between the outermost metal and the solve boundary."
+    },
+    "detectorInsetFullSize": {
+      "value": 10.0,
+      "unit": "mm",
+      "minimum": 1.0,
+      "maximum": 100.0,
+      "description": "The full-size value, before scaling. How far inside the far end the collecting plane sits."
+    },
+    "zPadFullSize": {
+      "value": 150.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
+    },
+    "meshShiftZFullSize": {
+      "value": 0.3,
+      "unit": "mm",
+      "minimum": -5.0,
+      "maximum": 5.0,
+      "description": "The full-size value, before scaling. Moves the foil's solve mesh along the drift without moving any conductor, so that no face two foil slices share lies on a row of nodes. Numerical, not physical. The slices hold different potentials, and a node exactly on the face between two of them belongs to one, the other, or neither according to the last bit of that face's arithmetic - at no shift, three faces sat on nodes and a change of scale that should have changed nothing moved the flight time by 0.27 percent. The grounded boards follow the mesh, so each still spans the whole domain. The faces are 28.125 mm apart and the nodes 2.93 mm, so where a face falls within a cell repeats every fifth of one, and 0.3 mm - a tenth of a cell - is as far from every node as any placement gets at this cell. At another cell size the margin is different; CompactAstralTests checks it. Where the mesh sits still moves the answer through ordinary discretization error, because the stripe is thinner than a cell: 0.83 percent across placements at the shipped 4 mm cell and 0.22 at 2 mm (docs/device-templates.md).",
+      "provenance": "chosen"
+    },
+    "foilGapFullSize": {
+      "value": 20.0,
+      "unit": "mm",
+      "minimum": 2.0,
+      "maximum": 30.0,
+      "description": "The full-size value, before scaling. Where the foil's inner face sits, measured from the ion plane in the board-gap direction. The foil runs from here out to the board's inner face at halfGap, so it is a shaped conductive region on the FACE of each board rather than a separate aperture in the flight path - the plausible construction for a printed-circuit analyzer, and what the published schematic projects to. At the shipped 20 mm the foil stands 0.715 mm proud and the well reaches 7.31 V, shallowest at 41% of the drift and deepest at 67%. The 15% comparison against a 2 mm plate floating at an 8 mm half-gap is recorded in docs/astral-log.md and is no longer expressible here, deliberately: that plate IS the separate-aperture construction this template rejects, and the old declaration reached it by extruding the foil outward by a declared thickness - which at the shipped value drove it 1.285 mm into the grounded board behind it."
+    },
+    "e0InFullSize": {
+      "value": 1.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Inner edge of the grounded electrode 0, from the mid-plane. The schematic shows it running from the beam region out to electrode 1; 1 mm leaves the source at the mid-plane clear of it. Section 64 measured its extent as irrelevant to the focus."
+    },
+    "e0OutFullSize": {
+      "value": 195.7,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Outer edge of the grounded electrode 0, from the mid-plane. The figure shows a gap between electrodes 0 and 1; its lower panel draws only the live electrodes, so the width is not published. 8.6 mm - the width of the other small gaps - is what the on-axis potential across 150-230 mm chooses (section 71: rms 0.421 kV abutting, 0.228 at 8.6 mm, 0.263 at 12.3).",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e1InFullSize": {
+      "value": 204.3,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Inner edge of electrode 1, the accelerating lens. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e1OutFullSize": {
+      "value": 249.5,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Outer edge of electrode 1. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e2InFullSize": {
+      "value": 258.1,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Inner edge of electrode 2. The 8.6 mm gap before it is bare board. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e2OutFullSize": {
+      "value": 267.7,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Outer edge of electrode 2. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e3InFullSize": {
+      "value": 282.3,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Inner edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e3OutFullSize": {
+      "value": 297.8,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Outer edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e4InFullSize": {
+      "value": 306.5,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Inner edge of electrode 4, the reflector. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "e4OutFullSize": {
+      "value": 360.0,
+      "unit": "mm",
+      "minimum": 0.0,
+      "maximum": 400.0,
+      "description": "The full-size value, before scaling. Outer edge of electrode 4, where it wraps round into the back wall of the mirror. The figure shows electrode 4 running past 347 mm off the plot edge and its upper panel shows the plate turning down into a wall, so the end of the mirror is at U4 rather than at earth. Where the earth was 11 mm behind a flat plate ending at 355, the axis at 340 mm read 4.75 kV against the figure 5.90 and the third-order coefficient was off by 0.17 (sections 70-71).",
+      "provenance": "drawn",
+      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
+    },
+    "wallThicknessFullSize": {
+      "value": 4.0,
+      "unit": "mm",
+      "minimum": 0.1,
+      "maximum": 50.0,
+      "description": "The full-size value, before scaling. Thickness of the back wall electrode 4 wraps into. A guess; the wall screens the domain edge behind it, and the axis potential does not distinguish 360 from 395 mm."
+    },
+    "cellSize0FullSize": {
+      "value": 0.5,
+      "unit": "mm",
+      "description": "The full-size field 0 cell size, before scaling.",
+      "provenance": "chosen"
+    },
+    "cellSize1FullSize": {
+      "value": 0.5,
+      "unit": "mm",
+      "description": "The full-size field 1 cell size, before scaling.",
+      "provenance": "chosen"
+    },
+    "cellSize2FullSize": {
+      "value": 4.0,
+      "unit": "mm",
+      "description": "The full-size field 2 cell size, before scaling.",
+      "provenance": "chosen"
+    },
+    "maximumFlightTimeFullSize": {
+      "value": 2000.0,
+      "unit": "us",
+      "description": "The full-size flight-time ceiling, before scaling.",
+      "provenance": "chosen"
+    },
+    "spacerThickness": {
+      "expression": "spacerThicknessFullSize * scale",
+      "unit": "mm",
+      "description": "spacerThicknessFullSize at this analyzer's scale."
+    },
+    "tiltBaseline": {
+      "expression": "tiltBaselineFullSize * scale",
+      "unit": "mm",
+      "description": "tiltBaselineFullSize at this analyzer's scale."
+    },
+    "driftLength": {
+      "expression": "driftLengthFullSize * scale",
+      "unit": "mm",
+      "description": "driftLengthFullSize at this analyzer's scale."
+    },
+    "capToCap": {
+      "expression": "capToCapFullSize * scale",
+      "unit": "mm",
+      "description": "capToCapFullSize at this analyzer's scale."
+    },
+    "boardGap": {
+      "expression": "boardGapFullSize * scale",
+      "unit": "mm",
+      "description": "boardGapFullSize at this analyzer's scale."
+    },
+    "boardThickness": {
+      "expression": "boardThicknessFullSize * scale",
+      "unit": "mm",
+      "description": "boardThicknessFullSize at this analyzer's scale."
+    },
+    "vacuumPad": {
+      "expression": "vacuumPadFullSize * scale",
+      "unit": "mm",
+      "description": "vacuumPadFullSize at this analyzer's scale."
+    },
+    "detectorInset": {
+      "expression": "detectorInsetFullSize * scale",
+      "unit": "mm",
+      "description": "detectorInsetFullSize at this analyzer's scale."
+    },
+    "zPad": {
+      "expression": "zPadFullSize * scale",
+      "unit": "mm",
+      "description": "zPadFullSize at this analyzer's scale."
+    },
+    "meshShiftZ": {
+      "expression": "meshShiftZFullSize * scale",
+      "unit": "mm",
+      "description": "meshShiftZFullSize at this analyzer's scale."
+    },
+    "foilGap": {
+      "expression": "foilGapFullSize * scale",
+      "unit": "mm",
+      "description": "foilGapFullSize at this analyzer's scale."
+    },
+    "e0In": {
+      "expression": "e0InFullSize * scale",
+      "unit": "mm",
+      "description": "e0InFullSize at this analyzer's scale."
+    },
+    "e0Out": {
+      "expression": "e0OutFullSize * scale",
+      "unit": "mm",
+      "description": "e0OutFullSize at this analyzer's scale."
+    },
+    "e1In": {
+      "expression": "e1InFullSize * scale",
+      "unit": "mm",
+      "description": "e1InFullSize at this analyzer's scale."
+    },
+    "e1Out": {
+      "expression": "e1OutFullSize * scale",
+      "unit": "mm",
+      "description": "e1OutFullSize at this analyzer's scale."
+    },
+    "e2In": {
+      "expression": "e2InFullSize * scale",
+      "unit": "mm",
+      "description": "e2InFullSize at this analyzer's scale."
+    },
+    "e2Out": {
+      "expression": "e2OutFullSize * scale",
+      "unit": "mm",
+      "description": "e2OutFullSize at this analyzer's scale."
+    },
+    "e3In": {
+      "expression": "e3InFullSize * scale",
+      "unit": "mm",
+      "description": "e3InFullSize at this analyzer's scale."
+    },
+    "e3Out": {
+      "expression": "e3OutFullSize * scale",
+      "unit": "mm",
+      "description": "e3OutFullSize at this analyzer's scale."
+    },
+    "e4In": {
+      "expression": "e4InFullSize * scale",
+      "unit": "mm",
+      "description": "e4InFullSize at this analyzer's scale."
+    },
+    "e4Out": {
+      "expression": "e4OutFullSize * scale",
+      "unit": "mm",
+      "description": "e4OutFullSize at this analyzer's scale."
+    },
+    "wallThickness": {
+      "expression": "wallThicknessFullSize * scale",
+      "unit": "mm",
+      "description": "wallThicknessFullSize at this analyzer's scale."
+    },
     "ionEnergy": {
       "value": 4000.0,
       "unit": "V",
@@ -12,24 +333,6 @@
       "provenance": "published",
       "source": "Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017, table 1"
     },
-    "spacerThickness": {
-      "value": 0.2,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 5.0,
-      "description": "Thickness of the spacer that tilts the mirrors relative to one another. PUBLISHED: Stewart et al. give 200 microns. What it is not published over is the baseline - see tiltBaseline - and that is the whole of the uncertainty in the drift reversal.",
-      "provenance": "published",
-      "source": "Stewart et al., J. Mass Spectrom. 2024;59(4):e5006, table 1, quoted as a 200 um spacer"
-    },
-    "tiltBaseline": {
-      "value": 509.3,
-      "unit": "mm",
-      "minimum": 50.0,
-      "maximum": 1000.0,
-      "description": "Length the spacer tilts each mirror over, so the tilt angle is asin(spacerThickness / tiltBaseline). PUBLISHED as of 2026-09-04: Grinfeld et al. give the convergence as 0.045 deg BETWEEN the mirrors, which over a 0.2 mm spacer is a 509.3 mm baseline. Two independent routes agree - requiring the tilt to supply the published a0 = 0.83999 of the drift pseudopotential wants 515.9 mm, 1.3% away. This was 250 mm and flagged as the most consequential guess in the reconstruction, carrying a 2.8-fold ambiguity; it was wrong by almost exactly a factor of two.",
-      "provenance": "fitted",
-      "source": "fitted against the published drift reversal; the design paper's stated angle is 196 um over the 250 mm mirror body and 503 um across the 641 mm effective separation"
-    },
     "injectionAngle": {
       "value": 0.0310766,
       "unit": "1",
@@ -38,50 +341,6 @@
       "description": "Tangent of the angle between the trajectory and the mirror axis, setting the drift rate as V tan(theta). PUBLISHED as of 2026-09-04: Grinfeld et al. Table 1 gives a nominal 1.78 deg, and this is its tangent. Was 0.03998 (2.29 deg), inferred by requiring the reversal to land at 335 mm with the tilt baseline also wrong - the two errors compensated, which is why the geometric register reproduced anyway.",
       "provenance": "published",
       "source": "Grinfeld et al., Nucl. Instrum. Methods Phys. Res. A 1060 (2024) 169017, table 1 (1.78 degrees; the model's own fit wanted 2.29)"
-    },
-    "driftLength": {
-      "value": 450.0,
-      "unit": "mm",
-      "minimum": 50.0,
-      "maximum": 800.0,
-      "description": "Extent along the drift, and hence the extent of the foil. Published nominal drift is 335 mm, but this must be LONGER: where the stripe ends its contribution to the drift potential decays and partly cancels the tilt's continuing rise, leaving a crest an ion with slightly more sideways energy can clear. With the foil coextensive with a 350 mm drift that crest sat 2.3% above the nominal drift energy while the design's operating range is 2.2%, and the reversal jumped from 338.6 to 409.1 mm for a 1.1% change in injection angle. At 450 mm the crest moves to 435 mm and demands 6.3 V against the ion's 4.8. See docs/astral-log.md section 48."
-    },
-    "capToCap": {
-      "value": 740.0,
-      "unit": "mm",
-      "minimum": 50.0,
-      "maximum": 3000.0,
-      "description": "Cap plate to cap plate. 720 puts the cap 360 mm from the mid-plane, 5 mm past electrode 4. The effective mirror separation the paper quotes (641 mm) is set by the electrode positions and voltages, not by the cap, and measures 656 at this geometry - 2.3 per cent long, section 65."
-    },
-    "boardGap": {
-      "value": 41.43,
-      "unit": "mm",
-      "minimum": 5.0,
-      "maximum": 120.0,
-      "description": "Distance between the two mirror boards across the beam. Published in neither paper. One of the three unknowns solved for the published three-point focusing condition (c1 = 0, c3 = 0, c2 = -1.25e-3 c4; handoff sections 70-71) together with U3 and U4, on a layout whose back wall and electrode-0 gap are read off the figure. It is also the gap at which a voltage fit to the published on-axis potential reproduced U1 to 1 per cent (section 62). Two routes, one number.",
-      "provenance": "fitted",
-      "source": "solved for the design paper's own three-point condition: the drift period stationary at 4000 eV and at 4000 +/- 100"
-    },
-    "boardThickness": {
-      "value": 4.0,
-      "unit": "mm",
-      "minimum": 0.5,
-      "maximum": 20.0,
-      "description": "How thick each board is in y."
-    },
-    "vacuumPad": {
-      "value": 6.0,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 60.0,
-      "description": "Vacuum between the outermost metal and the solve boundary."
-    },
-    "detectorInset": {
-      "value": 10.0,
-      "unit": "mm",
-      "minimum": 1.0,
-      "maximum": 100.0,
-      "description": "How far inside the far end the collecting plane sits."
     },
     "halfGap": {
       "expression": "boardGap / 2",
@@ -128,21 +387,6 @@
       "unit": "1",
       "description": "Tilt of each mirror, in half turns. The near stack takes +mirrorTilt and the far -mirrorTilt, which brings both mouths toward the mid-plane as z increases."
     },
-    "zPad": {
-      "value": 150.0,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
-    },
-    "meshShiftZ": {
-      "value": 0.3,
-      "unit": "mm",
-      "minimum": -5.0,
-      "maximum": 5.0,
-      "description": "Moves the foil's solve mesh along the drift without moving any conductor, so that no face two foil slices share lies on a row of nodes. Numerical, not physical. The slices hold different potentials, and a node exactly on the face between two of them belongs to one, the other, or neither according to the last bit of that face's arithmetic - at no shift, three faces sat on nodes and a change of scale that should have changed nothing moved the flight time by 0.27 percent. The grounded boards follow the mesh, so each still spans the whole domain. The faces are 28.125 mm apart and the nodes 2.93 mm, so where a face falls within a cell repeats every fifth of one, and 0.3 mm - a tenth of a cell - is as far from every node as any placement gets at this cell. At another cell size the margin is different; CompactAstralTests checks it. Where the mesh sits still moves the answer through ordinary discretization error, because the stripe is thinner than a cell: 0.83 percent across placements at the shipped 4 mm cell and 0.22 at 2 mm (docs/device-templates.md).",
-      "provenance": "chosen"
-    },
     "foilVolts": {
       "value": -3.0,
       "unit": "V",
@@ -154,13 +398,6 @@
       "expression": "halfGap - foilGap",
       "unit": "mm",
       "description": "How far the foil stands proud of the board it is printed on, which is set by foilGap rather than declared: the foil runs from foilGap out to the board's inner face, so there is one knob and not two. It was a knob, at 2 mm, and the foil was then extruded outward THROUGH the board face and 1.285 mm into the grounded metal behind it - two conductors in one place at two potentials, which is ill-posed and which the volume overlap check refuses. The solve never saw that metal: a cut link records the NEAREST surface along its arm, so the foil's front face won over everything behind it, and a node inside both went to the board because the boards are written last. Saying so therefore changes the Dirichlet mask in no node and no cut link at cell sizes of 4, 2, 1, 0.5 and 0.25 mm, so every number measured from this template stands. SPEC.md Amendment 51."
-    },
-    "foilGap": {
-      "value": 20.0,
-      "unit": "mm",
-      "minimum": 2.0,
-      "maximum": 30.0,
-      "description": "Where the foil's inner face sits, measured from the ion plane in the board-gap direction. The foil runs from here out to the board's inner face at halfGap, so it is a shaped conductive region on the FACE of each board rather than a separate aperture in the flight path - the plausible construction for a printed-circuit analyzer, and what the published schematic projects to. At the shipped 20 mm the foil stands 0.715 mm proud and the well reaches 7.31 V, shallowest at 41% of the drift and deepest at 67%. The 15% comparison against a 2 mm plate floating at an 8 mm half-gap is recorded in docs/astral-log.md and is no longer expressible here, deliberately: that plate IS the separate-aperture construction this template rejects, and the old declaration reached it by extruding the foil outward by a declared thickness - which at the shipped value drove it 1.285 mm into the grounded board behind it."
     },
     "foilSlices": {
       "value": 16.0,
@@ -245,101 +482,6 @@
       "expression": "2 * driftLength * sinPi(mirrorTilt) / cosPi(mirrorTilt)",
       "unit": "mm",
       "description": "How much the cap-to-cap gap narrows across the drift length. DERIVED from the spacer and its baseline, and reported because it is the quantity the earlier revisions of this template declared directly. 0.56 mm at the shipped values."
-    },
-    "e0In": {
-      "value": 1.0,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Inner edge of the grounded electrode 0, from the mid-plane. The schematic shows it running from the beam region out to electrode 1; 1 mm leaves the source at the mid-plane clear of it. Section 64 measured its extent as irrelevant to the focus."
-    },
-    "e0Out": {
-      "value": 195.7,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Outer edge of the grounded electrode 0, from the mid-plane. The figure shows a gap between electrodes 0 and 1; its lower panel draws only the live electrodes, so the width is not published. 8.6 mm - the width of the other small gaps - is what the on-axis potential across 150-230 mm chooses (section 71: rms 0.421 kV abutting, 0.228 at 8.6 mm, 0.263 at 12.3).",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e1In": {
-      "value": 204.3,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Inner edge of electrode 1, the accelerating lens. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e1Out": {
-      "value": 249.5,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Outer edge of electrode 1. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e2In": {
-      "value": 258.1,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Inner edge of electrode 2. The 8.6 mm gap before it is bare board. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e2Out": {
-      "value": 267.7,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Outer edge of electrode 2. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e3In": {
-      "value": 282.3,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Inner edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e3Out": {
-      "value": 297.8,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Outer edge of electrode 3. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e4In": {
-      "value": 306.5,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Inner edge of electrode 4, the reflector. Measured pixel by pixel off Fig. 1 of Grinfeld et al. 2024 (NIM-A 1060, 169017), the grey blocks under the on-axis potential plot, at 500 dpi with both mirrors agreeing to 0.5 mm. Distance from the mid-plane between the mirrors. See docs/astral-log.md section 58.",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "e4Out": {
-      "value": 360.0,
-      "unit": "mm",
-      "minimum": 0.0,
-      "maximum": 400.0,
-      "description": "Outer edge of electrode 4, where it wraps round into the back wall of the mirror. The figure shows electrode 4 running past 347 mm off the plot edge and its upper panel shows the plate turning down into a wall, so the end of the mirror is at U4 rather than at earth. Where the earth was 11 mm behind a flat plate ending at 355, the axis at 340 mm read 4.75 kV against the figure 5.90 and the third-order coefficient was off by 0.17 (sections 70-71).",
-      "provenance": "drawn",
-      "source": "Stewart, Grinfeld et al., Anal. Chem. 2023;95(42):15656, figure 1, read off the rendered page, the grey electrode blocks"
-    },
-    "wallThickness": {
-      "value": 4.0,
-      "unit": "mm",
-      "minimum": 0.1,
-      "maximum": 50.0,
-      "description": "Thickness of the back wall electrode 4 wraps into. A guess; the wall screens the domain edge behind it, and the axis potential does not distinguish 360 from 395 mm."
     },
     "v0": {
       "value": 0.7089,
@@ -535,8 +677,8 @@
           "unit": "mm"
         },
         "cellSize": {
-          "value": 0.5,
-          "unit": "mm"
+          "unit": "mm",
+          "expression": "cellSize0FullSize * scale"
         },
         "tiltHalfTurns": {
           "expression": "mirrorTilt",
@@ -1102,8 +1244,8 @@
           "unit": "mm"
         },
         "cellSize": {
-          "value": 0.5,
-          "unit": "mm"
+          "unit": "mm",
+          "expression": "cellSize1FullSize * scale"
         },
         "tiltHalfTurns": {
           "expression": "-mirrorTilt",
@@ -1677,8 +1819,8 @@
           "unit": "mm"
         },
         "cellSize": {
-          "value": 4.0,
-          "unit": "mm"
+          "unit": "mm",
+          "expression": "cellSize2FullSize * scale"
         },
         "lowerZEdge": "neumann",
         "upperZEdge": "neumann",
@@ -2562,8 +2704,8 @@
   },
   "transport": {
     "maximumFlightTime": {
-      "value": 2000.0,
-      "unit": "us"
+      "unit": "us",
+      "expression": "maximumFlightTimeFullSize * scale"
     },
     "relativeTolerance": 1e-10
   }

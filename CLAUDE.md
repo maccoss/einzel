@@ -1204,7 +1204,7 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **The reversal threshold is a fourth-power law in the injection angle**: 11.447 mm at 2°, 0.4638 mm at 1°, under 0.05 mm at 0.5° — 24.7x per halving, bisected by `einzel boundary`. Halving the angle doubles the reflections *and* quarters the axial energy, which predicts a cube; the measurement says more, and two points cannot say what else.
 
-  ~~**Not reconciled with the published instrument**~~ — **it reconciles.** That line was written when the gap was 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4, and the remainder was in the guesses: `d1..d4` free, the board gap assumed. Reading the electrode positions off the published figure instead of guessing depths puts the reversal at **336.15 mm with 24 outbound**, against a published **310 to 360 mm, mean 335, and 24 to 26**, and the flight time at **786.44 µs** against 783.2 by arithmetic. The tilt on its own reverses at 404 mm and the published stripe shape brings it to 336, which is the design paper's own account of the mechanism rather than a discrepancy.
+  ~~**Not reconciled with the published instrument**~~ — **it reconciles.** That line was written when the gap was 200 µm at 2° with 24 oscillations against 11.4 mm at 2° with 4, and the remainder was in the guesses: `d1..d4` free, the board gap assumed. Reading the electrode positions off the published figure instead of guessing depths puts the reversal at **336.06 mm with 24 outbound**, against a published **310 to 360 mm, mean 335, and 24 to 26**, and the flight time at **784.90 µs** on the shipped foil mesh, about 775 mesh-converged, against 783.2 by arithmetic. (It read 336.15 mm and 786.44 µs until the compact analyzer showed the second was a rounding coin toss - see the `compact-astral-3d` entry at the end of this list.) The tilt on its own reverses at 404 mm and the published stripe shape brings it to 336, which is the design paper's own account of the mechanism rather than a discrepancy.
 
   **And the convergence it fitted was published all along**, in a paper already sitting unread in `papers/`: its table states the angle, which is 196 µm over the 250 mm mirror body — the spacer — and 503 µm across the 641 mm effective separation, against the 0.56 mm the model fitted knowing none of it. What does not yet agree is the injection angle: published 1.78°, fitted 2.29°, and the reversal distance goes as its fourth power.
 
@@ -2264,6 +2264,88 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   both instruments have two, so the -x slit gets a named absorber and a scan-out is the arrivals
   plus the ions itemised against `detectorLeft`. A LIB-1 signal with a second real device behind
   it. Details in `docs/device-templates.md` and `docs/literature-targets.md` §2.
+
+- **`compact-astral-3d` — the compact analyzer as an instrument, and the coin toss it found in
+  the published one.** The compact analyzer this project is designing had only
+  `planar-mirror-pair` to stand for it: one plane of a mirror pair, no drift, no tilt, no
+  reversal. It is now `astral-3d` whole at a chosen scale, one fifth as shipped, **generated**
+  by `generators/compact-astral-3d.py` so every published length keeps its value and
+  provenance as `<name>FullSize` beside one `scale` that multiplies it. The meshes are lengths
+  too, so the compact solve is the full-size discrete problem node for node and costs the same;
+  a cell held fixed would have been a five times coarser model that looked like a worse
+  instrument. `planar-mirror-pair` and `astral-mirror` are relabeled as the cross-section
+  studies they are.
+
+  **Similarity is exact, so it was tested exactly - and it failed.** Scales of 0.5, 0.25 and
+  0.2000001 reproduced the full-size flight to the bit; 0.2 moved it **0.27 percent** and
+  0.1999999 a different 0.03. The foil's sixteen slices hold sixteen potentials and share a
+  face every 28.125 mm, and three of those faces sat exactly on node planes of the 4 mm foil
+  mesh, so which slice the 180 stencil arms lying in those planes were cut against was the
+  last bit of arithmetic that 0.2 rounds differently. (The masks also differ in 454 nodes and
+  1,406 more links, all on the domain's upper face where grounded boards end - a harmless flip
+  measured separately; see the next entry.) **No refinement ladder finds this**: every rung
+  can sit on the same faces. `meshShiftZ` moves the foil mesh 0.3 mm, a tenth of a cell off every shared face,
+  and similarity then holds to **1.6e-8**, the integrator's tolerance.
+
+  **Removing the coin toss exposed an ordinary error four times larger.** The stripe is thinner
+  than a cell and holds no node, so it exists only where its surfaces cut links, and moving the
+  mesh in fifths of a cell moves the flight time over **0.83 percent at 4 mm and 0.22 at 2 mm**
+  - second order, and the means fall 6.4 µs with it, extrapolating to **about 775 µs**, a percent
+  below the arithmetic's 783.2. The "0.4 percent" agreement recorded for months was one draw from
+  that spread. Still inside the register test's 2 percent and clear of K = 25, but an agreement
+  quoted finer than where the mesh sits is not an agreement (SPEC.md Amendment 55).
+
+  `CompactAstralTests` checks it at the mesh, where it is exact and affordable rather than at the
+  flight, which takes a minute: every resolved quantity scales as its dimension says (length one,
+  potential none, field minus one - current carries minus one, because charge is fixed), a scale
+  of one is `astral-3d` to the bit, the three meshes match node for node, and no shared face sits
+  within a twentieth of a cell of a node. **What does not scale is the design question**:
+  turn-around time and detector response are absolute, so their resolving-power limit falls by
+  five; a machining error is five times larger against the geometry; and the packet's own field
+  grows as 1/s² against the applied field's 1/s, so the same space charge comes at a fifth of the
+  population. Two engine follow-ups were proposed: a warning when a solve's mesh samples a face two
+  disagreeing conductors share (**built** - next entry), and a bounding-box cull in the 3-D mask
+  builder, which tested every link against all 86 electrodes and spent about a minute per mask in a
+  Debug test run (**built** in PR #49: 10.3 s to 0.15 s per mask in Release, bit-identical to the
+  unculled build). Details in `docs/device-templates.md`.
+
+- **`mesh.node-on-shared-face` - and the check as specified reported its own motivating case
+  clean.** Built first exactly as proposed above - nodes within a rounding of two disagreeing
+  conductors' surfaces - it swept every template and example clean, and then, run against
+  `astral-3d` with its mesh shift removed, **reported that clean too**. The foil stripe is 0.715 mm
+  on a 2.9-3.8 mm mesh and holds no node: the coin was tossed on the **stencil arms** lying in the
+  plane of each shared face. So the rule is stated in terms of both places a mesh samples a
+  geometry - no node, and no point where an arm from a free node first meets metal, on a face shared
+  by conductors that disagree in any state - and the Astral with its shift removed reports **180
+  arms, 0 nodes**. SPEC.md Amendment 56; `docs/numerics.md`, "A face two conductors share".
+
+  `GeometryBuilder`/`GeometryBuilder3D.NodesOnSharedFaces` run before every solve and put it on the
+  `SolveReport` (a new `Warnings` list), so `FieldAssembly.BuildReported` carries it to `run`,
+  `preview` and every figure; **`einzel solve` carried no warnings at all** and now reports it once
+  per element. Tolerance 1e-9 of the finest spacing; "disagree" is `ElectrodeOverlap.StatesOf` /
+  `Agrees`, made public so the two questions asked of a pair cannot drift apart. **The arm test asks
+  a distance, not a pair of entry fractions**: nudge the face one ulp and the arm grazes one stripe
+  instead of entering it while its cut has already flipped - an entry fraction is discontinuous in
+  exactly the case the test is for.
+
+  **Survey: 44 solved elements across every template and example, all clean**, kept so by
+  `SharedFaceCorpusTests` with the shift-removed Astral as the control. **What it was worth**, by
+  moving the foil mesh across the node: 786.4372 us at -1e-7 of the extent, 784.3191 at +1e-7 - a
+  **2.118 us step (0.27%)** on a slope of 5.4 us per cell, five orders above each run's own stated
+  uncertainty. And it corrected the record: of the 454 nodes and 1,586 links differing between the
+  full and compact masks, **only 180 links are the foil**; the rest are grounded boards' ends on the
+  domain's upper face, where the last node plane rounds either side of the declared maximum -
+  checked to be a flip the flight does not see.
+
+  **Two limits, stated.** The tolerance flags coincidence, not proximity: a face 2.6e-5 of a cell
+  off a node is on a determinate side of the same 0.27% step with no warning, which a geometric
+  sweep would cross silently - the fix the warning names is a tenth of a cell. And a conductor flush
+  with a **Dirichlet** domain face is the same coin toss against the grounded boundary, unchecked.
+  Mutation-checked five ways: detector disabled (11 of 14 unit tests fail; the three that pass are
+  the should-not-warn controls), tolerance zero (the four near-miss tests fail), **arms disabled (the
+  three arm tests and the Astral control fail - the nodes-only check, measured)**, base state only
+  (the stage test fails), and the warning dropped at `FieldAssembly.Note` or in `SolveCommand` (the
+  end-to-end tests fail).
 
 - **`einzel render still`: the viewport's picture as a PNG, and what drawing it found.** An agent could run every analysis the window runs and could not see what the window shows. A still earns that only if it IS the window's picture, so every decision that makes the picture - the camera, the color ramps, how an electrode is colored, the layers and their order, translucency and depth-writing, the lighting - moved out of the shell's GL control into `ViewportPicture` and `Framing` in `Einzel.Commands`. The window uploads that composition and builds its shader from the same lighting constants; the still hands it to a managed rasterizer in `Einzel.Render` that decides nothing. UI-1's boundary test forbids the shell from even *using* `Einzel.Render` types, which is what put the decisions in the command layer. PNG hand-written over the base library's zlib; provenance and every warning in its text chunks; a validity violation hatches the bottom of the picture. **Orthographic, not RND-4's "perspective"** - SPEC.md Amendment 54.
 

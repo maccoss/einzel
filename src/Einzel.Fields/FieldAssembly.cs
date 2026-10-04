@@ -585,6 +585,14 @@ public static class FieldAssembly
     private static void Note(
         List<Core.Results.ValidityWarning> warnings, Solved.SolveReport report, int index, string kind)
     {
+        // What the builder found about the mesh before solving it, named by element because
+        // the builder does not know which element of the model it was handed. Carried whether
+        // or not the solve converged: a solve can converge perfectly on a coin toss.
+        foreach (var found in report.Warnings)
+        {
+            warnings.Add(found with { Message = $"field element {index} ({kind}): {found.Message}" });
+        }
+
         if (report.Converged)
         {
             return;
