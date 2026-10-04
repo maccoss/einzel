@@ -25,6 +25,11 @@ become a feature release without being renamed twice.
   (`--view iso|side|top|front`), pixel sizes (`--width-px`, `--height-px`), `--see-through`.
   The PNG carries the engine version, the model's hash and every warning in its text chunks,
   and a validity violation hatches the bottom of the picture.
+- **A scale in every 3D picture.** Stills and the cross-platform viewport carry a ruler in the
+  lower left: one arm along each model axis, all the same round length (`10 mm`, `500 µm`),
+  foreshortened exactly as the instrument is, so it stays true in the angled view; in a
+  straight-on view it is an L-shaped scale bar. `--no-scale` leaves it out of a still, whose
+  `--json` result reports the arm length.
 
 ## Fixed
 

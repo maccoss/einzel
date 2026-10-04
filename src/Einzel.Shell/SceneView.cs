@@ -71,7 +71,26 @@ public sealed class SceneView : OpenGlControlBase
     private int _mvpLocation;
     private int _colorLocation;
     private int _alphaLocation;
-    private ViewportCamera? _camera;
+    // Set on the render thread when the scene is first drawn and read on the UI thread by
+    // the scale indicator, so every read sees a whole reference. The camera locks its own state.
+    private volatile ViewportCamera? _camera;
+
+    /// <summary>Raised whenever the camera's framing changes, from whichever thread changed it.</summary>
+    /// <remarks>
+    /// The scale indicator drawn over this control listens, because its length on screen is
+    /// the framing's: turning to another named view, or a watched packet growing the frame,
+    /// changes how many pixels a millimeter is.
+    /// </remarks>
+    public event EventHandler? FramingChanged;
+
+    /// <summary>The matrix the scene is drawn with, for a viewport of this shape.</summary>
+    /// <param name="aspect">Width over height.</param>
+    /// <returns>Column-major 4x4 from millimeters to clip space, or null before anything is framed.</returns>
+    /// <remarks>
+    /// The same matrix the render pass hands the GPU, so a ruler laid out from it measures the
+    /// picture it is drawn over rather than a second account of the camera.
+    /// </remarks>
+    public double[]? CurrentMatrix(double aspect) => _camera?.Framing.Matrix(aspect);
 
     /// <summary>What to draw, as the command layer measured it.</summary>
     /// <remarks>
@@ -143,6 +162,7 @@ public sealed class SceneView : OpenGlControlBase
             if (_camera is { } camera)
             {
                 camera.Turn(value);
+                FramingChanged?.Invoke(this, EventArgs.Empty);
                 RequestNextFrameRendering();
             }
         }
@@ -197,6 +217,7 @@ public sealed class SceneView : OpenGlControlBase
         }
 
         _camera = new ViewportCamera(scene, _view);
+        FramingChanged?.Invoke(this, EventArgs.Empty);
 
         _gl.Enable(EnableCap.DepthTest);
     }
@@ -389,7 +410,11 @@ public sealed class SceneView : OpenGlControlBase
         layers[index] = density;
         _picture = layers;
 
-        _camera?.Take(frame);
+        if (_camera is { } camera)
+        {
+            camera.Take(frame);
+            FramingChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>Draws one layer by the rules the composition gave it.</summary>
