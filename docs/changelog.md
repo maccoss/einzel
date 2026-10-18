@@ -1072,13 +1072,13 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
 
   **A measurement mistake worth keeping:** an end-to-end check timed a scan at 50.6 s against 31.0 s minutes earlier, which reads as the estimate being badly wrong. The full test suite was running in parallel. **A wall-clock comparison on a loaded machine measures the load**, and the estimate is the one number in this project most likely to be validated that way.
 
-- **The estimate's memory figure was a fifth of the truth, and measuring it found a driven solve holding every channel's geometry.** `einzel estimate` billed 48 bytes a node for every solve, from a comment listing three fields and some restriction buffers. Sampling the live set through real builds - a forced full collection from a second thread every few milliseconds - gives **240 bytes a node on the Galerkin hierarchy, 141.7 on the rediscretized one, 153 on a plane**, and the fields are 24 of the 240: the conductor mask and six cut-link arms of two doubles each are 105 before a field exists, and the Galerkin build stores the fine operator (64) and forms its first coarse level with scratch over the fine grid. **The Astral at a 1 mm cell was billed 3.1 GiB and needs 15.3.**
+- **The estimate's memory figure was a fifth of the truth, and measuring it found a driven solve holding every channel's geometry.** `einzel estimate` billed 48 bytes a node for every solve, from a comment listing three fields and some restriction buffers. Sampling the live set through real builds - a forced full collection from a second thread every few milliseconds - gives **240 bytes a node on the Galerkin hierarchy, 141.7 on the rediscretized one, 143.25 on a plane** (first stated as 153; see the review entry below), and the fields are 24 of the 240: the conductor mask and six cut-link arms of two doubles each are 105 before a field exists, and the Galerkin build stores the fine operator (64) and forms its first coarse level with scratch over the fine grid. **The Astral at a 1 mm cell was billed 3.1 GiB and needs 15.3.**
 
   | | predicted | measured, bytes a node |
   | --- | --- | --- |
   | Astral, 1.12 M and 8.68 M nodes (Galerkin) | 240.0 | 241.3, 240.9 |
   | segmented quadrupole, 1.09 M and 4.28 M (rediscretized) | 141.7 | 141.9, 141.8 |
-  | linear ion trap, two channels | 248.0 | **353.7** before, **248.7** after |
+  | linear ion trap, two channels | 248.9 | **353.7** before, **248.7** after |
   | diffusive run, per density node | - | 263, where 16 was billed |
 
   **The live set is what has to fit**, checked two ways: under a hard heap limit the Astral at 4 mm completed at 279 MiB and failed at 275 against a live 259, while unconstrained its heap reached 1.6x that, because the collector frees large arrays lazily. The statement lives beside the arrays (`SolveMemoryModel`), the hierarchy is asked of the solver (`PoissonSolver3D.UsesGalerkin`) rather than decided twice, and `SolveMemoryTests` pins it as a slope between two meshes - band 0.90 to 1.02, which one extra field fails.
@@ -2380,6 +2380,31 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   worth knowing: the shared-face check read each channel's mask, which the memory work had
   stopped keeping, so it is now asked of the first channel inside its own frame.
   `docs/numerics.md`, "What building the mask costs".
+
+- **The memory tests passed on a workstation and failed on CI, and the sampler was the reason
+  — which hid a plane statement 7 percent high.** `SolveMemoryTests` sampled the live set by
+  forcing a full collection every 2 ms, which on Windows is a timer tick of about 15, and
+  differenced the peaks of two builds, so a missed peak read either way. On the four-core CI
+  runners in Release, where a build is eight times faster than in Debug, three tests failed:
+  0.776 and 1.143 of the statement, and a second channel costing 90.5 bytes a node against a
+  limit of 30. Sampling as densely as the collections allow - waiting only as long as the last
+  collection took - and keeping the largest of three builds made every reading stable, and then
+  the plane failed *consistently*: **153.3 stated, 132.7 measured**. The plane's peak is the
+  instant the first coarse level copies its cut links, and the statement had added every deeper
+  level and that level's residual, which do not exist yet at that instant. Derived from what is
+  alive then, **143.25**; measured on four shipped plane templates, 143.3 to 143.9. The
+  workstation had passed the wrong number because the slope's error happened to cancel it.
+
+  **Three more from the review of the same pull request, all real.** The driven plane build kept
+  its first channel's mask for the shared-face check after the loop - 73 bytes a node through
+  every later solve; each channel now solves in a frame of its own, and a test that restores the
+  old loop reads exactly 73.0. The first coarse level was charged as an eighth of the fine grid,
+  and a grid keeps one node more than half on each axis: the Astral's real first level makes it
+  241.8 against 241.3 measured where an eighth said 240.0, and 32769 by 5 by 5 is 251.9. And a
+  diffusive mixture was charged its working set once: each species holds its own - measured,
+  the second and third added 247.6 and 248.3 to one species' 248.5 - so a three-species run was
+  billed a third of it. The estimate's comparison with this machine also lived inside the
+  solved-field explanation, so a diffusive run through analytic fields was never compared at all.
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 

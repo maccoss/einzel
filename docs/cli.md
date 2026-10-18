@@ -1271,11 +1271,38 @@ some restriction buffers, and nothing measured it.
 
 | solve | bytes a node at peak | measured, Release, live set sampled through the build |
 | --- | --- | --- |
-| volume, Galerkin hierarchy | 240 | 241.3 Astral at 1.12 M nodes; 240.9 at 8.68 M |
+| volume, Galerkin hierarchy | 240 on a deep grid; 241.8 Astral at 1.12 M nodes, 240.9 at 8.68 M | 241.3 and 240.9 |
 | volume, rediscretized hierarchy | 141.7 | 141.9 and 141.8 segmented quadrupole at 1.09 M and 4.28 M; 141.8 C-trap |
-| plane | 153.3 | 143 to 150 on three templates at 0.13 M to 1.05 M nodes |
-| each basis channel before the last | + 8 | 248.7 linear ion trap, two channels, against 248.0 |
-| diffusive run, per density node | 263 | 248 and 259, drift tube at 66 k and 263 k nodes |
+| plane | 143.25 | 143.3 to 143.9 on four templates at 17 k to 1.05 M nodes |
+| each basis channel before the last | + 8 | 248.7 linear ion trap, two channels, against 248.9 |
+| diffusive run, per density node and per species | 263 | 248 and 259, drift tube at 66 k and 263 k nodes; each added species 248 |
+
+**The coarse levels are charged at their real size.** A grid coarsens by halving each axis's
+interval count, which keeps one node more than half, so a first coarse level is more than an
+eighth of the fine grid - 0.1334 of it on the Astral, whose 17-node axis becomes 9 - and a thin
+axis makes it much more: 32769 by 5 by 5 coarsens to 16385 by 3 by 3, which is 0.18. The
+statement charged an eighth, 240 bytes a node on the Galerkin hierarchy; charged at the real
+size it is 241.8 on the Astral at 4 mm and 240.9 at 2 mm, against 241.3 and 240.9 measured, and
+251.9 on that thin grid. The rediscretized sum runs over the levels the solve will actually
+build, by the descent the solver itself takes, rather than over eighths all the way down.
+
+**The plane figure was 153.3 and is 143.25, and the sampler that checked it hid the
+difference.** The plane's peak is the instant the first coarse level replaces its cut links
+with a zeroed copy and holds both: the fine level's 105, and a quarter of that level's mask,
+two copies of its cut links and two fields. The statement added every deeper level and that
+level's residual, which do not exist at that instant. The live set was sampled every couple of
+milliseconds - a timer tick of about 15 on Windows - and two builds' peaks were differenced,
+so a missed peak read either way; it passed on a sixteen-core workstation and failed on both
+four-core CI runners, where a Release build is fast enough to finish between samples. Sampled
+as densely as the collections allow, and the largest of three builds kept, the shipped plane
+templates read 143.3 to 143.9; a build whose samples all miss the copy reads about 135.
+
+**A diffusive mixture is charged once per species.** Every species has its own walker - its
+density, next step and seed, its coefficients, its face operator and, cycle-averaged, its well
+- and measured on a 513 by 129 grid one species held 248.5 bytes a node and each species added
+247.6 and then 248.3. It was charged once whatever the count. **And the comparison with this
+machine is made whatever holds the peak**: it was the tail of the solved-field explanation, so a
+diffusive run through analytic fields, with no solve, was never compared at all.
 
 **The fields the old comment listed are 24 of the 240.** On the Galerkin hierarchy the peak is
 while the first coarse level is being formed: the conductor mask (9), six cut-link arms of two

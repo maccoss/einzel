@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using Einzel.Core.Model;
 using Einzel.Fields.Solved;
 
@@ -110,6 +112,41 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// A thin volume is charged its first coarse level at the size it really is, not an eighth.
+    /// </summary>
+    /// <remarks>
+    /// Coarsening halves interval counts, not node counts, so each axis keeps one node more than
+    /// half: 32769 by 5 by 5 coarsens to 16385 by 3 by 3, which is 0.18 of the fine grid. At
+    /// twenty-seven coefficients a node that is 38.9 bytes a fine node where an eighth is 27.
+    /// The expectation is worked out here from the node counts, not asked of the model.
+    /// </remarks>
+    [Fact]
+    public void AThinVolumeIsChargedItsRealFirstCoarseLevel()
+    {
+        // 32.768 m by 4 mm by 4 mm at 1 mm: 32768 intervals by 4 by 4. A box filling the cross
+        // section is 2 mm in half-width, so it is still resolved at the first coarse level and
+        // the bottom - 147,465 nodes - leaves the Galerkin hierarchy as the cheaper one.
+        var thin = new Geometry3D(
+            0.0, 0.0, 0.0, 32.768, 0.004, 0.004, 0.001,
+            [Box("rail", 0.0, 0.0, 0.0, 0.010, 0.004, 0.004, 100.0)]);
+
+        var plan = GeometryBuilder3D.Memory(thin);
+
+        Assert.Equal(32769L * 5 * 5, plan.Nodes);
+        Assert.True(plan.Galerkin, "a 147,465-node bottom is above the rediscretized limit");
+
+        const double firstLevel = (16385.0 * 3 * 3) / (32769.0 * 5 * 5);
+        const double expected = 9 + 96 + 24 + 64 + 20 + (27.0 * 8 * firstLevel);
+
+        output.WriteLine(
+            $"first level {firstLevel:F4} of the fine grid: {plan.PeakBytes / plan.Nodes:F2} B/node, "
+            + $"against {SolveMemoryModel.VolumeGalerkinPeak:F2} for an eighth");
+
+        Assert.Equal(expected, plan.PeakBytes / plan.Nodes, 9);
+        Assert.InRange(expected - SolveMemoryModel.VolumeGalerkinPeak, 11.8, 11.9);
+    }
+
+    /// <summary>
     /// The statement picks the hierarchy the solver picks, which is what makes its figure the
     /// right one of the two.
     /// </summary>
@@ -132,11 +169,92 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>The plane statement against a plane build, the same way.</summary>
+    /// <summary>The plane statement against a plane build.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Per node of one build, not a slope between two.</b> The plane's peak is a transient -
+    /// the instant the first coarse level holds two copies of its cut links - which lasts a
+    /// fraction of a millisecond, so a sample can miss it, and a build that misses it reads
+    /// about 135 rather than 143. A slope between two builds turns that into an error either
+    /// way: it read 0.78 of the statement on one CI runner. One build at a quarter of a
+    /// million nodes, where the fixed cost of a build is a tenth of a byte a node, can only
+    /// read low, and the band below holds whether or not the transient is caught.
+    /// </para>
+    /// <para>
+    /// The smaller build is kept, and printed, as a control on the fixed cost: it reads the
+    /// same per node.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void APlaneBuildHoldsWhatItsStatementSays()
     {
-        static CompiledSolvedField Rods(double cell) => new()
+        var small = Rods(0.0001);
+        var large = Rods(0.00005);
+
+        var planSmall = GeometryBuilder.Memory(small);
+        var planLarge = GeometryBuilder.Memory(large);
+
+        var peakSmall = PeakLive(() => GeometryBuilder.Build(small).Field);
+        var peakLarge = PeakLive(() => GeometryBuilder.Build(large).Field);
+
+        var predicted = planLarge.PeakBytes / planLarge.Nodes;
+        var measured = peakLarge / planLarge.Nodes;
+
+        output.WriteLine(
+            $"plane {planLarge.Nodes:N0} nodes: predicted {predicted:F1} B/node, measured {measured:F1} "
+            + $"({planSmall.Nodes:N0} nodes: {peakSmall / planSmall.Nodes:F1})");
+
+        // 135 when every sample misses the transient, 143.3 when one catches it.
+        Assert.InRange(measured / predicted, 0.90, 1.02);
+    }
+
+    /// <summary>A second plane channel costs one kept potential, not a second geometry.</summary>
+    /// <remarks>
+    /// The driven plane build kept its first channel's mask for the shared-face check after
+    /// the channel loop: 73 bytes a node, through every later channel's solve, which the
+    /// statement does not count. Asserted as the volume case is, as the difference between a
+    /// two-channel build and the same geometry undriven.
+    /// </remarks>
+    [Fact]
+    public void ASecondPlaneChannelCostsAPotentialNotAMask()
+    {
+        // 66 k nodes: a kept mask is still 73 bytes a node against a limit of 30, and a quarter
+        // of the nodes keeps this to seconds in Debug, where the sampler halves a build's speed.
+        const double cell = 0.0001;
+
+        var one = Rods(cell);
+        var two = Rods(cell, driven: true);
+
+        var planOne = GeometryBuilder.Memory(one);
+        var planTwo = GeometryBuilder.Memory(two);
+
+        Assert.Equal(1, planOne.Channels);
+        Assert.Equal(2, planTwo.Channels);
+
+        var peakOne = PeakLive(() => GeometryBuilder.Build(one).Field);
+        var peakTwo = PeakLive(() => GeometryBuilder.Build(two).Field);
+
+        var extra = (peakTwo - peakOne) / planOne.Nodes;
+
+        output.WriteLine(
+            $"{planOne.Nodes:N0} nodes: one channel {peakOne / planOne.Nodes:F1} B/node, "
+            + $"two {peakTwo / planOne.Nodes:F1}; the second costs {extra:F1} "
+            + $"(predicted {(planTwo.PeakBytes - planOne.PeakBytes) / planOne.Nodes:F1})");
+
+        // A kept mask is 73; the plane's own transient can be caught in one build and missed
+        // in the other, which is worth about 8 either way.
+        Assert.InRange(extra, -10.0, 30.0);
+    }
+
+    /// <summary>
+    /// Four round rods in a 16 mm box; driven, the y pair carries an RF tap as well, which makes
+    /// a second spatial pattern.
+    /// </summary>
+    private static CompiledSolvedField Rods(double cell, bool driven = false)
+    {
+        var tap = driven ? [new CompiledTap(0, 50.0, 0.0)] : Array.Empty<CompiledTap>();
+
+        return new()
         {
             MinX = -0.008,
             MaxX = 0.008,
@@ -148,30 +266,11 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             [
                 Disc("xPlus", 0.0045, 0.0, 100.0),
                 Disc("xMinus", -0.0045, 0.0, 100.0),
-                Disc("yPlus", 0.0, 0.0045, -100.0),
-                Disc("yMinus", 0.0, -0.0045, -100.0),
+                Disc("yPlus", 0.0, 0.0045, -100.0) with { Taps = tap },
+                Disc("yMinus", 0.0, -0.0045, -100.0) with { Taps = tap },
             ],
+            Drives = driven ? [new CompiledDrive(1.0e6, DriveWaveform.Sinusoid, 0.5)] : [],
         };
-
-        var small = Rods(0.0001);
-        var large = Rods(0.00005);
-
-        var planSmall = GeometryBuilder.Memory(small);
-        var planLarge = GeometryBuilder.Memory(large);
-
-        var peakSmall = PeakLive(() => GeometryBuilder.Build(small).Field);
-        var peakLarge = PeakLive(() => GeometryBuilder.Build(large).Field);
-
-        var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
-        var predicted = (planLarge.PeakBytes - planSmall.PeakBytes) / nodes;
-        var measured = (peakLarge - peakSmall) / nodes;
-
-        output.WriteLine(
-            $"plane {planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes: predicted {predicted:F1} B/node, measured {measured:F1}");
-
-        // The plane arithmetic carries a transient copy of the first coarse level's cut links
-        // at the moment it is re-zeroed, and errs over; 143 to 150 measured against 153.
-        Assert.InRange(measured / predicted, 0.90, 1.02);
     }
 
     private (double Predicted, double Measured, bool Galerkin) Slope(
@@ -202,10 +301,24 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
 
     /// <summary>The most a build holds reachable at once, above what was live before it.</summary>
     /// <remarks>
-    /// A forced, blocking, full collection and then the heap size, from a second thread every
-    /// couple of milliseconds. The collection is what makes this the live set rather than the
-    /// heap: without it the reading includes garbage the collector has not yet bothered to
-    /// free, which on the Astral ran to 1.6 times the live peak.
+    /// <para>
+    /// A forced, blocking, full collection and then the heap size, from a second thread. The
+    /// collection is what makes this the live set rather than the heap: without it the reading
+    /// includes garbage the collector has not yet bothered to free, which on the Astral ran to
+    /// 1.6 times the live peak.
+    /// </para>
+    /// <para>
+    /// <b>A sample can only miss the peak, so this reads low, and a slope between two builds can
+    /// read either way</b> - low when the larger build's peak is missed, high when the smaller
+    /// one's is. It passed on a sixteen-core workstation and failed on both four-core CI runners
+    /// in Release, where a build is eight times faster than in Debug: the sampler slept 2 ms
+    /// between collections, which is a timer tick of about 15 ms on Windows, and the smallest
+    /// build here finishes in about 10 ms. So the sampler now waits only as long as its last
+    /// collection took - the build keeps at least half the time, and a sample lands every few
+    /// hundred microseconds on a small heap - and each build is measured three times and the
+    /// largest reading kept, which is the right statistic for a quantity that can only be
+    /// under-read.
+    /// </para>
     /// </remarks>
     private static double PeakLive(Func<object> build)
     {
@@ -218,35 +331,60 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             return GC.GetTotalMemory(forceFullCollection: false);
         }
 
-        var baseline = Live();
-        var peak = baseline;
-        var stop = 0;
-
-        var sampler = new Thread(() =>
+        static double Once(Func<object> build)
         {
-            while (Volatile.Read(ref stop) == 0)
+            var baseline = Live();
+            var peak = baseline;
+            var stop = 0;
+
+            var sampler = new Thread(() =>
             {
-                GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+                var clock = Stopwatch.StartNew();
 
-                peak = Math.Max(peak, GC.GetTotalMemory(forceFullCollection: false));
+                while (Volatile.Read(ref stop) == 0)
+                {
+                    var started = clock.Elapsed;
 
-                Thread.Sleep(2);
+                    GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
+
+                    peak = Math.Max(peak, GC.GetTotalMemory(forceFullCollection: false));
+
+                    // As long again as the collection took: the build runs at least half the time.
+                    var resume = clock.Elapsed + (clock.Elapsed - started);
+
+                    while (clock.Elapsed < resume && Volatile.Read(ref stop) == 0)
+                    {
+                        Thread.SpinWait(32);
+                    }
+                }
+            })
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.AboveNormal,
+            };
+
+            sampler.Start();
+
+            object? built = null;
+
+            try
+            {
+                built = build();
             }
-        })
-        {
-            IsBackground = true,
-        };
+            finally
+            {
+                // Whatever the build did: a sampler left running forces a full collection every
+                // few hundred microseconds for the rest of the test process.
+                Volatile.Write(ref stop, 1);
+                sampler.Join();
+            }
 
-        sampler.Start();
+            GC.KeepAlive(built);
 
-        var built = build();
+            return peak - baseline;
+        }
 
-        Volatile.Write(ref stop, 1);
-        sampler.Join();
-
-        GC.KeepAlive(built);
-
-        return peak - baseline;
+        return Enumerable.Range(0, 3).Max(_ => Once(build));
     }
 
     /// <summary>Two 1 mm slabs across a 5 mm gap: the geometry the Galerkin hierarchy exists for.</summary>

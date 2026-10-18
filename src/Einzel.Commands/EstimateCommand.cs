@@ -272,8 +272,14 @@ public static class EstimateCommand
     /// coefficients, 48; the face operator, four faces of four doubles and two flags plus an
     /// outward rate, 144. The rest is not attributed, which is why the figure is the
     /// measurement rather than that sum - an estimate that runs under is discovered by the run
-    /// failing. An explicit run with one species and no self-field: a mixture multiplies the
-    /// per-species terms, and a mean-field solve adds its own grids.
+    /// failing. An explicit run with no self-field; a mean-field solve adds its own grids.
+    /// </para>
+    /// <para>
+    /// <b>Per species, all of it.</b> A mixture gives every species its own walker - its
+    /// density, next step and seed, its coefficients, its face operator and its well - and
+    /// measured on a 513 by 129 grid one species held 248.5 bytes a node and each species added
+    /// 247.6 and then 248.3: nothing of this is shared. Charged once whatever the species
+    /// count, a three-species run was billed a third of what it holds.
     /// </para>
     /// </remarks>
     private const double DiffusiveBytesPerNode = 263.0;
@@ -573,8 +579,16 @@ public static class EstimateCommand
     /// <param name="threshold">
     /// Seconds above which the estimate says the operation should be confirmed.
     /// </param>
+    /// <param name="availableMemoryBytes">
+    /// What the process may use, for the comparison the basis makes with the model's peak; this
+    /// machine's when omitted. A parameter for the reason <paramref name="threshold"/> is one:
+    /// so the comparison can be checked without a machine that is short of memory.
+    /// </param>
     public static EstimateOutcome Execute(
-        string modelPath, bool calibrate = true, double threshold = ThresholdSeconds)
+        string modelPath,
+        bool calibrate = true,
+        double threshold = ThresholdSeconds,
+        long? availableMemoryBytes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
 
@@ -847,11 +861,18 @@ public static class EstimateCommand
             basis = basis + " " + mesh;
         }
 
-        var held = MemoryNote(largest, memory, elements);
+        var held = MemoryNote(largest, elements);
 
         if (held.Length > 0)
         {
             basis = basis + " " + held;
+        }
+
+        var fits = CapacityNote(memory, availableMemoryBytes ?? GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+
+        if (fits.Length > 0)
+        {
+            basis = basis + " " + fits;
         }
 
         if (model.ModelsSpaceCharge)
@@ -1404,9 +1425,8 @@ public static class EstimateCommand
         _ => string.Create(Inv, $"{mebibytes / 1024.0:F1} GiB"),
     };
 
-    /// <summary>Says what the largest solve holds and why, and whether it fits this machine.</summary>
+    /// <summary>Says what the largest solve holds and why.</summary>
     /// <param name="largest">The element whose solve holds the most, and what it holds.</param>
-    /// <param name="peakMiB">The model's peak, in mebibytes.</param>
     /// <param name="elements">The per-element estimates, for the element's kind.</param>
     /// <returns>A sentence for the basis line, or empty when nothing is solved.</returns>
     /// <remarks>
@@ -1414,17 +1434,11 @@ public static class EstimateCommand
     /// <b>The basis of the memory number, stated for the same reason the time's is.</b> This
     /// figure was 48 bytes a node with nothing on the page to say so, and it was a fifth of
     /// what a volume solve holds. A number somebody sizes a machine against has to say what it
-    /// counted.
-    /// </para>
-    /// <para>
-    /// <b>Compared with this machine only when it matters</b> - above half of what the process
-    /// may use - so an ordinary estimate carries no statement about the hardware, and one that
-    /// is about to run out of memory says so before the run rather than twenty minutes in.
+    /// counted. Whether the peak fits this machine is <see cref="CapacityNote"/>'s.
     /// </para>
     /// </remarks>
     private static string MemoryNote(
         (int Index, SolveMemory Memory)? largest,
-        double peakMiB,
         IReadOnlyList<ElementEstimate> elements)
     {
         if (largest is not { } found || found.Memory.Nodes <= 0)
@@ -1462,19 +1476,40 @@ public static class EstimateCommand
             + "the live set, which is what has to fit; a run's working set is higher on a machine "
             + "with memory to spare, because the collector frees large arrays lazily.";
 
-        var available = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        return note;
+    }
+
+    /// <summary>Says whether the model's peak fits what this process may use, when it is close.</summary>
+    /// <param name="peakMiB">The model's peak, in mebibytes.</param>
+    /// <param name="available">What the process may use, in bytes; nothing is said when unknown.</param>
+    /// <returns>A sentence for the basis line, or empty when the peak is under half of it.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Only when it matters</b> - above half of what the process may use - so an ordinary
+    /// estimate carries no statement about the hardware, and one that is about to run out of
+    /// memory says so before the run rather than twenty minutes in.
+    /// </para>
+    /// <para>
+    /// <b>Asked of the model's peak, whatever holds it.</b> This was the tail of the solved-field
+    /// explanation, so a model with nothing solved - a diffusive run through an analytic field,
+    /// which holds 263 bytes a density node and more for every species - never reached it, and
+    /// a run that would not fit was priced without a word.
+    /// </para>
+    /// </remarks>
+    private static string CapacityNote(double peakMiB, long available)
+    {
         var peak = peakMiB * Mebibyte;
 
-        if (available > 0 && peak > 0.5 * available)
+        if (available <= 0 || peak <= 0.5 * available)
         {
-            var share = peak / available;
-
-            note += string.Create(
-                    Inv, $" That is {share:P0} of the {Size(available)} this process may use on this machine")
-                + (share >= 1.0 ? ", so it will not fit here." : ", which leaves little room.");
+            return string.Empty;
         }
 
-        return note;
+        var share = peak / available;
+
+        return string.Create(
+                Inv, $"Memory: the model's peak is {share:P0} of the {Size(available)} this process may use on this machine")
+            + (share >= 1.0 ? ", so it will not fit here." : ", which leaves little room.");
     }
 
     /// <summary>How many nodes a requested cell size produces over a plane's extents.</summary>
@@ -1859,14 +1894,22 @@ public static class EstimateCommand
         // density and the next one, six stored coefficients a node and the face operator -
         // four faces of four doubles and two flags, which is Amendment 49's workspace - and
         // the run holds more than those name.
-        var memory = grid.NodeCount
+        // Once per declared species: each steps its own density through its own coefficients,
+        // face operator and well, and nothing of the working set is shared between them.
+        var speciesCount = Math.Max(1, model.Species.Count);
+
+        var memory = grid.NodeCount * speciesCount
             * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0))
             / Mebibyte;
 
         return (
             seconds,
             memory,
-            $"diffusive run: {grid.CountX} by {grid.CountY} nodes, a stability-limited step of "
+            $"diffusive run: {grid.CountX} by {grid.CountY} nodes"
+            + (speciesCount > 1
+                ? $", {speciesCount} species each holding its own density and coefficients over all of them"
+                : string.Empty)
+            + $", a stability-limited step of "
             + $"{stable:G3} s set by {limit}, "
             + (implicitly
                 ? $"stepped implicitly at {model.DensityStep.Gain:N0}x that - {step:G3} s - so "

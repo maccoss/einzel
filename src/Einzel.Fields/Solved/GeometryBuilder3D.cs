@@ -181,13 +181,17 @@ public static class GeometryBuilder3D
             smallest = Math.Min(smallest, electrode.CharacteristicSize);
         }
 
-        var galerkin = PoissonSolver3D.UsesGalerkin(grid, smallest, geometry.Electrodes.Count > 0);
+        var interior = geometry.Electrodes.Count > 0;
+        var galerkin = PoissonSolver3D.UsesGalerkin(grid, smallest, interior);
 
-        return SolveMemoryModel.For(
-            grid.NodeCount,
-            Math.Max(1, channels),
-            galerkin ? SolveMemoryModel.VolumeGalerkinPeak : SolveMemoryModel.VolumeRediscretizedPeak,
-            galerkin);
+        // At the sizes this grid's coarse levels really are: an eighth of the fine grid only
+        // on a grid many cells deep on every axis.
+        var working = galerkin
+            ? SolveMemoryModel.VolumeGalerkinPeakOn(grid)
+            : SolveMemoryModel.VolumeRediscretizedPeakOn(
+                grid, PoissonSolver3D.RediscretizedLevels(grid, smallest, interior));
+
+        return SolveMemoryModel.For(grid.NodeCount, Math.Max(1, channels), working, galerkin);
     }
 
     /// <summary>Builds the Dirichlet mask on the finest grid.</summary>

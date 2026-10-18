@@ -42,8 +42,9 @@ public sealed record SolveMemory(
 /// first coarse level from it with three scratch arrays over the fine grid.
 /// </para>
 /// <para>
-/// Peak live set measured by sampling a forced full collection every few milliseconds
-/// through a build, Release, on the shipped templates:
+/// Peak live set measured by forcing full collections through a build, Release, on the shipped
+/// templates - every couple of milliseconds for the volume figures, and as densely as the
+/// collections allow for the plane ones, whose peak is too brief for the coarser sampling:
 /// </para>
 /// <list type="table">
 /// <item><description>
@@ -54,14 +55,15 @@ public sealed record SolveMemory(
 /// <b>141.8</b> - flat, so no fixed cost is hiding in the per-node figure
 /// </description></item>
 /// <item><description>
-/// plane: quadrupole at 0.26 M and 1.05 M nodes, <b>143.4</b> and <b>149.7</b>; einzel-lens
-/// at 1.05 M, <b>143.4</b>; tims-analyzer at 0.13 M, <b>143.6</b>
+/// plane: quadrupole at 0.26 M and 1.05 M nodes, <b>143.4</b> and <b>143.3</b>; einzel-lens
+/// at 67 k, <b>143.9</b>; tims-analyzer at 33 k, <b>143.9</b> - the largest of three builds,
+/// sampled as densely as the collections allow, because the plane's peak is a transient
+/// lasting a fraction of a millisecond and a build that misses it reads about 135
 /// </description></item>
 /// </list>
 /// <para>
-/// The arithmetic below reproduces the volume figures to 1 per cent and the plane ones to
-/// 7, conservatively. It is the arithmetic that is used, rather than the measurements, so
-/// that each term names the array responsible for it.
+/// The arithmetic below reproduces both to 1 percent. It is the arithmetic that is used,
+/// rather than the measurements, so that each term names the array responsible for it.
 /// </para>
 /// </remarks>
 public static class SolveMemoryModel
@@ -87,7 +89,16 @@ public static class SolveMemoryModel
     /// </summary>
     public const double GalerkinForming = (2 * sizeof(double)) + sizeof(int);
 
-    /// <summary>The first coarse Galerkin level: twenty-seven coefficients on an eighth of the nodes.</summary>
+    /// <summary>
+    /// The first coarse Galerkin level: twenty-seven coefficients on an eighth of the nodes,
+    /// which is what it comes to on a grid many cells deep on every axis.
+    /// </summary>
+    /// <remarks>
+    /// A coarse grid keeps one node more than half on each axis, so its first level is more
+    /// than an eighth of the fine one, and much more where an axis is thin: 32769 by 5 by 5
+    /// coarsens to 16385 by 3 by 3, which is 38.9 bytes a fine node rather than 27.
+    /// <see cref="VolumeGalerkinPeakOn"/> charges a particular grid's real first level.
+    /// </remarks>
     public const double GalerkinFirstLevel = 27.0 * sizeof(double) / 8.0;
 
     /// <summary>
@@ -114,6 +125,48 @@ public static class SolveMemoryModel
         VolumeMask + VolumeCutLinks + Fields + sizeof(double)
         + ((VolumeMask + (3 * sizeof(double))) / 7.0);
 
+    /// <summary>
+    /// <see cref="VolumeGalerkinPeak"/> on a particular grid, its first coarse level charged at
+    /// the size that grid's coarsening really gives.
+    /// </summary>
+    /// <param name="grid">The finest grid.</param>
+    /// <returns>Bytes per finest-level node at the peak.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    public static double VolumeGalerkinPeakOn(Grid3D grid)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var firstLevel = grid.CanCoarsen ? (double)grid.Coarsen().NodeCount / grid.NodeCount : 0.0;
+
+        return VolumeMask + VolumeCutLinks + Fields + VolumeStencil + GalerkinForming
+            + (GalerkinOperator3D.Entries * sizeof(double) * firstLevel);
+    }
+
+    /// <summary>
+    /// <see cref="VolumeRediscretizedPeak"/> on a particular grid, summed over the coarse levels
+    /// the solve will build at the sizes they really are, rather than over a series of eighths
+    /// that runs all the way down.
+    /// </summary>
+    /// <param name="grid">The finest grid.</param>
+    /// <param name="levels">The coarse levels, as <see cref="PoissonSolver3D.RediscretizedLevels"/> gives them.</param>
+    /// <returns>Bytes per finest-level node at the peak.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    public static double VolumeRediscretizedPeakOn(Grid3D grid, IReadOnlyList<Grid3D> levels)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+        ArgumentNullException.ThrowIfNull(levels);
+
+        var coarse = 0.0;
+
+        foreach (var level in levels)
+        {
+            coarse += (double)level.NodeCount / grid.NodeCount;
+        }
+
+        return VolumeMask + VolumeCutLinks + Fields + sizeof(double)
+            + ((VolumeMask + (3 * sizeof(double))) * coarse);
+    }
+
     /// <summary>A plane conductor mask.</summary>
     public const double PlaneMask = sizeof(bool) + sizeof(double);
 
@@ -121,24 +174,29 @@ public static class SolveMemoryModel
     public const double PlaneCutLinks = 4 * 2 * sizeof(double);
 
     /// <summary>
-    /// A plane solve at its peak: the fine level, and a V-cycle's coarse levels while the first
-    /// of them re-zeroes its cut links.
+    /// A plane solve at its peak: the instant the first coarse level re-zeroes its cut links.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The fine level's mask, cut links, three fields and a residual; each coarse level's mask,
-    /// cut links and three working fields, summed over levels a quarter the size of the one
-    /// above; and one transient copy of the first coarse level's cut links, which a coarse
-    /// level replaces because it solves for the error and the error is zero on a conductor.
+    /// A coarse level solves for the error, which is zero on a conductor, so it replaces its
+    /// cut links with a copy holding zero potential - and for that instant holds both. The fine
+    /// level then holds its mask, cut links, three fields and a V-cycle residual; the first
+    /// coarse level, a quarter the size, its mask, both copies of its cut links, its restricted
+    /// right-hand side and its correction. Its own residual and every deeper level come later,
+    /// when the old copy is garbage, and every later instant holds less: 143.25 bytes a node.
     /// </para>
     /// <para>
-    /// 153 bytes a node, against 143 to 150 measured, so it errs toward over.
+    /// <b>This said 153.3, and the sampler that checked it hid the difference.</b> It summed
+    /// every coarse level and that level's residual on top of the transient, which do not
+    /// exist together. Sampled every couple of milliseconds the plane build read 143 to 150,
+    /// and the test's slope between two meshes read high whenever the smaller build's peak was
+    /// missed; sampled densely, the largest of three builds reads 143.3 to 143.9 on four
+    /// templates and meshes from 17 k to 1.05 M nodes.
     /// </para>
     /// </remarks>
     public const double PlanePeak =
         PlaneMask + PlaneCutLinks + Fields + sizeof(double)
-        + ((PlaneMask + PlaneCutLinks + (3 * sizeof(double))) / 3.0)
-        + (PlaneCutLinks / 4.0);
+        + ((PlaneMask + (2 * PlaneCutLinks) + (2 * sizeof(double))) / 4.0);
 
     /// <summary>What a finished field keeps per channel: its solved potential.</summary>
     /// <remarks>

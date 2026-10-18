@@ -5239,3 +5239,22 @@ and the clock did not notice. **Allocation is evidence of cost, not a measuremen
 what decides whether removing it pays is what else the call does, and the only way to know is
 to time it - which is why the regression test holds the allocation and the documentation
 holds the time.
+
+## A measurement that can only read low makes a difference that can read either way
+
+`SolveMemoryTests` sampled each build's live set by forcing a full collection every 2 ms and
+keeping the largest, which can only under-read the peak - and then compared builds by their
+*difference*, a slope between two meshes or one channel against two. A difference of two
+under-readings is not an under-reading: it reads high when the smaller build's peak is missed
+and low when the larger one's is. It passed on a sixteen-core workstation and failed on both
+four-core CI runners in Release, where a build is eight times faster than in Debug and 2 ms is
+a timer tick of about 15 on Windows: the smallest build finished in about 10 ms.
+
+**The flakiness was hiding a wrong number.** With the sampler made dense - waiting only as
+long as the last collection took - and the largest of three builds kept, every reading became
+stable, and the plane statement then failed every time: 153.3 stated, 132.7 measured, because
+it counted coarse levels that do not exist at the instant of its peak. The sparse sampler had
+read 143 for the same slope, inside the band, because the error in the difference happened to
+point the same way as the error in the statement. **A test that only passes when its
+measurement is noisy is not a passing test**; before loosening a band that a faster machine
+breaks, make the measurement deterministic and see what it says.

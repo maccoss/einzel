@@ -396,14 +396,39 @@ public static class PoissonSolver3D
     {
         ArgumentNullException.ThrowIfNull(grid);
 
-        var at = grid;
+        var levels = RediscretizedLevels(grid, smallestFeature, interiorElectrodes);
 
-        while (at.CanCoarsen && Representable(at.Coarsen(), smallestFeature, interiorElectrodes))
+        return (levels.Count > 0 ? levels[^1] : grid).NodeCount > RediscretisedBottomLimit;
+    }
+
+    /// <summary>
+    /// The coarse grids the rediscretized hierarchy descends through, below the finest.
+    /// </summary>
+    /// <param name="grid">The finest grid.</param>
+    /// <param name="smallestFeature">As for <see cref="UsesGalerkin"/>.</param>
+    /// <param name="interiorElectrodes">As for <see cref="UsesGalerkin"/>.</param>
+    /// <returns>Each level a V-cycle builds below the finest, in order; empty when it builds none.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <remarks>
+    /// The descent <see cref="UsesGalerkin"/> decides from, and what a memory statement sums
+    /// over: every level exists at once at the bottom of a V-cycle, and each is the size its
+    /// grid really is - which is more than an eighth of the one above, by a node an axis, and
+    /// much more on a thin axis.
+    /// </remarks>
+    public static IReadOnlyList<Grid3D> RediscretizedLevels(
+        Grid3D grid, double smallestFeature, bool interiorElectrodes)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var levels = new List<Grid3D>();
+
+        for (var at = grid; at.CanCoarsen && Representable(at.Coarsen(), smallestFeature, interiorElectrodes);)
         {
             at = at.Coarsen();
+            levels.Add(at);
         }
 
-        return at.NodeCount > RediscretisedBottomLimit;
+        return levels;
     }
 
     /// <summary>
