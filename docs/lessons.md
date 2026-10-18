@@ -5104,7 +5104,9 @@ full although about 4 per cent of the arms are cut. The Galerkin hierarchy then 
 operator as eight doubles a node and forms its first coarse level from it with three scratch
 arrays over the fine grid - 64, 20 and 27 more, all live at once at the peak. **A list of what
 a solver allocates, written by someone thinking about the numerics, lists the numerics.** The
-Astral at a 1 mm cell was billed 3.1 GiB and needs 15.3.
+Astral at a 1 mm cell was billed 3.1 GiB and needed 15.3. (The cut links have since been stored
+over their cut arms alone, which took the Galerkin figure to 149.5 and that Astral to 9.5 GiB;
+`docs/cli.md`.)
 
 Two checks said the live set was the right quantity. Under a hard heap limit the Astral at 4 mm
 completed at 279 MiB and ran out at 275, against a sampled live peak of 259 - so the collector

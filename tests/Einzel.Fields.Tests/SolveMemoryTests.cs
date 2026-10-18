@@ -21,10 +21,11 @@ public sealed class MemoryMeasurement;
 /// <remarks>
 /// <para>
 /// <c>einzel estimate</c> reported 48 bytes a node for every solve, from a comment listing
-/// three fields and some restriction buffers, and nothing measured it. A volume solve holds
-/// five times that: the conductor mask and its six cut-link arms are 105 bytes a node before a
-/// field is allocated, and the Galerkin hierarchy stores the fine operator and forms its first
-/// coarse level from it. The Astral at a 1 mm cell was billed 3.1 GiB and needs 15.
+/// three fields and some restriction buffers, and nothing measured it. A volume solve held
+/// five times that: the conductor mask and cut links storing all six arms of every node were
+/// 105 bytes a node before a field was allocated, and the Galerkin hierarchy stores the fine
+/// operator and forms its first coarse level from it. The Astral at a 1 mm cell was billed
+/// 3.1 GiB and needed 15. With the cut links stored over the cut arms alone it needs about 9.5.
 /// </para>
 /// <para>
 /// <b>Measured as a slope between two mesh sizes</b>, so that whatever the process holds
@@ -74,18 +75,31 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// that was removed, a temporary in the loop still held the previous channel's cut links,
     /// because a method run once executes as first-tier JIT code and first-tier code keeps
     /// every temporary reachable until its slot is reused. The linear ion trap measured 353,
-    /// then 344, bytes a node for two channels, against 248.
+    /// then 344, bytes a node for two channels, against 248 - when the cut links stored every
+    /// arm.
     /// </para>
     /// <para>
     /// Asserted as the difference between a two-channel build and the same geometry with its
     /// drive removed, at one mesh: everything else is the same build, so what is left is what
     /// the second channel costs.
     /// </para>
+    /// <para>
+    /// <b>At 275 thousand nodes, after a warm-up build of each kind.</b> With the cut links
+    /// stored over their cut arms a kept mask is 11 bytes a node rather than 105, and at the
+    /// 36 thousand nodes this ran at, that is 400 kB - the size of what a first build allocates
+    /// for itself and charges to whichever measurement comes first. Restoring the kept mask read
+    /// 11.4 there, under the bound, because the one-channel reference had read 8 high.
+    /// </para>
     /// </remarks>
     [Fact]
     public void ASecondChannelCostsAPotentialNotAMask()
     {
-        const double cell = 0.0005;
+        const double cell = 0.00025;
+
+        // Each path built once, small, so the first measurement is not charged for the
+        // allocations a first call makes.
+        GeometryBuilder3D.BuildField(Plates(0.001));
+        GeometryBuilder3D.BuildField(TwoChannelPlates(0.001));
 
         var one = Plates(cell);
         var two = TwoChannelPlates(cell);
@@ -106,9 +120,12 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             + $"two {peakTwo / planOne.Nodes:F1}; the second costs {extra:F1} "
             + $"(predicted {(planTwo.PeakBytes - planOne.PeakBytes) / planOne.Nodes:F1})");
 
-        // A kept mask would be 105 and a kept set of cut links 96, so anything past a few
-        // tens is one of them back.
-        Assert.InRange(extra, 0.0, 30.0);
+        // A kept mask is the conductor mask's 9 bytes a node and its cut links' 2 - an index
+        // of 1.5 and these slabs' cut arms - so 11 on top of the potential's 8, and the bound
+        // sits between. It was 30 while a kept mask was 105. Kept cut links alone are 2 now,
+        // inside this measurement's noise: the defect that held them is defused by the store
+        // shrinking rather than caught here.
+        Assert.InRange(extra, 0.0, 14.0);
     }
 
     /// <summary>
@@ -136,7 +153,9 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.True(plan.Galerkin, "a 147,465-node bottom is above the rediscretized limit");
 
         const double firstLevel = (16385.0 * 3 * 3) / (32769.0 * 5 * 5);
-        const double expected = 9 + 96 + 24 + 64 + 20 + (27.0 * 8 * firstLevel);
+        // The mask 9; the cut links' index 1.5 and a quarter of a 16-byte cut arm billed; the
+        // fields 24, the stored stencil 64 and the forming scratch 20.
+        const double expected = 9 + 1.5 + (0.25 * 16) + 24 + 64 + 20 + (27.0 * 8 * firstLevel);
 
         output.WriteLine(
             $"first level {firstLevel:F4} of the fine grid: {plan.PeakBytes / plan.Nodes:F2} B/node, "

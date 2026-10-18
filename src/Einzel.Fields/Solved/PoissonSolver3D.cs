@@ -644,12 +644,16 @@ public static class PoissonSolver3D
     {
         var cuts = mask.Cuts;
 
-        Arm(potential, mask, cuts, i, j, k, 1, 0, 0, Arm3D.East, out var east, out var fEast);
-        Arm(potential, mask, cuts, i, j, k, -1, 0, 0, Arm3D.West, out var west, out var fWest);
-        Arm(potential, mask, cuts, i, j, k, 0, 1, 0, Arm3D.North, out var north, out var fNorth);
-        Arm(potential, mask, cuts, i, j, k, 0, -1, 0, Arm3D.South, out var south, out var fSouth);
-        Arm(potential, mask, cuts, i, j, k, 0, 0, 1, Arm3D.Up, out var up, out var fUp);
-        Arm(potential, mask, cuts, i, j, k, 0, 0, -1, Arm3D.Down, out var down, out var fDown);
+        // One read for all six arms: almost every node has none cut, and the arms that are
+        // cut are the only ones worth asking the cut links about.
+        var cut = cuts?.CutArms(i, j, k) ?? 0;
+
+        Arm(potential, mask, cuts, cut, i, j, k, 1, 0, 0, Arm3D.East, out var east, out var fEast);
+        Arm(potential, mask, cuts, cut, i, j, k, -1, 0, 0, Arm3D.West, out var west, out var fWest);
+        Arm(potential, mask, cuts, cut, i, j, k, 0, 1, 0, Arm3D.North, out var north, out var fNorth);
+        Arm(potential, mask, cuts, cut, i, j, k, 0, -1, 0, Arm3D.South, out var south, out var fSouth);
+        Arm(potential, mask, cuts, cut, i, j, k, 0, 0, 1, Arm3D.Up, out var up, out var fUp);
+        Arm(potential, mask, cuts, cut, i, j, k, 0, 0, -1, Arm3D.Down, out var down, out var fDown);
 
         // Each axis is in cell units of its own spacing, so the y and z halves are
         // scaled into x units. Those factors are exactly one on a cubic grid, and
@@ -671,6 +675,7 @@ public static class PoissonSolver3D
         ScalarField3D potential,
         DirichletMask3D mask,
         CutLinks3D? cuts,
+        int cutArms,
         int i,
         int j,
         int k,
@@ -681,9 +686,9 @@ public static class PoissonSolver3D
         out double value,
         out double fraction)
     {
-        if (cuts is not null)
+        if ((cutArms & (1 << (int)arm)) != 0)
         {
-            var cut = cuts.Fraction(i, j, k, arm, out var surface);
+            var cut = cuts!.Fraction(i, j, k, arm, out var surface);
 
             if (cut < 1.0)
             {
