@@ -2388,12 +2388,17 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   runners in Release, where a build is eight times faster than in Debug, three tests failed:
   0.776 and 1.143 of the statement, and a second channel costing 90.5 bytes a node against a
   limit of 30. Sampling as densely as the collections allow - waiting only as long as the last
-  collection took - and keeping the largest of three builds made every reading stable, and then
+  collection took - and measuring each build three times made every reading stable, and then
   the plane failed *consistently*: **153.3 stated, 132.7 measured**. The plane's peak is the
   instant the first coarse level copies its cut links, and the statement had added every deeper
   level and that level's residual, which do not exist yet at that instant. Derived from what is
   alive then, **143.25**; measured on four shipped plane templates, 143.3 to 143.9. The
   workstation had passed the wrong number because the slope's error happened to cancel it.
+  Keeping the *largest* of the three readings then failed once on the Linux runner, 7 bytes a
+  node over in the Galerkin build - about one grid-sized array, seen once more in WSL and never
+  on demand, consistent with catching an instant when a new array exists beside the one it
+  replaces. The test keeps the middle reading: that discards a lone outlier either way, and an
+  array a build really keeps is in all three.
 
   **Three more from the review of the same pull request, all real.** The driven plane build kept
   its first channel's mask for the shared-face check after the loop - 73 bytes a node through

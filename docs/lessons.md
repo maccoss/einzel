@@ -5251,10 +5251,13 @@ four-core CI runners in Release, where a build is eight times faster than in Deb
 a timer tick of about 15 on Windows: the smallest build finished in about 10 ms.
 
 **The flakiness was hiding a wrong number.** With the sampler made dense - waiting only as
-long as the last collection took - and the largest of three builds kept, every reading became
+long as the last collection took - and each build measured three times, every reading became
 stable, and the plane statement then failed every time: 153.3 stated, 132.7 measured, because
 it counted coarse levels that do not exist at the instant of its peak. The sparse sampler had
 read 143 for the same slope, inside the band, because the error in the difference happened to
 point the same way as the error in the statement. **A test that only passes when its
 measurement is noisy is not a passing test**; before loosening a band that a faster machine
-breaks, make the measurement deterministic and see what it says.
+breaks, make the measurement deterministic and see what it says. And choose the statistic for
+the errors the measurement now has, not the ones it used to have: the largest of three was
+right while samples could only miss, and wrong once they were dense enough to catch an instant
+the statement does not count - the middle of three is robust to a lone outlier either way.

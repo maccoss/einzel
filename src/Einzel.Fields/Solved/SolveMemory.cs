@@ -65,6 +65,13 @@ public sealed record SolveMemory(
 /// The arithmetic below reproduces both to 1 percent. It is the arithmetic that is used,
 /// rather than the measurements, so that each term names the array responsible for it.
 /// </para>
+/// <para>
+/// <b>Not counted: an instant.</b> A sampler this dense now and then reads about 7 bytes a node
+/// over - once on a Linux CI runner, once in WSL, never on demand - which is about one
+/// grid-sized array, consistent with catching the moment a new array exists beside the one it
+/// replaces. That is a statement about arrays, not about every instant, and the gap is three
+/// percent of a peak the collector already lets run 1.6 times higher when memory is plentiful.
+/// </para>
 /// </remarks>
 public static class SolveMemoryModel
 {

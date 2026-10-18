@@ -315,9 +315,17 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// between collections, which is a timer tick of about 15 ms on Windows, and the smallest
     /// build here finishes in about 10 ms. So the sampler now waits only as long as its last
     /// collection took - the build keeps at least half the time, and a sample lands every few
-    /// hundred microseconds on a small heap - and each build is measured three times and the
-    /// largest reading kept, which is the right statistic for a quantity that can only be
-    /// under-read.
+    /// hundred microseconds on a small heap - and each build is measured three times.
+    /// </para>
+    /// <para>
+    /// <b>The middle of three, not the largest.</b> Sampled this densely a build's peak is
+    /// caught nearly every time, and what is left are outliers in both directions: a build
+    /// whose samples miss its peak, and, now and then, one that reads about 7 bytes a node
+    /// over the statement - once on the Linux CI runner in the Galerkin build, once in WSL in
+    /// the two-channel plane, never on demand. That is about one grid-sized array, consistent
+    /// with catching the instant a new array exists beside the one it replaces. The largest of
+    /// three kept that outlier and failed CI on it; the middle discards a lone outlier either
+    /// way, while an array a build really keeps is in all three readings and still fails.
     /// </para>
     /// </remarks>
     private static double PeakLive(Func<object> build)
@@ -384,7 +392,10 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             return peak - baseline;
         }
 
-        return Enumerable.Range(0, 3).Max(_ => Once(build));
+        double[] readings = [Once(build), Once(build), Once(build)];
+        Array.Sort(readings);
+
+        return readings[1];
     }
 
     /// <summary>Two 1 mm slabs across a 5 mm gap: the geometry the Galerkin hierarchy exists for.</summary>
