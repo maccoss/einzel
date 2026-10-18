@@ -191,10 +191,12 @@ public sealed partial class MainWindow : Window
 
         // Amendment 25: each of these is a camera, not a capability, so none of them needs
         // a command spelling - what a named view changes is where somebody is standing.
-        Named("ViewIso", (-32.0, 24.0));
-        Named("ViewSide", (0.0, 0.0));
-        Named("ViewTop", (0.0, 90.0));
-        Named("ViewFront", (90.0, 0.0));
+        // From the command layer's table, so the window and `einzel render still --view`
+        // mean the same thing by each name.
+        Named("ViewIso", ViewportPicture.Views["iso"]);
+        Named("ViewSide", ViewportPicture.Views["side"]);
+        Named("ViewTop", ViewportPicture.Views["top"]);
+        Named("ViewFront", ViewportPicture.Views["front"]);
 
         var transparent = this.FindControl<ToggleButton>("Transparent")!;
         transparent.IsCheckedChanged += (_, _) =>
@@ -208,7 +210,7 @@ public sealed partial class MainWindow : Window
 
         heading.Text = string.Create(
             CultureInfo.InvariantCulture,
-            $"{outcome.ModelPath} — {outcome.Conductors.Count} conductors, {outcome.Trajectories.Count} trajectories");
+            $"{outcome.ModelPath} — {outcome.ElectrodeCount()} electrodes, {outcome.Trajectories.Count} trajectories");
 
         // RND-8 is the transport mode's answer carried through, not a decision taken here:
         // a diffusive model produces no trajectories, and saying so is different from

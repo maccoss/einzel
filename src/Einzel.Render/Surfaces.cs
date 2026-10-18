@@ -387,9 +387,19 @@ public static class Surfaces
     /// inherits that.
     /// </para>
     /// <para>
-    /// A vertex where the gradient vanishes keeps a zero normal and its triangles are left
-    /// as they are. That is a genuine degeneracy — the centre of a shape, or a crease —
-    /// and inventing a direction there would be worse than a flat-shaded facet.
+    /// A vertex where the gradient vanishes is given the normal of the facets around it,
+    /// and its triangles are left wound as they came. That is a genuine degeneracy - the
+    /// centre of a shape, a crease, or a sheet with no thickness, whose distance is
+    /// <c>|x - X|</c> and whose central difference on the sheet is exactly zero - and a
+    /// flat-shaded facet is the honest drawing of it.
+    /// </para>
+    /// <para>
+    /// <b>This said "keeps a zero normal" and claimed that produced a flat-shaded facet. It
+    /// does not, in either window.</b> A zero normal is not a direction: the cross-platform
+    /// shader normalizes it, which GLSL leaves undefined, and the WPF viewport lights it at
+    /// its ambient term alone. The planar mirror pair's end cap is such a sheet, and every
+    /// one of its vertices came back zero - found by a test asking whether a mirrored image
+    /// is wound like its original, which a surface with no normals cannot answer.
     /// </para>
     /// </remarks>
     public static SurfaceMesh Orient(SurfaceMesh mesh, SignedDistance distance, double step)
@@ -456,7 +466,87 @@ public static class Surfaces
             }
         }
 
+        FaceNormalsWhereTheGradientVanished(vertices, normals, triangles);
+
         return new SurfaceMesh(vertices, normals, triangles);
+    }
+
+    /// <summary>
+    /// Gives each vertex with no gradient the area-weighted normal of its facets, taken from
+    /// their winding.
+    /// </summary>
+    /// <remarks>
+    /// Only those vertices: everywhere the signed distance has a gradient it is exact, and
+    /// averaging facets there would replace an exact normal with an approximate one.
+    /// </remarks>
+    private static void FaceNormalsWhereTheGradientVanished(
+        IReadOnlyList<double> vertices, double[] normals, int[] triangles)
+    {
+        var bare = new bool[normals.Length / 3];
+        var any = false;
+
+        for (var v = 0; v < bare.Length; v++)
+        {
+            bare[v] = normals[3 * v] == 0.0 && normals[(3 * v) + 1] == 0.0 && normals[(3 * v) + 2] == 0.0;
+            any |= bare[v];
+        }
+
+        if (!any)
+        {
+            return;
+        }
+
+        var sum = new double[normals.Length];
+
+        for (var t = 0; t + 2 < triangles.Length; t += 3)
+        {
+            int a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
+
+            if (!bare[a] && !bare[b] && !bare[c])
+            {
+                continue;
+            }
+
+            double ux = vertices[3 * b] - vertices[3 * a];
+            double uy = vertices[(3 * b) + 1] - vertices[(3 * a) + 1];
+            double uz = vertices[(3 * b) + 2] - vertices[(3 * a) + 2];
+            double wx = vertices[3 * c] - vertices[3 * a];
+            double wy = vertices[(3 * c) + 1] - vertices[(3 * a) + 1];
+            double wz = vertices[(3 * c) + 2] - vertices[(3 * a) + 2];
+
+            // Unnormalized, so each facet counts in proportion to its area.
+            var fx = (uy * wz) - (uz * wy);
+            var fy = (uz * wx) - (ux * wz);
+            var fz = (ux * wy) - (uy * wx);
+
+            foreach (var v in (int[])[a, b, c])
+            {
+                if (bare[v])
+                {
+                    sum[3 * v] += fx;
+                    sum[(3 * v) + 1] += fy;
+                    sum[(3 * v) + 2] += fz;
+                }
+            }
+        }
+
+        for (var v = 0; v < bare.Length; v++)
+        {
+            if (!bare[v])
+            {
+                continue;
+            }
+
+            var length = Math.Sqrt((sum[3 * v] * sum[3 * v]) + (sum[(3 * v) + 1] * sum[(3 * v) + 1])
+                + (sum[(3 * v) + 2] * sum[(3 * v) + 2]));
+
+            if (length > 0.0 && double.IsFinite(length))
+            {
+                normals[3 * v] = sum[3 * v] / length;
+                normals[(3 * v) + 1] = sum[(3 * v) + 1] / length;
+                normals[(3 * v) + 2] = sum[(3 * v) + 2] / length;
+            }
+        }
     }
 
     /// <summary>Drops a profile's repeated closing point and says it was closed.</summary>

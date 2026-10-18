@@ -232,16 +232,22 @@ public static class EstimateCommand
     private const int PilotStepCeiling = 400_000;
 
     /// <summary>Above this, GRD-8 asks for confirmation rather than proceeding.</summary>
-    public const double ThresholdSeconds = 30.0;
-
-    /// <summary>The threshold in force, which a caller may raise or lower.</summary>
     /// <remarks>
-    /// GRD-8's own wording is "a configurable cost threshold", and this was a constant with
-    /// no way to configure it. A gate whose number cannot be moved is not a gate, it is an
-    /// opinion: somebody who knows their study is worth an hour has no way to say so, and
-    /// the observed response was to shrink the study instead.
+    /// <para>
+    /// The default. GRD-8's own wording is "a configurable cost threshold", and a gate whose
+    /// number cannot be moved is not a gate, it is an opinion: somebody who knows their study
+    /// is worth an hour has no way to say so, and the observed response was to shrink the
+    /// study instead. So <see cref="Execute"/> and <see cref="ForStudy"/> each take it.
+    /// </para>
+    /// <para>
+    /// <b>A parameter, not a setting.</b> It was a public mutable static, which <c>--threshold</c>
+    /// moved and nothing put back - so in any process running more than one estimate, the
+    /// next one passed or refused on a number nobody had given it. A test asking for 1e12
+    /// made another test's cost gate pass. Passed in, it cannot outlive the call it was meant
+    /// for, and there is nothing for a caller to remember to restore.
+    /// </para>
     /// </remarks>
-    public static double Threshold { get; set; } = ThresholdSeconds;
+    public const double ThresholdSeconds = 30.0;
 
     /// <summary>
     /// Cell updates per second for a diffusive step, in millions.
@@ -564,7 +570,11 @@ public static class EstimateCommand
     /// worth having about the computer that will do the work. Turned off, the verb keeps
     /// PERF-8's cold-start budget, which a pilot solve does not.
     /// </param>
-    public static EstimateOutcome Execute(string modelPath, bool calibrate = true)
+    /// <param name="threshold">
+    /// Seconds above which the estimate says the operation should be confirmed.
+    /// </param>
+    public static EstimateOutcome Execute(
+        string modelPath, bool calibrate = true, double threshold = ThresholdSeconds)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
 
@@ -575,7 +585,7 @@ public static class EstimateCommand
 
         if (!validation.IsValid)
         {
-            throw new Core.Errors.EinzelException(validation.Errors[0]);
+            throw new Core.Errors.EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;
@@ -858,8 +868,8 @@ public static class EstimateCommand
             Elements = elements,
             Seconds = seconds,
             MemoryMiB = memory,
-            AboveThreshold = seconds > Threshold,
-            ThresholdSeconds = Threshold,
+            AboveThreshold = seconds > threshold,
+            ThresholdSeconds = threshold,
             Basis = basis,
             TrajectorySeconds = trajectory.Seconds,
             PilotSpread = Math.Max(planeRate.Item3, volumeRate.Item3),
@@ -1013,6 +1023,9 @@ public static class EstimateCommand
     /// <summary>Costs a study: what its model costs, times what its driver declares.</summary>
     /// <param name="studyPath">Path to the study file.</param>
     /// <param name="calibrate">Whether to measure this machine rather than quote a constant.</param>
+    /// <param name="threshold">
+    /// Seconds above which the estimate says the study should be confirmed.
+    /// </param>
     /// <returns>The estimate, carrying the model's own breakdown and the study multiplier.</returns>
     /// <exception cref="ArgumentException"><paramref name="studyPath"/> is null or blank.</exception>
     /// <exception cref="Core.Errors.EinzelException">The study or its model is invalid.</exception>
@@ -1031,12 +1044,13 @@ public static class EstimateCommand
     /// most of eight solves per evaluation.
     /// </para>
     /// </remarks>
-    public static EstimateOutcome ForStudy(string studyPath, bool calibrate = true)
+    public static EstimateOutcome ForStudy(
+        string studyPath, bool calibrate = true, double threshold = ThresholdSeconds)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(studyPath);
 
         var (study, modelPath, absolute) = StudyCommand.Load(studyPath);
-        var model = Execute(modelPath, calibrate);
+        var model = Execute(modelPath, calibrate, threshold);
 
         var (kind, evaluations, ceiling, how) = Extent(study);
 
@@ -1144,7 +1158,7 @@ public static class EstimateCommand
         return model with
         {
             Seconds = seconds,
-            AboveThreshold = seconds > Threshold,
+            AboveThreshold = seconds > threshold,
             Basis = basis,
 
             // The flight the arithmetic above actually used, not the nominal pilot it
@@ -1331,7 +1345,14 @@ public static class EstimateCommand
         foreach (var spacing in worst.Spacing)
         {
             var candidate = 2.0 * spacing * (1.0 + 1e-9);
-            var nodes = NodesAt(extents, candidate);
+
+            // A volume asks the rule its grid is built by, rather than this file's own copy of
+            // it: that copy allowed one interval an axis where the grid allows no fewer than
+            // two, so a thin axis was costed at two nodes where the grid builds three, and the
+            // promised saving came out half again too large.
+            var nodes = extents.Length == 3
+                ? Core.Numerics.VolumeMesh.Nodes(extents[0], extents[1], extents[2], candidate)
+                : NodesAt(extents, candidate);
 
             if (nodes < best)
             {
@@ -1456,12 +1477,19 @@ public static class EstimateCommand
         return note;
     }
 
-    /// <summary>How many nodes a requested cell size actually produces over given extents.</summary>
+    /// <summary>How many nodes a requested cell size produces over a plane's extents.</summary>
     /// <remarks>
-    /// The grid's own rule, restated: each axis takes the interval count that covers its
-    /// extent at the requested size, rounded up to a power of two, and the node count is one
-    /// more than that per axis. Restated rather than called because the point is to ask
-    /// "what if" without building anything.
+    /// <para>
+    /// The grid's rule, restated: each axis takes the interval count that covers its extent at
+    /// the requested size, rounded up to a power of two, and the node count is one more than
+    /// that per axis.
+    /// </para>
+    /// <para>
+    /// <b>Planes only.</b> A volume asks <c>VolumeMesh</c>, which is the rule its grid is built
+    /// by. This restatement still allows one interval an axis where the plane grid allows no
+    /// fewer than four, so it too can be wrong on a thin axis; bringing the plane under one
+    /// shared rule belongs with the plane's own node limit, which does not exist yet.
+    /// </para>
     /// </remarks>
     private static long NodesAt(IReadOnlyList<double> extents, double cell)
     {

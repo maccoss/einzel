@@ -110,22 +110,7 @@ public static class ElectrodeOverlap3D
         ArgumentNullException.ThrowIfNull(stages);
         ArgumentNullException.ThrowIfNull(errors);
 
-        // Every state the pair is ever in, base first so an unsequenced geometry is
-        // reported exactly as it was before stages were considered.
-        var states = new List<IReadOnlyList<CompiledElectrode3D>> { electrodes };
-
-        foreach (var stage in stages)
-        {
-            if (stage.Electrodes.Count == electrodes.Count)
-            {
-                states.Add(stage.Electrodes);
-            }
-
-            if (stage.EndElectrodes is { } end && end.Count == electrodes.Count)
-            {
-                states.Add(end);
-            }
-        }
+        var states = StatesOf(electrodes, stages);
 
         for (var i = 0; i < electrodes.Count; i++)
         {
@@ -178,6 +163,44 @@ public static class ElectrodeOverlap3D
         }
     }
 
+    /// <summary>Every state a geometry's electrodes are ever in.</summary>
+    /// <param name="electrodes">The compiled electrodes, in declaration order.</param>
+    /// <param name="stages">The timed states, empty when the geometry holds one.</param>
+    /// <returns>
+    /// The declared state first, then each stage, then each ramping stage's far end, each
+    /// indexed as <paramref name="electrodes"/> is.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
+    /// <remarks>
+    /// Public so the one other question asked of a pair - whether a mesh node sits on a
+    /// face they share - is asked over the same states rather than a second list of them.
+    /// Base first, so an unsequenced geometry is reported exactly as it was before stages
+    /// were considered.
+    /// </remarks>
+    public static IReadOnlyList<IReadOnlyList<CompiledElectrode3D>> StatesOf(
+        IReadOnlyList<CompiledElectrode3D> electrodes, IReadOnlyList<CompiledStage3D> stages)
+    {
+        ArgumentNullException.ThrowIfNull(electrodes);
+        ArgumentNullException.ThrowIfNull(stages);
+
+        var states = new List<IReadOnlyList<CompiledElectrode3D>> { electrodes };
+
+        foreach (var stage in stages)
+        {
+            if (stage.Electrodes.Count == electrodes.Count)
+            {
+                states.Add(stage.Electrodes);
+            }
+
+            if (stage.EndElectrodes is { } end && end.Count == electrodes.Count)
+            {
+                states.Add(end);
+            }
+        }
+
+        return states;
+    }
+
     /// <summary>Which stage a set of electrodes came from, for the message.</summary>
     private static string Named(
         IReadOnlyList<CompiledStage3D> stages, IReadOnlyList<CompiledElectrode3D> state)
@@ -195,14 +218,21 @@ public static class ElectrodeOverlap3D
     }
 
     /// <summary>Whether two electrodes hold the same thing, so overlapping is harmless.</summary>
+    /// <param name="a">One electrode.</param>
+    /// <param name="b">The other.</param>
+    /// <returns>Whether the potential and every tap agree exactly.</returns>
+    /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <remarks>
     /// Over <em>every</em> tap and in order, which is the plane check's own reading and
     /// the conservative one: two electrodes whose taps are the same set in a different
     /// order really do hold the same thing, and calling them different costs a spurious
     /// complaint rather than a silent wrong field.
     /// </remarks>
-    private static bool Agrees(CompiledElectrode3D a, CompiledElectrode3D b)
+    public static bool Agrees(CompiledElectrode3D a, CompiledElectrode3D b)
     {
+        ArgumentNullException.ThrowIfNull(a);
+        ArgumentNullException.ThrowIfNull(b);
+
         if (a.Potential != b.Potential || a.Taps.Count != b.Taps.Count)
         {
             return false;

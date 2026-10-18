@@ -73,6 +73,85 @@ Guards written from first principles rather than from a requirement are worth
 re-reading when a new requirement arrives, because the argument that justified them
 is usually still true and still outweighed.
 
+## A refusal about the model, thrown as an argument exception, is reported as a defect in the engine
+
+The shipped Astral with its volume solve at a 1 mm cell is 1025 x 65 x 1025 = 68.3 M nodes
+against a 64 M limit. `validate` said OK, `estimate` priced it at 35 minutes, and `run`
+spent more than five minutes and several gigabytes before printing `INTERNAL_ERROR:
+ArgumentOutOfRangeException ... coarsen it or shrink the domain` above "This is a defect in
+einzel, not in your model", on exit code 6. The message was right. Everything around it was
+wrong, and there were four separate mistakes in one guard.
+
+**The exception type decides the whole presentation.** `ArgumentOutOfRangeException` is the
+natural spelling in a constructor, and at the process boundary an unrecognised exception can
+only be a defect - that is what the catch-all is for. So a limit a *document* can exceed is a
+refusal about the document: an `EinzelException` with a code a caller branches on, and it
+belongs where the document is read. The second time this exact shape has happened here, after
+Amendment 15's "a peak needs at least two arrivals", which also made a run report *itself* as
+broken.
+
+**The guard ran after the cost it guarded against.** It sat in `ScalarField3D`, and a solve
+builds its conductor mask first - `DirichletMask3D` and `CutLinks3D`, 105 bytes a node against
+a field's eight. Measured by moving the guard back: refusing a single-sphere geometry at the
+Astral's mesh became a **3.5 minute** test run, build included; with the guard on the mask it is
+refused having allocated under a megabyte, which is what the test asserts. A resource guard
+belongs at the *first* allocation, not at the one whose type sounds like the resource.
+
+**Three verbs had three answers to one question.** `validate` never counted nodes, `estimate`
+counted them and priced them, and only the solver refused - and the mesh is arithmetic on the
+document, so all three could have known. The same vacuous clean bill of health as `solve`
+answering `converged: true` over nothing, and a source inside an electrode validating: **a
+refusal that is computable from the document and is not made by validation is a refusal made
+too late**. One constant in `Einzel.Core`, read by the validator and the solver's backstop, and
+`estimate` validates first, so it cannot drift.
+
+**And the suggestion needed its own care, in two directions.** The finest fitting cell size
+sits exactly on a power-of-two boundary. Three significant figures rounded 1.46484 mm up to
+1.47 mm, which also crossed the *other* axis's boundary at 1.46875 mm, so the suggestion named a mesh
+with half the nodes while calling it the finest that fits - the opposite of the estimate's own
+earlier trap, where twice the spacing landed *on* the boundary and changed nothing. And an exact
+decimal is not safe either: over a box from -1.5 to 20.5 mm, 2.75 mm is the eight-interval
+boundary, and converted through `mm` it gives 8.000000000000002 intervals - sixteen, the refused
+mesh. That case was found by searching boxes for one, not by thinking about it. **A number
+printed for a person to type back into a step function has to be checked after the round trip
+through its own text and its own unit.**
+
+A fifth thing came out underneath: `Grid3D` doubled an `int` interval count, which for a
+picometer cell wrapped to zero and never returned. Harmless while only a solve called it; a
+validator that counts nodes calls it on every document. **A function safe for its one caller
+stops being safe when it is moved to where everything calls it.**
+
+**And the test written for it broke a test in another class.** It passed `--threshold 1e12`
+to `estimate`, and the threshold is process-wide: the CLI tests drive `Program.Main` in one
+process, so `CostGateTests`' refusal test, running later, inherited a cost gate of ten to the
+twelve seconds and exited 0. That class resets the threshold in its own `Dispose` and says why,
+which is a convention every caller has to remember - and the next caller, me, did not. My first
+fix restored it however the invocation ended, which a review rightly called a patch on a global:
+it fixed the one caller and left the setting for the next. It is a parameter now. **A
+per-invocation choice belongs in the invocation's arguments; a process-wide setting that one
+call moves is a setting every other call has to defend against.**
+
+### And a review of the fix found the fix's own crash
+
+Moving the mesh arithmetic into validation is what made it correct, and also what exposed it
+to documents it had never met. A derived cell size or bound can be NaN - a division by a
+parameter set to zero, the square root of a negative ratio - and every comparison with NaN is
+false, so `cell <= 0.0` and `max <= min` let it straight through. Before, the solver's own
+argument check caught it at `run`; now the validator's mesh count threw from inside
+`validate`, so the command whose job is to report what is wrong with a model printed
+`INTERNAL_ERROR` instead. Infinity was quieter: it passed every check and solved on two
+intervals an axis. **A check moved earlier meets every input the later stage never saw, and
+the inputs a later guard used to filter now arrive unfiltered. And `x <= 0` is not a
+positivity check: `!(x > 0)` is, and a finite value is a separate question.**
+
+The same review found three smaller things with one shape - each was the fix disagreeing with
+something near it. The space-charge warning still advised grids of 1024 across that the new
+validation refuses. `estimate`, like eleven other call sites, reported only the first
+validation error, so a refused mesh could hide behind an earlier mistake. And `estimate`'s
+mesh note kept its own copy of the rounding rule, with a different minimum, a few hundred lines
+from the shared one it now uses. **After adding a limit, ask what else names a quantity that
+limit applies to**; advice, reports and restatements do not update themselves.
+
 ## A confinement test on a geometry that cannot confine
 
 Checking that a driven geometry in a diffusive phase gets the *cycle-averaged* field
@@ -5066,3 +5145,74 @@ rather than clever: **when a loop body allocates something large that must not o
 iteration, give the body a frame of its own.** The test for it compares a two-channel build
 with the same geometry undriven; putting the inline loop back makes the second channel cost
 102.8 bytes a node against a limit of 30.
+
+## A node on a face two conductors share is decided by rounding, and no refinement ladder can see it
+
+`astral-3d`'s foil is sixteen slices at sixteen potentials, sharing a face every 28.125 mm,
+and three of those faces sat exactly on rows of nodes in the 4 mm foil mesh. A node exactly
+on the face between two conductors that disagree is inside one, the other, or neither
+according to the last bit of that face's arithmetic - and a free node with a vanishing arm to
+each side takes whatever mixture of the two potentials the rounding picked. It is not
+discretization error. It is a coin toss, and at this mesh it was worth 0.27 percent of the
+flight time.
+
+**The convergence tier could never have found it.** Grid intervals are powers of two over a
+fixed domain, so a face on node k at one rung is on node 2k at the next: every mesh in a
+refinement ladder sits on the same faces, and each rung tosses the same coin. What found it
+was an **exact symmetry the arithmetic does not share**. Electrostatic similarity says an
+instrument scaled by 0.2 flies the same path in 0.2 of the time; 0.2 is not representable, so
+every coordinate moves by rounding and nothing else. Binary-exact scales (0.5, 0.25)
+reproduced the flight to the bit, 0.2 moved it 0.27 percent, and 0.1999999 moved it a
+different 0.03. A physical invariance that perturbs only the last bit is a probe of every
+knife-edge in a discretization at once.
+
+**And a coin toss can hide a larger error behind it.** With the foil mesh moved a tenth of a
+cell off every shared face, the flight time was deterministic - and moving the mesh further,
+in fifths of a cell, moved it over 0.83 percent, because the stripe is thinner than a cell
+and exists only where its surfaces cut links. That is ordinary second-order error (0.22 per
+cent at 2 mm), but a ladder reports one point per rung and so presents a spread of that size
+as a resolved number. The published agreement this template carried, "0.4 percent", was one
+draw from it.
+
+The rules. **Where conductors that disagree share a face, keep the face off the nodes** - a
+margin of a tenth of a cell is plenty, and it has to be checked, because the mesh's own
+rounding decides where the nodes fall. **Where a feature is smaller than a cell, where the
+mesh sits is a convergence dimension** as much as how fine it is, and an agreement quoted
+finer than the placement spread is not an agreement. And after removing a source of
+nondeterminism, measure what it was sitting on top of before quoting the number it now gives.
+
+
+## A check specified from a description of the case reported that case clean
+
+The previous entry describes the foil's coin toss as *nodes* on shared faces, and the engine
+check proposed after it was specified the same way: find nodes within a rounding of two
+disagreeing conductors' surfaces. Built exactly so, it swept every shipped template and
+example and found all of them clean - which was the answer hoped for, and would have been
+recorded as the result.
+
+**The sweep was only worth something if the detector fired on the case that motivated it,
+so that ran first: `astral-3d` with its mesh shift removed. It reported that clean too.**
+The foil stripe is 0.715 mm thick on a 2.9 to 3.8 mm mesh and holds **no node at all**; the
+three faces lie on node *planes*, and what the rounding decided was which slice's potential
+the stencil arms lying in each plane were cut against. 180 arms, 0 nodes. Comparing the
+full-size and compact masks cell by cell settled where the rest of the recorded "454 nodes
+and 1,586 cut links" were: every node and 1,406 of the links sit on the domain's upper face,
+where grounded boards' ends meet it - a separate, harmless flip between two states both near
+zero volts - and the 180 arms are the whole of the 0.27 percent. The description had merged
+two effects and named the wrong one, and a check built from the description inherited it.
+
+Two smaller things came with it. **A test on entry fractions is discontinuous where a test
+on distance is not**: "both conductors entered at the same fraction" misses the face nudged
+one ulp, because then the arm grazes one conductor instead of entering it while the cut has
+already flipped - so the arm test asks whether the point met is within tolerance of the
+other surface. And **a tolerance that flags coincidence does not flag the step it sits on**:
+a face 2.6e-5 of a cell off a node draws no warning and is still on the edge of a 0.27
+percent discontinuity, which a sweep across it would cross silently.
+
+The rules. **Run a detector against the case that motivated it before trusting what it says
+about anything else** - a clean sweep from a check that cannot see its own reason for
+existing is the most convincing wrong answer there is. **Specify a check from the mechanism,
+not from the account of the incident**: the account said nodes because nodes are how one
+talks about a mesh, and the mechanism was "the mesh samples the geometry, and a sample landed
+on a discontinuity of the boundary data" - which names nodes *and* arms. And when a
+recorded number is quoted as evidence, find out what it counted.

@@ -221,6 +221,99 @@ of a cell wide, so it is not where a shape derivative usually finds itself.
 It has not been removed altogether because doing so trades a small bounded
 geometric error for an unbounded numerical one, which is the worse of the two.
 
+### A face two conductors share must not be sampled by the mesh
+
+Cut cells make the answer continuous in where **one** conductor's surface sits. They
+cannot do that for a face **two** conductors share at different potentials, because
+the boundary potential itself jumps there and the mesh samples it at points. Tangency
+is legitimate - every segmented chain in the library is written that way, and the
+overlap checks allow it on purpose - but when a node, or the point where a stencil arm
+first meets metal, lands exactly on the shared face, which conductor it is credited to
+is decided by the last bit of the face's arithmetic against the mesh's. A node goes to
+one, the other (the one written last), or neither, left free between two arms of
+vanishing length and solving to a mixture of both. An arm is cut against whichever
+entry rounded nearer and carries that conductor's potential.
+
+**No refinement ladder can see it.** Interval counts are powers of two over a fixed
+domain, so a face on node k at one rung is on node 2k at the next, and every rung
+tosses the same coin. It was found on `astral-3d` by electrostatic similarity instead
+(SPEC.md Amendment 55).
+
+`GeometryBuilder.NodesOnSharedFaces` and `GeometryBuilder3D.NodesOnSharedFaces` look for
+it before every solve and put `mesh.node-on-shared-face` (Qualified) on the
+`SolveReport`, which `FieldAssembly.BuildReported` carries onto every run, preview and
+figure, and `einzel solve` reports once per element. The rules:
+
+- **Two samples, two tests.** A node counts when it is within 1e-9 of the finest
+  spacing of both surfaces - the overlap checks' tangency tolerance, seven orders above
+  the few ulps by which a face written as an expression and a node written as origin
+  plus index times spacing disagree when they coincide. An arm from a free node counts
+  when the point where it first meets one conductor is within the same distance of the
+  other's surface and nothing is met sooner, strictly inside the arm (an entry at either
+  end is a node, and is counted as one).
+- **A distance, not a pair of entry fractions.** The obvious arm test - both conductors
+  entered at the same fraction - misses the case it exists for: nudge the face one ulp
+  and the arm, lying in the face's plane, no longer enters one of the two at all, while
+  the cut has flipped to the other. A distance to a surface is continuous in the
+  geometry; whether a segment enters a box is not.
+- **"Different excitations" is the overlap checks' own reading**, through
+  `ElectrodeOverlap.StatesOf`/`Agrees` and their volume twins: the potential and every
+  tap, in any state the instrument has, a ramp's far end included.
+- **Cheap.** Only pairs that disagree and whose bounding boxes meet are visited, and
+  only nodes within a cell of both boxes; a node goes on to the arm test only when it is
+  within a cell of both surfaces. On a volume without a mask to hand, whether a node is
+  fixed is asked of the geometry node by node, as the finest mask is built, rather than
+  by building one - which on `astral-3d` is minutes.
+
+**The arms are not a refinement; they are where the case that found this lives.** The
+Astral's foil stripes are 0.715 mm thick against a 2.9 to 3.8 mm mesh and hold no node,
+so a check of nodes alone - which is how this was first specified - reports the
+template clean with its mesh shift removed. The detector reports **180 arms and no
+node**: three foil faces on node planes, four plates, fifteen nodes across each stripe.
+
+**What it was worth, measured by moving the foil mesh** (`meshShiftZ`) across the node,
+Release build, flight time in us:
+
+| shift | -1e-2 cell | -1e-3 | -2.6e-5 (1e-7 of the extent) | **0** | +2.6e-5 | +1e-3 | +1e-2 | shipped, 0.10 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| flight | 786.3828 | 786.4319 | 786.4372 | **786.4373, warns** | 784.3191 | 784.3246 | 784.3760 | 784.9047 |
+
+A **2.118 us step, 0.27 percent**, on an ordinary slope of about 5.4 us per cell either
+side - five orders larger than each run's own stated uncertainty of about 1e-5 us, which
+cannot contain it because it is not a convergence error. The step equals the effect of
+moving the mesh four tenths of a cell. At zero shift the rounding happened to land on
+the lower side; the compact analyzer's 0.2 landed on the upper, which is the 786.44 against
+784.32 that exposed it.
+
+**The survey found nothing else.** Every shipped template and corpus example - 44 solved
+elements - is clean, which `SharedFaceCorpusTests` now keeps true, with the zero-shift
+Astral as the control that has to trip.
+
+**What it does not cover, stated rather than discovered.**
+
+- **The tolerance flags coincidence, not proximity.** The table is a step: a face 2.6e-5
+  of a cell from a node is on a determinate side of it by every arithmetic, draws no
+  warning, and still sits on the edge of a 0.27 percent discontinuity. A sweep or a
+  sensitivity field that moves a shared face across a node plane crosses the step at a
+  point where every evaluation looked clean. The advice in the warning - a tenth of a
+  cell - is about that, not about the tolerance.
+- **A conductor against the domain boundary is not checked.** The same full-size and
+  compact masks that differ on those 180 arms also differ on **454 nodes and 1,406
+  further cut links**, every one on the domain's upper z face, where the grounded boards'
+  ends coincide with it: the last node plane is `origin + 256 * spacing`, which rounds
+  either side of the declared maximum (1.4e-14 mm over it in the compact analyzer, exactly
+  on it at full size). That face is Neumann and the boards are earthed, so both outcomes sit
+  near zero volts, and the flight does not see it: all three full-size runs either side of
+  the step hold those 454 nodes inside the boards - checked - so the step is the foil's arms
+  alone, and the +1e-7 run reproduces the compact analyzer's 784.32 with the boundary in the
+  opposite state, which bounds the boundary's share at about 1e-3 us. On a **Dirichlet**
+  face the grounded
+  boundary is a third conductor at zero, and an electrode flush with it at another
+  potential would be the same coin toss between two values. Not built.
+- **An edge profile** has no surface to be near (its signed distance is infinite) and
+  takes no part; a profiled board meeting an interior electrode at the edge is decided by
+  declaration order, which `ElectrodeOverlap` also leaves aside.
+
 ## Interior electrodes
 
 Coarsening assumes it preserves the problem, and with a rasterised boundary that

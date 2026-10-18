@@ -135,6 +135,14 @@
       "maximum": 400.0,
       "description": "how far the solve domain and the electrode stripes run beyond the drift at each end. The reversal convergence moves 7.4% from 0 to 50 mm and 0.4% from 50 to 150, so this is converged; at zero the Neumann face sits 10 mm from where the ion turns round."
     },
+    "meshShiftZ": {
+      "value": 0.3,
+      "unit": "mm",
+      "minimum": -5.0,
+      "maximum": 5.0,
+      "description": "Moves the foil's solve mesh along the drift without moving any conductor, so that no face two foil slices share lies on a row of nodes. Numerical, not physical. The slices hold different potentials, and a node exactly on the face between two of them belongs to one, the other, or neither according to the last bit of that face's arithmetic - at no shift, three faces sat on nodes and a change of scale that should have changed nothing moved the flight time by 0.27 percent. The grounded boards follow the mesh, so each still spans the whole domain. The faces are 28.125 mm apart and the nodes 2.93 mm, so where a face falls within a cell repeats every fifth of one, and 0.3 mm - a tenth of a cell - is as far from every node as any placement gets at this cell. At another cell size the margin is different; CompactAstralTests checks it. Where the mesh sits still moves the answer through ordinary discretization error, because the stripe is thinner than a cell: 0.83 percent across placements at the shipped 4 mm cell and 0.22 at 2 mm (docs/device-templates.md).",
+      "provenance": "chosen"
+    },
     "foilVolts": {
       "value": -3.0,
       "unit": "V",
@@ -1661,11 +1669,11 @@
           "unit": "mm"
         },
         "minZ": {
-          "expression": "-zPad",
+          "expression": "meshShiftZ - zPad",
           "unit": "mm"
         },
         "maxZ": {
-          "expression": "driftLength + zPad",
+          "expression": "driftLength + zPad + meshShiftZ",
           "unit": "mm"
         },
         "cellSize": {
@@ -1847,11 +1855,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -1879,11 +1887,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -1911,11 +1919,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -1943,11 +1951,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -1975,11 +1983,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2007,11 +2015,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2039,11 +2047,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2071,11 +2079,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2103,11 +2111,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2135,11 +2143,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2167,11 +2175,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2199,11 +2207,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2231,11 +2239,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2263,11 +2271,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2295,11 +2303,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2327,11 +2335,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2359,11 +2367,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2391,11 +2399,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2423,11 +2431,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2455,11 +2463,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2487,11 +2495,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {
@@ -2519,11 +2527,11 @@
               "unit": "mm"
             },
             "minZ": {
-              "expression": "-zPad",
+              "expression": "meshShiftZ - zPad",
               "unit": "mm"
             },
             "maxZ": {
-              "expression": "driftLength + zPad",
+              "expression": "driftLength + zPad + meshShiftZ",
               "unit": "mm"
             },
             "potential": {

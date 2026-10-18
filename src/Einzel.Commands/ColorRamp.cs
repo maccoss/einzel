@@ -1,4 +1,4 @@
-namespace Einzel.Shell;
+namespace Einzel.Commands;
 
 /// <summary>A color scale for a scalar, as red, green and blue in zero to one.</summary>
 /// <remarks>

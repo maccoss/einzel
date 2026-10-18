@@ -33,6 +33,7 @@ states the intent and these pages state the reality; both are noted.
 | [Spec findings](spec-findings.md) | Places where building it revealed something about the specification |
 | [GPU handoff](gpu-handoff.md) | Whether a GPU is worth it here, the probe that answers it on any machine in ten minutes, and which kernel to port |
 | [Astral log](astral-log.md) | **A chronological log, not a status page.** Eighty sections of the Astral reconstruction, several reversing earlier ones. Read it backwards, and take the model's current position from [Device templates](device-templates.md) instead |
+| [Changelog](changelog.md) | **A chronological record, not a status page.** Stage by stage, what was built and measured and the mistakes on the way. `CLAUDE.md` imports it, so every Claude Code session starts with it. Take the current state from the [living specification](../SPEC.md) and the pages above |
 
 ## The two ideas everything follows from
 

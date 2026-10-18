@@ -20,19 +20,19 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,517 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,581 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
-| **Met**, with evidence | 82 |
+| **Met**, with evidence | 83 |
 | **Partial**, with a stated gap | 13 |
-| **Not built** | 21 |
+| **Not built** | 20 |
 | **Unverified** — plausible but unmeasured | 2 |
 | Total tagged in r06 | 118 |
 
-A count is a weak summary and it flatters the project: **fourteen of the 21 not
+A count is a weak summary and it flatters the project: **fourteen of the 20 not
 built are the update mechanism and distribution**, which is one assembly that does
-not exist, while the 78 met are spread across the parts that carry numbers. The
+not exist, while the 83 met are spread across the parts that carry numbers. The
 useful reading is the register, not the total.
 
 **This table had drifted badly, and a test now counts it.** It read 64 / 14 / 37 / 3
@@ -154,6 +154,135 @@ Einzel. **That, rather than a date, is the trigger.**
 ---
 
 ## Amendments to the specification
+
+### 56 - A mesh samples a geometry at nodes and at arms, and a shared face must be clear of both
+
+**ACC-3, GRD-2, and Amendment 55.** Amendment 55 found that a node lying on a face two
+disagreeing conductors share is a coin toss rather than a discretization error, and proposed
+an engine check for it. Built as described - nodes within a rounding of both surfaces - the
+check **reported the case that motivated it clean**. The Astral's foil stripes are thinner
+than a cell and hold no node; the three shared faces lie on node *planes*, and what the
+rounding decided was which slice's potential the stencil arms in each plane were cut against.
+So the condition r06's convergence tier cannot see is stated in terms of both places a mesh
+samples a geometry: **no node, and no point where a stencil arm from a free node first meets
+metal, may lie on a face shared by conductors that disagree in any state.**
+
+`GeometryBuilder` and `GeometryBuilder3D` check it before every solve and put
+`mesh.node-on-shared-face` (Qualified) on the `SolveReport`, so it reaches `run`, `preview`,
+every figure and `solve` (which carried no warnings before). Tolerance 1e-9 of the finest
+spacing, the overlap checks' tangency tolerance; "disagree" is theirs too, the potential and
+every tap over every state, through the same functions. The arm test asks whether the point
+met is within tolerance of the *other* surface rather than whether both are entered at one
+fraction, because the second is discontinuous in exactly the case it exists for.
+
+**What it found.** Every shipped template and corpus example is clean - 44 solved elements -
+and `SharedFaceCorpusTests` keeps them so; `astral-3d` with its mesh shift removed reports
+**180 arms and 0 nodes**, and is the control that must trip. Moving that mesh by 1e-7 of its
+extent either side of the node gives 786.4372 and 784.3191 us: a **2.118 us step, 0.27
+percent**, five orders above each run's stated uncertainty, on an ordinary slope of 5.4 us per
+cell. It also corrects Amendment 55's evidence: of the 454 nodes and 1,586 links that differ
+between the full-size and compact masks, only **180 links are the foil**; every node and the
+other 1,406 links are grounded boards' ends meeting the domain's upper face, a flip between
+two states near zero volts that the flight does not see.
+
+**Two limits, stated.** The tolerance flags coincidence, not proximity: a face 2.6e-5 of a
+cell off a node draws no warning and sits on the edge of the same step, which a geometric
+sweep or sensitivity field would cross silently - so the fix the warning names is a tenth of
+a cell, not the tolerance. And a conductor flush with a **Dirichlet** domain face is the same
+coin toss against the grounded boundary at zero volts, and is not checked.
+
+### 55 - Where a mesh sits is part of its error, and a node on a shared face is not error at all
+
+**ACC-3, §19's convergence tier.** r06 makes grid convergence a first-class test: refine the
+mesh and watch the answer settle. That measures how fine a mesh is. It does not measure where
+the mesh sits, and on a geometry with features smaller than a cell the two are different
+errors. Both were found by generating a compact analyzer from the published Astral
+(`compact-astral-3d`), where electrostatic similarity makes the right answer exact: every
+length times 0.2, every flight time times 0.2, and nothing else moved.
+
+**It did not hold, and the reason is not discretization error.** The Astral's foil is sixteen
+slices at sixteen potentials sharing a face every 28.125 mm, and at the shipped mesh three of
+those faces lay exactly on rows of nodes. A node exactly on the face between two conductors
+at different potentials belongs to one, the other, or neither according to the last bit of
+the face's arithmetic; a free node with a vanishing arm to each side takes whatever mixture
+of the two the rounding set. Scaling by 0.2 - not representable, so it rounds differently from
+1.0 - moved 454 nodes and 1,586 cut links to the other side and the flight time by
+**0.27 percent**; 0.1999999 moved it by a different 0.03, while 0.5, 0.25 and 0.2000001
+reproduced it to the bit. That is a coin toss inside a converged-looking result, and **no
+refinement study would have found it**: every mesh in a ladder can sit on the same faces.
+Moving the foil mesh a tenth of a cell along the drift restores similarity to 1.6e-8, the
+integrator's tolerance.
+
+**And removing it exposed an error of the kind r06 does anticipate, four times larger.** The
+stripe is thinner than a cell and holds no node, so it is represented only by where its
+surfaces cut links. Moved in fifths of a cell, well clear of every shared face, the flight
+time spans **0.83 percent at 4 mm and 0.22 at 2 mm**: second-order, as a refinement ladder
+would say, but the ladder alone reports one point per rung and so reports a spread of this
+size as if it were resolved. The "0.4 percent agreement" with the published flight time that
+item 6 carried was one draw from it; the mesh-converged figure is about 1 percent below, on a
+two-mesh extrapolation (the next refinement is 68 million nodes and is refused).
+
+**What this changes.** A convergence claim on a geometry with sub-cell features should vary
+where the mesh sits as well as how fine it is, and an agreement quoted finer than that spread
+is not an agreement. A shared face between conductors that disagree must not lie on a node;
+`astral-3d` now declares `meshShiftZ` for it, and `CompactAstralTests` checks the margin.
+**The engine check is built, and the survey done** - Amendment 56, which also corrects what
+this entry says the coin was tossed on: arms, not nodes.
+
+### 54 - A raster still is the viewport's picture, orthographic, and the window draws from the same composition
+
+**RND-4, RND-1, AGT-2, UI-1.** r06 lists `einzel render still` as "shaded 3D raster still to
+PNG" and RND-4 says "shaded 3D perspective is raster". It is built, and it departs from RND-4
+in one word and adds one requirement r06 did not have.
+
+**Orthographic, not perspective.** The viewport was made orthographic by a recorded decision -
+an ion-optics drawing is read for where things are along the axis, which is precisely what
+perspective distorts - and a still that is not the viewport's picture has no reason to exist.
+RND-4's point was that shaded 3D is raster rather than vector; the projection was incidental,
+and the one this project already argued for is kept.
+
+**The still and the window draw from one composition, and that is the requirement r06 lacks.**
+Its purpose is the half of AGT-2 the command layer could not reach: an agent could run every
+analysis the window runs and could not see what the window shows. A still earns that only if
+it IS the window's picture. So every decision that makes the picture - the camera, the color
+ramps, how an electrode is colored, which layers exist and in what order, which are
+translucent and whether they hide what is drawn after them, and the lighting constants the
+shader uses - moved out of the shell's GL control into `ViewportPicture` and `Framing` in
+`Einzel.Commands`. The window uploads that composition; the still hands it to a rasterizer.
+Two consumers of one set of decisions, where before there was one consumer holding them all.
+
+**Where each half lives is UI-1's, and the boundary test decided it.** The shell may reach the
+engine through `Einzel.Commands` only and may not *use* `Einzel.Render` types - checked on the
+compiled assembly, not only the project file. So the decisions live in the command layer, and
+`Einzel.Render` got a rasterizer that decides nothing: triangles, lines, colors and a matrix
+in, pixels out, with a depth buffer, supersampling and the window's own blend rules. The PNG
+writer is hand-written over the base library's zlib, so there is no new dependency (LIC-1).
+The two sets of record types - a picture layer and a raster layer - are a copy of shape with
+no decision in either, and exist separately only because the two assemblies may not see each
+other.
+
+**What building it found, before it drew anything useful:**
+
+- **A printed board has no interior**, so the level-set extraction every other shape goes
+  through found no surface, and the planar mirror pair - the memo's own analyzer - was drawn
+  as its end cap alone. Boards are drawn from their declaration now, as sheets on the domain
+  edge in pieces colored by the profile along them, broken at every knot.
+- **A reflected solve was drawn as its declared half.** The field builder composes
+  `reflectAboutX` with the mirror image; the viewport did not, so a mirror pair had one mirror.
+  Both halves now, in both dimensions, with the image wound to match and the extent taking it in.
+- **A sheet had no normals.** A zero-width cap's signed distance is `|x - X|`, whose central
+  difference on the sheet is exactly zero, and `Surfaces.Orient` said the result was a
+  flat-shaded facet. It was not, in either window. It gets its facets' normal now.
+- **The camera framed a sphere.** Half the bounding diagonal is turn-invariant and put a
+  767 mm by 30 mm analyzer across the middle third of the picture. The window offers named
+  views, not free rotation, so it now fits the box the current view sees - as the WPF viewport
+  always did - and the field lines are inside the frame too.
+
+**What it does not do.** It cannot test the window's own GPU path - shader, uploads, depth
+state - which needs a GL context; the still shares every decision with the window and none of
+its pixels. And RND-11's `QUALIFIED` line naming the code is not drawn, because a raster needs
+glyphs and nothing here rasterizes text: a violation hatches the bottom of the picture, and the
+codes travel in the file's text chunks and on stderr.
 
 ### 53 - The shell runs where the engine runs, and Amendment 26's bet was called
 
@@ -2184,7 +2313,7 @@ in a table.
 | --- | --- | --- | --- |
 | `AGT-1` | The model is text Declarative, schema-validated, diffable JSON. A model file plus referenced artifacts fully determines a run. | **Met** | Schema-versioned JSON, currently 0.14. `einzel schema` generates the JSON Schema by reflection over the document records. An unrecognized property is **refused**, not ignored - see Amendment 14. |
 | `AGT-2` | Nothing exists only in the shell Every capability reachable from the window is reachable from the CLI and from MCP, through the same command objects. This now explicitly includes rendering (§17). | Partial | **Both other surfaces now exist, and the invariant is asserted rather than argued.** Every MCP tool returns `CommandJson.Write` of the same outcome record the CLI serialises for `--json`, compared **byte for byte** by a test; every shell action is journalled as the `einzel` invocation that would reproduce it (Amendment 25), and twice a view could not be built until a command existed - `einzel outline` and `ViewportCommand` - which is that amendment running in the direction it was not designed for. **Partial for one precise reason**: the requirement names rendering explicitly and the MCP tool surface does not expose it. That surface is deliberately not a second CLI (`model_read \| model_edit \| model_undo \| session_journal \| model_validate \| model_preview`), so the question is whether rendering belongs in it or whether the requirement means reachable *through a command object* rather than *through a tool*. Until that is settled this cannot be called met. The earlier evidence here read "neither MCP nor the shell exists", which stopped being true when both were built. |
-| `AGT-3` | Errors are recovery instructions Machine-readable code, offending path, violated constraint, observed value, suggested correction. | **Met** | Code, JSON Pointer path, constraint, observed value, suggestion, severity. Validation collects every error rather than throwing on the first. |
+| `AGT-3` | Errors are recovery instructions Machine-readable code, offending path, violated constraint, observed value, suggested correction. | **Met** | Code, JSON Pointer path, constraint, observed value, suggestion, severity. Validation collects every error rather than throwing on the first. **A mesh too large to solve was the exception**: an argument exception deep in the solver, which the CLI can only print as `INTERNAL_ERROR` - "a defect in einzel, not in your model" - on exit 6, after `validate` had passed the model. It is now `GRID_TOO_LARGE` from validation, located at `/fields/N/solve3d/cellSize` (or `/transport/spaceChargeGrid/nodes`), with the observed node count, the limit, and a suggestion naming the finest cell size that fits - printed with as many digits as it takes to stay on the same mesh step and **checked after the round trip through its own text and unit**, because three fixed figures crossed a second power-of-two boundary on the Astral (1.47 mm for 1.46484, half the nodes) and an exact decimal can land a rounding below one (2.75 mm over 22 mm is 8.000000000000002 intervals). `GridTooLargeSurfaceTests` pastes the suggestion back into the document and checks the mesh it names; `VolumeMeshTests` springs both traps. **And a command that validates on its way to something else reports every error, not the first**: twelve call sites - `estimate`, `export`, `preview`, `compare`, `render` and others - threw `Errors[0]`, so a refused mesh could hide behind an earlier mistake for a whole round trip; `EinzelException` now carries the list and the CLI prints it (`EstimateReportsEveryErrorNotOnlyTheFirst`). A derived cell size or bound that is NaN or infinite is refused as `VALUE_OUT_OF_BOUNDS` at its field, where NaN had crashed `validate` itself and infinity had solved on two intervals an axis. |
 | `AGT-4` | Results carry their own uncertainty See §4. No quantitative result is ever returned as a bare number. | **Met** | GRD-1 enforced by reflection over the public surface of `Measured`, verified by injecting a violation and watching it fail. |
 | `AGT-5` | Feedback loops are cheap A preview tier returns in seconds and is permanently labelled. | **Met** | `einzel preview` is 9 ms against a full run on the shipped reflectron, tainted on the number itself, and writes nothing. |
 | `AGT-6` | Feedback is visual where that helps Rendered images an agent can inspect. Geometry errors are obvious in a picture and invisible in JSON. | Partial | `einzel render section` produces SVG and PDF headlessly. There is no raster path, so an agent cannot get a picture of a 3D geometry. |
@@ -2197,7 +2326,7 @@ in a table.
 | --- | --- | --- | --- |
 | `CLI-1` | Every command emits structured output. A --json flag on every verb produces machine-readable output including the full | **Met** | `--json` on every verb. |
 | `CLI-2` | Results on stdout, progress and diagnostics on stderr. | **Met** | Results on stdout, diagnostics on stderr, driven through `Program.Main` in the end-to-end tests. |
-| `CLI-3` | Exit codes are meaningful and documented. Distinct codes for validation failure, regime violation, cost-gate refusal, convergence failure, engine-pin ... | **Met** | Distinct exit codes per failure class, including a regime violation getting its own code rather than a convergence one. |
+| `CLI-3` | Exit codes are meaningful and documented. Distinct codes for validation failure, regime violation, cost-gate refusal, convergence failure, engine-pin ... | **Met** | Distinct exit codes per failure class, including a regime violation getting its own code rather than a convergence one. A volume mesh past the node limit exits 1 as the validation failure it is, where it exited 6 as an internal error. |
 | `CLI-4` | Every mutating command supports --dry-run . | **Met** | `--dry-run` on every mutating command, asserted to write nothing. |
 | `CLI-5` | Output ordering is deterministic. | **Met** | Deterministic output ordering. |
 | `CLI-6` | Startup is fast and offline. No command touches the network unless the user explicitly asks it to. Verb Purpose einzel init Create a project; --vcs git ... | **Met** | Cold start 73-147 ms against PERF-8 500 ms, with no network call in that path. |
@@ -2272,7 +2401,7 @@ in a table.
 | `GRD-5` | Preview results are labelled and cannot be promoted Tagged permanently; cannot be quoted, exported, fed to an optimizer, or rendered without visible ... | **Met** | The taint rides on the number, and a preview writes nothing - a tainted result in `results/` would be reported as current by `verify`. |
 | `GRD-6` | Extension results are attributed Carries the extension identity and version; cannot present itself as first-party. | **Met** | Extension results carry the extension identity and interpreter; the manifest records `null` where no interpreter took part. |
 | `GRD-7` | Results are immutable and traceable Every result references a manifest. Every rendered artifact references a result. | **Met** | Every result references a manifest. Studies wrote none at all until recently; sweeps, optimisations and scans all write one now. Imported gas and study inputs are fingerprinted and verified; missing historical fingerprints are not silently certified (`InputProvenanceTests`, Amendment 48). |
-| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyzer at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. **`members` is what one evaluation of the named figure flies, not the study's ion count** - the registry carries a `FlightBasis` per figure and the estimate asks it, so `flightTime` costs its three-rung convergence ladder rather than a 21-ion ensemble. Billing every figure the ion count put a 2000-draw reflectron sweep at **29 s against a measured 1.08 s**, and an agent in the acceptance run shrank its study to get past it; an unrecognized figure falls back to the ensemble count, the conservative direction. **The threshold is now configurable** (`--threshold <seconds>`), which the requirement asked for and which was a constant, and the refusal says in its first clause that the study is not blocked - only `estimate` exits 3. **And an operation past the gate now reports while it runs**: the requirement covers deciding whether to start and said nothing about the hours after, so a run the gate priced at four hours then went silent for four hours. `einzel run --progress` says where it is every thirty seconds by default and leaves a checkpoint that survives the process; see Amendment 44. See Amendment 33. **The memory figure is measured now too, and it was a fifth of the truth.** It was 48 bytes a node for every solve, from a comment listing three fields; a volume solve holds **240** on the Galerkin hierarchy, 141.7 on the rediscretized one and 153 on a plane, stated by the solver beside its arrays (`SolveMemoryModel`) and measured against real builds - 241.3 and 240.9 on the Astral at 1.12 M and 8.68 M nodes, 141.9 and 141.8 on the segmented quadrupole, 143 to 150 on planes - so the Astral at 1 mm, billed 3.1 GiB, needs 15.3. It is the **live set**, and two checks say that is what has to fit: under a hard heap limit the Astral at 4 mm completed at 279 MiB and failed at 275 against a live 259, while unconstrained its heap reached 1.6x that. Measuring it found **a driven geometry holding every finished channel's mask**, and once that was removed a first-tier JIT temporary still holding its cut links: two channels were 353.7 bytes a node and are **248.7** against 248.0 predicted. A diffusive run holds 263 bytes a density node where 16 was billed. `SolveMemoryTests` pins the figures as slopes between two meshes, band 0.90 to 1.02, and fails on one extra field. The 64 M-node limit is recorded as the wrong kind of rule for memory, which is a property of the machine rather than the document; `docs/cli.md`. |
+| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyzer at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. **`members` is what one evaluation of the named figure flies, not the study's ion count** - the registry carries a `FlightBasis` per figure and the estimate asks it, so `flightTime` costs its three-rung convergence ladder rather than a 21-ion ensemble. Billing every figure the ion count put a 2000-draw reflectron sweep at **29 s against a measured 1.08 s**, and an agent in the acceptance run shrank its study to get past it; an unrecognized figure falls back to the ensemble count, the conservative direction. **The threshold is now configurable** (`--threshold <seconds>`), which the requirement asked for and which was a constant, and the refusal says in its first clause that the study is not blocked - only `estimate` exits 3. **And an operation past the gate now reports while it runs**: the requirement covers deciding whether to start and said nothing about the hours after, so a run the gate priced at four hours then went silent for four hours. `einzel run --progress` says where it is every thirty seconds by default and leaves a checkpoint that survives the process; see Amendment 44. **And it no longer prices a run that cannot happen**: the Astral at a 1 mm cell is 68.3 M nodes against a 64 M limit, and `estimate` reported 35 minutes and exited 3 on the cost gate for a solve `run` would refuse. The limit is one constant (`VolumeMesh.MaximumNodes`) read by the validator and by the solver's allocation guard, and `estimate` validates first, so it meets the same `GRID_TOO_LARGE` refusal rather than a second copy of the limit. See Amendment 33. **The memory figure is measured now too, and it was a fifth of the truth.** It was 48 bytes a node for every solve, from a comment listing three fields; a volume solve holds **240** on the Galerkin hierarchy, 141.7 on the rediscretized one and 153 on a plane, stated by the solver beside its arrays (`SolveMemoryModel`) and measured against real builds - 241.3 and 240.9 on the Astral at 1.12 M and 8.68 M nodes, 141.9 and 141.8 on the segmented quadrupole, 143 to 150 on planes - so the Astral at 1 mm, billed 3.1 GiB, needs 15.3. It is the **live set**, and two checks say that is what has to fit: under a hard heap limit the Astral at 4 mm completed at 279 MiB and failed at 275 against a live 259, while unconstrained its heap reached 1.6x that. Measuring it found **a driven geometry holding every finished channel's mask**, and once that was removed a first-tier JIT temporary still holding its cut links: two channels were 353.7 bytes a node and are **248.7** against 248.0 predicted. A diffusive run holds 263 bytes a density node where 16 was billed. `SolveMemoryTests` pins the figures as slopes between two meshes, band 0.90 to 1.02, and fails on one extra field. The 64 M-node limit is recorded as the wrong kind of rule for memory, which is a property of the machine rather than the document; `docs/cli.md`. |
 | `GRD-9` | Human work is never silently lost Where an agent and a human share a live model, mutations are attributed in a shared linear journal. | **Met** | `SessionJournal`, served by `Einzel.Mcp`. The attribution and the shared linear stack are MCP-1's row. What this row adds is the *never silently lost* half, and building MCP-1 did **not** deliver it: the journal knew only about mutations made through it, so a person editing the model in their own editor had their change overwritten by the agent's next whole-document edit with nothing anywhere to say so. **The sharper consequence was to undo** - an unrecorded change breaks the chain, so walking back landed on a document predating the person's edit and discarded it as a *side effect of reversing something else*. `Reconcile` now records an outside change as an entry attributed to `outside` (not to the person: another tool, another session and a git checkout look identical from here), refuses an edit written against the document as it was, and makes the refusal recoverable by having `model_read` take the change up. Checked by mutation - a no-op `Reconcile` fails three of nine journal tests. `docs/live-session.md` |
 | `GRD-10` | Drift is detectable, in both directions A stored result can be checked against both the current model and the currently installed engine. | **Met** | `einzel verify` separates drift from notes: an edited model or a changed solver-behaviour version invalidates; a different engine build with identical numerics does not. |
 | `GRD-11` | Known-defective versions taint their output A result produced by a version below the published floor (§18) carries a non-suppressible defect warning. The ... | Partial | The taint mechanism exists and rides in the warning list. There is no published defect floor to compare against, because there are no releases. |
@@ -2282,7 +2411,7 @@ in a table.
 
 | Tag | Requirement (abridged from r06) | Status | Where it stands |
 | --- | --- | --- | --- |
-| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Twenty-two device templates, all data in the model schema. **The signal has fired about twelve times and every one was vocabulary, not architecture** - nothing has ever required a change to the solver, the integrator or the transport core. Three kinds, enumerated with their instances in `docs/extending.md`: a *function* in the expression grammar (`log` for the Kingdon trap, `cosPi`/`sinPi` for any multipole above four rods, `asinPi` for the C-trap's slot, `floor`/`mod` for a repeated ring), an *attribute* on an existing element (`drivePhase` as an expression for the travelling wave, `repeat`, a tilt on a box, Neumann faces on `solve3d`, `axis` on the analytic RF element, `fringe` on a region, a parametric launch direction), and a *primitive* (`polygon` for the linear ion trap's hyperbolic rod, `prism` for its three axial sections, `revolve` for the C-trap's bent one). Twenty-two templates have cost fourteen schema versions, all purely additive, and roughly half needed nothing below the library at all. **Two entries are worth distinguishing from the rest.** The Paul trap's was not a missing capability but a *wrong validator*: `CanDoWork` asked whether any electrode held non-zero DC, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion - the rule says to believe the signal, and telling "there is a bug here" from "the abstraction is wrong" is part of using it. And `revolve` arrived late for a device that had shipped for months: `c-trap` modeled its bent rods as chains of overlapping spheres because no primitive could express one, which is the format's limit correctly worked around and then **not revisited when the limit moved**. See Amendment 50 for what that cost. |
+| `LIB-1` | Device templates are data in the same schema as any other model , plus a declared parameter surface. If supporting a new device requires a change below ... | **Met** | Twenty-three device templates, all data in the model schema. **The signal has fired about twelve times and every one was vocabulary, not architecture** - nothing has ever required a change to the solver, the integrator or the transport core. Three kinds, enumerated with their instances in `docs/extending.md`: a *function* in the expression grammar (`log` for the Kingdon trap, `cosPi`/`sinPi` for any multipole above four rods, `asinPi` for the C-trap's slot, `floor`/`mod` for a repeated ring), an *attribute* on an existing element (`drivePhase` as an expression for the travelling wave, `repeat`, a tilt on a box, Neumann faces on `solve3d`, `axis` on the analytic RF element, `fringe` on a region, a parametric launch direction), and a *primitive* (`polygon` for the linear ion trap's hyperbolic rod, `prism` for its three axial sections, `revolve` for the C-trap's bent one). Twenty-three templates have cost fourteen schema versions, all purely additive, and roughly half needed nothing below the library at all. **Two entries are worth distinguishing from the rest.** The Paul trap's was not a missing capability but a *wrong validator*: `CanDoWork` asked whether any electrode held non-zero DC, so a trap holding all of its potential as drive was refused as a model in which nothing could move an ion - the rule says to believe the signal, and telling "there is a bug here" from "the abstraction is wrong" is part of using it. And `revolve` arrived late for a device that had shipped for months: `c-trap` modeled its bent rods as chains of overlapping spheres because no primitive could express one, which is the format's limit correctly worked around and then **not revisited when the limit moved**. See Amendment 50 for what that cost. |
 
 ### Licensing (§20)
 
@@ -2339,14 +2468,14 @@ in a table.
 | `RND-1` | Rendering is an engine capability, not a shell feature. Einzel.Render sits below the shell; the figure composer and einzel render are peer consumers of ... | **Met** | `Einzel.Render` sits below any shell and draws headlessly on the Linux CI runner with no display, window manager or font server. **And the conductor surfaces now leave the program**: the surface-nets extraction was headless, tested on Linux, and consumed only by the Windows viewport, so the artifact that lets an external renderer draw a three-dimensional geometry needed the shell - invariant 1 pointing the wrong way. `einzel export --mesh` writes them as OBJ, one named object per electrode. Building it found the sub-cell failure returning through the *electrode's own aspect ratio*: a 4 x 635 mm stripe meshes to nothing at 48 cells across its longest span, and resolving by the thinnest instead gives 1.16 M triangles and a 77 MB file. Per-axis now; bit-identical on an isotropic shape. |
 | `RND-2` | A render spec is text , lives in figures/ , and is versioned with the model. The figure in a paper is regenerable from the repository rather than being a ... | **Met** | A render spec is text in `figures/`, versioned with the model. |
 | `RND-3` | 2D sections and orthographic projections emit SVG and PDF , through a geometric projection pipeline that produces paths rather than pixels. This is a ... | **Met** | SVG and PDF from a path pipeline. Both writers are hand-authored; a test walks every PDF cross-reference offset. |
-| `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | Not built | No raster path at all, so neither shaded 3D nor `render still`. Section 23 leaves open whether hidden-line vector output is worth building. |
+| `RND-4` | Shaded 3D perspective is raster. Hidden-surface vector output is a deep rabbit hole with poor payoff. Schematic 3D with hidden-line removal may be added ... | **Met, orthographic** | `einzel render still` draws a shaded 3D raster to PNG, headlessly, and it is **the viewport's picture**: the scene, colors, layers, translucency, lighting and camera come from the same `ViewportPicture` and `Framing` the window draws from, and only the rasterization differs - a managed rasterizer with a depth buffer and supersampling, no GPU, no dependency. Orthographic rather than perspective, because the viewport is, for the reason recorded against it. Provenance and every warning ride in the PNG's text chunks; a validity violation hatches the bottom of the picture. Checked on the Linux runner: both mirrors of the planar pair land at the pixels the camera predicts. Section 23 still leaves open whether hidden-line vector output is worth building. See Amendment 54. |
 | `RND-5` | Trajectories are decimated with a stated geometric tolerance ( | **Met** | Stated and measured, and the point-to-segment distance is clamped - a reflectron is why. |
 | `RND-6` | Text stays text. Labels, dimensions, and axis annotations are selectable and editable in the output, so a figure can be relabelled for a different venue ... | **Met** | Labels are text runs in both SVG and PDF, asserted in both. |
 | `RND-7` | ), scrubbing, and frame export. Model tree with parameter editing, live validation, units on every field, template instantiation. Sequence editor : the ... | **Met** | Both halves, and neither is optional in the interface either. A mapping is declared as phases in a render spec, each naming the simulated time it runs to and the rate it plays at - and an animation can only be asked for through a spec, with no `--rate` flag, so **there is no command line that produces one without a declared mapping**. The rate is stamped on every frame in two readings (`500 ns of flight per second of playback - 2,000,000x slower than real time`), written by the renderer rather than offered as a styling option. On the shipped reflectron the turn-around is a fifth of the flight and 69% of the film. |
 | `RND-8` | Diffusive regions animate as evolving density fields , never as particles ( | **Met** | Enforced rather than stated: the renderer asks the mode and draws no trajectories when it says no. **And now draws the density instead**, which the prohibition previously left empty. |
 | `RND-9` | Native output is an image sequence. Encoding to a video container is an optional out-of-process step using a tool the user supplies. | **Met** | `render animation` writes numbered vector frames and a `frames.json` schedule, and nothing here encodes video. **That is the requirement rather than a shortfall** - and it is LIC-1's argument as much as an architectural one, since ffmpeg is exactly what would otherwise be reached for. **This row was previously registered wrong in both columns**: its requirement text was a fragment of section 15's CLI table that cites RND-9 in passing, and its evidence was DST-7's ("no video, so no external encoder to detect"), so it read as Not built while the thing it asks for had shipped. |
 | `RND-10` | Videos carry provenance visibly, as a corner stamp with engine version and model hash, in addition to container metadata. | **Met, for the artifact that exists** | There is no video container by RND-9's own design, so the artifact this governs is the frame sequence. Every frame is a `Scene`, and a `Scene` carries provenance - engine version, model hash, decimation tolerance and any active warnings - written **both** as a comment in the file and as a visible stamp on the page, which is GRD-12's rule and the reason this requirement exists: metadata nobody opens is not provenance. An animation frame additionally stamps its own flight time and the playback rate in force, which is RND-7. What is not exercised is container metadata, there being no container. |
-| `RND-11` | Preview-tier results are visually distinguishable in any rendered output ( | **Met** | A hatched rule the width of the page and a QUALIFIED line naming the code. |
+| `RND-11` | Preview-tier results are visually distinguishable in any rendered output ( | **Met** | A hatched rule the width of the page and a QUALIFIED line naming the code. **A raster still carries the band and not the line**: nothing here rasterizes text, so the codes travel in the PNG's text chunks and on stderr, and the picture is marked by a hatched strip along its bottom. Stated rather than claimed met for the still - see Amendment 54. |
 | `RND-12` | Fields, trajectories, and density clouds export to VTK/VTU. The consequence is deliberate and worth stating as a scope decision rather than leaving ... | **Met** | Fields export as `.vti`, trajectories as `.vtu`, and densities as `.vti` - the last only since the density became an output at all. |
 | `RND-13` | Gmsh MSH is supported for import and interchange, through an Einzel-authored reader and writer. GPL attaches to Gmsh's implementation, not to the format; ... | Not built | No MSH reader or writer. Phase 5. |
 | `RND-14` | MSH is interchange, never the native representation , for the reason given in §9: a mesh is already discretized and cannot carry the parametric intent ... | **Met** | Vacuously, and by design: the native representation is parametric JSON and there is no mesh path to be tempted by. |
@@ -2923,8 +3052,8 @@ project's author needs to run it and more than any physics the moment one does.
     | | model | published |
     | --- | --- | --- |
     | resolving power, mirror alone, over ±2.5 per cent | 120,000 to 220,000 | ~180,000 |
-    | drift reversal | 336.15 mm | 310-360, mean 335 |
-    | flight time | 786.44 µs | 783.2 by arithmetic at 24 reflections |
+    | drift reversal | 336.06 mm | 310-360, mean 335 |
+    | flight time | 784.90 µs on the shipped foil mesh, about 775 mesh-converged | 783.2 by arithmetic at 24 reflections |
     | on-axis potential, 16 points | 0.159 kV rms | read off the figure |
 
     Three numbers are solved rather than published - the board gap, and `U3` and `U4`, which
@@ -2942,10 +3071,15 @@ project's author needs to run it and more than any physics the moment one does.
     - **The geometry had to be measured out of a figure**, and the platform had no way to
       say so. That is now Amendment 40 and it is built: a parameter declares a `provenance`
       and a `source`, and the shipped template carries them — **3 published, 13 drawn,
-      18 fitted, 28 chosen**, so which results would move if a better source turned up is a
+      18 fitted, 29 chosen**, so which results would move if a better source turned up is a
       question the document answers rather than one its prose does.
     - **A grounded domain edge is a third electrode**, met again here: the edge behind a flat
       electrode moved `c3` by 0.17 on its own.
+    - **The flight-time agreement is a percent, not four tenths of one** (Amendment 55). Three
+      foil faces sat on nodes, which made the shipped figure a coin toss at 0.27 percent;
+      moved off them, where the foil mesh sits still spans 0.83 percent at the shipped 4 mm
+      cell and 0.22 at 2 mm, and the mesh-converged flight time is about 775 µs against 783.2.
+      Still inside the register test's 2 percent, and still clear of K = 25.
     - **Two measurement floors bound any further work.** Flight-time differencing floors the
       drift coefficients at ±0.02 whatever the mesh, because it is a 330 ns signal on a 3 µs
       error that only 60 per cent cancels; a quadrature screen over per-slice basis wells

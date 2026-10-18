@@ -541,7 +541,7 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         if (!outcome.ProducesTrajectories)
         {
             var geometry3 = outcome.Conductors.Count > 0
-                ? $"{outcome.Conductors.Count} electrodes, "
+                ? $"{outcome.ElectrodeCount()} electrodes, "
                 : string.Empty;
 
             if (outcome.Density.Count == 0)
@@ -564,7 +564,7 @@ public sealed class ViewportViewModel : INotifyPropertyChanged
         }
 
         var geometry = outcome.Conductors.Count > 0
-            ? $"{outcome.Conductors.Count} electrodes, "
+            ? $"{outcome.ElectrodeCount()} electrodes, "
             : string.Empty;
 
         var fates = outcome.Trajectories

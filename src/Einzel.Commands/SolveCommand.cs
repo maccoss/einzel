@@ -22,7 +22,7 @@ public sealed record SolvedElement
     /// </remarks>
     public int Channel { get; init; }
 
-    /// <summary>Node counts, x then y.</summary>
+    /// <summary>Node counts, one per axis: x then y, then z for a volume.</summary>
     public required IReadOnlyList<int> Nodes { get; init; }
 
     /// <summary>Node spacing along each axis, in millimetres.</summary>
@@ -104,6 +104,16 @@ public sealed record SolveOutcome
     /// <summary>Wall-clock milliseconds spent solving.</summary>
     public required double ElapsedMs { get; init; }
 
+    /// <summary>What the solves found wrong with their meshes, once per field element.</summary>
+    /// <remarks>
+    /// This verb reported residuals and nothing else, so a geometry whose mesh put nodes on
+    /// a face two disagreeing conductors share came back converged and clean from the one
+    /// command whose job is to say how the discretization went (GRD-2). Once per element
+    /// rather than per channel: every channel of an element solves on the same mesh round
+    /// the same conductors, so the finding is the element's.
+    /// </remarks>
+    public IReadOnlyList<Core.Results.ValidityWarning> Warnings { get; init; } = [];
+
     /// <summary>Whether every element converged.</summary>
     /// <remarks>
     /// False for a model with nothing to solve, rather than vacuously true. An
@@ -150,12 +160,22 @@ public static class SolveCommand
 
         if (!validation.IsValid)
         {
-            throw new Core.Errors.EinzelException(validation.Errors[0]);
+            throw new Core.Errors.EinzelException(validation.Errors);
         }
 
         var model = validation.Model!;
         var elements = new List<SolvedElement>();
+        var warnings = new List<Core.Results.ValidityWarning>();
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        // The first channel's, since every channel of an element carries the same finding.
+        void Note(int index, string kind, IReadOnlyList<Core.Results.ValidityWarning> found)
+        {
+            foreach (var warning in found)
+            {
+                warnings.Add(warning with { Message = $"field element {index} ({kind}): {warning.Message}" });
+            }
+        }
 
         for (var index = 0; index < model.Fields.Count; index++)
         {
@@ -185,8 +205,16 @@ public static class SolveCommand
                 };
 
                 var volume = GeometryBuilder3D.BuildGrid(geometry);
+                var volumeChannels = GeometryBuilder3D.SolveChannels(geometry);
 
-                foreach (var channel in GeometryBuilder3D.SolveChannels(geometry))
+                // Guarded as the plane path is: a driven geometry with nothing energised has no
+                // channels, and indexing the first would turn "nothing to solve" into a crash.
+                if (volumeChannels.Count > 0)
+                {
+                    Note(index, "solved3d", volumeChannels[0].Report.Warnings);
+                }
+
+                foreach (var channel in volumeChannels)
                 {
                     var volumePeak = 0.0;
 
@@ -230,7 +258,14 @@ public static class SolveCommand
             // "the field" meant reporting the DC pattern alone - which for the RF
             // quadrupole is a grounded box, and came back converged with a peak
             // potential of zero volts and exit 0.
-            foreach (var channel in GeometryBuilder.SolveChannels(solve!))
+            var planeChannels = GeometryBuilder.SolveChannels(solve!);
+
+            if (planeChannels.Count > 0)
+            {
+                Note(index, "solved2d", planeChannels[0].Report.Warnings);
+            }
+
+            foreach (var channel in planeChannels)
             {
                 var peak = 0.0;
 
@@ -287,6 +322,7 @@ public static class SolveCommand
             ModelHash = Project.ContentHash.OfText(text),
             Elements = elements,
             ElapsedMs = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            Warnings = warnings,
         };
     }
 }

@@ -259,7 +259,7 @@ public static class ResultsCommand
 
         if (run is null)
         {
-            throw new EinzelException(validation.Errors[0]);
+            throw new EinzelException(validation.Errors);
         }
 
         var figures = new Dictionary<string, MeasuredJson>(StringComparer.Ordinal);
