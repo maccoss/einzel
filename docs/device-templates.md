@@ -568,7 +568,7 @@ potential ten cells in moves by 44 percent of the cap's, and the ion is never
 reflected to the detector. The shipped arithmetic lands on the side with a cap, and
 the engine says so on every solve (`mesh.node-on-shared-face`). `astral-mirror` is
 built the same way. An edge profile at the cap potential is the fix, and it is
-bit-identical; it waits on its own change (SPEC.md, *What to do next*, item 10).
+bit-identical; it waits on its own change (SPEC.md, *What to do next*, item 11).
 
 One consequence of solving rather than assuming, worth stating because a design
 that missed it would be designing a mirror it does not have: **the applied stripe

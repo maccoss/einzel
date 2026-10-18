@@ -283,9 +283,12 @@ public sealed class GroundedFaceNodeTests(ITestOutputHelper output)
 
         Assert.Null(GeometryBuilder.NodesOnSharedFaces(crossing, grid));
 
-        var free = GeometryBuilder.SolveChannels(Mirrored(Half - nudge)).Single();
+        var nudged = Mirrored(Half - nudge);
+        var free = GeometryBuilder.SolveChannels(nudged).Single();
 
-        Assert.False(free.Mask.IsFixed(16, 6));
+        // A channel carries its mask's counts and not the mask, so the mask is built again
+        // here - the same declaration on the same grid, so the same mask.
+        Assert.False(GeometryBuilder.BuildMask(nudged, GeometryBuilder.BuildGrid(nudged)).IsFixed(16, 6));
         Assert.InRange(free.Potential[16, 6], 99.0, 100.0);
 
         output.WriteLine(
