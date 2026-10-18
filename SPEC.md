@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,581 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,619 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -3320,16 +3320,22 @@ project's author needs to run it and more than any physics the moment one does.
      rediscretized one to about 50 - the Astral at 1 mm to roughly 10 GiB. The stencil reads an
      arm per node per sweep, so the representation has to stay cheap to index; that is the
      design question, not the saving.
-   - **The 64 M-node limit wants restating when `fix/grid-too-large-is-a-refusal` lands.** At the
-     true cost it is 14.3 GiB, ten times the message `main` prints, and memory is a property of
-     the machine rather than the document, so validation should refuse only what the code cannot
-     index (about 358 M nodes, `node * 6` in an `int`). The estimate now carries the machine
-     comparison. Recorded in `docs/cli.md`; not changed, because it would collide with that branch.
-   - **Mask assembly allocates heavily on curved and polygonal primitives**, measured as
-     allocation and not yet as time: building a mask allocates 61 kB a node on the C-trap's
-     revolved rods, 4.2 kB on the linear ion trap's prisms and 289 bytes on the Astral, against
-     the 105 the mask keeps. The garbage is transient, so it does not move the peak; whether it
-     dominates a build's wall clock is the measurement to make first.
+   - **The 64 M-node limit wants restating, and the branch it waited on has landed** (#48, as
+     `VolumeMesh.MaximumNodes`). At the true cost it is 14.3 GiB, ten times what its message
+     says, and memory is a property of the machine rather than the document, so validation
+     should refuse only what the code cannot index (about 358 M nodes, `node * 6` in an `int`).
+     The estimate now carries the machine comparison. Recorded in `docs/cli.md`; not yet changed.
+   - **Mask assembly is a sixth to a fifth of a build on curved and polygonal templates, and
+     its garbage is gone; what is left is the cut-link pass.** The 61 kB, 4.2 kB and 289 bytes
+     a node first recorded here were measured before the bounding-box cull; on `main` they were
+     5,470, 260 and 105, against the 105 the mask keeps. Timed against the real build in
+     Release: the mask is **19-22%** of the C-trap's 16 s build, 14-22% of the linear ion
+     trap's 13-15 s, and 2-5% on the Astral and the segmented quadrupole. The prism and
+     revolve entry tests now allocate nothing, with bit-identical masks on all four templates
+     at every level, and the C-trap's build fell to 14 s (mask **12-16%**) while the linear
+     ion trap's did not move: its garbage was never its cost. 84-97% of what remains is cut
+     links rather than rasterization, so the next lever is how many exact entry tests that
+     pass asks for (`docs/numerics.md`, "What building the mask costs").
 
 11. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -

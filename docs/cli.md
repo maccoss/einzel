@@ -1317,9 +1317,9 @@ if it is over.
 
 **The 64,000,000-node limit, reconsidered once the true cost was known.** `main`'s
 `ScalarField3D` refuses a grid past 64 M nodes as "about half a gigabyte per field and three
-fields to a solve", which is 1.5 GB; the pending `fix/grid-too-large-is-a-refusal` branch
-moves the same number into `VolumeMesh.MaximumNodes` and refuses it at validation, calling it
-a judgement resting on the fields alone. At 240 bytes a node a 64 M-node volume solve holds
+fields to a solve", which is 1.5 GB; `fix/grid-too-large-is-a-refusal`, pending when this was
+measured and since merged (#48), moved the same number into `VolumeMesh.MaximumNodes` and
+refuses it at validation, calling it a judgment resting on the fields alone. At 240 bytes a node a 64 M-node volume solve holds
 **14.3 GiB** live, ten times what the message says.
 
 *Conclusion: as a memory limit it is the wrong kind of rule.* Memory is a property of the
@@ -1332,8 +1332,9 @@ the limit. The recommendation for when that branch lands is to refuse at validat
 the code cannot index, and leave memory to the estimate, which now states the live peak and
 compares it with what this machine offers. Keeping 64 M is defensible as a judgement - "about
 15 GiB, a workstation's worth" - but it should say that rather than quote three fields. The
-Astral at 1 mm is 68.3 M nodes, 6.7 per cent over, and needs 15.3 GiB. Not changed here: the
-limit lives on an unmerged branch, and rewriting `main`'s message would collide with it.
+Astral at 1 mm is 68.3 M nodes, 6.7 percent over, and needs 15.3 GiB. Not changed when this
+was measured, because the limit then lived on an unmerged branch; that branch has landed, and
+restating the limit is item 10 of SPEC.md's "What to do next".
 
 ### What it excludes, stated on every estimate
 

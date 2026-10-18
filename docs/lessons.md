@@ -5216,3 +5216,26 @@ not from the account of the incident**: the account said nodes because nodes are
 talks about a mesh, and the mechanism was "the mesh samples the geometry, and a sample landed
 on a discontinuity of the boundary data" - which names nodes *and* arms. And when a
 recorded number is quoted as evidence, find out what it counted.
+
+## A cost measured on a branch describes the branch, and garbage is not time
+
+SPEC.md recorded that building a volume mask allocated **61 kB a node** on the C-trap and 4.2
+kB on the linear ion trap, against the 105 the mask keeps, beside builds of 95 s and about 200
+s that made the mask look like the thing to fix. Every one of those numbers was true of where
+it was measured and of nothing else. The branch predated the bounding-box cull, which asks each
+electrode only about the nodes near it, and on `main` the same masks allocated 5,470 and 260
+bytes a node. The 200 s build was timed under a live-set sampler forcing a full collection
+from a second thread every few milliseconds; without it the build takes 13 to 15 s.
+
+**Before acting on a recorded cost, re-measure it on the code you are about to change.** A
+number carries the conditions it was taken under - a branch, a build, an instrument attached
+to the process - and none of them travels with it into a status page.
+
+The second half is the one that would have survived re-measuring. With the garbage removed the
+C-trap's mask fell by a third to a half and the linear ion trap's did not move: a revolve
+entry test made about thirty objects per call and several times as many interface calls
+through iterators, a prism entry test one list beside a 29-edge polygon. The prism's gen0 count fell from 42 to 2
+and the clock did not notice. **Allocation is evidence of cost, not a measurement of it**;
+what decides whether removing it pays is what else the call does, and the only way to know is
+to time it - which is why the regression test holds the allocation and the documentation
+holds the time.

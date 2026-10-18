@@ -2345,6 +2345,42 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   negative past 2^63 and slipped the guard (now saturates), and the estimate's mesh note used
   its own copy of the rounding rule. `docs/lessons.md`, `docs/cli.md`.
 
+- **Mask assembly, timed: a fifth of a build on curved geometry, and the garbage was only some
+  of that.** Measuring a volume solve's memory recorded a mask allocating **61 kB a node** on
+  the C-trap's revolved rods, 4.2 kB on the linear ion trap's prisms and 289 bytes on the
+  Astral, against the 105 it keeps, and builds of 95 s and 200 s that made the mask look
+  dominant. **All of that was the branch it was measured on**: it predates the bounding-box
+  cull, and the 200 s was under a live-set sampler forcing full collections every few
+  milliseconds. On `main` the masks allocate 5,470, 260 and 105 bytes a node, and the builds
+  take 16 s and 13 to 15 s.
+
+  | | mask | build | mask's share | B/node | gen0 |
+  | --- | --- | --- | --- | --- | --- |
+  | `c-trap` 0.5 mm, before | 2.7-3.5 s | 16.1-16.3 s | 19-22% | 5,470 | 694 |
+  | after | **1.6-2.3 s** | **14.1-14.3 s** | **12-16%** | **105.1** | 1-4 |
+  | `linear-ion-trap-3d` 0.5 mm, before | 1.0-1.5 s, two channels | 13.2-14.6 s | 14-22% | 259.5 | 41-43 |
+  | after | 1.0-1.5 s | 12.6-15.2 s | 16-18% | **105.2** | 1-3 |
+  | `astral-3d` 4 mm | 0.15-0.30 s | 7.3-8.1 s | 2-4% | 105.3 | 1-2 |
+  | `segmented-quadrupole` 0.5 mm | 0.07-0.23 s | 4.6-5.0 s | 2-5% | 105.2 | 1-2 |
+
+  The garbage was two entry tests: the prism and revolve `FirstEntry` each built a
+  `List<double>` per call, and the revolve took each profile edge's roots from an iterator and
+  its cap angles from a new array. They now gather crossings into 1 KiB on the stack, or an
+  array borrowed from the shared pool for an outline too long for it, and take roots through
+  out parameters - **bit-identical masks** on all four templates, every fixed flag, value, cut
+  fraction and cut potential at every level, each electrode at its own potential so a swapped
+  winner would show. **It bought time on the revolve and none on the prism**: thirty objects
+  and many interface calls a call against one list over a 29-edge polygon, so the prism's
+  polygon was always its cost and its gen0 count fell from 42 to 2 without the clock noticing.
+  What remains is **84-97% cut links**, not rasterization, so the next lever is how many exact
+  entry tests that pass asks for. `MaskAllocationTests` holds every primitive's entry and
+  distance tests to zero bytes and a mask to what it keeps; restoring the old entry tests fails
+  both (12,588 bytes a node, 192 MB a sweep), and so does making only the borrowed-array path
+  allocate. Merging `main` into the memory branch to measure this also carried a conflict
+  worth knowing: the shared-face check read each channel's mask, which the memory work had
+  stopped keeping, so it is now asked of the first channel inside its own frame.
+  `docs/numerics.md`, "What building the mask costs".
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:
