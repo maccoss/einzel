@@ -818,38 +818,41 @@ rows, and the reason a second window is a drawing exercise rather than a capabil
 
 ### A ruler in the corner of the viewport
 
-`ScaleOverlay` draws the scale indicator over the GL control as ordinary Avalonia lines and
-text: one arm along each model axis, all the same round length, foreshortened exactly as the
-instrument is. **It decides nothing** - the length, which arms show and where they sit come
-from `ScaleIndicator.For`, laid out from the very matrix the render pass hands the GPU and the
-composed picture it is drawing (`SceneView.Picture`), which is the call `einzel render still`
-makes. So a still and the window put the same ruler in the same corner - the one the instrument
-covers least - and leave it out alike when the picture is too small to hold it
-(`docs/rendering.md` has why it is a ruler in the scene rather than a flat bar, and how the
-corner is chosen).
+`ScaleOverlay` draws the scale indicator over the GL control as ordinary Avalonia lines: one
+arm along each model axis, all the same round length, foreshortened exactly as the instrument
+is. **It decides nothing** - the length, which arms show, where they sit and the glyphs of the
+label and letters come from `ScaleIndicator.For` and `ScaleIndicator.Strokes`, laid out from the
+very matrix the render pass hands the GPU and the composed picture it is drawing
+(`SceneView.Picture`), which are the calls `einzel render still` makes. So a still and the window
+draw the same ruler, stroke for stroke, in the same corner - the one the instrument covers least
+- and leave it out alike when the picture is too small to hold it (`docs/rendering.md` has why
+it is a ruler in the scene rather than a flat bar, and how the corner is chosen).
 
-Over the GL control rather than inside it, because Avalonia draws text and the shader does
-not, and an annotation must not be hidden by the instrument; it takes no pointer input. It is
+Over the GL control rather than inside it, because an annotation must not be hidden by the
+instrument; it takes no pointer input. It is
 redrawn when the framing changes - a named view, or a watched packet growing the frame, which
 happens on the render thread and is marshalled to the UI thread - and when the window is
 resized, since the ruler is sized from the picture's smaller side.
 
-**Looked at in a live window, and the text was wrong.** Opened on five models - the einzel
-lens, the planar mirror pair, the quadrupole, the C-trap and the three-dimensional parallel-plate
-gap - and stepped through every named view, the ruler measured true (20 mm across 114 px where
-the lens's own tubes put 5.7 px to the millimeter), sat clear of the instrument in every view,
-including the plate seen face-on that the corner choice exists for, followed a resize, and
-returning to Iso gave a byte-identical frame. Against `einzel render still` at the window's own
-1020 by 761 pixels it gave the same length and corner on all five and arms on the same pixels.
-**What it did not give was the same text**: the layout's text height is the height of a digit,
-which is what the still's stroke font draws at, and the window handed that number to Avalonia
-as a font size, which is an em - about a half again taller than a digit. Every label in the
-window was two thirds the size of the same label in the still: digits 14 px tall where the
-layout asked for 20. The overlay now sizes its font from the typeface's own measured digit
-height and centers the digits rather than the line box, and the same label measures 19 px in
-the window against 20 in the still, centered on the same row. The fit check was never at risk -
-it measures the still's wider text - which is why no test noticed; a test would need a font
-rasterizer in the shell's test project, and none is there.
+**Text as strokes, because two fonts for one layout disagree.** Opened in a live window on
+five models - the einzel lens, the planar mirror pair, the quadrupole, the C-trap and the
+three-dimensional parallel-plate gap - and stepped through every named view, the ruler measured
+true (20 mm across 114 px where the lens's own tubes put 5.7 px to the millimeter), sat clear of
+the instrument in every view, including the plate seen face-on that the corner choice exists
+for, followed a resize, and returning to Iso gave a byte-identical frame on all five. Against
+`einzel render still` at the window's own 1020 by 761 pixels it gave the same length and corner
+and arms on the same pixels. **Its text was not the still's.** The layout's text height is the
+height of a digit, which is what the still's stroke font draws at, and the window set its text
+in Avalonia's own font with that number as the font size, which is an em - about a half again
+taller than a digit - so every label came out two thirds the size: digits 14 px tall where the
+layout asked for 20. Sizing the font up from its measured digit height fixed the height and,
+a review of that fix found, left the window's label about 3 percent wider than the box the
+layout reserves, which it measures from the still's glyphs. So the window no longer sets text
+at all: `ScaleIndicator.Strokes` hands out the arms, the label and the letters as one list of
+polylines, each with its width, and the window and the still both draw that list and nothing
+else. Measured live, every glyph's ink box now matches the still's to a pixel, and stills
+through the shared list are pixel-identical to stills drawn the old way on all twenty
+model-and-view pairs tried.
 
 ### Avalonia is 2-D, so the viewport is ours
 

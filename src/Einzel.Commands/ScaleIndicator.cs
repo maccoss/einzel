@@ -10,6 +10,11 @@ namespace Einzel.Commands;
 /// <param name="LetterPx">Where the axis letter is centered, just beyond the tip.</param>
 public sealed record ScaleArm(string Axis, (double X, double Y) TipPx, (double X, double Y) LetterPx);
 
+/// <summary>One stroke of a scale indicator as it is drawn: a polyline and its width.</summary>
+/// <param name="PointsPx">Consecutive x, y pairs, in pixels from the picture's top left.</param>
+/// <param name="WidthPx">The width it is stroked at, in pixels.</param>
+public sealed record ScaleStroke(IReadOnlyList<double> PointsPx, double WidthPx);
+
 /// <summary>
 /// A ruler in the corner of a picture: one arm along each model axis, all the same round
 /// length, drawn with the picture's own projection.
@@ -20,8 +25,8 @@ public sealed record ScaleArm(string Axis, (double X, double Y) TipPx, (double X
 /// <param name="Label">That length as a reader sees it, with its unit.</param>
 /// <param name="LabelPx">Where the label is centered.</param>
 /// <param name="TextPx">
-/// The height of a digit in the label, in pixels: what the layout was made for. Not a font size -
-/// an em is taller than a digit, so a consumer whose fonts are sized by em has to convert.
+/// The height of a digit in the label, in pixels: what the layout was made for. Not a font size;
+/// the text is drawn from <see cref="Strokes"/>, not set in a font.
 /// </param>
 /// <param name="Corner">Which corner it sits in: <c>lower left</c>, <c>lower right</c>,
 /// <c>upper left</c> or <c>upper right</c>.</param>
@@ -60,7 +65,12 @@ public sealed record ScaleArm(string Axis, (double X, double Y) TipPx, (double X
 /// <para>
 /// <b>Decided here, for the window and for <c>einzel render still</c> alike</b>, like every
 /// other decision about the picture (<see cref="ViewportPicture"/>): the round length, which
-/// arms show and where they sit. Each consumer only turns lines and text into its own pixels.
+/// arms show and where they sit, and <b>the glyphs themselves</b>. <see cref="Strokes"/> hands
+/// out the arms, the label and the letters as one list of polylines in the still's stroke font,
+/// and both consumers draw that list and nothing else. The window once set the text in its own
+/// font from the same numbers, and it came out two thirds the size of the still's and a little
+/// wider than the box the layout had reserved - two fonts for one layout disagree, and the fit
+/// check could only ever measure one of them.
 /// </para>
 /// </remarks>
 public sealed record ScaleIndicator(
@@ -80,6 +90,46 @@ public sealed record ScaleIndicator(
 
     /// <summary>The height of an axis letter's glyphs, in pixels, measured as <see cref="TextPx"/> is.</summary>
     public double LetterTextPx => LetterScale * TextPx;
+
+    /// <summary>Everything the ruler draws, as strokes: the arms, then the label, then the axis letters.</summary>
+    /// <returns>Polylines in pixels, each with the width it is drawn at.</returns>
+    /// <remarks>
+    /// The one list the window and the still both draw, so the two cannot disagree about a glyph's
+    /// size, shape or width. Text is in <see cref="StrokeFont"/> at <see cref="StrokeFont.StrokeWidth"/>,
+    /// the arms at <see cref="LineWidthPx"/>.
+    /// </remarks>
+    public IReadOnlyList<ScaleStroke> Strokes()
+    {
+        var (ox, oy) = OriginPx;
+        var strokes = new List<ScaleStroke>();
+
+        strokes.AddRange(Arms.Select(a => new ScaleStroke([ox, oy, a.TipPx.X, a.TipPx.Y], LineWidthPx)));
+        AddGlyphs(strokes, Label, LabelPx, TextPx);
+
+        foreach (var arm in Arms)
+        {
+            AddGlyphs(strokes, arm.Axis, arm.LetterPx, LetterTextPx);
+        }
+
+        return strokes;
+    }
+
+    private static void AddGlyphs(List<ScaleStroke> strokes, string text, (double X, double Y) center, double heightPx)
+    {
+        var width = StrokeFont.StrokeWidth(heightPx, LineWidthPx);
+        strokes.AddRange(StrokeFont.Layout(text, center.X, center.Y, heightPx).Select(s => new ScaleStroke(s, width)));
+    }
+
+    /// <summary>Where a line of text's strokes reach, as their centerlines run, about a center.</summary>
+    private static (double Left, double Top, double Right, double Bottom) Reach(
+        string text, double centerXPx, double centerYPx, double heightPx)
+    {
+        var strokes = StrokeFont.Layout(text, centerXPx, centerYPx, heightPx);
+        var xs = strokes.SelectMany(s => s.Where((_, i) => i % 2 == 0)).DefaultIfEmpty(centerXPx).ToList();
+        var ys = strokes.SelectMany(s => s.Where((_, i) => i % 2 == 1)).DefaultIfEmpty(centerYPx).ToList();
+
+        return (xs.Min(), ys.Min(), xs.Max(), ys.Max());
+    }
 
     /// <summary>The width of an arm, in pixels: the width the picture's own lines are drawn at.</summary>
     public const double LineWidthPx = 1.5;
@@ -191,22 +241,28 @@ public sealed record ScaleIndicator(
         // +z runs to the left, and a ruler anchored at its origin would draw that arm off the
         // picture. The letters count because in the angled view the x arm dips below the origin,
         // and a label placed under the arms alone sat beside that arm's letter and read as
-        // "10 mm x". The label's width is the still's own font's, which is the wider of the two
-        // consumers' fonts.
+        // "10 mm x". Each letter holds a square its own height across, and the box also reaches
+        // wherever the glyphs that are drawn reach - a descender included - since those glyphs
+        // are what both consumers draw.
         var half = 0.5 * letterPx;
-        var left = Math.Min(Math.Min(0.0, shown.Min(a => a.X)), letters.Min(l => l.X) - half);
-        var right = Math.Max(Math.Max(0.0, shown.Max(a => a.X)), letters.Max(l => l.X) + half);
-        var top = Math.Min(Math.Min(0.0, shown.Min(a => a.Y)), letters.Min(l => l.Y) - half);
-        var bottom = Math.Max(Math.Max(0.0, shown.Max(a => a.Y)), letters.Max(l => l.Y) + half);
+        var letterReach = shown.Zip(letters, (a, l) => Reach(a.Axis, l.X, l.Y, letterPx)).ToList();
+        var left = Math.Min(Math.Min(0.0, shown.Min(a => a.X)), Math.Min(letters.Min(l => l.X) - half, letterReach.Min(r => r.Left)));
+        var right = Math.Max(Math.Max(0.0, shown.Max(a => a.X)), Math.Max(letters.Max(l => l.X) + half, letterReach.Max(r => r.Right)));
+        var top = Math.Min(Math.Min(0.0, shown.Min(a => a.Y)), Math.Min(letters.Min(l => l.Y) - half, letterReach.Min(r => r.Top)));
+        var bottom = Math.Max(Math.Max(0.0, shown.Max(a => a.Y)), Math.Max(letters.Max(l => l.Y) + half, letterReach.Max(r => r.Bottom)));
 
+        // The label sits under all of that with room below it, and the box holds its glyphs too:
+        // the micro sign in "500 µm" hangs a third of a digit below the line, past the room left
+        // for digits alone.
         var label = Format(lengthMm);
         var center = (left + right) / 2.0;
         var labelHalf = 0.5 * StrokeFont.Width(label, textPx);
         var labelY = bottom + (0.9 * textPx);
+        var labelReach = Reach(label, center, labelY, textPx);
 
-        var boxLeft = Math.Min(left, center - labelHalf);
-        var boxRight = Math.Max(right, center + labelHalf);
-        var boxBottom = bottom + (1.6 * textPx);
+        var boxLeft = Math.Min(left, Math.Min(center - labelHalf, labelReach.Left));
+        var boxRight = Math.Max(right, Math.Max(center + labelHalf, labelReach.Right));
+        var boxBottom = Math.Max(bottom + (1.6 * textPx), labelReach.Bottom);
 
         var margin = Math.Max(12.0, 0.04 * Math.Min(widthPx, heightPx));
         var usable = heightPx - reserveBottomPx;
