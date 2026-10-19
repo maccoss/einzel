@@ -237,7 +237,7 @@ public static class StillCommand
             [.. ruler.Arms.Select(a => new OverlayStroke([ox, oy, a.TipPx.X, a.TipPx.Y], r, g, b))],
             [
                 new OverlayText(ruler.Label, ruler.LabelPx.X, ruler.LabelPx.Y, ruler.TextPx, r, g, b),
-                .. ruler.Arms.Select(a => new OverlayText(a.Axis, a.LetterPx.X, a.LetterPx.Y, 0.8 * ruler.TextPx, r, g, b)),
+                .. ruler.Arms.Select(a => new OverlayText(a.Axis, a.LetterPx.X, a.LetterPx.Y, ruler.LetterTextPx, r, g, b)),
             ],
             ScaleIndicator.LineWidthPx);
     }

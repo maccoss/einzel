@@ -19,7 +19,10 @@ public sealed record ScaleArm(string Axis, (double X, double Y) TipPx, (double X
 /// <param name="LengthMm">The true length of every arm, in millimeters.</param>
 /// <param name="Label">That length as a reader sees it, with its unit.</param>
 /// <param name="LabelPx">Where the label is centered.</param>
-/// <param name="TextPx">The text height the layout was made for, in pixels.</param>
+/// <param name="TextPx">
+/// The height of a digit in the label, in pixels: what the layout was made for. Not a font size -
+/// an em is taller than a digit, so a consumer whose fonts are sized by em has to convert.
+/// </param>
 /// <param name="Corner">Which corner it sits in: <c>lower left</c>, <c>lower right</c>,
 /// <c>upper left</c> or <c>upper right</c>.</param>
 /// <remarks>
@@ -72,6 +75,12 @@ public sealed record ScaleIndicator(
     /// <summary>The color the ruler and its labels are drawn in: a near-black that reads on white.</summary>
     public static readonly (double R, double G, double B) Ink = (0.20, 0.20, 0.22);
 
+    /// <summary>How tall an axis letter is, against the label's <see cref="TextPx"/>.</summary>
+    public const double LetterScale = 0.8;
+
+    /// <summary>The height of an axis letter's glyphs, in pixels, measured as <see cref="TextPx"/> is.</summary>
+    public double LetterTextPx => LetterScale * TextPx;
+
     /// <summary>The width of an arm, in pixels: the width the picture's own lines are drawn at.</summary>
     public const double LineWidthPx = 1.5;
 
@@ -89,7 +98,7 @@ public sealed record ScaleIndicator(
     /// </remarks>
     public const double HiddenBelow = 0.25;
 
-    /// <summary>The label height a picture of this size gets.</summary>
+    /// <summary>The label's digit height a picture of this size gets.</summary>
     /// <param name="widthPx">The picture's width, in pixels.</param>
     /// <param name="heightPx">The picture's height, in pixels.</param>
     /// <returns>2.6 percent of the smaller side, and never under 12 pixels.</returns>
@@ -104,7 +113,7 @@ public sealed record ScaleIndicator(
     /// <param name="matrix">Column-major 4x4 from millimeters to clip space, as the picture is drawn with.</param>
     /// <param name="widthPx">The picture's width, in pixels.</param>
     /// <param name="heightPx">The picture's height, in pixels.</param>
-    /// <param name="textPx">The height of the label text, in pixels.</param>
+    /// <param name="textPx">The height of a digit in the label, in pixels.</param>
     /// <param name="reserveBottomPx">Space at the bottom edge the ruler must stay clear of.</param>
     /// <param name="picture">
     /// The picture the ruler is drawn over, to choose the corner it covers least of; null
@@ -166,7 +175,7 @@ public sealed record ScaleIndicator(
 
         // Where each axis letter sits, just beyond its tip along the arm, relative to where
         // the arms meet.
-        var letterPx = 0.8 * textPx;
+        var letterPx = LetterScale * textPx;
         var letters = shown
             .Select(a =>
             {

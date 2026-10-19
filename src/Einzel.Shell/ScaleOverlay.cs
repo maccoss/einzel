@@ -24,6 +24,13 @@ namespace Einzel.Shell;
 /// does not, and an annotation is not part of the scene: nothing in the instrument may hide it.
 /// It takes no pointer input, so it never stands between a reader and the picture.
 /// </para>
+/// <para>
+/// <b>Text is sized by the height of a digit, as the still sizes it.</b> The layout's text
+/// height is a digit's height, which is what <c>StrokeFont</c> draws at, while a font is sized
+/// by its em, which is taller - about a half again in the default typeface. Handing the one
+/// number to the other as it stood made every label in the window about two thirds the size of
+/// the same label in a still of the same picture, which a look at the live window caught.
+/// </para>
 /// </remarks>
 public sealed class ScaleOverlay : Control
 {
@@ -80,25 +87,62 @@ public sealed class ScaleOverlay : Control
         foreach (var arm in ruler.Arms)
         {
             context.DrawLine(pen, origin, new Point(arm.TipPx.X, arm.TipPx.Y));
-            Text(context, arm.Axis, arm.LetterPx, 0.8 * ruler.TextPx, brush);
+            Text(context, arm.Axis, arm.LetterPx, ruler.LetterTextPx, brush);
         }
 
         Text(context, ruler.Label, ruler.LabelPx, ruler.TextPx, brush);
     }
 
-    /// <summary>A line of text centered on a point, as the layout placed it.</summary>
-    private static void Text(DrawingContext context, string text, (double X, double Y) center, double size, IBrush brush)
+    /// <summary>
+    /// A line of text whose digits are <paramref name="digitPx"/> tall, centered on a point as the
+    /// layout placed it.
+    /// </summary>
+    /// <remarks>
+    /// Centered on the digits rather than on the line box, as the still centers it: a line box
+    /// carries the font's ascent and descent, which sit unevenly about the digits, so centering
+    /// the box would drop the label below where the layout put it.
+    /// </remarks>
+    private static void Text(DrawingContext context, string text, (double X, double Y) center, double digitPx, IBrush brush)
     {
+        var (perEm, topPerEm) = DigitMetrics.Value;
+        var em = digitPx / perEm;
         var formatted = new FormattedText(
             text,
             CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight,
             Typeface.Default,
-            size,
+            em,
             brush);
 
-        context.DrawText(formatted, new Point(center.X - (formatted.Width / 2.0), center.Y - (formatted.Height / 2.0)));
+        var top = center.Y - (0.5 * digitPx) - (topPerEm * em);
+        context.DrawText(formatted, new Point(center.X - (formatted.Width / 2.0), top));
     }
+
+    /// <summary>
+    /// How tall the default typeface's digits are, and how far below the top of the line box they
+    /// start, both per unit of em.
+    /// </summary>
+    /// <remarks>
+    /// Measured from the glyphs' own outline rather than read from the font's metrics, which
+    /// carry an ascent and a descent but no digit height. Measured once: the typeface does not
+    /// change while the window is open.
+    /// </remarks>
+    private static readonly Lazy<(double PerEm, double TopPerEm)> DigitMetrics = new(() =>
+    {
+        const double em = 100.0;
+        var digits = new FormattedText(
+            "0123456789",
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            Typeface.Default,
+            em,
+            Brushes.Black);
+
+        var bounds = digits.BuildGeometry(default)?.Bounds;
+
+        // A typeface that cannot outline its digits is drawn with the em taken as the digit height.
+        return bounds is { Height: > 0.0 } b ? (b.Height / em, b.Top / em) : (1.0, 0.0);
+    });
 
     private static byte Byte(double value) => (byte)Math.Clamp((int)Math.Round(value * 255.0), 0, 255);
 }

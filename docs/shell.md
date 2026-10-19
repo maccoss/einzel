@@ -834,10 +834,22 @@ redrawn when the framing changes - a named view, or a watched packet growing the
 happens on the render thread and is marshalled to the UI thread - and when the window is
 resized, since the ruler is sized from the picture's smaller side.
 
-**Not looked at in a live window yet.** Everything it draws is decided and tested in the
-command layer and drawn identically in the still; what the control adds is a handful of
-`DrawLine` and `DrawText` calls, and opening a window on somebody's desktop to look at it was not
-done unasked.
+**Looked at in a live window, and the text was wrong.** Opened on five models - the einzel
+lens, the planar mirror pair, the quadrupole, the C-trap and the three-dimensional parallel-plate
+gap - and stepped through every named view, the ruler measured true (20 mm across 114 px where
+the lens's own tubes put 5.7 px to the millimeter), sat clear of the instrument in every view,
+including the plate seen face-on that the corner choice exists for, followed a resize, and
+returning to Iso gave a byte-identical frame. Against `einzel render still` at the window's own
+1020 by 761 pixels it gave the same length and corner on all five and arms on the same pixels.
+**What it did not give was the same text**: the layout's text height is the height of a digit,
+which is what the still's stroke font draws at, and the window handed that number to Avalonia
+as a font size, which is an em - about a half again taller than a digit. Every label in the
+window was two thirds the size of the same label in the still: digits 14 px tall where the
+layout asked for 20. The overlay now sizes its font from the typeface's own measured digit
+height and centers the digits rather than the line box, and the same label measures 19 px in
+the window against 20 in the still, centered on the same row. The fit check was never at risk -
+it measures the still's wider text - which is why no test noticed; a test would need a font
+rasterizer in the shell's test project, and none is there.
 
 ### Avalonia is 2-D, so the viewport is ours
 
