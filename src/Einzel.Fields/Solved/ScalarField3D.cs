@@ -8,23 +8,20 @@ public sealed class ScalarField3D
     /// <summary>Creates a field of zeros.</summary>
     /// <param name="grid">The grid.</param>
     /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">The grid has more nodes than an array can hold.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The grid has more nodes than a volume solve may hold; see
+    /// <see cref="Core.Errors.ErrorCodes.GridTooLarge"/>.
+    /// </exception>
     public ScalarField3D(Grid3D grid)
     {
         ArgumentNullException.ThrowIfNull(grid);
 
-        // A 3D grid runs out of address space long before it runs out of patience:
-        // 1024 cubed is a billion nodes and eight gigabytes for one field, and a
-        // solve needs three. Refused here with the number, rather than as an
-        // out-of-memory somewhere further in.
-        if (grid.NodeCount > 64_000_000)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(grid),
-                grid.NodeCount,
-                $"a {grid.CountX} by {grid.CountY} by {grid.CountZ} grid is {grid.NodeCount:N0} nodes, "
-                + "about half a gigabyte per field and three fields to a solve; coarsen it or shrink the domain");
-        }
+        // A 3D grid runs out of address space long before it runs out of patience: 1024
+        // cubed is a billion nodes and eight gigabytes for one field. Refused with the
+        // number rather than as an out-of-memory somewhere further in - and as a refusal
+        // about the model, which is what it is, rather than as an argument exception the
+        // CLI can only report as a defect in the engine.
+        grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
         _values = new double[grid.NodeCount];

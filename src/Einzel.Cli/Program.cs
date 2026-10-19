@@ -34,7 +34,13 @@ public static class Program
         }
         catch (EinzelException failure)
         {
-            Console.Error.WriteLine(failure.Error.ToString());
+            // Every error, not the first: a command that validated on its way to something
+            // else found them all, and a caller fixing one per round trip is a caller who was
+            // told less than the platform knew.
+            foreach (var error in failure.Errors)
+            {
+                Console.Error.WriteLine(error.ToString());
+            }
 
             // CLI-3 wants a distinct exit code per failure class, and the class is
             // in the error rather than in how it reached here. A regime violation
@@ -843,6 +849,8 @@ public static class Program
         // GRD-8 asks for a *configurable* threshold and it was a constant. Somebody who
         // knows their study is worth an hour needs a way to say so; without one the
         // observed response was to make the study smaller.
+        var threshold = EstimateCommand.ThresholdSeconds;
+
         if (options.Value("threshold") is { } declared)
         {
             if (!double.TryParse(
@@ -855,7 +863,7 @@ public static class Program
                 return (int)ExitCode.ValidationFailure;
             }
 
-            EstimateCommand.Threshold = seconds;
+            threshold = seconds;
         }
 
         // Calibration is on unless refused: an estimate is worth having about the
@@ -868,8 +876,8 @@ public static class Program
         // disagree - the cost of getting that wrong is a plan short by a factor of
         // the evaluation count.
         var outcome = IsStudy(path)
-            ? EstimateCommand.ForStudy(path, calibrate)
-            : EstimateCommand.Execute(path, calibrate);
+            ? EstimateCommand.ForStudy(path, calibrate, threshold)
+            : EstimateCommand.Execute(path, calibrate, threshold);
 
         if (options.Has("json"))
         {
@@ -889,7 +897,7 @@ public static class Program
 
             Console.Out.WriteLine(string.Create(
                 invariant,
-                $"field {element.Index}  {element.Type,-14} {size,-12} {element.Seconds,8:F2} s  {element.MemoryMiB,7:F1} MiB"));
+                $"field {element.Index}  {element.Type,-14} {size,-12} {element.Seconds,8:F2} s  {EstimateCommand.MemorySize(element.MemoryMiB),11}"));
         }
 
         if (outcome.Study is { } study)
@@ -907,7 +915,7 @@ public static class Program
         }
 
         Console.Out.WriteLine(string.Create(
-            invariant, $"total         {EstimateCommand.Duration(outcome.Seconds)}, peak {outcome.MemoryMiB:F1} MiB"));
+            invariant, $"total         {EstimateCommand.Duration(outcome.Seconds)}, peak {EstimateCommand.MemorySize(outcome.MemoryMiB)}"));
 
         Console.Out.WriteLine();
         Console.Out.WriteLine($"basis: {outcome.Basis}");
@@ -953,20 +961,41 @@ public static class Program
 
         var invariant = CultureInfo.InvariantCulture;
 
-        if (outcome.Elements.Count == 0)
-        {
-            Console.Out.WriteLine("no solved field elements in this model; nothing to solve");
-            return (int)ExitCode.Success;
-        }
+        // No empty case to print: SolveCommand refuses a model with nothing to solve
+        // rather than returning an empty list, and a branch here answering exit 0 for
+        // one would disagree with --json, whose Converged is false over no elements.
+
+        // A driven element is one solve per basis channel, and --json says which is
+        // which. Here each channel prints its own block, so without its number two
+        // channels of one element read as the same solve printed twice, and a
+        // "did not converge" cannot say which spatial pattern failed. The number is
+        // the one --json carries, counted from zero. A static element has a single
+        // channel and prints no number, since there is nothing to tell apart.
+        var channels = outcome.Elements
+            .GroupBy(e => e.Index)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         foreach (var element in outcome.Elements)
         {
-            var shape = element.SquareCells ? "square" : "stretched";
+            var label = channels[element.Index] > 1
+                ? string.Create(invariant, $"field {element.Index} channel {element.Channel}")
+                : string.Create(invariant, $"field {element.Index}");
+
+            var shape = !element.SquareCells ? "stretched"
+                : element.Dimensions == 3 ? "cubic"
+                : "square";
+
+            // Every axis the element has, not the first two. A volume printed as its
+            // x and y alone reads as a plane: a 257x17x257 solve reported as 257x17
+            // understates the node count by the whole third axis, and drops the z
+            // spacing that says whether the cells are the size that was asked for.
+            var nodes = string.Join("x", element.Nodes.Select(n => n.ToString(invariant)));
+            var spacing = string.Join(
+                " x ", element.SpacingMm.Select(s => s.ToString("F4", invariant)));
 
             Console.Out.WriteLine(string.Create(
                 invariant,
-                $"field {element.Index}  {element.Nodes[0]}x{element.Nodes[1]} at "
-                + $"{element.SpacingMm[0]:F4} x {element.SpacingMm[1]:F4} mm ({shape})"));
+                $"{label}  {nodes} at {spacing} mm ({shape})"));
 
             Console.Out.WriteLine(string.Create(
                 invariant,
@@ -996,7 +1025,7 @@ public static class Program
 
             if (!element.Converged)
             {
-                Console.Error.WriteLine($"field {element.Index} did not converge");
+                Console.Error.WriteLine($"{label} did not converge");
             }
         }
 
@@ -1436,13 +1465,12 @@ public static class Program
     }
 
     /// <summary>
-    /// Draws a model, headlessly, into vector files.
+    /// Draws a model, headlessly: vector sections and animations, and raster stills.
     /// </summary>
     /// <remarks>
-    /// Sections and animations. <c>still</c> is a raster projection and nothing in this
-    /// build rasterises; it is named here and refused with a reason rather than left to
-    /// fail as an unknown verb, because "not built yet" and "you spelled it wrong" are
-    /// different problems and an agent should not have to guess which it hit.
+    /// <c>still</c> was named here and refused for as long as nothing rasterized, because
+    /// "not built yet" and "you spelled it wrong" are different problems. It is built now,
+    /// and it draws what the interactive viewport draws.
     /// </remarks>
     private static int Render(string[] args, CommandLine options)
     {
@@ -1450,14 +1478,7 @@ public static class Program
 
         if (kind is "still")
         {
-            Console.Error.WriteLine(
-                "'einzel render still' is not built yet. Vector output is: "
-                + "'einzel render section <model.json>' or 'einzel render animation <spec.json>'.");
-
-            Console.Error.WriteLine(
-                "A still is a raster projection; nothing in this build rasterises.");
-
-            return (int)ExitCode.ValidationFailure;
+            return Still(options);
         }
 
         if (kind is "animation")
@@ -1557,6 +1578,115 @@ public static class Program
 
         return (int)ExitCode.Success;
     }
+
+    /// <summary>Draws a model to a PNG, as the interactive viewport would show it.</summary>
+    /// <remarks>
+    /// <para>
+    /// The pixel sizes carry their unit in the flag's name, the way <c>--width-mm</c> and
+    /// <c>--at-us</c> do: a bare <c>--width</c> beside a section's millimetres would be one
+    /// word meaning two things in one verb.
+    /// </para>
+    /// <para>
+    /// Warnings go to stderr (CLI-2) and into the PNG itself (GRD-2), and a validity
+    /// violation also puts a hatched band across the bottom of the picture (RND-11).
+    /// </para>
+    /// </remarks>
+    private static int Still(CommandLine options)
+    {
+        var positional = options.Positional.Skip(1).ToList();
+
+        if (positional.Count == 0)
+        {
+            Console.Error.WriteLine(
+                "usage: einzel render still <model.json> [--out <file.png>] "
+                + "[--view " + string.Join("|", ViewportPicture.Views.Keys) + "]");
+            Console.Error.WriteLine(
+                "       [--width-px N] [--height-px N] [--see-through] [--dry-run] [--json]");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var modelPath = positional[0];
+        var view = options.Value("view") ?? "iso";
+
+        if (!ViewportPicture.Views.ContainsKey(view))
+        {
+            Console.Error.WriteLine(
+                $"no view named '{view}'; the named views are "
+                + string.Join(", ", ViewportPicture.Views.Keys));
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        // TryParse rather than Parse: a typo such as "1600px" is the caller's mistake, and
+        // Parse would throw it through to the handler for defects in the engine, exit 6.
+        int? Pixels(string flag, int otherwise)
+        {
+            if (options.Value(flag) is not { } given)
+            {
+                return otherwise;
+            }
+
+            if (int.TryParse(given, System.Globalization.NumberStyles.None, CultureInfo.InvariantCulture, out var pixels))
+            {
+                return pixels;
+            }
+
+            Console.Error.WriteLine($"--{flag} '{given}' is not a whole number of pixels; a still is between 16 and 8192 pixels on each side");
+
+            return null;
+        }
+
+        if (Pixels("width-px", 1600) is not { } width || Pixels("height-px", 1000) is not { } height)
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (width is < 16 or > 8192 || height is < 16 or > 8192)
+        {
+            Console.Error.WriteLine("a still is between 16 and 8192 pixels on each side");
+
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+
+        var outcome = StillCommand.Execute(
+            modelPath,
+            new ProjectLayout(root),
+            view,
+            width,
+            height,
+            options.Has("see-through"),
+            options.Value("out"),
+            options.Has("dry-run"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(outcome.Written ? $"wrote {outcome.Artifact}" : $"would write {outcome.Artifact}");
+
+        Console.Out.WriteLine(
+            $"{outcome.Width} by {outcome.Height} px, {outcome.View} view"
+            + (outcome.SeeThrough ? ", conductors translucent" : string.Empty)
+            + $"; {outcome.Electrodes} electrodes, {outcome.FieldLevels} equipotential levels, "
+            + $"{outcome.Trajectories} trajectories, {outcome.DensityShells} density contours"
+            + (outcome.Tainted ? "; marked with a hatched band for a validity violation" : string.Empty));
+
+        // GRD-2: onto stderr, so a warning is not lost in a pipe that keeps stdout.
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
+
+    /// <summary>
+    /// Draws a flight as a numbered sequence of vector frames (RND-7).
+    /// </summary>
 
     /// <summary>
     /// Draws a flight as a numbered sequence of vector frames (RND-7).

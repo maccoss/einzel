@@ -115,7 +115,7 @@ public static class RenderCommand
 
         if (!validation.IsValid)
         {
-            throw new EinzelException(validation.Errors[0]);
+            throw new EinzelException(validation.Errors);
         }
 
         var hash = ContentHash.OfText(text);
@@ -465,7 +465,7 @@ public static class RenderCommand
 
         if (!validation.IsValid)
         {
-            throw new EinzelException(validation.Errors[0]);
+            throw new EinzelException(validation.Errors);
         }
 
         var hash = ContentHash.OfText(text);

@@ -8,4 +8,8 @@
     </Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Einzel.Core.Tests" />
+  </ItemGroup>
+
 </Project>

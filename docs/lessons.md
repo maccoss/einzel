@@ -73,6 +73,85 @@ Guards written from first principles rather than from a requirement are worth
 re-reading when a new requirement arrives, because the argument that justified them
 is usually still true and still outweighed.
 
+## A refusal about the model, thrown as an argument exception, is reported as a defect in the engine
+
+The shipped Astral with its volume solve at a 1 mm cell is 1025 x 65 x 1025 = 68.3 M nodes
+against a 64 M limit. `validate` said OK, `estimate` priced it at 35 minutes, and `run`
+spent more than five minutes and several gigabytes before printing `INTERNAL_ERROR:
+ArgumentOutOfRangeException ... coarsen it or shrink the domain` above "This is a defect in
+einzel, not in your model", on exit code 6. The message was right. Everything around it was
+wrong, and there were four separate mistakes in one guard.
+
+**The exception type decides the whole presentation.** `ArgumentOutOfRangeException` is the
+natural spelling in a constructor, and at the process boundary an unrecognised exception can
+only be a defect - that is what the catch-all is for. So a limit a *document* can exceed is a
+refusal about the document: an `EinzelException` with a code a caller branches on, and it
+belongs where the document is read. The second time this exact shape has happened here, after
+Amendment 15's "a peak needs at least two arrivals", which also made a run report *itself* as
+broken.
+
+**The guard ran after the cost it guarded against.** It sat in `ScalarField3D`, and a solve
+builds its conductor mask first - `DirichletMask3D` and `CutLinks3D`, 105 bytes a node against
+a field's eight. Measured by moving the guard back: refusing a single-sphere geometry at the
+Astral's mesh became a **3.5 minute** test run, build included; with the guard on the mask it is
+refused having allocated under a megabyte, which is what the test asserts. A resource guard
+belongs at the *first* allocation, not at the one whose type sounds like the resource.
+
+**Three verbs had three answers to one question.** `validate` never counted nodes, `estimate`
+counted them and priced them, and only the solver refused - and the mesh is arithmetic on the
+document, so all three could have known. The same vacuous clean bill of health as `solve`
+answering `converged: true` over nothing, and a source inside an electrode validating: **a
+refusal that is computable from the document and is not made by validation is a refusal made
+too late**. One constant in `Einzel.Core`, read by the validator and the solver's backstop, and
+`estimate` validates first, so it cannot drift.
+
+**And the suggestion needed its own care, in two directions.** The finest fitting cell size
+sits exactly on a power-of-two boundary. Three significant figures rounded 1.46484 mm up to
+1.47 mm, which also crossed the *other* axis's boundary at 1.46875 mm, so the suggestion named a mesh
+with half the nodes while calling it the finest that fits - the opposite of the estimate's own
+earlier trap, where twice the spacing landed *on* the boundary and changed nothing. And an exact
+decimal is not safe either: over a box from -1.5 to 20.5 mm, 2.75 mm is the eight-interval
+boundary, and converted through `mm` it gives 8.000000000000002 intervals - sixteen, the refused
+mesh. That case was found by searching boxes for one, not by thinking about it. **A number
+printed for a person to type back into a step function has to be checked after the round trip
+through its own text and its own unit.**
+
+A fifth thing came out underneath: `Grid3D` doubled an `int` interval count, which for a
+picometer cell wrapped to zero and never returned. Harmless while only a solve called it; a
+validator that counts nodes calls it on every document. **A function safe for its one caller
+stops being safe when it is moved to where everything calls it.**
+
+**And the test written for it broke a test in another class.** It passed `--threshold 1e12`
+to `estimate`, and the threshold is process-wide: the CLI tests drive `Program.Main` in one
+process, so `CostGateTests`' refusal test, running later, inherited a cost gate of ten to the
+twelve seconds and exited 0. That class resets the threshold in its own `Dispose` and says why,
+which is a convention every caller has to remember - and the next caller, me, did not. My first
+fix restored it however the invocation ended, which a review rightly called a patch on a global:
+it fixed the one caller and left the setting for the next. It is a parameter now. **A
+per-invocation choice belongs in the invocation's arguments; a process-wide setting that one
+call moves is a setting every other call has to defend against.**
+
+### And a review of the fix found the fix's own crash
+
+Moving the mesh arithmetic into validation is what made it correct, and also what exposed it
+to documents it had never met. A derived cell size or bound can be NaN - a division by a
+parameter set to zero, the square root of a negative ratio - and every comparison with NaN is
+false, so `cell <= 0.0` and `max <= min` let it straight through. Before, the solver's own
+argument check caught it at `run`; now the validator's mesh count threw from inside
+`validate`, so the command whose job is to report what is wrong with a model printed
+`INTERNAL_ERROR` instead. Infinity was quieter: it passed every check and solved on two
+intervals an axis. **A check moved earlier meets every input the later stage never saw, and
+the inputs a later guard used to filter now arrive unfiltered. And `x <= 0` is not a
+positivity check: `!(x > 0)` is, and a finite value is a separate question.**
+
+The same review found three smaller things with one shape - each was the fix disagreeing with
+something near it. The space-charge warning still advised grids of 1024 across that the new
+validation refuses. `estimate`, like eleven other call sites, reported only the first
+validation error, so a refused mesh could hide behind an earlier mistake. And `estimate`'s
+mesh note kept its own copy of the rounding rule, with a different minimum, a few hundred lines
+from the shared one it now uses. **After adding a limit, ask what else names a quantity that
+limit applies to**; advice, reports and restatements do not update themselves.
+
 ## A confinement test on a geometry that cannot confine
 
 Checking that a driven geometry in a diffusive phase gets the *cycle-averaged* field
@@ -5009,6 +5088,64 @@ name which device.** Every slot parameter now says whether it is the prototype's
 released instrument's, and the prototype is one override away rather than lost.
 
 
+
+## A memory figure written from a list of fields, and the geometry it left out
+
+`einzel estimate` billed every solve 48 bytes a node, from a comment naming what the solver
+allocates: potential, right-hand side, residual, "and the correction and restriction buffers
+down the V-cycle hierarchy". Nothing measured it, and it was a fifth of what a volume solve
+holds. Sampling the live set through real builds - a full collection forced from a second
+thread every few milliseconds, keeping the largest - gives **240 bytes a node** on the Galerkin
+hierarchy, 142 on the rediscretized one, and 143 to 150 for a plane solve.
+
+**The fields the comment listed are 24 of the 240.** The largest terms are the geometry: a
+conductor mask (9 bytes a node) and six cut-link arms of two doubles each (96), allocated in
+full although about 4 per cent of the arms are cut. The Galerkin hierarchy then stores the fine
+operator as eight doubles a node and forms its first coarse level from it with three scratch
+arrays over the fine grid - 64, 20 and 27 more, all live at once at the peak. **A list of what
+a solver allocates, written by someone thinking about the numerics, lists the numerics.** The
+Astral at a 1 mm cell was billed 3.1 GiB and needs 15.3.
+
+Two checks said the live set was the right quantity. Under a hard heap limit the Astral at 4 mm
+completed at 279 MiB and ran out at 275, against a sampled live peak of 259 - so the collector
+gives back its garbage when it must, and the live set plus a few per cent is the floor. And
+with memory to spare the same build's heap reached 390 bytes a node, because the collector
+frees large arrays lazily. **What has to fit is the live set; what a process shows is higher
+and depends on the machine**, so the estimate states the first and says the second is higher.
+
+The statement now lives beside the arrays (`SolveMemoryModel`), one named term per array, and
+a test measures a real build against it as a slope between two meshes, so the runtime's fixed
+cost cancels. The band is 0.90 to 1.02: tight above, because an estimate that runs under is
+discovered by the run failing, and one extra field is 3.3 per cent - a mutation adding one
+fails both volume tests.
+
+
+## A method run once keeps every temporary it ever made
+
+A driven volume geometry is solved one basis channel at a time, and each channel should keep
+only its potential. The linear ion trap, two channels, measured **353.7 bytes a node** at its
+peak against 248. The first cause was ordinary: the loop kept each finished channel's mask in
+the record it returned, 105 bytes a node, to report two integers. Replacing the mask with its
+counts took it to **344.7** - nine bytes, which is the mask's own flags and values, and not the
+96 of cut links hanging off it.
+
+The cut links were held by **a temporary with no name**. The record was built as
+`new ChannelSolve(index, mask.FixedCount, mask.Cuts?.CutCount ?? 0, ...)`, and the null check
+puts `mask.Cuts` into a stack slot. A method called once runs as first-tier JIT code, and
+first-tier code reports every such slot live until it is reused or the method returns - so the
+previous channel's cut links stayed reachable through the whole of the next channel's solve.
+Moving the loop body into a method of its own, so the slot dies with the frame, gave **248.2**
+against 248 predicted.
+
+Three things generalise. **Setting a local to null does not reach it**, because the reference
+is not in the local. **A test in Debug sees it and a benchmark in a hot loop does not**: the
+channel loop runs twice, never tiers up, and behaves in production exactly as it does
+unoptimized - which is the regime to measure a one-shot build in. And the fix is structural
+rather than clever: **when a loop body allocates something large that must not outlive the
+iteration, give the body a frame of its own.** The test for it compares a two-channel build
+with the same geometry undriven; putting the inline loop back makes the second channel cost
+102.8 bytes a node against a limit of 30.
+
 ## A node on a face two conductors share is decided by rounding, and no refinement ladder can see it
 
 `astral-3d`'s foil is sixteen slices at sixteen potentials, sharing a face every 28.125 mm,
@@ -5080,6 +5217,87 @@ talks about a mesh, and the mechanism was "the mesh samples the geometry, and a 
 on a discontinuity of the boundary data" - which names nodes *and* arms. And when a
 recorded number is quoted as evidence, find out what it counted.
 
+## A cost measured on a branch describes the branch, and garbage is not time
+
+SPEC.md recorded that building a volume mask allocated **61 kB a node** on the C-trap and 4.2
+kB on the linear ion trap, against the 105 the mask keeps, beside builds of 95 s and about 200
+s that made the mask look like the thing to fix. Every one of those numbers was true of where
+it was measured and of nothing else. The branch predated the bounding-box cull, which asks each
+electrode only about the nodes near it, and on `main` the same masks allocated 5,470 and 260
+bytes a node. The 200 s build was timed under a live-set sampler forcing a full collection
+from a second thread every few milliseconds; without it the build takes 13 to 15 s.
+
+**Before acting on a recorded cost, re-measure it on the code you are about to change.** A
+number carries the conditions it was taken under - a branch, a build, an instrument attached
+to the process - and none of them travels with it into a status page.
+
+The second half is the one that would have survived re-measuring. With the garbage removed the
+C-trap's mask fell by a third to a half and the linear ion trap's did not move: a revolve
+entry test made about thirty objects per call and several times as many interface calls
+through iterators, a prism entry test one list beside a 29-edge polygon. The prism's gen0 count fell from 42 to 2
+and the clock did not notice. **Allocation is evidence of cost, not a measurement of it**;
+what decides whether removing it pays is what else the call does, and the only way to know is
+to time it - which is why the regression test holds the allocation and the documentation
+holds the time.
+
+## A measurement that can only read low makes a difference that can read either way
+
+`SolveMemoryTests` sampled each build's live set by forcing a full collection every 2 ms and
+keeping the largest, which can only under-read the peak - and then compared builds by their
+*difference*, a slope between two meshes or one channel against two. A difference of two
+under-readings is not an under-reading: it reads high when the smaller build's peak is missed
+and low when the larger one's is. It passed on a sixteen-core workstation and failed on both
+four-core CI runners in Release, where a build is eight times faster than in Debug and 2 ms is
+a timer tick of about 15 on Windows: the smallest build finished in about 10 ms.
+
+**The flakiness was hiding a wrong number.** With the sampler made dense - waiting only as
+long as the last collection took - and each build measured three times, every reading became
+stable, and the plane statement then failed every time: 153.3 stated, 132.7 measured, because
+it counted coarse levels that do not exist at the instant of its peak. The sparse sampler had
+read 143 for the same slope, inside the band, because the error in the difference happened to
+point the same way as the error in the statement. **A test that only passes when its
+measurement is noisy is not a passing test**; before loosening a band that a faster machine
+breaks, make the measurement deterministic and see what it says. And choose the statistic for
+the errors the measurement now has, not the ones it used to have: the largest of three was
+right while samples could only miss, and wrong once they were dense enough to catch an instant
+the statement does not count - the middle of three is robust to a lone outlier either way.
+
+## A perturbation that isolates one thing must move only that thing
+
+The grounded-boundary check (`docs/numerics.md`, "A grounded face of the domain is a third
+conductor") needed a survey: seventeen shipped solved elements put a node on a grounded wall
+and on a conductor's surface at once, and the question was whether any of them cared. The
+plan was the one that had worked for the Astral's foil - move the domain by 1e-7 of its
+extent either way, so the node lands on one side and then the other, and compare. **It
+reported several volts of difference in the middle of the ion funnel, far from any wall** -
+which reads as the coin mattering, and was not.
+
+**The first move changed the mesh.** Interval counts round up to a power of two, and the
+funnel's radius is exactly 64 cells, 16 mm at 0.25 mm; growing it by any amount at all made
+it 128. So the comparison was between two different discretizations, and the difference was
+theirs. This is the same cliff `MeshCliffTests` and Amendment 33 are about, met from the
+other side: not a cost that jumps, but a perturbation meant to be infinitesimal that is not.
+
+**The second move - translate each conductor touching a wall instead, on a fixed mesh - found
+a different coin entirely.** The funnel's first and last rings have their inner faces exactly
+on node rows (12 mm on row 48, 1.5 mm on row 6), and translating a ring moves those faces
+too. A single conductor's face on a node plane is continuous in its normal position, but the
+arms *lying in* that plane beside the conductor are cut at its side face or graze past to a
+node a cell away according to the rounding: two cuts at 0.46 and 0.077 of a cell became two
+uncut arms, and the flight time moved 4.5e-4 for a 6.4e-6-cell move. Real, worth recording,
+and nothing to do with the wall.
+
+**Moving only the face on the wall** - the one thing moving the domain face changes relative
+to the conductor - gave the clean answer: fifteen of the seventeen identical to the bit more
+than three cells from the wall and in every figure, the two mirrors not.
+
+The rules. **A perturbation used to isolate an effect has to move exactly that effect's
+cause and nothing else**, and "move the domain" and "move the conductor" each move more than
+they appear to - the mesh with the first, every other face of the conductor with the second.
+**Check the mesh is the same mesh before comparing two solves of it**; `(CountX, CountY)`
+equal is one assertion. And **a surprising difference is a finding before it is an answer**:
+the interior volts were two things, neither the one being measured, and one of them is now an
+open item of its own.
 
 ## A fix reaches the function it was made in, and the construction lives in several
 

@@ -102,6 +102,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel report [dir]` | An account of what has been run, as one self-contained page (Amendment 43) |
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
+| `einzel render still <model.json>` | Draw the viewport's shaded 3D picture to a PNG, headlessly - the same composition and camera the window uses |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
 | `einzel --version` | Engine version |
@@ -112,6 +113,9 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
 | `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
+| `--view iso\|side\|top\|front` | `render still` only: the named view, the same names as the window's buttons |
+| `--width-px N`, `--height-px N` | `render still` only: the picture's size, 16 to 8192 pixels; the unit is in the name, as `--width-mm` does it |
+| `--see-through` | `render still` only: draw the conductors translucent, as the window's toggle does |
 | `--progress <seconds>` | `run` and both render verbs: how often to say where the transport has got to, on stderr. Thirty seconds by default, `0` for silence |
 | `--project <dir>` | Project root; otherwise inferred by walking up from the model |
 
@@ -924,7 +928,7 @@ parsing output:
 | Code | Meaning |
 | --- | --- |
 | 0 | Success — though warnings may still be attached |
-| 1 | Validation failure: schema, units, bounds, solvability |
+| 1 | Validation failure: schema, units, bounds, solvability - including a mesh too large to solve (`GRID_TOO_LARGE`) |
 | 2 | Regime violation: the transport mode is outside its validity |
 | 3 | Cost-gate refusal |
 | 4 | Convergence failure |
@@ -990,7 +994,11 @@ place to be clever.
 ```
 
 Every error found is reported, not just the first — the recovery an agent wants
-is the whole list.
+is the whole list. **That now holds for every verb, not only `validate` and `run`.** Twelve
+call sites - in `estimate`, `export`, `preview`, `compare`, `render` and others - validated and
+then refused with the first error alone, so a model with a bad plane cell size and an
+oversized volume mesh was told about the plane, fixed it, and only then learned its solve
+would be refused. They pass the whole list now, and the CLI prints one line per error.
 
 ## Files a run writes
 
@@ -1098,10 +1106,10 @@ A study is detected rather than declared by a flag: a study names the model it s
 and a model names no model, which is exact and needs no schema version.
 
 ```
-field 0  Solved2D       513x33           0.25 s      0.8 MiB
+field 0  Solved2D       513x33           0.25 s      2.5 MiB
 per eval      0.75 s  (one solve, 9 trajectories)
 scan          31 evaluations
-total         23.15 s, peak 0.8 MiB
+total         23.15 s, peak 2.5 MiB
 ```
 
 **The multiplier costs nothing.** Every driver states its own extent — a scan its points,
@@ -1142,6 +1150,11 @@ einzel estimate studies/big.json --threshold 3600
 GRD-8 asks for the threshold to be configurable and it was a constant. Somebody who knows
 their study is worth an hour needs a way to say so; without one, the observed response was
 to make the study smaller.
+
+**It applies to that invocation and no other.** It was a process-wide setting the flag moved
+and nothing put back, so the next estimate in the same process passed or refused on a number
+nobody gave it - found when a test asking for `1e12` made another test's cost gate pass. It
+is now a parameter of the estimate itself, so there is nothing left over to restore.
 
 **A refusal here is a refusal to proceed silently, not a refusal to proceed.** `sweep`,
 `scan`, `boundary` and `optimise` run whatever `estimate` says — only `estimate` itself
@@ -1211,6 +1224,58 @@ advice was a no-op that looked authoritative. The candidate now goes through the
 arithmetic the grid uses, and a test asks for the suggested size and checks the node count
 really falls by the promised factor — promised 7.9x, delivered 7.9x.
 
+### A mesh too large to solve is refused, by `estimate` as by everything else
+
+A volume solve may hold at most **64,000,000 nodes**. Since the node count is the product of
+three power-of-two roundings, it is arithmetic on the document, so **validation refuses** a
+mesh past it - and `validate`, `estimate`, `run` and every other verb that reads the model
+meet the same refusal from the same check against the same constant (`VolumeMesh.MaximumNodes`,
+which the solver's own allocation guard also reads):
+
+```
+  GRID_TOO_LARGE
+    at         /fields/2/solve3d/cellSize
+    constraint a volume solve may hold at most 64,000,000 nodes, and this mesh is
+               1025 x 65 x 1025 = 68,290,625: each axis rounds its interval count up to a
+               power of two from the requested cell size, so the node count is the product
+               of three such roundings
+    observed   6.82906E+07 nodes
+    try        a cell size of 1.465 mm is the finest that fits, giving 1025 x 65 x 513 =
+               34,178,625 nodes, and anything coarser fits too; or shrink the domain
+```
+
+That is the shipped Astral with its volume solve at 1 mm, and exit code 1. **Before, it was
+the one case where the model was the problem and every verb said otherwise**: `validate`
+passed it, `estimate` priced it at 35 minutes and exited 3 on the cost gate, and `run` spent
+more than five minutes assembling a conductor mask of that size before the field
+constructor threw an argument exception - which the process boundary can only print as
+`INTERNAL_ERROR`, "a defect in einzel, not in your model", on exit code 6.
+
+**The suggestion is evaluated, and it has two traps in it.** The finest fitting size sits
+exactly on a power-of-two boundary - here z's, 750 mm over 512 = 1.46484 mm - so it is printed with as many
+digits as it takes to stay on the same step of the mesh, rounded up, and checked after
+converting back through the document's own unit. Three fixed figures gave 1.47 mm, which also
+crosses x's boundary, 752 mm over 512 = 1.46875 mm, and names a mesh with half the nodes while calling it the
+finest that fits. And an exact decimal is not safe either: a box from -1.5 to 20.5 mm has its
+eight-interval boundary at exactly 2.75 mm, and 22 mm over 2.75 mm converted through `mm` is
+8.000000000000002 intervals, which rounds up to sixteen - the refused mesh again.
+
+**A particle-in-cell grid is a volume solve too**, so `spaceChargeGrid.nodes` past 256 - which
+rounds up to 512 intervals a side, 135 M nodes - is refused at
+`/transport/spaceChargeGrid/nodes` with the same code. By the code's own path it would have
+reached the same argument exception mid-run, after allocating its mask. And the run's own
+advice respects the same limit: `spacecharge.grid-resolution` names the node count that would
+match the packet, which at padding 100 and 40 trajectories is 1024 - so it now says "Try 256
+nodes, the most a volume solve can hold" and where the rest has to come from, rather than
+naming a grid validation would refuse.
+
+**A cell size or bound that is not a number is refused as one.** A derived value can be NaN
+or infinite - a division by a parameter set to zero, the square root of a negative ratio - and
+every comparison with NaN is false, so the positivity checks let it through. The new mesh
+arithmetic then threw from inside validation, and `validate` itself printed `INTERNAL_ERROR`;
+an infinite cell size passed everything and solved on two intervals an axis. Both are now
+`VALUE_OUT_OF_BOUNDS` at the offending field.
+
 ### A study's flight is sampled across its own range
 
 Evaluation cost varies along a study that varies geometry — **2.2x** across a mirror
@@ -1235,6 +1300,110 @@ the instructive part. Flying a *fraction* means scaling up, and the only length 
 scale against is the declared **maximum** flight time — a ceiling, not an expectation. The
 nominal ion arrived inside the fraction and the extremes did not, so they were scaled by the
 whole ceiling and the estimate came out **3.4x over**.
+
+### What the memory figure counts
+
+The peak **live set** of the build: what the solve holds reachable at its worst moment, which
+is what has to fit. It is the solver's own statement (`SolveMemoryModel`, one named term per
+array, in the same file as the reasons for the arrays), and a test measures real builds
+against it. It was 48 bytes a node for every solve, from a comment listing three fields and
+some restriction buffers, and nothing measured it.
+
+| solve | bytes a node at peak | measured, Release, live set sampled through the build |
+| --- | --- | --- |
+| volume, Galerkin hierarchy | 240 on a deep grid; 241.8 Astral at 1.12 M nodes, 240.9 at 8.68 M | 241.3 and 240.9 |
+| volume, rediscretized hierarchy | 141.7 | 141.9 and 141.8 segmented quadrupole at 1.09 M and 4.28 M; 141.8 C-trap |
+| plane | 143.25 | 143.3 to 143.9 on four templates at 17 k to 1.05 M nodes |
+| each basis channel before the last | + 8 | 248.7 linear ion trap, two channels, against 248.9 |
+| diffusive run, per density node and per species | 263 | 248 and 259, drift tube at 66 k and 263 k nodes; each added species 248 |
+
+**The coarse levels are charged at their real size.** A grid coarsens by halving each axis's
+interval count, which keeps one node more than half, so a first coarse level is more than an
+eighth of the fine grid - 0.1334 of it on the Astral, whose 17-node axis becomes 9 - and a thin
+axis makes it much more: 32769 by 5 by 5 coarsens to 16385 by 3 by 3, which is 0.18. The
+statement charged an eighth, 240 bytes a node on the Galerkin hierarchy; charged at the real
+size it is 241.8 on the Astral at 4 mm and 240.9 at 2 mm, against 241.3 and 240.9 measured, and
+251.9 on that thin grid. The rediscretized sum runs over the levels the solve will actually
+build, by the descent the solver itself takes, rather than over eighths all the way down.
+
+**The plane figure was 153.3 and is 143.25, and the sampler that checked it hid the
+difference.** The plane's peak is the instant the first coarse level replaces its cut links
+with a zeroed copy and holds both: the fine level's 105, and a quarter of that level's mask,
+two copies of its cut links and two fields. The statement added every deeper level and that
+level's residual, which do not exist at that instant. The live set was sampled every couple of
+milliseconds - a timer tick of about 15 on Windows - and two builds' peaks were differenced,
+so a missed peak read either way; it passed on a sixteen-core workstation and failed on both
+four-core CI runners, where a Release build is fast enough to finish between samples. Sampled
+as densely as the collections allow, and the largest of three builds kept, the shipped plane
+templates read 143.3 to 143.9; a build whose samples all miss the copy reads about 135, and
+one whose samples see only the fine level - a loaded four-core CI runner did - about 126.6, which
+is why the plane test's lower edge is 0.85 where the volume tests' is 0.90.
+
+**A diffusive mixture is charged once per species.** Every species has its own walker - its
+density, next step and seed, its coefficients, its face operator and, cycle-averaged, its well
+- and measured on a 513 by 129 grid one species held 248.5 bytes a node and each species added
+247.6 and then 248.3. It was charged once whatever the count. **And the comparison with this
+machine is made whatever holds the peak**: it was the tail of the solved-field explanation, so a
+diffusive run through analytic fields, with no solve, was never compared at all.
+
+**The fields the old comment listed are 24 of the 240.** On the Galerkin hierarchy the peak is
+while the first coarse level is being formed: the conductor mask (9), six cut-link arms of two
+doubles each (96, allocated in full though 3 to 4 per cent of arms are cut), the potential,
+right-hand side and residual (24), the fine operator as a stored stencil (64), the forming
+scratch over the fine grid (20) and the first coarse level itself (27). **The Astral at a 1 mm
+cell was billed 3.1 GiB and needs 15.3.** A plane solve was short for the same reason, by a
+factor of three: its mask and four cut-link arms were not in the 48 either. The one plane geometry measured well
+under its statement is the mirror pair, whose boards are edge profiles with no cut cells - 73
+bytes a node at its shipped 17 k nodes, over-billed in the safe direction.
+
+**Which hierarchy is asked of the solver**, by `PoissonSolver3D.UsesGalerkin` - the same
+function the solve calls, on what the geometry declares rather than on a rasterized mask. It
+cannot know whether an electrode fixes an interior node without rasterizing, so it assumes one
+does; a geometry whose every conductor is thinner than a cell can be billed the Galerkin 240
+where it will use 142. That is the safe direction.
+
+**Channels are solved one at a time**, each keeping only its potential, so a driven geometry
+costs one working set plus 8 bytes a node for each channel before the last. That was not true
+before this was measured. The linear ion trap held **353.7** bytes a node for two channels:
+the channel loop kept every finished channel's mask in the record it returned, to report two
+integers. Removing that took it to **344.7**, and a temporary still held the previous channel's
+cut links, because a method run once executes as first-tier JIT code, which keeps every
+temporary reachable until its slot is reused. A loop body with a frame of its own took it to
+**248.7**. Both are in `docs/lessons.md`.
+
+**Elements are built in document order and each keeps its potentials**, so the model's peak is
+the largest of what every earlier element retains plus what the next one holds while solving.
+The shipped Astral solves two mirror cross-sections before its volume, which adds their
+potentials to the volume's peak.
+
+**What a run shows is higher, and depends on the machine.** The collector frees a large array
+lazily when memory is plentiful: the Astral at 4 mm reached 390 bytes a node of heap against a
+live 242. It gives that back when it has to - under a hard heap limit the same build completed
+at 279 MiB and ran out at 275, against a live peak of 259 - so the live set plus a few per cent
+is the floor, and the basis line says the working set runs higher. When the peak is more than
+half of what this process may use, the basis says what share it is, and that it will not fit
+if it is over.
+
+**The 64,000,000-node limit, reconsidered once the true cost was known.** `main`'s
+`ScalarField3D` refuses a grid past 64 M nodes as "about half a gigabyte per field and three
+fields to a solve", which is 1.5 GB; `fix/grid-too-large-is-a-refusal`, pending when this was
+measured and since merged (#48), moved the same number into `VolumeMesh.MaximumNodes` and
+refuses it at validation, calling it a judgment resting on the fields alone. At 240 bytes a node a 64 M-node volume solve holds
+**14.3 GiB** live, ten times what the message says.
+
+*Conclusion: as a memory limit it is the wrong kind of rule.* Memory is a property of the
+machine, and validation is a property of the document - a model that validates on one machine
+must validate on every machine. 14.3 GiB fits on this 64 GB workstation with room to spare and
+leaves a 16 GB laptop almost nothing, so no single node count is right for both. What the *code*
+cannot hold is much further out: cut-link and stencil offsets are `node * 6` in an `int`, and a
+`double[]` holds at most 2,147,483,591 elements, and both stop at about **358 M nodes**, 5.6x
+the limit. The recommendation for when that branch lands is to refuse at validation only what
+the code cannot index, and leave memory to the estimate, which now states the live peak and
+compares it with what this machine offers. Keeping 64 M is defensible as a judgement - "about
+15 GiB, a workstation's worth" - but it should say that rather than quote three fields. The
+Astral at 1 mm is 68.3 M nodes, 6.7 percent over, and needs 15.3 GiB. Not changed when this
+was measured, because the limit then lived on an unmerged branch; that branch has landed, and
+restating the limit is item 10 of SPEC.md's "What to do next".
 
 ### What it excludes, stated on every estimate
 

@@ -46,9 +46,16 @@ public sealed class CutLinks3D
     /// <summary>Creates an uncut set of links.</summary>
     /// <param name="grid">The grid.</param>
     /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The grid has more nodes than a volume solve may hold; see
+    /// <see cref="Core.Errors.ErrorCodes.GridTooLarge"/>.
+    /// </exception>
     public CutLinks3D(Grid3D grid)
     {
         ArgumentNullException.ThrowIfNull(grid);
+
+        // Twelve doubles a node, the largest per-node allocation a solve makes.
+        grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
 
@@ -136,9 +143,17 @@ public sealed class DirichletMask3D
     /// <summary>Creates a mask with nothing fixed and every face Dirichlet at zero.</summary>
     /// <param name="grid">The grid.</param>
     /// <exception cref="ArgumentNullException"><paramref name="grid"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The grid has more nodes than a volume solve may hold; see
+    /// <see cref="Core.Errors.ErrorCodes.GridTooLarge"/>.
+    /// </exception>
     public DirichletMask3D(Grid3D grid)
     {
         ArgumentNullException.ThrowIfNull(grid);
+
+        // The first thing a solve allocates, so the place a refusal has to fire - after
+        // the mask has been assembled is after the cost it exists to prevent.
+        grid.ThrowIfTooLargeToSolve();
 
         Grid = grid;
         _fixed = new bool[grid.NodeCount];

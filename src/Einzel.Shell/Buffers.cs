@@ -14,42 +14,21 @@ namespace Einzel.Shell;
 /// <param name="B">Blue, zero to one.</param>
 public readonly record struct Mesh(uint Vao, uint Vbo, uint Ebo, int Count, float R, float G, float B)
 {
-    /// <summary>Uploads a conductor surface.</summary>
+    /// <summary>Uploads one mesh of a composed picture.</summary>
     /// <param name="api">The GL context.</param>
-    /// <param name="conductor">The surface the command layer extracted.</param>
-    /// <param name="r">Red, zero to one.</param>
-    /// <param name="g">Green, zero to one.</param>
-    /// <param name="b">Blue, zero to one.</param>
+    /// <param name="mesh">A conductor or a density shell, already colored.</param>
     /// <returns>The uploaded mesh.</returns>
     /// <remarks>
     /// Position and normal are interleaved into one buffer because they are read together
-    /// on every vertex, and because two buffers would double the bookkeeping for nothing.
+    /// on every vertex, and because two buffers would double the bookkeeping for nothing. A
+    /// conductor and a density shell differ in what they mean and not in how they are
+    /// drawn, which is what lets one upload serve both.
     /// </remarks>
-    public static Mesh Upload(GL api, ConductorSurface conductor, float r, float g, float b)
+    public static Mesh Upload(GL api, PictureMesh mesh)
     {
-        ArgumentNullException.ThrowIfNull(conductor);
+        ArgumentNullException.ThrowIfNull(mesh);
 
-        return Upload(api, conductor.VerticesMm, conductor.Normals, conductor.Triangles, r, g, b);
-    }
-
-    /// <summary>Uploads a density shell.</summary>
-    /// <param name="api">The GL context.</param>
-    /// <param name="shell">One contour of the density, at a decade below the peak.</param>
-    /// <param name="r">Red, zero to one.</param>
-    /// <param name="g">Green, zero to one.</param>
-    /// <param name="b">Blue, zero to one.</param>
-    /// <returns>The uploaded mesh.</returns>
-    /// <remarks>
-    /// The same three arrays a conductor has, so the same upload. A density shell and a
-    /// conductor differ in what they mean and not in how they are drawn, which is what lets
-    /// one routine serve both - the same argument that has one marching-squares routine draw
-    /// every conductor and every equipotential in the renderer.
-    /// </remarks>
-    public static Mesh Upload(GL api, DensityShell shell, float r, float g, float b)
-    {
-        ArgumentNullException.ThrowIfNull(shell);
-
-        return Upload(api, shell.VerticesMm, shell.Normals, shell.Triangles, r, g, b);
+        return Upload(api, mesh.VerticesMm, mesh.Normals, mesh.Triangles, (float)mesh.R, (float)mesh.G, (float)mesh.B);
     }
 
     private static unsafe Mesh Upload(
@@ -130,48 +109,28 @@ public readonly record struct Mesh(uint Vao, uint Vbo, uint Ebo, int Count, floa
 /// <param name="B">Blue, zero to one.</param>
 public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float G, float B)
 {
-    /// <summary>Uploads a trajectory.</summary>
+    /// <summary>Uploads one polyline of a composed picture.</summary>
     /// <param name="api">The GL context.</param>
-    /// <param name="path">The flight the command layer produced.</param>
-    /// <param name="r">Red, zero to one.</param>
-    /// <param name="g">Green, zero to one.</param>
-    /// <param name="b">Blue, zero to one.</param>
+    /// <param name="line">A trajectory or an equipotential, already colored.</param>
     /// <returns>The uploaded strip.</returns>
     /// <remarks>
-    /// The normal attribute is filled with a constant rather than dropped, so one shader
-    /// draws both meshes and paths. A second program for lines would be two shaders to keep
-    /// in step for no gain: the fragment stage takes the absolute lambert, so a constant
-    /// normal simply gives a flat color.
+    /// <para>
+    /// Walked straight into the interleaved buffer. A first version re-wrapped every point
+    /// into its own three-element array so it could share the trajectory's overload -
+    /// thousands of short-lived allocations per equipotential level, to rebuild a layout the
+    /// flat array already has.
+    /// </para>
+    /// <para>
+    /// The normal attribute is filled with a constant rather than dropped, so one shader draws
+    /// both meshes and lines - and the rasterizer lights a line with the same constant.
+    /// </para>
     /// </remarks>
-    public static Line Upload(GL api, TrajectoryPath path, float r, float g, float b)
+    public static Line Upload(GL api, PictureLine line)
     {
-        ArgumentNullException.ThrowIfNull(path);
-
-        return Upload(api, path.PointsMm, r, g, b);
-    }
-
-    /// <summary>Uploads one polyline of an equipotential.</summary>
-    /// <param name="api">The GL context.</param>
-    /// <param name="pointsMm">Consecutive x, y, z triples in millimetres.</param>
-    /// <param name="r">Red, zero to one.</param>
-    /// <param name="g">Green, zero to one.</param>
-    /// <param name="b">Blue, zero to one.</param>
-    /// <returns>The uploaded strip.</returns>
-    /// <remarks>
-    /// An equipotential is a level set and so is a conductor's surface, which is why the
-    /// renderer draws both with one marching-squares routine. Here they differ only in
-    /// dimension - a contour on the section plane is a line where a conductor is a surface -
-    /// so an equipotential shares the trajectory's upload rather than the conductor's.
-    /// </remarks>
-    public static Line Upload(GL api, IReadOnlyList<double> pointsMm, float r, float g, float b)
-    {
-        ArgumentNullException.ThrowIfNull(pointsMm);
         ArgumentNullException.ThrowIfNull(api);
+        ArgumentNullException.ThrowIfNull(line);
 
-        // Walked straight into the interleaved buffer. A first version re-wrapped every
-        // point into its own three-element array so it could share the trajectory's
-        // overload - thousands of short-lived allocations per equipotential level, to
-        // rebuild a layout the flat array already has.
+        var pointsMm = line.PointsMm;
         var points = pointsMm.Count / 3;
         var interleaved = new float[points * 6];
 
@@ -185,27 +144,7 @@ public readonly record struct Line(uint Vao, uint Vbo, int Count, float R, float
             interleaved[(p * 6) + 5] = 1f;
         }
 
-        return Strip(api, interleaved, points, r, g, b);
-    }
-
-    private static Line Upload(
-        GL api, IReadOnlyList<IReadOnlyList<double>> points, float r, float g, float b)
-    {
-        ArgumentNullException.ThrowIfNull(api);
-
-        var interleaved = new float[points.Count * 6];
-
-        for (var p = 0; p < points.Count; p++)
-        {
-            interleaved[(p * 6) + 0] = (float)points[p][0];
-            interleaved[(p * 6) + 1] = (float)points[p][1];
-            interleaved[(p * 6) + 2] = (float)points[p][2];
-            interleaved[(p * 6) + 3] = 0f;
-            interleaved[(p * 6) + 4] = 0f;
-            interleaved[(p * 6) + 5] = 1f;
-        }
-
-        return Strip(api, interleaved, points.Count, r, g, b);
+        return Strip(api, interleaved, points, (float)line.R, (float)line.G, (float)line.B);
     }
 
     /// <summary>Hands an already-interleaved strip to OpenGL.</summary>

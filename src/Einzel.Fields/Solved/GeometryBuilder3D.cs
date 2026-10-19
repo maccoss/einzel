@@ -110,6 +110,22 @@ public sealed record Geometry3D(
 }
 
 
+/// <summary>Whether a volume mask asks each electrode only about the nodes near it.</summary>
+/// <remarks>
+/// CMP-1 requires that a reference implementation is never deleted or allowed to rot,
+/// and a reference nothing can select is one that rots quietly. The unculled loops are
+/// what the culled ones are checked against, node for node and arm for arm, on every
+/// shipped volume geometry - so they are kept as written and kept reachable.
+/// </remarks>
+internal enum MaskCulling
+{
+    /// <summary>Each electrode is asked only about the nodes and links its bounding box reaches.</summary>
+    Bounds,
+
+    /// <summary>Every electrode is asked about every node and every link: the reference.</summary>
+    None,
+}
+
 /// <summary>Builds and solves a three-dimensional geometry.</summary>
 public static class GeometryBuilder3D
 {
@@ -127,6 +143,57 @@ public static class GeometryBuilder3D
             geometry.CellSize);
     }
 
+    /// <summary>What building a geometry will hold in memory, worked out without building it.</summary>
+    /// <param name="geometry">The geometry.</param>
+    /// <returns>The node and channel counts, which hierarchy the solve takes, and the bytes.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// Arithmetic on the declaration: the grid is the box and the cell size, the channels are
+    /// the same decomposition <see cref="BuildField"/> makes, and the hierarchy is asked of
+    /// <see cref="PoissonSolver3D.UsesGalerkin"/> rather than decided a second time. Nothing
+    /// is rasterized, which is what lets <c>einzel estimate</c> state the memory of a solve too
+    /// large to attempt.
+    /// </para>
+    /// <para>
+    /// <b>One inexactness, in the safe direction.</b> The solver asks whether any electrode
+    /// fixes a node away from the faces, which only rasterizing can answer; this assumes it
+    /// does whenever there are electrodes. A geometry whose every conductor is thinner than a
+    /// cell, or lies on a face, then reads as taking the Galerkin hierarchy when it will not,
+    /// and is costed at 240 bytes a node where it needs 142.
+    /// </para>
+    /// </remarks>
+    public static SolveMemory Memory(Geometry3D geometry)
+    {
+        ArgumentNullException.ThrowIfNull(geometry);
+
+        var grid = BuildGrid(geometry);
+
+        var channels = geometry.Drives.Count == 0 && geometry.Stages.Count == 0
+            ? 1
+            : Groups(geometry).Count;
+
+        // The mask records this same minimum, over every electrode whatever it holds.
+        var smallest = double.PositiveInfinity;
+
+        foreach (var electrode in geometry.Electrodes)
+        {
+            smallest = Math.Min(smallest, electrode.CharacteristicSize);
+        }
+
+        var interior = geometry.Electrodes.Count > 0;
+        var galerkin = PoissonSolver3D.UsesGalerkin(grid, smallest, interior);
+
+        // At the sizes this grid's coarse levels really are: an eighth of the fine grid only
+        // on a grid many cells deep on every axis.
+        var working = galerkin
+            ? SolveMemoryModel.VolumeGalerkinPeakOn(grid)
+            : SolveMemoryModel.VolumeRediscretizedPeakOn(
+                grid, PoissonSolver3D.RediscretizedLevels(grid, smallest, interior));
+
+        return SolveMemoryModel.For(grid.NodeCount, Math.Max(1, channels), working, galerkin);
+    }
+
     /// <summary>Builds the Dirichlet mask on the finest grid.</summary>
     /// <param name="geometry">The geometry.</param>
     /// <param name="grid">The grid.</param>
@@ -136,13 +203,34 @@ public static class GeometryBuilder3D
     /// <returns>The mask.</returns>
     /// <exception cref="ArgumentNullException">A required argument is null.</exception>
     /// <remarks>
+    /// <para>
     /// Sub-cell: conductor surfaces between nodes are recorded as cut links, which
     /// is where the accuracy of a solve comes from. Coarse multigrid levels are
-    /// built by <see cref="Coarsener"/> instead and are deliberately different.
+    /// built by <see cref="Coarsener(Geometry3D, Func{CompiledElectrode3D, double}?)"/>
+    /// instead and are deliberately different.
+    /// </para>
+    /// <para>
+    /// <b>Each electrode is asked only about the nodes its bounding box reaches.</b>
+    /// Asking every electrode about every node and every link costs nodes times
+    /// electrodes, and on the Astral's foil solve - 1.1 million nodes, 86 electrodes -
+    /// that was half a billion closed-form entry tests per mask and half of a whole
+    /// <c>einzel solve</c> of the template - 10.3 s of 20.6 in Release, where the culled
+    /// mask takes 0.15 s. The mask is bit-identical to the unculled one on every shipped
+    /// volume geometry, checked node for node and arm for arm against the reference
+    /// loops.
+    /// </para>
     /// </remarks>
     public static DirichletMask3D BuildMask(
         Geometry3D geometry, Grid3D grid, Func<CompiledElectrode3D, double>? potentialOf = null) =>
-        Assemble(geometry, grid, potentialOf, coarse: false);
+        BuildMask(geometry, grid, potentialOf, MaskCulling.Bounds);
+
+    /// <summary>Builds the finest-level mask, culled or by the reference loops.</summary>
+    internal static DirichletMask3D BuildMask(
+        Geometry3D geometry,
+        Grid3D grid,
+        Func<CompiledElectrode3D, double>? potentialOf,
+        MaskCulling culling) =>
+        Assemble(geometry, grid, potentialOf, coarse: false, culling);
 
     /// <summary>
     /// A builder for the coarse levels of a multigrid hierarchy, memoised by grid.
@@ -155,7 +243,8 @@ public static class GeometryBuilder3D
     /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
     /// <remarks>
     /// <para>
-    /// Handed out as a whole function rather than as a flag on <see cref="BuildMask"/>
+    /// Handed out as a whole function rather than as a flag on
+    /// <see cref="BuildMask(Geometry3D, Grid3D, Func{CompiledElectrode3D, double}?)"/>
     /// because the difference between the two is load-bearing and the obvious
     /// spelling has to be the safe one. A coarse level built the fine way is not
     /// slightly worse - it is ill-conditioned, and the solve converges contentedly
@@ -175,7 +264,12 @@ public static class GeometryBuilder3D
     /// </para>
     /// </remarks>
     public static Func<Grid3D, DirichletMask3D> Coarsener(
-        Geometry3D geometry, Func<CompiledElectrode3D, double>? potentialOf = null)
+        Geometry3D geometry, Func<CompiledElectrode3D, double>? potentialOf = null) =>
+        Coarsener(geometry, potentialOf, MaskCulling.Bounds);
+
+    /// <summary>The coarse-level builder, culled or by the reference loops.</summary>
+    internal static Func<Grid3D, DirichletMask3D> Coarsener(
+        Geometry3D geometry, Func<CompiledElectrode3D, double>? potentialOf, MaskCulling culling)
     {
         ArgumentNullException.ThrowIfNull(geometry);
 
@@ -187,7 +281,7 @@ public static class GeometryBuilder3D
 
             if (!cache.TryGetValue(key, out var mask))
             {
-                mask = Assemble(geometry, grid, potentialOf, coarse: true);
+                mask = Assemble(geometry, grid, potentialOf, coarse: true, culling);
                 cache[key] = mask;
             }
 
@@ -205,12 +299,16 @@ public static class GeometryBuilder3D
         Geometry3D geometry,
         Grid3D grid,
         Func<CompiledElectrode3D, double>? potentialOf,
-        bool coarse)
+        bool coarse,
+        MaskCulling culling)
     {
         ArgumentNullException.ThrowIfNull(geometry);
         ArgumentNullException.ThrowIfNull(grid);
 
         var mask = new DirichletMask3D(grid);
+
+        // Where each electrode can be, in node indices, or null for the reference loops.
+        var reach = culling == MaskCulling.Bounds ? Reach(geometry.Electrodes, grid) : null;
 
         if (geometry.Faces.Count == 6)
         {
@@ -224,11 +322,16 @@ public static class GeometryBuilder3D
 
         List<CompiledElectrode3D>? missed = null;
 
-        foreach (var electrode in geometry.Electrodes)
+        for (var index = 0; index < geometry.Electrodes.Count; index++)
         {
+            var electrode = geometry.Electrodes[index];
             var potential = potentialOf?.Invoke(electrode) ?? electrode.Potential;
 
-            if (!Rasterise(mask, grid, electrode, potential) && coarse)
+            var found = reach is null
+                ? Rasterise(mask, grid, electrode, potential)
+                : Rasterise(mask, grid, electrode, potential, reach[index]);
+
+            if (!found && coarse)
             {
                 (missed ??= []).Add(electrode);
             }
@@ -266,7 +369,14 @@ public static class GeometryBuilder3D
         // accuracy still comes from the fine level, which is unchanged.
         if (!coarse)
         {
-            AddCuts(geometry, grid, mask, potentialOf);
+            if (reach is null)
+            {
+                AddCuts(geometry, grid, mask, potentialOf);
+            }
+            else
+            {
+                AddCuts(geometry, grid, mask, potentialOf, reach);
+            }
         }
 
         foreach (var electrode in geometry.Electrodes)
@@ -349,6 +459,11 @@ public static class GeometryBuilder3D
     /// <para>
     /// Only the finest grid. The coarse levels exist to accelerate, their Dirichlet values
     /// are not used, and the answer is decided where the cut cells are.
+    /// </para>
+    /// <para>
+    /// <b>A grounded face of the domain counts as a conductor at zero volts</b>, and nodes on
+    /// it lying on an electrode's surface are counted apart, as
+    /// <see cref="SharedFaceNodes.BoundaryNodes"/>. A Neumann face is a mirror and takes no part.
     /// </para>
     /// </remarks>
     public static SharedFaceNodes? NodesOnSharedFaces(
@@ -506,11 +621,161 @@ public static class GeometryBuilder3D
             }
         }
 
-        return (nodeExample ?? armExample) is { } first
-            ? new SharedFaceNodes(
+        var (boundary, boundaryExample) = NodesOnGroundedFaces(geometry, grid, states, tolerance);
+
+        if ((nodeExample ?? armExample) is { } first)
+        {
+            return new SharedFaceNodes(
                 nodes.Count, arms.Count, first.First, first.Second, first.X, first.Y, first.Z,
                 ExampleIsArm: nodeExample is null)
+            {
+                BoundaryNodes = boundary,
+            };
+        }
+
+        return boundaryExample is { } face
+            ? new SharedFaceNodes(0, 0, face.First, face.Face, face.X, face.Y, face.Z, ExampleIsArm: false)
+            {
+                BoundaryNodes = boundary,
+                ExampleIsBoundary = true,
+            }
             : null;
+    }
+
+    /// <summary>
+    /// Nodes on a grounded face of the domain that lie on the surface of an electrode holding
+    /// something other than zero volts in some state, so that whether the electrode or the face
+    /// claims them is decided by rounding.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The grounded boundary is a third conductor at zero volts: <see cref="PinFaces"/> fixes a
+    /// face node to zero unless an electrode has claimed it first, and an electrode claims it by
+    /// <c>Contains</c> - signed distance at most zero - against the node's coordinate, origin plus
+    /// index times spacing, which need not equal the declared domain bound. So a node on the face
+    /// that is on the electrode's surface holds the electrode's potential or zero on the last bit.
+    /// </para>
+    /// <para>
+    /// Nodes only, for the reason the plane gives: a face node is fixed either way and the face
+    /// is never a cut target. "Holds something other than zero" is the overlap check's reading,
+    /// asked of the electrode against itself stripped of its excitation. A Neumann face is a
+    /// mirror and takes no part - <c>astral-3d</c>'s earthed boards end on its Neumann z faces
+    /// and flip between fixed and free at zero volts, which is an ordinary cut cell - and neither
+    /// does a zero-volt electrode against a grounded face, since either answer is zero.
+    /// </para>
+    /// <para>
+    /// <b>A face lying in a mirror plane is not a surface</b>, since by symmetry the conductor
+    /// continues across it: a stripe running the length of a drift between two Neumann faces has
+    /// no ends. So a node where a grounded face meets a Neumann one is asked about a point just
+    /// inside the mirror, which keeps a face crossing the mirror and drops one lying in it.
+    /// </para>
+    /// </remarks>
+    private static (int Count, (string First, string Face, double X, double Y, double Z)? Example) NodesOnGroundedFaces(
+        Geometry3D geometry,
+        Grid3D grid,
+        IReadOnlyList<IReadOnlyList<CompiledElectrode3D>> states,
+        double tolerance)
+    {
+        var electrodes = geometry.Electrodes;
+
+        // The same rule the mask and IsFixedFine apply: six declared faces, or a grounded box.
+        bool Dirichlet(int face) =>
+            geometry.Faces.Count != 6 || geometry.Faces[face] == EdgeCondition.Dirichlet;
+
+        // Ten tolerances into the domain from a mirror face: clear of a face lying in it, and
+        // still on any face crossing it.
+        var lift = 10.0 * tolerance;
+
+        double Asked(int index, int count, int lower, double at) =>
+            at
+            + (index == 0 && !Dirichlet(lower) ? lift : 0.0)
+            - (index == count - 1 && !Dirichlet(lower + 1) ? lift : 0.0);
+
+        // Each grounded face as the plane of nodes it is: which axis it is normal to, which
+        // index along that axis is held.
+        var faces = new List<(string Name, int Axis, int Plane)>(6);
+        string[] names = ["lower x face", "upper x face", "lower y face", "upper y face", "lower z face", "upper z face"];
+        int[] counts = [grid.CountX, grid.CountY, grid.CountZ];
+
+        for (var face = 0; face < 6; face++)
+        {
+            if (Dirichlet(face))
+            {
+                faces.Add((names[face], face / 2, face % 2 == 0 ? 0 : counts[face / 2] - 1));
+            }
+        }
+
+        var found = new HashSet<long>();
+        (string First, string Face, double X, double Y, double Z)? example = null;
+
+        for (var e = 0; e < electrodes.Count; e++)
+        {
+            var index = e;
+
+            if (states.All(state => ElectrodeOverlap3D.Agrees(
+                    state[index], state[index] with { Potential = 0.0, Taps = [] })))
+            {
+                continue;
+            }
+
+            var electrode = electrodes[e];
+            var (minX, minY, minZ, maxX, maxY, maxZ) = electrode.Bounds;
+            double[] min = [minX, minY, minZ];
+            double[] max = [maxX, maxY, maxZ];
+
+            foreach (var (name, axis, plane) in faces)
+            {
+                // The plane of nodes' own coordinate, not the declared bound, since the plane
+                // of nodes is what gets pinned.
+                var across = axis switch
+                {
+                    0 => grid.X(plane),
+                    1 => grid.Y(plane),
+                    _ => grid.Z(plane),
+                };
+
+                if (across < min[axis] - tolerance || across > max[axis] + tolerance)
+                {
+                    continue;
+                }
+
+                var (iLo, iHi) = axis == 0
+                    ? (plane, plane)
+                    : SharedFaceNodes.Range(grid.OriginX, grid.SpacingX, grid.CountX, minX - tolerance, maxX + tolerance);
+                var (jLo, jHi) = axis == 1
+                    ? (plane, plane)
+                    : SharedFaceNodes.Range(grid.OriginY, grid.SpacingY, grid.CountY, minY - tolerance, maxY + tolerance);
+                var (kLo, kHi) = axis == 2
+                    ? (plane, plane)
+                    : SharedFaceNodes.Range(grid.OriginZ, grid.SpacingZ, grid.CountZ, minZ - tolerance, maxZ + tolerance);
+
+                for (var k = kLo; k <= kHi; k++)
+                {
+                    for (var j = jLo; j <= jHi; j++)
+                    {
+                        for (var i = iLo; i <= iHi; i++)
+                        {
+                            var (x, y, z) = (grid.X(i), grid.Y(j), grid.Z(k));
+
+                            var distance = electrode.SignedDistance(
+                                Asked(i, grid.CountX, 0, x), Asked(j, grid.CountY, 2, y), Asked(k, grid.CountZ, 4, z));
+
+                            if (Math.Abs(distance) > tolerance)
+                            {
+                                continue;
+                            }
+
+                            if (found.Add(((((long)k * grid.CountY) + j) * grid.CountX) + i))
+                            {
+                                example ??= (electrode.Name, name, x, y, z);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return (found.Count, example);
     }
 
     /// <summary>
@@ -518,8 +783,8 @@ public static class GeometryBuilder3D
     /// </summary>
     /// <remarks>
     /// The same two rules <see cref="Assemble"/> applies on the finest level -
-    /// <see cref="Rasterise"/> by <c>Contains</c>, then <see cref="PinFaces"/> - asked of
-    /// one node. The coarse-level pinning of an electrode too small to hold a node does not
+    /// <c>Rasterise</c> by <c>Contains</c>, culled or reference alike, then
+    /// <see cref="PinFaces"/> - asked of one node. The coarse-level pinning of an electrode too small to hold a node does not
     /// happen on the finest level, so it has no part here.
     /// </remarks>
     private static bool IsFixedFine(Geometry3D geometry, Grid3D grid, int i, int j, int k)
@@ -539,7 +804,7 @@ public static class GeometryBuilder3D
         return geometry.Electrodes.Any(electrode => electrode.Contains(x, y, z));
     }
 
-    /// <summary>The six stencil arms, in the order <see cref="AddCuts"/> visits them.</summary>
+    /// <summary>The six stencil arms, in the order both <c>AddCuts</c> overloads visit them.</summary>
     private static readonly (int Di, int Dj, int Dk)[] Arms =
         [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)];
 
@@ -570,6 +835,10 @@ public static class GeometryBuilder3D
     /// <param name="geometry">The geometry.</param>
     /// <returns>The field, and the worst of the basis solves.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="geometry"/> is null.</exception>
+    /// <exception cref="Core.Errors.EinzelException">
+    /// The mesh has more nodes than a volume solve may hold; see
+    /// <see cref="Core.Errors.ErrorCodes.GridTooLarge"/>. Refused before anything is allocated.
+    /// </exception>
     /// <remarks>
     /// The channel decomposition is the same code the plane uses, because nothing
     /// about it is dimensional: what makes a channel a channel is how the electrodes
@@ -579,6 +848,12 @@ public static class GeometryBuilder3D
     public static (IElectrostaticField Field, SolveReport Report) BuildField(Geometry3D geometry)
     {
         ArgumentNullException.ThrowIfNull(geometry);
+
+        // At the entry, not only in the allocators. Each per-node allocator also refuses, but
+        // that holds only while the mask happens to be the first thing a solve allocates: a
+        // stencil or a scratch buffer moved ahead of it would be gigabytes spent before the
+        // refusal again. Asked here, the order inside the solve stops mattering.
+        BuildGrid(geometry).ThrowIfTooLargeToSolve();
 
         if (geometry.Drives.Count == 0 && geometry.Stages.Count == 0)
         {
@@ -590,10 +865,9 @@ public static class GeometryBuilder3D
         var solves = SolveGroups(geometry, groups);
 
         // Once per geometry rather than per channel: which nodes sit on a shared face is a
-        // property of the mesh and the conductors, and every channel solves on both.
-        var meshWarnings = SharedFaceNodes.Warnings(solves.Count > 0
-            ? NodesOnSharedFaces(geometry, solves[0].Mask.Grid, solves[0].Mask)
-            : null);
+        // property of the mesh and the conductors, and every channel solves on both. The
+        // first channel's solve asks it while its mask is still in hand; see SolveGroup.
+        var meshWarnings = solves.Count > 0 ? solves[0].Report.Warnings : SharedFaceNodes.Warnings(null);
 
         var channels = new List<IElectrostaticField>(groups.Count);
         var direct = new List<double>(groups.Count);
@@ -684,11 +958,20 @@ public static class GeometryBuilder3D
 
     /// <summary>One basis channel of a solve, with the evidence that solve produced.</summary>
     /// <param name="Index">Which channel, in the order the decomposition found them.</param>
-    /// <param name="Mask">The finest-level mask, for the node and cut counts.</param>
+    /// <param name="FixedNodes">How many finest-level nodes the channel's mask held fixed.</param>
+    /// <param name="CutLinks">How many stencil arms a conductor surface cut.</param>
     /// <param name="Potential">The solved potential.</param>
     /// <param name="Report">How the solve went.</param>
+    /// <remarks>
+    /// <b>The mask's two counts rather than the mask.</b> This carried the finest-level
+    /// mask itself, for <c>einzel solve</c> to read those two numbers off, and a list of
+    /// these is built channel by channel - so every channel already solved kept its mask
+    /// and its cut links alive while the next one was solving. That is 105 bytes a node a
+    /// channel, against the 8 the solved potential needs, and on a driven volume geometry
+    /// it was most of the difference between one solve's working set and the whole build's.
+    /// </remarks>
     public sealed record ChannelSolve(
-        int Index, DirichletMask3D Mask, ScalarField3D Potential, SolveReport Report)
+        int Index, int FixedNodes, int CutLinks, ScalarField3D Potential, SolveReport Report)
     {
         /// <summary>Electrode name to the potential it holds in this solve, in volts.</summary>
         /// <remarks>
@@ -724,7 +1007,7 @@ public static class GeometryBuilder3D
             return
             [
                 new ChannelSolve(
-                    0, mask, potential,
+                    0, mask.FixedCount, mask.Cuts?.CutCount ?? 0, potential,
                     report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) })
                 {
                     Pattern = DeclaredPotentials(geometry),
@@ -735,10 +1018,7 @@ public static class GeometryBuilder3D
         // Every channel carries the same finding, because every channel solves on the same
         // mesh round the same conductors; einzel solve reports it once per element.
         var solves = SolveGroups(geometry, Groups(geometry));
-
-        var warnings = SharedFaceNodes.Warnings(solves.Count > 0
-            ? NodesOnSharedFaces(geometry, solves[0].Mask.Grid, solves[0].Mask)
-            : null);
+        var warnings = solves.Count > 0 ? solves[0].Report.Warnings : SharedFaceNodes.Warnings(null);
 
         return [.. solves.Select(channel => channel with { Report = channel.Report with { Warnings = warnings } })];
     }
@@ -834,21 +1114,58 @@ public static class GeometryBuilder3D
 
         for (var index = 0; index < groups.Count; index++)
         {
-            var pattern = groups[index].Pattern;
-            double Weight(CompiledElectrode3D e) => pattern.GetValueOrDefault(e.Name, 0.0);
-
-            var mask = BuildMask(geometry, grid, Weight);
-
-            var (potential, report) = PoissonSolver3D.Solve(
-                mask,
-                geometry.Tolerance,
-                maximumCycles: 200,
-                coarsen: Coarsener(geometry, Weight));
-
-            solves.Add(new ChannelSolve(index, mask, potential, report) { Pattern = pattern });
+            solves.Add(SolveGroup(geometry, grid, groups[index], index));
         }
 
         return solves;
+    }
+
+    /// <summary>Solves one channel, and lets go of everything but its potential.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A method of its own so that its temporaries die with its frame.</b> A method called
+    /// once runs as first-tier JIT code, and first-tier code keeps every reference it has
+    /// ever put in a temporary reachable until the slot is reused or the method returns.
+    /// Written inline in the channel loop, the temporary behind <c>mask.Cuts</c> held the
+    /// previous channel's cut links through the next channel's whole solve - 96 bytes a
+    /// node, measured on the linear ion trap as 344 bytes a node for two channels against
+    /// the 248 that one working set and one kept potential account for. Setting the local
+    /// to null would not have reached it: the reference was in a slot with no name.
+    /// </para>
+    /// <para>
+    /// Before that, the loop kept each mask in the <see cref="ChannelSolve"/> it returned,
+    /// which cost 105 bytes a node a channel for the same reason at a larger scale.
+    /// </para>
+    /// </remarks>
+    private static ChannelSolve SolveGroup(
+        Geometry3D geometry, Grid3D grid, DriveChannel group, int index)
+    {
+        var pattern = group.Pattern;
+        double Weight(CompiledElectrode3D e) => pattern.GetValueOrDefault(e.Name, 0.0);
+
+        var mask = BuildMask(geometry, grid, Weight);
+
+        var (potential, report) = PoissonSolver3D.Solve(
+            mask,
+            geometry.Tolerance,
+            maximumCycles: 200,
+            coarsen: Coarsener(geometry, Weight));
+
+        // Asked of the first channel only and while its mask is in hand, because which nodes
+        // sit on a shared face is a property of the mesh and the conductors and every channel
+        // solves on both - and keeping a mask for the question afterwards is what this method
+        // exists to stop.
+        if (index == 0)
+        {
+            report = report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) };
+        }
+
+        // The counts, not the mask: holding the mask kept every solved channel's cut links
+        // alive through every later channel's solve. See ChannelSolve.
+        return new ChannelSolve(index, mask.FixedCount, mask.Cuts?.CutCount ?? 0, potential, report)
+        {
+            Pattern = pattern,
+        };
     }
 
     /// <summary>How a three-dimensional electrode is excited, for the shared decomposition.</summary>
@@ -856,7 +1173,137 @@ public static class GeometryBuilder3D
         new(electrode.Name, electrode.Potential, [.. electrode.Taps.Select(
             t => new DriveTap(t.Drive, t.Amplitude, t.Phase))]);
 
+    /// <summary>
+    /// The nodes an electrode's bounding box reaches: an index range per axis, with one
+    /// node of slack at each end.
+    /// </summary>
+    /// <param name="LowI">First node index along x.</param>
+    /// <param name="HighI">Last node index along x, inclusive.</param>
+    /// <param name="LowJ">First node index along y.</param>
+    /// <param name="HighJ">Last node index along y, inclusive.</param>
+    /// <param name="LowK">First node index along z.</param>
+    /// <param name="HighK">Last node index along z, inclusive.</param>
+    private readonly record struct NodeBox(
+        int LowI, int HighI, int LowJ, int HighJ, int LowK, int HighK)
+    {
+        /// <summary>Whether no node of the grid is near the electrode at all.</summary>
+        public bool IsEmpty => LowI > HighI || LowJ > HighJ || LowK > HighK;
+
+        /// <summary>Whether a link spanning these node indices meets the box.</summary>
+        /// <remarks>
+        /// A link is closed at both ends, so an arm running along the face of a box and an
+        /// arm ending on it both count. The slack in the box itself already puts a whole
+        /// cell between anything this refuses and the electrode's surface.
+        /// </remarks>
+        public bool Meets(int lowI, int highI, int lowJ, int highJ, int lowK, int highK) =>
+            highI >= LowI && lowI <= HighI
+            && highJ >= LowJ && lowJ <= HighJ
+            && highK >= LowK && lowK <= HighK;
+    }
+
+    /// <summary>Where every electrode can be, in node indices, in declaration order.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The bounding box is trusted as conservative</b> - every point where
+    /// <see cref="CompiledElectrode3D.Contains"/> holds lies inside it - which the volume
+    /// overlap check already relies on to settle most pairs without a search. It is the
+    /// electrode's own statement about where it is, so nothing here switches on a shape
+    /// and a sixth primitive is culled the day it has a bounding box.
+    /// </para>
+    /// <para>
+    /// <b>Floor and ceiling, then a node more each way, never rounding to nearest.</b>
+    /// <c>Contains</c> is a signed distance at most zero, so a node lying exactly on a face
+    /// is inside, and a bound converted to an index is a division that may land a rounding
+    /// either side of the integer that node sits at. Floor and ceiling already keep every
+    /// such node; the extra node is there so that a bound a few ulps short of the metal it
+    /// bounds - a tilted box's corners come from a rotation, its signed distance from the
+    /// inverse one - can never drop a node the reference loops would have fixed. It costs a
+    /// layer of nodes per face of each box and is worth it: the claim is bit-identity with
+    /// the unculled mask, and slack is what makes that a property rather than a coincidence
+    /// of where the faces fell on this mesh.
+    /// </para>
+    /// </remarks>
+    private static NodeBox[] Reach(IReadOnlyList<CompiledElectrode3D> electrodes, Grid3D grid)
+    {
+        var boxes = new NodeBox[electrodes.Count];
+
+        for (var index = 0; index < electrodes.Count; index++)
+        {
+            var (minX, minY, minZ, maxX, maxY, maxZ) = electrodes[index].Bounds;
+
+            var (lowI, highI) = Span(minX, maxX, grid.OriginX, grid.SpacingX, grid.CountX);
+            var (lowJ, highJ) = Span(minY, maxY, grid.OriginY, grid.SpacingY, grid.CountY);
+            var (lowK, highK) = Span(minZ, maxZ, grid.OriginZ, grid.SpacingZ, grid.CountZ);
+
+            boxes[index] = new NodeBox(lowI, highI, lowJ, highJ, lowK, highK);
+        }
+
+        return boxes;
+    }
+
+    /// <summary>The node indices along one axis that an interval reaches, with a node of slack.</summary>
+    /// <returns>An inclusive range, empty (low above high) when it misses the grid.</returns>
+    private static (int Low, int High) Span(
+        double lower, double upper, double origin, double spacing, int count)
+    {
+        var low = Math.Floor((Math.Min(lower, upper) - origin) / spacing) - 1.0;
+        var high = Math.Ceiling((Math.Max(lower, upper) - origin) / spacing) + 1.0;
+
+        if (double.IsNaN(low) || double.IsNaN(high))
+        {
+            // A box that cannot say where it is is asked about everywhere, which is what
+            // the reference does for every electrode.
+            return (0, count - 1);
+        }
+
+        // Clamped in floating point before the cast, so a bound far outside the grid - or
+        // an infinite one - never overflows an int on its way to being clamped.
+        low = Math.Max(low, 0.0);
+        high = Math.Min(high, count - 1.0);
+
+        return low > high ? (0, -1) : ((int)low, (int)high);
+    }
+
     /// <summary>Fixes every node inside an electrode, and says whether it found any.</summary>
+    /// <remarks>
+    /// Only the nodes its bounding box reaches are asked. The loop body is the reference's,
+    /// and the order is the reference's too - electrode by electrode in declaration order,
+    /// then z, y, x - which matters because the mask is written electrode by electrode and
+    /// where two overlap at one potential the last one written wins.
+    /// </remarks>
+    private static bool Rasterise(
+        DirichletMask3D mask, Grid3D grid, CompiledElectrode3D electrode, double potential, NodeBox box)
+    {
+        var any = false;
+
+        for (var k = box.LowK; k <= box.HighK; k++)
+        {
+            var z = grid.Z(k);
+
+            for (var j = box.LowJ; j <= box.HighJ; j++)
+            {
+                var y = grid.Y(j);
+
+                for (var i = box.LowI; i <= box.HighI; i++)
+                {
+                    if (electrode.Contains(grid.X(i), y, z))
+                    {
+                        mask.Fix(i, j, k, potential);
+                        any = true;
+                    }
+                }
+            }
+        }
+
+        return any;
+    }
+
+    /// <summary>Fixes every node inside an electrode, and says whether it found any.</summary>
+    /// <remarks>
+    /// The reference (CMP-1): every node of the grid, asked of every electrode. Kept as
+    /// written and reachable through <see cref="MaskCulling.None"/>, because it is what the
+    /// culled loop is checked against and a reference nothing runs is one nobody can trust.
+    /// </remarks>
     private static bool Rasterise(
         DirichletMask3D mask, Grid3D grid, CompiledElectrode3D electrode, double potential)
     {
@@ -888,10 +1335,18 @@ public static class GeometryBuilder3D
     /// Grounds the nodes on every Dirichlet face.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The face node itself, not a ghost one cell outside it. The alternative reading
     /// puts the boundary a cell further out at every level of a multigrid hierarchy,
     /// so the domain grows as it coarsens and the coarse problem is a different one -
     /// which in two dimensions sent a cap plate in a grounded box to 1e50 volts.
+    /// </para>
+    /// <para>
+    /// Only a node no electrode has claimed, so an electrode reaching the face holds it -
+    /// and an electrode whose face is flush with the domain's holds the nodes on it or
+    /// leaves them grounded according to the rounding, which
+    /// <see cref="NodesOnSharedFaces"/> reports.
+    /// </para>
     /// </remarks>
     private static void PinFaces(DirichletMask3D mask, Grid3D grid)
     {
@@ -918,6 +1373,12 @@ public static class GeometryBuilder3D
         }
     }
 
+    /// <summary>Records every cut link, asking every electrode about every arm.</summary>
+    /// <remarks>
+    /// The reference (CMP-1), reachable through <see cref="MaskCulling.None"/>. Six arms
+    /// of every free node against every electrode is half a billion entry tests on the
+    /// Astral's foil solve, which is why it is not the path a solve takes.
+    /// </remarks>
     private static void AddCuts(
         Geometry3D geometry,
         Grid3D grid,
@@ -1004,6 +1465,211 @@ public static class GeometryBuilder3D
             // is an enormous coefficient at precisely the nodes next to the metal.
             // The solve then converges contentedly to a wrong answer, and the
             // maximum principle is the only thing that notices.
+            if (entry <= 0.0)
+            {
+                continue;
+            }
+
+            nearest = entry;
+            potential = potentialOf?.Invoke(electrode) ?? electrode.Potential;
+            found = true;
+        }
+
+        if (found)
+        {
+            cuts.Cut(i, j, k, arm, nearest, potential);
+        }
+    }
+
+    /// <summary>How many nodes a side a candidate block covers, as a power of two.</summary>
+    /// <remarks>
+    /// Eight. Small enough that a thin electrode's list stays out of blocks it is nowhere
+    /// near, large enough that the lists cost little beside the mask they serve - the
+    /// Astral's foil grid is three thousand blocks.
+    /// </remarks>
+    private const int BlockShift = 3;
+
+    /// <summary>Records every cut link, asking only the electrodes near each arm.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two screens, and the order the reference asks in survives both.</b> The grid is
+    /// divided into blocks, each listing the electrodes whose reach any link from one of
+    /// its nodes can touch; then each arm asks only those of its block's electrodes whose
+    /// box the arm itself meets. A list is built by walking the electrodes in declaration
+    /// order and is therefore in that order, which is load-bearing: two surfaces at exactly
+    /// the same fraction along one arm go to the one declared first, as in the reference.
+    /// </para>
+    /// <para>
+    /// <b>What is skipped could only ever have been a miss.</b> An arm that does not meet an
+    /// electrode's box is at least a cell from its surface, where the reference's entry test
+    /// returns nothing - so skipping it changes no fraction, no potential, and no count.
+    /// </para>
+    /// </remarks>
+    private static void AddCuts(
+        Geometry3D geometry,
+        Grid3D grid,
+        DirichletMask3D mask,
+        Func<CompiledElectrode3D, double>? potentialOf,
+        NodeBox[] reach)
+    {
+        var cuts = new CutLinks3D(grid);
+
+        var blocksX = ((grid.CountX - 1) >> BlockShift) + 1;
+        var blocksY = ((grid.CountY - 1) >> BlockShift) + 1;
+        var blocks = Candidates(reach, grid, blocksX, blocksY);
+
+        for (var k = 0; k < grid.CountZ; k++)
+        {
+            for (var j = 0; j < grid.CountY; j++)
+            {
+                for (var i = 0; i < grid.CountX; i++)
+                {
+                    if (mask.IsFixed(i, j, k))
+                    {
+                        // A node inside metal has no free stencil to cut.
+                        continue;
+                    }
+
+                    var near = blocks[
+                        (i >> BlockShift) + (blocksX * ((j >> BlockShift) + (blocksY * (k >> BlockShift))))];
+
+                    if (near.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    CutTowards(geometry, reach, near, grid, cuts, potentialOf, i, j, k, 1, 0, 0, Arm3D.East);
+                    CutTowards(geometry, reach, near, grid, cuts, potentialOf, i, j, k, -1, 0, 0, Arm3D.West);
+                    CutTowards(geometry, reach, near, grid, cuts, potentialOf, i, j, k, 0, 1, 0, Arm3D.North);
+                    CutTowards(geometry, reach, near, grid, cuts, potentialOf, i, j, k, 0, -1, 0, Arm3D.South);
+                    CutTowards(geometry, reach, near, grid, cuts, potentialOf, i, j, k, 0, 0, 1, Arm3D.Up);
+                    CutTowards(geometry, reach, near, grid, cuts, potentialOf, i, j, k, 0, 0, -1, Arm3D.Down);
+                }
+            }
+        }
+
+        if (cuts.CutCount > 0)
+        {
+            mask.Cuts = cuts;
+        }
+    }
+
+    /// <summary>
+    /// For each block of nodes, the electrodes a link from one of its nodes could meet, in
+    /// declaration order.
+    /// </summary>
+    /// <remarks>
+    /// A link reaches one node beyond the node it starts from, so a block is handed every
+    /// electrode whose reach, widened by that one node, overlaps it.
+    /// </remarks>
+    private static int[][] Candidates(NodeBox[] reach, Grid3D grid, int blocksX, int blocksY)
+    {
+        var blocksZ = ((grid.CountZ - 1) >> BlockShift) + 1;
+        var lists = new List<int>?[blocksX * blocksY * blocksZ];
+
+        for (var index = 0; index < reach.Length; index++)
+        {
+            var box = reach[index];
+
+            if (box.IsEmpty)
+            {
+                continue;
+            }
+
+            var fromI = Math.Max(box.LowI - 1, 0) >> BlockShift;
+            var toI = Math.Min(box.HighI + 1, grid.CountX - 1) >> BlockShift;
+            var fromJ = Math.Max(box.LowJ - 1, 0) >> BlockShift;
+            var toJ = Math.Min(box.HighJ + 1, grid.CountY - 1) >> BlockShift;
+            var fromK = Math.Max(box.LowK - 1, 0) >> BlockShift;
+            var toK = Math.Min(box.HighK + 1, grid.CountZ - 1) >> BlockShift;
+
+            for (var bk = fromK; bk <= toK; bk++)
+            {
+                for (var bj = fromJ; bj <= toJ; bj++)
+                {
+                    for (var bi = fromI; bi <= toI; bi++)
+                    {
+                        (lists[bi + (blocksX * (bj + (blocksY * bk)))] ??= []).Add(index);
+                    }
+                }
+            }
+        }
+
+        var blocks = new int[lists.Length][];
+
+        for (var block = 0; block < lists.Length; block++)
+        {
+            blocks[block] = lists[block] is { } list ? [.. list] : [];
+        }
+
+        return blocks;
+    }
+
+    /// <summary>Cuts one arm against the electrodes near it.</summary>
+    /// <remarks>
+    /// The body is the reference's, line for line, over a shorter list: the same endpoints,
+    /// the same entry test, the same refusal of a surface at zero and the same strict
+    /// comparison, so the same electrode wins every arm.
+    /// </remarks>
+    private static void CutTowards(
+        Geometry3D geometry,
+        NodeBox[] reach,
+        int[] near,
+        Grid3D grid,
+        CutLinks3D cuts,
+        Func<CompiledElectrode3D, double>? potentialOf,
+        int i,
+        int j,
+        int k,
+        int di,
+        int dj,
+        int dk,
+        Arm3D arm)
+    {
+        var ni = i + di;
+        var nj = j + dj;
+        var nk = k + dk;
+
+        if (ni < 0 || nj < 0 || nk < 0 || ni >= grid.CountX || nj >= grid.CountY || nk >= grid.CountZ)
+        {
+            return;
+        }
+
+        var lowI = Math.Min(i, ni);
+        var highI = Math.Max(i, ni);
+        var lowJ = Math.Min(j, nj);
+        var highJ = Math.Max(j, nj);
+        var lowK = Math.Min(k, nk);
+        var highK = Math.Max(k, nk);
+
+        var fromX = grid.X(i);
+        var fromY = grid.Y(j);
+        var fromZ = grid.Z(k);
+
+        var toX = grid.X(ni);
+        var toY = grid.Y(nj);
+        var toZ = grid.Z(nk);
+
+        var nearest = 1.0;
+        var potential = 0.0;
+        var found = false;
+
+        foreach (var index in near)
+        {
+            if (!reach[index].Meets(lowI, highI, lowJ, highJ, lowK, highK))
+            {
+                continue;
+            }
+
+            var electrode = geometry.Electrodes[index];
+
+            if (electrode.FirstEntry(fromX, fromY, fromZ, toX, toY, toZ) is not { } entry || entry >= nearest)
+            {
+                continue;
+            }
+
+            // A surface at zero is the node itself, which rasterization has already
+            // decided; see the reference for why accepting it is expensive.
             if (entry <= 0.0)
             {
                 continue;
