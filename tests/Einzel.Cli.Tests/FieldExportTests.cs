@@ -104,6 +104,184 @@ public sealed class FieldExportTests : IDisposable
     }
 
     /// <summary>
+    /// The value at the node nearest a point, in millimeters, read through the file's own
+    /// origin and spacing rather than an assumed mesh.
+    /// </summary>
+    private static double ValueAt(string vti, params double[] millimeters)
+    {
+        string Attribute(string name)
+        {
+            var start = vti.IndexOf($"{name}=\"", StringComparison.Ordinal) + name.Length + 2;
+            return vti[start..vti.IndexOf('"', start)];
+        }
+
+        double[] Numbers(string text) =>
+            [.. text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(v => double.Parse(v, CultureInfo.InvariantCulture))];
+
+        var extent = Numbers(Attribute("WholeExtent"));
+        var origin = Numbers(Attribute("Origin"));
+        var spacing = Numbers(Attribute("Spacing"));
+        var counts = new[] { (int)extent[1] + 1, (int)extent[3] + 1, (int)extent[5] + 1 };
+
+        var index = 0;
+        var stride = 1;
+
+        for (var axis = 0; axis < 3; axis++)
+        {
+            var at = axis < millimeters.Length ? millimeters[axis] * 1e-3 : origin[axis];
+            index += (int)Math.Round((at - origin[axis]) / spacing[axis]) * stride;
+            stride *= counts[axis];
+        }
+
+        return Values(vti)[index];
+    }
+
+    /// <summary>
+    /// Two plates at opposite potentials that do not touch, both unnamed or both given the
+    /// same name, in a 16 mm box at a 1 mm cell.
+    /// </summary>
+    private static string Unnamed(string name) => $$"""
+    {
+      "schemaVersion": "0.3",
+      "name": "twins",
+      "description": "Two plates at opposite potentials sharing a name, or having none.",
+      "ion": { "massToCharge": { "value": 100, "unit": "Da" }, "chargeNumber": 1 },
+      "source": {
+        "position": { "value": [0, -7, 0], "unit": "mm" },
+        "direction": { "value": [0, 1, 0] },
+        "accelerationPotential": { "value": 1000, "unit": "V" }
+      },
+      "fields": [
+        {
+          "type": "solved2d",
+          "solve": {
+            "minX": { "value": -8, "unit": "mm" },
+            "minY": { "value": -8, "unit": "mm" },
+            "maxX": { "value": 8, "unit": "mm" },
+            "maxY": { "value": 8, "unit": "mm" },
+            "cellSize": { "value": 1, "unit": "mm" },
+            "tolerance": 1e-8,
+            "electrodes": [
+              {
+                {{name}}"shape": "rectangle",
+                "minX": { "value": -6, "unit": "mm" },
+                "minY": { "value": -2, "unit": "mm" },
+                "maxX": { "value": -2, "unit": "mm" },
+                "maxY": { "value": 2, "unit": "mm" },
+                "potential": { "value": 100, "unit": "V" }
+              },
+              {
+                {{name}}"shape": "rectangle",
+                "minX": { "value": 2, "unit": "mm" },
+                "minY": { "value": -2, "unit": "mm" },
+                "maxX": { "value": 6, "unit": "mm" },
+                "maxY": { "value": 2, "unit": "mm" },
+                "potential": { "value": -100, "unit": "V" }
+              }
+            ]
+          }
+        }
+      ],
+      "detector": {
+        "planePoint": { "value": [0, 7, 0], "unit": "mm" },
+        "normal": { "value": [0, -1, 0] }
+      },
+      "transport": { "mode": "trajectory", "maximumFlightTime": { "value": 1, "unit": "ms" } }
+    }
+    """;
+
+    /// <summary>
+    /// Electrodes are told apart by where they are declared, not by their names.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name is optional and defaults to <c>electrode</c>, and nothing requires two to differ.
+    /// Exporting through a pattern keyed by name put both of these plates at the last one's
+    /// -100 V - a different instrument from the one every run flies, which builds its static
+    /// mask electrode by electrode. Found by review.
+    /// </para>
+    /// <para>
+    /// The grid values are the claim and the header is the second half: a header keyed by name
+    /// listed one plate, at the wrong potential, even where the solve was right.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("")]
+    [InlineData("\"name\": \"plate\", ")]
+    public void ElectrodesSharingANameKeepTheirOwnPotentials(string name)
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        var model = Path.Combine(_root, "models", "twins.json");
+        File.WriteAllText(model, Unnamed(name));
+
+        var (artifacts, _) = Export(model);
+        var vti = File.ReadAllText(Assert.Single(artifacts));
+
+        Assert.Equal(100.0, ValueAt(vti, -4.0, 0.0));
+        Assert.Equal(-100.0, ValueAt(vti, 4.0, 0.0));
+
+        var label = name.Length == 0 ? "electrode" : "plate";
+        Assert.Contains($"{label} 100 V, {label} -100 V", Header(vti), StringComparison.Ordinal);
+    }
+
+    /// <summary>The volume header tells same-named electrodes apart too.</summary>
+    /// <remarks>
+    /// The volume's static solve was always built electrode by electrode, so its values were
+    /// right; the header was not, listing both boxes at -100 V.
+    /// </remarks>
+    [Fact]
+    public void AVolumeTellsUnnamedElectrodesApart()
+    {
+        Assert.Equal(0, Run("init", _root).ExitCode);
+        var model = Path.Combine(_root, "models", "twins3d.json");
+
+        // The stacked boxes, moved apart so they share no face, with their names removed.
+        File.WriteAllText(model, Stacked
+            .Replace("\"name\": \"lower\", ", string.Empty, StringComparison.Ordinal)
+            .Replace("\"name\": \"upper\", ", string.Empty, StringComparison.Ordinal)
+            .Replace("\"maxZ\": { \"value\": 2, \"unit\": \"mm\" }", "\"maxZ\": { \"value\": 0, \"unit\": \"mm\" }", StringComparison.Ordinal));
+        Assert.DoesNotContain("\"lower\"", File.ReadAllText(model), StringComparison.Ordinal);
+
+        var (artifacts, _) = Export(model);
+        var vti = File.ReadAllText(Assert.Single(artifacts));
+
+        Assert.Equal(100.0, ValueAt(vti, 0.0, 0.0, -2.0));
+        Assert.Equal(-100.0, ValueAt(vti, 0.0, 0.0, 3.0));
+        Assert.Contains("electrode 100 V, electrode -100 V", Header(vti), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A project whose path contains <c>.vti</c>, and a model whose name does, keeps its
+    /// channel files in its own scratch directory under the names it should have.
+    /// </summary>
+    /// <remarks>
+    /// Channel files were named by replacing <c>.vti</c> in the whole path, so a directory
+    /// called <c>session.vti</c> above the project was renamed with them - the write failed,
+    /// or landed outside the project if such a directory existed. Found by review.
+    /// </remarks>
+    [Fact]
+    public void AVtiInThePathIsNotRenamedWithTheChannels()
+    {
+        var root = Path.Combine(_root, "session.vti", "project");
+        Assert.Equal(0, Run("init", root).ExitCode);
+        var model = Path.Combine(root, "models", "funnel.vti.json");
+        Assert.Equal(0, Run("new", model, "--from-template", "ion-funnel").ExitCode);
+
+        var (artifacts, _) = Export(model);
+
+        var scratch = new Einzel.Project.ProjectLayout(root).Scratch;
+
+        Assert.Equal(
+            [
+                Path.Combine(scratch, "funnel.vti.field.channel0.vti"),
+                Path.Combine(scratch, "funnel.vti.field.channel1.vti"),
+            ],
+            artifacts);
+        Assert.All(artifacts, a => Assert.True(File.Exists(a), a));
+    }
+
+    /// <summary>
     /// The RF quadrupole exports its rods rather than a grounded box.
     /// </summary>
     /// <remarks>

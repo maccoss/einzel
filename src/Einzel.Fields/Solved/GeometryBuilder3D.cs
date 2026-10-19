@@ -973,14 +973,16 @@ public static class GeometryBuilder3D
     public sealed record ChannelSolve(
         int Index, int FixedNodes, int CutLinks, ScalarField3D Potential, SolveReport Report)
     {
-        /// <summary>Electrode name to the potential it holds in this solve, in volts.</summary>
+        /// <summary>
+        /// What each declared electrode held in this solve, in volts and in declaration order.
+        /// </summary>
         /// <remarks>
         /// The declared potentials for a static geometry, and for a driven or sequenced one
-        /// the channel's spatial pattern with its leading electrode at one volt. See the
-        /// two-dimensional <see cref="GeometryBuilder.ChannelSolve.Pattern"/>.
+        /// the channel's spatial pattern with its leading electrode at one volt. By position
+        /// rather than by name, for the reason the two-dimensional
+        /// <see cref="GeometryBuilder.ChannelSolve.Holding"/> gives.
         /// </remarks>
-        public IReadOnlyDictionary<string, double> Pattern { get; init; } =
-            new Dictionary<string, double>(StringComparer.Ordinal);
+        public IReadOnlyList<double> Holding { get; init; } = [];
     }
 
     /// <summary>Solves a geometry channel by channel, and hands back the diagnostics.</summary>
@@ -1010,7 +1012,7 @@ public static class GeometryBuilder3D
                     0, mask.FixedCount, mask.Cuts?.CutCount ?? 0, potential,
                     report with { Warnings = SharedFaceNodes.Warnings(NodesOnSharedFaces(geometry, grid, mask)) })
                 {
-                    Pattern = DeclaredPotentials(geometry),
+                    Holding = [.. geometry.Electrodes.Select(e => e.Potential)],
                 },
             ];
         }
@@ -1021,19 +1023,6 @@ public static class GeometryBuilder3D
         var warnings = solves.Count > 0 ? solves[0].Report.Warnings : SharedFaceNodes.Warnings(null);
 
         return [.. solves.Select(channel => channel with { Report = channel.Report with { Warnings = warnings } })];
-    }
-
-    /// <summary>Each electrode's declared potential, by name: a static geometry's one pattern.</summary>
-    private static Dictionary<string, double> DeclaredPotentials(Geometry3D geometry)
-    {
-        var pattern = new Dictionary<string, double>(StringComparer.Ordinal);
-
-        foreach (var electrode in geometry.Electrodes)
-        {
-            pattern[electrode.Name] = electrode.Potential;
-        }
-
-        return pattern;
     }
 
     /// <summary>
@@ -1164,7 +1153,7 @@ public static class GeometryBuilder3D
         // alive through every later channel's solve. See ChannelSolve.
         return new ChannelSolve(index, mask.FixedCount, mask.Cuts?.CutCount ?? 0, potential, report)
         {
-            Pattern = pattern,
+            Holding = [.. geometry.Electrodes.Select(Weight)],
         };
     }
 

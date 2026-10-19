@@ -5336,3 +5336,10 @@ already named such an array `potential_V` when it was the only channel, so a qua
 at 500 V opened in ParaView with its rods at 1. Out by the drive amplitude, and plausibly so -
 a small, confident, wrong number, which is the kind this project keeps finding. The array is
 now named as a basis and the header says what it holds and which electrodes carry it.
+
+**And review found the dictionary itself was the defect.** The static channel's pattern was a
+map from electrode name to potential, and a name is optional, defaults to `electrode`, and need
+not be unique - so two unnamed plates at opposite potentials became one entry and exported at
+the same voltage, while every run, which builds its mask electrode by electrode, got them
+right. **A display name is not a key.** Where a list of declared things is the source, identify
+them by position, and derive any report about them from the same function that acted on them.

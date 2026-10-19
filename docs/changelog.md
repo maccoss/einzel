@@ -2491,6 +2491,18 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   fixing one caller, enumerate every place that performs the same construction, not the callers of
   the function that was fixed.
 
+  **Review found that a name is not an identity.** An electrode's name is optional, defaults to
+  `electrode` and need not be unique, and the static channel was a dictionary keyed by it - so two
+  unnamed plates at +100 V and -100 V both exported at -100 V, where every run builds its mask
+  electrode by electrode and gets them right. The static channel now builds that same mask
+  (`Patterns` returns null for "as declared"), and `ChannelSolve.Holding` reports what each
+  declared electrode held **by position**, from the same function the mask is built with. Also
+  from review: channel files were named by replacing `.vti` in the whole path, so a project under
+  a directory called `session.vti` wrote outside itself or failed; names are now built from the
+  stem. Each fix mutation-checked against its own regression. **Not fixed here**: the driven
+  decomposition is name-keyed too, so two same-named electrodes in a driven geometry share one
+  supply in every run - older than this change, and its own task.
+
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
 Two findings from Stage 1 that bear on the spec:

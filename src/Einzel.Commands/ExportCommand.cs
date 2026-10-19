@@ -234,10 +234,12 @@ public static class ExportCommand
             solved++;
 
             // Named by element index as well as model, because a model with two
-            // solved elements would otherwise write one file twice.
+            // solved elements would otherwise write one file twice. Without the extension:
+            // a channel's suffix goes before it, and finding where by searching for ".vti"
+            // also finds it in the stem or in any directory above the project.
             var name = solvedElements > 1
-                ? $"{stem}.field{index}.vti"
-                : $"{stem}.field.vti";
+                ? $"{stem}.field{index}"
+                : $"{stem}.field";
 
             Element element;
 
@@ -264,7 +266,7 @@ public static class ExportCommand
                     [.. solve3d.Electrodes.Select(e => (e.Name, false))],
                     [
                         .. GeometryBuilder3D.SolveChannels(geometry).Select(c => new Channel(
-                            c.Index, c.Report, c.Pattern,
+                            c.Index, c.Report, c.Holding,
                             (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
                     ]);
             }
@@ -285,12 +287,12 @@ public static class ExportCommand
                     [.. solve.Electrodes.Select(e => (e.Name, e.Shape == ElectrodeShape.EdgeProfile))],
                     [
                         .. GeometryBuilder.SolveChannels(solve).Select(c => new Channel(
-                            c.Index, c.Report, c.Pattern,
+                            c.Index, c.Report, c.Holding,
                             (array, provenance) => Io.VtuWriter.WriteScalarField(c.Potential, array, provenance))),
                     ]);
             }
 
-            artifacts.AddRange(Write(element, Path.Combine(project.Scratch, name), hash, project, dryRun, warnings));
+            artifacts.AddRange(Write(element, project.Scratch, name, hash, project, dryRun, warnings));
         }
 
         if (solved == 0)
@@ -325,7 +327,8 @@ public static class ExportCommand
     /// <param name="Symmetry">What the solve claims about the directions it did not mesh.</param>
     /// <param name="Electrodes">
     /// Names in declaration order, and whether each is an edge profile - whose entry in a
-    /// pattern is a scale on its profile rather than a potential.
+    /// pattern is a scale on its profile rather than a potential. Matched to each channel's
+    /// holding by position, because names need not be unique.
     /// </param>
     /// <param name="Channels">One per basis channel.</param>
     private sealed record Element(
@@ -337,10 +340,14 @@ public static class ExportCommand
         IReadOnlyList<Channel> Channels);
 
     /// <summary>One basis channel, with a way to write it that knows its dimension.</summary>
+    /// <param name="Index">Which channel, in the order the decomposition found them.</param>
+    /// <param name="Report">How its solve went.</param>
+    /// <param name="Holding">What each declared electrode held, in declaration order.</param>
+    /// <param name="Write">Writes the channel's potential as ImageData.</param>
     private sealed record Channel(
         int Index,
         SolveReport Report,
-        IReadOnlyDictionary<string, double> Pattern,
+        IReadOnlyList<double> Holding,
         Func<string, IReadOnlyList<string>, string> Write);
 
     /// <summary>
@@ -350,7 +357,8 @@ public static class ExportCommand
     /// <returns>The paths written, or that would be under a dry run.</returns>
     private static List<string> Write(
         Element element,
-        string path,
+        string directory,
+        string name,
         string hash,
         ProjectLayout project,
         bool dryRun,
@@ -388,9 +396,9 @@ public static class ExportCommand
 
         foreach (var channel in channels)
         {
-            var channelPath = channels.Count > 1
-                ? path.Replace(".vti", $".channel{channel.Index}.vti", StringComparison.Ordinal)
-                : path;
+            var channelPath = Path.Combine(
+                directory,
+                channels.Count > 1 ? $"{name}.channel{channel.Index}.vti" : $"{name}.vti");
 
             // A basis channel is named as one even when it is the only channel, because a
             // single-pattern RF quadrupole's rods sit at one volt and the array must not be
@@ -456,16 +464,13 @@ public static class ExportCommand
     {
         const int Shown = 8;
 
+        // By position: two electrodes may share a name, and each holds its own potential.
         var held = element.Electrodes
-            .Where(e => channel.Pattern.GetValueOrDefault(e.Name, 0.0) != 0.0)
-            .Select(e =>
-            {
-                var value = channel.Pattern[e.Name];
-
-                return e.Profile
-                    ? FormattableString.Invariant($"{e.Name} {value:G6} x its profile")
-                    : FormattableString.Invariant($"{e.Name} {value:G6} V");
-            })
+            .Select((e, i) => (e.Name, e.Profile, Value: channel.Holding[i]))
+            .Where(e => e.Value != 0.0)
+            .Select(e => e.Profile
+                ? FormattableString.Invariant($"{e.Name} {e.Value:G6} x its profile")
+                : FormattableString.Invariant($"{e.Name} {e.Value:G6} V"))
             .ToList();
 
         if (held.Count == 0)
