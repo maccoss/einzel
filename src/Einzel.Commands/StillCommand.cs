@@ -51,12 +51,19 @@ public sealed record StillOutcome
 
     /// <summary>
     /// The true length of each arm of the scale indicator, in millimeters; absent when none
-    /// was drawn.
+    /// was drawn - because <c>--no-scale</c> asked for none, or because the picture is too small
+    /// to hold one.
     /// </summary>
     public double? ScaleMm { get; init; }
 
     /// <summary>The model axes the scale indicator has an arm along; empty when none was drawn.</summary>
     public IReadOnlyList<string> ScaleAxes { get; init; } = [];
+
+    /// <summary>
+    /// Which corner the scale indicator sits in - the one the instrument covers least; absent
+    /// when none was drawn.
+    /// </summary>
+    public string? ScaleCorner { get; init; }
 
     /// <summary>Everything the viewport reported, which the PNG also carries (GRD-2).</summary>
     public required IReadOnlyList<WarningJson> Warnings { get; init; }
@@ -145,7 +152,8 @@ public static class StillCommand
                 width,
                 height,
                 ScaleIndicator.TextHeightFor(width, height),
-                tainted ? Rasterizer.HatchHeight(height) : 0.0)
+                tainted ? Rasterizer.HatchHeight(height) : 0.0,
+                layers)
             : null;
 
         var rgb = Rasterizer.Draw(
@@ -190,6 +198,7 @@ public static class StillCommand
             Tainted = tainted,
             ScaleMm = ruler?.LengthMm,
             ScaleAxes = ruler is null ? [] : [.. ruler.Arms.Select(a => a.Axis)],
+            ScaleCorner = ruler?.Corner,
             Warnings = [.. outcome.Warnings.Select(w => new WarningJson
             {
                 Code = w.Code,
@@ -258,7 +267,7 @@ public static class StillCommand
         // pixels they survive being resized into.
         if (ruler is not null)
         {
-            text.Add(("Scale", $"each arm of the ruler in the lower left is {ruler.Label} along the model's {string.Join(", ", ruler.Arms.Select(a => a.Axis))} axis, drawn with the picture's own projection"));
+            text.Add(("Scale", $"each arm of the ruler in the {ruler.Corner} is {ruler.Label} along the model's {string.Join(", ", ruler.Arms.Select(a => a.Axis))} axis, drawn with the picture's own projection"));
         }
 
         // Every warning, not only the violations the band marks: a PNG travels without the

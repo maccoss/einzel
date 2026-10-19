@@ -1671,7 +1671,7 @@ public static class Program
             + $"; {outcome.Electrodes} electrodes, {outcome.FieldLevels} equipotential levels, "
             + $"{outcome.Trajectories} trajectories, {outcome.DensityShells} density contours"
             + (outcome.ScaleMm is { } arm
-                ? $"; ruler arms {ScaleIndicator.Format(arm)} along {string.Join(", ", outcome.ScaleAxes)}"
+                ? $"; ruler arms {ScaleIndicator.Format(arm)} along {string.Join(", ", outcome.ScaleAxes)}, {outcome.ScaleCorner}"
                 : string.Empty)
             + (outcome.Tainted ? "; marked with a hatched band for a validity violation" : string.Empty));
 

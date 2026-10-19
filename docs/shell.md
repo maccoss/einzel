@@ -821,9 +821,12 @@ rows, and the reason a second window is a drawing exercise rather than a capabil
 `ScaleOverlay` draws the scale indicator over the GL control as ordinary Avalonia lines and
 text: one arm along each model axis, all the same round length, foreshortened exactly as the
 instrument is. **It decides nothing** - the length, which arms show and where they sit come
-from `ScaleIndicator.For`, laid out from the very matrix the render pass hands the GPU, which
-is the call `einzel render still` makes. So a still and the window put the same ruler in the
-same corner (`docs/rendering.md` has why it is a ruler in the scene rather than a flat bar).
+from `ScaleIndicator.For`, laid out from the very matrix the render pass hands the GPU and the
+composed picture it is drawing (`SceneView.Picture`), which is the call `einzel render still`
+makes. So a still and the window put the same ruler in the same corner - the one the instrument
+covers least - and leave it out alike when the picture is too small to hold it
+(`docs/rendering.md` has why it is a ruler in the scene rather than a flat bar, and how the
+corner is chosen).
 
 Over the GL control rather than inside it, because Avalonia draws text and the shader does
 not, and an annotation must not be hidden by the instrument; it takes no pointer input. It is

@@ -227,12 +227,14 @@ public sealed class RenderStillTests(ITestOutputHelper output) : IDisposable
         var scene = ViewportCommand.Execute(model);
         var (azimuth, elevation) = ViewportPicture.Views["side"];
         var matrix = Framing.Measure(scene, azimuth, elevation).Matrix((double)Width / Height);
-        var ruler = ScaleIndicator.For(matrix, Width, Height, ScaleIndicator.TextHeightFor(Width, Height))!;
+        var ruler = ScaleIndicator.For(
+            matrix, Width, Height, ScaleIndicator.TextHeightFor(Width, Height), 0.0, ViewportPicture.Compose(scene))!;
 
         output.WriteLine($"ruler arms {ScaleIndicator.Format(arm)} along {string.Join(", ", axes)}");
 
         Assert.Equal(ruler.LengthMm, arm, 12);
         Assert.Equal(["x", "y"], axes);
+        Assert.Equal(ruler.Corner, result.RootElement.GetProperty("scaleCorner").GetString());
 
         var x = ruler.Arms.Single(a => a.Axis == "x");
         var middle = ((int)Math.Round((ruler.OriginPx.X + x.TipPx.X) / 2.0), (int)Math.Round(ruler.OriginPx.Y));
@@ -258,6 +260,30 @@ public sealed class RenderStillTests(ITestOutputHelper output) : IDisposable
         // The darkest channel of the pixel at the arm's midpoint and one row either side.
         static IEnumerable<int> Rows(byte[] rgb, (int X, int Y) at) =>
             Enumerable.Range(at.Y - 1, 3).Select(y => At(rgb, Width, at.X, y)).Select(p => Math.Min(p.R, Math.Min(p.G, p.B)));
+    }
+
+    /// <summary>
+    /// A still too small to hold the ruler reports none, rather than reporting one it drew off
+    /// the edge.
+    /// </summary>
+    /// <remarks>
+    /// Found by review: at 32 pixels a side the ruler's origin sat above the picture with both
+    /// arms clipped away while <c>scaleMm</c> still said a ruler was drawn.
+    /// </remarks>
+    [Fact]
+    public void ATinyStillReportsNoRuler()
+    {
+        var png = Path.Combine(_root, "figures", "lens-tiny.png");
+        var (code, stdout, _) = Cli(
+            "render", "still", Template("einzel-lens"), "--view", "side", "--out", png,
+            "--width-px", "32", "--height-px", "32", "--json");
+
+        Assert.Equal(0, code);
+
+        using var result = JsonDocument.Parse(stdout);
+
+        Assert.False(result.RootElement.TryGetProperty("scaleMm", out var arm) && arm.ValueKind != JsonValueKind.Null);
+        Assert.Empty(result.RootElement.GetProperty("scaleAxes").EnumerateArray());
     }
 
     private static int BottomRowRed(string png)

@@ -1,6 +1,8 @@
 using Einzel.Commands;
 using Einzel.Render;
 
+using Xunit.Abstractions;
+
 namespace Einzel.Cli.Tests;
 
 /// <summary>
@@ -16,7 +18,7 @@ namespace Einzel.Cli.Tests;
 /// same matrix the ruler reads would check that the ruler agrees with itself.
 /// </para>
 /// </remarks>
-public sealed class ScaleIndicatorTests
+public sealed class ScaleIndicatorTests(ITestOutputHelper output)
 {
     private const int Width = 900;
     private const int Height = 560;
@@ -208,6 +210,128 @@ public sealed class ScaleIndicatorTests
         }
     }
 
+    /// <summary>
+    /// The ruler takes the corner the drawn instrument covers least, and lower left only when
+    /// that is as good as any.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Found by review: the camera fits the instrument to the picture with only a few percent to
+    /// spare, so a ruler always put in the lower left landed on an electrode in a plate-filling
+    /// view while the documentation said it never would. In the side view the screen's axes are
+    /// the model's, so a slab is placed over chosen quarters of the picture directly.
+    /// </para>
+    /// <para>
+    /// The control is the same picture with nothing in it, which must keep the old lower left -
+    /// and a slab covering the whole picture, where every corner is covered alike and the ruler
+    /// is drawn over the instrument in the lower left: it can only be as clear as the picture
+    /// allows.
+    /// </para>
+    /// </remarks>
+    /// <param name="lowX">The slab's least x, in millimeters.</param>
+    /// <param name="lowY">The slab's least y, in millimeters.</param>
+    /// <param name="highX">The slab's greatest x, in millimeters.</param>
+    /// <param name="highY">The slab's greatest y, in millimeters.</param>
+    /// <param name="corner">Where the ruler should go.</param>
+    [Theory]
+    [InlineData(0.0, 0.0, 0.0, 0.0, "lower left")]
+    [InlineData(-100.0, -100.0, 0.0, 0.0, "lower right")]
+    [InlineData(-100.0, -100.0, 100.0, 0.0, "upper left")]
+    [InlineData(-100.0, -100.0, 100.0, 100.0, "lower left")]
+    public void TheRulerTakesTheCornerTheInstrumentCoversLeast(
+        double lowX, double lowY, double highX, double highY, string corner)
+    {
+        var (azimuth, elevation) = ViewportPicture.Views["side"];
+        var matrix = Framing.Around(Box, azimuth, elevation).Matrix((double)Width / Height);
+
+        PictureMesh[] meshes = highX > lowX
+            ? [new PictureMesh(
+                [lowX, lowY, 0.0, highX, lowY, 0.0, highX, highY, 0.0, lowX, highY, 0.0],
+                [0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                [0, 1, 2, 0, 2, 3],
+                0.5, 0.5, 0.5)]
+            : [];
+
+        PictureLayer[] picture = [new PictureLayer("conductors", meshes, [], 1.0, WritesDepth: true)];
+
+        var ruler = ScaleIndicator.For(matrix, Width, Height, 14.0, 0.0, picture)!;
+
+        output.WriteLine($"slab x {lowX} to {highX}, y {lowY} to {highY} mm: ruler in the {ruler.Corner}");
+
+        Assert.Equal(corner, ruler.Corner);
+
+        // Where a corner was clear, the ruler is clear of the slab - every point of it outside
+        // the slab's own rectangle on screen.
+        if (highX > lowX && !(highX >= 100.0 && highY >= 100.0))
+        {
+            var (x0, y0) = Pixel(matrix, lowX, highY);
+            var (x1, y1) = Pixel(matrix, highX, lowY);
+
+            foreach (var (x, y) in Points(ruler))
+            {
+                Assert.False(
+                    x > x0 && x < x1 && y > y0 && y < y1,
+                    $"the ruler in the {ruler.Corner} reaches ({x:F0}, {y:F0}), inside the slab");
+            }
+        }
+    }
+
+    /// <summary>
+    /// At every supported size and in every named view, the ruler - arms, letters and label -
+    /// is wholly inside the picture and above the hatched band, or it is not drawn at all.
+    /// </summary>
+    /// <remarks>
+    /// Found by review: at 32 pixels a side the minimum text height and margin put the origin
+    /// four pixels above the picture, both arms clipped away, while the still's JSON still
+    /// reported a ruler. Sixteen pixels is the smallest still the verb accepts.
+    /// </remarks>
+    /// <param name="view">A named view.</param>
+    /// <param name="size">The picture's width and height, in pixels.</param>
+    [Theory]
+    [InlineData("side", 16)]
+    [InlineData("side", 32)]
+    [InlineData("side", 64)]
+    [InlineData("side", 128)]
+    [InlineData("iso", 16)]
+    [InlineData("iso", 48)]
+    [InlineData("iso", 96)]
+    [InlineData("front", 24)]
+    [InlineData("front", 80)]
+    [InlineData("top", 40)]
+    [InlineData("top", 200)]
+    public void ARulerThatDoesNotFitIsNotDrawn(string view, int size)
+    {
+        var (azimuth, elevation) = ViewportPicture.Views[view];
+        var matrix = Framing.Around(Box, azimuth, elevation).Matrix(1.0);
+        var band = Rasterizer.HatchHeight(size);
+
+        var ruler = ScaleIndicator.For(matrix, size, size, ScaleIndicator.TextHeightFor(size, size), band);
+
+        output.WriteLine($"{view} at {size} px: {(ruler is null ? "no ruler" : $"{ruler.Label} in the {ruler.Corner}")}");
+
+        if (ruler is null)
+        {
+            return;
+        }
+
+        foreach (var (x, y) in Points(ruler))
+        {
+            Assert.InRange(x, 0.0, size);
+            Assert.InRange(y, 0.0, size - band);
+        }
+    }
+
+    /// <summary>The review's own case: a 32-pixel side view has no room for a ruler, so has none.</summary>
+    [Fact]
+    public void AThirtyTwoPixelPictureHasNoRuler()
+    {
+        var (azimuth, elevation) = ViewportPicture.Views["side"];
+        var matrix = Framing.Around(Box, azimuth, elevation).Matrix(1.0);
+
+        Assert.Null(ScaleIndicator.For(matrix, 32, 32, ScaleIndicator.TextHeightFor(32, 32)));
+        Assert.NotNull(ScaleIndicator.For(matrix, Width, Height, ScaleIndicator.TextHeightFor(Width, Height)));
+    }
+
     /// <summary>A projection with no finite scale gets no ruler rather than a ruler of infinity.</summary>
     [Fact]
     public void AProjectionWithNoScaleGetsNoRuler()
@@ -232,6 +356,34 @@ public sealed class ScaleIndicatorTests
         var halfY = 1.08 * Math.Max(framing.HalfHeightMm, framing.HalfWidthMm / ((double)Width / Height));
 
         return Height / (2.0 * halfY);
+    }
+
+    /// <summary>Where a model point in the z = 0 plane lands, in pixels from the top left.</summary>
+    private static (double X, double Y) Pixel(double[] m, double x, double y) =>
+        (((m[0] * x) + (m[4] * y) + m[12] + 1.0) * 0.5 * Width,
+         (1.0 - ((m[1] * x) + (m[5] * y) + m[13])) * 0.5 * Height);
+
+    /// <summary>
+    /// Every point the ruler reaches: where the arms meet, their tips, the extent of each letter,
+    /// and the corners of the label as the still's font sets it.
+    /// </summary>
+    private static List<(double X, double Y)> Points(ScaleIndicator ruler)
+    {
+        var points = new List<(double X, double Y)> { ruler.OriginPx };
+        var letter = 0.4 * ruler.TextPx;
+
+        foreach (var arm in ruler.Arms)
+        {
+            points.Add(arm.TipPx);
+            points.Add((arm.LetterPx.X - letter, arm.LetterPx.Y - letter));
+            points.Add((arm.LetterPx.X + letter, arm.LetterPx.Y + letter));
+        }
+
+        var labelHalf = 0.5 * StrokeFont.Width(ruler.Label, ruler.TextPx);
+        points.Add((ruler.LabelPx.X - labelHalf, ruler.LabelPx.Y - (0.5 * ruler.TextPx)));
+        points.Add((ruler.LabelPx.X + labelHalf, ruler.LabelPx.Y + (0.5 * ruler.TextPx)));
+
+        return points;
     }
 
     private static (double Dx, double Dy) Arm(ScaleIndicator ruler, string axis)

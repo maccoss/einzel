@@ -2463,17 +2463,24 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   Neumann exclusion keeps quiet.
 
 - **A scale in every 3D picture, and why it is a ruler rather than a bar.** Stills
-  (`einzel render still`) and the Avalonia viewport now carry a scale indicator in the lower
-  left; the vector sections have always had a scale bar. **In the angled view a flat bar would
+  (`einzel render still`) and the Avalonia viewport now carry a scale indicator in a corner;
+  the vector sections have always had a scale bar. **In the angled view a flat bar would
   be wrong**: the camera is orthographic, so a flat bar is exact straight down an axis, but in
   iso each model axis is foreshortened by its own amount - x by 0.87, y by 0.91, z by 0.63 at
   the shipped angles - and one bar would state one scale for three. So the indicator is **one
   arm along each model axis, all the same round length, projected with the picture's own
   matrix**: each shortens exactly as the instrument does, and in a straight-on view the same
   construction is an L-shaped scale bar with the arm that points at the viewer left out. It
-  sits in a corner rather than on the instrument because an orthographic projection gives an
-  axis segment the same screen length wherever it is, so it never overlaps an electrode and
-  does not widen the frame.
+  sits in a corner because an orthographic projection gives an axis segment the same screen
+  length wherever it is, so it does not widen the frame. **The first version said it "never
+  overlaps an electrode", and a review found that false**: the camera fits the instrument with
+  a few percent to spare, so a fixed lower-left ruler landed on a plate seen face-on. It now
+  takes the corner the drawn instrument covers least - scored triangle by triangle and segment by
+  segment on screen, the equipotentials left out because they cover every corner - and is drawn
+  over the instrument only where all four are covered. The same review found it **drawn off the
+  edge of small stills**: at 32 pixels the minimum text and margin put its origin above the
+  picture while `--json` still reported a ruler. A ruler whose whole outline, label included,
+  does not fit is now left out and reported absent.
 
   **Decided once, in `ScaleIndicator` in the command layer, from the matrix the picture is
   drawn with** - a ruler computed from anything else would be a second account of the camera.

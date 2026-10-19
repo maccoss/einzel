@@ -15,9 +15,9 @@ namespace Einzel.Shell;
 /// <remarks>
 /// <para>
 /// <b>It decides nothing.</b> The round length, which arms show and where everything sits come
-/// from <see cref="ScaleIndicator.For"/>, laid out from the matrix the viewport is drawing with -
-/// the same call <c>einzel render still</c> makes, so a still and the window put the same ruler
-/// in the same corner.
+/// from <see cref="ScaleIndicator.For"/>, laid out from the matrix the viewport is drawing with
+/// and the picture it is drawing - the same call <c>einzel render still</c> makes, so a still and
+/// the window put the same ruler in the same corner.
 /// </para>
 /// <para>
 /// <b>Over the GL control rather than inside it</b>, because Avalonia draws text and the shader
@@ -67,7 +67,7 @@ public sealed class ScaleOverlay : Control
             return;
         }
 
-        if (ScaleIndicator.For(matrix, width, height, ScaleIndicator.TextHeightFor(width, height)) is not { } ruler)
+        if (ScaleIndicator.For(matrix, width, height, ScaleIndicator.TextHeightFor(width, height), picture: _view.Picture) is not { } ruler)
         {
             return;
         }

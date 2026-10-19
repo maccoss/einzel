@@ -92,6 +92,14 @@ public sealed class SceneView : OpenGlControlBase
     /// </remarks>
     public double[]? CurrentMatrix(double aspect) => _camera?.Framing.Matrix(aspect);
 
+    /// <summary>The composed picture the viewport is drawing, layer by layer.</summary>
+    /// <remarks>
+    /// For the scale indicator, which places itself in the corner this picture covers least.
+    /// Empty before the first draw. A whole reference is swapped in when a watched frame or the
+    /// see-through toggle replaces it, so a reader on another thread sees one picture or the other.
+    /// </remarks>
+    public IReadOnlyList<PictureLayer> Picture => _picture;
+
     /// <summary>What to draw, as the command layer measured it.</summary>
     /// <remarks>
     /// Set before the control is first realized. A viewport that changed scene mid-flight

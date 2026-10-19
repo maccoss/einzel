@@ -713,7 +713,7 @@ window can show.
 
 ### A ruler in the corner, true in every view
 
-Every still carries a scale in its lower left: **one arm along each model axis, all the same
+Every still carries a scale in a corner: **one arm along each model axis, all the same
 round length, projected with the matrix the picture is drawn with.** The length is the
 largest 1, 2 or 5 times a power of ten that keeps the longest arm under 0.16 of the picture's
 smaller side, and it is written once under the arms, in the unit that keeps the number small
@@ -727,9 +727,19 @@ and z by 0.63 at the shipped angles - so a flat bar would state one scale for th
 along the model's axes shorten exactly as the instrument does, which a test pins against the
 closed form in the two view angles rather than against the matrix the ruler reads.
 
-**In a corner rather than on the instrument, because the camera is orthographic**: a segment
-along an axis has the same length on screen wherever it sits, so the ruler can stand in clear
-space without being any less true, never overlaps an electrode, and does not widen the frame.
+**In a corner, because the camera is orthographic**: a segment along an axis has the same
+length on screen wherever it sits, so the ruler can stand away from the instrument without being
+any less true, and does not widen the frame. **Which corner is chosen from the picture, and it
+is not always clear.** The camera fits the instrument with only a few percent to spare, so a
+plate seen face-on fills all four corners - the first version, always in the lower left, landed
+on the electrode there while this page said it never would, which a review caught. Each corner is
+now scored by how much of the drawn instrument it would cover, triangle by triangle and segment by
+segment on screen with the equipotentials left out (they cover the whole sampled region), and the
+least-covered one wins, lower left on a tie. Where every corner is covered the ruler is drawn over
+the instrument. The corner is in the `--json` result (`scaleCorner`) and the PNG's text.
+**A ruler that does not fit is left out**: one whose arms, letters and label cannot all sit inside
+the picture is not laid out, rather than drawn partly off the edge - a 32-pixel still gets none,
+and its `--json` reports none.
 **One length for every arm**, because per-axis lengths would invite comparing arms that are
 not comparable; with one, the arms' different screen lengths *are* the foreshortening. The
 layout keeps above the hatched band a tainted picture carries, and `--no-scale` leaves it out.
