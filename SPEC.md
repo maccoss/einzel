@@ -20,7 +20,7 @@ that has drifted is worse than none, because it is trusted.
 
 ## Where the project is
 
-**1,643 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
+**1,676 tests across thirteen assemblies, green on Windows and (bar the WPF project) Linux.** Warnings are errors; XML documentation is required on public API. Build clean. The EX-1 example corpus runs as a gate inside that suite (EX-2): 39 examples, every expectation a closed form, a published value, or an exact invariant.
 
 | | Requirements |
 | --- | --- |
@@ -155,6 +155,53 @@ Einzel. **That, rather than a date, is the trigger.**
 
 ## Amendments to the specification
 
+### 57 - The grounded boundary is a conductor, and a conductor flush with it is the same coin toss
+
+**ACC-3, GRD-2, and Amendment 56.** Amendment 56 left one case stated and unchecked: a
+conductor whose face coincides with a Dirichlet face of the domain. The grounded boundary is a
+third conductor at zero volts - a face node is pinned to zero unless an electrode claimed it
+first, and an electrode claims it by containing it - so a node on the face that lies on the
+electrode's surface holds its potential or zero on the last bit of the arithmetic. **Measured
+before building anything**: on a 100 V plate flush with a grounded edge, a trillionth of a cell
+either way flips the edge node between 0 and 100 V, leaves **every free node's solution
+identical to the bit** (no free node reaches a flipped one through an uncut arm), and moves the
+interpolated potential half a cell off the contact by **21.9 V**, because the interpolant reads
+the node. A conductor lying *outside* the domain against the face is in the solve through those
+nodes alone: 9.61 V at the center of the domain against 0. A Neumann face is not a coin between
+two values - the node flips between fixed and free and solves to the plate's potential either
+way - and takes no part.
+
+So the check Amendment 56 built now treats each Dirichlet face as a conductor at zero, under the
+same code, and counts its findings apart (`BoundaryNodes`) with their own fix. **Nodes only**:
+a face node is fixed either way and the boundary is never a cut target, so no arm samples it.
+The face is the mesh's node plane, not the declared bound; "holds something other than zero" is
+the overlap checks' reading in every state; an edge carrying an edge profile is not grounded;
+and a face lying in a mirror plane - the axis of an axisymmetric solve included - is not a
+surface, since by symmetry the conductor continues across it.
+
+**What it found: 17 of 44 shipped solved elements**, every one a cross-section - ring stacks
+run out to the grounded outer wall, a Paul trap's ring truncated at it, the einzel lens's center
+tube, a Kingdon wire's ends, and two mirrors whose end cap is a plate with no thickness lying in
+the grounded edge. Moving only the face on the wall by 1e-7 of the domain's extent each way, on
+the same mesh: **fifteen are harmless** - every potential more than three cells from the wall and
+every figure run (eleven fly ions) identical to the bit, the coin confined to the contact, where
+it moves the potential by about a fifth of the applied. **For the two mirrors it decides whether
+the mirror has an end cap**: the documents write the cap and the edge as one expression, so the
+shipped arithmetic lands on the side with a cap, but 1e-7 of the extent outside the edge the cap
+is not in the solve, the potential ten cells in moves by 45 percent of the applied, and
+transmission goes from 1 to 0. Nothing in the templates is changed here; `SharedFaceCorpusTests`
+pins the seventeen, and the fixes are item 11 of *What to do next*.
+
+**Two traps in measuring it, both general.** Moving the domain face itself moved the mesh: the
+ion funnel's radius is exactly 64 cells, and growing it by anything made it 128, which the first
+survey reported as several volts of interior difference that was a different mesh. And
+translating whole conductors instead exposed a **second coin with nothing to do with the wall**:
+a single conductor's face lying on a node plane is continuous in its normal position, but the arms
+lying *in* that plane, beside the conductor, are cut at its side face or graze past to a node a
+cell away according to the rounding - on the funnel's last ring, a 4.5e-4 change in flight time
+for a 6.4e-6-cell move. Cut cells make the answer continuous in where one conductor's surface sits
+only while its faces are off the node planes. Not checked; item 11.
+
 ### 56 - A mesh samples a geometry at nodes and at arms, and a shared face must be clear of both
 
 **ACC-3, GRD-2, and Amendment 55.** Amendment 55 found that a node lying on a face two
@@ -189,7 +236,8 @@ two states near zero volts that the flight does not see.
 cell off a node draws no warning and sits on the edge of the same step, which a geometric
 sweep or sensitivity field would cross silently - so the fix the warning names is a tenth of
 a cell, not the tolerance. And a conductor flush with a **Dirichlet** domain face is the same
-coin toss against the grounded boundary at zero volts, and is not checked.
+coin toss against the grounded boundary at zero volts, and is not checked. **Now checked** -
+Amendment 57, which also found seventeen shipped elements that were not clean after all.
 
 ### 55 - Where a mesh sits is part of its error, and a node on a shared face is not error at all
 
@@ -2401,7 +2449,7 @@ in a table.
 | `GRD-5` | Preview results are labelled and cannot be promoted Tagged permanently; cannot be quoted, exported, fed to an optimizer, or rendered without visible ... | **Met** | The taint rides on the number, and a preview writes nothing - a tainted result in `results/` would be reported as current by `verify`. |
 | `GRD-6` | Extension results are attributed Carries the extension identity and version; cannot present itself as first-party. | **Met** | Extension results carry the extension identity and interpreter; the manifest records `null` where no interpreter took part. |
 | `GRD-7` | Results are immutable and traceable Every result references a manifest. Every rendered artifact references a result. | **Met** | Every result references a manifest. Studies wrote none at all until recently; sweeps, optimisations and scans all write one now. Imported gas and study inputs are fingerprinted and verified; missing historical fingerprints are not silently certified (`InputProvenanceTests`, Amendment 48). |
-| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyzer at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. **`members` is what one evaluation of the named figure flies, not the study's ion count** - the registry carries a `FlightBasis` per figure and the estimate asks it, so `flightTime` costs its three-rung convergence ladder rather than a 21-ion ensemble. Billing every figure the ion count put a 2000-draw reflectron sweep at **29 s against a measured 1.08 s**, and an agent in the acceptance run shrank its study to get past it; an unrecognized figure falls back to the ensemble count, the conservative direction. **The threshold is now configurable** (`--threshold <seconds>`), which the requirement asked for and which was a constant, and the refusal says in its first clause that the study is not blocked - only `estimate` exits 3. **And an operation past the gate now reports while it runs**: the requirement covers deciding whether to start and said nothing about the hours after, so a run the gate priced at four hours then went silent for four hours. `einzel run --progress` says where it is every thirty seconds by default and leaves a checkpoint that survives the process; see Amendment 44. **And it no longer prices a run that cannot happen**: the Astral at a 1 mm cell is 68.3 M nodes against a 64 M limit, and `estimate` reported 35 minutes and exited 3 on the cost gate for a solve `run` would refuse. The limit is one constant (`VolumeMesh.MaximumNodes`) read by the validator and by the solver's allocation guard, and `estimate` validates first, so it meets the same `GRID_TOO_LARGE` refusal rather than a second copy of the limit. See Amendment 33. |
+| `GRD-8` | Spending is deliberate Any operation exceeding a configurable cost threshold requires a prior estimate. | **Met** | `einzel estimate` takes **a study as well as a model**, which is the operation anyone actually plans against - short by the evaluation count before, and silently. A diffusive run's step is computable exactly and predicted 901 against 901 actual. A trajectory run's is path-dependent, so it is **measured by a short pilot flight** rather than omitted: the whole flight where it finishes inside the window, otherwise scaled and declared a floor. The solve rate is measured on **this machine, on this geometry** - a hardcoded constant put the C-trap's 5.9 s solve at 1.81 s. End to end: **6.25 s estimated against 7.06 s actual** on a volume model, where the same model was 1.81 s before. A study's flight is sampled across its own declared range, since evaluation cost varies **2.2x** along a scan that crosses a focus; on that scan the estimate is **0.76x of wall clock and 0.89x of the computation**, the difference being process start, which is excluded and said to be. Pilots repeat while repeating is cheap and report the cheapest, which took the rate's run-to-run spread from a factor of two to **2 per cent**. **The mesh is reported too**: each axis rounds its interval count up to a power of two, so cost is a step function of the cell size - a 635 x 48 x 350 mm analyzer at a requested 1 mm gets 0.62 x 0.75 x 0.68 mm and 34.2 M nodes, and 1.5 mm costs **7.9x less**. The suggested size is evaluated with the grid's own arithmetic and asserted to deliver what it promises, because a rule of thumb offered 1.24 mm, which lands on the boundary and gives the identical mesh. **What one evaluation IS depends on the transport**: the ordinary case solves once and flies `members` ions, but a diffusive run steps a density and a space-charge run advances the packet in lockstep, so for those the model's own cost already IS one evaluation and multiplying it by the ion count charges twice - for a diffusive model, for trajectories that mode does not produce. Process start is excluded and said to be. **`members` is what one evaluation of the named figure flies, not the study's ion count** - the registry carries a `FlightBasis` per figure and the estimate asks it, so `flightTime` costs its three-rung convergence ladder rather than a 21-ion ensemble. Billing every figure the ion count put a 2000-draw reflectron sweep at **29 s against a measured 1.08 s**, and an agent in the acceptance run shrank its study to get past it; an unrecognized figure falls back to the ensemble count, the conservative direction. **The threshold is now configurable** (`--threshold <seconds>`), which the requirement asked for and which was a constant, and the refusal says in its first clause that the study is not blocked - only `estimate` exits 3. **And an operation past the gate now reports while it runs**: the requirement covers deciding whether to start and said nothing about the hours after, so a run the gate priced at four hours then went silent for four hours. `einzel run --progress` says where it is every thirty seconds by default and leaves a checkpoint that survives the process; see Amendment 44. **And it no longer prices a run that cannot happen**: the Astral at a 1 mm cell is 68.3 M nodes against a 64 M limit, and `estimate` reported 35 minutes and exited 3 on the cost gate for a solve `run` would refuse. The limit is one constant (`VolumeMesh.MaximumNodes`) read by the validator and by the solver's allocation guard, and `estimate` validates first, so it meets the same `GRID_TOO_LARGE` refusal rather than a second copy of the limit. See Amendment 33. **The memory figure is measured now too, and it was a fifth of the truth.** It was 48 bytes a node for every solve, from a comment listing three fields; a volume solve holds **240** on the Galerkin hierarchy, 141.7 on the rediscretized one and 143.25 on a plane, stated by the solver beside its arrays (`SolveMemoryModel`) with each coarse level charged at the size its grid really is, and measured against real builds - 241.3 and 240.9 on the Astral at 1.12 M and 8.68 M nodes against 241.8 and 240.9 stated, 141.9 and 141.8 on the segmented quadrupole, 143.3 to 143.9 on four plane templates - so the Astral at 1 mm, billed 3.1 GiB, needs 15.3. It is the **live set**, and two checks say that is what has to fit: under a hard heap limit the Astral at 4 mm completed at 279 MiB and failed at 275 against a live 259, while unconstrained its heap reached 1.6x that. Measuring it found **a driven geometry holding every finished channel's mask**, and once that was removed a first-tier JIT temporary still holding its cut links: two channels were 353.7 bytes a node and are **248.7** against 248.9 predicted; the driven plane build had the same defect, a first mask kept for a later check, and costs a potential a channel now too. A diffusive run holds 263 bytes a density node where 16 was billed, **once per species**. `SolveMemoryTests` pins the figures, band 0.90 to 1.02, and fails on one extra field; its live-set sampler had to be made dense and repeated before it meant anything on a four-core runner, where it had passed a plane statement 7 percent high by missing the peak of the smaller of two builds. The 64 M-node limit is recorded as the wrong kind of rule for memory, which is a property of the machine rather than the document; `docs/cli.md`. |
 | `GRD-9` | Human work is never silently lost Where an agent and a human share a live model, mutations are attributed in a shared linear journal. | **Met** | `SessionJournal`, served by `Einzel.Mcp`. The attribution and the shared linear stack are MCP-1's row. What this row adds is the *never silently lost* half, and building MCP-1 did **not** deliver it: the journal knew only about mutations made through it, so a person editing the model in their own editor had their change overwritten by the agent's next whole-document edit with nothing anywhere to say so. **The sharper consequence was to undo** - an unrecorded change breaks the chain, so walking back landed on a document predating the person's edit and discarded it as a *side effect of reversing something else*. `Reconcile` now records an outside change as an entry attributed to `outside` (not to the person: another tool, another session and a git checkout look identical from here), refuses an edit written against the document as it was, and makes the refusal recoverable by having `model_read` take the change up. Checked by mutation - a no-op `Reconcile` fails three of nine journal tests. `docs/live-session.md` |
 | `GRD-10` | Drift is detectable, in both directions A stored result can be checked against both the current model and the currently installed engine. | **Met** | `einzel verify` separates drift from notes: an edited model or a changed solver-behaviour version invalidates; a different engine build with identical numerics does not. |
 | `GRD-11` | Known-defective versions taint their output A result produced by a version below the published floor (§18) carries a non-suppressible defect warning. The ... | Partial | The taint mechanism exists and rides in the warning list. There is no published defect floor to compare against, because there are no releases. |
@@ -3309,7 +3357,56 @@ project's author needs to run it and more than any physics the moment one does.
    which matters less than it did now that the viewport can be watched rather than waited on,
    and still matters for a redraw, where nothing warns before the wait begins.
 
-10. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
+10. **What a volume solve holds, now that it is measured, and how to hold less of it.** The
+   estimate's memory figure was 48 bytes a node and a volume solve holds 240 on the Galerkin
+   hierarchy (GRD-8's row; `docs/cli.md`), so the Astral at a 1 mm cell needs 15.3 GiB and not
+   3.1. Ranked here, above distribution and below the device work, because each item is small
+   and the first decides whether a fine Astral fits a 16 GB machine at all.
+
+   - **Cut links are stored densely: 96 of the 240 bytes a node, for 3 to 4 per cent of arms
+     cut.** A store over cut nodes alone would take the Galerkin peak to about 150 and the
+     rediscretized one to about 50 - the Astral at 1 mm to roughly 10 GiB. The stencil reads an
+     arm per node per sweep, so the representation has to stay cheap to index; that is the
+     design question, not the saving.
+   - **The 64 M-node limit wants restating, and the branch it waited on has landed** (#48, as
+     `VolumeMesh.MaximumNodes`). At the true cost it is 14.3 GiB, ten times what its message
+     says, and memory is a property of the machine rather than the document, so validation
+     should refuse only what the code cannot index (about 358 M nodes, `node * 6` in an `int`).
+     The estimate now carries the machine comparison. Recorded in `docs/cli.md`; not yet changed.
+   - **Mask assembly is a sixth to a fifth of a build on curved and polygonal templates, and
+     its garbage is gone; what is left is the cut-link pass.** The 61 kB, 4.2 kB and 289 bytes
+     a node first recorded here were measured before the bounding-box cull; on `main` they were
+     5,470, 260 and 105, against the 105 the mask keeps. Timed against the real build in
+     Release: the mask is **19-22%** of the C-trap's 16 s build, 14-22% of the linear ion
+     trap's 13-15 s, and 2-5% on the Astral and the segmented quadrupole. The prism and
+     revolve entry tests now allocate nothing, with bit-identical masks on all four templates
+     at every level, and the C-trap's build fell to 14 s (mask **12-16%**) while the linear
+     ion trap's did not move: its garbage was never its cost. 84-97% of what remains is cut
+     links rather than rasterization, so the next lever is how many exact entry tests that
+     pass asks for (`docs/numerics.md`, "What building the mask costs").
+
+11. **Clear the shipped models of the grounded-face coin, and look for the single-conductor
+   one (Amendment 57).** Placed above distribution and below the device work because it moves no
+   number anyone has published - fifteen of the seventeen trips are measured harmless - but it
+   puts a qualified mark on every figure of those models, and a warning that is always there is
+   the one people learn to skim.
+
+   - **The two mirrors first**, because there the coin is the physics: the end cap of
+     `planar-mirror-pair` and `astral-mirror` is a rectangle with no thickness lying in the
+     grounded edge, in the solve only because two expressions agree to the bit. A cap meant to be
+     the edge is an edge profile, and the change is bit-identical - check it is.
+   - **Then the ring stacks, the lens and the Paul trap**: carry the conductor past the wall so
+     every node on it is inside by any arithmetic. Bit-identical where no side face crosses the
+     wall on a line of nodes (the lens, the TIMS stacks); the funnels and the traveling-wave guide
+     have three or four ring corners that do, and clearing those moves geometry by a fraction of a
+     cell and their numbers with it - a change for its own review.
+   - **The single-conductor coin**: a face on a node plane makes the arms lying in that plane cut
+     or graze on the last bit. Measure how common it is (the funnel's first and last rings have
+     it; round-number geometry on round-number meshes will often), then decide whether it wants a
+     warning, a fix in the cut links - treating an arm in a face's plane as meeting it - or both.
+
+
+12. **Distribution, and the trigger is a person rather than a date.** Fourteen of the
    twenty-one not-built requirements are `UPD-*` and `DST-*` - one assembly that does not exist -
    and SPEC's own summary is blunt about the consequence: **nobody can install this**.
 
