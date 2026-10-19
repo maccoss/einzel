@@ -35,6 +35,13 @@ public sealed class MemoryMeasurement;
 /// read low, which is why the band below is wider under the prediction than over it.
 /// </para>
 /// <para>
+/// <b>Against the arithmetic with the geometry's real cut arms</b>, not the billed quarter of
+/// an arm a node: the allowance is 5.5 bytes a node where a sphere or two slabs store under 2,
+/// and on the rediscretized hierarchy's 51 that is 7 percent of a 10 percent band. The sphere
+/// read 0.92 to 0.93 of the billed figure on an idle twenty-core machine and 0.896 on a CI
+/// runner, with the solver holding exactly what it held on the dense store, which read 1.00.
+/// </para>
+/// <para>
 /// <b>The upper edge is the one that matters.</b> An estimate that runs under is discovered by
 /// the run failing twenty minutes in, which is the failure GRD-8's gate exists to prevent. If
 /// a solver change adds a per-node array, this is what fails, and the fix is a term in
@@ -55,10 +62,16 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     }
 
     /// <summary>The rediscretized hierarchy's peak, per node, against a fat sphere at two meshes.</summary>
+    /// <remarks>
+    /// At 35,937 and 274,625 nodes rather than 4,913 and 35,937. The smaller pair's larger
+    /// build is 1.6 MiB, and its slope read 0.87 to 0.93 of the statement from one process to
+    /// the next on one idle machine, and 0.90 on a CI runner: 50 kB of scatter in a 1.3 MiB
+    /// difference. On the larger pair the three readings of a build agree to a byte a node.
+    /// </remarks>
     [Fact]
     public void ARediscretizedBuildHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, galerkin) = Slope(Sphere, 0.00125, 0.000625);
+        var (predicted, measured, galerkin) = Slope(Sphere, 0.000625, 0.0003125);
 
         Assert.False(galerkin, "a fat sphere coarsens to a small bottom and keeps the cheap hierarchy");
         Assert.InRange(measured / predicted, 0.90, 1.02);
@@ -310,21 +323,44 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         var planSmall = GeometryBuilder3D.Memory(small);
         var planLarge = GeometryBuilder3D.Memory(large);
 
+        // The statement bills a quarter of a cut arm a node for every geometry, since it does
+        // not rasterize; these geometries have a hundredth. What a build holds is the arithmetic
+        // over its arrays with the cut arms it really has, so that is what the slope is held
+        // to, and the allowance over the real count is CutArmAllowanceTests' claim.
+        var armsSmall = WithRealCutArms(small, planSmall);
+        var armsLarge = WithRealCutArms(large, planLarge);
+
         var peakSmall = PeakLive(() => GeometryBuilder3D.BuildField(small).Field);
         var peakLarge = PeakLive(() => GeometryBuilder3D.BuildField(large).Field);
 
         var nodes = (double)(planLarge.Nodes - planSmall.Nodes);
-        var predicted = (planLarge.PeakBytes - planSmall.PeakBytes) / nodes;
+        var billed = (planLarge.PeakBytes - planSmall.PeakBytes) / nodes;
+        var predicted = (armsLarge - armsSmall) / nodes;
         var measured = (peakLarge - peakSmall) / nodes;
 
         output.WriteLine(
             $"{planSmall.Nodes:N0} -> {planLarge.Nodes:N0} nodes, {(planLarge.Galerkin ? "galerkin" : "rediscretized")}: "
-            + $"predicted {predicted:F1} B/node, measured {measured:F1} "
+            + $"billed {billed:F1} B/node, predicted with the real cut arms {predicted:F1}, measured {measured:F1} "
             + $"(peaks {peakSmall / 1048576.0:F1} and {peakLarge / 1048576.0:F1} MiB)");
 
         Assert.Equal(planSmall.Galerkin, planLarge.Galerkin);
 
         return (predicted, measured, planLarge.Galerkin);
+    }
+
+    /// <summary>
+    /// The statement's peak with this geometry's cut arms in place of the billed allowance.
+    /// </summary>
+    /// <remarks>
+    /// A quarter of a cut arm a node is 5.5 bytes a node; a 3 mm sphere at these meshes stores
+    /// 1.6 to 1.9, and two slabs less. Over the rediscretized hierarchy's 51 that is 7 percent
+    /// of the band, spent before a build is sampled.
+    /// </remarks>
+    private static double WithRealCutArms(Geometry3D geometry, SolveMemory plan)
+    {
+        var cuts = GeometryBuilder3D.BuildMask(geometry, GeometryBuilder3D.BuildGrid(geometry)).Cuts;
+
+        return plan.PeakBytes - (SolveMemoryModel.VolumeCutLinks * plan.Nodes) + (cuts?.Bytes ?? 0);
     }
 
     /// <summary>The most a build holds reachable at once, above what was live before it.</summary>
