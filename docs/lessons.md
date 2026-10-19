@@ -5300,3 +5300,34 @@ they appear to - the mesh with the first, every other face of the conductor with
 equal is one assertion. And **a surprising difference is a finding before it is an answer**:
 the interior volts were two things, neither the one being measured, and one of them is now an
 open item of its own.
+
+## A change that streams less memory can still be slower, by moving what the JIT inlines
+
+The cut links on #57 stopped storing every arm of every node - 96 bytes a node the smoother
+streamed on every sweep and almost never used - and measured faster on the Astral and the
+C-trap. An outside measurement then found **a whole solve 10 to 12 percent slower** on a
+four-rod quadrupole of 1.09 M nodes, three alternated pairs in a row. Both were right.
+
+**Timed per sweep, the two builds disagree about which is faster depending on the JIT tier.**
+With full optimization from the first call (`DOTNET_TieredCompilation=0`) the branch's
+smoother took 58 to 62 ms against main's 80 to 91. Under normal running, warmed up through
+dynamic PGO, main's took **37 ms and the branch's 51**: the profile-guided tier doubled main's
+speed and did almost nothing for the branch. The listing says why. Main's optimized `Smooth`
+had everything inlined, 151 inlinees and no calls in the loop; the branch's had **six calls to
+`Arm`** per free node, each passing thirteen arguments and returning two through references.
+The packed store made the cut arm's read a rank over an eight-node block, which made `Arm`
+bigger, and the inliner stopped taking it - for the common case, where no arm is cut and the
+rank never runs. The bytes saved were real and smaller than the frames added.
+
+Fixed by making the shape say what is hot: `Arm` is inlined by instruction and everything about
+a cut arm is a call to a method that never is. **29 ms against main's 38 on the quadrupole and
+24 to 25 against 36 on the linear ion trap**, the JIT listing showing `Arm` inlined and only the
+cold call left, and the potentials identical to main's to the SHA-256 on both channels of both.
+
+The rules. **A microbenchmark has to run at the tier the code runs at.** Fifteen calls through
+reflection measured on-stack-replacement code and gave a third answer; eighty warm calls gave
+the one a solve sees. **When two careful measurements disagree, look for the variable neither
+controlled** - here the inliner, which neither alternated pair could see. And **a whole-solve
+comparison on a loaded machine cannot resolve ten percent**: on this one the same work took 7.5
+to 18 s across a few minutes, while the minimum over eighty sweeps was steady to a millisecond.
+`DOTNET_JitDisasm` with `DOTNET_JitStdOutFile` works on a release runtime and takes a minute.

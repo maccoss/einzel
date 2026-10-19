@@ -3373,7 +3373,10 @@ project's author needs to run it and more than any physics the moment one does.
      the read, and it came out faster rather than merely as cheap**: a node's six arms are one
      byte read, a cut arm a rank over an eight-node block, and a sweep no longer streams 96 bytes
      a node it does not use - the smoother runs 1.2x faster on the Astral and 1.4x on
-     the C-trap. Bit-identical: the same SHA-256 over every node's potential, the same cycles and
+     the C-trap, and 1.3x and 1.5x on a four-rod quadrupole and the linear ion trap at
+     1.09 M nodes. That needed the per-arm helper inlined by instruction: once the cut arm's
+     read grew, dynamic PGO stopped inlining it and the warmed smoother ran 51 ms a sweep
+     against main's 37, a whole-solve regression an outside measurement found on #57. Bit-identical: the same SHA-256 over every node's potential, the same cycles and
      residual bits, on all seven channels of the six shipped volume models. **What it gives
      up** is a per-node figure independent of the geometry: the statement does not rasterize, so
      it bills a quarter of a cut arm a node against the densest shipped template's
