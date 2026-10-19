@@ -38,6 +38,13 @@ become a feature release without being renamed twice.
   and a validity violation hatches the bottom of the picture.
 - **`einzel export` carries a solve's warnings** into each field file's header and into its
   `--json` output, and prints them on stderr.
+- **A scale in every 3D picture.** Stills and the cross-platform viewport carry a ruler in
+  whichever corner the instrument covers least: one arm along each model axis, all the same
+  round length (`10 mm`, `500 µm`),
+  foreshortened exactly as the instrument is, so it stays true in the angled view; in a
+  straight-on view it is an L-shaped scale bar. `--no-scale` leaves it out of a still, whose
+  `--json` result reports the arm length and the corner. A picture too small to hold the ruler
+  gets none.
 
 ## Fixed
 
