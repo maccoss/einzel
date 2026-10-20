@@ -5439,3 +5439,27 @@ had already decided. And **before scoping a uniqueness rule, enumerate the docum
 refuse**: two shipped templates said where the boundary was. The export fix (PR #56) met the
 same dictionary in the static channel and wrote the first half of this - a display name is not
 a key - and left the driven path for its own change, which this is.
+
+## A timeout on a shared runner measures the runner, and a fixed wait looks like work
+
+The live-session tests failed on the Windows CI runner with "Initialization timed out",
+twice on one PR and once on another, neither of which touched the server. Two things were
+going on, and only one was the failure.
+
+**The failure was a starved process start.** The tests that passed in the same run took 8 to
+17 seconds and one a full minute, against 5 on a workstation: a distribution, where a
+deadlock is a wall. Oversubscribing a workstation reproduced the shape - the handshake went
+from 0.3 s to 3.3 s at twice the cores and 15 s at six times - and a trivial Python
+subprocess had once taken over thirty seconds in the same CI phase. The test is about the
+protocol, so its start-up allowance is now three minutes rather than the client library's
+sixty seconds. **Before raising a timeout, establish that the slow cases finish**: here they
+visibly did, and that is what separates starvation from a hang that a longer timeout would
+only hide.
+
+**The other was a fixed wait that looked like the cost of the test.** Every test took five
+seconds even idle, and almost all of it was disposal: the client library waits for the
+server to exit before closing the server's input, and this server exits when its input
+closes, so the wait always ran out and the server was killed. Varying the library's
+shutdown timeout moved disposal exactly with it - 1.06, 2.06, 5.05 s - which is the
+signature of a wait rather than of work. **A duration that does not move with the work and
+does move with a timeout is a timeout.**
