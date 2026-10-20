@@ -372,10 +372,14 @@ public static class ParameterScan
         // computes the same number wherever it runs.
         //
         // MEMORY IS THE CONSTRAINT, NOT CORES. Each point in flight holds its own solved
-        // field, so peak memory is the degree of parallelism times one solve - on a
-        // 34 M-node volume geometry that is 1.6 GiB each, and sixteen at once is 26 GiB.
-        // The caller lowers `maxParallelism` when the solve is large; the default is one
-        // per processor, which is right for the plane geometries most studies scan.
+        // field, so peak memory is the degree of parallelism times one evaluation's peak, and
+        // `einzel estimate <study>` reports that product (StudyEstimate.InFlight). The caller
+        // lowers `maxParallelism` when the solve is large; the default is one per processor,
+        // which is right for the plane geometries most studies scan.
+        //
+        // NO FIGURE HERE, ON PURPOSE. This said 1.6 GiB for a 34 M-node volume, which was
+        // 34 M nodes at the estimate's old 48 bytes a node - a number restated from a
+        // constant, which stayed when the constant was found five times low.
         var rows = new ScanPoint[axis.Points];
 
         var parallelism = Math.Max(1, maxParallelism ?? Environment.ProcessorCount);

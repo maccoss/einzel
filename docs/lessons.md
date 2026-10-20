@@ -5492,3 +5492,32 @@ it** - here an overload taking the `Contours.Run`, which reads the run's own fla
 agreement does not depend on either side remembering the other's convention. And **write the
 bound a closed form actually guarantees**: an inscribed solid has a ceiling, and a symmetric
 tolerance would have absorbed the only sign that anything was wrong.
+
+## A shortened run can end before the peak it was shortened to measure
+
+The memory harness measured a diffusive run over one step, and for a plain run that is right:
+everything a step holds is allocated before or during the first step and every later one reuses
+it. Measured that way, mean-field space charge added **25 bytes a node** - flat across a sixteenfold
+range of grid sizes, exactly the arrays the self-field keeps, a clean and fully explained number.
+Over a run of a few microseconds it adds **61**. The first Poisson solve is done before the
+stepping loop, while the step's own arrays do not yet exist; every later refresh solves on top of
+them, and that overlap is the peak. One step never reached a refresh, so it measured the setup
+and reported it as the run.
+
+Nothing about 25 looked wrong, which is the point: it was stable, reproducible and accounted for
+to the byte. What exposed it was reading where the allocation happens relative to the loop, not
+the number. The test that pins the figure now asserts the self-field was solved inside the loop
+at least once, because a run too short to refresh would pass against a statement of 25.
+
+And the same measurement read **68.5** in the test host where the harness read 61.4, which looked
+like a small-grid constant until the harness reproduced it in Debug: a Debug build keeps a local
+alive to the end of its method, so it holds one array more. CI tests in Release, which is what a
+released build runs, so the tight band is for an optimized build and Debug is allowed the eight
+bytes it was measured to hold.
+
+The rules. **A quantity that peaks where two allocations overlap must be measured over an instant
+where both exist**, and shortening a run for speed can remove that instant entirely while leaving
+a number that looks complete. **Where a measurement can degenerate quietly, assert the condition
+that makes it mean something** - here, a solve inside the loop - rather than only the value. And
+**a memory statement says which build it is for**: Debug and Release differ by whatever the JIT
+keeps alive, which is not a rounding error.

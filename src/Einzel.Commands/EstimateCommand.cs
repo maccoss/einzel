@@ -87,6 +87,29 @@ public sealed record StudyEstimate
     /// <summary>What one evaluation costs, in seconds.</summary>
     public required double SecondsPerEvaluation { get; init; }
 
+    /// <summary>How many evaluations hold memory at once.</summary>
+    /// <remarks>
+    /// <para>
+    /// A scan and a tolerance sweep run their evaluations in parallel, up to the study's
+    /// <c>maxParallelism</c> or one per processor, and every evaluation in flight compiles its
+    /// own model and solves its own field. They start together, so their solves overlap, and
+    /// the study's peak is this many times one evaluation's. An optimization and a boundary
+    /// search evaluate one point at a time, so this is one for them.
+    /// </para>
+    /// <para>
+    /// <b>The memory changes with this and the answer does not</b>: draws are made in seed
+    /// order and rows are written by index, so a study at one and at sixteen is the same study.
+    /// That is what makes lowering it the right response to a peak that will not fit.
+    /// </para>
+    /// </remarks>
+    public required int InFlight { get; init; }
+
+    /// <summary>
+    /// One evaluation's peak live memory, in mebibytes; the study's
+    /// <see cref="EstimateOutcome.MemoryMiB"/> is this times <see cref="InFlight"/>.
+    /// </summary>
+    public required double MemoryMiBPerEvaluation { get; init; }
+
     /// <summary>How the evaluation count was arrived at.</summary>
     public required string Basis { get; init; }
 }
@@ -109,6 +132,10 @@ public sealed record EstimateOutcome
     /// <b>What has to fit, not what the process will show.</b> Elements are built in order and
     /// each keeps its solved potentials, so this is the largest of what every earlier element
     /// retains plus what the next one holds while it solves.
+    /// </para>
+    /// <para>
+    /// For a study it is one evaluation's peak times how many evaluations are in flight at
+    /// once - see <see cref="StudyEstimate.InFlight"/>.
     /// </para>
     /// <para>
     /// The collector frees a large array lazily when memory is plentiful, so the working set
@@ -273,7 +300,8 @@ public static class EstimateCommand
     /// coefficients, 48; the face operator, four faces of four doubles and two flags plus an
     /// outward rate, 144. The rest is not attributed, which is why the figure is the
     /// measurement rather than that sum - an estimate that runs under is discovered by the run
-    /// failing. An explicit run with no self-field; a mean-field solve adds its own grids.
+    /// failing. An explicit run with no self-field; a mean-field solve is
+    /// <see cref="SelfFieldBytesPerNode"/> on top.
     /// </para>
     /// <para>
     /// <b>Per species, all of it.</b> A mixture gives every species its own walker - its
@@ -284,6 +312,32 @@ public static class EstimateCommand
     /// </para>
     /// </remarks>
     private const double DiffusiveBytesPerNode = 263.0;
+
+    /// <summary>What mean-field space charge adds to a diffusive run, per density node, measured.</summary>
+    /// <remarks>
+    /// <para>
+    /// Live-set sampled (<c>tools/memory-harness</c>, <c>sweep.py meanfield --live</c>) on the
+    /// drift-tube example over a 5 us flight: 309.8, 309.4 and 309.3 bytes a node at 66 k, 263 k
+    /// and 1.05 M nodes against 248.4, 248.1 and 248.0 for the same run without it - 61.3 to
+    /// 61.4 on top, flat across a sixteenfold range.
+    /// </para>
+    /// <para>
+    /// 25 of it is what the self-field keeps for the whole run: its potential, the density it
+    /// was last solved for, and a Dirichlet mask of a flag and a value. The rest is its Poisson
+    /// solve, and <b>a run of one step does not see that part</b>: the first solve is done before
+    /// the stepping loop, when the step's own arrays do not yet exist, and reads 25. Every later
+    /// refresh solves inside the loop, on top of them - which is the peak.
+    /// </para>
+    /// <para>
+    /// <b>Once, not per species.</b> A mixture solves one field for its summed charge; measured
+    /// with two species it adds 69.3 and 69.4, the 61 once plus <see cref="MixtureChargeBytesPerNode"/>
+    /// for the summed charge itself.
+    /// </para>
+    /// </remarks>
+    private const double SelfFieldBytesPerNode = 62.0;
+
+    /// <summary>The summed charge density a mixture's self-field is solved for.</summary>
+    private const double MixtureChargeBytesPerNode = sizeof(double);
 
     /// <summary>The ponderomotive well cache, seven arrays over the density grid.</summary>
     /// <remarks>Built only when the run steps through a cycle average.</remarks>
@@ -1049,6 +1103,10 @@ public static class EstimateCommand
     /// <param name="threshold">
     /// Seconds above which the estimate says the study should be confirmed.
     /// </param>
+    /// <param name="availableMemoryBytes">
+    /// What the process may use, for the comparison with the study's peak; this machine's when
+    /// omitted. As on <see cref="Execute"/>, so the comparison can be checked anywhere.
+    /// </param>
     /// <returns>The estimate, carrying the model's own breakdown and the study multiplier.</returns>
     /// <exception cref="ArgumentException"><paramref name="studyPath"/> is null or blank.</exception>
     /// <exception cref="Core.Errors.EinzelException">The study or its model is invalid.</exception>
@@ -1066,14 +1124,24 @@ public static class EstimateCommand
     /// the model's total. Costing it the second way overstates a nine-member figure by
     /// most of eight solves per evaluation.
     /// </para>
+    /// <para>
+    /// <b>The time multiplies by the evaluation count and the memory by the evaluations in
+    /// flight.</b> The memory was one evaluation's, unmultiplied, so a scan running sixteen
+    /// points at once was billed for one of them - and the comment beside the parallel loop
+    /// said 1.6 GiB each, which was 34 million nodes at the old 48 bytes a node and went stale
+    /// with the constant it was computed from.
+    /// </para>
     /// </remarks>
     public static EstimateOutcome ForStudy(
-        string studyPath, bool calibrate = true, double threshold = ThresholdSeconds)
+        string studyPath,
+        bool calibrate = true,
+        double threshold = ThresholdSeconds,
+        long? availableMemoryBytes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(studyPath);
 
         var (study, modelPath, absolute) = StudyCommand.Load(studyPath);
-        var model = Execute(modelPath, calibrate, threshold);
+        var model = Execute(modelPath, calibrate, threshold, availableMemoryBytes);
 
         var (kind, evaluations, ceiling, how) = Extent(study);
 
@@ -1178,9 +1246,25 @@ public static class EstimateCommand
             + " Process start and just-in-time compilation are not included - a fixed cost, "
             + "which is negligible for a long study and is not for a short one.";
 
+        var (inFlight, concurrency) = InFlight(study, kind);
+        var memory = model.MemoryMiB * inFlight;
+
+        basis += StudyMemoryNote(kind, inFlight, concurrency, model.MemoryMiB, memory);
+
+        var fits = CapacityNote(
+            memory,
+            availableMemoryBytes ?? GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
+            "the study's peak");
+
+        if (inFlight > 1 && fits.Length > 0)
+        {
+            basis = basis + " " + fits;
+        }
+
         return model with
         {
             Seconds = seconds,
+            MemoryMiB = memory,
             AboveThreshold = seconds > threshold,
             Basis = basis,
 
@@ -1198,9 +1282,69 @@ public static class EstimateCommand
                 EvaluationsAreACeiling = ceiling,
                 Members = members,
                 SecondsPerEvaluation = perEvaluation,
+                InFlight = inFlight,
+                MemoryMiBPerEvaluation = model.MemoryMiB,
                 Basis = how,
             },
         };
+    }
+
+    /// <summary>How many of a study's evaluations hold memory at once, and why.</summary>
+    /// <remarks>
+    /// <para>
+    /// Read from what the drivers do, and kept beside them by a test rather than by a shared
+    /// constant: <see cref="Sweeps.ParameterScan"/> runs its points and
+    /// <see cref="Sweeps.ToleranceStudy"/> its draws - and then its attribution, two
+    /// evaluations per channel inside one iteration - with
+    /// <c>MaxDegreeOfParallelism = max(1, maxParallelism ?? ProcessorCount)</c>. The optimizers
+    /// and the boundary search evaluate one point at a time.
+    /// </para>
+    /// <para>
+    /// <b>Capped by the work, not only by the setting.</b> A five-point scan on a sixteen-core
+    /// machine has five evaluations in flight, not sixteen; a sweep's two phases run one after
+    /// the other, so it holds the wider of the two.
+    /// </para>
+    /// </remarks>
+    private static (int Count, string Why) InFlight(StudyDocument study, string kind)
+    {
+        if (kind is not ("scan" or "sweep"))
+        {
+            return (1, string.Empty);
+        }
+
+        var setting = Math.Max(1, study.MaxParallelism ?? Environment.ProcessorCount);
+
+        var source = study.MaxParallelism is { } declared
+            ? string.Create(Inv, $"maxParallelism {declared}")
+            : string.Create(Inv, $"one per processor on this machine, {setting}, since the study sets no maxParallelism");
+
+        var widest = kind == "scan"
+            ? Math.Max(study.Scan!.Points, 1)
+            : Math.Max(study.Draws, study.OneAtATime ? study.Channels?.Count ?? 0 : 0);
+
+        return widest < setting
+            ? (Math.Max(widest, 1), string.Create(Inv, $"every one of its {widest}, which is fewer than {source}"))
+            : (setting, source);
+    }
+
+    /// <summary>Says what a study's peak memory is and what multiplies it.</summary>
+    /// <returns>A sentence for the basis line, beginning with a space.</returns>
+    private static string StudyMemoryNote(
+        string kind, int inFlight, string concurrency, double perEvaluationMiB, double totalMiB)
+    {
+        if (inFlight <= 1)
+        {
+            return kind is "scan" or "sweep"
+                ? $" Memory: this {kind} runs one evaluation at a time ({concurrency}), so its peak is one evaluation's."
+                : $" Memory: {(kind == "boundary" ? "a boundary search" : "an optimization")} evaluates one point at a time, so its peak is one evaluation's.";
+        }
+
+        return string.Create(
+            Inv,
+            $" Memory: this {kind} runs {inFlight} evaluations at once ({concurrency}), and each "
+            + $"compiles and solves its own model; they start together, so their solves overlap, and "
+            + $"the peak is {inFlight} x {Size(perEvaluationMiB * Mebibyte)} = {Size(totalMiB * Mebibyte)}. "
+            + $"A lower maxParallelism in the study file lowers it and changes no result.");
     }
 
     /// <summary>How many evaluations a study's declared driver will make.</summary>
@@ -1484,6 +1628,7 @@ public static class EstimateCommand
     /// <summary>Says whether the model's peak fits what this process may use, when it is close.</summary>
     /// <param name="peakMiB">The model's peak, in mebibytes.</param>
     /// <param name="available">What the process may use, in bytes; nothing is said when unknown.</param>
+    /// <param name="subject">Whose peak it is, as the sentence names it - a study's is several models'.</param>
     /// <returns>A sentence for the basis line, or empty when the peak is under half of it.</returns>
     /// <remarks>
     /// <para>
@@ -1498,7 +1643,7 @@ public static class EstimateCommand
     /// a run that would not fit was priced without a word.
     /// </para>
     /// </remarks>
-    private static string CapacityNote(double peakMiB, long available)
+    private static string CapacityNote(double peakMiB, long available, string subject = "the model's peak")
     {
         var peak = peakMiB * Mebibyte;
 
@@ -1510,7 +1655,7 @@ public static class EstimateCommand
         var share = peak / available;
 
         return string.Create(
-                Inv, $"Memory: the model's peak is {share:P0} of the {Size(available)} this process may use on this machine")
+                Inv, $"Memory: {subject} is {share:P0} of the {Size(available)} this process may use on this machine")
             + (share >= 1.0 ? ", so it will not fit here." : ", which leaves little room.");
     }
 
@@ -1900,8 +2045,14 @@ public static class EstimateCommand
         // face operator and well, and nothing of the working set is shared between them.
         var speciesCount = Math.Max(1, model.Species.Count);
 
-        var memory = grid.NodeCount * speciesCount
-            * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0))
+        // The self-field is the one thing the species share - a single solve for their summed
+        // charge - so it is charged once.
+        var selfField = model.ModelsMeanField
+            ? SelfFieldBytesPerNode + (speciesCount > 1 ? MixtureChargeBytesPerNode : 0.0)
+            : 0.0;
+
+        var memory = grid.NodeCount
+            * ((speciesCount * (DiffusiveBytesPerNode + (averaged ? WellCacheBytesPerNode : 0.0))) + selfField)
             / Mebibyte;
 
         return (
@@ -1910,6 +2061,9 @@ public static class EstimateCommand
             $"diffusive run: {grid.CountX} by {grid.CountY} nodes"
             + (speciesCount > 1
                 ? $", {speciesCount} species each holding its own density and coefficients over all of them"
+                : string.Empty)
+            + (model.ModelsMeanField
+                ? string.Create(Inv, $", with one mean-field self-field over the grid at {selfField:F0} bytes a node")
                 : string.Empty)
             + $", a stability-limited step of "
             + $"{stable:G3} s set by {limit}, "
