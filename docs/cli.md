@@ -1388,9 +1388,24 @@ free node on every sweep, and almost none are cut, so the uncut case is one byte
 arms; a cut arm costs a rank (the block's count and a population count over its eight bytes) and
 two reads. It made the smoother **faster**, because a sweep no longer streams 96 bytes a node it
 does not need: 34 to 36 million node-sweeps a second became 43 to 44 on the Astral at 4 mm, and
-30 to 32 became 42 to 43 on the C-trap, Release, old and new binaries alternated. **Every solve is bit-identical**: the
-same SHA-256 over every node's potential, the same cycles, sweeps and residual bits, on all
-seven channels of the six shipped volume models.
+30 to 32 became 42 to 43 on the C-trap, Release, old and new binaries alternated. **Every solve
+is bit-identical**: the same SHA-256 over every node's potential, the same cycles, sweeps and
+residual bits, on all seven channels of the six shipped volume models.
+
+*And for a while it was slower, which an outside measurement found.* A whole solve of a four-rod
+quadrupole at 1.09 M nodes ran 10 to 12 percent longer than on `main`. The bytes were not the
+cause: the packed read made the per-arm helper `Arm` bigger, and the profile-guided tier of the
+JIT stopped inlining it, leaving six calls of thirteen arguments in the loop for every free node
+where `main`'s smoother had none. Fully optimized from the first call the branch was the faster
+one (58 to 62 ms a sweep against 80 to 91); warmed up, as a solve runs, it was 51 against 37.
+`Arm` is now inlined by instruction and everything about a cut arm is behind a call that never
+is, so the common case is one bit test and a neighbor read: **29 ms a sweep against `main`'s 37
+to 38 on that quadrupole, and 24 to 25 against 36 to 37 on the linear ion trap** at the same
+node count, minimum over eighty warm sweeps, bit-identical to `main` on both channels of both.
+Whole builds by process CPU time, best of three: 8.4 to 9.0 s against 8.9 to 9.8 on the
+quadrupole, 12.6 to 15.1 against 17.0 to 22.2 on the trap. Which of two careful timings to
+believe turned on a variable neither controlled - the inliner - and a timing of the smoother
+alone has to run at the tier a solve runs at; `docs/lessons.md`.
 
 **Channels are solved one at a time**, each keeping only its potential, so a driven geometry
 costs one working set plus 8 bytes a node for each channel before the last. That was not true
