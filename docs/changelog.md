@@ -2491,17 +2491,18 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   fixing one caller, enumerate every place that performs the same construction, not the callers of
   the function that was fixed.
 
-  **Review found that a name is not an identity.** An electrode's name is optional, defaults to
-  `electrode` and need not be unique, and the static channel was a dictionary keyed by it - so two
+  **Review found that a name is not an identity.** An electrode's name was optional, defaulted to
+  `electrode` and need not have been unique, and the static channel was a dictionary keyed by it - so two
   unnamed plates at +100 V and -100 V both exported at -100 V, where every run builds its mask
   electrode by electrode and gets them right. The static channel now builds that same mask
   (`Patterns` returns null for "as declared"), and `ChannelSolve.Holding` reports what each
   declared electrode held **by position**, from the same function the mask is built with. Also
   from review: channel files were named by replacing `.vti` in the whole path, so a project under
   a directory called `session.vti` wrote outside itself or failed; names are now built from the
-  stem. Each fix mutation-checked against its own regression. **Not fixed here**: the driven
-  decomposition is name-keyed too, so two same-named electrodes in a driven geometry share one
-  supply in every run - older than this change, and its own task.
+  stem. Each fix mutation-checked against its own regression. The driven decomposition was
+  name-keyed too, so two same-named electrodes in a driven geometry shared one supply in every
+  run; that was older than this change and was fixed in its own (#62, below), which made
+  names unique within a solve. The export tests now use the names it assigns.
 
 - **A scale in every 3D picture, and why it is a ruler rather than a bar.** Stills
   (`einzel render still`) and the Avalonia viewport now carry a scale indicator in a corner;

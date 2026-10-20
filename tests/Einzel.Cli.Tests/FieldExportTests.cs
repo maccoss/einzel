@@ -138,14 +138,13 @@ public sealed class FieldExportTests : IDisposable
     }
 
     /// <summary>
-    /// Two plates at opposite potentials that do not touch, both unnamed or both given the
-    /// same name, in a 16 mm box at a 1 mm cell.
+    /// Two unnamed plates at opposite potentials that do not touch, in a 16 mm box at a 1 mm cell.
     /// </summary>
-    private static string Unnamed(string name) => $$"""
+    private const string Unnamed = """
     {
       "schemaVersion": "0.3",
       "name": "twins",
-      "description": "Two plates at opposite potentials sharing a name, or having none.",
+      "description": "Two unnamed plates at opposite potentials.",
       "ion": { "massToCharge": { "value": 100, "unit": "Da" }, "chargeNumber": 1 },
       "source": {
         "position": { "value": [0, -7, 0], "unit": "mm" },
@@ -164,7 +163,7 @@ public sealed class FieldExportTests : IDisposable
             "tolerance": 1e-8,
             "electrodes": [
               {
-                {{name}}"shape": "rectangle",
+                "shape": "rectangle",
                 "minX": { "value": -6, "unit": "mm" },
                 "minY": { "value": -2, "unit": "mm" },
                 "maxX": { "value": -2, "unit": "mm" },
@@ -172,7 +171,7 @@ public sealed class FieldExportTests : IDisposable
                 "potential": { "value": 100, "unit": "V" }
               },
               {
-                {{name}}"shape": "rectangle",
+                "shape": "rectangle",
                 "minX": { "value": 2, "unit": "mm" },
                 "minY": { "value": -2, "unit": "mm" },
                 "maxX": { "value": 6, "unit": "mm" },
@@ -192,28 +191,30 @@ public sealed class FieldExportTests : IDisposable
     """;
 
     /// <summary>
-    /// Electrodes are told apart by where they are declared, not by their names.
+    /// Two unnamed plates each keep their own potential, and the header names each by the name
+    /// the validator gave it.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A name is optional and defaults to <c>electrode</c>, and nothing requires two to differ.
-    /// Exporting through a pattern keyed by name put both of these plates at the last one's
-    /// -100 V - a different instrument from the one every run flies, which builds its static
-    /// mask electrode by electrode. Found by review.
+    /// A name used to default to <c>electrode</c> for every unnamed electrode, and exporting
+    /// through a pattern keyed by name put both of these plates at the last one's -100 V - a
+    /// different instrument from the one every run flies, which builds its static mask
+    /// electrode by electrode. Found by review. Names are now unique within a solve (an unnamed
+    /// electrode is <c>electrode-N</c> after its place), and two declared with the same name
+    /// are refused; the export reports by position regardless, so this guards the path rather
+    /// than the naming rule.
     /// </para>
     /// <para>
     /// The grid values are the claim and the header is the second half: a header keyed by name
     /// listed one plate, at the wrong potential, even where the solve was right.
     /// </para>
     /// </remarks>
-    [Theory]
-    [InlineData("")]
-    [InlineData("\"name\": \"plate\", ")]
-    public void ElectrodesSharingANameKeepTheirOwnPotentials(string name)
+    [Fact]
+    public void UnnamedElectrodesKeepTheirOwnPotentials()
     {
         Assert.Equal(0, Run("init", _root).ExitCode);
         var model = Path.Combine(_root, "models", "twins.json");
-        File.WriteAllText(model, Unnamed(name));
+        File.WriteAllText(model, Unnamed);
 
         var (artifacts, _) = Export(model);
         var vti = File.ReadAllText(Assert.Single(artifacts));
@@ -221,14 +222,14 @@ public sealed class FieldExportTests : IDisposable
         Assert.Equal(100.0, ValueAt(vti, -4.0, 0.0));
         Assert.Equal(-100.0, ValueAt(vti, 4.0, 0.0));
 
-        var label = name.Length == 0 ? "electrode" : "plate";
-        Assert.Contains($"{label} 100 V, {label} -100 V", Header(vti), StringComparison.Ordinal);
+        Assert.Contains("electrode-0 100 V, electrode-1 -100 V", Header(vti), StringComparison.Ordinal);
     }
 
-    /// <summary>The volume header tells same-named electrodes apart too.</summary>
+    /// <summary>The volume header tells unnamed electrodes apart too.</summary>
     /// <remarks>
     /// The volume's static solve was always built electrode by electrode, so its values were
-    /// right; the header was not, listing both boxes at -100 V.
+    /// right; the header was not, listing both boxes at -100 V while both were called
+    /// <c>electrode</c>.
     /// </remarks>
     [Fact]
     public void AVolumeTellsUnnamedElectrodesApart()
@@ -248,7 +249,7 @@ public sealed class FieldExportTests : IDisposable
 
         Assert.Equal(100.0, ValueAt(vti, 0.0, 0.0, -2.0));
         Assert.Equal(-100.0, ValueAt(vti, 0.0, 0.0, 3.0));
-        Assert.Contains("electrode 100 V, electrode -100 V", Header(vti), StringComparison.Ordinal);
+        Assert.Contains("electrode-0 100 V, electrode-1 -100 V", Header(vti), StringComparison.Ordinal);
     }
 
     /// <summary>

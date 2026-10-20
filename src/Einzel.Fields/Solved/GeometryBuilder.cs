@@ -832,10 +832,12 @@ public static class GeometryBuilder
         /// chain and which the RF.
         /// </para>
         /// <para>
-        /// <b>By position, not by name</b>, because a name is optional, defaults to
-        /// <c>electrode</c>, and need not be unique: keyed by name, two unnamed plates reported
-        /// one potential between them. Each entry is the value the mask was built with, through
-        /// the same function, so it cannot describe a solve other than the one that ran.
+        /// <b>By position, not by name.</b> Each entry is the value the mask was built with,
+        /// through the same function and in the same order, so it cannot describe a solve other
+        /// than the one that ran. It was a dictionary keyed by name once, when a name defaulted
+        /// to <c>electrode</c> and need not have been unique, and two unnamed plates reported
+        /// one potential between them; the validator now makes names unique within a solve, and
+        /// the list keeps the report from depending on that.
         /// </para>
         /// </remarks>
         public IReadOnlyList<double> Holding { get; init; } = [];
@@ -958,8 +960,8 @@ public static class GeometryBuilder
     /// <see cref="Build"/> makes, electrode by electrode. It used to be a dictionary keyed by
     /// name, and that was wrong twice. Read from each electrode's scalar it zeroed every edge
     /// profile, whose volts are in its profile, so <c>einzel solve</c> solved the planar
-    /// mirror pair with no boards. And a name is optional, defaults to <c>electrode</c> and
-    /// need not be unique, so two unnamed plates at +100 V and -100 V both solved at -100.
+    /// mirror pair with no boards. And a name defaulted to <c>electrode</c> and need not have
+    /// been unique, so two unnamed plates at +100 V and -100 V both solved at -100.
     /// </para>
     /// </remarks>
     private static List<Func<CompiledElectrode, double>?> Patterns(CompiledSolvedField solve)
@@ -1293,8 +1295,8 @@ public static class GeometryBuilder
 
     /// <summary>A channel's pattern as the function a mask is built with.</summary>
     /// <remarks>
-    /// The decomposition keys its patterns by name, so electrodes sharing a name share an entry
-    /// in a driven geometry - and the field every run flies is built from the same patterns.
+    /// The decomposition keys its patterns by name, which the validator makes unique within a
+    /// solve and the decomposition itself refuses to see repeated.
     /// </remarks>
     private static Func<CompiledElectrode, double> Weighted(Dictionary<string, double> pattern) =>
         electrode => pattern.GetValueOrDefault(electrode.Name, 0.0);

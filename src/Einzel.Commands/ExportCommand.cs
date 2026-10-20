@@ -328,7 +328,8 @@ public static class ExportCommand
     /// <param name="Electrodes">
     /// Names in declaration order, and whether each is an edge profile - whose entry in a
     /// pattern is a scale on its profile rather than a potential. Matched to each channel's
-    /// holding by position, because names need not be unique.
+    /// holding by position - the order the mask was built in, which is what the holding
+    /// describes.
     /// </param>
     /// <param name="Channels">One per basis channel.</param>
     private sealed record Element(
@@ -464,7 +465,8 @@ public static class ExportCommand
     {
         const int Shown = 8;
 
-        // By position: two electrodes may share a name, and each holds its own potential.
+        // By position, the order the mask was built in: the holding is a list over the same
+        // electrodes, so pairing it by name would be a second account of something one already gives.
         var held = element.Electrodes
             .Select((e, i) => (e.Name, e.Profile, Value: channel.Holding[i]))
             .Where(e => e.Value != 0.0)
