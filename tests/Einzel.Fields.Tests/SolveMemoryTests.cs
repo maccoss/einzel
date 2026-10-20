@@ -383,13 +383,21 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// <b>The middle of three, not the largest.</b> Sampled this densely a build's peak is
-    /// caught nearly every time, and what is left are outliers in both directions: a build
-    /// whose samples miss its peak, and, now and then, one that reads about 7 bytes a node
-    /// over the statement - once on the Linux CI runner in the Galerkin build, once in WSL in
-    /// the two-channel plane, never on demand. That is about one grid-sized array, consistent
-    /// with catching the instant a new array exists beside the one it replaces. The largest of
-    /// three kept that outlier and failed CI on it; the middle discards a lone outlier either
-    /// way, while an array a build really keeps is in all three readings and still fails.
+    /// caught nearly every time, and what is left is a build whose samples miss its peak. The
+    /// middle discards a lone outlier either way, while an array a build really keeps is in all
+    /// three readings and still fails.
+    /// </para>
+    /// <para>
+    /// <b>What survived the collection, not the heap after it.</b> This read
+    /// <see cref="GC.GetTotalMemory(bool)"/> after the forced collection, which counts everything
+    /// allocated since - and the build thread does not stop while the sampler reads. A sampler
+    /// descheduled between the two calls came back to find the next V-cycle's residual allocated,
+    /// eight bytes a node of garbage, and reported it as held: about 7 bytes a node over the
+    /// statement, once on the Linux CI runner and once in WSL before the middle of three, and in
+    /// two readings of three on PR #57's Linux run, where the middle of three could not discard
+    /// it. Reproduced in WSL by loading the four cores a test was pinned to: 153.4 and 153.7
+    /// against 147.0 in two runs of five, never unloaded. The collector's own account of the
+    /// collection it just finished has no such window.
     /// </para>
     /// </remarks>
     private static double PeakLive(Func<object> build)
@@ -400,7 +408,22 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             GC.WaitForPendingFinalizers();
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
 
-            return GC.GetTotalMemory(forceFullCollection: false);
+            return SurvivedLastFullCollection();
+        }
+
+        // What the last full blocking collection left live, read from that collection's own
+        // record: the generations' sizes after it, less the free space between their objects.
+        static long SurvivedLastFullCollection()
+        {
+            var info = GC.GetGCMemoryInfo(GCKind.FullBlocking);
+            var live = 0L;
+
+            foreach (var generation in info.GenerationInfo)
+            {
+                live += generation.SizeAfterBytes - generation.FragmentationAfterBytes;
+            }
+
+            return live;
         }
 
         static double Once(Func<object> build)
@@ -419,7 +442,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
 
                     GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: false);
 
-                    peak = Math.Max(peak, GC.GetTotalMemory(forceFullCollection: false));
+                    peak = Math.Max(peak, SurvivedLastFullCollection());
 
                     // As long again as the collection took: the build runs at least half the time.
                     var resume = clock.Elapsed + (clock.Elapsed - started);

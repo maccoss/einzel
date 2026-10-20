@@ -5264,6 +5264,15 @@ the errors the measurement now has, not the ones it used to have: the largest of
 right while samples could only miss, and wrong once they were dense enough to catch an instant
 the statement does not count - the middle of three is robust to a lone outlier either way.
 
+**And the outlier it was robust to was the sampler's own.** `GC.GetTotalMemory` after a forced
+collection is not the live set at that collection: it counts whatever the build allocated
+between the collection and the read, and a sampler thread descheduled in that gap - routine on
+a loaded four-core runner - came back to a fresh V-cycle residual, eight bytes a node of
+garbage. On PR #57's Linux run two readings of three caught it and the middle could not help.
+**Read what the collection reported about itself** (`GC.GetGCMemoryInfo`, size after less
+fragmentation), not a counter that keeps moving after it; and when an outlier only appears
+under load, load the machine on purpose before explaining it.
+
 ## A perturbation that isolates one thing must move only that thing
 
 The grounded-boundary check (`docs/numerics.md`, "A grounded face of the domain is a third
