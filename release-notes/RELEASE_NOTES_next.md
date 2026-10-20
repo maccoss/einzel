@@ -111,7 +111,8 @@ become a feature release without being renamed twice.
   times what was quoted. The estimate now multiplies by how many are in flight, reports that
   count (`inFlight`) and the per-evaluation figure beside the total, and says when the total will
   not fit this machine. An optimization or a boundary search runs one point at a time and is
-  unchanged.
+  unchanged. Each evaluation is billed at the dearest end of the study's range rather than at the
+  model's declared values, since a study that varies the mesh varies what an evaluation holds.
 - **Mean-field space charge was billed no memory.** A diffusive run with
   `"spaceCharge": "meanField"` holds about 62 bytes a density node more than one without - its
   potential, the density it was solved for, a mask, and the Poisson solve it refreshes during the

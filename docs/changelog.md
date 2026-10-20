@@ -2958,10 +2958,22 @@ Two findings from Stage 1 that bear on the spec:
   sixteen-way scan was billed a sixteenth. It now reports `inFlight` and
   `memoryMiBPerEvaluation` beside the product, capped by the work (a five-point scan holds five)
   and, for a sweep, the wider of its two phases; an optimization and a boundary search hold one.
-  **The count is restated from the drivers rather than asked of them, so a test runs them**:
-  `StudyInFlightTests` hands `ParameterScan` and `ToleranceStudy` the study's own document and an
-  evaluator that counts the calls inside it at once - 4, 3 and 16 for three scans, 4 and 3 for two
-  sweeps, the estimate's numbers. The comment beside the parallel loop said a 34 M-node volume was
+  **The count is asked of the drivers, not restated**: `ParameterScan.InFlight` and
+  `ToleranceStudy.InFlight` sit beside the loops they describe and read the one
+  `Parallelism.Degree` those loops run at. `StudyInFlightTests` also runs both drivers on the
+  study's own document with an evaluator that counts the calls inside it at once - 2, 3 and one per
+  processor for three scans, 2 and 3 for two sweeps, the estimate's numbers. Its first version ran
+  at a `maxParallelism` of 4, where a driver ignoring the setting runs one per processor and looks
+  identical on a four-core runner; that mutation was caught only on a sixteen-thread machine. And
+  at one per processor the last evaluation waited half a second for the pool to inject a thread
+  and read 15 of 16, so the test raises the pool's minimum for the run: it measures the driver,
+  not the pool.
+
+  **And an evaluation is billed at the dearest end of the study's range**, as its flight already
+  was sampled there. Found in review, and it bites on ordinary studies: the shipped mirror pair's
+  solve runs to half the separation, so a 700 to 800 mm scan crosses a power of two in the mesh
+  and its far end holds 4.6 MiB against 2.3 at the declared 767. The memory statement and the
+  element timeline are now one function `Execute` and the range ends both call. The comment beside the parallel loop said a 34 M-node volume was
   1.6 GiB an evaluation: **34 M nodes at the old 48 bytes a node**, a figure restated from a
   constant that stayed when the constant was found five times low. It points at the estimate now.
 
@@ -2969,8 +2981,9 @@ Two findings from Stage 1 that bear on the spec:
   density it was solved for and a mask - 25 bytes a node - and refreshes a plane Poisson solve as
   the density moves. Measured live over a five-microsecond flight it adds **61.3 to 61.4, flat
   from 66 k to 1.05 M nodes**; two species add 69.3 to 69.4, the same solve plus the summed
-  charge's array. The diffusive constant's own remarks said "a mean-field solve adds its own
-  grids", and nothing was charged.
+  charge's array; a cylindrical bore whose earthed wall lies inside the density grid reads 59.3,
+  so the figure holds where the self-field's mask fixes every absorbing node. The diffusive
+  constant's own remarks said "a mean-field solve adds its own grids", and nothing was charged.
 
   **The first measurement read 25, and nothing about 25 looked wrong.** One step is the right
   measurement for a plain diffusive run, whose every array exists by its first step - and the

@@ -279,6 +279,17 @@ public sealed record ScanResult(
 /// </remarks>
 public static class ParameterScan
 {
+    /// <summary>How many of a scan's points <see cref="Run"/> evaluates at once.</summary>
+    /// <param name="points">The points the scan declares.</param>
+    /// <param name="maxParallelism">What the study declares, or null for one per processor.</param>
+    /// <returns>At least one.</returns>
+    /// <remarks>
+    /// What <c>einzel estimate</c> multiplies one evaluation's memory by, asked of the driver
+    /// rather than restated, so the two cannot disagree about what runs together.
+    /// </remarks>
+    public static int InFlight(int points, int? maxParallelism) =>
+        Parallelism.InFlight(points, maxParallelism);
+
     /// <summary>Runs a scan.</summary>
     /// <param name="document">The model to vary.</param>
     /// <param name="axis">The parameter, the range, and the points.</param>
@@ -382,7 +393,7 @@ public static class ParameterScan
         // constant, which stayed when the constant was found five times low.
         var rows = new ScanPoint[axis.Points];
 
-        var parallelism = Math.Max(1, maxParallelism ?? Environment.ProcessorCount);
+        var parallelism = Parallelism.Degree(maxParallelism);
 
         Parallel.For(
             0,

@@ -53,6 +53,13 @@ def set_parameter(model, name, value):
     model["parameters"][name] = {"value": value, "unit": model["parameters"][name].get("unit", "1")}
 
 
+def quadrupole_span(model):
+    """The quadrupole template's solve width, in mm, from the expressions its domain is written in."""
+    p = {name: entry.get("value") for name, entry in model["parameters"].items()}
+    rod = p["inscribedRadius"] * p["rodRatio"]
+    return 2.0 * (p["inscribedRadius"] + rod + rod * p["housingClearance"])
+
+
 def mixture(model, count):
     """Replace a model's single ion by `count` species of rising mass, in place."""
     ion = model.pop("ion")
@@ -132,13 +139,18 @@ def table(match=""):
 
 def sweep(which):
     if which == "plane":
-        # 513, 1025, 2049 and 4097 nodes a side. The cell is set a hair UNDER the box over the
-        # power of two, because the grid rounds up: a hair over gives the next size.
+        # The quadrupole at 1024 to 4096 intervals a side - 1.05 M to 16.8 M nodes, the plane rows
+        # of README.md. The span is read off the template's own parameters rather than written
+        # down: a guessed 39.8 mm against the real 39.8168, with the cell shaved by 0.9999, put
+        # span over cell a hair past each power of two, so every case got twice the intervals its
+        # label named. The cell here is a hair LARGER than span over intervals, so the ratio lands
+        # a hair under the power of two and rounds up onto it.
         base = template("quadrupole")
+        span = quadrupole_span(base)
 
-        for intervals in (256, 512, 1024, 2048):
+        for intervals in (1024, 2048, 4096):
             model = copy.deepcopy(base)
-            set_cell(model, 39.8 / intervals * 0.9999)
+            set_cell(model, span / intervals * 1.0001)
             run(f"plane-quadrupole-{intervals}", model, "fields")
 
     elif which == "driven":

@@ -1435,9 +1435,25 @@ scan running sixteen points at once was billed for one; it now reports `inFlight
 product with this machine. The comment beside the parallel loop said a 34 M-node volume was
 1.6 GiB an evaluation and sixteen were 26 GiB - 34 M nodes at the old 48 bytes a node, a figure
 restated from a constant and left behind when the constant was found five times low. It now
-points at the estimate instead of quoting a number. `StudyInFlightTests` runs both drivers on
-the study's own document with an evaluator that counts how many calls are inside it at once,
-and the counts match the estimate: 4, 3 and 16 for three scans, 4 and 3 for two sweeps.
+points at the estimate instead of quoting a number.
+
+*How many are in flight is asked of the drivers, not restated.* `ParameterScan.InFlight` and
+`ToleranceStudy.InFlight` sit beside the parallel loops they describe and read the same
+`Parallelism.Degree` those loops run at, so the estimate and the run cannot disagree about what
+runs together. `StudyInFlightTests` still runs both drivers on the study's own document with an
+evaluator that counts how many calls are inside it at once, and the counts match: 2, 3 and one
+per processor for three scans, 2 and 3 for two sweeps. It runs at a `maxParallelism` of 2,
+because at 4 a driver ignoring the setting runs one per processor and is indistinguishable on a
+four-core CI runner - the first version used 4 and caught that only on a sixteen-thread machine.
+
+*And each evaluation is billed at the dearest point of the study's range.* A study that varies
+the mesh varies what an evaluation holds, and the flight was already sampled at the ends of the
+range while the memory was taken at the declared values. The memory statements are arithmetic on
+the declaration, so every end is costed whatever the study's length, and the largest is taken
+rather than the mean because it has to fit at every point. **Even an innocent scan crosses a mesh
+boundary**: the shipped mirror pair's solve runs to half the separation, and a scan from 700 to
+800 mm takes it past a power of two at 780 - the 800 mm end holds 4.6 MiB against 2.3 at
+the declared 767. Each end is taken alone, not in combination, as the flight is.
 
 **A self-field is charged once, and a run of one step does not see most of it.** Mean-field
 space charge keeps its potential, the density it was last solved for and a Dirichlet mask of a
@@ -1449,8 +1465,9 @@ solves on top of the step, and over a flight long enough to refresh the self-fie
 summed charge, so it is charged once, plus that sum's own array: 69.3 to 69.4 with two species.
 It was not billed at all - the diffusive figure's own remarks said "a mean-field solve adds its
 own grids". `SelfFieldMemoryTests` measures it through a real run at 0.90 to 1.02 of the
-statement in an optimized build, asserting that the self-field was solved inside the loop at
-least once; **a Debug build holds one array more** (68.7 to 70.1), because it keeps a local alive
+statement in an optimized build - 61.4 on a Cartesian tube, and 59.3 on a cylindrical bore whose
+earthed wall lies inside the density grid, so the self-field's mask fixes every absorbing node -
+asserting that the self-field was solved inside the loop at least once; **a Debug build holds one array more** (68.7 to 70.1), because it keeps a local alive
 to the end of its method where the optimizer ends it at its last use, and is allowed that much.
 
 **What a run shows is higher, and depends on the machine.** The collector frees a large array

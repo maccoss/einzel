@@ -27,7 +27,9 @@ using Einzel.Io;
 
 var options = args.Skip(2).ToHashSet(StringComparer.Ordinal);
 
-if (args.Length < 2 || options.Except(["live", "declared"]).Any())
+// The mode is checked before anything runs: an unknown one used to fall through to the diffusive
+// branch and fail there on a field that was never built.
+if (args.Length < 2 || args[0] is not ("nodes" or "fields" or "diffuse") || options.Except(["live", "declared"]).Any())
 {
     Console.Error.WriteLine("usage: memory-harness nodes|fields|diffuse <model.json> [live] [declared]");
     return 2;

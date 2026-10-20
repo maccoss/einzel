@@ -40,7 +40,9 @@ few percent is what a run needs, and the working set is what it will take if not
 ## Measured
 
 Release, commit `de73ec8` (main after #55 and #57), an Intel Core i9-9900K (8 cores, 16 threads)
-with 63.8 GB, idle; bytes a node; `est` is what `einzel estimate` states.
+with 63.8 GB, idle; bytes a node; `est` is what `einzel estimate` states. The rows are what
+`sweep.py plane`, `volume` and `diffuse` run - the volumes at their 1 and 0.5 mm cells and the
+drift tube at 512 and 1024 intervals - once without `--live` and once with it.
 
 | case | nodes | live | working set | working set / live | est | kept |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

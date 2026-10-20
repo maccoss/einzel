@@ -5521,3 +5521,23 @@ a number that looks complete. **Where a measurement can degenerate quietly, asse
 that makes it mean something** - here, a solve inside the loop - rather than only the value. And
 **a memory statement says which build it is for**: Debug and Release differ by whatever the JIT
 keeps alive, which is not a rounding error.
+
+## A test of a setting is blind wherever the setting equals its default
+
+The test that a study driver honors `maxParallelism` ran it at 4, counted the evaluations in flight,
+and passed - and a mutation making the driver ignore the setting was caught, on a sixteen-thread
+workstation. On a four-core CI runner the same mutation passes: ignoring the setting means one per
+processor, which there is four, which is what the setting asked for. The test was checking that a
+value came out, and the value it checked was the default's on the machine that matters most.
+
+Moving it to 2 fixed that and exposed the next layer: at one per processor the count read 15 of 16,
+because the test thread is itself a pool thread and the pool starts only its minimum at once,
+injecting the rest about every half second. A fixed two-second wait had been hiding that; a shorter
+one measured the thread pool instead of the driver. The test now raises the pool's minimum for the
+run, inside a collection that runs alone.
+
+The rules. **Test a setting at a value its default cannot produce on any machine the test runs on**,
+or say which machines it is blind on. **Run the mutation where the test will run**, not only where
+it was written: a mutation caught on a sixteen-thread box is evidence about that box. And **when a
+measurement includes a runtime's scheduling, decide whether that is the thing being measured** -
+here it was not, so it is held fixed.
