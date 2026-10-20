@@ -36,6 +36,8 @@ become a feature release without being renamed twice.
   (`--view iso|side|top|front`), pixel sizes (`--width-px`, `--height-px`), `--see-through`.
   The PNG carries the engine version, the model's hash and every warning in its text chunks,
   and a validity violation hatches the bottom of the picture.
+- **`einzel export` carries a solve's warnings** into each field file's header and into its
+  `--json` output, and prints them on stderr.
 - **A scale in every 3D picture.** Stills and the cross-platform viewport carry a ruler in
   whichever corner the instrument covers least: one arm along each model axis, all the same
   round length (`10 mm`, `500 µm`),
@@ -46,6 +48,19 @@ become a feature release without being renamed twice.
 
 ## Fixed
 
+- **Two unnamed electrodes in a driven or sequenced solve were solved at the same potential.**
+  Every unnamed electrode was called `electrode`, and a driven or sequenced geometry is solved
+  through channels keyed by name, so the later of two set both: a deflector of two unnamed
+  plates at +2 V and -2 V was switched off, on a run that validated, converged and exited 0.
+  The same happened to two electrodes given one name. An unnamed electrode is now called
+  `electrode-N` after its place in the list, and **two electrodes in one solve sharing a name
+  are refused** at validation, since a lost ion is reported by its electrode's name as well.
+  Two field elements may still share names, as the Astral's mirror solves do for the same
+  metal. A static geometry's field was right and is unchanged; only its unnamed electrodes'
+  names in reports change. No shipped template or example is affected.
+- **Two taps of one electrode on one generator kept only the later.** At one phase, or at two
+  phases of a sinusoid, they reach the same supply, and 100 V and 50 V flew exactly as 50 V
+  alone. They now add.
 - **`astral-3d`'s flight time depended on rounding.** Three faces shared by foil slices at
   different voltages lay exactly on planes of mesh nodes, so which voltage the stencil arms in
   those planes took was decided by the last bit of arithmetic - worth 0.27 percent. The foil
@@ -85,6 +100,19 @@ become a feature release without being renamed twice.
   extruded electrodes: 5.5 kB a node on `c-trap`, 260 bytes on `linear-ion-trap-3d`, against
   the 105 the mask keeps. It now allocates only what it keeps, and the masks are bit-identical.
   `c-trap`'s build at 0.5 mm takes 14 s where it took 16; `linear-ion-trap-3d`'s is unchanged.
+- **`einzel export` wrote an RF cross-section as a grounded box.** A two-dimensional geometry
+  whose electrodes hold their potential as drive rather than DC exported every node at zero -
+  `quadrupole-rf`, `linear-ion-trap`, `stellar-ion-trap`, `multipole-guide`, `paul-trap` and
+  `travelling-wave-guide` - and one with a DC chain as well exported the chain alone, dropping
+  the RF (`ion-funnel`, `pnnl-ion-funnel`, `tims-front-end`, `tims-tandem`). It now writes one file per basis channel, as
+  three-dimensional export already did, named `.channel0.vti`, `.channel1.vti` where there is
+  more than one. A driven channel is a pattern with its leading electrode at 1 V rather than a
+  potential, so its array is named `channelN_V_per_V` and its header says which electrodes carry
+  it; a static geometry's values are unchanged, and every file now carries its provenance and
+  warnings in a header.
+- **`einzel solve` reported the planar mirror pair without its boards.** A static geometry's
+  edge-profile electrodes were solved at zero; the peak it printed was the cap's, so it looked
+  right. Runs were never affected.
 
 ## Known limits
 
