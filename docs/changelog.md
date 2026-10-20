@@ -2537,7 +2537,30 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   printed a kilometer ruler as `1E+03 m` in a font with no E, caught by the font test before it
   shipped; and the pixel test first demanded a near-black pixel where an antialiased 1.5-pixel
   line centered between rows leaves gray. **Not built**: the WPF viewport's ruler (its camera
-  is Helix's own), and the Avalonia overlay has not been looked at in a live window.
+  is Helix's own). **Looked at in a live window after it merged**: on five models and every
+  named view the ruler measured true, stayed clear of the instrument and matched a still of the
+  window's own size in length, corner and arm pixels - and its **text was two thirds the size of
+  the still's**, because the layout's text height is a digit's height and the window set its
+  text in Avalonia's font with that number as the size, which is an em. Scaling the font to its
+  measured digit height fixed the height, and a review of that fix found the label then ran
+  about 3 percent wider than the box the layout reserves from the still's glyphs: **two fonts
+  for one layout disagree, and the fit check can only measure one.** So the window sets no text:
+  `ScaleIndicator.Strokes` hands out the arms, label and letters as one list of polylines in
+  `StrokeFont` with their widths, and the window and the still both draw it. Live, every glyph's
+  ink box matches the still's to a pixel; stills through the list are pixel-identical to the old
+  ones on all twenty model-and-view pairs tried. Measuring the real glyphs also found the box
+  short of the micro sign's descender, a pixel and a half into the margin at the default size;
+  it now holds every glyph it lays out. Mutation-checked: dropping the descender from the box
+  fails the micrometer test and nothing else, and ignoring a stroke's own width fails the
+  rasterizer's. While the window was open it also showed the einzel lens's 7 mm tube walls drawn
+  as thin tubes with flanges - the faces lying on the solve domain's edge are not drawn, a
+  viewport defect older than the ruler and its own change.
+
+- **Two unnamed electrodes in a driven or sequenced solve were solved at the same potential, and a name is now an identity.** An electrode's name was optional, every unnamed one was called `electrode`, and nothing required two in one solve to differ. `DriveChannels` keys each supply's coefficients by name and wrote them with `=`, so the later of two same-named electrodes set both. Confirmed end to end on a deflector of two plates at +2 V and -2 V beside a small driven disc: named, the ion is bent **0.595 mm**; unnamed, or both called `plate`, it flies **1.6e-8 mm** off axis - the deflector switched off, on a run that validated, converged and exited 0. The same in a volume (0.178 mm against 2e-6) and in a sequenced cross-section with no drive. The static control is right (0.5952 mm unnamed), because a static mask is built electrode by electrode; PR #56 found the same dictionary in the static channel's *export* and left this path for its own change.
+
+  **Fixed in the validator rather than by keying the decomposition by position**, because four readers key on the name - the decomposition, ACC-5's loss tally, the diffusive seed-loss ledger and the viewport's electrode count - and a positional key would have fixed the field while an ion lost on either plate was still reported as striking `electrode`. An unnamed electrode is now `electrode-N` after its place in the list (matching the path an error gives, and stable when another electrode gains a name), a repeat's copies `name-0`, `name-1` as before, and **two electrodes in one solve sharing a name are refused** at the second's `name`, once per pair of declarations however many repeat copies collide. `DriveChannels.Decompose` refuses a repeated name too, so a caller that bypasses the validator is stopped rather than given a quieter field. **Within one solve, not across the model**: `astral-3d` and `compact-astral-3d` declare all twenty-two boards in both mirror solves under the same names, which is right - it is one metal - and a model-wide rule would have refused them. The price, stated rather than fixed: unnamed electrodes in two elements share default names as well, each element having an `electrode-0`, and a loss on either is tallied as one surface. None of the 62 shipped templates and examples has an unnamed electrode or a repeated name in one solve, so nothing shipped moves.
+
+  **The same line had a second victim.** One electrode tapping one generator twice - at one phase, or at two phases of a sinusoid, which resolve into the same in-phase and quadrature supplies - wrote one entry twice, and 100 V and 50 V flew *exactly* as 50 V alone. Contributions now add, which is bit-identical wherever an electrode reaches a supply once. Eighteen tests in three files (`ElectrodeNameTests`, `ElectrodeNameValidationTests`, `DriveChannelIdentityTests`); fifteen fail on the unfixed code, the other three are controls, and each of six mutations of the fix fails its own tests. `docs/lessons.md`, "A default every instance shares cannot be a key".
 
 Adding a travelling-wave guide or a multipole should need only one more file — axisymmetry, repeats and RF all exist now. If it needs a change below `Einzel.Library`, LIB-1 says the abstraction is wrong — believe it.
 
