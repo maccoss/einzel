@@ -4,6 +4,8 @@ using System.Windows;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
+using Einzel.Shell.Presentation;
+
 namespace Einzel.Wpf;
 
 /// <summary>The shell application.</summary>

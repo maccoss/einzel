@@ -55,6 +55,15 @@ become a feature release without being renamed twice.
   straight-on view it is an L-shaped scale bar. `--no-scale` leaves it out of a still, whose
   `--json` result reports the arm length and the corner. A picture too small to hold the ruler
   gets none.
+- **The cross-platform shell edits a model.** `einzel-shell` on Windows, Linux and macOS
+  was a viewer: its parameter list could not be changed. Each free parameter is now a box -
+  Enter or leaving the box applies it, Escape puts it back - and a derived one shows its
+  expression and what that comes to. An edit is recorded in the session journal under your
+  name and redraws the viewport; a value outside its declared bounds still applies, with the
+  complaint shown in red under the tree and the last picture kept until the model validates
+  again; **Undo last edit** reverses it. A new Journal tab lists what has happened, by whom,
+  and every action as the `einzel` command that would repeat it, ready to copy. A watched run
+  is recorded there too.
 
 ## Fixed
 
@@ -145,12 +154,21 @@ become a feature release without being renamed twice.
   `SYSTEMROOT` on Windows - the path of the Windows directory, and nothing else - and nothing
   anywhere else. CI never saw it because the Windows runner's Python is 3.12, which uses
   `BCryptGenRandom` and starts with an empty environment.
+- **The shell's numbers no longer follow the desktop's locale.** On a computer set to a
+  language that writes a decimal comma, parameter bounds read `0,1 to 20 kV` beside a box
+  that accepts `0.1` and refuses `0,1`, and so would warnings. The bounds are fixed in both
+  shells, and the cross-platform shell now writes every number with a point, as model files
+  are.
 
 ## Known limits
 
 Carried forward from v26.1.0 until they change:
 
-- **The Windows shell is partial**: seven of the eleven views in the specification exist.
+- **The shells are partial.** The Windows shell has eight of the eleven views in the
+  specification; the cross-platform one has five - the viewport, the parameter tree, the
+  field, a watched run and the journal - and no mouse orbit, pan or zoom yet, only the four
+  named views. The cross-platform shell is the one being kept; the Windows-only one is
+  removed once it has everything.
 - **A still cannot check the window's own GPU path**, and it does not draw the name of a
   validity violation as text: the codes are in the file's text chunks and on stderr.
 - **No installer and no updater.** The assets are portable: unpack and run.

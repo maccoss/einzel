@@ -58,7 +58,7 @@ from the register means nothing.
 ```
 Einzel.Core  Fields  Transport  Analysis  Library  Sweeps
 Einzel.Io  Project  Extensions  Render  Commands  Cli
-Einzel.Mcp  Wpf
+Einzel.Mcp  Shell  Wpf
 ```
 
 ### What does not
@@ -70,14 +70,17 @@ Einzel.Update       release check, staging, version policy (all of UPD, DST)
 
 The second is load-bearing for requirements that are otherwise met on paper:
 without `Einzel.Update`, GRD-11's defect taint has no published floor to compare a
-version against, and none of §18 can be exercised. The shell exists with nine of
-§16's eleven views (see [the shell section](#the-shell-and-the-rest-of-16)); its
-two missing views are the extension manager pane and the update notice, the latter
-waiting on `Einzel.Update`.
+version against, and none of §18 can be exercised. The shell exists with eight of
+§16's eleven views built and two partly built - the sequence editor shows a timeline
+without editing it, and the animation timeline has no scrubbing - while the update notice
+waits on `Einzel.Update` (see [the shell section](#the-shell-and-the-rest-of-16)).
 
-`Einzel.Wpf` is a **deliverable rather than a permission**, and the Windows GUI
-capability was part of why the toolchain is C# - a rationale r06 never records. See
-[the shell section](#the-shell-and-the-rest-of-16) and Amendment 25.
+The shell is a **deliverable rather than a permission**, and the Windows GUI capability was
+part of why the toolchain is C# - a rationale r06 never records. There are two of them while
+one is carried into the other: `Einzel.Shell` on Avalonia, which runs where the engine runs and
+is the one that survives (decided 2026-11-09), and `Einzel.Wpf`, which is deleted once nothing
+is left that only it has. See [the shell section](#the-shell-and-the-rest-of-16) and
+Amendments 25 and 53.
 
 ---
 
@@ -357,9 +360,18 @@ only its namespace differed.
 **The WPF shell is untouched and still builds.** Its assembly was renamed
 `einzel-shell-wpf`, because two projects producing one assembly identity is a latent
 collision and it had already made the boundary test ambiguous about which shell it had
-found. Which of the two is the survivor is not settled here: what is settled is that the
+found. Which of the two is the survivor was not settled here: what was settled is that the
 cross-platform one exists, its claim to run anywhere is *checked* rather than asserted, and
 nothing was lost to get it.
+
+**Settled since, on 2026-11-09: the Avalonia shell survives, and `Einzel.Wpf` is deleted once
+nothing is left that only it has.** Keeping both means writing every future view twice, and the
+WPF one is what carries the SharpDX backend Amendment 26 took knowingly and archived since 2020.
+The port runs in four steps - the session and view models moved to plain `net10.0`, the model
+tree made editable with the journal, the remaining panels as tabs, then the deletion - and the
+first two are done (`docs/shell.md`, "The session moved, and the window stopped going around
+it"). Until the last, the WPF project compiles the moved files from where the Avalonia shell
+keeps them, so the two windows run one source.
 
 **Three things are genuinely different rather than merely ported.**
 
@@ -381,8 +393,9 @@ it into a build failure rather than a note, which is the guard working, and cent
 transitive pinning names the fixed 0.95.1 once for every project. LIC-1 is clear -
 Avalonia and Silk.NET are both MIT, verified in their nuspecs rather than assumed.
 
-**What is not carried across**: the journal, results by accuracy class, the regime
-inspector, the sequence editor, the project view and the extension manager. Each is
+**What is not carried across**: results by accuracy class, the regime inspector, the sequence
+editor, the project view and the extension manager, and the mouse gestures Helix gives the WPF
+viewport. The journal and an editable model tree have been carried across since. Each is
 presentation over a command that already works, which is the same observation
 `docs/shell.md` makes about the WPF shell's own remaining rows - and is the evidence for
 AGT-2 that matters, since it means the second window is a drawing exercise rather than a
@@ -2189,7 +2202,7 @@ requirement rather than two because of AGT-2, and Amendment 25 strengthens it: e
 shell action should be *expressible* as a CLI invocation and journalled as one, so a
 human's session hands over to an agent and back in the same vocabulary.
 
-**Seven of the eleven views exist**, and the window opens on a model: `einzel-shell
+**Eight of the eleven views exist**, and the window opens on a model: `einzel-shell
 models/reflectron.json` gives a parameter tree, a trajectory bundle coloured by energy over
 the drawn instrument and field, the journal, results grouped by §12's accuracy class, the
 regime along the path, and the declared timeline. `ShellSession` holds one model, the shared journal, and every
@@ -2218,11 +2231,13 @@ it builds as an ordinary `net10.0` assembly with no sources, so a solution-wide
 **There are two shells now, and the second one runs where the engine runs.** `Einzel.Shell`
 is the same §16 views on Avalonia and an OpenGL viewport, targeting plain `net10.0` and
 referencing `Einzel.Commands` and nothing else - so a user who asked for the platform
-outside Windows gets a window there, and the WPF shell is untouched. **Four of the eleven
-views are across**: the 3-D viewport, the model tree, the field as equipotentials, and a
-live run watched while it steps. The other seven are presentation over commands that
-already work, which is the same thing this section says about the WPF shell's own remaining
-rows.
+outside Windows gets a window there. **Five of the eleven views are across**: the 3-D
+viewport, the model tree - edited through the shared journal, validated as it is typed, and
+undone from a button the WPF shell never had - the field as equipotentials, a live run
+watched while it steps, and the journal itself. The other six are presentation over commands
+that already work, which is the same thing this section says about the WPF shell's own
+remaining rows. **This is the shell that survives** (decided 2026-11-09, Amendment 53), so the
+WPF one is now a list of what is left to carry across rather than a peer.
 
 **This is Amendment 26's bet being called, and it paid.** The Windows-only decision was
 recorded as a decision with a condition on it - "revisited if the need appears" - resting
@@ -2260,7 +2275,7 @@ Every view §16 requires:
 | Results by accuracy class, uncertainty and warnings never behind a disclosure control | **Built** | §12's taxonomy was recorded nowhere in the code and is now on the figure registry - six Class T, four Class S, seven Class B, and two deliberately in none, since `flightTime` is the raw arrival quantity the Class T figures are computed *from* and `energyDrift` says in its own description that it is a diagnostic. Every part of the envelope is a line rather than a tooltip, which is the requirement. **Building it found the GRD-1 hole below**, and closing that took the figures carrying an envelope from 1 of 14 to 5 |
 | Regime inspector | **Built** | REG-2's numbers *along the path*, which is what §16's word "along" asks for and what a run does not give - a run reports the worst point anywhere in the gas, right for a warning and useless for deciding what to change. Violations are located as stretches in millimetres rather than counted. On a hundredfold density ramp the two ends differ by Kn **4.17 against 0.042** - free-molecular at one end, a continuum at the other, in the same instrument |
 | Project view with model-drift and engine-drift state | **Built** | `einzel project` - the models, studies, figures, tests and extensions, with each model in one of four states. The drift itself is `einzel verify`'s, which already separates what invalidates a result from what merely annotates it; **what verify cannot answer is what has never been run**, since it walks the manifests and a model with no result is reported by neither its success nor its failure. That is the state most models in a working project are in. Building it found a defect in verify - see Amendment 30. |
-| Extension manager | Not built | **Its engine half is done.** The manifest now carries `licence` beside trust level, versions and compatible range, and `einzel ext list` surfaces it - so what the view needs from below it exists, and building it is presentation. LIC-2's remaining half is the pane itself. An SPDX identifier by convention rather than by validation: a checker that recognised some spellings and not others would report an unrecognised licence as no licence, which is the failure the field exists to prevent |
+| Extension manager | **Built** | **LIC-2 is met** (its register row has the evidence). It needed nothing new below the shell: the manifest already carried `licence` beside trust level, versions and compatible range, and `einzel ext list` already surfaced it, so the pane is presentation over `ExtensionCommand.List`. What the sandbox does not enforce is printed on the pane rather than behind a control. An SPDX identifier by convention rather than by validation: a checker that recognised some spellings and not others would report an unrecognised licence as no licence, which is the failure the field exists to prevent |
 | Journal with agent and human attribution | **Built** | `SessionJournal` in `Einzel.Commands`, rendered by the window beside the model tree, with the same entries an MCP client writes. A person sees what an agent did to their model, by name, and can undo it - which is MCP-1 and GRD-9 arriving where they were always aimed. Beneath it the same actions as `einzel` command lines (Amendment 25) |
 | Update notice with UPD-3's deferral options | Not built | Needs the whole of §18 |
 
@@ -2989,7 +3004,7 @@ project's author needs to run it and more than any physics the moment one does.
     The remainder is the front end: the entrance funnel and the gate the operating
     sequence opens and closes (see the TIMS front-end entry).
 
-5. **The shell (§16).** **Seven of the eleven views exist** — the table in
+5. **The shell (§16).** **Eight of the eleven views exist** — the table in
     [the shell section](#the-shell-and-the-rest-of-16) is the current one; this entry
     said three for a while after it stopped being true. The window opens on a model, and
     what remains divides into three kinds rather than one:
@@ -3083,6 +3098,25 @@ project's author needs to run it and more than any physics the moment one does.
     surface since the density is already computed and contoured; the figure composer, whose
     seam is already text the CLI executes; then the animation timeline's scrubbing. The
     update notice needs `Einzel.Update`, which does not exist.
+
+    **The port to Avalonia comes first now, because WPF is being retired (decided
+    2026-11-09).** Every view written for WPF from here would be written twice. Four steps:
+
+    1. ~~**Move the session and the view models to plain `net10.0`.**~~ Done. `ShellSession`
+       and six view models live in `src/Einzel.Shell/Presentation/`; they held no WPF type,
+       and the WPF project compiles them from there until it is deleted.
+    2. ~~**Make the Avalonia model tree editable, with the journal.**~~ Done, and checked in a
+       live window: an edit goes through the journal under the person's name and redraws,
+       out of bounds applies with the complaint under the tree and the last picture kept, and
+       undo has a button. The window had been calling the command objects around the session,
+       so nothing it did was journalled or recorded as a command. Doing it found the shell
+       process formatting numbers in the desktop's locale - see `docs/shell.md`.
+    3. **Carry the other five panels across as tabs**: results by accuracy class, regime,
+       sequence, project, extensions. Each has its view model already; what is left is
+       layout. The mouse gestures the Helix viewport has for free (orbit, pan, zoom) belong
+       here too, since the Avalonia viewport has the four named views and nothing else.
+    4. **Delete `Einzel.Wpf` and `Einzel.Wpf.Tests`**, Helix and SharpDX with them, the
+       Windows-targeting setting, and the `windowsOnly` arm of `ShellBoundaryTests`.
 
 6. **The Astral inverse problem: the mirror is reproduced, and one published number is
     not.** This item has now been rewritten four times, and the rewriting is the point rather

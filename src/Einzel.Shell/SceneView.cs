@@ -65,6 +65,11 @@ public sealed class SceneView : OpenGlControlBase
 
     private IReadOnlyList<PictureLayer> _picture = [];
     private ViewportOutcome? _pending;
+    private ViewportOutcome? _replacement;
+
+    // Read on the UI thread by the see-through toggle and replaced on the render thread when
+    // an edit redraws the scene, so every read sees one whole scene or the other.
+    private volatile ViewportOutcome? _scene;
 
     private GL? _gl;
     private uint _program;
@@ -102,11 +107,49 @@ public sealed class SceneView : OpenGlControlBase
 
     /// <summary>What to draw, as the command layer measured it.</summary>
     /// <remarks>
-    /// Set before the control is first realized. A viewport that changed scene mid-flight
-    /// would have to tear down its buffers on the render thread, which is the next piece
-    /// of work rather than this one.
+    /// Set before the control is first realized; <see cref="Replace"/> changes it after.
     /// </remarks>
-    public ViewportOutcome? Scene { get; init; }
+    public ViewportOutcome? Scene
+    {
+        get => _scene;
+        init => _scene = value;
+    }
+
+    /// <summary>Draws a different scene in place of the one on screen.</summary>
+    /// <param name="scene">The model as the command layer measured it after an edit.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="scene"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>For an edit, which changes everything a watch does not.</b> A parameter moves an
+    /// electrode, so the meshes, the field and the paths are all new, and every buffer is
+    /// released and uploaded again - on the render thread, because that is where the GL
+    /// context is. This only hands the scene over and asks for a redraw.
+    /// </para>
+    /// <para>
+    /// <b>A watched frame still waiting is dropped</b>: it is a frame of the model as it was
+    /// before the edit, and drawing its packet over the new geometry would put an instant of
+    /// one instrument inside another.
+    /// </para>
+    /// <para>
+    /// <b>The named view is kept and the frame is fitted to the new scene.</b> The camera here
+    /// has no free orbit, so where somebody is standing is the named view alone, and that
+    /// survives the edit. The fit does not: an edit that doubles a drift length would
+    /// otherwise put half the instrument off screen. The ruler drawn over the viewport is what
+    /// says the scale moved.
+    /// </para>
+    /// </remarks>
+    public void Replace(ViewportOutcome scene)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+
+        lock (_gate)
+        {
+            _replacement = scene;
+            _pending = null;
+        }
+
+        RequestNextFrameRendering();
+    }
 
     /// <summary>How opaque the conductors are, from zero to one.</summary>
     /// <remarks>
@@ -239,6 +282,7 @@ public sealed class SceneView : OpenGlControlBase
         }
 
         ViewportOutcome? arrived;
+        ViewportOutcome? replaced;
 
         lock (_gate)
         {
@@ -246,6 +290,15 @@ public sealed class SceneView : OpenGlControlBase
             // drop the last one.
             arrived = _pending;
             _pending = null;
+            replaced = _replacement;
+            _replacement = null;
+        }
+
+        // The scene before the frame: a frame posted after a replacement is a frame of the
+        // new scene, and taking it into the old one's camera would be lost on the rebuild.
+        if (replaced is { } scene)
+        {
+            Rebuild(api, scene);
         }
 
         if (arrived is { } frame)
@@ -386,6 +439,30 @@ public sealed class SceneView : OpenGlControlBase
             api.DeleteVertexArray(line.Vao);
             api.DeleteBuffer(line.Vbo);
         }
+    }
+
+    /// <summary>Releases everything uploaded and uploads a new scene in its place.</summary>
+    private void Rebuild(GL api, ViewportOutcome scene)
+    {
+        foreach (var layer in _uploaded)
+        {
+            Release(api, layer);
+        }
+
+        _uploaded.Clear();
+
+        _scene = scene;
+
+        var picture = ViewportPicture.Compose(scene, ConductorOpacity);
+
+        foreach (var layer in picture)
+        {
+            _uploaded.Add(Upload(api, layer));
+        }
+
+        _picture = picture;
+        _camera = new ViewportCamera(scene, _view);
+        FramingChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Takes in a frame of a run that is still going.</summary>

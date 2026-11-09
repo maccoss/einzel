@@ -5,7 +5,7 @@ using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
-namespace Einzel.Wpf;
+namespace Einzel.Shell.Presentation;
 
 /// <summary>One phase, as a row on the timeline.</summary>
 public sealed class PhaseRow

@@ -3054,3 +3054,61 @@ Two findings from Stage 1 that bear on the spec:
   recorded rather than fixed: a trajectory model whose sequence enters a `diffusion` phase is billed
   nothing for its density, because the estimate asks the model's own mode. SPEC.md GRD-8 and item
   10; `docs/cli.md`, `docs/lessons.md`, `tools/memory-harness/README.md`.
+
+- **The cross-platform shell edits a model, through the journal, and the Windows one is being
+  retired.** Decided 2026-11-09: the Avalonia shell survives and `Einzel.Wpf` is deleted once
+  nothing is left that only it has (SPEC.md Amendment 53, item 5). The first two of four steps:
+
+  **The session and six view models moved to plain `net10.0`**, into
+  `src/Einzel.Shell/Presentation/`. They held no WPF type - `Einzel.Commands` and
+  `System.ComponentModel` were their only references - so the move was a namespace. The WPF
+  project compiles them from there rather than keeping a copy, so the two windows run one
+  source until WPF goes, and an Avalonia type creeping into one of them would fail the WPF
+  build. Two WPF test classes moved with the code they test and now run on Linux.
+
+  **The Avalonia window had been going around the session.** It called `ViewportCommand` and
+  `OutlineCommand` itself: the right picture, and nothing behind it - no journal, so nothing a
+  person did could be undone or seen by an agent on the same model, and no record of the
+  commands, so the one window meant to run everywhere was the one surface whose actions could
+  not be read back as something to type (Amendment 25). Now every action goes through
+  `ShellSession`, a watch included (`WatchAsync` takes the window's own progress listener).
+
+  **The model tree edits.** The rules a person meets at the keyboard are in
+  `ModelTreeViewModel.Commit`, where they are tested without a window: a box left as it was
+  records nothing (commit is on lost focus, so tabbing through the tree would otherwise write
+  an entry per row); numbers parse invariantly, so `4,5` is refused rather than read as 45; a
+  derived parameter is refused by name; out of bounds applies and the tree stands with the
+  complaint against it. Each rule was broken on purpose and fails its own test. In the window,
+  an edit re-reads the tree, which replaces every row - and the box committed with Enter then
+  loses focus on its way out, carrying the value just applied against a row still showing the
+  old one; committing that would journal the same edit twice, so a row the tree no longer
+  holds is ignored. **Checked in a live window through UI Automation**: one edit, one journal
+  entry under `human:<user>`, the derived gradient moving with it, the viewport redrawn; 500 mm
+  against a 200 mm bound applied with the red line naming the bound and the last picture kept;
+  undo back to the value before. The WPF shell's view model could always undo and nothing in
+  its window called it; the Avalonia one has the button.
+
+  **The viewport takes a new scene.** `SceneView.Scene` was init-only, recorded as "the next
+  piece of work"; `Replace` hands a scene to the render thread, which releases every buffer
+  and uploads the new layers, drops a watched frame of the old instrument, keeps the named
+  view and refits the frame. Redraws are numbered so the slower of two quick edits cannot land
+  last.
+
+  **The shell process formatted numbers in the desktop's locale.** It turns globalization back
+  on because a window needs it, and that turned the locale on too: `OutlineCommand.BoundsText`
+  printed `0,1 to 20 kV` under a German desktop, beside a box that refuses `0,1`. Fixed there,
+  and then at the level it belongs: about 265 interpolated strings below the shell format a
+  number without naming a culture, because in the CLI - globalization-invariant by build
+  setting - none is needed. `Program.UseInvariantNumbers` makes the current culture invariant
+  on every thread at startup and keeps the culture data, which is what the CLI's setting was
+  doing for it. **The analyzer for this never fired, for two reasons**: CA1305 is silent
+  wherever globalization-invariant mode is on, which is every assembly here, and it does not
+  look inside interpolated strings. Building the libraries with the mode off found two sites,
+  both in the scan's out-of-bounds warning, fixed too. The shell's tests now run with
+  globalization on, as the shell does, so a decimal comma can be tested at all - and turning
+  it on immediately flagged a culture-sensitive `ToString` in an existing shell test.
+
+  Left for the next two steps, in SPEC.md item 5: results, regime, sequence, project and
+  extension panels as tabs; orbit, pan and zoom, which Helix gave the WPF viewport for nothing;
+  then deleting `Einzel.Wpf`. Details in `docs/shell.md`, "The session moved, and the window
+  stopped going around it".

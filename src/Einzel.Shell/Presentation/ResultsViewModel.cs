@@ -5,7 +5,7 @@ using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
-namespace Einzel.Wpf;
+namespace Einzel.Shell.Presentation;
 
 /// <summary>One figure, as a row under its class.</summary>
 /// <remarks>

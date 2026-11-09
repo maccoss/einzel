@@ -54,6 +54,18 @@
     <ProjectReference Include="..\Einzel.Commands\Einzel.Commands.csproj" />
   </ItemGroup>
 
+  <!--
+    The session and the view models, compiled from where the cross-platform shell keeps
+    them rather than copied. They hold no WPF type and no Avalonia one - only
+    Einzel.Commands and System.ComponentModel - so one source serves both windows until this
+    one is deleted, and two copies cannot drift apart in the meantime. That this project
+    compiles them is also what holds that line: an Avalonia type in one of these files would
+    fail this build.
+  -->
+  <ItemGroup>
+    <Compile Include="..\Einzel.Shell\Presentation\**\*.cs" LinkBase="Presentation" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="HelixToolkit.Wpf.SharpDX" />
   </ItemGroup>

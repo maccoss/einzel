@@ -1,11 +1,11 @@
 using System.IO;
 
 using Einzel.Commands;
-using Einzel.Wpf;
+using Einzel.Shell.Presentation;
 
 using Xunit.Abstractions;
 
-namespace Einzel.Wpf.Tests;
+namespace Einzel.Shell.Tests;
 
 /// <summary>
 /// The extension manager's own decisions, which are LIC-2's second half: an extension

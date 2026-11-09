@@ -5,7 +5,7 @@ using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
-namespace Einzel.Wpf;
+namespace Einzel.Shell.Presentation;
 
 /// <summary>One parameter, as a row in the model tree.</summary>
 /// <remarks>
@@ -62,6 +62,25 @@ public sealed class ParameterRow(ParameterOutline outline)
         ? si.ToString("G6", CultureInfo.InvariantCulture) + SiUnit(outline.Unit)
         : string.Empty;
 
+    /// <summary>The line under the row: a derived parameter's expression, or a free one's bounds.</summary>
+    /// <remarks>
+    /// <para>
+    /// For the cross-platform window, which shows a row as two lines rather than five
+    /// columns, so the tree fits beside the viewport. A derived parameter's value cell holds
+    /// no number - there is nothing to type there - so this line carries both what it is
+    /// over and what that came to, which is the pair a reader needs in order to know which
+    /// knob to turn.
+    /// </para>
+    /// <para>
+    /// A free parameter's resolved value is left off it: <c>4 kV</c> beside <c>4000 V</c>
+    /// says the same thing twice, and a second line on every row teaches the eye to skip
+    /// the line that matters on the derived ones.
+    /// </para>
+    /// </remarks>
+    public string Detail => Editable
+        ? Bounds
+        : "= " + Shown + (Resolved.Length > 0 ? "  →  " + Resolved : string.Empty);
+
     /// <summary>The SI unit a declared unit reduces to, as a suffix.</summary>
     /// <remarks>
     /// Asked of the unit registry rather than mapped here, because which SI unit a
@@ -80,6 +99,19 @@ public sealed class ParameterRow(ParameterOutline outline)
 
         return string.IsNullOrEmpty(symbol) ? string.Empty : " " + symbol;
     }
+}
+
+/// <summary>What became of a value typed into the model tree.</summary>
+public enum ParameterEdit
+{
+    /// <summary>The text is what the row already shows, so nothing was done.</summary>
+    Unchanged,
+
+    /// <summary>The edit went through the journal and the tree was re-read.</summary>
+    Applied,
+
+    /// <summary>Nothing was applied, and <see cref="ModelTreeViewModel.Status"/> says why.</summary>
+    Refused,
 }
 
 /// <summary>
@@ -162,6 +194,67 @@ public sealed class ModelTreeViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Whether there is an edit that still stands, to be reversed.</summary>
+    /// <remarks>
+    /// The journal's answer rather than a count kept here, because an agent on the same
+    /// session can make or reverse an edit between two of the window's.
+    /// </remarks>
+    public bool CanUndo => _session.Journal.CanUndo;
+
+    /// <summary>Takes a value as a person typed it, and applies it if it says something.</summary>
+    /// <param name="row">The row it was typed into.</param>
+    /// <param name="text">What is in the box.</param>
+    /// <returns>What became of it; <see cref="Status"/> says why when it was refused.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="row"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Here rather than in the window, so it is tested where the window cannot be.</b>
+    /// Every rule in it is one a person meets at the keyboard, and each has a way to be
+    /// wrong that a test can see and a screenshot cannot: a box left as it was must record
+    /// nothing, or tabbing through the tree writes a journal entry per row it passes.
+    /// </para>
+    /// <para>
+    /// <b>Parsed invariantly, whatever the machine's locale</b>, because the document being
+    /// edited is invariant: <c>1,5</c> is refused rather than read as fifteen, which is what
+    /// a parser told to accept group separators would make of it.
+    /// </para>
+    /// <para>
+    /// A derived parameter is refused by name before anything is parsed. Its value is its
+    /// expression's, so there is nothing to set, and saying which parameters it is over is
+    /// more use than saying the box is read-only.
+    /// </para>
+    /// </remarks>
+    public ParameterEdit Commit(ParameterRow row, string? text)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var typed = text?.Trim() ?? string.Empty;
+
+        if (string.Equals(typed, row.Shown, StringComparison.Ordinal))
+        {
+            return ParameterEdit.Unchanged;
+        }
+
+        if (!row.Editable)
+        {
+            Status = $"{row.Name} is derived, so its value is its expression's - "
+                + $"set one of the parameters in {row.Shown}";
+
+            return ParameterEdit.Refused;
+        }
+
+        if (!double.TryParse(typed, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+        {
+            Status = $"'{typed}' is not a number. {row.Name} is in "
+                + (row.Unit.Length > 0 ? row.Unit : "no unit")
+                + ", so write the magnitude alone, with a point for the decimal";
+
+            return ParameterEdit.Refused;
+        }
+
+        return Set(row.Name, value) ? ParameterEdit.Applied : ParameterEdit.Refused;
+    }
+
     /// <summary>Sets one parameter and re-reads everything.</summary>
     /// <param name="name">Which parameter.</param>
     /// <param name="value">Its new magnitude, in its own declared unit.</param>
@@ -241,6 +334,25 @@ public sealed class ModelTreeViewModel : INotifyPropertyChanged
             Parameters.Add(new ParameterRow(parameter));
         }
 
+        RefreshHistory();
+
+        Valid = outline.Valid;
+
+        Status = outline.Valid
+            ? $"{outline.Name ?? "(unnamed)"} - schema {outline.SchemaVersion}, "
+                + $"{outline.Parameters.Count} parameters"
+            : string.Join(
+                "; ", outline.Errors.Select(e => $"{e.Path}: {e.Constraint}"));
+    }
+
+    /// <summary>Re-reads the journal and the commands, and leaves the parameters alone.</summary>
+    /// <remarks>
+    /// For an action that records a command without changing the document - a redraw, a
+    /// watch. Rebuilding the parameter rows then would take the keyboard out of whichever
+    /// box a person is typing in, for no change to anything that box shows.
+    /// </remarks>
+    public void RefreshHistory()
+    {
         Journal.Clear();
 
         foreach (var line in _session.Journal.Lines())
@@ -255,13 +367,7 @@ public sealed class ModelTreeViewModel : INotifyPropertyChanged
             Commands.Add(action.Command);
         }
 
-        Valid = outline.Valid;
-
-        Status = outline.Valid
-            ? $"{outline.Name ?? "(unnamed)"} - schema {outline.SchemaVersion}, "
-                + $"{outline.Parameters.Count} parameters"
-            : string.Join(
-                "; ", outline.Errors.Select(e => $"{e.Path}: {e.Constraint}"));
+        Changed(nameof(CanUndo));
     }
 
     private void Changed(string property) =>
