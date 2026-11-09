@@ -95,7 +95,7 @@ public sealed class SceneView : OpenGlControlBase
     /// The same matrix the render pass hands the GPU, so a ruler laid out from it measures the
     /// picture it is drawn over rather than a second account of the camera.
     /// </remarks>
-    public double[]? CurrentMatrix(double aspect) => _camera?.Framing.Matrix(aspect);
+    public double[]? CurrentMatrix(double aspect) => _camera?.Matrix(aspect);
 
     /// <summary>The composed picture the viewport is drawing, layer by layer.</summary>
     /// <remarks>
@@ -131,11 +131,11 @@ public sealed class SceneView : OpenGlControlBase
     /// one instrument inside another.
     /// </para>
     /// <para>
-    /// <b>The named view is kept and the frame is fitted to the new scene.</b> The camera here
-    /// has no free orbit, so where somebody is standing is the named view alone, and that
-    /// survives the edit. The fit does not: an edit that doubles a drift length would
-    /// otherwise put half the instrument off screen. The ruler drawn over the viewport is what
-    /// says the scale moved.
+    /// <b>The angle and the zoom are kept, and the frame is refitted to the new scene.</b>
+    /// Somebody zoomed in on a slit to see what an edit does to it wants to stay on the slit,
+    /// so the zoom and pan carry over as a scale and shift of the fit; the fit itself does
+    /// not, since an edit that doubles a drift length would otherwise put half the instrument
+    /// off screen. The ruler drawn over the viewport is what says the scale moved.
     /// </para>
     /// </remarks>
     public void Replace(ViewportOutcome scene)
@@ -217,6 +217,52 @@ public sealed class SceneView : OpenGlControlBase
                 RequestNextFrameRendering();
             }
         }
+    }
+
+    /// <summary>Turns the instrument in place by a mouse drag.</summary>
+    /// <param name="azimuth">Degrees about the vertical.</param>
+    /// <param name="elevation">Degrees of tilt.</param>
+    /// <remarks>
+    /// The arithmetic is <see cref="ViewportCamera.Orbit"/>'s, where it is tested; this only
+    /// keeps the named view in step, so an edit's rebuild starts from where the camera is.
+    /// </remarks>
+    public void Orbit(double azimuth, double elevation) =>
+        Moved(camera =>
+        {
+            camera.Orbit(azimuth, elevation);
+            _view = camera.View;
+        });
+
+    /// <summary>Moves the picture across the screen, in clip coordinates.</summary>
+    /// <param name="clipX">How far across.</param>
+    /// <param name="clipY">How far up.</param>
+    public void PanBy(double clipX, double clipY) => Moved(camera => camera.PanBy(clipX, clipY));
+
+    /// <summary>Zooms about a point on the screen, in clip coordinates.</summary>
+    /// <param name="factor">Above one zooms in.</param>
+    /// <param name="clipX">The cursor across.</param>
+    /// <param name="clipY">The cursor up.</param>
+    public void ZoomAbout(double factor, double clipX, double clipY) =>
+        Moved(camera => camera.ZoomAbout(factor, clipX, clipY));
+
+    /// <summary>Turns to a view and fits it exactly, leaving nothing of the mouse behind.</summary>
+    /// <param name="view">Azimuth and elevation, in degrees.</param>
+    public void Fit((double Azimuth, double Elevation) view)
+    {
+        _view = view;
+        Moved(camera => camera.Fit(view));
+    }
+
+    private void Moved(Action<ViewportCamera> move)
+    {
+        if (_camera is not { } camera)
+        {
+            return;
+        }
+
+        move(camera);
+        FramingChanged?.Invoke(this, EventArgs.Empty);
+        RequestNextFrameRendering();
     }
 
     /// <summary>Shows a newer frame of a run that is still going.</summary>
@@ -326,7 +372,7 @@ public sealed class SceneView : OpenGlControlBase
         // Rebuilt per frame because it depends on the window's shape; the expensive half,
         // measuring the instrument, was done once.
         var mvp = _camera is { } camera
-            ? camera.Framing.Project((double)width / height)
+            ? camera.Project((double)width / height)
             : Framing.Identity();
 
         fixed (float* m = mvp)
@@ -461,7 +507,15 @@ public sealed class SceneView : OpenGlControlBase
         }
 
         _picture = picture;
-        _camera = new ViewportCamera(scene, _view);
+
+        var camera = new ViewportCamera(scene, _view);
+
+        if (_camera is { } previous)
+        {
+            camera.KeepZoomFrom(previous);
+        }
+
+        _camera = camera;
         FramingChanged?.Invoke(this, EventArgs.Empty);
     }
 

@@ -161,24 +161,48 @@ public sealed class RegimeViewModel : INotifyPropertyChanged
     /// <returns>Whether there was a path to walk.</returns>
     public bool Refresh()
     {
-        RegimeProfile profile;
-
         try
         {
-            profile = _session.Regime();
+            return Show(_session.Regime());
         }
         catch (EinzelException refusal)
         {
-            Samples.Clear();
-            Excursions.Clear();
-            Warnings.Clear();
-
-            Status = refusal.Error.Constraint
-                + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
-
-            return false;
+            return Refused(refusal);
         }
+    }
 
+    /// <summary>Walks the path in the background and reads the regime when it is done.</summary>
+    /// <returns>Whether there was a path to walk.</returns>
+    /// <remarks>
+    /// The lists are filled on the caller's thread once the walk returns, so a window awaiting
+    /// this on its UI thread never has a collection changed under it from another.
+    /// </remarks>
+    public async Task<bool> RefreshAsync()
+    {
+        try
+        {
+            return Show(await _session.RegimeAsync().ConfigureAwait(true));
+        }
+        catch (EinzelException refusal)
+        {
+            return Refused(refusal);
+        }
+    }
+
+    private bool Refused(EinzelException refusal)
+    {
+        Samples.Clear();
+        Excursions.Clear();
+        Warnings.Clear();
+
+        Status = refusal.Error.Constraint
+            + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
+
+        return false;
+    }
+
+    private bool Show(RegimeProfile profile)
+    {
         Samples.Clear();
 
         foreach (var sample in profile.Samples)

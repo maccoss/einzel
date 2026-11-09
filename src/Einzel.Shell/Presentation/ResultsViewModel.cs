@@ -145,24 +145,49 @@ public sealed class ResultsViewModel : INotifyPropertyChanged
     /// <returns>Whether anything was reported.</returns>
     public bool Refresh(bool preview)
     {
-        ResultsOutcome outcome;
-
         try
         {
-            outcome = _session.Results(preview);
+            return Show(_session.Results(preview));
         }
         catch (EinzelException refusal)
         {
-            Rows.Clear();
-            Warnings.Clear();
-            Tainted = false;
-
-            Status = refusal.Error.Constraint
-                + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
-
-            return false;
+            return Refused(refusal);
         }
+    }
 
+    /// <summary>Runs the model in the background and reads its figures when it is done.</summary>
+    /// <param name="preview">Whether to use the cheap, permanently marked tier.</param>
+    /// <returns>Whether anything was reported.</returns>
+    /// <remarks>
+    /// The lists are filled on the caller's thread once the run returns, so a window awaiting
+    /// this on its UI thread never has a collection changed under it from another.
+    /// </remarks>
+    public async Task<bool> RefreshAsync(bool preview)
+    {
+        try
+        {
+            return Show(await _session.ResultsAsync(preview).ConfigureAwait(true));
+        }
+        catch (EinzelException refusal)
+        {
+            return Refused(refusal);
+        }
+    }
+
+    private bool Refused(EinzelException refusal)
+    {
+        Rows.Clear();
+        Warnings.Clear();
+        Tainted = false;
+
+        Status = refusal.Error.Constraint
+            + (refusal.Error.Suggestion is { } how ? $" - {how}" : string.Empty);
+
+        return false;
+    }
+
+    private bool Show(ResultsOutcome outcome)
+    {
         Rows.Clear();
 
         foreach (var group in outcome.Classes)

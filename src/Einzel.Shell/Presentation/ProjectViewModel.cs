@@ -43,6 +43,20 @@ public sealed class ProjectRow
     /// <summary>Where it is, relative to the project root.</summary>
     public string Path { get; }
 
+    /// <summary>Whether its state is a thing to fix.</summary>
+    /// <remarks>
+    /// The severity as yes-or-no questions, which is what a style selector can ask. Four
+    /// fixed colours keyed on the state word would paint "not run" like a problem, and it is
+    /// where every model starts.
+    /// </remarks>
+    public bool Bad => Severity == "bad";
+
+    /// <summary>Whether its state is a thing to re-run.</summary>
+    public bool Warn => Severity == "warn";
+
+    /// <summary>Whether its state needs nothing.</summary>
+    public bool Good => Severity == "good";
+
     /// <summary>Whether the window has this one open.</summary>
     public bool Open { get; }
 

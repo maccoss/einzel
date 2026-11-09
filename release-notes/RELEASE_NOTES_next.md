@@ -64,6 +64,13 @@ become a feature release without being renamed twice.
   again; **Undo last edit** reverses it. A new Journal tab lists what has happened, by whom,
   and every action as the `einzel` command that would repeat it, ready to copy. A watched run
   is recorded there too.
+- **The cross-platform shell has every panel the Windows one has.** Results by accuracy
+  class, the regime along the path, the sequence timeline, the project's models and their
+  state, and the extensions with their licences are tabs beside the journal. **Run** and
+  **Inspect** work in the background, so the window keeps answering during a long run. The
+  viewport turns, moves and zooms with the mouse: drag to turn, right-drag or Shift-drag to
+  move, the wheel to zoom toward the cursor, and double-click or **Fit** to fit it again. The
+  named views still fit exactly.
 
 ## Fixed
 
@@ -164,11 +171,9 @@ become a feature release without being renamed twice.
 
 Carried forward from v26.1.0 until they change:
 
-- **The shells are partial.** The Windows shell has eight of the eleven views in the
-  specification; the cross-platform one has five - the viewport, the parameter tree, the
-  field, a watched run and the journal - and no mouse orbit, pan or zoom yet, only the four
-  named views. The cross-platform shell is the one being kept; the Windows-only one is
-  removed once it has everything.
+- **The shells are partial**: eight of the eleven views in the specification exist, in both
+  the Windows shell and the cross-platform one. The cross-platform shell is the one being
+  kept, and the Windows-only one is removed in a coming release.
 - **A still cannot check the window's own GPU path**, and it does not draw the name of a
   validity violation as text: the codes are in the file's text chunks and on stderr.
 - **No installer and no updater.** The assets are portable: unpack and run.

@@ -393,10 +393,11 @@ it into a build failure rather than a note, which is the guard working, and cent
 transitive pinning names the fixed 0.95.1 once for every project. LIC-1 is clear -
 Avalonia and Silk.NET are both MIT, verified in their nuspecs rather than assumed.
 
-**What is not carried across**: results by accuracy class, the regime inspector, the sequence
-editor, the project view and the extension manager, and the mouse gestures Helix gives the WPF
-viewport. The journal and an editable model tree have been carried across since. Each is
-presentation over a command that already works, which is the same observation
+**What was not carried across at first**: results by accuracy class, the regime inspector, the
+sequence editor, the project view, the extension manager, the journal, an editable model tree,
+and the mouse gestures Helix gives the WPF viewport. **All of it has been carried across
+since**, so nothing is left that only the WPF shell has. Each was presentation over a command
+that already worked, which is the same observation
 `docs/shell.md` makes about the WPF shell's own remaining rows - and is the evidence for
 AGT-2 that matters, since it means the second window is a drawing exercise rather than a
 capability exercise.
@@ -2231,13 +2232,14 @@ it builds as an ordinary `net10.0` assembly with no sources, so a solution-wide
 **There are two shells now, and the second one runs where the engine runs.** `Einzel.Shell`
 is the same §16 views on Avalonia and an OpenGL viewport, targeting plain `net10.0` and
 referencing `Einzel.Commands` and nothing else - so a user who asked for the platform
-outside Windows gets a window there. **Five of the eleven views are across**: the 3-D
-viewport, the model tree - edited through the shared journal, validated as it is typed, and
-undone from a button the WPF shell never had - the field as equipotentials, a live run
-watched while it steps, and the journal itself. The other six are presentation over commands
-that already work, which is the same thing this section says about the WPF shell's own
-remaining rows. **This is the shell that survives** (decided 2026-11-09, Amendment 53), so the
-WPF one is now a list of what is left to carry across rather than a peer.
+outside Windows gets a window there. **Every view the WPF shell has is across**: the 3-D
+viewport with orbit, pan and zoom, the model tree - edited through the shared journal,
+validated as it is typed, and undone from a button the WPF shell never had - the field, a live
+run watched while it steps, the journal, results by accuracy class and the regime inspector
+(both run in the background, where WPF froze its window for the length of the run), the
+sequence editor, the project view and the extension manager. **This is the shell that
+survives** (decided 2026-11-09, Amendment 53), and with nothing left that only WPF has, the
+WPF shell is next to be deleted.
 
 **This is Amendment 26's bet being called, and it paid.** The Windows-only decision was
 recorded as a decision with a condition on it - "revisited if the need appears" - resting
@@ -3111,10 +3113,12 @@ project's author needs to run it and more than any physics the moment one does.
        undo has a button. The window had been calling the command objects around the session,
        so nothing it did was journalled or recorded as a command. Doing it found the shell
        process formatting numbers in the desktop's locale - see `docs/shell.md`.
-    3. **Carry the other five panels across as tabs**: results by accuracy class, regime,
-       sequence, project, extensions. Each has its view model already; what is left is
-       layout. The mouse gestures the Helix viewport has for free (orbit, pan, zoom) belong
-       here too, since the Avalonia viewport has the four named views and nothing else.
+    3. ~~**Carry the other five panels across as tabs, and the mouse gestures.**~~ Done, and
+       checked in a live window. Results and regime run the model, so they run in the
+       background rather than freezing the window as the WPF ones did; the cheap three read
+       when their tab opens. Orbit keeps the scale and turns about the centre, zoom is about
+       the cursor, and named views fit exactly; the bookkeeping is in `ViewportCamera`, where
+       it is tested, and the live window caught the sideways orbit turning the wrong way.
     4. **Delete `Einzel.Wpf` and `Einzel.Wpf.Tests`**, Helix and SharpDX with them, the
        Windows-targeting setting, and the `windowsOnly` arm of `ShellBoundaryTests`.
 
