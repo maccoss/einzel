@@ -81,6 +81,21 @@ public sealed class ParameterRow(ParameterOutline outline)
         ? Bounds
         : "= " + Shown + (Resolved.Length > 0 ? "  →  " + Resolved : string.Empty);
 
+    /// <summary>What a screen reader says about the row's value box beyond its name.</summary>
+    /// <remarks>
+    /// <para>
+    /// The unit and the bounds, because those are what the label and the line beneath it show
+    /// a sighted reader and neither is part of the box. A value read out as "50" without
+    /// "millimetres" is the unit ambiguity §9 refuses in a document, met at the keyboard.
+    /// </para>
+    /// <para>
+    /// A ratio's unit is written <c>1</c>, which is right in a document and reads as "in 1"
+    /// aloud, so it is said as what it means.
+    /// </para>
+    /// </remarks>
+    public string Help => (Unit.Length > 0 && Unit != "1" ? "in " + Unit : "dimensionless")
+        + (Bounds.Length > 0 ? ", " + Bounds : string.Empty);
+
     /// <summary>The SI unit a declared unit reduces to, as a suffix.</summary>
     /// <remarks>
     /// Asked of the unit registry rather than mapped here, because which SI unit a

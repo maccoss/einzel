@@ -3108,6 +3108,14 @@ Two findings from Stage 1 that bear on the spec:
   globalization on, as the shell does, so a decimal comma can be tested at all - and turning
   it on immediately flagged a culture-sensitive `ToString` in an existing shell test.
 
+  **A review found the redraw racing itself.** Each edit started its own solve, and the stale
+  ones stood down only after they had paid for themselves; a watch could start while an edit's
+  redraw was still computing and draw its packet over the old geometry. `Coalescing` now runs
+  the redraw one at a time and folds requests made meanwhile into one more run - live, three
+  quick edits gave two redraws with the window answering in under a millisecond throughout -
+  and Watch run is enabled only while the viewport shows the document as it stands. The value
+  boxes are named for their parameters, with unit and bounds as help text, for a screen reader.
+
   Left for the next two steps, in SPEC.md item 5: results, regime, sequence, project and
   extension panels as tabs; orbit, pan and zoom, which Helix gave the WPF viewport for nothing;
   then deleting `Einzel.Wpf`. Details in `docs/shell.md`, "The session moved, and the window

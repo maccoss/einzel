@@ -48,13 +48,22 @@ public sealed partial class MainWindow : Window
     private (double Azimuth, double Elevation) _angles = ViewportPicture.Views["iso"];
     private double _opacity = 1.0;
 
-    /// <summary>How many redraws have been started, so a stale one can stand down.</summary>
+    /// <summary>The redraw, one at a time, with every request made meanwhile folded into one more.</summary>
     /// <remarks>
-    /// Two edits in quick succession start two transports, and they need not finish in the
-    /// order they started. Without this the slower, older one would land last and the
-    /// viewport would draw a model the tree no longer shows.
+    /// A redraw is a field solve and a transport, and each edit asks for one. Three quick edits
+    /// would otherwise run three solves side by side for two pictures nobody sees - and the
+    /// first version did, numbering them so a stale one stood down only after it had paid for
+    /// itself.
     /// </remarks>
-    private int _redraws;
+    private readonly Coalescing _redraw;
+
+    /// <summary>Whether the viewport shows the document as it now stands.</summary>
+    /// <remarks>
+    /// False from an edit until the redraw it asked for has drawn, and after a redraw that
+    /// could not be drawn. A watch is refused while it is false, because its frames are of the
+    /// document on disk and would be drawn over the geometry of an earlier one.
+    /// </remarks>
+    private bool _current;
 
     private bool _watching;
 
@@ -72,6 +81,9 @@ public sealed partial class MainWindow : Window
         _parameters = this.FindControl<ItemsControl>("Parameters")!;
         _undo = this.FindControl<Button>("UndoButton")!;
         _watch = this.FindControl<Button>("WatchRun")!;
+
+        _redraw = new Coalescing(DrawOnceAsync);
+        _redraw.BusyChanged += (_, _) => UpdateControls();
 
         Wire();
         Open(modelPath);
@@ -147,7 +159,7 @@ public sealed partial class MainWindow : Window
             _heading.Text = "Einzel";
             _status.Text = "No model. Start the shell with a model document to draw one: "
                 + "einzel-shell models/reflectron.json";
-            _watch.IsEnabled = false;
+            UpdateControls();
             return;
         }
 
@@ -167,7 +179,7 @@ public sealed partial class MainWindow : Window
             _session = null;
             _tree = null;
             _status.Text = "Could not open this model: " + Reason(refused);
-            _watch.IsEnabled = false;
+            UpdateControls();
             return;
         }
 
@@ -177,7 +189,7 @@ public sealed partial class MainWindow : Window
 
         ShowTree(refused: false);
 
-        _ = RedrawAsync();
+        _ = _redraw.RequestAsync();
     }
 
     /// <summary>
@@ -198,14 +210,13 @@ public sealed partial class MainWindow : Window
     /// the instrument a person is in the middle of changing.
     /// </para>
     /// </remarks>
-    private async Task RedrawAsync()
+    private async Task DrawOnceAsync()
     {
         if (_session is null)
         {
             return;
         }
 
-        var ticket = ++_redraws;
         var path = _session.Journal.ModelPath;
 
         _status.Text = "einzel render section " + path + "   ·   solving";
@@ -218,6 +229,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception refused)
         {
+            _current = false;
             _status.Text = "Could not draw this model: " + Reason(refused);
             return;
         }
@@ -234,24 +246,18 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception refused)
         {
-            if (ticket == _redraws)
-            {
-                _status.Text = (_view is null
-                    ? "Could not draw this model: "
-                    : "The viewport still shows the model as it last drew, because this one "
-                        + "could not be: ")
-                    + Reason(refused);
-            }
+            _current = false;
+            _status.Text = (_view is null
+                ? "Could not draw this model: "
+                : "The viewport still shows the model as it last drew, because this one "
+                    + "could not be: ")
+                + Reason(refused);
 
-            return;
-        }
-
-        if (ticket != _redraws)
-        {
             return;
         }
 
         Draw(path, outcome);
+        _current = true;
     }
 
     /// <summary>Puts a measured scene into the window.</summary>
@@ -305,6 +311,13 @@ public sealed partial class MainWindow : Window
     /// drawing frames of one instrument over the geometry of another.
     /// </para>
     /// <para>
+    /// <b>And it does not start until the viewport shows the document as it stands</b> - not
+    /// while an edit's redraw is still computing, and not after one that could not be drawn.
+    /// The watch runs the document on disk, so starting it early would draw its packet over
+    /// the geometry of the model before the edit. Since the tree is closed while a watch runs,
+    /// no redraw can be asked for until it ends, and none can replace its last frame.
+    /// </para>
+    /// <para>
     /// <b>A trajectory model is refused rather than watched</b>, by the command layer and
     /// with a reason: a flight finishes faster than a viewport could draw it part way
     /// through, so the whole bundle arriving at once is sooner than the first frame of a
@@ -314,7 +327,7 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private async Task WatchAsync()
     {
-        if (_session is null || _view is not { } view || _watching)
+        if (_session is null || _view is not { } view || _watching || _redraw.Busy || !_current)
         {
             return;
         }
@@ -371,9 +384,20 @@ public sealed partial class MainWindow : Window
     private void Watching(bool on)
     {
         _watching = on;
-        _watch.IsEnabled = !on;
-        _parameters.IsEnabled = !on;
-        _undo.IsEnabled = !on && _tree?.CanUndo == true;
+        UpdateControls();
+    }
+
+    /// <summary>Enables what may be pressed now, and nothing else.</summary>
+    private void UpdateControls()
+    {
+        _watch.IsEnabled = _session is not null
+            && _view is not null
+            && _current
+            && !_redraw.Busy
+            && !_watching;
+
+        _parameters.IsEnabled = !_watching;
+        _undo.IsEnabled = !_watching && _tree?.CanUndo == true;
     }
 
     /// <summary>Reverses the most recent edit that still stands.</summary>
@@ -386,11 +410,16 @@ public sealed partial class MainWindow : Window
 
         var undone = _tree.Undo();
 
+        if (undone)
+        {
+            _current = false;
+        }
+
         ShowTree(refused: !undone);
 
         if (undone)
         {
-            _ = RedrawAsync();
+            _ = _redraw.RequestAsync();
         }
     }
 
@@ -457,8 +486,9 @@ public sealed partial class MainWindow : Window
                 return;
 
             case ParameterEdit.Applied:
+                _current = false;
                 ShowTree(refused: false);
-                _ = RedrawAsync();
+                _ = _redraw.RequestAsync();
                 return;
         }
     }
@@ -487,7 +517,7 @@ public sealed partial class MainWindow : Window
             _ => (Brush("#242424"), Brush("#C8C8C8")),
         };
 
-        _undo.IsEnabled = !_watching && _tree.CanUndo;
+        UpdateControls();
     }
 
     private static SolidColorBrush Brush(string hex) => new(Color.Parse(hex));

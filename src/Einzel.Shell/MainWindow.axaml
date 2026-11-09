@@ -92,8 +92,15 @@
                       re-read rather than trusted - an edit moves every derived parameter
                       that depends on it, which is why a model has a parameter surface.
                     -->
+                    <!--
+                      Named for a screen reader by the parameter it changes, with its unit and
+                      bounds as help: the label beside the box is not associated with it, so
+                      without this a person tabbing through the tree hears a list of numbers.
+                    -->
                     <TextBox Grid.Column="1" Text="{Binding Shown, Mode=OneWay}"
                              IsVisible="{Binding Editable}"
+                             AutomationProperties.Name="{Binding Name}"
+                             AutomationProperties.HelpText="{Binding Help}"
                              FontSize="12" MinHeight="24" Padding="6,2"
                              HorizontalContentAlignment="Right" VerticalContentAlignment="Center"
                              FontFamily="Consolas,Menlo,monospace" />

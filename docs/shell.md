@@ -926,10 +926,24 @@ the render thread every buffer is released and the new layers uploaded. A watche
 waiting is dropped, since it belongs to the instrument before the edit. **The named view is
 kept and the frame is refitted to the new scene**: this camera has no free orbit, so where
 somebody is standing is the named view alone, and an edit that doubles a drift length would
-otherwise put half the instrument off screen. Redraws are numbered, so the slower of two
-quick edits cannot land last and draw a model the tree no longer shows. A watch closes the
-tree and the undo button while it runs, because its frames are of the document as it was when
-it started.
+otherwise put half the instrument off screen.
+
+**One redraw at a time, and a watch only over a current picture.** A redraw is a field solve
+and a transport, and the first version started one per edit, numbering them so a stale one
+stood down only after it had paid for itself - three quick edits ran three solves side by side
+for two pictures nobody saw. `Coalescing` runs the redraw one at a time and folds every request
+made meanwhile into a single run after it, which reads the document as it stands by then; a
+superseded run's failure is not reported and the last run's is. Checked live on a quadrupole at
+96 cells per radius: three edits, two redraws, and the window answering in under a millisecond
+while each solved. **Watch run is enabled only while the viewport shows the document as it
+stands** - not during an edit's redraw, and not after one that could not be drawn - because a
+watch runs the file on disk and its frames would otherwise land on the geometry from before the
+edit. The tree and the undo button are closed while a watch runs, so no redraw can be asked for
+that would replace its frames. Both rules came from a review of this change.
+
+**Each box is named for the parameter it changes**, with its unit and bounds as help text, so a
+screen reader tabbing through the tree hears "inscribedRadius, in mm, 1 to 50 mm" rather than a
+list of numbers: the label beside a box is not associated with it.
 
 **Undo has a button**, which the WPF shell never had: its view model could undo and nothing in
 the window called it. The Journal tab lists what has happened, by whom, and every action as
@@ -1070,6 +1084,12 @@ can reach it:
   refused by name; out of bounds applies and undo puts it back; refreshing the history leaves
   the rows alone, so a redraw finishing cannot take the keyboard out of a box. Each rule was
   broken on purpose and fails its own test.
+- **`CoalescingTests`** pins the redraw's scheduling: requests during a run fold into one more
+  run, never two at once; an idle request runs; only the last run's failure is reported; and
+  the window is told both when it starts and when it is done. Each rule broken on purpose
+  fails, and a folded request is asserted to come back finished rather than awaited, so a
+  regression fails instead of waiting forever on a gate nobody opens - which is what the first
+  version of the test did.
 - **`ShellCultureTests`** checks that numbers are invariant on this thread and on new ones once
   the shell starts, beside controls that print a comma first - so it cannot pass because the
   machine happens to use a point.

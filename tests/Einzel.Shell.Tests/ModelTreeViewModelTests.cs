@@ -223,6 +223,21 @@ public sealed class ModelTreeViewModelTests(ITestOutputHelper output) : IDisposa
         Assert.Contains("einzel undo", tree.Commands);
     }
 
+    /// <summary>A screen reader hears a box's unit and bounds, not only its number.</summary>
+    /// <remarks>
+    /// The window names each box by its parameter and gives this as its help text, because the
+    /// label beside the box is not associated with it. A value read out as "50" with no unit
+    /// is the ambiguity §9 refuses in a document.
+    /// </remarks>
+    [Fact]
+    public void EachBoxSaysItsUnitAndBoundsAloud()
+    {
+        var (_, tree) = Open();
+
+        Assert.Equal("in mm, 5 to 200 mm", Row(tree, "turningDepth").Help);
+        Assert.Equal("in kV, 0.1 to 20 kV", Row(tree, "capPotential").Help);
+    }
+
     /// <summary>A redraw is listed as a command without rebuilding the rows.</summary>
     /// <remarks>
     /// The window refreshes the history whenever an action starts, and a redraw finishes
