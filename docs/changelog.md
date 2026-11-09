@@ -3147,5 +3147,17 @@ Two findings from Stage 1 that bear on the spec:
   the window, which reach the same input path a mouse does, since this session has no input
   desktop.
 
+  **A review found a run could mix two revisions of its model, below the window.** The results
+  command read the file three times, and a run three more - to validate and hash it, to
+  compile it, and at the end for the manifest's schema version - so an edit landing mid-run
+  gave a manifest whose hash was of one document beside a run of another (PRJ-3), and an edit
+  that left the model invalid failed a run that had finished. Each reads once now, and results
+  refuse a run whose manifest hash is not of the text they read. Tested by editing from inside
+  the run's "solving" announcement, which lands after its read at a known moment; the
+  diffusive example discriminates, since the end-of-run read was in the diffusive, sequenced
+  and multi-species paths and not the ordinary one. In the window the tree closes while results
+  or the regime run, a full run re-reads the project view, and an edit afterwards marks what
+  they show as of the earlier model.
+
   Left: step 4, deleting `Einzel.Wpf`. Details in `docs/shell.md`, "The five panels, and the two
   that run the model" and "Orbit, pan and zoom".

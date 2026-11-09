@@ -885,9 +885,23 @@ minutes of a window that does not answer. `ShellSession.ResultsAsync` and `Regim
 reconcile the journal and record the command on the caller's thread, as `ViewportAsync` does,
 and run only the command in the background; the view models' `RefreshAsync` fill their lists
 on the caller's thread when it returns, so nothing is changed under the window from another.
-An edit made while one runs is said rather than prevented: the status line notes that the
-figures are of the model before the edit, because figures from before an edit beside the tree
-after it would read as the figures of the model on screen.
+**The tree is closed while one runs**, as it is during a watch: what runs is the document on
+disk, and an edit part way through would give figures of one revision beside a tree of
+another. An edit made after one has finished marks what it shows as of the model before the
+edit, rather than leaving the figures of the previous model looking like those of the one in
+the tree beside them. A full run stores a result, so the project view is read again, and its
+state for this model goes from "not run" to "current" without anybody pressing Read.
+
+**A review found that the run itself could mix two revisions, below the window.** The results
+command read the model three times - the run, the figures, whether it declares a cloud - and a
+run read it three times more: to validate and hash it, to compile it, and at the end for the
+manifest's schema version. So an edit landing mid-run, from this window or from an agent on
+the same file, could give a manifest whose hash was of one document beside a run of another
+(PRJ-3), and an edit that left the model invalid failed a run that had finished. Each now
+reads once, and the results command checks the run's manifest hash against the text it read
+and refuses a mismatch. Tested by editing the model from inside the run's own "solving"
+announcement, which lands at a known moment after its read; a delay would be a race the test
+could lose on a fast machine and then pass measuring nothing.
 
 **The cheap three are read when their tab is first opened**, not when the window opens: each
 read is journalled as a command, and a journal that opens with five reads nobody asked for

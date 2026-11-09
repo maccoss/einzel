@@ -87,6 +87,21 @@ public sealed partial class MainWindow : Window
 
     private bool _watching;
 
+    /// <summary>Whether the results or the regime panel is running the model.</summary>
+    /// <remarks>
+    /// Each closes the tree while it runs, as a watch does: what it runs is the document on
+    /// disk, and an edit part way through would give figures of one revision shown beside a
+    /// tree of another. Closing the tree is cheaper and plainer than describing the mixture.
+    /// </remarks>
+    private bool _resultsRunning;
+
+    private bool _regimeRunning;
+
+    /// <summary>Whether the results or the regime panel is showing something an edit would date.</summary>
+    private bool _resultsShown;
+
+    private bool _regimeShown;
+
     /// <summary>Opens the window, on a model if one was named.</summary>
     /// <param name="modelPath">The model document to open, or null for an empty shell.</param>
     public MainWindow(string? modelPath = null)
@@ -462,8 +477,10 @@ public sealed partial class MainWindow : Window
             && !_redraw.Busy
             && !_watching;
 
-        _parameters.IsEnabled = !_watching;
-        _undo.IsEnabled = !_watching && _tree?.CanUndo == true;
+        var open = !_watching && !_resultsRunning && !_regimeRunning;
+
+        _parameters.IsEnabled = open;
+        _undo.IsEnabled = open && _tree?.CanUndo == true;
     }
 
     /// <summary>Reverses the most recent edit that still stands.</summary>
@@ -499,10 +516,14 @@ public sealed partial class MainWindow : Window
     /// that does not answer. The figures are filled in on this thread once the run returns.
     /// </para>
     /// <para>
-    /// <b>An edit made while it runs is said, not prevented.</b> The run is of the document as
-    /// it was when the button was pressed; if the journal moved on meanwhile the status says
-    /// so, because figures from before an edit shown beside the tree after it would read as
-    /// the figures of the model on screen.
+    /// <b>The tree is closed while it runs</b>, for the reason <see cref="_resultsRunning"/>
+    /// gives. An agent on the same session can still edit the file; the command checks that
+    /// the run was of the text it read and refuses rather than mixing two revisions.
+    /// </para>
+    /// <para>
+    /// <b>A full run stores a result, so the project view is read again</b> - its state for
+    /// this model has just changed from "not run" or "stale" to "current", and a project tab
+    /// still saying otherwise would be describing the folder before the run.
     /// </para>
     /// </remarks>
     private async Task ResultsAsync(bool preview)
@@ -517,9 +538,9 @@ public sealed partial class MainWindow : Window
         var taint = this.FindControl<Border>("ResultsTaint")!;
 
         run.IsEnabled = look.IsEnabled = false;
+        _resultsRunning = true;
+        UpdateControls();
         Text("ResultsStatus", preview ? "previewing..." : "running - the same work einzel run does...");
-
-        var edits = _session.Journal.Entries.Count;
 
         try
         {
@@ -529,7 +550,13 @@ public sealed partial class MainWindow : Window
 
             await refreshing.ConfigureAwait(true);
 
-            Text("ResultsStatus", _results.Status + Edited(edits));
+            Text("ResultsStatus", _results.Status);
+            _resultsShown = true;
+
+            if (!preview)
+            {
+                _read.Remove("Project");
+            }
         }
         catch (Exception refused)
         {
@@ -541,6 +568,9 @@ public sealed partial class MainWindow : Window
             // scrolled past.
             taint.IsVisible = _results.Tainted;
             run.IsEnabled = look.IsEnabled = true;
+            _resultsRunning = false;
+            UpdateControls();
+            ReadIfUnread();
         }
     }
 
@@ -556,9 +586,9 @@ public sealed partial class MainWindow : Window
         var inspect = this.FindControl<Button>("RegimeInspect")!;
 
         inspect.IsEnabled = false;
+        _regimeRunning = true;
+        UpdateControls();
         Text("RegimeStatus", "walking the path...");
-
-        var edits = _session.Journal.Entries.Count;
 
         try
         {
@@ -568,7 +598,8 @@ public sealed partial class MainWindow : Window
 
             await refreshing.ConfigureAwait(true);
 
-            Text("RegimeStatus", _regime.Status + Edited(edits));
+            Text("RegimeStatus", _regime.Status);
+            _regimeShown = true;
         }
         catch (Exception refused)
         {
@@ -577,14 +608,10 @@ public sealed partial class MainWindow : Window
         finally
         {
             inspect.IsEnabled = true;
+            _regimeRunning = false;
+            UpdateControls();
         }
     }
-
-    /// <summary>A note for a status line when the model was edited while a computation ran.</summary>
-    private string Edited(int entriesWhenStarted) =>
-        _session is not null && _session.Journal.Entries.Count != entriesWhenStarted
-            ? " - the model has been edited since this started, so these are of the model before the edit"
-            : string.Empty;
 
     /// <summary>Reads one of the cheap panels: the timeline, the project or the extensions.</summary>
     /// <param name="panel">The tab's header.</param>
@@ -644,11 +671,32 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Forgets the panels an edit can change, and re-reads the one on screen.</summary>
+    /// <remarks>
+    /// Results and the regime are not re-run - each is the length of a run - so what they show
+    /// is marked as of the model before the edit instead, where the figures are read. A panel
+    /// that kept its status after an edit would present the figures of the previous model as
+    /// those of the one in the tree beside it.
+    /// </remarks>
     private void Changed()
     {
         _read.Remove("Sequence");
         _read.Remove("Project");
         ReadIfUnread();
+
+        const string Dated = " - the model has been edited since, so these are of the model "
+            + "before the edit; run again for the one in the tree";
+
+        if (_resultsShown && _results is not null)
+        {
+            _resultsShown = false;
+            Text("ResultsStatus", _results.Status + Dated);
+        }
+
+        if (_regimeShown && _regime is not null)
+        {
+            _regimeShown = false;
+            Text("RegimeStatus", _regime.Status + Dated);
+        }
     }
 
     private void OnViewportPressed(object? sender, PointerPressedEventArgs e)
