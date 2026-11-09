@@ -5561,3 +5561,29 @@ what the machine has installed.** CI was green on every run because the runner's
 under was the one the defect did not reach. EXT-6's vendored interpreter is the structural
 answer; until it exists, the thing to know is which Python the tests saw, and `einzel
 doctor` says.
+
+## A build setting that makes code correct makes it correct in that process only
+
+Every assembly here builds globalization-invariant, which makes the current culture invariant,
+so an interpolated `{value:G6}` prints a point wherever the CLI runs. About 265 of them name no
+culture, and in the CLI none needs to. **The shells turn the setting off**, because a window
+cannot run without culture data - and from then on the same strings, compiled into the same
+libraries, ran in a process where the desktop's locale reached them. Found when the
+cross-platform model tree became editable: on a German desktop the bounds under a parameter read
+`0,1 to 20 kV`, beside a box that parses `0.1` and refuses `0,1` because the document is
+invariant.
+
+**The analyzer that exists for this could not have said so, for two reasons.** CA1305 is not
+reported when globalization-invariant mode is on - true of every assembly here, including the
+ones whose code the shell runs - and it does not look inside interpolated strings at all.
+Turning the mode off in the shell's test project flagged one `ToString("G6")` in a test at once;
+building the libraries with it off found two more, in a scan warning. The interpolations stayed
+invisible either way.
+
+**The fix belongs at the level of the setting, not at the 265 sites.** What the build flag was
+doing for the CLI was making the current culture invariant, and the shell can do exactly that at
+startup without giving up the culture data a window needs (`Program.UseInvariantNumbers`).
+Editing each site would be done once, and the next string written without a culture would undo
+it. The rule that generalises: **when a property holds because of a process-wide setting, find
+every process that loads the code, and ask which of them has the setting.** A library tested
+only under the setting is tested only where it already holds.

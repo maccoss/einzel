@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 
 using Einzel.Commands;
+using Einzel.Shell.Presentation;
 using Einzel.Wpf;
 
 using Xunit.Abstractions;

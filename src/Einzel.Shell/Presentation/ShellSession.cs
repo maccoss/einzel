@@ -1,7 +1,7 @@
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
-namespace Einzel.Wpf;
+namespace Einzel.Shell.Presentation;
 
 /// <summary>
 /// One action a person took in the window, as the command line that would do it.
@@ -223,6 +223,37 @@ public sealed class ShellSession
         ArgumentNullException.ThrowIfNull(frames);
         ArgumentNullException.ThrowIfNull(wanted);
 
+        return WatchAsync(new Relay(frames, wanted, stopping), stopping);
+    }
+
+    /// <summary>Runs the model's transport, telling a progress listener as it goes.</summary>
+    /// <param name="progress">
+    /// Asked whether a frame is wanted at every step and told each frame drawn. Called on a
+    /// background thread, so a caller binding to it marshals.
+    /// </param>
+    /// <param name="stopping">Watched for a request to give up before the run starts.</param>
+    /// <returns>The bundle the finished run leaves.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="progress"/> is null.</exception>
+    /// <remarks>
+    /// <para>
+    /// For a window that decides its own cadence. The cross-platform shell keeps the last
+    /// frame that still held a packet, because a run whose ions all arrived ends on an empty
+    /// box, and that rule lives in the listener rather than here.
+    /// </para>
+    /// <para>
+    /// <b>Through the session rather than straight to the command</b>, which is the whole
+    /// difference: the journal is reconciled first and the action is recorded, so a watch
+    /// started in the window is a line somebody can read and run. A window calling
+    /// <see cref="ViewportCommand.Watch"/> itself did the same physics and left no record
+    /// that it had.
+    /// </para>
+    /// </remarks>
+    public Task<ViewportOutcome> WatchAsync(
+        ViewportCommand.IViewportProgress progress,
+        CancellationToken stopping = default)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+
         Journal.Reconcile();
 
         // Amendment 25: every shell action is expressible as a command line. This one is
@@ -232,8 +263,7 @@ public sealed class ShellSession
 
         var path = Journal.ModelPath;
 
-        return Task.Run(
-            () => ViewportCommand.Watch(path, new Relay(frames, wanted, stopping)), stopping);
+        return Task.Run(() => ViewportCommand.Watch(path, progress), stopping);
     }
 
     /// <summary>Passes frames on, and declines them when nobody is waiting for one.</summary>

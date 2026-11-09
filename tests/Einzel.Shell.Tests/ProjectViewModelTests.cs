@@ -1,11 +1,11 @@
 using System.IO;
 
 using Einzel.Commands;
-using Einzel.Wpf;
+using Einzel.Shell.Presentation;
 
 using Xunit.Abstractions;
 
-namespace Einzel.Wpf.Tests;
+namespace Einzel.Shell.Tests;
 
 /// <summary>
 /// The project view's own decisions: which model is open, and how the four states read.

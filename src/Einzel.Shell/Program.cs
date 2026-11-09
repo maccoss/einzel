@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Avalonia;
 
 namespace Einzel.Shell;
@@ -20,8 +22,40 @@ public static class Program
     /// </para>
     /// </remarks>
     [STAThread]
-    public static void Main(string[] args) =>
+    public static void Main(string[] args)
+    {
+        UseInvariantNumbers();
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    /// <summary>
+    /// Formats and parses numbers the way the model document does, on every thread.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The shell turns globalization back on and must not turn the locale on with it.</b>
+    /// A window cannot run globalization-invariant - text layout needs the culture data - so
+    /// the build setting every other assembly relies on is reversed here. What that setting
+    /// was really doing for the CLI is making the <em>current culture</em> invariant, and
+    /// about 265 interpolated strings below the shell format numbers without naming a culture
+    /// because, in the process they were written for, none is needed. In this process, on a
+    /// German desktop, every one of them would print a decimal comma - into status lines and
+    /// warnings shown beside a box that parses <c>4.5</c> and refuses <c>4,5</c>, because the
+    /// file being edited is invariant.
+    /// </para>
+    /// <para>
+    /// <b>One setting rather than 265 edits</b>, because the edits would be made once and the
+    /// next string written without a culture would undo them; the culture data stays
+    /// available, and only what the current culture is changes. The user-interface culture is
+    /// left alone, since nothing here is translated.
+    /// </para>
+    /// </remarks>
+    public static void UseInvariantNumbers()
+    {
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+    }
 
     /// <summary>The application, configured but not started.</summary>
     /// <returns>A builder the entry point starts and a designer can reuse.</returns>

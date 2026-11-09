@@ -1,6 +1,9 @@
+using System.Globalization;
+
 using Einzel.Commands;
 using Einzel.Core.Errors;
 using Einzel.Shell;
+using Einzel.Shell.Presentation;
 
 using Xunit.Abstractions;
 
@@ -100,7 +103,7 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
         var final = ViewportCommand.Watch(_model, watcher);
 
         output.WriteLine($"{centers.Count} frames with a packet; "
-            + $"leading edge {string.Join(" -> ", centers.Take(6).Select(c => c.ToString("F2")))}");
+            + $"leading edge {string.Join(" -> ", centers.Take(6).Select(c => c.ToString("F2", CultureInfo.InvariantCulture)))}");
         output.WriteLine($"final frame has {final.Density.Count} contours");
 
         Assert.True(centers.Count >= 2, $"only {centers.Count} frames carried a packet");
@@ -110,6 +113,40 @@ public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable
         Assert.True(
             centers[^1] - centers[0] > 1.0,
             $"the packet's leading edge moved {centers[^1] - centers[0]:F3} mm across the run");
+    }
+
+    /// <summary>A watch started through the session is the command that would repeat it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The window watches through the session, and that is the claim.</b> Its first
+    /// version called <see cref="ViewportCommand.Watch"/> itself: the same physics, and no
+    /// record that anything had run - the one action in the window that could not be read
+    /// back as something to type (Amendment 25).
+    /// </para>
+    /// <para>
+    /// The frames are counted as well as the command, because a session that recorded the
+    /// command and never ran the transport would pass the first assertion alone.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AWatchThroughTheSessionIsRecordedAsTheCommandThatRepeatsIt()
+    {
+        File.WriteAllText(_model, Model);
+
+        var session = new ShellSession(_model, new JournalAuthor("tester", AuthorKind.Human));
+        var frames = 0;
+
+        var watcher = new Watcher(_ => Interlocked.Increment(ref frames), TimeSpan.FromMilliseconds(20));
+
+        _ = await session.WatchAsync(watcher);
+
+        output.WriteLine(string.Join(Environment.NewLine, session.Actions.Select(a => a.Command)));
+
+        Assert.Contains(
+            session.Actions,
+            a => a.Command == $"einzel run {session.Journal.ModelPath} --progress 5");
+        Assert.True(frames > 0, "the session recorded a watch and no frame arrived");
+        Assert.NotNull(watcher.LastWithPacket);
     }
 
     /// <summary>A trajectory model is refused, with a reason.</summary>

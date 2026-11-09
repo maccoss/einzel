@@ -5,7 +5,7 @@ using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
-namespace Einzel.Wpf;
+namespace Einzel.Shell.Presentation;
 
 /// <summary>One model in the project, as a row.</summary>
 public sealed class ProjectRow

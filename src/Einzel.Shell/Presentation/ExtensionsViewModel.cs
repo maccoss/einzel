@@ -4,7 +4,7 @@ using System.Globalization;
 using Einzel.Commands;
 using Einzel.Core.Errors;
 
-namespace Einzel.Wpf;
+namespace Einzel.Shell.Presentation;
 
 /// <summary>One extension, as the manager shows it.</summary>
 /// <remarks>

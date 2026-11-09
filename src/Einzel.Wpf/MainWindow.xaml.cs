@@ -10,6 +10,8 @@ using HelixToolkit.Maths;
 using HelixToolkit.SharpDX;
 using HelixToolkit.Wpf.SharpDX;
 
+using Einzel.Shell.Presentation;
+
 using Color = System.Windows.Media.Color;
 
 // Both WPF and Helix declare a camera of this name, and only Helix's is a

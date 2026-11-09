@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 
+using Einzel.Shell.Presentation;
+
 namespace Einzel.Wpf;
 
 /// <summary>Picks the template for a results row by what the row is.</summary>
