@@ -2620,8 +2620,9 @@ And **extraction efficiency is now an actual comparison**: the paper's ~84% at m
   unchanged. `SubprocessRunner.ChildEnvironment` builds the list and is tested directly, both
   branches on both runners, against a parent carrying the variable as Windows spells it
   (`SystemRoot`), the three rejected candidates, `PATH`, `PYTHONPATH`, a proxy with a password
-  and a cloud secret; `TheChildInheritsNoEnvironment` now asserts the list the child saw rather
-  than only the absence of one planted secret. Mutation-checked: dropping `SYSTEMROOT` from the
+  and a cloud secret; on Windows `TheChildInheritsNoEnvironment` now asserts the whole list the
+  child saw rather than only the absence of one planted secret (elsewhere CPython may add
+  `LC_CTYPE` at start-up, so the secret is what is asserted there). Mutation-checked: dropping `SYSTEMROOT` from the
   list fails the unit test and the same ten end-to-end tests; adding `WINDIR` fails the unit test
   and the end-to-end list. `docs/extensions.md` carries the per-platform list; SPEC.md EXT-3's
   evidence no longer says "zero inherited environment". After: 1,644 tests, 0 failures, on a

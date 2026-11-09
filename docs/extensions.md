@@ -87,8 +87,13 @@ prints the unenforced list on stderr every time.
 
 The environment scrub is worth its own line: a child that starts with the parent's
 environment starts with its credentials, its proxy settings, and its `PYTHONPATH`.
-The child sees **one** environment variable on Windows, `SYSTEMROOT`, and **none**
-anywhere else, and a test asserts the list rather than a count.
+The runner supplies **one** environment variable on Windows, `SYSTEMROOT`, and
+**none** anywhere else, and a unit test asserts that list rather than a count, both
+branches on both CI runners. What the child then observes is a separate question. On
+Windows an integration test asserts that the child's `os.environ` is exactly
+`SYSTEMROOT`. Elsewhere CPython may add `LC_CTYPE` to its own environment at start-up,
+under the C locale an empty environment gives it (PEP 538), so there the test asserts
+only that a planted secret did not arrive and prints the list it saw.
 
 `SYSTEMROOT` is kept because CPython cannot start without it there. It seeds its hash
 randomisation from the operating system's random source before it runs anything, and up
@@ -159,7 +164,7 @@ for it here would be the platform asserting something only the author knows.
 | Bare interpreter launch, cheapest of five | **45-63 ms** across seven runs |
 | Sandboxed round trip, cheapest of five | **49-61 ms** |
 | The platform's own share | **1.08x to 1.52x** a bare launch, once *below* it |
-| Environment variables the child sees | 1 on Windows (`SYSTEMROOT`), 0 elsewhere |
+| Environment variables supplied by the runner | 1 on Windows (`SYSTEMROOT`), 0 elsewhere |
 | Runaway extension killed at a 1200 ms declared timeout | 1276 ms |
 
 **The round trip is process start almost entirely, and that is measured rather than
