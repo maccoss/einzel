@@ -857,20 +857,87 @@ and `Einzel.Wpf` is deleted once nothing is left that only it has.
 | A run watched while it steps | yes | **yes** |
 | A scale in the viewport | not yet | **yes** |
 | Journal, with the actions as commands | yes | **yes** |
-| Results by accuracy class | yes | not yet |
-| Regime inspector | yes | not yet |
-| Sequence editor | yes | not yet |
-| Project view | yes | not yet |
-| Extension manager | yes | not yet |
-| Rotate, pan and zoom with the mouse | yes (Helix) | not yet - named views only |
+| Results by accuracy class | yes, on its UI thread | **yes, in the background** |
+| Regime inspector | yes, on its UI thread | **yes, in the background** |
+| Sequence editor | yes | **yes** |
+| Project view | yes | **yes** |
+| Extension manager | yes | **yes** |
+| Rotate, pan and zoom with the mouse | yes (Helix) | **yes** |
 
-The last row is not a §16 view and was missing from this table until the port was planned
-against it: Helix gives the WPF viewport orbit, pan and zoom for nothing, and the Avalonia
-viewport has the four named views and no gestures at all.
+**Nothing is left that only the WPF shell has**, so the last step is deleting it. The last
+row is not a §16 view and was missing from this table until the port was planned against it:
+Helix gave the WPF viewport orbit, pan and zoom for nothing, and the Avalonia viewport had the
+four named views and no gestures at all.
 
-Every row in the second column that says "not yet" is presentation over a command that
-already works - the same observation this page makes about the WPF shell's own remaining
-rows, and the reason a second window is a drawing exercise rather than a capability one.
+Every row in the second column was presentation over a command that already worked - the same
+observation this page makes about the WPF shell's own remaining rows, and the reason a second
+window was a drawing exercise rather than a capability one. Two rows needed something below
+the window all the same, and neither was a new capability: the results and regime panels
+needed background versions of their session calls, and the gestures needed the camera to hold
+a zoom and a pan.
+
+### The five panels, and the two that run the model
+
+Results, regime, sequence, project and extensions are tabs beside the journal, each over the
+view model it had in WPF. **Results and regime run the model, so they run in the background.**
+The WPF shell ran both on its UI thread behind a wait cursor, which on a volume model is
+minutes of a window that does not answer. `ShellSession.ResultsAsync` and `RegimeAsync`
+reconcile the journal and record the command on the caller's thread, as `ViewportAsync` does,
+and run only the command in the background; the view models' `RefreshAsync` fill their lists
+on the caller's thread when it returns, so nothing is changed under the window from another.
+**The tree is closed while one runs**, as it is during a watch: what runs is the document on
+disk, and an edit part way through would give figures of one revision beside a tree of
+another. An edit made after one has finished marks what it shows as of the model before the
+edit, rather than leaving the figures of the previous model looking like those of the one in
+the tree beside them. A full run stores a result, so the project view is read again, and its
+state for this model goes from "not run" to "current" without anybody pressing Read.
+
+**A review found that the run itself could mix two revisions, below the window.** The results
+command read the model three times - the run, the figures, whether it declares a cloud - and a
+run read it three times more: to validate and hash it, to compile it, and at the end for the
+manifest's schema version. So an edit landing mid-run, from this window or from an agent on
+the same file, could give a manifest whose hash was of one document beside a run of another
+(PRJ-3), and an edit that left the model invalid failed a run that had finished. Each now
+reads once, and the results command checks the run's manifest hash against the text it read
+and refuses a mismatch. Tested by editing the model from inside the run's own "solving"
+announcement, which lands at a known moment after its read; a delay would be a race the test
+could lose on a fast machine and then pass measuring nothing.
+
+**The cheap three are read when their tab is first opened**, not when the window opens: each
+read is journalled as a command, and a journal that opens with five reads nobody asked for
+buries the ones they did. An edit forgets the timeline and the project, which it can change,
+and re-reads whichever is on screen.
+
+The tables became stacked rows where a column of a 400-pixel panel would truncate, as the WPF
+extension pane once did to its licences. The regime table keeps its columns and scrolls
+sideways, with its header scrolling with it so a column is never read under the wrong name.
+The results panel shows the evidence behind each figure on its own line, which the WPF one
+did not show at all; GRD-1 counts it as part of the envelope.
+
+### Orbit, pan and zoom
+
+Drag to turn, right-drag or Shift-drag to move, the wheel to zoom about the cursor, and a
+double-click or **Fit** to refit at the current angle. The named views fit exactly and leave
+nothing of the mouse behind, so pressing one is the same picture every time.
+
+**The bookkeeping is in `ViewportCamera`, where it is tested; the window only maps pixels.**
+Zoom and pan are a scale and a shift in clip space applied after the fitted frame, so an
+untouched camera draws exactly what a still of the same view draws, and the ruler over the
+viewport reads the zoomed matrix and stays true. **An orbit keeps the scale and the centre
+and turns about them.** Refitting at every angle, as a named view does, makes the picture
+swell and shrink under the cursor - a 100 mm rod turned end-on is 2 mm across and would fill
+the screen - and the test for it uses exactly that rod, against a refit as the control. An
+edit's new camera keeps the zoom and pan of the one it replaces, so somebody zoomed in on a
+slit to see what an edit does to it stays on the slit.
+
+**Two things the live window settled that a test could not.** Dragging right first turned the
+instrument the wrong way: measured on the near corner of a plate, a 25-pixel drag right moved
+it 53 pixels left. The point under the cursor now follows it both ways (the same drag moves the
+corner 56 pixels right, and Iso puts it back to the pixel). And the orbit's first version
+widened the depth to the scene's reach from the centre, so nothing would be clipped at a new
+angle; breaking that changed no test, and the reason is that it was redundant - the frame's
+depth is already twice its largest half-extent, and a box fits in a sphere of the square root
+of three times that. It was deleted rather than kept untested.
 
 ### The session moved, and the window stopped going around it
 
@@ -1084,6 +1151,9 @@ can reach it:
   refused by name; out of bounds applies and undo puts it back; refreshing the history leaves
   the rows alone, so a redraw finishing cannot take the keyboard out of a box. Each rule was
   broken on purpose and fails its own test.
+- **`PanelTests`** runs results, preview and regime through the background path and checks
+  each reports what the foreground one did and is recorded as the same command; a refusal
+  comes back as a status line; and "not run" colours as neither a problem nor a success.
 - **`CoalescingTests`** pins the redraw's scheduling: requests during a run fold into one more
   run, never two at once; an idle request runs; only the last run's failure is reported; and
   the window is told both when it starts and when it is done. Each rule broken on purpose

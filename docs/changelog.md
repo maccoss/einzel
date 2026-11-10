@@ -3120,3 +3120,44 @@ Two findings from Stage 1 that bear on the spec:
   extension panels as tabs; orbit, pan and zoom, which Helix gave the WPF viewport for nothing;
   then deleting `Einzel.Wpf`. Details in `docs/shell.md`, "The session moved, and the window
   stopped going around it".
+
+- **The cross-platform shell has every panel the Windows one has, and the viewport turns,
+  moves and zooms.** Step 3 of retiring WPF (SPEC.md item 5). Results, regime, sequence,
+  project and extensions are tabs beside the journal, over the view models they had in WPF.
+
+  **Results and regime run the model, so they run in the background.** The WPF shell ran both
+  on its UI thread behind a wait cursor - minutes of a frozen window on a volume model.
+  `ShellSession.ResultsAsync` and `RegimeAsync` record the command and reconcile the journal on
+  the caller's thread, as `ViewportAsync` does, and the view models' `RefreshAsync` fill their
+  lists back on it. A refusal comes back as a status line; an edit made while one runs is noted
+  rather than prevented. The cheap three read when their tab first opens, because each read is
+  journalled and a journal that opens with five unasked reads buries the asked ones.
+
+  **Orbit, pan and zoom live in `ViewportCamera`, where they are tested.** Zoom and pan are a
+  scale and shift in clip space after the fitted frame, so an untouched camera is bit-identical
+  to a still and the ruler stays true when zoomed. An orbit keeps the scale and centre rather
+  than refitting, because a refit makes a 100 mm rod turned end-on fill the screen; named views
+  and Fit refit exactly; an edit keeps the zoom. Five of six mutations each fail their own
+  test. **The sixth survived because the code was redundant**: widening the depth to the scene's
+  reach can never matter, since the frame's depth is twice its largest half-extent and a box
+  fits in a sphere of the square root of three times that - so it was deleted, not kept
+  untested. **The live window caught what no test could**: dragging right turned the
+  instrument the wrong way, measured as a plate's near corner moving 53 pixels left; it now
+  follows the cursor, and Iso restores it to the pixel. Checked by posting mouse messages to
+  the window, which reach the same input path a mouse does, since this session has no input
+  desktop.
+
+  **A review found a run could mix two revisions of its model, below the window.** The results
+  command read the file three times, and a run three more - to validate and hash it, to
+  compile it, and at the end for the manifest's schema version - so an edit landing mid-run
+  gave a manifest whose hash was of one document beside a run of another (PRJ-3), and an edit
+  that left the model invalid failed a run that had finished. Each reads once now, and results
+  refuse a run whose manifest hash is not of the text they read. Tested by editing from inside
+  the run's "solving" announcement, which lands after its read at a known moment; the
+  diffusive example discriminates, since the end-of-run read was in the diffusive, sequenced
+  and multi-species paths and not the ordinary one. In the window the tree closes while results
+  or the regime run, a full run re-reads the project view, and an edit afterwards marks what
+  they show as of the earlier model.
+
+  Left: step 4, deleting `Einzel.Wpf`. Details in `docs/shell.md`, "The five panels, and the two
+  that run the model" and "Orbit, pan and zoom".

@@ -44,7 +44,27 @@ public sealed partial class MainWindow : Window
 
     private ShellSession? _session;
     private ModelTreeViewModel? _tree;
+    private ResultsViewModel? _results;
+    private RegimeViewModel? _regime;
+    private SequenceViewModel? _sequence;
+    private ProjectViewModel? _project;
+    private ExtensionsViewModel? _extensions;
     private SceneView? _view;
+
+    /// <summary>The panels that have been read since the model last changed.</summary>
+    /// <remarks>
+    /// The cheap ones - timeline, project, extensions - are read the first time their tab is
+    /// opened rather than when the window opens, because each read is journalled as a
+    /// command, and a journal that opens with five reads nobody asked for buries the ones
+    /// they did. An edit forgets the timeline and the project, which it can change.
+    /// </remarks>
+    private readonly HashSet<string> _read = new(StringComparer.Ordinal);
+
+    /// <summary>Where a drag in the viewport last was, while one is in progress.</summary>
+    private Avalonia.Point? _dragFrom;
+
+    /// <summary>Whether the drag in progress moves the picture rather than turning it.</summary>
+    private bool _panning;
     private (double Azimuth, double Elevation) _angles = ViewportPicture.Views["iso"];
     private double _opacity = 1.0;
 
@@ -66,6 +86,21 @@ public sealed partial class MainWindow : Window
     private bool _current;
 
     private bool _watching;
+
+    /// <summary>Whether the results or the regime panel is running the model.</summary>
+    /// <remarks>
+    /// Each closes the tree while it runs, as a watch does: what it runs is the document on
+    /// disk, and an edit part way through would give figures of one revision shown beside a
+    /// tree of another. Closing the tree is cheaper and plainer than describing the mixture.
+    /// </remarks>
+    private bool _resultsRunning;
+
+    private bool _regimeRunning;
+
+    /// <summary>Whether the results or the regime panel is showing something an edit would date.</summary>
+    private bool _resultsShown;
+
+    private bool _regimeShown;
 
     /// <summary>Opens the window, on a model if one was named.</summary>
     /// <param name="modelPath">The model document to open, or null for an empty shell.</param>
@@ -103,6 +138,8 @@ public sealed partial class MainWindow : Window
         Named("ViewTop", ViewportPicture.Views["top"]);
         Named("ViewFront", ViewportPicture.Views["front"]);
 
+        this.FindControl<Button>("ViewFit")!.Click += (_, _) => _view?.Fit(_view.View);
+
         var transparent = this.FindControl<ToggleButton>("Transparent")!;
 
         transparent.IsCheckedChanged += (_, _) =>
@@ -118,6 +155,29 @@ public sealed partial class MainWindow : Window
         _watch.Click += (_, _) => _ = WatchAsync();
         _undo.Click += (_, _) => Undo();
 
+        this.FindControl<Button>("ResultsRun")!.Click += (_, _) => _ = ResultsAsync(preview: false);
+        this.FindControl<Button>("ResultsPreview")!.Click += (_, _) => _ = ResultsAsync(preview: true);
+        this.FindControl<Button>("RegimeInspect")!.Click += (_, _) => _ = RegimeAsync();
+        this.FindControl<Button>("SequenceRead")!.Click += (_, _) => Read("Sequence");
+        this.FindControl<Button>("ProjectRead")!.Click += (_, _) => Read("Project");
+        this.FindControl<Button>("ExtensionsRead")!.Click += (_, _) => Read("Extensions");
+
+        this.FindControl<TabControl>("Panels")!.SelectionChanged += (_, _) => ReadIfUnread();
+
+        // The viewport's gestures, on the panel that holds it: the scale drawn over the
+        // picture takes no clicks, and the panel has a background, so it is hit wherever the
+        // picture is.
+        _host.PointerPressed += OnViewportPressed;
+        _host.PointerMoved += OnViewportMoved;
+        _host.PointerReleased += (_, e) =>
+        {
+            _dragFrom = null;
+            e.Pointer.Capture(null);
+        };
+        _host.PointerCaptureLost += (_, _) => _dragFrom = null;
+        _host.PointerWheelChanged += OnViewportWheel;
+        _host.DoubleTapped += (_, _) => _view?.Fit(_view.View);
+
         // On the list rather than in the template, so every row's box reports here whatever
         // the list has been rebuilt into. Tunnelling for the keys, because a text box may
         // take Enter for itself before it bubbles.
@@ -129,10 +189,9 @@ public sealed partial class MainWindow : Window
             {
                 _angles = at;
 
-                if (_view is { } view)
-                {
-                    view.View = at;
-                }
+                // Fitted exactly, leaving nothing of an orbit, a zoom or a pan behind: a
+                // named view is the same picture every time it is pressed.
+                _view?.Fit(at);
             };
     }
 
@@ -186,6 +245,28 @@ public sealed partial class MainWindow : Window
         _parameters.ItemsSource = _tree.Parameters;
         this.FindControl<ItemsControl>("JournalList")!.ItemsSource = _tree.Journal;
         this.FindControl<ItemsControl>("CommandList")!.ItemsSource = _tree.Commands;
+
+        _results = new ResultsViewModel(_session);
+        _regime = new RegimeViewModel(_session);
+        _sequence = new SequenceViewModel(_session);
+        _project = new ProjectViewModel(_session);
+        _extensions = new ExtensionsViewModel(_session);
+
+        Items("ResultsList", _results.Rows);
+        Items("ResultsWarnings", _results.Warnings);
+        Items("RegimeGrid", _regime.Samples);
+        Items("ExcursionList", _regime.Excursions);
+        Items("RegimeWarnings", _regime.Warnings);
+        Items("PhaseList", _sequence.Phases);
+        Items("SequenceWarnings", _sequence.Warnings);
+        Items("ProjectModels", _project.Models);
+        Items("ProjectContents", _project.Contents);
+        Items("ProjectWarnings", _project.Warnings);
+        Items("ExtensionGrid", _extensions.Extensions);
+        Items("ExtensionUnenforced", _extensions.Unenforced);
+
+        Text("ResultsStatus", _results.Status);
+        Text("RegimeStatus", _regime.Status);
 
         ShowTree(refused: false);
 
@@ -396,8 +477,10 @@ public sealed partial class MainWindow : Window
             && !_redraw.Busy
             && !_watching;
 
-        _parameters.IsEnabled = !_watching;
-        _undo.IsEnabled = !_watching && _tree?.CanUndo == true;
+        var open = !_watching && !_resultsRunning && !_regimeRunning;
+
+        _parameters.IsEnabled = open;
+        _undo.IsEnabled = open && _tree?.CanUndo == true;
     }
 
     /// <summary>Reverses the most recent edit that still stands.</summary>
@@ -419,9 +502,283 @@ public sealed partial class MainWindow : Window
 
         if (undone)
         {
+            Changed();
             _ = _redraw.RequestAsync();
         }
     }
+
+    /// <summary>Runs the model, or previews it, and shows its figures by accuracy class.</summary>
+    /// <param name="preview">Whether to use the cheap, permanently marked tier.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>In the background, because a run is the length of the physics.</b> The WPF shell ran
+    /// it on its UI thread behind a wait cursor, which on a volume model is minutes of a window
+    /// that does not answer. The figures are filled in on this thread once the run returns.
+    /// </para>
+    /// <para>
+    /// <b>The tree is closed while it runs</b>, for the reason <see cref="_resultsRunning"/>
+    /// gives. An agent on the same session can still edit the file; the command checks that
+    /// the run was of the text it read and refuses rather than mixing two revisions.
+    /// </para>
+    /// <para>
+    /// <b>A full run stores a result, so the project view is read again</b> - its state for
+    /// this model has just changed from "not run" or "stale" to "current", and a project tab
+    /// still saying otherwise would be describing the folder before the run.
+    /// </para>
+    /// </remarks>
+    private async Task ResultsAsync(bool preview)
+    {
+        if (_results is null || _session is null)
+        {
+            return;
+        }
+
+        var run = this.FindControl<Button>("ResultsRun")!;
+        var look = this.FindControl<Button>("ResultsPreview")!;
+        var taint = this.FindControl<Border>("ResultsTaint")!;
+
+        run.IsEnabled = look.IsEnabled = false;
+        _resultsRunning = true;
+        UpdateControls();
+        Text("ResultsStatus", preview ? "previewing..." : "running - the same work einzel run does...");
+
+        try
+        {
+            var refreshing = _results.RefreshAsync(preview);
+
+            _tree?.RefreshHistory();
+
+            await refreshing.ConfigureAwait(true);
+
+            Text("ResultsStatus", _results.Status);
+            _resultsShown = true;
+
+            if (!preview)
+            {
+                _read.Remove("Project");
+            }
+        }
+        catch (Exception refused)
+        {
+            Text("ResultsStatus", "Could not run this model: " + Reason(refused));
+        }
+        finally
+        {
+            // GRD-5's taint, where it cannot be missed rather than in a line somebody may have
+            // scrolled past.
+            taint.IsVisible = _results.Tainted;
+            run.IsEnabled = look.IsEnabled = true;
+            _resultsRunning = false;
+            UpdateControls();
+            ReadIfUnread();
+        }
+    }
+
+    /// <summary>Walks the path and reads the regime at each step.</summary>
+    /// <remarks>It flies the model, so it runs in the background for the reason a run does.</remarks>
+    private async Task RegimeAsync()
+    {
+        if (_regime is null || _session is null)
+        {
+            return;
+        }
+
+        var inspect = this.FindControl<Button>("RegimeInspect")!;
+
+        inspect.IsEnabled = false;
+        _regimeRunning = true;
+        UpdateControls();
+        Text("RegimeStatus", "walking the path...");
+
+        try
+        {
+            var refreshing = _regime.RefreshAsync();
+
+            _tree?.RefreshHistory();
+
+            await refreshing.ConfigureAwait(true);
+
+            Text("RegimeStatus", _regime.Status);
+            _regimeShown = true;
+        }
+        catch (Exception refused)
+        {
+            Text("RegimeStatus", "Could not walk this model: " + Reason(refused));
+        }
+        finally
+        {
+            inspect.IsEnabled = true;
+            _regimeRunning = false;
+            UpdateControls();
+        }
+    }
+
+    /// <summary>Reads one of the cheap panels: the timeline, the project or the extensions.</summary>
+    /// <param name="panel">The tab's header.</param>
+    /// <remarks>
+    /// On the UI thread, because each is a read of files rather than a run: the timeline is a
+    /// validation, the project a walk of the folder, the extensions a listing.
+    /// </remarks>
+    private void Read(string panel)
+    {
+        try
+        {
+            switch (panel)
+            {
+                case "Sequence" when _sequence is not null:
+                    _sequence.Refresh();
+                    Text("SequenceStatus", _sequence.Status);
+                    break;
+
+                case "Project" when _project is not null:
+                    _project.Refresh();
+                    Text("ProjectStatus", _project.Status);
+                    break;
+
+                case "Extensions" when _extensions is not null:
+                    _extensions.Refresh();
+                    Text("ExtensionStatus", _extensions.Status);
+                    Text("ExtensionInterpreter", _extensions.Interpreter);
+                    break;
+
+                default:
+                    return;
+            }
+
+            _read.Add(panel);
+        }
+        catch (Exception refused)
+        {
+            Text(panel switch
+            {
+                "Sequence" => "SequenceStatus",
+                "Project" => "ProjectStatus",
+                _ => "ExtensionStatus",
+            }, "Could not read this: " + Reason(refused));
+        }
+
+        _tree?.RefreshHistory();
+    }
+
+    /// <summary>Reads the panel just opened, if it has not been read since the model changed.</summary>
+    private void ReadIfUnread()
+    {
+        if (this.FindControl<TabControl>("Panels")!.SelectedItem is TabItem { Header: string panel }
+            && !_read.Contains(panel))
+        {
+            Read(panel);
+        }
+    }
+
+    /// <summary>Forgets the panels an edit can change, and re-reads the one on screen.</summary>
+    /// <remarks>
+    /// Results and the regime are not re-run - each is the length of a run - so what they show
+    /// is marked as of the model before the edit instead, where the figures are read. A panel
+    /// that kept its status after an edit would present the figures of the previous model as
+    /// those of the one in the tree beside it.
+    /// </remarks>
+    private void Changed()
+    {
+        _read.Remove("Sequence");
+        _read.Remove("Project");
+        ReadIfUnread();
+
+        const string Dated = " - the model has been edited since, so these are of the model "
+            + "before the edit; run again for the one in the tree";
+
+        if (_resultsShown && _results is not null)
+        {
+            _resultsShown = false;
+            Text("ResultsStatus", _results.Status + Dated);
+        }
+
+        if (_regimeShown && _regime is not null)
+        {
+            _regimeShown = false;
+            Text("RegimeStatus", _regime.Status + Dated);
+        }
+    }
+
+    private void OnViewportPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_view is null)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(_host);
+        var buttons = point.Properties;
+
+        // Turn with the left button; move with the right or middle one, or with Shift - the
+        // last because a trackpad has no middle button and a laptop's right click is awkward
+        // to drag with.
+        _panning = buttons.IsRightButtonPressed
+            || buttons.IsMiddleButtonPressed
+            || e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+        _dragFrom = point.Position;
+        e.Pointer.Capture(_host);
+        e.Handled = true;
+    }
+
+    private void OnViewportMoved(object? sender, PointerEventArgs e)
+    {
+        if (_dragFrom is not { } from || _view is not { } view)
+        {
+            return;
+        }
+
+        var at = e.GetPosition(_host);
+        var width = Math.Max(1.0, _host.Bounds.Width);
+        var height = Math.Max(1.0, _host.Bounds.Height);
+
+        if (_panning)
+        {
+            // Clip space runs two units across the viewport, and up where the screen runs down.
+            view.PanBy(2.0 * (at.X - from.X) / width, -2.0 * (at.Y - from.Y) / height);
+        }
+        else
+        {
+            // The point under the cursor follows it, both ways: dragging right brings the near side
+            // of the instrument right, and dragging down brings it down. Checked live against the
+            // near corner of a plate, after a first version turned it the wrong way sideways.
+            view.Orbit(OrbitDegreesPerPixel * (at.X - from.X), OrbitDegreesPerPixel * (at.Y - from.Y));
+        }
+
+        _dragFrom = at;
+    }
+
+    private void OnViewportWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (_view is not { } view)
+        {
+            return;
+        }
+
+        var at = e.GetPosition(_host);
+        var width = Math.Max(1.0, _host.Bounds.Width);
+        var height = Math.Max(1.0, _host.Bounds.Height);
+
+        view.ZoomAbout(
+            Math.Pow(1.15, e.Delta.Y),
+            (2.0 * at.X / width) - 1.0,
+            1.0 - (2.0 * at.Y / height));
+
+        e.Handled = true;
+    }
+
+    /// <summary>How far a drag across one pixel turns the camera.</summary>
+    /// <remarks>
+    /// About a half turn across a typical viewport, which is enough to go from the side view
+    /// to the end view in one sweep and small enough to set an angle by eye.
+    /// </remarks>
+    private const double OrbitDegreesPerPixel = 0.4;
+
+    private void Items(string name, System.Collections.IEnumerable items) =>
+        this.FindControl<ItemsControl>(name)!.ItemsSource = items;
+
+    private void Text(string name, string text) =>
+        this.FindControl<SelectableTextBlock>(name)!.Text = text;
 
     private void OnValueKey(object? sender, KeyEventArgs e)
     {
@@ -488,6 +845,7 @@ public sealed partial class MainWindow : Window
             case ParameterEdit.Applied:
                 _current = false;
                 ShowTree(refused: false);
+                Changed();
                 _ = _redraw.RequestAsync();
                 return;
         }

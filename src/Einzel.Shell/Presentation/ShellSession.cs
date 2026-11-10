@@ -307,6 +307,29 @@ public sealed class ShellSession
     /// </remarks>
     public ResultsOutcome Results(bool preview = false)
     {
+        var path = StartResults(preview);
+
+        return ResultsCommand.Execute(path, preview);
+    }
+
+    /// <summary>Runs the model and reports its figures, without holding the caller's thread.</summary>
+    /// <param name="preview">Whether to use the preview tier.</param>
+    /// <returns>The figures, grouped.</returns>
+    /// <remarks>
+    /// A run is the length of the physics - seconds on a cross-section, minutes on a volume -
+    /// and a window that ran it on its own thread stopped answering for that long. The journal
+    /// is reconciled and the command recorded on the caller's thread, as
+    /// <see cref="ViewportAsync"/> does, and only the command runs in the background.
+    /// </remarks>
+    public Task<ResultsOutcome> ResultsAsync(bool preview = false)
+    {
+        var path = StartResults(preview);
+
+        return Task.Run(() => ResultsCommand.Execute(path, preview));
+    }
+
+    private string StartResults(bool preview)
+    {
         Journal.Reconcile();
 
         Record(
@@ -315,7 +338,7 @@ public sealed class ShellSession
                 : $"einzel run {Quoted(Journal.ModelPath)}",
             entry: null);
 
-        return ResultsCommand.Execute(Journal.ModelPath, preview);
+        return Journal.ModelPath;
     }
 
     /// <summary>Reads REG-2's dimensionless numbers along the model's own path.</summary>
@@ -329,11 +352,28 @@ public sealed class ShellSession
     /// </remarks>
     public RegimeProfile Regime()
     {
+        var path = StartRegime();
+
+        return RegimeCommand.Execute(path);
+    }
+
+    /// <summary>Reads REG-2's numbers along the path, without holding the caller's thread.</summary>
+    /// <returns>The profile.</returns>
+    /// <remarks>It flies the model, so it is the length of a run; see <see cref="ResultsAsync"/>.</remarks>
+    public Task<RegimeProfile> RegimeAsync()
+    {
+        var path = StartRegime();
+
+        return Task.Run(() => RegimeCommand.Execute(path));
+    }
+
+    private string StartRegime()
+    {
         Journal.Reconcile();
 
         Record($"einzel run {Quoted(Journal.ModelPath)}", entry: null);
 
-        return RegimeCommand.Execute(Journal.ModelPath);
+        return Journal.ModelPath;
     }
 
     /// <summary>Reads the model's declared timeline.</summary>
