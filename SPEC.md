@@ -367,6 +367,17 @@ four steps - the session and view models moved to plain `net10.0`, the model tre
 editable through the journal, the remaining panels as tabs, then the deletion - and all
 four are done.
 
+**The claim that nothing was left that only the WPF shell had was wrong twice over**, which a
+review of the deletion found. It had been drawn up by walking §16's eleven views and the
+deleted project's tests; the WPF toolbar also carried a **Stop** button for a watched run and
+a **colour legend** under the viewport, neither of them a §16 view and neither of them tested.
+Both are built now - the stop cooperative, keeping what it drew, with the token reaching the
+listener the run asks at every step rather than only `Task.Run`; the legend from
+`ViewportPicture.Scales` in the command layer, since the potential ramp's ends are symmetric
+about earth rather than the observed range. The lesson is the comparison rather than the two
+features: **a list drawn up from a requirements document does not cover what a window grew
+that no requirement asked for.**
+
 **The deletion is 3,575 lines**, 2,819 of them the window and 756 its tests. What it leaves:
 one shell, no `net10.0-windows` target anywhere in the solution, no skipped test project, and
 `HelixToolkit.Wpf.SharpDX` out of `Directory.Packages.props`. **Before deleting a project the
@@ -387,7 +398,7 @@ deliberately removed.
 was Windows-only, so the shell's own tests only ever ran on one platform;
 `Einzel.Shell.Tests` targets plain `net10.0` and runs on both runners. A cross-platform
 claim checked only on Windows is a cross-platform claim nobody is checking. With the WPF
-project gone there is no skipped test project at all: 1,779 tests, every one of them run on
+project gone there is no skipped test project at all: 1,795 tests, every one of them run on
 both.
 
 **ANGLE hands back an OpenGL ES context on Windows, and a `#version 330 core` shader does
@@ -405,8 +416,9 @@ Avalonia and Silk.NET are both MIT, verified in their nuspecs rather than assume
 
 **What was not carried across at first**: results by accuracy class, the regime inspector, the
 sequence editor, the project view, the extension manager, the journal, an editable model tree,
-and the mouse gestures Helix gave the WPF viewport. **All of it was carried across
-before the deletion.** Each was presentation over a command
+and the mouse gestures Helix gave the WPF viewport - and, found late, a Stop control on a
+watched run and a legend saying what the viewport's colours mean. **All of it was carried
+across before the deletion.** Each was presentation over a command
 that already worked, which is the same observation
 `docs/shell.md` makes about the WPF shell's own remaining rows - and is the evidence for
 AGT-2 that matters, since it means the second window is a drawing exercise rather than a
@@ -3146,7 +3158,7 @@ project's author needs to run it and more than any physics the moment one does.
        live type, and two mutations fail them. The boundary test keeps the deleted assembly
        names, because a rule forbidding a reference to a UI assembly should keep forbidding
        one that was deliberately removed. There is now no `net10.0-windows` target and no
-       skipped test project in the solution: 1,779 tests, all on both runners.
+       skipped test project in the solution: 1,795 tests, all on both runners.
 
 6. **The Astral inverse problem: the mirror is reproduced, and one published number is
     not.** This item has now been rewritten four times, and the rewriting is the point rather

@@ -76,6 +76,17 @@ become a feature release without being renamed twice.
   Windows and Linux alike. If you were running the Windows build, the replacement opens the
   same models, writes the same journal and has views the old one did not - a scale ruler in
   the viewport, undo on the model tree, and panels that keep answering while a run is going.
+- **Stop a watched run.** A watch is the one thing in the window measured in minutes, and
+  until now the only ways out were to wait or to close the application. **Stop** ends it after
+  the current step and **keeps the packet on screen**, because that is where the run had got
+  to and is the reason you pressed it; the status line says the run is partial rather than the
+  picture being taken away to say so.
+- **A legend under the viewport, saying what the colours mean.** Trajectories are coloured by
+  energy and the field by potential, with the ends and their units written out. The potential
+  scale is symmetric about earth rather than stretched across what happens to be in the
+  picture, so an earthed electrode is always the neutral colour. Rows appear only where they
+  mean something: a model that computes a density has no energy scale, and a geometry entirely
+  at earth has no legend at all.
 
 ## Fixed
 

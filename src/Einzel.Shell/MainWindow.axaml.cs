@@ -41,6 +41,8 @@ public sealed partial class MainWindow : Window
     private readonly ItemsControl _parameters;
     private readonly Button _undo;
     private readonly Button _watch;
+    private readonly Button _stop;
+    private readonly ItemsControl _legend;
 
     private ShellSession? _session;
     private ModelTreeViewModel? _tree;
@@ -86,6 +88,7 @@ public sealed partial class MainWindow : Window
     private bool _current;
 
     private bool _watching;
+    private CancellationTokenSource? _stopping;
 
     /// <summary>Whether the results or the regime panel is running the model.</summary>
     /// <remarks>
@@ -116,6 +119,8 @@ public sealed partial class MainWindow : Window
         _parameters = this.FindControl<ItemsControl>("Parameters")!;
         _undo = this.FindControl<Button>("UndoButton")!;
         _watch = this.FindControl<Button>("WatchRun")!;
+        _stop = this.FindControl<Button>("StopWatch")!;
+        _legend = this.FindControl<ItemsControl>("Legend")!;
 
         _redraw = new Coalescing(DrawOnceAsync);
         _redraw.BusyChanged += (_, _) => UpdateControls();
@@ -153,6 +158,12 @@ public sealed partial class MainWindow : Window
         };
 
         _watch.Click += (_, _) => _ = WatchAsync();
+        _stop.Click += (_, _) =>
+        {
+            _stopping?.Cancel();
+
+            UpdateControls();
+        };
         _undo.Click += (_, _) => Undo();
 
         this.FindControl<Button>("ResultsRun")!.Click += (_, _) => _ = ResultsAsync(preview: false);
@@ -376,6 +387,31 @@ public sealed partial class MainWindow : Window
 
         _status.Text = "einzel render section " + modelPath + "   ·   " + paths
             + Worst(outcome.Warnings);
+
+        Scales(outcome);
+    }
+
+    /// <summary>The legend under the viewport, saying what the colors in it mean.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Rebuilt from whatever is drawn, including nothing.</b> The rows are
+    /// <see cref="ViewportPicture.Scales"/>'s answer for this bundle, so a model with no
+    /// trajectories loses its energy row and a geometry entirely at earth has no legend at
+    /// all - rather than a stale one left over from the last model, which is the failure a
+    /// legend is most likely to have and the hardest to notice.
+    /// </para>
+    /// <para>
+    /// Not refreshed per frame of a watch: a watched run is diffusive, so its colors are the
+    /// field's and the metal's and those do not move - the sequencer refuses a stage that
+    /// moves an electrode.
+    /// </para>
+    /// </remarks>
+    private void Scales(ViewportOutcome outcome)
+    {
+        var rows = ViewportPicture.Scales(outcome).Select(s => new LegendRow(s)).ToList();
+
+        _legend.ItemsSource = rows;
+        _legend.IsVisible = rows.Count > 0;
     }
 
     /// <summary>Runs the model's transport, filling the viewport as it goes.</summary>
@@ -422,9 +458,21 @@ public sealed partial class MainWindow : Window
             frame => Dispatcher.UIThread.Post(() => view.Show(frame)),
             TimeSpan.FromMilliseconds(400));
 
+        // Checked rather than enforced, and the session is where it is checked: a density
+        // step is not interruptible part way, so stopping declines to take the next one and
+        // the run ends where it stands. Aborting the thread would leave the solver's buffers
+        // in a state nothing could describe.
+        using var stopping = new CancellationTokenSource();
+
+        _stopping = stopping;
+
+        // After the field is set, so the Stop button is enabled by the same rule that
+        // disables it rather than by a second one here.
+        UpdateControls();
+
         try
         {
-            var running = _session.WatchAsync(watcher);
+            var running = _session.WatchAsync(watcher, stopping.Token);
 
             _tree?.RefreshHistory();
 
@@ -451,12 +499,31 @@ public sealed partial class MainWindow : Window
 
             _status.Text = "run finished · " + drawn + Worst(final.Warnings);
         }
+        catch (OperationCanceledException)
+        {
+            // A STOPPED WATCH IS NOT A FAILED ONE. The packet it drew is where the run had
+            // got to, which is a real state of the instrument and the reason somebody
+            // pressed stop; clearing the viewport would throw away the only thing the watch
+            // produced. The status says the run is partial, rather than the drawing being
+            // taken away to say it.
+            if (watcher.LastWithPacket is { } held)
+            {
+                view.Show(held);
+            }
+
+            _status.Text = watcher.LastWithPacket is null
+                ? "run stopped before any packet was drawn"
+                : "run stopped · showing the last frame that held a packet, which is where it "
+                    + "had got to rather than where it ends";
+        }
         catch (Exception refused)
         {
             _status.Text = "Cannot watch this run: " + Reason(refused);
         }
         finally
         {
+            _stopping = null;
+
             Watching(false);
         }
     }
@@ -476,6 +543,11 @@ public sealed partial class MainWindow : Window
             && _current
             && !_redraw.Busy
             && !_watching;
+
+        // Enabled only while there is something to stop, and disabled again the moment it
+        // has been asked: pressing it twice should not read as the first press not having
+        // worked, since what follows is one more step rather than nothing.
+        _stop.IsEnabled = _watching && _stopping is { IsCancellationRequested: false };
 
         var open = !_watching && !_resultsRunning && !_regimeRunning;
 

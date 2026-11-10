@@ -891,14 +891,20 @@ record of what had to be carried across before the other could go.
 | Project view | yes | **yes** |
 | Extension manager | yes | **yes** |
 | Rotate, pan and zoom with the mouse | yes (Helix) | **yes** |
+| Stop a watched run, keeping what it drew | yes | **yes** |
+| A legend saying what the colours mean | yes | **yes** |
 
 **Nothing was left that only the WPF shell had**, so it was deleted: 3,575 lines, 2,819 of
 them the window and 756 its tests, with one archived 3-D dependency going out of the graph
 with them and three of its tests ported onto the live types they were really about. The
-last row is not a §16 view and was missing from this table until the port was planned
-against it:
-Helix gave the WPF viewport orbit, pan and zoom for nothing, and the Avalonia viewport had the
-four named views and no gestures at all.
+last three rows are not §16 views, and each was missing from this table until something
+went looking for it. Helix gave the WPF viewport orbit, pan and zoom for nothing, and the
+Avalonia viewport had the four named views and no gestures at all; **the Stop button and the
+colour legend were found by a review of the deletion itself**, after this page had already
+said nothing was left that only the WPF shell had. That claim was made by walking §16's
+views and the deleted project's *tests*, and both of these were in the toolbar and under the
+viewport - **a comparison drawn up from a requirements list does not cover what a window grew
+that no requirement asked for.**
 
 Every row in the second column was presentation over a command that already worked - the same
 observation this page makes about the WPF shell's own remaining rows, and the reason a second
@@ -931,6 +937,54 @@ is `Einzel.Commands.ColorRamp` - which the port had left with **no tests of its 
 They are `ColorRampTests` in `Einzel.Cli.Tests` now, pointed at the live type, and two
 mutations of it fail them. **A test that was only ever run against a copy was testing the
 copy**, and deleting the copy is when that becomes visible.
+
+### Two things the deletion lost, and the comparison that missed them
+
+A review of the deletion found two capabilities the WPF window had and this one did not,
+after the table above had already said nothing was left that only the WPF shell had. Both
+are restored, and **how they were missed is the part worth keeping**: the comparison was
+drawn up by walking §16's eleven views and the deleted project's tests. Neither of these is
+a §16 view, and neither had a test - they were a button in the toolbar and a strip under
+the viewport. **A comparison drawn up from a requirements list does not cover what a window
+grew that no requirement asked for.**
+
+**Stop, on a watched run.** A watch is the one action here measured in minutes - a TIMS
+elution is twenty - so it is the one that needs a way out, and without it the choices were
+to wait or to close the application. It is cooperative, because a density step is not
+interruptible part way: what it does is decline to take the next one, so the run ends where
+it stands. **What it drew is kept**, because the packet on screen is where the run had got
+to and is the reason somebody pressed it; the status says the run is partial rather than the
+drawing being taken away to say so.
+
+**The token has to reach the listener, not only `Task.Run`.** `Task.Run`'s token decides
+whether the work ever starts and is never consulted again once it has, so a watch cancelled
+a second in would run to completion with a Stop button that did nothing visible for twenty
+minutes. The run offers to be interrupted at exactly one place - it asks the listener whether
+it wants a frame at every step - so `ShellSession.WatchAsync` wraps whatever listener it is
+given rather than asking each caller to remember, which is this project's recurring rule that
+the shortest spelling should be the safe one. `StoppingAWatchKeepsWhatItDrewAndTookFewerSteps`
+asserts the **step count** against the same run unstopped, because a token reaching only
+`Task.Run` passes any assertion about the exception alone.
+
+**The legend.** A trajectory bundle is coloured by energy and a field by potential, and a
+colour standing for a number is the one place a reader cannot recompute it - GRD-1's argument
+applied to a drawing. The rows come from `ViewportPicture.Scales`, in the command layer,
+because **the ends are not the observed range**: the potential ramp is symmetric about earth,
+so a lens holding 0 and 500 V is drawn on a ramp running -500 to +500, and a legend that
+worked that out for itself would be a second copy of a rule the picture already applies - the
+WPF window kept exactly that rule in a comment in its code-behind. The swatch is sampled at
+32 stops rather than interpolated between the ends, because viridis is not linear between its
+ends and that is the whole reason it is used.
+
+**One row per span actually drawn**, which is a wrinkle the legend exposed rather than
+created: the equipotentials anchor on the solved field's extremes and the metal on the peak
+each electrode reaches, and contour levels are chosen inside the domain so they generally do
+not reach the electrodes. Where the two agree to a rounding there is one row saying
+`potential`; where they differ there are two, `field` and `electrodes`, because one number
+for both would describe a ramp neither layer uses. **Whether the two layers should share a
+span is a separate question about the picture** - "anchored once across everything shown" is
+the rule this viewport states elsewhere - and changing it would move every still, so it is
+recorded here rather than done under a legend fix.
 
 ### The five panels, and the two that run the model
 
