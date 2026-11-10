@@ -231,7 +231,10 @@ public sealed class ShellSession
     /// Asked whether a frame is wanted at every step and told each frame drawn. Called on a
     /// background thread, so a caller binding to it marshals.
     /// </param>
-    /// <param name="stopping">Watched for a request to give up before the run starts.</param>
+    /// <param name="stopping">
+    /// Watched for a request to give up, both before the run starts and at every step it
+    /// offers a frame at.
+    /// </param>
     /// <returns>The bundle the finished run leaves.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="progress"/> is null.</exception>
     /// <remarks>
@@ -263,7 +266,38 @@ public sealed class ShellSession
 
         var path = Journal.ModelPath;
 
-        return Task.Run(() => ViewportCommand.Watch(path, progress), stopping);
+        // THE TOKEN HAS TO REACH THE LISTENER, not only Task.Run. Task.Run's token decides
+        // whether the work ever starts; once the run is stepping, nothing it does looks at
+        // the token again - so a watch cancelled a second in would run to completion and a
+        // Stop button would do nothing visible for twenty minutes. The listener is asked
+        // whether it wants a frame at every step, which is the one place the run offers to
+        // be interrupted, so that is where it is checked: wrapping here rather than asking
+        // each caller to remember makes the short spelling the safe one.
+        var watched = stopping.CanBeCanceled ? new Stoppable(progress, stopping) : progress;
+
+        return Task.Run(() => ViewportCommand.Watch(path, watched), stopping);
+    }
+
+    /// <summary>Declines the next frame once somebody has asked the run to stop.</summary>
+    /// <remarks>
+    /// <b>Cooperative, because a density step is not interruptible part way.</b> What this
+    /// does is refuse to take another one; the run then ends where it stands and the caller
+    /// keeps whatever was drawn, which is a real state of the instrument and the reason
+    /// somebody pressed stop. Aborting the thread instead would leave the solver's buffers
+    /// in a state nothing could describe.
+    /// </remarks>
+    private sealed class Stoppable(
+        ViewportCommand.IViewportProgress inner,
+        CancellationToken stopping) : ViewportCommand.IViewportProgress
+    {
+        public bool Wants(int steps, double timeSeconds)
+        {
+            stopping.ThrowIfCancellationRequested();
+
+            return inner.Wants(steps, timeSeconds);
+        }
+
+        public void Reached(ViewportOutcome frame) => inner.Reached(frame);
     }
 
     /// <summary>Passes frames on, and declines them when nobody is waiting for one.</summary>

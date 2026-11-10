@@ -71,6 +71,22 @@ become a feature release without being renamed twice.
   viewport turns, moves and zooms with the mouse: drag to turn, right-drag or Shift-drag to
   move, the wheel to zoom toward the cursor, and double-click or **Fit** to fit it again. The
   named views still fit exactly.
+- **There is one shell now, and it runs everywhere.** The Windows-only shell has been
+  removed. Everything it did the cross-platform one does, and `einzel-shell` is published for
+  Windows and Linux alike. If you were running the Windows build, the replacement opens the
+  same models, writes the same journal and has views the old one did not - a scale ruler in
+  the viewport, undo on the model tree, and panels that keep answering while a run is going.
+- **Stop a watched run.** A watch is the one thing in the window measured in minutes, and
+  until now the only ways out were to wait or to close the application. **Stop** ends it after
+  the current step and **keeps the packet on screen**, because that is where the run had got
+  to and is the reason you pressed it; the status line says the run is partial rather than the
+  picture being taken away to say so.
+- **A legend under the viewport, saying what the colours mean.** Trajectories are coloured by
+  energy and the field by potential, with the ends and their units written out. The potential
+  scale is symmetric about earth rather than stretched across what happens to be in the
+  picture, so an earthed electrode is always the neutral colour. Rows appear only where they
+  mean something: a model that computes a density has no energy scale, and a geometry entirely
+  at earth has no legend at all.
 
 ## Fixed
 
@@ -163,17 +179,16 @@ become a feature release without being renamed twice.
   `BCryptGenRandom` and starts with an empty environment.
 - **The shell's numbers no longer follow the desktop's locale.** On a computer set to a
   language that writes a decimal comma, parameter bounds read `0,1 to 20 kV` beside a box
-  that accepts `0.1` and refuses `0,1`, and so would warnings. The bounds are fixed in both
-  shells, and the cross-platform shell now writes every number with a point, as model files
-  are.
+  that accepts `0.1` and refuses `0,1`, and so would warnings. The shell now writes every
+  number with a point, as model files are.
 
 ## Known limits
 
 Carried forward from v26.1.0 until they change:
 
-- **The shells are partial**: eight of the eleven views in the specification exist, in both
-  the Windows shell and the cross-platform one. The cross-platform shell is the one being
-  kept, and the Windows-only one is removed in a coming release.
+- **The shell is partial**: eight of the eleven views in the specification exist. The
+  figure composer and scrubbing on the animation timeline are not built, and the update
+  notice has nothing to check until there is an updater.
 - **A still cannot check the window's own GPU path**, and it does not draw the name of a
   validity violation as text: the codes are in the file's text chunks and on stderr.
 - **No installer and no updater.** The assets are portable: unpack and run.

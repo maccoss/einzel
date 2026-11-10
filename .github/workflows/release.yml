@@ -113,15 +113,26 @@ jobs:
             withShell: false
             archive: zip
 
-          # The Windows shell, separately: it carries the WPF desktop runtime and is
-          # two and a half times the download. Somebody running an agent loop on a
-          # build server should not pay for a window they will never open.
+          # The shell, separately on each platform: it roughly doubles the download,
+          # and somebody running an agent loop on a build server should not pay for a
+          # window they will never open.
+          #
+          # Both platforms, because the shell is Avalonia on plain net10.0 and runs
+          # where the engine runs. While it was WPF there was only a Windows asset;
+          # shipping one for Linux is what the port was for.
           - name: win-x64 shell
             os: windows-latest
             rid: win-x64
             asset: einzel-shell-win-x64
             withShell: true
             archive: zip
+
+          - name: linux-x64 shell
+            os: ubuntu-latest
+            rid: linux-x64
+            asset: einzel-shell-linux-x64
+            withShell: true
+            archive: tar
 
     steps:
       - uses: actions/checkout@v7
@@ -162,7 +173,7 @@ jobs:
 
       - name: Publish the shell
         if: matrix.withShell
-        run: dotnet publish src/Einzel.Wpf -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
+        run: dotnet publish src/Einzel.Shell -c Release -r ${{ matrix.rid }} --self-contained true -p:Version=${{ needs.version.outputs.version }} -o ${{ matrix.asset }}
 
       # What a reader of the archive needs before running anything: what it is, what
       # licence it is under, and that nothing installed it.
@@ -275,7 +286,8 @@ jobs:
           | --- | --- |
           | \`einzel-cli-linux-x64.tar.gz\` | the command line and the MCP server |
           | \`einzel-cli-win-x64.zip\` | the same, for Windows |
-          | \`einzel-shell-win-x64.zip\` | those plus the Windows shell |
+          | \`einzel-shell-win-x64.zip\` | those plus the shell, for Windows |
+          | \`einzel-shell-linux-x64.tar.gz\` | those plus the shell, for Linux |
 
           Unpack anywhere and run \`einzel --help\`. Verify with \`sha256sum -c SHA256SUMS.txt\`, or \`Get-FileHash\` on Windows.
 
