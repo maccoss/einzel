@@ -20,8 +20,9 @@ namespace Einzel.Shell.Tests;
 /// GUI adds on top is a control that calls this and a control that draws the result.
 /// </para>
 /// <para>
-/// The equivalent for the WPF shell targets net10.0-windows, so a solution-wide test run
-/// walks past it on Linux and the claim was checked on one platform.
+/// The equivalent for the WPF shell targeted net10.0-windows, so a solution-wide test run
+/// walked past it on Linux and the claim was checked on one platform; that project has
+/// since been deleted.
 /// </para>
 /// </remarks>
 public sealed class WatchedRunTests(ITestOutputHelper output) : IDisposable

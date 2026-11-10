@@ -3161,3 +3161,40 @@ Two findings from Stage 1 that bear on the spec:
 
   Left: step 4, deleting `Einzel.Wpf`. Details in `docs/shell.md`, "The five panels, and the two
   that run the model" and "Orbit, pan and zoom".
+
+- **One shell, and the question to ask before deleting a project.** Step 4 of retiring WPF
+  (SPEC.md Amendment 53, item 5): `Einzel.Wpf` and `Einzel.Wpf.Tests` are gone, 3,575 lines,
+  2,819 of them the window. What it leaves is **no `net10.0-windows` target anywhere in the
+  solution, no skipped test project, and `HelixToolkit.Wpf.SharpDX` out of
+  `Directory.Packages.props`** - the bet Amendment 26 took knowingly on a library archived
+  since December 2020, called in by a question it was not taken on. The suite is **1,779 tests,
+  0 failures, 0 skipped**, every one of them run on both CI runners; `einzel-shell` now
+  publishes for `linux-x64` as well as `win-x64`.
+
+  **The question before deleting a project is not whether its code is still wanted but
+  whether anything it asserted is asserted nowhere else.** Most of `Einzel.Wpf.Tests` was
+  covered - the view models had moved to `Presentation/` with their tests, and the watch is
+  `WatchedRunTests` on both runners. **Three were not, and they were about a type that is
+  still live**: they were written against `Einzel.Wpf.ColourRamp`, a *copy*, and what they
+  were really about is `Einzel.Commands.ColorRamp`, which the port had left with no tests at
+  all. `ColorRampTests` in `Einzel.Cli.Tests` now points them at the live type - WCAG
+  contrast above 3.0 for both ramps against the viewport ground, Rec. 709 luminance monotone
+  over 65 samples (which is what stops viridis being "improved" into a rainbow later), and a
+  degenerate energy range giving the middle of the ramp rather than a division by zero, with
+  a spread range as the control. Two mutations fail them. **A test that only ever ran against
+  a copy was testing the copy**, and deleting the copy is when that becomes visible.
+
+  **The boundary test keeps the deleted names.** `ShellBoundaryTests` had become a `[Theory]`
+  over two shells with a `windowsOnly` arm; it is one case again, and `ShellNames` still
+  carries `Einzel.Wpf` and `einzel-shell-wpf`, because **a rule forbidding a reference to a
+  shell should keep forbidding one that was deliberately removed** - the cheapest way for a
+  deletion to be undone is for somebody to add the reference back, and removing the names
+  would make the test quietly narrower than the rule it enforces.
+
+  Eleven documentation sites were corrected with it, and the shape of what was wrong is worth
+  keeping: nearly all of it was **present tense about a thing that had become history**.
+  `docs/shell.md` opened "WPF on Windows", `docs/architecture.md` said invariant 1 forbids
+  referencing `Einzel.Wpf`, the §16 register row credited the 3-D viewport to Helix Toolkit
+  3.1.2, and a doc comment in `Einzel.Render` said a zero normal behaves one way "in either
+  window". History is kept where it explains a decision - the Helix section, the globalization
+  reversal, the camera defects - and marked as history rather than read as the current state.
