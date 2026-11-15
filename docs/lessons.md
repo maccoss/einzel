@@ -5587,3 +5587,42 @@ Editing each site would be done once, and the next string written without a cult
 it. The rule that generalises: **when a property holds because of a process-wide setting, find
 every process that loads the code, and ask which of them has the setting.** A library tested
 only under the setting is tested only where it already holds.
+
+## A reading that falls as a process warms up is the JIT tiering up, and a median of it is a vote
+
+`SelfFieldMemoryTests` failed on a Windows CI runner reading 5140, 5139, 5125, 5029 and 4996
+KiB for five identical runs, against 4996 to 5029 everywhere else: three runs held one more
+array than the other two, and the fourth of five readings fell back. The difference was one
+double a node on the self-field's 129 by 129 grid (130 KiB), and the record had a story ready
+for the first reading being high - one-time allocation on the first solve - which a descent
+across solves 1 to 4 does not fit.
+
+**It was the V-cycle, and the JIT decided it.** The multigrid V-cycle (`PoissonSolver2D`,
+and `PoissonSolver3D`'s rediscretized cycle) allocated each level's residual as a local of
+the frame that then recursed into every coarser level. Optimized code ends a local at its last
+use; first-tier code - what every method runs as until it has been called often enough to be
+recompiled - keeps it to the end of the method, as Debug does. So the deepest instant of a
+cycle held one array more for exactly as long as the solver had not been promoted, which on a
+fast workstation is the first run and on a loaded four-core runner can be most of the test.
+Established by controls rather than by a heap dump: `DOTNET_TC_CallCounting=0` (nothing ever
+promoted) reproduced it every time, 68.5 bytes a node against 62; `DOTNET_TieredCompilation=0`
+(everything optimized from the first call) read 61.4 every time; and giving the residual and
+the coarse level frames of their own made both read 61.4. `[MethodImpl(AggressiveOptimization)]`
+on `VCycle` alone also removed it, which pinned the method; the frame is the fix, because it
+holds in Debug and in every tier rather than in one.
+
+**The same hold had been written into two statements.** The plane solve's 143.25 bytes a node
+charged "a V-cycle residual" and the rediscretized volume's 51.2 charged every level's: true of
+first-tier code only. The first plane build in a process read 143.6 and every later one 135.6,
+and the record had put that down to the sampler catching or missing a transient; with call
+counting off every build read 143.4, fully optimized every build 135.4. They are 135.25 and
+the largest instant over the real levels (48.6 on a deep grid) now.
+
+**The rule.** A measurement whose readings drift within one process - first high, then
+settling - is measuring the runtime warming up as much as the property, and the lifetime of a
+local is one of the things that changes when a method is recompiled. When a loop or a
+recursion allocates something large that must not outlive its part of the work, give that
+part a frame of its own; `[AggressiveOptimization]` fixes one tier and leaves Debug. And a
+test of a steady property should warm the code path up before reading, then require the
+readings to *agree* rather than take their median: a median of five outvoted the tier-0
+readings on every machine that promoted quickly, and passed the code that held the array.

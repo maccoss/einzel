@@ -157,17 +157,32 @@ public static class SolveMemoryModel
         VolumeMask + VolumeCutLinks + Fields + VolumeStencil + GalerkinForming + GalerkinFirstLevel;
 
     /// <summary>
-    /// A volume solve on the rediscretized hierarchy, at its peak: the deepest point of a V-cycle.
+    /// A volume solve on the rediscretized hierarchy, at its peak: the instant the fine level
+    /// restricts its residual onto the first coarse level.
     /// </summary>
     /// <remarks>
-    /// The fine level's mask, cut links and fields, a fine residual, and on each coarse level a
-    /// mask, a restricted residual, a correction and a residual of its own - 33 bytes a coarse
-    /// node, summed over levels an eighth the size of the one above. 51.2 bytes a node, against
-    /// 47.8 to 48.7 measured; 141.7 with the cut links stored densely.
+    /// <para>
+    /// The fine level's mask, cut links and fields, the V-cycle's fine residual, and the first
+    /// coarse level's mask and restricted residual - 17 bytes a coarse node on a level an eighth
+    /// the size: 48.6 bytes a node with the billed quarter of a cut arm a node. Every later instant of the cycle holds less, because the fine
+    /// residual is dead once it has been restricted and each coarser level is an eighth of the
+    /// one above; <see cref="VolumeRediscretizedPeakOn"/> takes the largest over the levels a
+    /// particular grid really has.
+    /// </para>
+    /// <para>
+    /// <b>This said 51.2, the deepest point of a cycle with every level's residual still held,
+    /// and it was right only for first-tier code.</b> The V-cycle kept each level's residual
+    /// and coarse arrays as locals of the frame that recursed, which optimised code ends at
+    /// their last use and first-tier code - what a method runs as until it has been called
+    /// often enough to be recompiled - keeps to the end of the method. Measured with call
+    /// counting off, so every method stays first-tier, the sphere's slope read 47.6 against 45.0
+    /// fully optimised; a solve that finished before the solver was promoted held the larger. Both
+    /// read 45.0 now that the descent is in frames of its own, and that is what this states.
+    /// </para>
     /// </remarks>
     public const double VolumeRediscretizedPeak =
         VolumeMask + VolumeCutLinks + Fields + sizeof(double)
-        + ((VolumeMask + (3 * sizeof(double))) / 7.0);
+        + ((VolumeMask + sizeof(double)) / 8.0);
 
     /// <summary>
     /// <see cref="VolumeGalerkinPeak"/> on a particular grid, its first coarse level charged at
@@ -187,9 +202,9 @@ public static class SolveMemoryModel
     }
 
     /// <summary>
-    /// <see cref="VolumeRediscretizedPeak"/> on a particular grid, summed over the coarse levels
-    /// the solve will build at the sizes they really are, rather than over a series of eighths
-    /// that runs all the way down.
+    /// <see cref="VolumeRediscretizedPeak"/> on a particular grid: the largest instant over the
+    /// coarse levels the solve will build, at the sizes they really are, rather than a first
+    /// level of an eighth.
     /// </summary>
     /// <param name="grid">The finest grid.</param>
     /// <param name="levels">The coarse levels, as <see cref="PoissonSolver3D.RediscretizedLevels"/> gives them.</param>
@@ -200,15 +215,25 @@ public static class SolveMemoryModel
         ArgumentNullException.ThrowIfNull(grid);
         ArgumentNullException.ThrowIfNull(levels);
 
-        var coarse = 0.0;
+        // The instant level k restricts its residual: every level above it holds its mask, its
+        // right-hand side and its correction, level k holds those and its residual, and level
+        // k + 1 holds its mask and the restricted residual. Level 0 is the fine grid, whose
+        // mask, cut links and fields are the fixed part.
+        var fixedPart = VolumeMask + VolumeCutLinks + Fields;
+        var held = 0.0;
+        var largest = 0.0;
 
-        foreach (var level in levels)
+        for (var k = 0; k <= levels.Count; k++)
         {
-            coarse += (double)level.NodeCount / grid.NodeCount;
+            var own = k == 0 ? 1.0 : (double)levels[k - 1].NodeCount / grid.NodeCount;
+            var next = k < levels.Count ? (double)levels[k].NodeCount / grid.NodeCount : 0.0;
+            var residual = next > 0.0 ? sizeof(double) * own : 0.0;
+
+            held += k == 0 ? 0.0 : (VolumeMask + (2 * sizeof(double))) * own;
+            largest = Math.Max(largest, held + residual + ((VolumeMask + sizeof(double)) * next));
         }
 
-        return VolumeMask + VolumeCutLinks + Fields + sizeof(double)
-            + ((VolumeMask + (3 * sizeof(double))) * coarse);
+        return fixedPart + largest;
     }
 
     /// <summary>A plane conductor mask.</summary>
@@ -224,10 +249,21 @@ public static class SolveMemoryModel
     /// <para>
     /// A coarse level solves for the error, which is zero on a conductor, so it replaces its
     /// cut links with a copy holding zero potential - and for that instant holds both. The fine
-    /// level then holds its mask, cut links, three fields and a V-cycle residual; the first
-    /// coarse level, a quarter the size, its mask, both copies of its cut links, its restricted
-    /// right-hand side and its correction. Its own residual and every deeper level come later,
-    /// when the old copy is garbage, and every later instant holds less: 143.25 bytes a node.
+    /// level then holds its mask, cut links and three fields; the first coarse level, a quarter
+    /// the size, its mask, both copies of its cut links, its restricted right-hand side and its
+    /// correction. The V-cycle's fine residual is already dead, having been restricted, and
+    /// its own residual and every deeper level come later, when the old copy is garbage, so
+    /// every later instant holds less: 135.25 bytes a node.
+    /// </para>
+    /// <para>
+    /// <b>This said 143.25, with the fine residual held, and that was true of first-tier code
+    /// only.</b> The V-cycle kept the residual as a local of the frame that went on to recurse,
+    /// and first-tier code - what a method runs as until it has been called often enough to be
+    /// recompiled - keeps a local to the end of its method where optimised code ends it at its
+    /// last use. The first plane build in a process read 143.6 and every later one 135.6, which
+    /// the sampler's record put down to catching or missing the copy; with call counting off,
+    /// so that nothing is ever promoted, every build read 143.4, and fully optimised every build
+    /// read 135.4. The descent is now in frames of its own and every tier reads 135.4.
     /// </para>
     /// <para>
     /// <b>This said 153.3, and the sampler that checked it hid the difference.</b> It summed
@@ -239,7 +275,7 @@ public static class SolveMemoryModel
     /// </para>
     /// </remarks>
     public const double PlanePeak =
-        PlaneMask + PlaneCutLinks + Fields + sizeof(double)
+        PlaneMask + PlaneCutLinks + Fields
         + ((PlaneMask + (2 * PlaneCutLinks) + (2 * sizeof(double))) / 4.0);
 
     /// <summary>What a finished field keeps per channel: its solved potential.</summary>

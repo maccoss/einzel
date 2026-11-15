@@ -215,8 +215,9 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// <para>
     /// <b>How low depends on how loaded the machine is, so the lower edge is 0.85.</b> The plane
     /// spends most of a build smoothing its fine level, and its coarse levels exist only during
-    /// each cycle's descent. A sampler reads 143.3 to 143.9 when it catches the copy, about 135
-    /// when it catches a descent but not the copy, and about 126.6 when it sees only the fine
+    /// each cycle's descent. A sampler reads 135.4 to 135.7 when it catches the copy - the
+    /// 143.3 to 143.9 recorded here before was first-tier code keeping the V-cycle's fine
+    /// residual alive, see <c>SolveMemoryModel.PlanePeak</c> - and about 126.6 when it sees only the fine
     /// level and the first coarse mask - which a four-core CI runner did in two builds of three,
     /// reading 0.884. The upper edge, which is what guards against under-billing, is unchanged.
     /// </para>
@@ -244,8 +245,9 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             $"plane {planLarge.Nodes:N0} nodes: predicted {predicted:F1} B/node, measured {measured:F1} "
             + $"({planSmall.Nodes:N0} nodes: {peakSmall / planSmall.Nodes:F1})");
 
-        // 143.3 when a sample catches the transient, 135 when it catches only a descent, 126.6
-        // when it sees only the fine level.
+        // 135.4 when a sample catches the transient, in every tier of the JIT since the V-cycle's
+        // descent has frames of its own (143.4 while first-tier code kept the fine residual, which
+        // the upper edge now fails); 126.6 when it sees only the fine level.
         Assert.InRange(measured / predicted, 0.85, 1.02);
     }
 
@@ -283,7 +285,11 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
             + $"(predicted {(planTwo.PeakBytes - planOne.PeakBytes) / planOne.Nodes:F1})");
 
         // A kept mask is 73; the plane's own transient can be caught in one build and missed
-        // in the other, which is worth about 8 either way.
+        // in the other. The "about 8 either way" this allowed for was mostly the first build in
+        // a process running first-tier code that kept the V-cycle residual (one channel 143.6
+        // and two 135.6, a second channel costing -8.0); with the descent in frames of its own
+        // both builds read the optimized figure and the second costs 8.0. The band is left as
+        // it was until runners have shown it can narrow.
         Assert.InRange(extra, -10.0, 30.0);
     }
 

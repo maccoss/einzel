@@ -1318,8 +1318,8 @@ some restriction buffers, and nothing measured it.
 | solve | bytes a node at peak | measured, Release, live set sampled through the build |
 | --- | --- | --- |
 | volume, Galerkin hierarchy | 149.5 on a deep grid; 151.3 Astral at 1.12 M nodes, 150.4 at 8.68 M | 150.8 and 148.2 |
-| volume, rediscretized hierarchy | 51.2 | 48.7 and 48.0 segmented quadrupole at 0.55 M and 4.28 M; 47.8 C-trap at 1.08 M |
-| plane | 143.25 | 143.3 to 143.9 on four templates at 17 k to 1.05 M nodes |
+| volume, rediscretized hierarchy | 48.6 on a deep grid, the largest instant over the real levels | 45.0 on a sphere against 45.0 predicted with its real cut arms, with every method first-tier and fully optimized alike (51.2 stated, and 47.8 to 48.7 measured, before the V-cycle's descent had frames of its own) |
+| plane | 135.25 | 135.4 to 135.7 on four rods at 66 k and 263 k nodes, first-tier and fully optimized alike (143.25 stated, and 143.3 to 143.9 measured, while first-tier code kept the V-cycle residual) |
 | each basis channel before the last | + 8 | 156.1 linear ion trap, two channels, against 158.4 |
 | diffusive run, per density node and per species | 263 | 248 and 259, drift tube at 66 k and 263 k nodes; each added species 248 |
 | mean-field self-field, once whatever the species count | 62, and 70 for a mixture | 61.3 to 61.4 on the drift tube at 66 k to 1.05 M nodes; 69.3 to 69.4 with two species |
@@ -1347,6 +1347,20 @@ templates read 143.3 to 143.9; a build whose samples all miss the copy reads abo
 one whose samples see only the fine level - a loaded four-core CI runner did - about 126.6, which
 is why the plane test's lower edge is 0.85 where the volume tests' is 0.90.
 
+**Both figures came down by what first-tier code held, and the plane's "missed the copy" was
+that.** The V-cycles kept each level's residual and coarse arrays as locals of the frame that
+recursed. Optimized code ends a local at its last use; first-tier code, which every method
+runs as until it has been called often enough to be recompiled, keeps it to the end of the
+method. So the first plane build in a process read 143.6 bytes a node and every later one
+135.6, and the record above put the difference down to the sampler catching or missing the
+copy: with call counting off, so nothing is ever promoted, every build read 143.4, and fully
+optimized every build 135.4. The self-field held the same array (130 KiB on its 129 by 129
+grid) for as long as its Poisson solver had not been promoted, which is how
+SelfFieldMemoryTests read 67.3 against 62 on a Windows CI runner and 61.4 everywhere else.
+The descent now runs in frames of its own in both solvers, every tier reads the optimized
+figure, and the statements say that: 135.25 for the plane and, for the rediscretized volume,
+the instant a level restricts its residual (48.6 on a deep grid, where the deepest point of a
+cycle with every residual held was 51.2).
 **A diffusive mixture is charged once per species.** Every species has its own walker - its
 density, next step and seed, its coefficients, its face operator and, cycle-averaged, its well
 - and measured on a 513 by 129 grid one species held 248.5 bytes a node and each species added

@@ -539,14 +539,17 @@ public sealed class StudyInFlightTests(ITestOutputHelper output) : IDisposable
 /// there; a Debug run is allowed the eight bytes it was measured to hold and no more.
 /// </para>
 /// <para>
-/// <b>The middle of five, where that one keeps the middle of three</b>, because the first reading
-/// is already an outlier. The first mean-field run in a process reads about 300 KiB - 18 bytes a
-/// node here - above the four after it (5,326 against 5,029), which is one-time allocation on the
-/// first self-field solve; the middle of three then rests on a single further outlier either way,
-/// and this test reads a difference of two peaks, so it meets one twice. It read 61.4 in every
-/// one of some thirty runs, idle and with every core loaded, except one that failed inside a
-/// mutation run and could not be reproduced, and one that read 59.3 while sixteen processes were
-/// starting. Every reading is printed, so the next one can be read rather than guessed at.
+/// <b>Warmed up, then five readings that must agree.</b> This kept the middle of five, and it
+/// failed on a Windows CI runner reading 5140, 5139, 5125, 5029 and 4996 KiB: three runs held
+/// one array of the grid more than the other two. That was the V-cycle's residual, which
+/// first-tier code kept alive across the recursion until the solver was promoted - reproduced
+/// every time with <c>DOTNET_TC_CallCounting=0</c>, absent with <c>DOTNET_TieredCompilation=0</c>,
+/// and gone in every tier once the descent had frames of its own (<c>docs/lessons.md</c>, "A
+/// reading that falls as a process warms up"). A median outvoted it on every machine that
+/// promoted quickly. So two runs are sampled first and not counted - the first sampled runs
+/// of a process read 300 to 420 KiB above the rest even fully optimized - and the five after
+/// them must agree to a tenth of the self-field's stated size, under the eighth one extra array
+/// would add; the median is then a summary of readings that agree rather than a vote.
 /// </para>
 /// </remarks>
 [Collection(nameof(RunsAlone))]
@@ -579,8 +582,8 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
             var stated = (EstimateCommand.Execute(charged, calibrate: false).MemoryMiB
                 - EstimateCommand.Execute(plain, calibrate: false).MemoryMiB) * 1024.0 * 1024.0;
 
-            var (withField, solves, nodes) = Peak(charged, output);
-            var (without, _, _) = Peak(plain, output);
+            var (withField, chargedReadings, solves, nodes) = Peak(charged, output);
+            var (without, plainReadings, _, _) = Peak(plain, output);
 
             var measured = withField - without;
 
@@ -594,6 +597,15 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
             output.WriteLine(optimized ? "optimized build" : "Debug build: one more array is held");
 
             Assert.True(solves >= 2, $"the self-field was solved {solves} time(s), so no refresh happened inside the loop");
+
+            // Every run of one model holds the same arrays, so its readings must agree to well
+            // under one array of the grid: a tenth of what the self-field is stated to add,
+            // against the eighth that one extra double a node is. A run that holds an array in
+            // some repetitions and not others - which is what a first-tier frame keeping a dead
+            // local did - fails here rather than being outvoted by the median.
+            AssertAgree(chargedReadings, 0.1 * stated, "charged");
+            AssertAgree(plainReadings, 0.1 * stated, "plain");
+
             Assert.InRange(measured / stated, 0.90, optimized ? 1.02 : 1.15);
         }
         finally
@@ -602,8 +614,18 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
         }
     }
 
-    /// <summary>A diffusive run's live peak above its baseline, its self-field solves, and its grid's nodes.</summary>
-    private static (double Bytes, int Solves, long Nodes) Peak(string path, ITestOutputHelper output)
+    private static void AssertAgree(double[] readings, double tolerance, string which)
+    {
+        var spread = readings.Max() - readings.Min();
+
+        Assert.True(
+            spread <= tolerance,
+            $"the {which} run's readings spread {spread / 1024.0:F1} KiB, more than the {tolerance / 1024.0:F1} "
+            + "allowed: repetitions of one run held different arrays");
+    }
+
+    /// <summary>A diffusive run's live peak above its baseline, its readings, its self-field solves, and its grid's nodes.</summary>
+    private static (double Bytes, double[] Readings, int Solves, long Nodes) Peak(string path, ITestOutputHelper output)
     {
         var validation = ModelValidator.Validate(
             ModelJson.Parse(File.ReadAllText(path)), null, Path.GetDirectoryName(path));
@@ -626,7 +648,7 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
             + string.Join(", ", readings.Select(r => (r / 1024.0).ToString("F1", CultureInfo.InvariantCulture)))
             + " KiB above baseline");
 
-        return (bytes, solves, DiffusionRun.GridFor(model).NodeCount);
+        return (bytes, readings, solves, DiffusionRun.GridFor(model).NodeCount);
     }
 
     private static (double Middle, double[] Readings) PeakLive(Func<object> build)
@@ -701,6 +723,16 @@ public sealed class SelfFieldMemoryTests(ITestOutputHelper output)
 
             return peak - baseline;
         }
+
+        // One run first, sampled exactly as the others and not counted, so that what happens
+        // once per process is not read as what a run holds: 300 to 420 KiB read in the first
+        // sampled run of a process even with every method fully optimized from the start, and
+        // still read after an unsampled warm-up run, so it belongs to the first use of the
+        // sampling as much as of the run. It is a warm-up of the measurement, not a choice
+        // among readings: it is taken before any reading is, every reading after it is kept,
+        // and they must agree (asserted by the caller).
+        _ = Once(build);
+        _ = Once(build);
 
         double[] readings = [Once(build), Once(build), Once(build), Once(build), Once(build)];
         var sorted = readings.Order().ToArray();
