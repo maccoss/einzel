@@ -21,11 +21,12 @@ Engine outward. Each references only what is above it in this list.
 | `Einzel.Mcp` | The live-session server, over one shared attributed journal |
 | `Einzel.Shell` | The shell: §16's views on Avalonia, plain `net10.0`, reaching the engine only through `Einzel.Commands` |
 
-Not yet built: `Einzel.Compute`, `Einzel.Update`. `Einzel.Shell` holds eight of §16's
-eleven views; the figure composer, animation scrubbing and the update notice are not
-built, and the last of those waits on `Einzel.Update` rather than on the window. There
-was a second shell on WPF, Windows-only, and it was deleted once this one had every view
-it had. See [The shell](shell.md).
+Not yet built: `Einzel.Compute` (`Einzel.Update`, the shell's update check, exists). The
+shell has a model tree edited through the journal, a viewport with orbit, pan and zoom, and
+journal, results, regime, sequence, project and extension panels, plus the tests that keep
+invariant 1 and UI-1 true; the figure composer and animation scrubbing are not built. There
+was a second shell on WPF, Windows-only, and it was deleted once this one had every view it
+had. See [The shell](shell.md).
 
 The CLI, the MCP server, and the shell are **peers, not a stack**. All three drive
 the same command objects. That is what makes "nothing exists only in the window"
@@ -74,7 +75,6 @@ Windows is one nobody is checking. There is no skipped test project now.
 **That invariant is what made the swap cheap**, and the swap is what shows it was being
 kept rather than merely asserted: no capability was trapped in the old window, because
 Amendment 25 had already made every one of them a command.
-
 Its hardest test has now arrived and it passes. `Einzel.Render` draws real device
 templates as SVG and PDF on the Linux runner, where there is no display, no window
 manager and no font server. There is no drawing surface anywhere in the pipeline

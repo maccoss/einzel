@@ -1,8 +1,13 @@
 # The shell
 
-Avalonia, plain `net10.0`, and §16's eleven views. **Eight exist**: the model tree, the
-journal, the 3-D viewport, results by accuracy class, the regime inspector, the sequence
-editor, the project view and the extension manager. It runs where the engine runs.
+Avalonia, plain `net10.0` with an OpenGL viewport, and §16's eleven views. **Nine exist**:
+the model tree, the journal, the 3-D viewport, results by accuracy class, the regime
+inspector, the sequence editor, the project view, the extension manager, and the update
+notice, which arrived with `Einzel.Update`. It runs where the engine runs - the test CI
+builds and runs it on Windows and Linux; macOS is supported by the toolkit and not covered
+by those tests, so treat it as untested. Parameters are edited through the session journal
+and can be undone, the viewport orbits, pans and zooms with a ruler in the corner, and
+Journal, Results, Regime, Sequence, Project and Extensions are tabs beside it.
 
 **There was a second shell, on WPF, and it is gone.** The WPF one came first and was
 Windows-only; `Einzel.Shell` was written beside it on Avalonia, carried every view across,
@@ -748,9 +753,9 @@ that knew where `models/` sits would grow its own idea of what a project is.
   data for the other two is already on each path.
 - **Scrubbing**, which is the animation timeline's shell half. Per-phase playback rates and
   frame export are built.
-- **Three more views**: the figure composer, the animation timeline (per-phase rates and
-  frame export are built; scrubbing is not) and the update notice, which waits on
-  `Einzel.Update` and so is not a shell gap at all.
+- **Two more views**: the figure composer, and the animation timeline (per-phase rates and
+  frame export are built; scrubbing is not). The update notice is no longer among them -
+  `Einzel.Update` exists and the window carries its bar.
 
 The pattern is worth noticing: almost every remaining row is presentation over something
 that already works, which is what AGT-2 is supposed to produce and is weak evidence that it
