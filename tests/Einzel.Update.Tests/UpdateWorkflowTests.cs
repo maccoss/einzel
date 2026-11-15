@@ -155,7 +155,7 @@ public sealed class UpdateWorkflowTests
 
         Assert.Equal(UpdateStage.Ready, w.Stage);
         Assert.Equal(0, feed.Restarts);
-        Assert.Contains("next time Einzel starts", w.Message, StringComparison.Ordinal);
+        Assert.Contains("nothing is applied until you do", w.Message, StringComparison.Ordinal);
     }
 
     [Fact]

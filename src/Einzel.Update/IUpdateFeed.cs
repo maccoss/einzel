@@ -24,6 +24,12 @@ public interface IUpdateFeed
 
     /// <summary>Applies the staged release and restarts the window. Does not return on success.</summary>
     void ApplyAndRestart();
+
+    /// <summary>
+    /// A release downloaded by an earlier launch and still staged, or null. Velopack's
+    /// apply-on-startup is turned off, so such a release waits for an explicit restart.
+    /// </summary>
+    string? StagedVersion => null;
 }
 
 /// <summary>Remembers the one release a person asked not to be told about again.</summary>

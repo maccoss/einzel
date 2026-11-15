@@ -75,14 +75,25 @@ public sealed class VelopackFeed : IUpdateFeed
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Velopack's own record of a package downloaded and not yet applied, which is how a release
+    /// staged by "Download only" in an earlier launch is found again now that apply-on-startup is
+    /// off (<see cref="InstallHooks.Configure"/>).
+    /// </remarks>
+    public string? StagedVersion => _manager.UpdatePendingRestart?.Version.ToString();
+
+    /// <inheritdoc />
     public void ApplyAndRestart()
     {
-        if (_found is null || !_staged)
+        // Downloaded in this process, or staged by an earlier one and offered again at launch.
+        var target = _found is not null && _staged ? _found.TargetFullRelease : _manager.UpdatePendingRestart;
+
+        if (target is null)
         {
             throw new InvalidOperationException("No downloaded release is staged.");
         }
 
-        _manager.ApplyUpdatesAndRestart(_found.TargetFullRelease);
+        _manager.ApplyUpdatesAndRestart(target);
     }
 }
 
@@ -141,6 +152,8 @@ public static class UpdateCheck
     {
         var feed = VelopackFeed.TryForThisCopy();
 
-        return new UpdateWorkflow(feed, new FileSkippedVersionStore(), UpdateLog.Write);
+        return new UpdateWorkflow(
+            feed, new FileSkippedVersionStore(), UpdateLog.Write,
+            feed is null ? NoInstallProcesses.Instance : InstallProcesses.ForThisCopy());
     }
 }

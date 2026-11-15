@@ -133,10 +133,12 @@ public sealed partial class MainWindow : Window, IDisposable
         _gate.Changed += (_, _) => UpdateControls();
 
         // The one update check this process makes (UPD-1), in the background, for an installed
-        // copy only. A restart into a new version is refused while a run holds the gate (UPD-6).
+        // copy only. A restart into a new version is refused while a run holds the gate or a redraw is
+        // solving (UPD-6).
         var updates = this.FindControl<UpdateNoticeBar>("UpdateNotice")!;
         _gate.Changed += (_, _) => updates.Refresh();
-        updates.Attach(Einzel.Update.UpdateCheck.ForThisCopy(), () => _gate.Busy);
+        _redraw.BusyChanged += (_, _) => updates.Refresh();
+        updates.Attach(Einzel.Update.UpdateCheck.ForThisCopy(), () => _gate.Busy || _redraw.Busy);
 
         Wire();
         Open(modelPath);

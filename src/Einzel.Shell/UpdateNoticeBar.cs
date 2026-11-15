@@ -54,7 +54,7 @@ public sealed class UpdateNoticeBar : Border
         IsVisible = false;
 
         ToolTip.SetTip(_downloadRestart, "Download the new version now and restart into it. Refused while a run is in progress.");
-        ToolTip.SetTip(_download, "Download the new version now; it is installed the next time Einzel starts.");
+        ToolTip.SetTip(_download, "Download the new version now; it is installed when you choose Restart now, in this session or a later one.");
         ToolTip.SetTip(_skip, "Do not offer this version again. A later one is still offered.");
         ToolTip.SetTip(_close, "Hide this until Einzel next starts.");
 
@@ -109,7 +109,7 @@ public sealed class UpdateNoticeBar : Border
         _downloadRestart.IsVisible = w.CanDownload;
         _downloadRestart.IsEnabled = idle;
         _download.IsVisible = w.CanDownload;
-        _restart.IsVisible = w.Stage == UpdateStage.Ready;
+        _restart.IsVisible = w.CanRestart;
         _restart.IsEnabled = idle;
         _skip.IsVisible = w.CanSkip;
         _close.IsVisible = w.Stage != UpdateStage.Downloading;

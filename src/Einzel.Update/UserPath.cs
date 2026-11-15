@@ -1,8 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 
-using Microsoft.Win32;
-
 namespace Einzel.Update;
 
 /// <summary>Reads and writes the current user's PATH in <c>HKCU\Environment</c>.</summary>
@@ -19,54 +17,36 @@ namespace Einzel.Update;
 /// rights, and neither does this.
 /// </para>
 /// </remarks>
-[SupportedOSPlatform("windows")]
-public static class UserPath
+public static partial class UserPath
 {
     private const string EnvironmentKey = "Environment";
-    private const string ValueName = "Path";
 
     /// <summary>Adds <paramref name="directory"/> to the user PATH unless it is already there.</summary>
     /// <param name="directory">The directory.</param>
     /// <returns>Whether the PATH was changed.</returns>
+    [SupportedOSPlatform("windows")]
     public static bool Add(string directory) =>
         Edit(p => PathList.Add(p, directory, Environment.ExpandEnvironmentVariables));
 
     /// <summary>Removes every entry naming <paramref name="directory"/> from the user PATH.</summary>
     /// <param name="directory">The directory.</param>
     /// <returns>Whether the PATH was changed.</returns>
+    [SupportedOSPlatform("windows")]
     public static bool Remove(string directory) =>
         Edit(p => PathList.Remove(p, directory, Environment.ExpandEnvironmentVariables));
 
+    [SupportedOSPlatform("windows")]
     private static bool Edit(Func<string?, PathEdit> edit)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(EnvironmentKey, writable: true);
-
-        var existing = key.GetValue(ValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
-
-        // A user PATH Windows created is REG_EXPAND_SZ, and an absent one is written that way
-        // too, so a later entry using a variable keeps working.
-        var kind = existing is null ? RegistryValueKind.ExpandString : key.GetValueKind(ValueName);
-
-        if (kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString))
-        {
-            // Something unusual is stored there; leaving it alone is safer than guessing.
-            return false;
-        }
-
-        var result = edit(existing);
-
-        if (!result.Changed)
+        if (!Edit(new RegistryPathValueStore(), edit, UpdateLog.Write))
         {
             return false;
         }
-
-        key.SetValue(ValueName, result.Value, kind);
 
         Broadcast();
 
         return true;
     }
-
     /// <summary>Tells running programs that the environment changed.</summary>
     /// <remarks>
     /// Without this, Explorer keeps the old PATH and a terminal opened from it does not find

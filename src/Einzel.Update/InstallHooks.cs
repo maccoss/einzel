@@ -38,13 +38,24 @@ public static class InstallHooks
     /// <para>
     /// On an install, update or uninstall hook Velopack runs the hook and exits the process. In a
     /// copy Velopack does not manage - a development build, an unpacked archive - <c>Run()</c>
-    /// returns at once and does nothing. With a downloaded update staged, Velopack applies it
-    /// there and restarts, which is UPD-6's "staged on download, applied on next launch".
+    /// returns at once and does nothing.
+    /// </para>
+    /// <para>
+    /// <b>Apply-on-startup is turned off</b> (<c>SetAutoApplyOnStartup(false)</c>; Velopack's
+    /// default is on). With it on, a release staged by "Download only" is applied inside
+    /// <c>Run()</c> at the next launch, before any of Einzel's code runs - and applying runs
+    /// <c>Update.exe apply</c>, which terminates every process under the install root, an
+    /// agent's <c>einzel run</c> or an open <c>einzel-mcp</c> included. Off, the staged release
+    /// waits and <see cref="UpdateWorkflow"/> offers it for an explicit restart, which refuses
+    /// while a run is active or another Einzel process is running from the install (UPD-6).
     /// </para>
     /// </remarks>
     public static VelopackApp Configure(VelopackApp app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        // Applying is only ever the explicit, guarded restart in UpdateWorkflow; see above.
+        app = app.SetAutoApplyOnStartup(false);
 
         // The hooks exist only on Windows, which is the only platform an installer is published
         // for (DST-1, DST-3). Elsewhere Run still returns at once for an unmanaged copy, so the

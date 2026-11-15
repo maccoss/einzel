@@ -27,7 +27,7 @@ public enum UpdateStage
     /// <summary>The person asked for it and the download failed. Shown, because they asked.</summary>
     DownloadFailed,
 
-    /// <summary>Downloaded and staged: applied on restart, or at the next launch.</summary>
+    /// <summary>Downloaded and staged: applied only when the person restarts, and only if nothing would be ended.</summary>
     Ready,
 
     /// <summary>The person closed the notice; it comes back at the next launch.</summary>
@@ -35,6 +35,12 @@ public enum UpdateStage
 
     /// <summary>The offered release is one the person asked to skip.</summary>
     Skipped,
+
+    /// <summary>
+    /// Applying the staged release failed; the installed version is unchanged. Shown, because
+    /// the person asked, and the restart may be tried again.
+    /// </summary>
+    ApplyFailed,
 }
 
 /// <summary>
@@ -50,12 +56,23 @@ public enum UpdateStage
 /// <para>
 /// <b>Offered, never imposed (UPD-3, UPD-4).</b> A newer release is a notice, not a dialog;
 /// nothing is downloaded until <see cref="DownloadAsync"/> is called from a person's click, and
-/// nothing is applied until they restart or next launch the window. A failed check is logged and
+/// nothing is applied until they press Restart. A failed check is logged and
 /// not shown, because no network is an ordinary state and not something a person can act on.
 /// </para>
 /// <para>
 /// <b>Never while a run is active (UPD-6).</b> The restart is refused while the window reports a
-/// run in flight, and the download is staged rather than lost, so it applies at the next launch.
+/// run in flight - a solve for a redraw included - and the download is staged rather than lost.
+/// </para>
+/// <para>
+/// <b>Never while another Einzel process runs from the install (UPD-6, AGT-8).</b> Applying is
+/// Velopack's <c>Update.exe apply</c>, which terminates every process whose executable lies
+/// under the install root before it swaps <c>current\</c> - and the installer puts <c>einzel</c>
+/// and <c>einzel-mcp</c> on PATH from there. So the restart asks <see cref="IInstallProcesses"/>
+/// first and, if an agent's run or an MCP session is using the installed copy, refuses and names
+/// each process. <b>Applying is only ever this explicit, guarded path</b>: the shell turns off
+/// Velopack's apply-on-startup (<see cref="InstallHooks.Configure"/>), so a release downloaded
+/// and left staged is offered again at the next launch, through the same guard, rather than
+/// applied blindly before any of Einzel's code has run.
 /// </para>
 /// <para>
 /// Every decision lives here rather than in the window, so it is tested without one. Members
@@ -68,6 +85,7 @@ public sealed class UpdateWorkflow
     private readonly IUpdateFeed? _feed;
     private readonly ISkippedVersionStore _skipped;
     private readonly Action<string> _log;
+    private readonly IInstallProcesses _processes;
     private int _asked;
 
     /// <summary>Creates the workflow.</summary>
@@ -75,13 +93,26 @@ public sealed class UpdateWorkflow
     /// <param name="skipped">Where a skipped version is remembered.</param>
     /// <param name="log">Where failures are recorded.</param>
     public UpdateWorkflow(IUpdateFeed? feed, ISkippedVersionStore skipped, Action<string> log)
+        : this(feed, skipped, log, NoInstallProcesses.Instance)
+    {
+    }
+
+    /// <summary>Creates the workflow, refusing to apply while other processes run from the install.</summary>
+    /// <param name="feed">The installed copy's feed, or null for a copy Velopack does not manage.</param>
+    /// <param name="skipped">Where a skipped version is remembered.</param>
+    /// <param name="log">Where failures are recorded.</param>
+    /// <param name="processes">Which other processes are running from the install.</param>
+    public UpdateWorkflow(
+        IUpdateFeed? feed, ISkippedVersionStore skipped, Action<string> log, IInstallProcesses processes)
     {
         ArgumentNullException.ThrowIfNull(skipped);
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(processes);
 
         _feed = feed;
         _skipped = skipped;
         _log = log;
+        _processes = processes;
     }
 
     /// <summary>Raised whenever <see cref="Stage"/>, the progress or the message changes.</summary>
@@ -102,9 +133,17 @@ public sealed class UpdateWorkflow
     /// <summary>Whether a restart was asked for and refused because a run was active.</summary>
     public bool RestartDeferred { get; private set; }
 
+    /// <summary>
+    /// The other processes running from the install that stopped the last restart, or empty.
+    /// </summary>
+    public IReadOnlyList<RunningProcess> BlockingProcesses { get; private set; } = [];
+
     /// <summary>Whether the window should show the notice.</summary>
     public bool IsVisible => Stage is UpdateStage.Available or UpdateStage.Downloading
-        or UpdateStage.DownloadFailed or UpdateStage.Ready;
+        or UpdateStage.DownloadFailed or UpdateStage.Ready or UpdateStage.ApplyFailed;
+
+    /// <summary>Whether a restart into the staged release may be asked for now.</summary>
+    public bool CanRestart => Stage is UpdateStage.Ready or UpdateStage.ApplyFailed;
 
     /// <summary>Whether a download may be started now.</summary>
     public bool CanDownload => Stage is UpdateStage.Available or UpdateStage.DownloadFailed;
@@ -120,9 +159,13 @@ public sealed class UpdateWorkflow
         UpdateStage.Downloading => $"Downloading Einzel {AvailableVersion}: {Percent}%",
         UpdateStage.DownloadFailed => $"Einzel {AvailableVersion} could not be downloaded: {Error}",
         UpdateStage.Ready when RestartDeferred =>
-            $"Einzel {AvailableVersion} is downloaded. A run is in progress, so it was not applied: restart when the run ends, or it is installed the next time Einzel starts.",
+            $"Einzel {AvailableVersion} is downloaded. A run is in progress, so it was not applied: restart when the run ends.",
+        UpdateStage.Ready when BlockingProcesses.Count > 0 =>
+            $"Einzel {AvailableVersion} is downloaded and was not applied: applying it would end {string.Join(", ", BlockingProcesses)}, running from this install. Restart once they have exited.",
         UpdateStage.Ready =>
-            $"Einzel {AvailableVersion} is downloaded. Restart to use it, or it is installed the next time Einzel starts.",
+            $"Einzel {AvailableVersion} is downloaded. Restart to use it; nothing is applied until you do.",
+        UpdateStage.ApplyFailed =>
+            $"Einzel {AvailableVersion} could not be applied: {Error}. The installed version is unchanged.",
         _ => string.Empty,
     };
 
@@ -140,6 +183,16 @@ public sealed class UpdateWorkflow
         if (_feed is null)
         {
             Set(UpdateStage.NotManaged);
+
+            return;
+        }
+
+        // A release downloaded earlier and left staged is offered for an explicit restart, not
+        // applied at launch: Velopack's apply-on-startup is off, so this is where it resurfaces.
+        if (Staged() is { } staged)
+        {
+            AvailableVersion = staged;
+            Set(UpdateStage.Ready);
 
             return;
         }
@@ -226,11 +279,16 @@ public sealed class UpdateWorkflow
     /// <summary>Applies the staged release and restarts, unless a run is active.</summary>
     /// <param name="runActive">Whether the window has a run in flight.</param>
     /// <returns>False when nothing is staged or a run is active; on success the process ends.</returns>
+    /// <remarks>
+    /// Refused, and the reason shown, while the window has a run in flight or while any other
+    /// process is running from the install - Velopack would terminate it. A failure to apply is
+    /// caught, logged and shown, never thrown: this is called from a click.
+    /// </remarks>
     public bool RestartNow(Func<bool> runActive)
     {
         ArgumentNullException.ThrowIfNull(runActive);
 
-        if (_feed is null || Stage != UpdateStage.Ready)
+        if (_feed is null || !CanRestart)
         {
             return false;
         }
@@ -238,13 +296,55 @@ public sealed class UpdateWorkflow
         if (runActive())
         {
             RestartDeferred = true;
+            BlockingProcesses = [];
             Changed?.Invoke(this, EventArgs.Empty);
 
             return false;
         }
 
         RestartDeferred = false;
-        _feed.ApplyAndRestart();
+
+        IReadOnlyList<RunningProcess> others;
+
+        try
+        {
+            others = _processes.Others();
+        }
+#pragma warning disable CA1031 // Not knowing what would be ended is a reason not to apply, not a crash.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log($"could not list the processes running from the install, so {AvailableVersion} was not applied: {ex.Message}");
+            Error = "could not check whether other Einzel processes are running from this install (" + ex.Message + ")";
+            Set(UpdateStage.ApplyFailed);
+
+            return false;
+        }
+
+        BlockingProcesses = others;
+
+        if (others.Count > 0)
+        {
+            _log($"{AvailableVersion} not applied: {string.Join(", ", others)} running from the install");
+            Set(UpdateStage.Ready);
+
+            return false;
+        }
+
+        try
+        {
+            _feed.ApplyAndRestart();
+        }
+#pragma warning disable CA1031 // Shown to the person who asked, and logged; the window carries on.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log($"applying {AvailableVersion} failed: {ex.GetType().Name}: {ex.Message}");
+            Error = ex.Message;
+            Set(UpdateStage.ApplyFailed);
+
+            return false;
+        }
 
         return true;
     }
@@ -278,6 +378,22 @@ public sealed class UpdateWorkflow
         }
 
         Set(UpdateStage.Skipped);
+    }
+
+    private string? Staged()
+    {
+        try
+        {
+            return _feed?.StagedVersion;
+        }
+#pragma warning disable CA1031 // A staged package that cannot be read is simply not offered.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _log($"could not read a staged update: {ex.Message}");
+
+            return null;
+        }
     }
 
     private void Set(UpdateStage stage)
