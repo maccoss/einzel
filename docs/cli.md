@@ -107,6 +107,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView; `--composite` writes the summed field and E at one instant on a grid |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
 | `einzel render still <model.json>` | Draw the viewport's shaded 3D picture to a PNG, headlessly - the same composition and camera the window uses |
+| `einzel render surface <model.json>` | Draw the potential on a plane as height above it - SIMION's potential-energy view - to a PNG, with conductors as flat plateaus at their own potential and the height scale on the picture |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
 | `einzel ext list \| test \| register` | The extension authoring loop: list what is installed with each licence and what the sandbox does not enforce, run an extension's tests, or scaffold a new one that runs immediately |
 | `einzel agents-md [dir]` | Regenerate the platform layer of `AGENTS.md` (PRJ-6) |
@@ -118,7 +119,10 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `--json` | Machine-readable output, including the full result envelope |
 | `--dry-run` | Say what would be written, and write nothing |
 | `--vtu` | `run` only: write the trajectory for ParaView, or the density for a diffusive model - including a sequenced run that ends in the diffusive description |
-| `--at-us <t>` | `render section` only: the instant to draw a driven field, or a diffusive density, at |
+| `--at-us <t>` | `render section` and `render surface`: the instant to draw a driven field (or, for a section, a diffusive density) at |
+| `--cycle-mean` | `render surface` only: draw the potential averaged over one drive cycle - for a sinusoidal drive, the DC part - instead of an instant |
+| `--plane xy\|xz\|yz`, `--offset-mm d`, `--box-mm a0,b0,a1,b1` | `render surface` only: the plane, its offset along the normal, and the rectangle sampled in the plane's own axis order |
+| `--height potential\|energy` | `render surface` only: volts, or q·phi for the model's ion in electronvolts |
 | `--view iso\|side\|top\|front` | `render still` only: the named view, the same names as the window's buttons |
 | `--width-px N`, `--height-px N` | `render still` only: the picture's size, 16 to 8192 pixels; the unit is in the name, as `--width-mm` does it |
 | `--see-through` | `render still` only: draw the conductors translucent, as the window's toggle does |
@@ -831,6 +835,25 @@ tilts and the axisymmetric mapping are all honoured and the assembly's warnings 
   (`evidence`): an analytic element is exact to arithmetic, a solved element's error is its discretisation,
   stated by each element's `cellMm` and by the warnings. An interval invented here would claim a precision
   nothing measured.
+
+### `einzel render surface`: the potential as height
+
+```
+einzel render surface <model.json> [--plane xy|xz|yz] [--offset-mm d] [--box-mm a0,b0,a1,b1]
+       [--height potential|energy] [--at-us <t> | --cycle-mean] [--relief F | --height-mm-per-v X]
+       [--samples N] [--mesh-lines N] [--view iso|side|front|top] [--csv <file>] [--out <file.png>] [--json]
+```
+
+The view SIMION calls a PE surface: one plane, the potential drawn as height in a wire mesh, each
+conductor the plane cuts a flat plateau at its own potential. Every height is sampled through the
+probe (`FieldProbe`), so it is the composite field a run flies through and the probe's warnings come
+with it; the outcome lists each plateau with its potential and the spread of values inside it, and
+states the scale - `heightMmPerUnit`, `unitsPerMm`, `lowest`, `highest` - which is also in the PNG's
+text and on the picture as a labelled bar. `--cycle-mean` draws the part of a driven field that does
+not oscillate (exactly the DC for a sinusoid; `render.cycle-mean` says what was averaged); with no
+instant and no cycle mean, a driven field is drawn at t = 0 and `render.field-at-instant` says so.
+`--csv` writes the sampled grid. Units are in the flag names, as for the probe; a bare `--offset`,
+`--box` or `--at` is refused. See [Rendering](rendering.md) for the figures and what they show.
 
 ### `einzel export --composite`
 

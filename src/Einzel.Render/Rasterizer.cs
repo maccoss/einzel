@@ -7,13 +7,18 @@ namespace Einzel.Render;
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
+/// <param name="Colors">
+/// Per-vertex red, green and blue triples, zero to one, interpolated across each triangle; null
+/// colors the whole mesh <paramref name="R"/>, <paramref name="G"/>, <paramref name="B"/>.
+/// </param>
 public sealed record RasterMesh(
     IReadOnlyList<double> VerticesMm,
     IReadOnlyList<double> Normals,
     IReadOnlyList<int> Triangles,
     double R,
     double G,
-    double B);
+    double B,
+    IReadOnlyList<double>? Colors = null);
 
 /// <summary>A polyline to rasterize, already colored.</summary>
 /// <param name="PointsMm">Consecutive x, y, z triples, in millimetres.</param>
@@ -27,8 +32,17 @@ public sealed record RasterLine(IReadOnlyList<double> PointsMm, double R, double
 /// <param name="Lines">Its polylines.</param>
 /// <param name="Alpha">How opaque it is, from zero to one.</param>
 /// <param name="WritesDepth">Whether it hides what is drawn after it.</param>
+/// <param name="DepthBias">
+/// How much nearer than its geometry the layer is depth-tested, in clip-space depth units: a
+/// wire mesh drawn exactly on a surface has the surface's depth, and without a bias whether a
+/// line pixel survives the test is a coin toss on rounding.
+/// </param>
 public sealed record RasterLayer(
-    IReadOnlyList<RasterMesh> Meshes, IReadOnlyList<RasterLine> Lines, double Alpha, bool WritesDepth);
+    IReadOnlyList<RasterMesh> Meshes,
+    IReadOnlyList<RasterLine> Lines,
+    double Alpha,
+    bool WritesDepth,
+    double DepthBias = 0.0);
 
 /// <summary>A flat polyline drawn over the picture, in output pixels.</summary>
 /// <param name="PointsPx">Consecutive x, y pairs, in pixels from the top left.</param>
@@ -169,12 +183,13 @@ public static class Rasterizer
             {
                 foreach (var line in layer.Lines)
                 {
-                    canvas.Polyline(line, layer.Alpha, layer.WritesDepth, lighting.Line, lineWidth * supersample);
+                    canvas.Polyline(
+                        line, layer.Alpha, layer.WritesDepth, lighting.Line, lineWidth * supersample, layer.DepthBias);
                 }
 
                 foreach (var mesh in layer.Meshes)
                 {
-                    canvas.Mesh(mesh, layer.Alpha, layer.WritesDepth, lighting.Surface);
+                    canvas.Mesh(mesh, layer.Alpha, layer.WritesDepth, lighting.Surface, layer.DepthBias);
                 }
             }
 
@@ -330,10 +345,15 @@ public static class Rasterizer
         }
 
         public void Mesh(
-            RasterMesh mesh, double alpha, bool writesDepth, Func<double, double, double, double> brightness)
+            RasterMesh mesh,
+            double alpha,
+            bool writesDepth,
+            Func<double, double, double, double> brightness,
+            double bias = 0.0)
         {
             var v = mesh.VerticesMm;
             var n = mesh.Normals;
+            var colors = mesh.Colors;
             var count = v.Count / 3;
             var screen = new (double X, double Y, double Z)[count];
 
@@ -378,7 +398,7 @@ public static class Rasterizer
                             continue;
                         }
 
-                        var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z);
+                        var depth = (w0 * p0.Z) + (w1 * p1.Z) + (w2 * p2.Z) - bias;
                         var index = ((py - _top) * _width) + px;
 
                         if (!(depth < _depth[index]))
@@ -394,7 +414,18 @@ public static class Rasterizer
 
                         var shade = brightness(nx, ny, nz);
 
-                        Put(index, mesh.R * shade, mesh.G * shade, mesh.B * shade, alpha);
+                        if (colors is null)
+                        {
+                            Put(index, mesh.R * shade, mesh.G * shade, mesh.B * shade, alpha);
+                        }
+                        else
+                        {
+                            var cr = (w0 * colors[3 * a]) + (w1 * colors[3 * b]) + (w2 * colors[3 * c]);
+                            var cg = (w0 * colors[(3 * a) + 1]) + (w1 * colors[(3 * b) + 1]) + (w2 * colors[(3 * c) + 1]);
+                            var cb = (w0 * colors[(3 * a) + 2]) + (w1 * colors[(3 * b) + 2]) + (w2 * colors[(3 * c) + 2]);
+
+                            Put(index, cr * shade, cg * shade, cb * shade, alpha);
+                        }
 
                         if (writesDepth)
                         {
@@ -405,7 +436,8 @@ public static class Rasterizer
             }
         }
 
-        public void Polyline(RasterLine line, double alpha, bool writesDepth, double shade, double width)
+        public void Polyline(
+            RasterLine line, double alpha, bool writesDepth, double shade, double width, double bias = 0.0)
         {
             var p = line.PointsMm;
             var half = 0.5 * width;
@@ -445,7 +477,7 @@ public static class Rasterizer
                             continue;
                         }
 
-                        var depth = a.Z + (t * (b.Z - a.Z));
+                        var depth = a.Z + (t * (b.Z - a.Z)) - bias;
                         var index = ((py - _top) * _width) + px;
 
                         if (!(depth < _depth[index]))

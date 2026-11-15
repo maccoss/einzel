@@ -7,13 +7,18 @@ namespace Einzel.Commands;
 /// <param name="R">Red, zero to one.</param>
 /// <param name="G">Green, zero to one.</param>
 /// <param name="B">Blue, zero to one.</param>
+/// <param name="Colors">
+/// Per-vertex red, green and blue triples, interpolated across each triangle; null colors the
+/// whole mesh one color. A potential surface is colored by the potential at each node.
+/// </param>
 public sealed record PictureMesh(
     IReadOnlyList<double> VerticesMm,
     IReadOnlyList<double> Normals,
     IReadOnlyList<int> Triangles,
     double R,
     double G,
-    double B);
+    double B,
+    IReadOnlyList<double>? Colors = null);
 
 /// <summary>One colored polyline in a composed picture.</summary>
 /// <param name="PointsMm">Consecutive x, y, z triples, in millimetres.</param>
@@ -28,12 +33,17 @@ public sealed record PictureLine(IReadOnlyList<double> PointsMm, double R, doubl
 /// <param name="Lines">Its polylines.</param>
 /// <param name="Alpha">How opaque it is, from zero to one.</param>
 /// <param name="WritesDepth">Whether it occludes what is drawn after it.</param>
+/// <param name="DepthBias">
+/// How much nearer than its geometry the layer is depth-tested, in clip-space depth; a wire mesh
+/// lying on its own surface needs one so the lines are not lost to rounding.
+/// </param>
 public sealed record PictureLayer(
     string Name,
     IReadOnlyList<PictureMesh> Meshes,
     IReadOnlyList<PictureLine> Lines,
     double Alpha,
-    bool WritesDepth);
+    bool WritesDepth,
+    double DepthBias = 0.0);
 
 /// <summary>One color scale, as the picture actually draws it.</summary>
 /// <param name="Quantity">What the colors mean: <c>energy</c> or <c>potential</c>.</param>

@@ -804,6 +804,134 @@ because the lines are only as good as the pixels they survive being resized into
   is every vertex, and neither window shades a zero normal as a facet. It gets the area-weighted
   normal of its facets now, and only where the gradient really vanished.
 
+## `render surface` - the potential as height above a plane
+
+```bash
+einzel render surface models/trap.json [--plane xy|xz|yz] [--offset-mm d] [--box-mm a0,b0,a1,b1]
+       [--height potential|energy] [--at-us t | --cycle-mean] [--relief F | --height-mm-per-v X]
+       [--samples N] [--mesh-lines N] [--view iso|side|front|top] [--csv f.csv] [--out f.png] [--json]
+```
+
+SIMION's potential-energy view: one plane through the instrument, with the potential on it
+drawn as **height** above the plane - a wire mesh over a lightly shaded surface, colored by
+the potential with the same diverging ramp, centered on earth, that the viewport colors
+electrodes and equipotentials with. A conductor the plane cuts is a **flat dark plateau at its
+own potential**, and the free-space surface climbs to meet its edge, so a well between two
+higher electrodes is a valley and a quadrupole is a saddle between four plateaus.
+
+![The linear ion trap's DC on a plane through its axis](figures/gallery-surface-lit-z-trapping.png)
+
+*`linear-ion-trap-3d`, the plane x = 0.3 mm through the trap axis, cycle mean (DC only),
+z from -31.5 to 31.5 mm to the rods' ends:*
+`einzel render surface linear-ion-trap-3d.json --plane yz --offset-mm 0.3 --box-mm -14.25,-31.5,14.25,31.5 --cycle-mean`
+
+The picture is the template's axial well, read off the data (`--csv`) along the row nearest the
+axis (y = ±0.13 mm). The centre section's rods are plateaus at **0 V** and the end sections' at
+**3 V** (`endOffset`), each the median of over a thousand samples inside the rod. Along the axis
+the potential is **0.0005 V** at the trap's centre and stays under 0.04 V for |z| < 10 mm - the flat
+floor the ions sit on - then rises through 0.34 V at |z| = 15 mm and 1.4 V across the 1 mm gap
+between sections (|z| = 18.5 to 19.5 mm) to **3.85 V** at the middle of each end section
+(|z| = 25.5 mm). That is more than the end rods' 3 V because the 20 V end lenses reach in through
+their 2 mm apertures; at the rods' ends (|z| = 31.5 mm) the axis is at 15.2 V, the hump at each end
+of the picture. So the well an ion trapped on axis sees is about **3.85 V deep** at the end
+sections' middles and 3 V at their rods. The RF is 257 V zero to peak; drawn at any instant it would
+fill the picture and the 3 V would not be visible, which is what `--cycle-mean` is for.
+
+![The einzel lens's centre tube](figures/gallery-surface-einzel-lens.png)
+
+*`einzel-lens`, its own half-plane drawn whole (y is the radius, mirrored), x from 14 to 82 mm:*
+`einzel render surface einzel-lens.json --box-mm 14,-10,82,10`. The 500 V centre tube is a block
+whose top is its plateau; the bore between its walls is the saddle a beam crosses, rising to
+499 V on the axis at the tube's middle - which is why a 1 keV beam is slowed but not stopped.
+
+![A quadrupole cross-section](figures/gallery-surface-quadrupole.png)
+
+*`quadrupole`, the static ±100 V cross-section:* `einzel render surface quadrupole.json`. Two
+warm plateaus at +100 V, two cool ones at -100 V, and the saddle between them through zero at
+the axis.
+
+**Sampled by the probe, so it is the field a run flies through.** Every height is
+`FieldProbe.At`, which assembles the field with `FieldAssembly.BuildReported` as every run does:
+superposition, regions, mirrors, tilts and the axisymmetric mapping are honored, the assembly's
+warnings come along (`mesh.node-on-shared-face`, an unconverged solve, a region's step), and a
+point the field refuses is a hole in the surface counted by `probe.refused`. A conductor is
+detected the probe's way, by the composite field's signed distance; its plateau is drawn at the
+**median of the deeper half** of the samples inside it, which on a solved element is the electrode's
+own potential - nearer the surface an interpolant overshoots by a per cent or two, and a conductor
+written as two halves meeting on a line is never deeper than the plane's offset from the seam, so the
+single deepest sample was the first answer and the wrong one (it put an end rod at 2.89 V). The outcome lists each plateau with that value and the lowest and highest the
+field reported anywhere inside it on the plane, so a plateau that is not really flat (an analytic
+element superposed over a solved electrode) says so.
+
+**The plane** is a coordinate plane at an offset. A cross-section or axisymmetric model defaults
+to its own plane (`xy`: for an axisymmetric solve that is the half-plane drawn whole, y the
+radius); a volume defaults to the plane through its middle normal to its thinnest side. The box
+defaults to the solve domain's extent in the plane; `--box-mm` takes four numbers in the plane's
+own axis order (for `yz`: y0, z0, y1, z1). The longer side runs across the picture.
+
+**Where to put the plane is a modelling decision and can matter.** The linear ion trap's rods are
+written as halves meeting on the rod's own symmetry line, and its centre x rods carry a 0.25 mm
+slot with a relief behind it. A plane exactly through the axis lies on those seams: a point on a
+seam is on both halves' surfaces and inside neither, so the rods appeared as thin stripes rather
+than plateaus. The figure above uses x = 0.3 mm, off the y rods' seam, and the y rods carry no
+slot; it is also inside the end lenses' 2 mm aperture, which is why the lenses show a notch.
+
+**A height with no scale is a shape, not a measurement.** The scale is stated three ways: in
+`--json` (`heightMmPerUnit`, `unitsPerMm`, `lowest`, `highest`, the unit), in the PNG's `Scale`
+text chunk, and on the picture as a vertical bar labelled in volts at the top and bottom of the
+drawn range, at earth, and at each plateau's level where there is room. By default the whole range
+- from earth, or from the lowest value if lower, to the highest - is drawn at `--relief` (0.35)
+of the box's longer side; `--height-mm-per-v` (or `--height-mm-per-ev`) gives an explicit scale,
+for pictures meant to be compared. Earth is always drawn at the plane itself, so a height reads as
+a potential rather than as a difference from an arbitrary floor. The orthographic camera gives
+every vertical the same screen length per millimetre wherever it stands, which is what lets the
+bar stand beside the surface and be read against any part of it.
+
+**Potential or potential energy.** `--height energy` draws q·phi for the model's ion, in
+electronvolts: a positive ion's hills are a negative ion's valleys, so for a negative ion the
+picture is the potential upside down, and a ball rolling on it goes where the ion goes. A model with
+several species uses the first and says so (`render.first-species`).
+
+**A driven field is drawn at an instant, or as its cycle mean.** At `--at-us` the surface is the
+field at that instant, stated on the picture (`t=... µs` above the bar) and in the outcome; with
+neither flag it is t = 0 and `render.field-at-instant` says so, because the top of an RF cycle is a
+field no instrument holds. **`--cycle-mean` draws the DC part**, which is what the owner's
+"Z trapping" picture needs: a trap's RF is hundreds of volts and its axial DC a few, so any instant
+shows the RF. It is the potential averaged over one period of the fastest drive, held at the
+operating point `--at-us` for a sequenced or ramped model, and it is taken in closed form where it
+can be - a solved field's potential is linear in its channel weights, so the mean is each channel's
+pattern times its weight's own cycle mean (`ITimeVaryingField.CycleMeanPotentialAt`, the machinery
+the diffusive mode's pseudopotential already uses). For a sinusoidal drive that is exactly the
+part that does not oscillate. Two limits, both stated by `render.cycle-mean` on every such picture:
+a rectangular wave's mean is not zero (it is `2*duty - 1` of its amplitude, and it is included,
+which is right - it is DC); and a field carrying two frequencies is averaged over the faster one's
+period, so the slower drive's contribution is not its cycle mean unless its amplitude is zero (the
+linear ion trap's resonance-excitation drive is declared at zero amplitude, so its mean is exact).
+
+**Composed in the command layer, rasterized in `Einzel.Render`**, the split `render still` makes:
+the mesh, its colors, the plateaus, the edge curtains, the camera and the scale are
+`SurfaceCommand.Compose` and its neighbours, and `Rasterizer` is handed triangles and lines. Two
+small capabilities were added to the rasterizer for it, both general: a mesh may carry a color per
+vertex, interpolated across each triangle, and a layer may carry a depth bias, so a wire mesh lying
+on its own surface survives the depth test against it while lines on the far side of a hill are
+hidden. The surface has its own camera (`SurfaceCommand.Views`) and its own softer light: the
+viewport's quarter of ambient light painted dark bands across every slope that faced sideways to
+the lamp, which read as a feature of the potential. The stroke font gained the letters the scale
+needs (`V`, `eV`, signs, `t=`, `s`, `cycle mean`). `--csv` writes the sampled grid, one row per node
+with the conductor named, so a number read off the picture can be read off the data instead.
+
+**What drawing it found.** The shared `Framing` with a positive elevation puts the camera
+*below* the plane - a point higher in y is farther from it. For closed conductors in the viewport
+that is invisible; for a height field it hid every hill behind the surface and showed the pits as
+plateaus, which is how it was noticed. The surface's views use a negative elevation; whether the
+viewport's iso is meant to look from below is not settled here.
+
+**Not built.** The view in the interactive window - the composition is a list of `PictureLayer`s
+and the window already uploads those, so it is a matter of the shell taking per-vertex colors and
+the depth bias and adding a mode; nothing in `src/Einzel.Shell` was touched. Arbitrary planes
+(only the three coordinate planes, at an offset). Free camera angles (only the named views). A
+color key beyond the bar.
+
 ## Not built
 
 - **Filled density bands, and a color scale.** Contour lines carry the levels in the

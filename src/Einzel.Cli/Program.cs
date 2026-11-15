@@ -1725,6 +1725,11 @@ public static class Program
             return Animation(options);
         }
 
+        if (kind is "surface")
+        {
+            return Surface(options);
+        }
+
         var positional = kind is null ? options.Positional : options.Positional.Skip(1).ToList();
 
         if (kind is not (null or "section") || positional.Count == 0)
@@ -1927,9 +1932,214 @@ public static class Program
         return (int)ExitCode.Success;
     }
 
-    /// <summary>
-    /// Draws a flight as a numbered sequence of vector frames (RND-7).
-    /// </summary>
+    /// <summary>The usage of <c>einzel render surface</c>.</summary>
+    private const string SurfaceUsage =
+        """
+        usage: einzel render surface <model.json> [--plane xy|xz|yz] [--offset-mm d]
+               [--box-mm a0,b0,a1,b1] [--samples N] [--mesh-lines N]
+               [--height potential|energy] [--relief F] [--height-mm-per-v X | --height-mm-per-ev X]
+               [--at-us t] [--cycle-mean] [--view iso|side|front|top]
+               [--width-px N] [--height-px N] [--out <file.png>] [--csv <file>] [--no-scale] [--dry-run] [--json]
+        draws the potential on a plane as height above it (SIMION's potential-energy view)
+          --plane        the plane; a cross-section or axisymmetric model defaults to its own (xy),
+                         a volume to the plane through its middle normal to its thinnest side
+          --box-mm       the rectangle sampled, in the plane's own axis order (for xz: x0,z0,x1,z1)
+          --height       potential (volts, the default) or energy: q*phi for the model's ion, in eV
+          --relief       the drawn height of the whole range as a fraction of the longer side (0.35)
+          --at-us        the instant to draw a driven or sequenced field at
+          --cycle-mean   the potential averaged over one drive cycle: for a sinusoidal drive, the DC
+          --csv          also write the sampled values, one row per node
+
+        """;
+
+    /// <summary>Draws a model's potential on a plane as a height field, to a PNG.</summary>
+    /// <remarks>
+    /// Every number carries its unit in the flag's name, as <c>probe</c> does; the height scale
+    /// is in the PNG's text, in <c>--json</c>, and on the picture.
+    /// </remarks>
+    private static int Surface(CommandLine options)
+    {
+        var positional = options.Positional.Skip(1).ToList();
+
+        if (positional.Count == 0)
+        {
+            Console.Error.Write(SurfaceUsage);
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        foreach (var bare in new[] { "offset", "box", "at", "height-mm" })
+        {
+            if (options.Has(bare))
+            {
+                Console.Error.WriteLine($"--{bare} has no unit; see the usage for the spelling with the unit in its name.");
+                Console.Error.Write(SurfaceUsage);
+                return (int)ExitCode.ValidationFailure;
+            }
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        bool Number(string flag, out double? value)
+        {
+            value = null;
+
+            if (options.Value(flag) is not { } text)
+            {
+                return true;
+            }
+
+            if (double.TryParse(text, NumberStyles.Float, invariant, out var parsed))
+            {
+                value = parsed;
+                return true;
+            }
+
+            Console.Error.WriteLine($"--{flag} takes a number, and '{text}' is not one.");
+            return false;
+        }
+
+        bool Whole(string flag, int otherwise, out int value)
+        {
+            value = otherwise;
+
+            if (options.Value(flag) is not { } text)
+            {
+                return true;
+            }
+
+            if (int.TryParse(text, NumberStyles.None, invariant, out value))
+            {
+                return true;
+            }
+
+            Console.Error.WriteLine($"--{flag} takes a whole number, and '{text}' is not one.");
+            return false;
+        }
+
+        if (!Number("offset-mm", out var offset) || !Number("relief", out var relief)
+            || !Number("height-mm-per-v", out var perVolt) || !Number("height-mm-per-ev", out var perEv)
+            || !Number("at-us", out var at)
+            || !Whole("samples", SurfaceCommand.DefaultSamples, out var samples)
+            || !Whole("mesh-lines", SurfaceCommand.DefaultMeshLines, out var meshLines)
+            || !Whole("width-px", 1600, out var width) || !Whole("height-px", 1000, out var height))
+        {
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        // Spelled as a lookup rather than a switch on string literals: `HelpCoversEveryVerbTests`
+        // reads the verbs out of this file's switch arms, and a flag's values are not verbs.
+        var heightNames = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["potential"] = SurfaceHeight.Potential,
+            ["energy"] = SurfaceHeight.Energy,
+            [SurfaceHeight.Energy] = SurfaceHeight.Energy,
+        };
+        var heightGiven = options.Value("height") ?? "potential";
+        var heightKind = heightNames.GetValueOrDefault(heightGiven, heightGiven);
+
+        if (heightKind is not (SurfaceHeight.Potential or SurfaceHeight.Energy))
+        {
+            Console.Error.WriteLine($"--height is potential or energy; got '{heightKind}'.");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        // The unit of an explicit scale must match what the height is, or it is the ambiguity
+        // a unit in the flag's name exists to prevent.
+        if ((perVolt is not null && heightKind == SurfaceHeight.Energy)
+            || (perEv is not null && heightKind == SurfaceHeight.Potential))
+        {
+            Console.Error.WriteLine(
+                "--height-mm-per-v goes with --height potential and --height-mm-per-ev with --height energy.");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        IReadOnlyList<double>? box = null;
+
+        if (options.Value("box-mm") is { } boxText)
+        {
+            var parts = boxText.Split(',');
+            var numbers = new double[parts.Length];
+
+            if (parts.Length != 4
+                || !parts.Select((p, i) => double.TryParse(p, NumberStyles.Float, invariant, out numbers[i])).All(ok => ok))
+            {
+                Console.Error.WriteLine("--box-mm takes four numbers, a0,b0,a1,b1, in millimetres in the plane's own axis order (no spaces).");
+                return (int)ExitCode.ValidationFailure;
+            }
+
+            box = numbers;
+        }
+
+        var view = options.Value("view") ?? "iso";
+
+        if (!SurfaceCommand.Views.ContainsKey(view))
+        {
+            Console.Error.WriteLine($"no view named '{view}'; the named views are {string.Join(", ", SurfaceCommand.Views.Keys)}");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        if (width is < 16 or > 8192 || height is < 16 or > 8192)
+        {
+            Console.Error.WriteLine("a surface picture is between 16 and 8192 pixels on each side");
+            return (int)ExitCode.ValidationFailure;
+        }
+
+        var request = new SurfaceRequest(
+            options.Value("plane"),
+            offset,
+            box,
+            samples,
+            meshLines,
+            heightKind,
+            relief ?? SurfaceCommand.DefaultRelief,
+            perVolt ?? perEv,
+            at,
+            options.Has("cycle-mean"));
+
+        var modelPath = positional[0];
+        var root = options.Value("project") ?? InferProjectRoot(modelPath);
+
+        var outcome = SurfaceCommand.Execute(
+            modelPath,
+            new ProjectLayout(root),
+            request,
+            view,
+            width,
+            height,
+            options.Value("out"),
+            options.Has("dry-run"),
+            scale: !options.Has("no-scale"),
+            csvPath: options.Value("csv"));
+
+        if (options.Has("json"))
+        {
+            return Emit(outcome);
+        }
+
+        Console.Out.WriteLine(outcome.Written ? $"wrote {outcome.Artifact}" : $"would write {outcome.Artifact}");
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"{outcome.Height} on the {outcome.Plane} plane at {outcome.OffsetMm:G6} mm: {outcome.AcrossAxis} {outcome.AcrossMm[0]:G6} to {outcome.AcrossMm[1]:G6} mm across, {outcome.DeepAxis} {outcome.DeepMm[0]:G6} to {outcome.DeepMm[1]:G6} mm deep, {outcome.Samples[0]} by {outcome.Samples[1]} samples"));
+        var when = outcome.CycleMean
+            ? string.Create(invariant, $"; cycle mean over {outcome.CycleMeanWindowUs:G6} us")
+            : outcome.InstantUs is { } t ? string.Create(invariant, $"; at t = {t:G6} us") : string.Empty;
+        Console.Out.WriteLine(string.Create(
+            invariant,
+            $"height {outcome.HeightMmPerUnit:G4} mm per {outcome.Unit} ({outcome.UnitsPerMm:G4} {outcome.Unit} per drawn mm); values {outcome.Lowest:G6} to {outcome.Highest:G6} {outcome.Unit}{when}"));
+
+        foreach (var plateau in outcome.Plateaus)
+        {
+            Console.Out.WriteLine(string.Create(
+                invariant, $"  plateau {plateau.Conductor}: {plateau.PotentialV:G6} V ({plateau.Samples} samples)"));
+        }
+
+        foreach (var warning in outcome.Warnings)
+        {
+            Console.Error.WriteLine($"[{warning.Severity}] {warning.Code}: {warning.Message}");
+        }
+
+        return (int)ExitCode.Success;
+    }
 
     /// <summary>
     /// Draws a flight as a numbered sequence of vector frames (RND-7).
@@ -2992,6 +3202,7 @@ public static class Program
           compare <model.json>          run both transport modes and report the disagreement
           render section <model.json>   draw a plane through the instrument as SVG or PDF
           render animation <spec.json>  frames on a declared playback mapping (RND-7)
+          render surface <model.json>   the potential on a plane drawn as height, as a PNG
           ext list | test | register    the extension authoring loop
           agents-md [dir]               regenerate the platform layer of AGENTS.md
 

@@ -202,6 +202,9 @@ public sealed class FieldProbe
     /// <summary>The model, as an absolute path.</summary>
     public string ModelPath { get; }
 
+    /// <summary>The validated model the field was assembled from.</summary>
+    public CompiledModel Model => _model;
+
     /// <summary>The content hash of the model text this probe was built from (PRJ-3).</summary>
     /// <remarks>
     /// Taken from the text that was validated and assembled, not from a second read of the file,
@@ -319,7 +322,51 @@ public sealed class FieldProbe
     /// <param name="positionMm">Where, in millimetres.</param>
     /// <param name="atSeconds">The instant, used only by a time-varying field.</param>
     /// <returns>The sample; a refused point is a row with status refused, never an exception.</returns>
-    public ProbeSample At(int index, Vec3 positionMm, double atSeconds)
+    public ProbeSample At(int index, Vec3 positionMm, double atSeconds) =>
+        At(index, positionMm, atSeconds, cycleMean: false);
+
+    /// <summary>
+    /// Whether the field has time dependence besides its oscillation - a sequence of phases, or a
+    /// ramp - so that even its cycle mean depends on the instant.
+    /// </summary>
+    public bool HasOperatingPoints =>
+        _field is ITimeVaryingField driven
+        && (!ReferenceEquals(driven.AtOperatingPoint(0.0), driven)
+            || double.IsFinite(driven.NextSwitchAfter(0.0)));
+
+    /// <summary>
+    /// The window a cycle mean is taken over, in seconds: one period of the fastest drive; absent
+    /// for a static field.
+    /// </summary>
+    public double? CycleMeanWindowSeconds =>
+        _field is ITimeVaryingField driven && double.IsFinite(driven.ShortestPeriodSeconds)
+            ? driven.ShortestPeriodSeconds
+            : null;
+
+    /// <summary>Whether the field oscillates at one frequency, so one period is its whole cycle.</summary>
+    public bool Monochromatic =>
+        _field is ITimeVaryingField driven
+        && (double.IsFinite(driven.MonochromaticPeriodSeconds)
+            || double.IsPositiveInfinity(driven.MonochromaticPeriodSeconds));
+
+    /// <summary>How many instants a cycle mean samples where it cannot be taken in closed form.</summary>
+    public const int CycleMeanSamples = 64;
+
+    /// <summary>Evaluates the field at a point, optionally as its mean over one drive cycle.</summary>
+    /// <param name="index">The row number.</param>
+    /// <param name="positionMm">Where, in millimetres.</param>
+    /// <param name="atSeconds">
+    /// The instant; for a cycle mean, the operating point the mean is taken at and the opening of
+    /// its window.
+    /// </param>
+    /// <param name="cycleMean">
+    /// Whether to report the potential averaged over one period of the fastest drive, held at the
+    /// operating point <paramref name="atSeconds"/> - for a sinusoidal drive, exactly the part of
+    /// the potential that does not oscillate. The field vector is then absent: what a mean
+    /// potential's gradient would be is not what this method measures.
+    /// </param>
+    /// <returns>The sample; a refused point is a row with status refused, never an exception.</returns>
+    public ProbeSample At(int index, Vec3 positionMm, double atSeconds, bool cycleMean)
     {
         var point = new Vec3(positionMm.X * MetresPerMm, positionMm.Y * MetresPerMm, positionMm.Z * MetresPerMm);
         var position = new[] { positionMm.X, positionMm.Y, positionMm.Z };
@@ -334,7 +381,9 @@ public sealed class FieldProbe
             }
         }
 
-        var status = SampleCore(in point, atSeconds, outside.Count, out var potential, out var field, out var distance, out var note);
+        var status = SampleCore(
+            in point, atSeconds, cycleMean, outside.Count,
+            out var potential, out var field, out var distance, out var note, out var averaged);
 
         if (status == ProbeStatus.Refused)
         {
@@ -342,6 +391,14 @@ public sealed class FieldProbe
         }
 
         string? conductor = distance is not null ? _bounded!.ConductorAt(in point) : null;
+
+        if (averaged)
+        {
+            return new ProbeSample(
+                index, position, potential, null, null, status, conductor, distance * 1e3, outside,
+                "cycle mean: potential only");
+        }
+
         var magnitude = Math.Sqrt((field.X * field.X) + (field.Y * field.Y) + (field.Z * field.Z));
 
         return new ProbeSample(
@@ -395,7 +452,7 @@ public sealed class FieldProbe
     /// <param name="atSeconds">The instant, used only by a time-varying field.</param>
     /// <param name="potential">The potential in volts; NaN where the point was refused.</param>
     /// <param name="field">The electric field in volts per metre; NaN components where refused.</param>
-    /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At"/> gives.</returns>
+    /// <returns>One of the <see cref="ProbeStatus"/> values, the same one <see cref="At(int, Vec3, double)"/> gives.</returns>
     public string Sample(in Vec3 pointMetres, double atSeconds, out double potential, out Vec3 field)
     {
         var outsideCount = 0;
@@ -408,7 +465,9 @@ public sealed class FieldProbe
             }
         }
 
-        var status = SampleCore(in pointMetres, atSeconds, outsideCount, out potential, out field, out _, out _);
+        var status = SampleCore(
+            in pointMetres, atSeconds, cycleMean: false, outsideCount,
+            out potential, out field, out _, out _, out _);
 
         if (status == ProbeStatus.Refused)
         {
@@ -422,18 +481,28 @@ public sealed class FieldProbe
     private string SampleCore(
         in Vec3 point,
         double atSeconds,
+        bool cycleMean,
         int outsideCount,
         out double potential,
         out Vec3 field,
         out double? distance,
-        out string? note)
+        out string? note,
+        out bool averaged)
     {
         distance = null;
         note = null;
+        averaged = false;
 
         try
         {
-            if (_driven is not null)
+            if (cycleMean && _driven is not null && CycleMeanWindowSeconds is { } window)
+            {
+                var held = Held(_driven, atSeconds);
+                potential = held.CycleMeanPotentialAt(in point, atSeconds, window, CycleMeanSamples);
+                field = default;
+                averaged = true;
+            }
+            else if (_driven is not null)
             {
                 potential = _driven.PotentialAt(in point, atSeconds);
                 field = _driven.ElectricFieldAt(in point, atSeconds);
@@ -486,6 +555,22 @@ public sealed class FieldProbe
 
         return status;
     }
+
+    private ITimeVaryingField Held(ITimeVaryingField driven, double atSeconds)
+    {
+        // One held field per instant, not per point: a sequenced geometry allocates a held copy.
+        if (_held is { } cached && cached.At == atSeconds)
+        {
+            return cached.Field;
+        }
+
+        var held = driven.AtOperatingPoint(atSeconds);
+        _held = (atSeconds, held);
+
+        return held;
+    }
+
+    private (double At, ITimeVaryingField Field)? _held;
 
     /// <summary>The warning a time-varying field earns when no instant was asked for.</summary>
     /// <param name="requested">The instant asked for, in microseconds, or absent.</param>

@@ -215,12 +215,13 @@ public static class StillCommand
     /// two record types exist separately only because <c>Einzel.Render</c> may not reference
     /// the command layer.
     /// </remarks>
-    private static RasterLayer Raster(PictureLayer layer) =>
+    internal static RasterLayer Raster(PictureLayer layer) =>
         new(
-            [.. layer.Meshes.Select(m => new RasterMesh(m.VerticesMm, m.Normals, m.Triangles, m.R, m.G, m.B))],
+            [.. layer.Meshes.Select(m => new RasterMesh(m.VerticesMm, m.Normals, m.Triangles, m.R, m.G, m.B, m.Colors))],
             [.. layer.Lines.Select(l => new RasterLine(l.PointsMm, l.R, l.G, l.B))],
             layer.Alpha,
-            layer.WritesDepth);
+            layer.WritesDepth,
+            layer.DepthBias);
 
     /// <summary>A scale indicator, as the rasterizer draws it: strokes in pixels.</summary>
     /// <remarks>
