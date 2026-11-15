@@ -49,6 +49,243 @@ public sealed record ExportOutcome
 /// </remarks>
 public static class ExportCommand
 {
+    /// <summary>The most nodes a sampled export may write.</summary>
+    public const long MaximumSampledNodes = 8_000_000;
+
+    /// <summary>Exports the composite field an ion sees, sampled on a regular grid.</summary>
+    /// <param name="modelPath">Path to the model file.</param>
+    /// <param name="project">Where artifacts belong.</param>
+    /// <param name="boxMinMm">One corner of the box, in millimetres, or null for the solve domains' union.</param>
+    /// <param name="boxMaxMm">The opposite corner, or null.</param>
+    /// <param name="stepMm">The node spacing in millimetres, or null for a 64th of the longest side.</param>
+    /// <param name="atUs">The instant, in microseconds, for a driven or sequenced field.</param>
+    /// <param name="dryRun">Report what would be written and write nothing (CLI-4).</param>
+    /// <returns>The outcome.</returns>
+    /// <exception cref="EinzelException">
+    /// The model does not validate, no box was given where none can be inferred, or the grid is
+    /// too large.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>The field a run flies through, not the per-channel solve.</b> The ordinary export writes
+    /// each solved element's nodal potential, which for a driven or sequenced geometry is one
+    /// pattern per channel with no instant and for a superposed model is one element at a time.
+    /// What a designer asks about is the sum, at an instant, with its electric field - so this
+    /// samples <see cref="FieldProbe"/>, the same assembly a run uses, and writes the potential
+    /// and the field vector together.
+    /// </para>
+    /// <para>
+    /// A sampled export is a resampling: nodes are where the box puts them, not where the solves
+    /// put theirs, and a step coarser than a solve's cell loses what the solve resolved. The
+    /// header says so, with each element's cell size.
+    /// </para>
+    /// </remarks>
+    public static ExportOutcome Composite(
+        string modelPath,
+        ProjectLayout project,
+        Core.Geometry.Vec3? boxMinMm = null,
+        Core.Geometry.Vec3? boxMaxMm = null,
+        double? stepMm = null,
+        double? atUs = null,
+        bool dryRun = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelPath);
+        ArgumentNullException.ThrowIfNull(project);
+
+        var absolute = Path.GetFullPath(modelPath);
+        var text = File.ReadAllText(absolute);
+        var probe = FieldProbe.Open(absolute);
+
+        Core.Geometry.Vec3 min;
+        Core.Geometry.Vec3 max;
+
+        if (boxMinMm is { } given0 && boxMaxMm is { } given1)
+        {
+            (min, max) = (given0, given1);
+        }
+        else if (probe.DomainMm() is { } domain)
+        {
+            (min, max) = domain;
+        }
+        else
+        {
+            throw Refuse(
+                "/box",
+                "this model has no solved domain to take a box from",
+                "give --box-mm x0,y0,z0,x1,y1,z1, the two corners of the region to sample, in millimetres");
+        }
+
+        double[] low = [Math.Min(min.X, max.X), Math.Min(min.Y, max.Y), Math.Min(min.Z, max.Z)];
+        double[] high = [Math.Max(min.X, max.X), Math.Max(min.Y, max.Y), Math.Max(min.Z, max.Z)];
+        var longest = Math.Max(high[0] - low[0], Math.Max(high[1] - low[1], high[2] - low[2]));
+
+        if (!double.IsFinite(longest) || longest <= 0.0)
+        {
+            throw Refuse("/box", "the box has no extent", "give two corners that differ along at least one axis");
+        }
+
+        var step = stepMm ?? (longest / 64.0);
+
+        if (!double.IsFinite(step) || step <= 0.0)
+        {
+            throw Refuse(
+                "/step",
+                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"the step must be a positive number of millimetres; got {step}"),
+                "give --step-mm greater than zero");
+        }
+
+        var counts = new int[3];
+        long nodes = 1;
+
+        for (var axis = 0; axis < 3; axis++)
+        {
+            // Both ends are nodes, and the spacing is then exact rather than the step asked for: a
+            // grid whose far face is not the box's far face would silently sample a smaller box.
+            var intervals = (long)Math.Min(
+                Math.Max(1.0, Math.Round((high[axis] - low[axis]) / step)), MaximumSampledNodes);
+            counts[axis] = (int)(intervals + 1);
+            nodes *= counts[axis];
+
+            if (nodes > MaximumSampledNodes)
+            {
+                throw Refuse(
+                    "/step",
+                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"this box and step need more than {MaximumSampledNodes:N0} nodes"),
+                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"raise --step-mm; {longest / 64.0:G3} mm gives at most 65 nodes along the longest side"));
+            }
+        }
+
+        var spacing = new double[3];
+
+        for (var axis = 0; axis < 3; axis++)
+        {
+            spacing[axis] = counts[axis] > 1 ? (high[axis] - low[axis]) / (counts[axis] - 1) : 0.0;
+        }
+
+        var potential = new double[nodes];
+        var field = new double[3 * nodes];
+        var at = (atUs ?? 0.0) * 1e-6;
+        long refused = 0;
+        long outside = 0;
+        long inside = 0;
+        var n = 0L;
+
+        for (var k = 0; k < counts[2]; k++)
+        {
+            for (var j = 0; j < counts[1]; j++)
+            {
+                for (var i = 0; i < counts[0]; i++)
+                {
+                    // The last node is the box's own face exactly, not low + (count-1) * spacing,
+                    // which can land an ulp short.
+                    var sample = probe.At(
+                        0,
+                        new Core.Geometry.Vec3(
+                            i == counts[0] - 1 ? high[0] : low[0] + (i * spacing[0]),
+                            j == counts[1] - 1 ? high[1] : low[1] + (j * spacing[1]),
+                            k == counts[2] - 1 ? high[2] : low[2] + (k * spacing[2])),
+                        at);
+
+                    if (sample.PotentialV is { } phi && sample.FieldVPerM is { } e)
+                    {
+                        potential[n] = phi;
+                        field[3 * n] = e[0];
+                        field[(3 * n) + 1] = e[1];
+                        field[(3 * n) + 2] = e[2];
+                    }
+                    else
+                    {
+                        potential[n] = double.NaN;
+                        field[3 * n] = field[(3 * n) + 1] = field[(3 * n) + 2] = double.NaN;
+                        refused++;
+                    }
+
+                    outside += sample.Status == ProbeStatus.OutsideDomain ? 1 : 0;
+                    inside += sample.Status == ProbeStatus.InsideConductor ? 1 : 0;
+                    n++;
+                }
+            }
+        }
+
+        var warnings = new List<ValidityWarning>(probe.Warnings);
+        warnings.AddRange(probe.InstantWarnings(atUs));
+
+        void Count(long count, string code, string message)
+        {
+            if (count > 0)
+            {
+                warnings.Add(new ValidityWarning(
+                    code,
+                    string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{count:N0} of {nodes:N0} node(s) {message}"),
+                    WarningSeverity.Qualified));
+            }
+        }
+
+        Count(inside, "probe.inside-conductor", "are inside a conductor, where the field is the interpolant's and not a physical one");
+        Count(outside, "probe.outside-domain", "lie outside every element's declared domain, where zero is the model's answer and not a measurement");
+        Count(refused, "probe.refused", "were refused by the field and are written as NaN");
+
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        var stem = Path.GetFileNameWithoutExtension(absolute);
+        var target = Path.Combine(project.Scratch, $"{stem}.composite.vti");
+
+        if (!dryRun)
+        {
+            var elements = string.Join(
+                ", ",
+                probe.Elements.Select(e => string.Create(
+                    invariant,
+                    $"element {e.Index} {e.Kind} ({e.Basis}{(e.CellMm is { } c ? $", cell {c:G4} mm" : string.Empty)})")));
+
+            var provenance = new List<string>
+            {
+                $"engine: {EngineBuild.Version}",
+                $"model: {ContentHash.OfText(text)}",
+                "the composite field a run flies through (every element summed), sampled on a regular grid",
+                string.Create(
+                    invariant,
+                    $"box: ({low[0]:G8}, {low[1]:G8}, {low[2]:G8}) to ({high[0]:G8}, {high[1]:G8}, {high[2]:G8}) mm; "
+                    + $"{counts[0]} x {counts[1]} x {counts[2]} nodes at ({spacing[0]:G6}, {spacing[1]:G6}, {spacing[2]:G6}) mm"),
+                probe.TimeVarying
+                    ? string.Create(invariant, $"instant: t = {atUs ?? 0.0:G8} us (the field varies with time; this file is one frame of it)")
+                    : "instant: none - the field does not vary with time",
+                "units: potential_V in volts, E_V_per_m in volts per metre (E = -grad phi); the grid itself is in metres",
+                "resampled: nodes are where this box puts them, not where the solves put theirs; " + elements,
+            };
+
+            provenance.AddRange(warnings.Select(w => $"{w.Severity}: {w.Code}: {w.Message}"));
+
+            Directory.CreateDirectory(project.Scratch);
+            File.WriteAllText(
+                target,
+                Io.VtuWriter.WriteSampledField(
+                    counts,
+                    [low[0] * 1e-3, low[1] * 1e-3, low[2] * 1e-3],
+                    [spacing[0] * 1e-3, spacing[1] * 1e-3, spacing[2] * 1e-3],
+                    potential,
+                    field,
+                    provenance));
+        }
+
+        return new ExportOutcome
+        {
+            What = "composite field",
+            Format = "vti",
+            Artifacts = [target],
+            Written = !dryRun,
+            Warnings = warnings,
+        };
+    }
+
+    private static EinzelException Refuse(string path, string constraint, string suggestion) =>
+        new(new EinzelError
+        {
+            Code = ErrorCodes.SchemaInvalid,
+            Path = path,
+            Constraint = constraint,
+            Suggestion = suggestion,
+        });
+
     /// <summary>Exports the conductor surfaces as a Wavefront OBJ mesh.</summary>
     /// <param name="modelPath">Path to the model file.</param>
     /// <param name="project">Where artifacts belong.</param>

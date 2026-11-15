@@ -336,5 +336,93 @@ public static class VtuWriter
         return text.ToString();
     }
 
+    /// <summary>Writes the composite field sampled on a regular grid as VTK ImageData.</summary>
+    /// <param name="counts">Nodes along x, y and z.</param>
+    /// <param name="originMetres">The first node, in metres.</param>
+    /// <param name="spacingMetres">The node spacing along each axis, in metres.</param>
+    /// <param name="potentialVolts">The potential at each node, x fastest, then y, then z.</param>
+    /// <param name="fieldVoltsPerMetre">The field at each node, three components per node, same order.</param>
+    /// <param name="provenance">Provenance lines recorded as an XML comment.</param>
+    /// <returns>The .vti document text.</returns>
+    /// <exception cref="ArgumentException">The arrays do not match the node count.</exception>
+    /// <remarks>
+    /// One scalar array, <c>potential_V</c>, and one vector array, <c>E_V_per_m</c>, so ParaView
+    /// can contour the first and glyph or stream-trace the second. A node the field refused is
+    /// written as NaN rather than zero: zero is a real potential, and the header counts them.
+    /// </remarks>
+    public static string WriteSampledField(
+        IReadOnlyList<int> counts,
+        IReadOnlyList<double> originMetres,
+        IReadOnlyList<double> spacingMetres,
+        IReadOnlyList<double> potentialVolts,
+        IReadOnlyList<double> fieldVoltsPerMetre,
+        IReadOnlyList<string>? provenance = null)
+    {
+        ArgumentNullException.ThrowIfNull(counts);
+        ArgumentNullException.ThrowIfNull(originMetres);
+        ArgumentNullException.ThrowIfNull(spacingMetres);
+        ArgumentNullException.ThrowIfNull(potentialVolts);
+        ArgumentNullException.ThrowIfNull(fieldVoltsPerMetre);
 
+        var nodes = (long)counts[0] * counts[1] * counts[2];
+
+        if (potentialVolts.Count != nodes || fieldVoltsPerMetre.Count != 3 * nodes)
+        {
+            throw new ArgumentException(
+                $"{nodes} nodes need {nodes} potentials and {3 * nodes} field components; got "
+                + $"{potentialVolts.Count} and {fieldVoltsPerMetre.Count}",
+                nameof(potentialVolts));
+        }
+
+        var invariant = CultureInfo.InvariantCulture;
+        var text = new StringBuilder((int)Math.Min(nodes * 80L, 1 << 28));
+
+        text.Append("<?xml version=\"1.0\"?>\n");
+
+        if (provenance is { Count: > 0 })
+        {
+            text.Append("<!--\n");
+
+            foreach (var line in provenance)
+            {
+                text.Append("  ").Append(line.Replace("--", "- -", StringComparison.Ordinal)).Append('\n');
+            }
+
+            text.Append("-->\n");
+        }
+
+        var extent = $"0 {counts[0] - 1} 0 {counts[1] - 1} 0 {counts[2] - 1}";
+        var origin = string.Create(invariant, $"{originMetres[0]:G17} {originMetres[1]:G17} {originMetres[2]:G17}");
+        var spacing = string.Create(invariant, $"{spacingMetres[0]:G17} {spacingMetres[1]:G17} {spacingMetres[2]:G17}");
+
+        text.Append("<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">\n");
+        text.Append(invariant, $"  <ImageData WholeExtent=\"{extent}\" Origin=\"{origin}\" Spacing=\"{spacing}\">\n");
+        text.Append(invariant, $"    <Piece Extent=\"{extent}\">\n");
+        text.Append("      <PointData Scalars=\"potential_V\" Vectors=\"E_V_per_m\">\n");
+        text.Append("        <DataArray type=\"Float64\" Name=\"potential_V\" format=\"ascii\">\n");
+
+        for (var n = 0; n < potentialVolts.Count; n++)
+        {
+            text.Append(n % counts[0] == 0 ? "          " : string.Empty);
+            text.Append(invariant, $"{potentialVolts[n]:G17} ");
+            text.Append(n % counts[0] == counts[0] - 1 ? "\n" : string.Empty);
+        }
+
+        text.Append("        </DataArray>\n");
+        text.Append("        <DataArray type=\"Float64\" Name=\"E_V_per_m\" NumberOfComponents=\"3\" format=\"ascii\">\n");
+
+        for (var n = 0; n < potentialVolts.Count; n++)
+        {
+            text.Append(invariant, $"          {fieldVoltsPerMetre[3 * n]:G17} {fieldVoltsPerMetre[(3 * n) + 1]:G17} {fieldVoltsPerMetre[(3 * n) + 2]:G17}\n");
+        }
+
+        text.Append("        </DataArray>\n");
+        text.Append("      </PointData>\n");
+        text.Append("      <CellData/>\n");
+        text.Append("    </Piece>\n");
+        text.Append("  </ImageData>\n");
+        text.Append("</VTKFile>\n");
+
+        return text.ToString();
+    }
 }

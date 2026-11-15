@@ -93,6 +93,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel project [dir]` | What the project holds (models, studies, figures, tests, extensions) and the state of each model (see below) |
 | `einzel estimate <model.json\|study.json>` | What a run or a whole study will cost, before starting it (GRD-8) |
 | `einzel solve <model.json>` | Solve the fields only, and report how they went |
+| `einzel probe <model.json> --at-mm x,y,z` | The potential and electric field at a point, or along a line (`--line-mm ... --to-mm ... --samples N`), of the composite field a run flies through |
 | `einzel run <model.json>` | Run; writes a manifest and a result. Reports the ensemble too when the model declares a source cloud, and says where it has got to every 30 s (`--progress`) |
 | `einzel sweep <study.json>` | Tolerance Monte Carlo, and which parameter binds first |
 | `einzel scan <study.json>` | One parameter across a range: one row per point, and a curve |
@@ -103,7 +104,7 @@ without descriptions, and says so in its own `$comment`. `doctor` reports it too
 | `einzel verify [dir]` | Are the stored results still the answer? (GRD-10) |
 | `einzel report [dir]` | An account of what has been run, as one self-contained page (Amendment 43) |
 | `einzel compare <model.json> [--ions N]` | Run both transport modes on the same model and report where they disagree (REG-3) |
-| `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView |
+| `einzel export <model.json>` | Write the solved field as VTK ImageData for ParaView; `--composite` writes the summed field and E at one instant on a grid |
 | `einzel render section <model.json \| spec.json>` | Draw a plane through the instrument as line work |
 | `einzel render still <model.json>` | Draw the viewport's shaded 3D picture to a PNG, headlessly - the same composition and camera the window uses |
 | `einzel render animation <spec.json>` | Draw a flight as numbered vector frames on the spec's declared time mapping (RND-7) |
@@ -776,6 +777,58 @@ which the rasterizer multiplies the profile by. So `solve` reported a mirror wit
 boards, converged, with a peak of 4800 V - the cap's, which looks right. Found while
 moving `export` onto the same function, which every static template had to survive
 unchanged: the mirror pair would not have.
+
+### `einzel probe`: what is the potential, what is E, here
+
+```
+einzel probe <model.json> --at-mm x,y,z [--at-us <t>] [--json]
+einzel probe <model.json> --line-mm x,y,z --to-mm x,y,z [--samples N] [--at-us <t>] [--csv <file>]
+```
+
+Axial potential profiles are what ion-optics designers live on, and until this verb there was no way to
+ask the engine for one. The probe reads **the field a run flies through**: it is built by
+`FieldAssembly.BuildReported`, the assembly every run uses, so superposed elements, regions, mirrors,
+tilts and the axisymmetric mapping are all honoured and the assembly's warnings (an unconverged solve,
+`mesh.node-on-shared-face`, a region's potential step) come out on the probe as they do on a run.
+
+- **Units are in the flag's name**, as `--width-mm` and `--at-us` already do it: `--at-mm`, `--line-mm`,
+  `--to-mm` are millimetres, `--at-us` is microseconds. A bare `--at` is refused by name rather than read
+  in some default unit. A line is `--samples` points (default 21, at least 2) with **both ends exactly the
+  points asked for**.
+- **Every number carries its unit in its name**: `potentialV`, `fieldVPerM`, `positionMm`. `--csv` writes
+  the same table with the unit in each column.
+- **A driven or sequenced field has no single value, so it has an instant.** The probe reads it through the
+  time-varying interface at `--at-us`, states the instant in the output (`instantUs`, and `field at
+  t = ... us` above the table), and when none was given it evaluates at t = 0 and says so with the
+  `probe.field-at-instant` warning. Reading such a field through the static interface instead would answer
+  at t = 0 without saying so, the defect `docs/lessons.md` records under "time-free interface".
+- **Each row says what kind of point it is.** `status` is `ok`; `inside-conductor` (with the conductor's
+  name and the signed distance in `conductorDistanceMm`: the potential there is the electrode's and the
+  field is the interpolant's, not a physical field); `outside-domain` (outside the declared domain of every
+  element - a solve's box, a region - so zero is the model's answer and not a measurement); or `refused`
+  (the field declines the point, for example the quadro-logarithmic field's singular axis). A refused point
+  is a row with a note, never a failure of the profile. Warnings summarise the counts
+  (`probe.inside-conductor`, `probe.outside-domain`, `probe.refused`).
+- **GRD-1, and why there is no interval.** A probed potential is an evaluation of a field already computed,
+  not a measurement with an ensemble of its own, so the outcome carries no uncertainty and says why
+  (`evidence`): an analytic element is exact to arithmetic, a solved element's error is its discretisation,
+  stated by each element's `cellMm` and by the warnings. An interval invented here would claim a precision
+  nothing measured.
+
+**Not checked: the domain of a mirrored or tilted solve.** `outside-domain` is decided from a solve's
+declared box, and is not decided for a `reflectAboutX` or tilted element (which count as covering the
+point), so a point beyond such a solve's far side may read `ok` with zero field.
+
+### `einzel export --composite`
+
+`export` writes each solved element's nodal potential, and for a driven geometry one *pattern* per channel -
+no instant, no field, one element at a time. `--composite [--box-mm x0,y0,z0,x1,y1,z1] [--step-mm s]
+[--at-us t]` samples the **summed** field with the probe and writes one `<model>.composite.vti` carrying
+`potential_V` and the vector `E_V_per_m`, with the instant, the grid, each element's cell size and every
+warning in the header. The default box is the union of the solve domains (a model with none needs
+`--box-mm`), the default step a 64th of its longest side, and the box's far faces are nodes exactly. It is a
+resampling: a step coarser than a solve's cell loses what the solve resolved. A node the field refused is
+written as NaN, never zero.
 
 ### Why `export` writes ImageData
 
