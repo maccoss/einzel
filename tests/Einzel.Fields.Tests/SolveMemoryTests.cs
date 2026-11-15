@@ -99,7 +99,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveWithNoCoarseLevelIsChargedItsBottomScratch()
     {
-        var (predicted, measured, levels) = DirectSlope(
+        var (predicted, measured, levels, _, _) = DirectSlope(
             length => Ball(length, radius: 0.0016, cell: 0.001), 0.016, 0.032, cycles: 1, source: false);
 
         Assert.Equal(0, levels);
@@ -115,7 +115,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveOneLevelDeepHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, levels) = DirectSlope(
+        var (predicted, measured, levels, _, _) = DirectSlope(
             length => Ball(length, radius: 0.0015, cell: 0.0005), 0.016, 0.032, cycles: 2, source: false);
 
         Assert.Equal(1, levels);
@@ -139,7 +139,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     [Fact]
     public void ARediscretizedSolveOnAThinGridHoldsWhatItsStatementSays()
     {
-        var (predicted, measured, levels) = DirectSlope(
+        var (predicted, measured, levels, largePredicted, largeMeasured) = DirectSlope(
             length => new Geometry3D(0.0, -0.004, -0.004, length, 0.004, 0.004, 0.001, []),
             4.096, 8.192, cycles: 2, source: true);
 
@@ -147,12 +147,16 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.InRange(measured / predicted, 0.90, 1.02);
 
         // And to a tenth of a byte, which this geometry can be held to: a grid with no conductor
-        // has no cut arms to bill and no transient the sampler can miss, so both builds read the
-        // same bytes a node to the hundredth. Charging the masks only down to the level being
-        // restricted onto read 0.30 over.
+        // has no cut arms to bill, and idle both builds read the same bytes a node to the
+        // hundredth. Charging the masks only down to the level being restricted onto read 0.30
+        // over. Asked of the larger build alone rather than of the slope, because a reading can
+        // only miss a peak and read low, and a slope turns a low reading of the smaller build
+        // into a high one: under load the smaller read 43.63 once and the slope 44.12 against a
+        // build that held 43.88. At 663 thousand nodes the build's fixed allocations are under a
+        // hundredth of a byte a node.
         Assert.True(
-            measured <= predicted + 0.15,
-            $"measured {measured:F2} B/node against a prediction of {predicted:F2}: something the cycle holds is not charged");
+            largeMeasured <= largePredicted + 0.15,
+            $"the larger build read {largeMeasured:F2} B/node against a prediction of {largePredicted:F2}: something the cycle holds is not charged");
     }
 
     /// <summary>
@@ -467,7 +471,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
     /// A rediscretized solve, forced, at two sizes of one geometry, against the statement for
     /// the levels the solver says it descends through.
     /// </summary>
-    private (double Predicted, double Measured, int Levels) DirectSlope(
+    private (double Predicted, double Measured, int Levels, double LargePredicted, double LargeMeasured) DirectSlope(
         Func<double, Geometry3D> geometry, double small, double large, int cycles, bool source)
     {
         (double Stated, double Real, long Nodes, int Levels) Plan(Geometry3D g)
@@ -538,7 +542,7 @@ public sealed class SolveMemoryTests(ITestOutputHelper output)
         Assert.Equal(planLarge.Levels, solvedLevels);
         Assert.Equal(planSmall.Levels, planLarge.Levels);
 
-        return (predicted, measured, planLarge.Levels);
+        return (predicted, measured, planLarge.Levels, planLarge.Real / planLarge.Nodes, peakLarge / planLarge.Nodes);
     }
 
     /// <summary>A sphere at the centre of a cube, at one cell size.</summary>
