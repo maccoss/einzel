@@ -36,7 +36,7 @@ element looks like this:
   forwards every `ITimeVaryingField` member (including the defaulted ones), so a
   switched electric field beside a magnet keeps its clock.
 - **The force**, in `DormandPrince54.Derivative`: after the electric field is
-  sampled, `if (field is IMagneticField m) a += v x m.B(x)`, then the one
+  sampled, `if (field is IMagneticField m) a += v x m.B(x, side)` (B on the side of each magnet face the step started on - trap 4), then the one
   multiplication by q/m. Every stage of every step, every landing bisection and every
   conductor or detector landing goes through that function, so they all see B.
 
@@ -49,32 +49,79 @@ element looks like this:
    the box (slab method). So a sector's straight approach and exit are still taken
    as exact drifts (15.000000 mm of the 180 degree example), and nothing inside a
    magnet ever is.
-2. **Step control.** The error estimator sees the force because the force is in the
-   derivative. On top of that a step may span at most **a twentieth of a cyclotron
-   turn** (`2 pi m / (|q| B_max) / 20`, folded into the same cap the RF period uses).
+2. **Step control, decided per step from B where the ion is.** The error estimator
+   sees the force because the force is in the derivative. On top of that a step may
+   span at most **a twentieth of a cyclotron turn**, `2 pi m / (|q| |B(x)|) / 20` with
+   `|B(x)|` the flux density at the start of the step - not a global bound: a bound
+   summed over two disjoint magnets capped every step at the period of a field that
+   exists nowhere, and a small magnet capped every step of a long beamline around it
+   (`ASmallMagnetDoesNotCapTheStepsOfTheBeamlineAroundIt`: 4 steps over the metre
+   with no magnet, 4 with a 1 T magnet beside the path, 7 through a 2 mm one; with the
+   global cap restored that test and `TwoDisjointMagnetsCapEachAtItsOwnPeriod` fail).
    Twenty for the RF reason: it is a guard against an error estimate fooled by a step
    comparable to the period, not what sets accuracy. At 18 degrees a turn the local
    fifth-order error of a circle is about 1e-6 of the radius per step, so at this
    engine's tolerances (1e-8 and tighter) the controller binds and the cap does not:
    the 100-orbit check takes 297 steps a turn at 1e-11. It binds at loose tolerance,
-   where it holds 20.4 steps a turn at a 1e-2 tolerance. `B_max` is an upper bound
-   (the sum of the elements' magnitudes), so the cap is never looser than needed.
-   **The turning-point cap is off in a magnet**: the magnetic force is perpendicular
-   to v, so the cap's "decelerating" test fires on the sign of a round-off, and on an
-   E x B cycloid the ion is at rest once a turn - the RF argument exactly. With the
-   cap left on, the E x B tests fail.
+   where it holds 20.4 steps a turn at a 1e-2 tolerance.
+   **The turning-point cap is off where B at the ion is non-zero**: the magnetic force
+   is perpendicular to v, so the cap's "decelerating" test fires on the sign of a
+   round-off, and on an E x B cycloid the ion is at rest once a turn - the RF argument
+   exactly. With the cap left on, the E x B tests fail. It is decided per step, so a
+   magnet with zero flux density, or one the ion never enters, leaves a reflectron's
+   flight **bit-identical with default settings**, step counts included (it used to
+   switch the cap off for the whole flight, and the zero-B check passed only because
+   it switched the cap off on both sides). A bounded magnet with zero flux density
+   reports no face and bounds no drift, so it is as absent as no magnet at all.
 3. **Energy.** B does no work, so the total-energy diagnostic stays meaningful in a
    static magnet: kinetic plus electric potential energy is conserved, and it is what
    the 100-orbit test asserts.
-4. **A bounded magnet's face is a discontinuity in B**, reported through
-   `SignedDistanceToMagneticDiscontinuity` and combined with the electric ones, so the
-   integrator lands on it exactly as on an electric region's face. Measured: the
-   landing engages (2,764 field evaluations against 2,184 without it on the 180
-   degree sector), but it is **not load-bearing at the tolerances tried**: with it
-   removed the exit position still agrees to 1.4e-13 at a 1e-12 tolerance and the
-   same 2.5e-8 at 1e-7, because the embedded error estimate already rejects a step
-   straddling the jump. No test discriminates it; it is kept because it is the
-   mechanism the electric region uses and costs only evaluations.
+4. **A bounded magnet's face is a discontinuity in B, and every stage of a step takes
+   B from one side of it.** The face is reported through
+   `SignedDistanceToMagneticDiscontinuity` and composed with the electric surfaces by
+   `DiscontinuityDistance.Combine` - the nearest's magnitude and **the product of the
+   signs**, the rule `SuperposedField` has always used. (The first version took the
+   sign of whichever surface was nearer, so crossing a mirror plane inside a magnet
+   could leave the composed sign unchanged and skip the landing, and moving between a
+   face the ion is inside and one it is outside flipped it with nothing crossed. A
+   force-free magnet straddling a reflectron's mirror plane gave 1.7e-10 that way; with
+   the product it gives the closed form to 1.7e-16.)
+
+   Every stage of a step evaluates B with the box membership of **the start of the
+   step**, taken a hair ahead along the velocity (`IMagneticField.MagneticFieldAt(x,
+   side)`), so a step that straddles a face integrates one smooth field; the integrator
+   sees the sign change, bisects, lands just past the face and continues with the far
+   side's field. Without this an ion entering or leaving a hard edge had stages with
+   B = 0 and stages with full B, and for an electron at a tesla no step above
+   `MinimumStep` made that error acceptable: the flight ended `StepSizeUnderflow` at the
+   magnet's edge (after 152 steps, 17 rejected, leaving the box after its semicircle;
+   at 0.1 T, 159 steps, 23 rejected). Now it completes in 144 steps (7 rejected) and
+   lands within 2e-12 of the closed-form time; an m/z 100 ion through the same edge
+   takes 151 steps (2 rejected) where it took 175 (46 rejected), and the 180 degree
+   sector 225 steps (0 rejected, 2,359 evaluations) where it took 244 (38 rejected,
+   2,764). "A hair ahead" because the ion is ON the face exactly when it has just
+   landed there, and a box contains its boundary: leaving a 2 mm magnet the next step
+   carried its B out into the field beyond and kicked the ion 44 per cent too hard.
+
+   **The landing is now load-bearing**, which it was not: with the face withheld from
+   the discontinuity, the sector's exit is 1.5e-4 off in y with an exit angle of
+   5.9e-3 rad, the mass ratio 1.09996 rather than 1.1, and every electron flight wrong.
+
+   A step that starts outside every magnet integrates straight through one, so it
+   is also kept from reaching past the **middle** of the next magnet along its
+   velocity (`IMagneticField.MagnetHalfwayLength`, with the present acceleration
+   allowed for): it may cross the entrance, and lands there, but not the exit as well,
+   which the sign product would read as no crossing. In a uniform field the
+   controller grows a step to most of a metre and a 2 mm magnet in the way was skipped
+   entirely (transverse kick 0 against `-omega L` = -1929.7 m/s); it is now the closed
+   form to 1e-6.
+
+   **The limit that remains is `SuperposedField`'s**: a step crossing two surfaces at
+   once - a mirror plane and a magnet face within a step of it - returns the sign to
+   where it started. A magnet face 0.2 mm in front of a reflectron's plane or 0.7 mm
+   behind it costs 5.0e-10 or 1.1e-10 of the flight time; the nearer-surface rule did
+   no better (1.4e-10 and 2.0e-10 at 1.5 and 3 mm). The fix there is to track element
+   regions rather than multiply signs, and it is not built.
 
 Non-relativistic, as the rest of transport: there is no gamma anywhere, and adding a
 relativistic mode would have to add it to the electric force and to the emittance
@@ -98,9 +145,12 @@ m/z 100, 0.5 T, expectations written from the textbook solution of
 | Wien filter, v0 = E/B | straight | \|y\| < 1e-12 m over 50 mm |
 | Wien filter, v0 = 1.2 E/B | y = -0.836600955 mm, t = 0.417134952 us | same to every printed digit (y to 1e-7, t to 1e-9) |
 | Wien filter, v0 = 0.8 E/B | y = +1.856428299 mm | same |
-| 180 degree hard-edge sector | exit at -2r = -182.114422644 mm, t = 15 mm / v + pi m / (\|q\| B) = 6.853527232 us | relative 2.8e-13 in y, 1e-10 in t; 15.000000 mm taken as exact drift |
+| 180 degree hard-edge sector | exit at -2r = -182.114422644 mm, t = 15 mm / v + pi m / (\|q\| B) = 6.853527232 us | relative 3.2e-13 in y (2.8e-13 before the side-of-face change), exit angle 1.7e-15 rad (was 1.4e-12), 1e-10 in t; 15.000000 mm taken as exact drift |
 | Mass dispersion, m/z 121 against 100 | sqrt(1.21) = 1.1 | 1.100000000000 |
 | B = 0 beside a half-space mirror | bit-identical to no magnet | identical flight time, state, step count and drift distance (turning-point cap off on both sides) |
+| B = 0, unbounded or in a box, and a 0.5 T magnet the ion never enters, default settings | bit-identical to no magnet | identical outcome, time, state, accepted and rejected steps, drift distance and energy drift (`MagneticEdgeTests`) |
+| Electron, 1 kV, into a 1 T hard edge from a drift | semicircle, 2r = 0.2133 mm, t = 0.9426998062 ns | completes, y to every printed digit, t to 1.8e-12 |
+| 2 mm, 0.5 T magnet in a uniform-field beamline | kick -omega L = -1929.706640 m/s | -1929.706640 m/s |
 
 The corpus adds three examples to the EX-2 gate (`src/Einzel.Commands/Examples`),
 each driven through `einzel test`:
@@ -119,17 +169,31 @@ each driven through `einzel test`:
 | B ignored | 9 of 15 transport tests; all three corpus examples |
 | Field-free drift taken inside a magnet | 9 of 15 transport tests; `cyclotron` and `magnetic-sector-180` corpus |
 | Cyclotron step cap removed | `ALooseToleranceStillTakesTwentyStepsATurn` only (the cap does not bind at normal tolerances) |
+| Cyclotron cap from the global `MaximumFluxDensity` rather than B at the ion | `ASmallMagnetDoesNotCapTheStepsOfTheBeamlineAroundIt`, `TwoDisjointMagnetsCapEachAtItsOwnPeriod`, `AMagnetTheIonNeverEntersFliesBitForBitWithDefaultSettings` |
+| Turning-point cap off wherever a magnet is declared, not only where B acts | both bit-identity tests (`AMagnetWithZeroFluxDensity...`, `AMagnetTheIonNeverEnters...`) |
+| Electric and magnetic surfaces composed by the nearer one's sign | `AMagnetAndAMirrorComposeTheirSignsAsAProduct`, the force-free magnet across the mirror plane (1.7e-10) |
+| Stages take B where they are rather than on the start's side | both electron flights (`StepSizeUnderflow`) |
+| The start's side taken at the ion rather than a hair ahead | the 2 mm magnet (kicked 44 per cent too hard) |
+| Approach cap (`MagnetHalfwayLength`) removed | the 2 mm magnet (skipped) |
 | Turning-point cap left on in a magnet | both E x B tests |
 | Validator's diffusive refusal removed | `TheDiffusiveModeRefusesAMagnet`; `einzel run` is still refused, by the engine backstop in `DriftDiffusion.Run` |
-| Magnet-edge landing removed | nothing (see trap 4) |
+| Magnet-edge landing removed | the 180 degree sector, the mass dispersion, all three edge-entry flights, the 2 mm magnet, `TwoMagnetsComposeTheirSignsAsAProduct` (see trap 4) |
 
 ## What is refused, and why
 
 Only single-ion trajectory integration applies v x B. Every other path that consumes
 the field would answer as though the magnet were absent, so each refuses by name.
-Two layers: the **validator** refuses the document with `SCHEMA_INVALID` at
-`/fields/N` before anything is built, and **`MagneticRefusal.ThrowIfMagnetic`** is a
-backstop in each engine consumer for a caller that bypasses the validator.
+Two layers: the **validator** refuses the document with `REGIME_INVALID` (exit 2,
+CLI-3's regime class - the document is well formed and asks a transport path for
+something outside what it can describe, as a driven geometry in the diffusive mode
+does) at the magnet's own `/fields/N`, indexed by the document and not by the compiled
+list, so a typo in an earlier element does not move the pointer; and
+**`MagneticRefusal.ThrowIfMagnetic`** is a backstop in each engine consumer for a caller
+that bypasses the validator, raising the same code. `SCHEMA_INVALID` is kept for what is
+malformed: a `fringe` on a magnet's region, a phase that changes B, and a `fluxDensity`
+declared on an element kind that does not read it (a Wien filter written as one
+`uniform` element with a `fluxDensity` used to validate and fly with no magnet; every
+other kind-specific property is refused on the wrong kind the same way).
 
 | Path | Refused where | Why it cannot honour B |
 | --- | --- | --- |
@@ -145,7 +209,10 @@ honours B unchanged: `einzel run` (single ion and cloud), `test`, `preview`,
 `estimate`'s pilot flight, every figure of merit and therefore every study (`scan`,
 `sweep`, `optimise`, `boundary`), `regime` (its path is flown with collisions and B
 together), the viewport and `render section`/`still`/`animation`, and MCP
-`model_preview`. The list was made by enumerating every caller of
+`model_preview`. Two consumers read the field rather than fly through it, and report B
+beside phi and E: **`einzel probe`** (`fluxDensityT` on every row, `Bx_T By_T Bz_T` in
+the table and the CSV) and **`einzel export --composite`** (a `B_T` vector array, named in
+the header). Without a magnet both produce exactly the output they did before. The list was made by enumerating every caller of
 `FieldAssembly.Build`/`BuildReported` and every caller of
 `TrajectoryIntegrator.Integrate`, `PacketIntegrator.Fly`, `DriftDiffusion.Run`,
 `MixtureDiffusion.Run` and `new TimeShiftedField`/`PonderomotiveField`.

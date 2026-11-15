@@ -115,7 +115,7 @@ public static class ModeComparison
         {
             throw new EinzelException(new EinzelError
             {
-                Code = ErrorCodes.SchemaInvalid,
+                Code = ErrorCodes.RegimeInvalid,
                 Path = $"/fields/{magnet}",
                 Constraint = "einzel compare runs the model in the diffusive mode as well as the "
                     + "trajectory mode, and the diffusive mode cannot apply a magnetic field",

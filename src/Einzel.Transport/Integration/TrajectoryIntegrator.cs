@@ -207,18 +207,13 @@ public static class TrajectoryIntegrator
         // The same argument for a magnet, with the cyclotron period in place of the RF
         // one. An ion in B is on a circle of period 2 pi m / (|q| B) whatever its energy, and
         // a step that spanned a large part of a turn would have its embedded estimate compare
-        // two solutions that both cut the chord. Folded into periodStep so every place that
-        // caps by the drive also caps by the gyration. Infinite without a magnet, so a model
-        // without one takes min(x, +inf) = x and is unchanged to the bit.
+        // two solutions that both cut the chord. Taken per step from |B| WHERE THE ION IS
+        // (LocalMagneticCaps), not once from a global bound: a bound summed over two
+        // disjoint magnets would cap at the period of a field that exists nowhere, and a
+        // small magnet would cap every step of a long field-free beamline. Without a magnet,
+        // or wherever B at the ion is zero, the cap is infinite and min(x, +inf) = x leaves
+        // the step unchanged to the bit.
         var magnetic = field as Einzel.Fields.Magnetic.IMagneticField;
-
-        if (magnetic is not null && magnetic.MaximumFluxDensity > 0.0 && species.ChargeSi != 0.0)
-        {
-            var cyclotronPeriod = 2.0 * Math.PI * species.MassSi
-                / (Math.Abs(species.ChargeSi) * magnetic.MaximumFluxDensity);
-
-            periodStep = Math.Min(periodStep, cyclotronPeriod / StepsPerCyclotronPeriod);
-        }
 
         // Computed once, since neither of these changes mid-flight.
         //
@@ -236,16 +231,27 @@ public static class TrajectoryIntegrator
         // is that the cap does not help and slightly hurts even where it does fire
         // harmlessly.
         //
-        // A magnet is the third case. The magnetic force is perpendicular to the velocity,
-        // so v . a is zero to rounding and the cap's "decelerating" test fires on the sign of
-        // a round-off - and in crossed E and B an ion on a cycloid is at a velocity minimum
-        // once per gyration, which is the RF argument exactly.
-        var stepSettings = driven is null && collisions is null && magnetic is null
+        // A magnet is the third case, and the one decided per step rather than once. The
+        // magnetic force is perpendicular to the velocity, so v . a is zero to rounding and
+        // the cap's "decelerating" test fires on the sign of a round-off - and in crossed E
+        // and B an ion on a cycloid is at a velocity minimum once per gyration, which is the
+        // RF argument exactly. But that is true only where B acts: a zero flux density, or a
+        // bounded magnet the ion is not inside, exerts nothing, and switching the cap off for
+        // the whole flight there changed a reflectron's step sequence for a magnet it never
+        // entered. So the cap is off only on steps that start where B at the ion is non-zero.
+        var stepSettings = driven is null && collisions is null
             ? settings
             : settings with { TurningPointStepFactor = 0.0 };
 
+        var inMagnetSettings = magnetic is null
+            ? stepSettings
+            : stepSettings with { TurningPointStepFactor = 0.0 };
+
+        var (capSettings, localPeriodStep) = LocalMagneticCaps(
+            in state, magnetic, species, stepSettings, inMagnetSettings, periodStep);
+
         var step = Math.Min(
-            Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep), periodStep);
+            Math.Min(InitialStep(settings, in derivative, characteristicSpeed), resolutionStep), localPeriodStep);
         var outcome = TrajectoryOutcome.MaximumStepsExceeded;
         string? struckSurface = null;
 
@@ -296,9 +302,16 @@ public static class TrajectoryIntegrator
             // points are its normal condition, not an event, so the cap fires
             // continuously and drives the step to underflow. Measured: nineteen
             // steps and a quarter of one cycle before the integration gave up.
+            (capSettings, localPeriodStep) = LocalMagneticCaps(
+                in state, magnetic, species, stepSettings, inMagnetSettings, periodStep);
             step = ApplyStepCaps(
-                step, stepSettings, in state, in derivative, characteristicSpeed, resolutionStep);
-            step = Math.Min(Math.Min(step, settings.MaximumFlightTime - time.Total), periodStep);
+                step, capSettings, in state, in derivative, characteristicSpeed, resolutionStep);
+            step = Math.Min(Math.Min(step, settings.MaximumFlightTime - time.Total), localPeriodStep);
+
+            if (magnetic is not null)
+            {
+                step = ShortOfTheNextMagnet(step, in state, in derivative, magnetic);
+            }
 
             // A sequencer switches state at known times, and a step that spans one
             // averages two different fields into a single answer. Unlike a boundary
@@ -540,6 +553,101 @@ public static class TrajectoryIntegrator
     /// field-free step that the controller has grown.
     /// </remarks>
     private const double StepsPerCyclotronPeriod = 20.0;
+
+    /// <summary>
+    /// The two step decisions a magnet changes, taken from the flux density where the ion is:
+    /// the turning-point cap is off and the cyclotron cap applies only where B there is
+    /// non-zero.
+    /// </summary>
+    /// <remarks>
+    /// One evaluation of B per step, and only for a magnetised field; every model without a
+    /// magnet takes the first return and is unchanged to the bit. A bounded magnet answers
+    /// zero outside its box, so its edge is respected without being special-cased here.
+    /// </remarks>
+    private static (IntegrationSettings Settings, double PeriodStep) LocalMagneticCaps(
+        in PhaseState state,
+        Einzel.Fields.Magnetic.IMagneticField? magnetic,
+        IonSpecies species,
+        IntegrationSettings outside,
+        IntegrationSettings inside,
+        double periodStep)
+    {
+        if (magnetic is null)
+        {
+            return (outside, periodStep);
+        }
+
+        var position = state.Position;
+        var fluxDensity = magnetic.MagneticFieldAt(in position).Length;
+
+        if (!(fluxDensity > 0.0))
+        {
+            return (outside, periodStep);
+        }
+
+        if (species.ChargeSi == 0.0)
+        {
+            return (inside, periodStep);
+        }
+
+        var cyclotronPeriod = 2.0 * Math.PI * species.MassSi / (Math.Abs(species.ChargeSi) * fluxDensity);
+
+        return (inside, Math.Min(periodStep, cyclotronPeriod / StepsPerCyclotronPeriod));
+    }
+
+    /// <summary>
+    /// Keeps a step that starts outside every magnet from carrying the ion clean through one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A step takes B from the side of each face it starts on, so a step that begins outside a
+    /// magnet integrates straight through it, and if it also leaves the magnet before it ends
+    /// the sign product sees two crossings as none: the magnet is skipped and nothing says so.
+    /// Where the field outside is uniform the controller grows the step to the whole beamline,
+    /// so that is not a corner case. So the step is cut to reach no further than the middle of
+    /// the next magnet along the velocity: it may cross the entrance, and lands on it, but not
+    /// the exit. The middle rather than the entrance, because a cut to the entrance would
+    /// approach it in a geometric sequence of ever shorter steps.
+    /// </para>
+    /// <para>
+    /// The time allowed is the time to cover that distance at the present speed with the
+    /// present acceleration all along the ray, <c>2d / (v + sqrt(v^2 + 2 a d))</c>: an ion
+    /// accelerating toward a 2 mm magnet in a uniform field otherwise overshoots its middle by
+    /// more than its thickness. Exact for a straight, uniformly accelerated path and
+    /// conservative for any other; inside a magnet, or with no magnet ahead, the step is
+    /// returned unchanged.
+    /// </para>
+    /// </remarks>
+    private static double ShortOfTheNextMagnet(
+        double step, in PhaseState state, in PhaseDerivative derivative, Einzel.Fields.Magnetic.IMagneticField magnetic)
+    {
+        var speed = state.Speed;
+
+        if (!(speed > 0.0))
+        {
+            return step;
+        }
+
+        var position = state.Position;
+
+        if (magnetic.MagneticFieldAt(in position).LengthSquared > 0.0)
+        {
+            return step;
+        }
+
+        var direction = state.Velocity / speed;
+        var distance = magnetic.MagnetHalfwayLength(in position, in direction);
+
+        if (!double.IsFinite(distance))
+        {
+            return step;
+        }
+
+        var acceleration = derivative.Acceleration.Length;
+        var reach = 2.0 * distance / (speed + Math.Sqrt((speed * speed) + (2.0 * acceleration * distance)));
+
+        return Math.Min(step, reach);
+    }
 
     private static double BoundaryLandingStep(
         in PhaseState state,

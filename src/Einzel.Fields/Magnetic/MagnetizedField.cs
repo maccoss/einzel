@@ -91,17 +91,21 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
 
     /// <inheritdoc />
     /// <remarks>
-    /// The nearer of the electric discontinuities and the magnetic ones, so an ion lands on a
-    /// magnet's edge exactly as it lands on an electric region's face.
+    /// The electric discontinuities and the magnetic ones composed by
+    /// <see cref="DiscontinuityDistance.Combine"/> - the nearest's magnitude and the product of
+    /// the signs, the rule <see cref="SuperposedField"/> uses - so an ion lands on a magnet's
+    /// edge exactly as it lands on an electric region's face, and crossing either flips the
+    /// sign whichever happens to be nearer.
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position) =>
-        Nearer(
+        DiscontinuityDistance.Combine(
             _electric.SignedDistanceToDiscontinuity(in position),
             _magnetic.SignedDistanceToMagneticDiscontinuity(in position));
 
     /// <inheritdoc />
+    /// <remarks>The magnetic surfaces alone: the electric ones are not jumps in B.</remarks>
     public double SignedDistanceToMagneticDiscontinuity(in Vec3 position) =>
-        SignedDistanceToDiscontinuity(in position);
+        _magnetic.SignedDistanceToMagneticDiscontinuity(in position);
 
     /// <inheritdoc />
     public double ResolutionLength => _electric.ResolutionLength;
@@ -110,11 +114,19 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
     public Vec3 MagneticFieldAt(in Vec3 position) => _magnetic.MagneticFieldAt(in position);
 
     /// <inheritdoc />
+    public Vec3 MagneticFieldAt(in Vec3 position, in Vec3 side) =>
+        _magnetic.MagneticFieldAt(in position, in side);
+
+    /// <inheritdoc />
     public double MaximumFluxDensity => _magnetic.MaximumFluxDensity;
 
     /// <inheritdoc />
     public double MagnetFreeRunLength(in Vec3 position, in Vec3 direction) =>
         _magnetic.MagnetFreeRunLength(in position, in direction);
+
+    /// <inheritdoc />
+    public double MagnetHalfwayLength(in Vec3 position, in Vec3 direction) =>
+        _magnetic.MagnetHalfwayLength(in position, in direction);
 
     /// <inheritdoc />
     public double SignedDistanceToConductor(in Vec3 position) => _electric is IConductorBounded bounded
@@ -125,21 +137,6 @@ public class MagnetizedField : IElectrostaticField, IMagneticField, IConductorBo
     public string? ConductorAt(in Vec3 position) => _electric is IConductorBounded bounded
         ? bounded.ConductorAt(in position)
         : null;
-
-    private static double Nearer(double a, double b)
-    {
-        if (double.IsPositiveInfinity(a))
-        {
-            return b;
-        }
-
-        if (double.IsPositiveInfinity(b))
-        {
-            return a;
-        }
-
-        return Math.Abs(b) < Math.Abs(a) ? b : a;
-    }
 }
 
 /// <summary>A magnetized field whose electric part is driven.</summary>

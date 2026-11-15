@@ -156,7 +156,7 @@ public static class ModelValidator
         var modes = Modes(document, timeline);
         var transport = ValidateTransport(document.Transport, p, modes, errors);
 
-        ValidateMagneticTransport(fields, modes, transport, errors);
+        ValidateMagneticTransport(document.Fields, modes, transport, errors);
 
         // A ramp in a diffusive phase used to be refused here, because the density solver
         // stepped through a field it held fixed within a phase. It re-samples the field
@@ -745,9 +745,17 @@ public static class ModelValidator
     /// diffusive requirements already are: a trajectory model with one diffusive phase uses
     /// the diffusive path for that phase.
     /// </para>
+    /// <para>
+    /// <b>Indexed by the document, not by the compiled list.</b> An element that failed to
+    /// compile is dropped from the compiled list, so a typo in <c>fields[0]</c> would move the
+    /// magnet at <c>fields[1]</c> to index 0 there and the refusal would point at the wrong
+    /// element (AGT-3: the path is the document's). <c>REGIME_INVALID</c>, with its own exit
+    /// code, because the document is well formed: it asks a transport mode for something
+    /// outside what that mode can describe, as a driven geometry in the diffusive mode does.
+    /// </para>
     /// </remarks>
     private static void ValidateMagneticTransport(
-        List<CompiledField>? fields,
+        IReadOnlyList<FieldDocument>? fields,
         HashSet<string> modes,
         TransportValues? transport,
         List<EinzelError> errors)
@@ -759,7 +767,7 @@ public static class ModelValidator
 
         for (var index = 0; index < fields.Count; index++)
         {
-            if (fields[index].Kind != CompiledFieldKind.UniformMagnetic)
+            if (fields[index].Type != "uniformMagnetic")
             {
                 continue;
             }
@@ -770,7 +778,7 @@ public static class ModelValidator
             {
                 errors.Add(new EinzelError
                 {
-                    Code = ErrorCodes.SchemaInvalid,
+                    Code = ErrorCodes.RegimeInvalid,
                     Path = path,
                     Constraint = "a magnetic field is applied only by single-ion trajectory "
                         + "integration, and this run uses the diffusive mode (as its transport "
@@ -787,7 +795,7 @@ public static class ModelValidator
             {
                 errors.Add(new EinzelError
                 {
-                    Code = ErrorCodes.SchemaInvalid,
+                    Code = ErrorCodes.RegimeInvalid,
                     Path = path,
                     Constraint = $"a magnetic field is applied only by single-ion trajectory "
                         + $"integration, and spaceCharge '{transport.SpaceCharge}' flies the "
@@ -863,6 +871,15 @@ public static class ModelValidator
                 Suggestion = "remove axis, or make the element an idealQuadrupoleRf",
             });
 
+            return null;
+        }
+
+        // The same rule for every other property that belongs to one kind of element: a
+        // Wien filter written as one element {"type": "uniform", "field": ..., "fluxDensity": ...}
+        // validated and flew with no magnet, because only the uniformMagnetic case reads
+        // fluxDensity. Refused where it is declared, naming the kind that would read it.
+        if (MisplacedProperty(field, path, errors))
+        {
             return null;
         }
 
@@ -1098,6 +1115,69 @@ public static class ModelValidator
     private static bool NeedsPhases(string? type) =>
         type is "uniform" or "halfSpaceUniform" or "idealQuadrupoleRf"
             or "quadroLogarithmic" or "uniformMagnetic";
+
+    /// <summary>
+    /// Refuses a property declared on an element kind that does not read it.
+    /// </summary>
+    /// <returns>Whether any was found.</returns>
+    /// <remarks>
+    /// Only for a recognised type: an unrecognised one is refused by name elsewhere, and
+    /// listing every property it carries as misplaced would bury that one error.
+    /// </remarks>
+    private static bool MisplacedProperty(FieldDocument field, string path, List<EinzelError> errors)
+    {
+        if (field.Type is not ("fieldFree" or "uniform" or "uniformMagnetic" or "halfSpaceUniform"
+            or "idealQuadrupoleRf" or "quadroLogarithmic" or "solved2d" or "solved3d"))
+        {
+            return false;
+        }
+
+        (string Name, object? Value, string Owner)[] properties =
+        [
+            ("field", field.Field, "uniform"),
+            ("fluxDensity", field.FluxDensity, "uniformMagnetic"),
+            ("planePoint", field.PlanePoint, "halfSpaceUniform"),
+            ("inwardNormal", field.InwardNormal, "halfSpaceUniform"),
+            ("capPotential", field.CapPotential, "halfSpaceUniform"),
+            ("turningDepth", field.TurningDepth, "halfSpaceUniform"),
+            ("directPotential", field.DirectPotential, "idealQuadrupoleRf"),
+            ("driveAmplitude", field.DriveAmplitude, "idealQuadrupoleRf"),
+            ("driveFrequency", field.DriveFrequency, "idealQuadrupoleRf"),
+            ("inscribedRadius", field.InscribedRadius, "idealQuadrupoleRf"),
+            ("curvature", field.Curvature, "quadroLogarithmic"),
+            ("characteristicRadius", field.CharacteristicRadius, "quadroLogarithmic"),
+            ("centre", field.Centre, "quadroLogarithmic"),
+            ("solve", field.Solve, "solved2d"),
+            ("solve3d", field.Solve3d, "solved3d"),
+        ];
+
+        var found = false;
+
+        foreach (var (name, value, owner) in properties)
+        {
+            if (value is null || field.Type == owner)
+            {
+                continue;
+            }
+
+            errors.Add(new EinzelError
+            {
+                Code = ErrorCodes.SchemaInvalid,
+                Path = $"{path}/{name}",
+                Constraint = $"{name} belongs to a {owner} element and a {field.Type} element does "
+                    + "not read it, so it would be accepted and ignored",
+                Observed = new ObservedValue(0.0, name),
+                Suggestion = owner == "uniformMagnetic"
+                    ? "declare the magnet as an element of its own, {\"type\": \"uniformMagnetic\", "
+                        + "\"fluxDensity\": ...}, beside this one; elements superpose"
+                    : $"remove {name}, or make the element a {owner}",
+            });
+
+            found = true;
+        }
+
+        return found;
+    }
 
     /// <summary>Whether two compilations of one analytic element hold the same numbers.</summary>
     private static bool Same(CompiledField a, CompiledField b) =>

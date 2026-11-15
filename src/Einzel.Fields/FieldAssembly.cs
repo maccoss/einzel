@@ -177,23 +177,15 @@ public sealed class SuperposedField : IElectrostaticField, IConductorBounded
     /// </remarks>
     public double SignedDistanceToDiscontinuity(in Vec3 position)
     {
-        var nearest = double.PositiveInfinity;
-        var sign = 1;
+        var composed = double.PositiveInfinity;
 
         foreach (var element in _elements)
         {
-            var distance = element.SignedDistanceToDiscontinuity(in position);
-
-            if (!double.IsFinite(distance))
-            {
-                continue;
-            }
-
-            nearest = Math.Min(nearest, Math.Abs(distance));
-            sign *= distance < 0.0 ? -1 : 1;
+            composed = DiscontinuityDistance.Combine(
+                composed, element.SignedDistanceToDiscontinuity(in position));
         }
 
-        return double.IsPositiveInfinity(nearest) ? double.PositiveInfinity : nearest * sign;
+        return composed;
     }
 }
 

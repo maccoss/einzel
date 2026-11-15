@@ -36,6 +36,35 @@ public interface IMagneticField
     Vec3 MagneticFieldAt(in Vec3 position);
 
     /// <summary>
+    /// The flux density at a point as the field holds it on the side of every magnetic surface
+    /// that <paramref name="side"/> is on, in tesla.
+    /// </summary>
+    /// <param name="position">Position, in metres.</param>
+    /// <param name="side">
+    /// A point whose side of each declared jump in B is used in place of
+    /// <paramref name="position"/>'s; the integrator passes the start of the step.
+    /// </param>
+    /// <returns>B, in tesla.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Why a step needs the field of one side.</b> A hard-edge magnet's B jumps across its
+    /// face, and a Runge-Kutta step whose stages straddle the face mixes the two fields: for an
+    /// electron at a tesla the error that makes is so large that no step above
+    /// <c>MinimumStep</c> is accepted and the flight ends in <c>StepSizeUnderflow</c> at the
+    /// magnet's edge. Evaluated with the start's side, every stage of a step sees one smooth
+    /// field; the face is a declared discontinuity, so the integrator detects that the step
+    /// crossed it, lands on it, and continues with the field of the far side - the way it
+    /// already treats an electric region's face, made exact rather than left to the error
+    /// controller.
+    /// </para>
+    /// <para>
+    /// A field with no jumps is the same function on both sides, which is what the default
+    /// says.
+    /// </para>
+    /// </remarks>
+    Vec3 MagneticFieldAt(in Vec3 position, in Vec3 side) => MagneticFieldAt(in position);
+
+    /// <summary>
     /// An upper bound on |B| anywhere, in tesla. Sets the cyclotron-period step cap.
     /// </summary>
     /// <remarks>
@@ -61,6 +90,20 @@ public interface IMagneticField
     /// this is about B, and the analytic drift may be taken only for the shorter.
     /// </remarks>
     double MagnetFreeRunLength(in Vec3 position, in Vec3 direction);
+
+    /// <summary>
+    /// How far along a straight ray from <paramref name="position"/>, which is outside every
+    /// magnet, to the middle of the first magnet it enters, in metres.
+    /// </summary>
+    /// <param name="position">Start of the ray, in metres.</param>
+    /// <param name="direction">Unit direction of the ray.</param>
+    /// <returns>Positive infinity where the ray meets no magnet, and by default.</returns>
+    /// <remarks>
+    /// The integrator keeps a step that starts outside every magnet from going further than
+    /// this, so the step may cross the magnet's entrance (and land on it) but not also its
+    /// exit, which the sign product would see as no crossing at all.
+    /// </remarks>
+    double MagnetHalfwayLength(in Vec3 position, in Vec3 direction) => double.PositiveInfinity;
 
     /// <summary>
     /// Signed distance to the nearest surface across which B jumps, in metres; positive
@@ -100,7 +143,7 @@ public static class MagneticRefusal
         {
             throw new Core.Errors.EinzelException(new Core.Errors.EinzelError
             {
-                Code = Core.Errors.ErrorCodes.SchemaInvalid,
+                Code = Core.Errors.ErrorCodes.RegimeInvalid,
                 Path = "/fields",
                 Constraint = $"{consumer} cannot honour a magnetic field: the v x B force is "
                     + "applied only by single-ion trajectory integration",

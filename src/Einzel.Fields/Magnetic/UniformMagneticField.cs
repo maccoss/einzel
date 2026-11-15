@@ -95,6 +95,11 @@ public sealed class BoundedMagneticField : IMagneticField
         Region.Contains(in position) ? _inner.MagneticFieldAt(in position) : Vec3.Zero;
 
     /// <inheritdoc />
+    /// <remarks>Inside or outside by where <paramref name="side"/> is, not where the point is.</remarks>
+    public Vec3 MagneticFieldAt(in Vec3 position, in Vec3 side) =>
+        Region.Contains(in side) ? _inner.MagneticFieldAt(in position, in side) : Vec3.Zero;
+
+    /// <inheritdoc />
     public double MaximumFluxDensity => _inner.MaximumFluxDensity;
 
     /// <inheritdoc />
@@ -105,6 +110,13 @@ public sealed class BoundedMagneticField : IMagneticField
     /// </remarks>
     public double MagnetFreeRunLength(in Vec3 position, in Vec3 direction)
     {
+        // A box holding no field acts nowhere, so it bounds no drift and lands nothing:
+        // a zero flux density flies exactly as no magnet at all.
+        if (_inner.MaximumFluxDensity == 0.0)
+        {
+            return double.PositiveInfinity;
+        }
+
         if (Region.Contains(in position))
         {
             return _inner.MagnetFreeRunLength(in position, in direction);
@@ -125,8 +137,36 @@ public sealed class BoundedMagneticField : IMagneticField
     }
 
     /// <inheritdoc />
+    public double MagnetHalfwayLength(in Vec3 position, in Vec3 direction)
+    {
+        if (_inner.MaximumFluxDensity == 0.0 || Region.Contains(in position))
+        {
+            return double.PositiveInfinity;
+        }
+
+        var entry = 0.0;
+        var exit = double.PositiveInfinity;
+
+        if (!Slab(position.X, direction.X, Region.MinX, Region.MaxX, ref entry, ref exit)
+            || !Slab(position.Y, direction.Y, Region.MinY, Region.MaxY, ref entry, ref exit)
+            || !Slab(position.Z, direction.Z, Region.MinZ, Region.MaxZ, ref entry, ref exit)
+            || entry > exit)
+        {
+            return double.PositiveInfinity;
+        }
+
+        return 0.5 * (entry + exit);
+    }
+
+    /// <inheritdoc />
     public double SignedDistanceToMagneticDiscontinuity(in Vec3 position)
     {
+        // Zero inside and zero outside is no jump.
+        if (_inner.MaximumFluxDensity == 0.0)
+        {
+            return double.PositiveInfinity;
+        }
+
         var toBoundary = Region.SignedDistance(in position);
 
         if (!Region.Contains(in position))
@@ -134,11 +174,8 @@ public sealed class BoundedMagneticField : IMagneticField
             return toBoundary;
         }
 
-        var inner = _inner.SignedDistanceToMagneticDiscontinuity(in position);
-
-        return double.IsPositiveInfinity(inner) || Math.Abs(toBoundary) <= Math.Abs(inner)
-            ? toBoundary
-            : inner;
+        return DiscontinuityDistance.Combine(
+            toBoundary, _inner.SignedDistanceToMagneticDiscontinuity(in position));
     }
 
     private static bool Slab(
@@ -197,6 +234,19 @@ public sealed class SuperposedMagneticField : IMagneticField
     }
 
     /// <inheritdoc />
+    public Vec3 MagneticFieldAt(in Vec3 position, in Vec3 side)
+    {
+        var sum = Vec3.Zero;
+
+        foreach (var element in _elements)
+        {
+            sum += element.MagneticFieldAt(in position, in side);
+        }
+
+        return sum;
+    }
+
+    /// <inheritdoc />
     public double MaximumFluxDensity => _elements.Sum(e => e.MaximumFluxDensity);
 
     /// <inheritdoc />
@@ -213,20 +263,29 @@ public sealed class SuperposedMagneticField : IMagneticField
     }
 
     /// <inheritdoc />
-    public double SignedDistanceToMagneticDiscontinuity(in Vec3 position)
+    public double MagnetHalfwayLength(in Vec3 position, in Vec3 direction)
     {
-        var nearest = double.PositiveInfinity;
+        var run = double.PositiveInfinity;
 
         foreach (var element in _elements)
         {
-            var distance = element.SignedDistanceToMagneticDiscontinuity(in position);
-
-            if (double.IsPositiveInfinity(nearest) || Math.Abs(distance) < Math.Abs(nearest))
-            {
-                nearest = distance;
-            }
+            run = Math.Min(run, element.MagnetHalfwayLength(in position, in direction));
         }
 
-        return nearest;
+        return run;
+    }
+
+    /// <inheritdoc />
+    public double SignedDistanceToMagneticDiscontinuity(in Vec3 position)
+    {
+        var composed = double.PositiveInfinity;
+
+        foreach (var element in _elements)
+        {
+            composed = DiscontinuityDistance.Combine(
+                composed, element.SignedDistanceToMagneticDiscontinuity(in position));
+        }
+
+        return composed;
     }
 }

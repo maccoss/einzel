@@ -79,7 +79,7 @@ The document does not satisfy the model schema, or states something inconsistent
 
 - **Severity:** Error
 - **Raised by:** Every verb that loads a model, study or render spec
-- **When:** Unparseable or non-object JSON; unrecognised property; wrong type; inconsistent declarations (both `drive` and `drives`, a repeated electrode name in one solve); an unknown transport mode name.
+- **When:** Unparseable or non-object JSON; unrecognised property; wrong type; inconsistent declarations (both `drive` and `drives`, a repeated electrode name in one solve); an unknown transport mode name; a property that belongs to another element kind (`fluxDensity` on a `uniform` element, `capPotential` on anything but a `halfSpaceUniform`, and so on - refused at that property rather than accepted and ignored); a `fringe` on a magnetic element's region; a sequence phase that changes a flux density (B is static in this build).
 - **What to do:** Check spelling against `einzel schema` (generated from the document types). By far the commonest code (over 120 sites).
 - **Source:** `Einzel.Io/ModelJson.cs:74,90; Einzel.Core/Model/ModelValidator.cs:235`
 
@@ -597,9 +597,9 @@ The requested transport mode, or operation, is outside its validity for the mode
 
 - **Severity:** Error; exits 2
 - **Raised by:** `compare`, viewport watch, `render animation`, diffusive RF, transport mode lookup
-- **When:** (a) a comparison is asked of a model with no gas; (b) a viewport watch is asked of a trajectory model; (c) an animation is asked of a diffusive model; (d) a diffusive RF well is asked of a non-monochromatic drive; (e) a transport mode is named that is declared but not built.
+- **When:** (a) a comparison is asked of a model with no gas; (b) a viewport watch is asked of a trajectory model; (c) an animation is asked of a diffusive model; (d) a diffusive RF well is asked of a non-monochromatic drive; (e) a transport mode is named that is declared but not built; (f) a model declaring a magnetic field is asked of a path that cannot apply v x B - the diffusive mode (as the transport mode or in any sequence phase, so also a mode-changing sequence), space charge (`direct` or `pic`), or `einzel compare` - refused at the magnet's own `/fields/N` by the validator, and by `MagneticRefusal` in the engine for a caller that bypasses it.
 - **What to do:** The constraint names which applies and the verb to use instead. The CLI maps this code to exit 2 wherever it surfaces.
-- **Source:** `Einzel.Commands/ModeComparison.cs:119; Einzel.Commands/ViewportCommand.cs:443; Einzel.Render/AnimationRenderer.cs:327; Einzel.Transport/Diffusion/PonderomotiveField.cs:125; Einzel.Transport/ITransportMode.cs:151`
+- **Source:** `Einzel.Commands/ModeComparison.cs:119; Einzel.Commands/ViewportCommand.cs:443; Einzel.Render/AnimationRenderer.cs:327; Einzel.Transport/Diffusion/PonderomotiveField.cs:125; Einzel.Transport/ITransportMode.cs:151; Einzel.Core/Model/ModelValidator.cs (ValidateMagneticTransport); Einzel.Fields/Magnetic/IMagneticField.cs (MagneticRefusal)`
 
 ## Diffusive mode
 

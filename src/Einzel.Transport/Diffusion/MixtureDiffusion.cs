@@ -173,8 +173,9 @@ public static class MixtureDiffusion
 
         // B is applied by single-ion trajectory integration alone; dropping it here would
         // fly the model as though the magnet were absent, with nothing to say so.
+        // The time-dependent field is refused where it is first built, below, rather than by
+        // building it an extra time here only to test its type.
         Einzel.Fields.Magnetic.MagneticRefusal.ThrowIfMagnetic(field, "the mixture drift-diffusion solve");
-        Einzel.Fields.Magnetic.MagneticRefusal.ThrowIfMagnetic(fieldAt?.Invoke(0.0), "the mixture drift-diffusion solve");
 
         // Names carry the result, so two species answering to one name would make the output
         // ambiguous in the one dimension it exists to resolve.
@@ -273,6 +274,7 @@ public static class MixtureDiffusion
         selfField?.Refresh(densities, charges);
 
         var at = fieldAt?.Invoke(0.0) ?? field;
+        Einzel.Fields.Magnetic.MagneticRefusal.ThrowIfMagnetic(at, "the mixture drift-diffusion solve");
 
         foreach (var walker in state)
         {
