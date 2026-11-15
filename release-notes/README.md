@@ -224,7 +224,7 @@ GitHub Release once.
    dotnet publish src/Einzel.Cli -c Release -r win-x64 --self-contained false -o /tmp/pub/einzel   # your own RID
    dotnet publish src/Einzel.Mcp   -c Release -r win-x64 --self-contained false -o /tmp/pub/einzel-mcp
    dotnet publish src/Einzel.Shell -c Release -r win-x64 --self-contained false -o /tmp/pub/einzel-shell
-   pwsh tools/release/merge-publish.ps1 -Destination /tmp/ship \
+   pwsh tools/publish/merge-publish.ps1 -Destination /tmp/ship \
      einzel=/tmp/pub/einzel einzel-mcp=/tmp/pub/einzel-mcp einzel-shell=/tmp/pub/einzel-shell
    /tmp/ship/einzel --version        # must start with <version>; the +sha suffix is the commit
    /tmp/ship/einzel doctor

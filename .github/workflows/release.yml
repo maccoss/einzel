@@ -143,7 +143,7 @@ jobs:
       # Each app is published to its OWN directory and then merged, never published on top of
       # another: a dependency two apps resolved at different versions would otherwise be
       # overwritten by the last publish while an earlier app's .deps.json still named the other
-      # version. tools/release/merge-publish.ps1 fails, naming the file and the apps, if two
+      # version. tools/publish/merge-publish.ps1 fails, naming the file and the apps, if two
       # publishes produced a same-named file with different content.
       #
       # No -p:Version: the version is whatever the tree carries, and the `version` job has
@@ -160,7 +160,7 @@ jobs:
       - name: Merge the three publishes, refusing any file they disagree about
         shell: pwsh
         run: |
-          ./tools/release/merge-publish.ps1 -Destination "dist/$env:ASSET" `
+          ./tools/publish/merge-publish.ps1 -Destination "dist/$env:ASSET" `
             einzel=dist/pub/einzel einzel-mcp=dist/pub/einzel-mcp einzel-shell=dist/pub/einzel-shell
 
       - name: Add the documents
@@ -275,7 +275,7 @@ jobs:
       # .deps.json names must be in the directory, where the host will look for it.
       - name: Check every dependency manifest resolves
         shell: pwsh
-        run: ./tools/release/check-deps.ps1 -Directory "dist/$env:ASSET" einzel einzel-mcp einzel-shell
+        run: ./tools/publish/check-deps.ps1 -Directory "dist/$env:ASSET" einzel einzel-mcp einzel-shell
 
       # THE ONE DELIBERATE ADDITION to the prism pattern, which asserts contents and never runs
       # what it built. Einzel promises a cold start under 500 ms and a model that runs straight
@@ -373,10 +373,10 @@ jobs:
       - name: Merge the three publishes, refusing any file they disagree about
         shell: pwsh
         run: |
-          ./tools/release/merge-publish.ps1 -Destination dist/installer `
+          ./tools/publish/merge-publish.ps1 -Destination dist/installer `
             einzel=dist/installer-pub/einzel einzel-mcp=dist/installer-pub/einzel-mcp einzel-shell=dist/installer-pub/einzel-shell
           Copy-Item LICENSE, README.md dist/installer/
-          ./tools/release/check-deps.ps1 -Directory dist/installer einzel einzel-mcp einzel-shell
+          ./tools/publish/check-deps.ps1 -Directory dist/installer einzel einzel-mcp einzel-shell
 
       - name: Check the installed directory
         shell: pwsh

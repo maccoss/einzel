@@ -24,12 +24,12 @@ public sealed partial class ReleaseWorkflowAgreementTests
 
         foreach (var destination in Merged)
         {
-            Assert.Contains($"./tools/release/merge-publish.ps1 -Destination {Quoted(destination)}", workflow, StringComparison.Ordinal);
+            Assert.Contains($"./tools/publish/merge-publish.ps1 -Destination {Quoted(destination)}", workflow, StringComparison.Ordinal);
         }
 
-        Assert.Contains("./tools/release/check-deps.ps1", workflow, StringComparison.Ordinal);
-        Assert.True(File.Exists(Path.Combine(Root(), "tools", "release", "merge-publish.ps1")));
-        Assert.True(File.Exists(Path.Combine(Root(), "tools", "release", "check-deps.ps1")));
+        Assert.Contains("./tools/publish/check-deps.ps1", workflow, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(Root(), "tools", "publish", "merge-publish.ps1")));
+        Assert.True(File.Exists(Path.Combine(Root(), "tools", "publish", "check-deps.ps1")));
 
         static string Quoted(string d) => d.Contains('$', StringComparison.Ordinal) ? $"\"{d}\"" : d;
     }
