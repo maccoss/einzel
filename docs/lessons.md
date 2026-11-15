@@ -5651,23 +5651,37 @@ cycle held one array more for exactly as long as the solver had not been promote
 fast workstation is the first run and on a loaded four-core runner can be most of the test.
 Established by controls rather than by a heap dump: `DOTNET_TC_CallCounting=0` (nothing ever
 promoted) reproduced it every time, 68.5 bytes a node against 62; `DOTNET_TieredCompilation=0`
-(everything optimized from the first call) read 61.4 every time; and giving the residual and
-the coarse level frames of their own made both read 61.4. `[MethodImpl(AggressiveOptimization)]`
-on `VCycle` alone also removed it, which pinned the method; the frame is the fix, because it
-holds in Debug and in every tier rather than in one.
+(everything optimized from the first call) read 61.4 every time; and giving the residual a frame
+of its own made both read 61.4. `[MethodImpl(AggressiveOptimization)]` on `VCycle` alone also
+removed it, which pinned the method; the frame is the fix, because it holds in Debug and in every
+tier rather than in one. The coarse level was given a frame too, and that one is not
+load-bearing: inlined back, with the residual's frame kept, a first-tier plane reads 135.57 bytes
+a node as before, because the recursion works on the coarse arrays and they are live through it
+either way.
 
 **The same hold had been written into two statements.** The plane solve's 143.25 bytes a node
 charged "a V-cycle residual" and the rediscretized volume's 51.2 charged every level's: true of
 first-tier code only. The first plane build in a process read 143.6 and every later one 135.6,
 and the record had put that down to the sampler catching or missing a transient; with call
 counting off every build read 143.4, fully optimized every build 135.4. They are 135.25 and
-the largest instant over the real levels (48.6 on a deep grid) now.
+the largest instant over the real levels now (48.8 on a deep grid). Re-deriving the second
+from what is alive at each instant found two things the first correction left out as well: the
+coarsener keeps every coarse mask for the whole solve, so from the second cycle on all of them
+are live at the fine restriction, and a solve with no coarse level at all allocates a scratch
+residual over the whole fine grid for its bottom solve - 46.5 bytes a node, billed 38.5. A
+statement corrected by taking a term out is worth re-deriving from the arrays rather than
+from the term.
 
 **The rule.** A measurement whose readings drift within one process - first high, then
 settling - is measuring the runtime warming up as much as the property, and the lifetime of a
 local is one of the things that changes when a method is recompiled. When a loop or a
 recursion allocates something large that must not outlive its part of the work, give that
-part a frame of its own; `[AggressiveOptimization]` fixes one tier and leaves Debug. And a
-test of a steady property should warm the code path up before reading, then require the
-readings to *agree* rather than take their median: a median of five outvoted the tier-0
-readings on every machine that promoted quickly, and passed the code that held the array.
+part a frame of its own; `[AggressiveOptimization]` fixes one tier and leaves Debug. **And a
+test cannot see a first-tier hold by reading more carefully in its own process**, because
+whether the code is still first-tier when it is read is the machine's choice: a median of five
+outvoted the first-tier readings on every machine that promoted quickly, and the warm-up runs
+that replaced it are, by construction, the runs in which first-tier code executes. The guard is
+`FirstTierMemoryTests`, which runs a plane and a volume solve in a child process with
+`DOTNET_TC_CallCounting=0`, so nothing is promoted and the hold shows on every machine: putting
+the residual back inline reads 1.06 of the statement there (143.57 and 47.94 bytes a node)
+while every in-process memory test still passes.
