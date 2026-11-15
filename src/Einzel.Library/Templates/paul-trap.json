@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.14",
   "name": "paul-trap",
-  "description": "A three-dimensional quadrupole ion trap: a driven ring with a grounded endcap either side of it, held on the axis of rotation. Axisymmetric, so it is a half-plane solve in (axial, radial) rather than a volume - which is the whole reason a 3-D trap is affordable here at all, and is SYM-1 doing exactly what it is for. THE ELECTRODES ARE HYPERBOLOIDS, which is what a quadrupole trap's electrodes are: the ring is a hyperboloid of one sheet, r = r0 sqrt(1 + (z/z0)^2), and each endcap one of two sheets, z = z0 sqrt(1 + (r/r0)^2), with r0^2 = 2 z0^2. Written as flat annuli - which is what this template carried until the shape of every electrode in the library was reviewed - they lie inside the true surface everywhere but the vertex, so the field at the center is stronger than r0 implies and the effective radius came out 3.8195 mm against 4.0000 declared: a 9.4 percent shortfall in q per volt, measured three independent ways and carried as a correction in every result. The classical geometry has r0 squared equal to twice z0 squared, and with it the stability parameter q_z = 8 z e V / (m omega^2 (r0^2 + 2 z0^2)) collapses to 4 z e V / (m omega^2 r0^2) - the same volts per unit q as a linear quadrupole of the same inscribed radius, which makes the two directly comparable. The tabulated ejection boundary on the a = 0 line is q_z = 0.908. A REAL TRAP HAS HOLES IN ITS ENDCAPS AND OFTEN A STRETCHED ENDCAP SPACING, and both are parameters here, defaulting to zero so the ideal trap is reproduced to the bit: endcapEntranceHoleFraction and endcapExitHoleFraction cut a bore on the axis of each endcap, as a fraction of the endcap's own radius so a hole cannot reach its edge, with each bore face moved a sixteenth of a cell outward so it never lies on a node row; endcapStretchFraction moves both endcaps outward by a fraction of z0 with every surface keeping its ideal shape. An ion ejected through the exit hole reaches the detector behind it and arrives; one that meets the exit endcap off the hole is itemised on endcapExit; one leaving through the entrance hole strikes entranceStop, a grounded plate on the domain's entrance edge that exists only while that hole is open. Measured in docs/device-templates.md, with holes of 0.175 of the endcap radius (0.6 mm bores): two holes turn the truncation octupole from +0.9 to -2.2 percent of the quadrupole and move the ejection edge outward in q_eff by 1.3 percent, to 0.918, held for 800 cycles - at 200 the holed edge is a ragged strip several volts wide; one hole adds a hexapole and a resonance band at 3 beta_z = 2; two holes open the octupole's 2 beta_z + 2 beta_r = 2 band at q_eff 0.81 given 800 cycles, which 200 do not show; a stretch of 0.107 - a recalled figure, not a cited one - takes the octupole back to -0.5 percent and lowers the axial secular frequency at fixed volts by 12 percent.",
+  "description": "A three-dimensional quadrupole ion trap: a driven ring with a grounded endcap either side of it, held on the axis of rotation. Axisymmetric, so it is a half-plane solve in (axial, radial) rather than a volume - which is the whole reason a 3-D trap is affordable here at all, and is SYM-1 doing exactly what it is for. THE ELECTRODES ARE HYPERBOLOIDS, which is what a quadrupole trap's electrodes are: the ring is a hyperboloid of one sheet, r = r0 sqrt(1 + (z/z0)^2), and each endcap one of two sheets, z = z0 sqrt(1 + (r/r0)^2), with r0^2 = 2 z0^2. Written as flat annuli - which is what this template carried until the shape of every electrode in the library was reviewed - they lie inside the true surface everywhere but the vertex, so the field at the center is stronger than r0 implies and the effective radius came out 3.8195 mm against 4.0000 declared: a 9.4 percent shortfall in q per volt, measured three independent ways and carried as a correction in every result. The classical geometry has r0 squared equal to twice z0 squared, and with it the stability parameter q_z = 8 z e V / (m omega^2 (r0^2 + 2 z0^2)) collapses to 4 z e V / (m omega^2 r0^2) - the same volts per unit q as a linear quadrupole of the same inscribed radius, which makes the two directly comparable. The tabulated ejection boundary on the a = 0 line is q_z = 0.908. A REAL TRAP HAS HOLES IN ITS ENDCAPS AND OFTEN A STRETCHED ENDCAP SPACING, and both are parameters here, defaulting to zero so the ideal trap is reproduced to the bit: endcapEntranceHoleFraction and endcapExitHoleFraction cut a bore on the axis of each endcap, as a fraction of the endcap's own radius so a hole cannot reach its edge; endcapStretchFraction moves both endcaps outward by a fraction of z0 with every surface keeping its ideal shape. THE BORE IS EXACTLY THE HOLE DECLARED, so the geometry does not depend on the mesh - and a bore face that lands on a row of mesh nodes sits on a step in the solved field that no warning reports, the open single-conductor coincidence (SPEC.md, what to do next, item 11). The radial spacing is ringOuterRadius over a power of two, 0.125 mm as shipped, so keep a hole's radius off its multiples, and read a scan over hole size knowing the field steps at each one: the axial potential near the exit endcap steps by 0.2 V of the ring's 400 as a hole crosses 0.5 mm. EVERY WAY OUT OF THE SOLVE IS ITEMISED: an ion ejected through the exit hole, or leaving past the exit endcap, reaches the detector plane behind it and arrives; one that meets the exit endcap off the hole is itemised on endcapExit; one leaving at the entrance end strikes entranceStop, a grounded plate whose face is the domain's own grounded entrance edge; one leaving through the outer radius strikes outerStop, a grounded wall a cell outside the domain. Both stops are always present and fix no node of the mesh, so the field is the field without them, to the bit. Measured in docs/device-templates.md, with holes of 0.175 of the endcap radius (0.595 mm): two holes turn the truncation octupole from +0.9 to -2.1 percent of the quadrupole and move the ejection edge outward in q_eff by about 1.3 percent, to 0.917-0.920 - with holes the edge is a strip of interleaved held and lost amplitudes, over two volts wide at 200 cycles and under one at 800, and where a search lands in it moves with the integrator's tolerance; one hole adds a hexapole and a resonance band at 3 beta_z = 2; two holes open the octupole's 2 beta_z + 2 beta_r = 2 band at q_eff 0.81 given 800 cycles, which 200 do not show; a stretch of 0.107 - a recalled figure, not a cited one - takes the octupole back to -0.4 to -0.5 percent and lowers the axial secular frequency at fixed volts by 12 percent.",
   "parameters": {
     "inscribedRadius": {
       "value": 4,
@@ -55,14 +55,14 @@
       "unit": "1",
       "minimum": 0,
       "maximum": 0.9,
-      "description": "The hole on the axis of the entrance endcap, through which a real trap admits externally made ions, as a FRACTION OF THE ENDCAP'S OUTER RADIUS (endcapOuterRadius, 3.4 mm as shipped) rather than a length. A fraction because a parameter's bounds here are fixed numbers and the endcap's radius is not: a hole radius bounded in millimetres could reach or pass the endcap's own edge, which builds a degenerate or inside-out endcap, while a fraction below 0.9 cannot - the multipole guide's rodFill makes an overlapping geometry unsayable the same way. Zero, the default, is the solid endcap this template has always carried, to the bit. The bore actually cut is endcapEntranceBoreRadius, which adds a fixed sixteenth of a cell to keep the bore face off the mesh's node rows. Commercial traps have holes of order a millimetre on r0 = 10 mm; no document in this repository gives a number, so any non-zero value is a guess. 0.175 (a 0.595 mm hole, a 0.6075 mm bore) is the value the measurements in docs/device-templates.md use. An ion leaving through this hole strikes entranceStop, a grounded plate that exists only while the hole is open."
+      "description": "The hole on the axis of the entrance endcap, through which a real trap admits externally made ions, as a FRACTION OF THE ENDCAP'S OUTER RADIUS (endcapOuterRadius, 3.4 mm as shipped) rather than a length. A fraction because a parameter's bounds here are fixed numbers and the endcap's radius is not: a hole radius bounded in millimetres could reach or pass the endcap's own edge, which builds a degenerate or inside-out endcap, while a fraction below 0.9 cannot - the multipole guide's rodFill makes an overlapping geometry unsayable the same way. Zero, the default, is the solid endcap this template has always carried, to the bit. The bore cut is exactly this hole (endcapEntranceBoreRadius), whatever the mesh; a hole whose radius is a multiple of the radial spacing - 0.125 mm as shipped - puts the bore face on a row of mesh nodes, where the solved field steps and nothing warns. Commercial traps have holes of order a millimetre on r0 = 10 mm; no document in this repository gives a number, so any non-zero value is a guess. 0.175 (a 0.595 mm hole, 4.76 radial spacings at the shipped mesh and 9.52 at twice it, so clear of a row at both) is the value the measurements in docs/device-templates.md use. An ion leaving through this hole strikes entranceStop."
     },
     "endcapExitHoleFraction": {
       "value": 0,
       "unit": "1",
       "minimum": 0,
       "maximum": 0.9,
-      "description": "The hole on the axis of the exit endcap, as a fraction of endcapOuterRadius, through which an ion ejected axially reaches the detector behind it and arrives, while one that strikes the endcap is itemised on endcapExit. Zero, the default, reproduces the solid endcap to the bit. Same bound and same bore offset as endcapEntranceHoleFraction. With only this hole open the trap loses its symmetry about the center plane and acquires odd multipoles; with both holes equal it keeps it."
+      "description": "The hole on the axis of the exit endcap, as a fraction of endcapOuterRadius, through which an ion ejected axially reaches the detector behind it and arrives, while one that strikes the endcap is itemised on endcapExit. Zero, the default, reproduces the solid endcap to the bit. Same bound and the same caution about node rows as endcapEntranceHoleFraction. With only this hole open the trap loses its symmetry about the center plane and acquires odd multipoles; with both holes equal it keeps it."
     },
     "endcapStretchFraction": {
       "value": 0,
@@ -134,25 +134,15 @@
       "unit": "mm",
       "description": "How far along the axis an endcap's hyperbolic face reaches at its outer edge, stretch included. Its flat back sits at endcapHalfSpacing + endcapThickness + endcapStretch and has to be beyond this, or the electrode turns inside out."
     },
-    "endcapBoreOffset": {
-      "expression": "cellSize / 16",
-      "unit": "mm",
-      "description": "How far a bore face is moved outward from the hole the document declares, so that it does not lie on a radial node row. A conductor face exactly on a row of nodes is one conductor's face on a node plane, which cut cells treat discontinuously (docs/numerics.md), and the obvious hole radii put it there: the radial spacing is ringOuterRadius over a power of two, 0.125 mm as shipped, so 0.5, 1.0, 1.5 and 2.0 mm are all rows. A sixteenth of a cell is 0.1 of the radial spacing on this template at 20 and at 40 cells per r0 (cellSize is 1.6 radial spacings at both), so a declared hole that is any multiple of 0.025 of endcapOuterRadius lands at least 0.02 of a spacing off every row; PaulTrapEndcapHoleStudy computes that from the solved mesh. Tied to the cell rather than fixed, so it moves with a convergence study and stays sub-cell at every mesh."
-    },
     "endcapEntranceBoreRadius": {
-      "expression": "endcapOuterRadius * endcapEntranceHoleFraction + endcapBoreOffset * (0 - floor(0 - endcapEntranceHoleFraction))",
+      "expression": "endcapOuterRadius * endcapEntranceHoleFraction",
       "unit": "mm",
-      "description": "The radius of the bore actually cut in the entrance endcap: the declared hole plus endcapBoreOffset. The second term's factor, 0 - floor(0 - f), is 1 for any hole in (0, 0.9] and exactly zero for none, so a closed endcap is the solid one to the bit and not a bore of a sixteenth of a cell."
+      "description": "The radius of the bore cut in the entrance endcap: the declared hole, exactly, at every mesh. Zero for none, and then the endcap's outline is the solid one to the bit."
     },
     "endcapExitBoreRadius": {
-      "expression": "endcapOuterRadius * endcapExitHoleFraction + endcapBoreOffset * (0 - floor(0 - endcapExitHoleFraction))",
+      "expression": "endcapOuterRadius * endcapExitHoleFraction",
       "unit": "mm",
-      "description": "The radius of the bore actually cut in the exit endcap; as endcapEntranceBoreRadius."
-    },
-    "entranceStopFace": {
-      "expression": "-(domainHalfLength + cellSize * (1 + floor(0 - endcapEntranceHoleFraction)))",
-      "unit": "mm",
-      "description": "The inner face of entranceStop. With the entrance hole open it is the solve domain's own grounded edge, -domainHalfLength, so the plate fixes nothing the boundary did not already fix and the field is the field without it; with the hole closed it is one cell outside the domain and the plate has no width at all, so the solid trap carries no fourth conductor anywhere it could be felt."
+      "description": "The radius of the bore cut in the exit endcap; as endcapEntranceBoreRadius."
     },
     "endcapStretch": {
       "expression": "endcapHalfSpacing * endcapStretchFraction",
@@ -377,7 +367,7 @@
               "unit": "mm"
             },
             "maxX": {
-              "expression": "entranceStopFace",
+              "expression": "-domainHalfLength",
               "unit": "mm"
             },
             "minY": {
@@ -385,7 +375,31 @@
               "unit": "mm"
             },
             "maxY": {
-              "expression": "ringOuterRadius",
+              "expression": "ringOuterRadius + 2 * cellSize",
+              "unit": "mm"
+            },
+            "potential": {
+              "value": 0,
+              "unit": "V"
+            }
+          },
+          {
+            "name": "outerStop",
+            "shape": "rectangle",
+            "minX": {
+              "expression": "-(domainHalfLength + cellSize)",
+              "unit": "mm"
+            },
+            "maxX": {
+              "expression": "domainHalfLength + cellSize",
+              "unit": "mm"
+            },
+            "minY": {
+              "expression": "ringOuterRadius + cellSize",
+              "unit": "mm"
+            },
+            "maxY": {
+              "expression": "ringOuterRadius + 2 * cellSize",
               "unit": "mm"
             },
             "potential": {

@@ -41,41 +41,27 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
 
     private static CompiledModel Model(params (string Name, double Value)[] extra)
     {
-        var document = Io.ModelJson.Parse(DeviceTemplates.Read("paul-trap"));
-
         // q_z = 4 e V / (m Omega^2 r0^2) for the ideal r0^2 = 2 z0^2 trap.
         var mass = 100.0 * 1.66053906660e-27;
         var omega = 2.0 * Math.PI * DriveMHz * 1e6;
         var volts = Qz * mass * omega * omega * R0Mm * 1e-3 * R0Mm * 1e-3 / (4.0 * 1.602176634e-19);
 
-        var parameters = new Dictionary<string, ParameterDocument>(
-            document.Parameters!, StringComparer.Ordinal);
-
-        foreach (var (name, value) in new[]
-        {
+        (string, double)[] scaled =
+        [
             ("inscribedRadius", R0Mm), ("driveFrequency", DriveMHz), ("rfAmplitude", volts),
+
             // The shipped trap scaled from r0 = 4 mm to 10 mm whole: gap, ring and endcap
             // thickness by 2.5 as well, so the truncation is the shipped one rather than a
             // ring 4 mm deep on a 10 mm trap.
             ("electrodeGap", 1.5), ("ringThickness", 10.0), ("endcapThickness", 3.75),
-        }.Concat(extra))
-        {
-            parameters[name] = parameters[name] with { Value = value };
-        }
+        ];
 
-        document = document with
+        var document = PaulTrapHoles.Trap(scaled.Concat(extra).ToArray());
+
+        return PaulTrapHoles.Compile(document with
         {
-            Parameters = parameters,
             Ion = document.Ion! with { MassToCharge = document.Ion!.MassToCharge! with { Value = 100.0 } },
-        };
-
-        var validation = ModelValidator.Validate(document);
-
-        Assert.True(
-            validation.Model is not null,
-            string.Join("; ", validation.Errors.Select(e => e.Constraint)));
-
-        return validation.Model!;
+        });
     }
 
     private sealed record Run(
@@ -179,6 +165,7 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
             zMin * 1e3, zMax * 1e3, rMin * 1e3, rMax * 1e3, ekMin, ekMax,
             axial, radial, volts, PaulTrapHoles.EffectiveRadius(field, volts, 0.8e-3) * 1e3);
     }
+
     /// <summary>
     /// The paper's conditions in the ideal quadrupole field itself, integrated here by fixed-step
     /// fourth-order Runge-Kutta: the reference all three codes were meant to reproduce.
@@ -207,7 +194,20 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
 
         double[] state = [0.5e-3, 0.5e-3, 0.5e-3, -100.0, 0.0, 200.0];
         const double Dt = 0.5e-9;
-        double zMin = state[0], zMax = state[0], rMax = 0.0, ekMax = 0.0;
+        double zMin = double.MaxValue, zMax = double.MinValue, rMax = 0.0, ekMax = 0.0;
+
+        // The starting state is a state of the flight, and the extremes are over all of it.
+        void Sample()
+        {
+            zMin = Math.Min(zMin, state[0]);
+            zMax = Math.Max(zMax, state[0]);
+            rMax = Math.Max(rMax, Math.Sqrt((state[1] * state[1]) + (state[2] * state[2])));
+            ekMax = Math.Max(
+                ekMax,
+                0.5 * mass * ((state[3] * state[3]) + (state[4] * state[4]) + (state[5] * state[5])) / Charge);
+        }
+
+        Sample();
 
         for (var n = 0; n < 50000; n++)
         {
@@ -219,12 +219,7 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
 
             state = state.Select((v, i) => v + (Dt / 6 * (k1[i] + (2 * k2[i]) + (2 * k3[i]) + k4[i]))).ToArray();
 
-            zMin = Math.Min(zMin, state[0]);
-            zMax = Math.Max(zMax, state[0]);
-            rMax = Math.Max(rMax, Math.Sqrt((state[1] * state[1]) + (state[2] * state[2])));
-            ekMax = Math.Max(
-                ekMax,
-                0.5 * mass * ((state[3] * state[3]) + (state[4] * state[4]) + (state[5] * state[5])) / Charge);
+            Sample();
         }
 
         return (zMin * 1e3, zMax * 1e3, rMax * 1e3, ekMax);

@@ -1766,8 +1766,9 @@ those apart. `confined` is the complement — the fraction still inside when the
 ends, having struck nothing and passed no detector — and the model puts its
 detector *outside* the trap, behind the exit endcap, so the three outcomes stay distinct:
 **struck, escaped, held** - and with an exit hole open, an ion ejected through it is the one
-that escapes to the detector, while one leaving through an entrance hole strikes the grounded
-`entranceStop` (see "Holes in the endcaps" below).
+that escapes to the detector, while one leaving at the entrance end strikes the grounded
+`entranceStop` and one leaving through the outer radius the grounded `outerStop` (see "Holes in
+the endcaps" below).
 
 ### The electrodes are hyperboloids, and for most of this project's life they were not
 
@@ -1963,12 +1964,24 @@ instruments has its endcaps moved outward - the **stretched** trap - to offset w
 and the truncation do to the field. All three are parameters now, and **all three default to
 zero, which is the ideal hyperboloid trap**: every outline vertex equals the hyperboloids
 evaluated independently in the test, and the solved field equals, bit for bit, the field of the
-same document with the hole and stretch machinery taken out
+geometry the template declared before it had holes
 (`PaulTrapEndcapHoleStudy.ZeroHolesAndZeroStretchAreTheIdealHyperboloids`). Zero rather than a
 realistic default because every published number above was measured on the solid trap, and a
-default that moved them would silently invalidate them. (The first version of this test compared
-against a frozen copy of the whole template, which any later legitimate change to `paul-trap`
-would have failed for an unrelated reason.)
+default that moved them would silently invalidate them.
+
+**What "bit for bit against the template before" is, exactly.** The test rebuilds the earlier
+geometry from the shipped document: every expression the hole and stretch work touched is put
+back to the expression the template carried before (commit `19486e2`), written out in the test;
+the six parameters the work added are removed, so an old expression still naming one would not
+compile; and the two stops are dropped. Asserted between that and the shipped template at its
+defaults: the same number of fixed nodes and cut links, the same mesh warnings, and every one of
+8,385 node potentials equal to the last bit. **Not asserted on every run**: that the transcribed
+expressions are the old file's. That was checked once, by solving the old file itself beside the
+shipped template (identical, bit for bit), and is not a test, because the old file is not in the
+tree and a frozen copy of it would fail on any later legitimate change to `paul-trap` for an
+unrelated reason - which is what the first version of this test did. The transcription fails
+instead when the template changes an expression it does not know about. Nothing outside the
+solve is compared.
 
 | parameter | default | what it is | provenance |
 | --- | --- | --- | --- |
@@ -1988,76 +2001,108 @@ instead of the axis, as `H + (R - H) k / 24`, which with H = 0 is the old `(R k)
 bit because adding and subtracting zero are exact; the closing edge at y = H is the bore. A
 stretch is added *last* to every axial coordinate it moves, for the same reason.
 
-**A bore face is kept off the node rows by construction.** The radial spacing is
-`ringOuterRadius` over a power of two, 0.125 mm as shipped, so the obvious hole radii - 0.5, 1.0,
-1.5, 2.0 mm - put the bore face exactly on a node row, one conductor's face on a node plane,
-which cut cells treat discontinuously (`numerics.md`). The bore actually cut,
-`endcapExitBoreRadius`, is the declared hole plus `endcapBoreOffset`, a sixteenth of a cell
-(0.0125 mm as shipped), and exactly the declared hole when that is zero. Computed from the solved
-mesh, every multiple of 0.025 of the endcap radius lands at least **0.02 of a spacing** off every
-row at 20 and at 40 cells per r0, and the axial potential is linear through a declared hole of
-exactly four spacings (`BoreFacesAreOffTheNodeRows`). The measured bore is therefore 0.6075 mm,
-4.86 radial rows at the shipped mesh. `mesh.node-on-shared-face` adds nothing for a hole or its
-stop: the only warning any of these geometries carries is the one the ideal template already had,
-the ring's outer face lying in the grounded domain edge, and its node count moves only with the
-domain length, which the stretch changes.
+**The bore is exactly the hole declared, and a bore face on a node row is an open gap.** The
+first version of this template moved every bore outward by a sixteenth of a cell to keep its face
+off the mesh's node rows. That was withdrawn, for three reasons a review gave and measurement
+confirmed: it protected only holes that were multiples of 0.025 of the endcap radius, so a scan
+over hole size still crossed rows unannounced; it made the geometry depend on the mesh, so the
+20- against 40-cell comparison below compared two bores 6.25 micrometres apart as well as two
+meshes; and it jumped the bore from nothing to 12.5 micrometres as the fraction left zero. The
+bore is now `endcapOuterRadius` times the fraction and nothing else, the same at every cell size
+to the bit (`AHoleCannotReachTheEdgeOfItsEndcap`).
 
-**Three outcomes, and an ion through the entrance is caught.** The detector plane sits behind the
-exit endcap, as it always did. An ion ejected through the exit hole **arrives**; one that meets
-the exit endcap off the hole is itemised on **`endcapExit`**; one still inside is **confined**
+What that leaves is stated rather than engineered away. The radial spacing is `ringOuterRadius`
+over a power of two, 0.125 mm as shipped, so the obvious hole radii - 0.5, 1.0, 1.5, 2.0 mm - put
+the bore face exactly on a row of nodes: one conductor's face on a node plane, the open
+coincidence of `numerics.md` and SPEC.md item 11. **Measured, it is a step in the field and not
+a rounding** (`ABoreFaceOnANodeRowIsAStepNothingWarnsOf`): as a declared exit hole crosses
+0.5 mm, the axial potential at 0.8 z0 goes from 75.7551 to 75.9705 V - **0.215 V of the ring's
+400 for a nanometre of hole**, what 12 micrometres of bore is worth just above the row, and
+twelve thousand times what the slope accounts for. At the 1.0 mm row it is 1.48 V. On the row
+itself the field holds the value from below. **No warning is raised**:
+`mesh.node-on-shared-face` is about two conductors, or one and the grounded boundary, and every
+one of these geometries carries only the warning the ideal template already had (the ring's
+outer face in the grounded domain edge). So: keep a hole's radius off multiples of the radial
+spacing, and read a scan over hole size knowing it steps at each one. The **0.175** the
+measurements use is a 0.595 mm hole, 4.76 spacings at the shipped mesh and 9.52 at twice it -
+0.24 and 0.48 of a spacing clear, read from the solved meshes - and there the field is
+continuous: a part in a million of hole moves the potential by exactly the slope times the
+change. The test asserts the step is there, so the day the engine closes the gap it fails and
+this paragraph is revisited.
+
+**Every way out of the solve is itemised.** The detector plane sits behind the exit endcap, as it
+always did. An ion ejected through the exit hole **arrives**; one that meets the exit endcap off
+the hole is itemised on **`endcapExit`**; one still inside is **confined**
 (`AnIonThroughTheExitHoleArrivesAndOneOffItIsItemised`, with the solid trap as the control). An
 ion leaving through the **entrance** hole strikes **`entranceStop`**
-(`AnIonThroughTheEntranceHoleIsItemisedOnTheStop`): a grounded plate whose inner face is the
-solve domain's own grounded entrance edge, so it fixes nothing the boundary did not and leaves the
-field unchanged, and which has no width and lies a cell outside the domain while the entrance hole
-is closed. Before it, such an ion coasted out of the domain and was reported as still confined -
-`einzel run` said 100 percent confined, exit 0. A second detector plane or an outcome for leaving
-the modelled region would be the general answer, a LIB-1 signal recorded rather than built.
+(`AnIonThroughTheEntranceHoleIsItemisedOnTheStop`), a grounded plate whose inner face is the
+solve domain's own grounded entrance edge. Before it, such an ion coasted out of the domain and
+was reported as still confined - `einzel run` said 100 percent confined, exit 0.
+
+The first version declared that stop only while the entrance hole was open, which left two
+routes uncovered whatever the holes: the region behind each endcap is inside the solve, reached
+through the gap between the ring and the endcap, and an ion there could leave past a closed
+entrance endcap or through the domain's outer radius. **Flown, the second is real**: an ion
+released at rest at z = -3 mm, r = 7.5 mm leaves through the outer edge and coasts for the whole
+hold, ending a metre away with the outcome a held ion has. Whether an ion from inside the trap
+ever gets there is another matter - released at rest in the gap itself, at 400 and at 800 V,
+every one struck an endcap - but a `confined` that can be wrong should not rest on that. So
+both stops are **always present**: `entranceStop`, and **`outerStop`**, a grounded wall one
+cell outside the domain's outer radius. With them an ion behind the entrance endcap strikes
+`entranceStop`, one behind the exit endcap reaches the detector plane, and one leaving through
+the outer radius strikes `outerStop`
+(`AnIonLeavingTheSolveDomainIsItemisedWhicheverWayItGoes`). Neither fixes a node or cuts a link
+- one lies in the grounded edge and the other outside the mesh - so the zero-hole field is
+unchanged to the bit, which the comparison above includes. A second detector plane or an outcome
+for leaving the modelled region would be the general answer, a LIB-1 signal recorded rather than
+built.
 
 #### What the holes and the stretch do to the field
 
 Read from the on-axis potential: in the axisymmetric expansion every Legendre polynomial is one
 on the axis, so `phi(z, 0) = sum A_n z^n` and a degree-8 fit over |z| < 0.4 r0 gives each A_n.
-Quoted as `A_n r0^(n-2) / A_2`. Two meshes; holes 0.175 of the endcap radius (0.6075 mm bores),
-stretch 0.107 (`PaulTrapEndcapHoleStudy.HolesAndStretchMoveTheMultipoles`):
+Quoted as `A_n r0^(n-2) / A_2`. Two meshes, the same geometry on both; holes 0.175 of the endcap
+radius (0.595 mm), stretch 0.107 (`PaulTrapEndcapHoleStudy.HolesAndStretchMoveTheMultipoles`):
 
 | geometry | cells/r0 | dipole A1 | hexapole A3 | **octupole A4** | A6 | dEz/dz : dEr/dr at 0.4 mm | r0_eff (mm) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ideal | 20 | 0 | 0 | **+0.899 %** | -0.28 % | -2.0006 | 3.9983 |
 | | 40 | 0 | 0 | +0.900 % | -0.27 % | -2.0006 | 3.9984 |
-| both holes | 20 | 0 | 0 | **-2.20 %** | -3.9 % | -1.9986 | 4.0197 |
-| | 40 | 0 | 0 | -2.26 % | -4.6 % | -1.9985 | 4.0207 |
-| exit hole only | 20 | -0.26 % | **-0.92 %** | -0.64 % | -2.1 % | -1.9996 | 4.0089 |
-| | 40 | -0.28 % | -0.95 % | -0.67 % | -2.4 % | -1.9996 | 4.0095 |
+| both holes | 20 | 0 | 0 | **-2.10 %** | -3.8 % | -1.9987 | 4.0189 |
+| | 40 | 0 | 0 | -2.19 % | -4.4 % | -1.9986 | 4.0201 |
+| exit hole only | 20 | -0.25 % | **-0.89 %** | -0.59 % | -2.0 % | -1.9996 | 4.0086 |
+| | 40 | -0.27 % | -0.93 % | -0.64 % | -2.3 % | -1.9996 | 4.0092 |
 | stretch only | 20 | 0 | 0 | **+1.52 %** | +1.4 % | -2.0011 | 4.2325 |
 | | 40 | 0 | 0 | +1.58 % | +1.4 % | -2.0011 | 4.2326 |
-| holes + stretch | 20 | 0 | 0 | **-0.53 %** | -1.9 % | -1.9996 | 4.2519 |
-| | 40 | 0 | 0 | -0.40 % | -1.5 % | -1.9998 | 4.2511 |
+| holes + stretch | 20 | 0 | 0 | **-0.50 %** | -1.8 % | -1.9997 | 4.2516 |
+| | 40 | 0 | 0 | -0.36 % | -1.5 % | -1.9998 | 4.2507 |
 
 ("0" is below 1e-11, round-off.)
 
 - **The truncation's octupole is positive**, +0.9 percent: what the ideal template already had.
-- **Two equal holes add a negative octupole of about 3.2 percent**, turning the total to
-  -2.2 percent, and a large negative 12-pole. Only even orders, as symmetry about the center
+- **Two equal holes add a negative octupole of about 3.0 percent**, turning the total to
+  -2.1 percent, and a large negative 12-pole. Only even orders, as symmetry about the center
   plane requires.
-- **One hole breaks that symmetry** and the odd orders appear: a dipole of 0.27 percent and a
+- **One hole breaks that symmetry** and the odd orders appear: a dipole of 0.26 percent and a
   hexapole of -0.9 percent - the electrical center moves toward the hole.
 - **A stretch adds a positive octupole**, +0.7 percent on its own. On the holed trap it takes
-  the octupole from -2.2 to **-0.4 to -0.5 percent: it compensates most of the holes'
-  contribution but not all, and does not over-compensate** at this hole size. It does not touch
-  the 12-pole much (-4.6 to -1.5 percent). Whether 0.107 is the right stretch for a real trap
+  the octupole from -2.1 to **-0.4 to -0.5 percent: it compensates most of the holes'
+  contribution but not all, and does not over-compensate** at this hole size. It moves the
+  12-pole from -4.4 to -1.5 percent. Whether 0.107 is the right stretch for a real trap
   depends on the real hole size, which is not known here; the stretch that nulls the octupole
   was not searched for.
 - **The stretch is mostly a change of scale**: r0_eff grows 6 percent, so q per volt falls 11
   percent. That is the stretched trap's well-known mass shift, and it is why such instruments
   are mass-calibrated rather than set from the nominal r0.
 
-**The mesh supports the octupole, not the 12-pole.** Doubling the mesh moves A4 by 6.1e-4 for
-the holed trap against 3.2e-2 for the holes themselves, by 1.3e-3 for holes plus stretch against
-a 1.3e-2 change, and by 6.1e-4 for the stretch alone against 6.8e-3 - at most a tenth of the
-change, asserted under a fifth. The 12-pole moves by up to 20 percent of itself between meshes
-and is quoted to one figure. A hole much smaller than the 4.9 radial rows used here is not
-resolved and these numbers should not be extrapolated to it.
+**The mesh supports the octupole, not the 12-pole.** With the geometry now the same at both
+meshes, doubling the mesh moves A4 by 9.4e-4 for the holed trap against 3.1e-2 for the holes
+themselves, by 1.4e-3 for holes plus stretch against a 1.3e-2 change, and by 6.1e-4 for the
+stretch alone against 6.8e-3 - at most 0.11 of the change, asserted under a fifth. (The
+first version of this comparison reported 6.1e-4 for the holed trap; its two meshes carried bores
+6.25 micrometres apart, and the difference happened to flatter it.) The 12-pole moves by up to
+20 percent of itself between meshes and is quoted to one figure. A hole much smaller than the
+4.8 radial rows used here is not resolved and these numbers should not be extrapolated to it.
 
 #### Secular frequency, stability edge, and resonance bands
 
@@ -2067,11 +2112,14 @@ plane, found by the integrator's own root-find, so the crossing is exact rather 
 criterion for every geometry, because in a solid trap an ion reaching that plane strikes the
 endcap and in a holed one it has entered the bore. **The first version of this study counted an
 ion held if it was inside |z| < z0 at the last instant of the hold**, which in a holed trap could
-in principle count an ion that swung into the bore and came back. Both criteria were run side by
-side over every scan below - every geometry, both meshes, holds of 200, 200.25, 200.5, 201, 800
-and 2000 cycles, and the resonance scans - and **they agree on every single flight**: an ion that
-enters a bore here does not come back. So no result moved for that reason; the criterion is now
-the physical one regardless.
+in principle count an ion that swung into the bore and came back. The two are compared on every
+flight of the 200-cycle edge scan below, 66 amplitudes across the ideal and the two-holed edge,
+with holds of 200 and 200.5 cycles (`AtTwoHundredCyclesTheHoledEdgeIsARaggedStrip`), and **they
+agree on every flight**: an ion that enters a bore here does not come back, and the phase at
+which the hold ends decides nothing. (On the first version's bore the same agreement was found
+over every geometry, both meshes and holds up to 2000 cycles; that wider sweep was not repeated
+on this one.) So no result moved for that reason; the criterion is now the physical one
+regardless.
 
 Measured at a 0.05 mm launch, shipped mesh, the edge held for **800 cycles**
 (`PaulTrapEndcapHoleDynamics.SecularFrequencyAndEdge`). `q_eff` uses the effective radius from
@@ -2080,64 +2128,93 @@ the field's curvature; `q_nom` the declared 4 mm.
 | geometry | beta_z at q_eff = 0.5, measured / Mathieu | edge (V), 800 cycles | edge, q_eff | edge, q_nom |
 | --- | --- | --- | --- | --- |
 | ideal | 0.37358 / 0.37374 (0.9996) | 740.43-740.62 | **0.9056-0.9058** | 0.905 |
-| both holes | 0.37387 / 0.37374 (1.0003) | 758.59-758.79 | **0.9180-0.9182** | 0.927 |
-| exit hole only | 0.37387 / 0.37374 (1.0003) | 748.24-748.44 | 0.9103-0.9105 | 0.914 |
-| holes + stretch | 0.37387 / 0.37374 (1.0003) | 846.09-846.29 | 0.9150-0.9153 | **1.034** |
+| both holes | 0.37387 / 0.37374 (1.0003) | 758.59-758.79 | **0.9183-0.9185** | 0.927 |
+| exit hole only | 0.37387 / 0.37374 (1.0003) | 748.05-748.24 | 0.9102-0.9105 | 0.914 |
+| holes + stretch | 0.37387 / 0.37374 (1.0003) | 846.48-846.68 | 0.9156-0.9158 | **1.034** |
+
+Those brackets are one bisection each at a relative tolerance of 1e-9, and **for the holed
+geometries the last figure belongs to the tolerance, not to the trap**
+(`TheHoledEdgeMovesWithTheIntegratorToleranceAndTheIdealOneDoesNot`):
+
+| geometry | edge (V) at 1e-8 | at 1e-9 | at 1e-10 | q_eff over the three |
+| --- | --- | --- | --- | --- |
+| ideal | 740.43-740.62 | 740.43-740.62 | 740.43-740.62 | 0.9056-0.9058 |
+| both holes | 759.38-759.57 | 758.59-758.79 | 758.01-758.20 | 0.9176-0.9195 |
+| exit hole only | 747.85-748.05 | 748.05-748.24 | 748.05-748.24 | 0.9100-0.9105 |
+| holes + stretch | 846.88-847.07 | 846.48-846.68 | 845.12-845.31 | 0.9141-0.9162 |
+
+**The first write-up said a tolerance of 1e-8 or 1e-10 moved no edge. That was measured through
+a parameter the flight ignored** - the helper took a tolerance and passed the integrator a
+constant - so it compared each run with itself. Wired through and measured, the ideal trap's
+bracket is the same at all three to the bit, and the holed ones move by up to two parts in a
+thousand of q. A test now checks the tolerance reaches the integrator at all, by step count.
 
 - **The effective radius describes the small-amplitude motion in every geometry**, to four
   parts in ten thousand (asserted to one in a thousand): the holes and the stretch change the
   scale, and Mathieu at the rescaled q is still right.
-- **The holes push the ejection edge outward in q_eff by 1.3 percent**, to 0.918 against 0.906.
-  This replaces the 1.5 percent (0.919) first published, which was a bisection of a ragged edge
-  at 200 cycles (below). An octupole of the opposite sign to the quadrupole makes the axial field
-  grow faster than linearly, which shifts the large-amplitude motion and so where an ion reaches
-  the endcap; the direction is consistent with the octupole above, but the edge was not
-  decomposed into its causes. One hole moves it 0.5 percent, to 0.910; the stretch, reducing the
-  octupole, brings the holed trap back to 0.915.
+- **The holes push the ejection edge outward in q_eff by about 1.3 percent**, to 0.917-0.920
+  against 0.906. An octupole of the opposite sign to the quadrupole makes the axial field grow
+  faster than linearly, which shifts the large-amplitude motion and so where an ion reaches the
+  endcap; the direction is consistent with the octupole above, but the edge was not decomposed
+  into its causes. One hole moves it 0.5 percent, to 0.910.
+- **Whether the stretch brings the holed edge back is not resolved.** Holes plus stretch eject
+  at 0.914-0.916 against 0.917-0.920: the difference is the width of either strip, and the test
+  asserts windows for the two that overlap rather than an order between them. The ideal trap,
+  one hole and the two-holed geometries are asserted in that order.
 - **In nominal terms the stretched, holed trap ejects at q_nom 1.034** - 14 percent more volts
   than the ideal trap of the same declared r0. A q scale taken from the drawing is wrong by that
   much.
 
-**At 200 cycles the holed edge is a strip, not a step - and that, not the loss criterion, is
-what split Windows and Linux.** Scanned in 0.25 V steps
-(`AtTwoHundredCyclesTheHoledEdgeIsARaggedStrip`, and longer holds measured once):
+**With holes the edge is a strip, not a step - and that, not the loss criterion, is what split
+Windows and Linux.** Scanned in 0.25 V steps at a tolerance of 1e-9
+(`AtTwoHundredCyclesTheHoledEdgeIsARaggedStrip` for 200 cycles; the longer holds measured once):
 
 | geometry, shipped mesh | 200 cycles: first lost / last held | 800 cycles | 2000 cycles |
 | --- | --- | --- | --- |
 | ideal | 740.50 / 740.25 V (one step) | same | same |
-| both holes | 759.25 / **762.50** V | 758.50 / 761.00 | 758.50 / 760.25 |
-| exit hole only | 748.75 / 750.00 | 748.25 / 749.00 | 748.25 / 748.00 (one step) |
-| holes + stretch | 846.25 / 854.75 | 846.25 / 846.00 (one step) | 845.75 / 846.00 |
+| both holes | 759.25 / **761.50** V | 757.50 / 758.25 | 757.50 / 758.25 |
+| exit hole only | 748.50 / 750.50 | 748.00 / 747.75 (one step) | 747.75 / 747.50 (one step) |
+| holes + stretch | 846.25 / 848.75 | 845.50 / 846.00 | 845.00 / 846.00 |
 
 With holes, amplitudes are held above the first one lost, so a bisection has several crossings to
-land on. The study's bisection from 600 and 1000 V meets **762.5 V as its fifth midpoint**, which
-is the last held island at 200 cycles: held there, the search climbs to 762.5-763.3 V (q_eff
-0.923); lost there, it falls to 759.4-760.2 V (0.919). Those are exactly the two results the
-two platforms gave, so **the whole difference was the verdict of one marginal flight**. Its
-outcome does depend on last-bit arithmetic - flying the same trap by re-weighting one solved field
-instead of recompiling it per amplitude flips it the same way, and so does moving the bore by
-7.5 micrometres or doubling the mesh - but the arithmetic could only matter because the edge
-offered two places to land. Nothing else in the measurement is that sensitive: a hold longer by a
-quarter, a half or a whole cycle changes no verdict anywhere (so the phase at which the hold ends
-decides nothing), a relative tolerance of 1e-8 or 1e-10 moves no edge, and moving the launch by a
-micrometre moves the edge 0.4 V. The earlier note that "the last digits belong to the platform's
-arithmetic" was therefore half right and misleading: it is the 200-cycle hold that is too short
-for a holed trap, which is this project's own finding that a stability boundary depends on the
-hold (`einzel boundary`'s multiple-crossings check exists for exactly this). The ideal trap is
-converged at 200 cycles and the holed one is not; the test now holds 800 and asserts a window
-per geometry that contains the whole 800-cycle strip with 0.002 of q_eff either side - 0.916 to
-0.923 for both holes, 0.9045 to 0.9065 for the ideal trap - so the windows do not overlap and the
-ordering is asserted with them.
+land on, and which it lands on is decided by one marginal flight. **A longer hold narrows the
+strip and does not close it for two holes**: 2.25 V at 200 cycles, 0.75 V at 800 and at 2000 -
+and finer than the scan there are still islands, since the 800-cycle bisection above holds an
+ion at 758.59 V between scan points lost at 758.50 and 758.75. One hole does come down to a
+single step at 800 cycles. So the honest statement of the two-holed edge is the strip, q_eff
+0.917 to 0.920 with tolerance and launch included, and not a bracket 0.2 V wide.
+
+The platform difference was this, met at 200 cycles on the first version's bore (12.5 micrometres
+larger, where the strip ran 759.25 to 762.50 V). The study's bisection from 600 and 1000 V met
+**762.5 V as its fifth midpoint**, then the last held island: held there, the search climbed to
+762.5-763.3 V (q_eff 0.923); lost there, it fell to 759.4-760.2 V (0.919). Those are exactly the
+two results the two platforms gave, so **the whole difference was the verdict of one marginal
+flight**. Its outcome depends on last-bit arithmetic - flying the same trap by re-weighting one
+solved field instead of recompiling it per amplitude flipped it the same way - but the
+arithmetic could only matter because the edge offered two places to land. On the present bore the
+same 200-cycle bisection gives 759.96-760.16 V here, and 759.38-759.57 and 759.77-759.96 V with
+the launch moved a micrometre either way; at 800 cycles a micrometre of launch moves the
+bisected edge by up to 1.0 V. The earlier note that "the last digits belong to the platform's
+arithmetic" was therefore half right and misleading: the edge of a holed trap is not one place
+at 200 cycles, which is this project's own finding that a stability boundary depends on the hold
+(`einzel boundary`'s multiple-crossings check exists for exactly this), and for two holes it is
+not one place at 800 or 2000 either. The ideal trap is converged at 200 cycles. The test holds
+800 and asserts a window per geometry that contains every bracket measured across the three
+tolerances with 0.0015 of q_eff or more either side - 0.9155 to 0.922 for both holes, 0.9045 to
+0.9065 for the ideal trap.
 
 **Resonance bands.** Held at 0.3 mm launch, q_eff 0.60 to 0.89 in steps of 0.01, 200 cycles
-(`ResonanceScan`, every row asserted):
+(`ResonanceScan`):
 
 | geometry | lost inside the stable region, 200 cycles |
 | --- | --- |
 | ideal | none (lost at 0.89, the amplitude-dependent edge) |
-| both holes | none (0.89 only) |
+| both holes | none (nothing lost to 0.89) |
 | holes + stretch | none (0.89 only) |
 | **exit hole only** | **a band at q_eff 0.79**, plus an early edge from 0.87 |
+
+Asserted below q_eff 0.865, the inside of the stable region; whether the last scan point, 0.89,
+falls on the amplitude-dependent edge is printed and not pinned.
 
 **One hole opens a band, and it is the hexapole's.** Scanned finely
 (`OneHoleOpensAHexapoleBand`; the band is the longest run of consecutive lost points, and no
@@ -2154,13 +2231,13 @@ sourced here.
 the flat-annulus trap's octupole band "does not come back with two holes", from 200-cycle scans.
 Over **800 cycles** it does: an ion at 0.3 mm is lost at q_eff **0.810**, in a band narrower
 than the 0.0025 scan step, identically at 20 and 40 cells per r0 and at 800 and 2000 cycles; held
-just below it, at 0.805, the ion has beta_z = 0.6928 and beta_r = 0.2964, so
-**2 beta_z + 2 beta_r = 1.978**, approaching 2 - the order-four condition an octupole drives and
+just below it, at 0.805, the ion has beta_z = 0.6931 and beta_r = 0.2964, so
+**2 beta_z + 2 beta_r = 1.979**, approaching 2 - the order-four condition an octupole drives and
 the one the flat annuli's band met (`TwoHolesOpenTheOctupoleBandGivenTime`). The ideal trap, whose
 octupole is +0.9 percent, loses nothing over the same scan at 800 or 2000 cycles - the control.
 Holes plus stretch (-0.5 percent) lose the same point at 2000 cycles and not at 800: slower, as a
-smaller octupole should be. The exit-hole-only trap shows it too at 800 cycles, beside its wider
-hexapole band (0.785-0.795 at 800). So the earlier statement was a statement about the hold.
+smaller octupole should be. The exit-hole-only trap shows it too at 800 cycles, at 0.810, beside
+its hexapole band (0.785-0.790 at 800, as at 200). So the earlier statement was a statement about the hold.
 
 #### What this does not do
 

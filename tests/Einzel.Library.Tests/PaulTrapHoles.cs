@@ -186,6 +186,7 @@ internal static class PaulTrapHoles
         /// <param name="cycles">How long to hold, in RF cycles; need not be whole.</param>
         /// <param name="loss">What counts as losing the ion.</param>
         /// <param name="record">Whether to record the path at sixteen samples a cycle.</param>
+        /// <param name="relativeTolerance">The integrator's relative tolerance; the template's by default.</param>
         public Flight Fly(
             double volts, double axialMm, double radialMm, double cycles, Loss loss,
             bool record = false, double relativeTolerance = 1e-9)
@@ -214,7 +215,7 @@ internal static class PaulTrapHoles
                 field,
                 new IntegrationSettings
                 {
-                    RelativeTolerance = 1e-9,
+                    RelativeTolerance = relativeTolerance,
                     MaximumFlightTime = cycles / DriveHz,
                 },
                 stop,
@@ -229,16 +230,19 @@ internal static class PaulTrapHoles
         /// </summary>
         public (double Held, double Lost) Edge(
             double axialMm, double radialMm, double cycles, Loss loss,
-            double low = 600.0, double high = 1000.0, int steps = 11)
+            double low = 600.0, double high = 1000.0, int steps = 11, double relativeTolerance = 1e-9)
         {
-            Assert.True(Fly(low, axialMm, radialMm, cycles, loss).Held, $"not held at {low} V");
-            Assert.False(Fly(high, axialMm, radialMm, cycles, loss).Held, $"not lost at {high} V");
+            bool Held(double volts) =>
+                Fly(volts, axialMm, radialMm, cycles, loss, relativeTolerance: relativeTolerance).Held;
+
+            Assert.True(Held(low), $"not held at {low} V");
+            Assert.False(Held(high), $"not lost at {high} V");
 
             for (var k = 0; k < steps; k++)
             {
                 var mid = 0.5 * (low + high);
 
-                if (Fly(mid, axialMm, radialMm, cycles, loss).Held)
+                if (Held(mid))
                 {
                     low = mid;
                 }
@@ -278,25 +282,47 @@ internal static class PaulTrapHoles
         TrajectoryResult Result, IReadOnlyList<TrajectorySample> Samples, Solved Trap, Loss Loss)
     {
         /// <summary>Whether the ion was held for the whole hold under the flight's criterion.</summary>
-        public bool Held
+        public bool Held => HeldUnder(Loss);
+
+        /// <summary>Whether the ion was held for the whole hold under a named criterion.</summary>
+        /// <remarks>
+        /// A flight that ran to the end of its hold can be judged under either criterion,
+        /// whichever it was flown with: a stop surface that never fired changed nothing, so it
+        /// is the trajectory the other criterion would have flown. A flight the vertex plane
+        /// ended cannot say where the ion would have been at the end of the hold, and asking
+        /// it throws rather than guessing.
+        /// </remarks>
+        public bool HeldUnder(Loss criterion)
         {
-            get
+            if (Result.Outcome != TrajectoryOutcome.MaximumFlightTimeReached)
             {
-                if (Result.Outcome != TrajectoryOutcome.MaximumFlightTimeReached)
+                if (criterion == Loss.FinalPosition && Loss == Loss.TrappingRegion
+                    && Result.Outcome == TrajectoryOutcome.StopConditionMet)
                 {
-                    return false;
+                    throw new InvalidOperationException(
+                        "a flight ended at the vertex plane cannot be judged by its final position");
                 }
 
-                if (Loss == Loss.TrappingRegion)
-                {
-                    return true;
-                }
-
-                var r0 = Trap.Model.Parameters["inscribedRadius"].SiValue;
-                var p = Result.FinalState.Position;
-
-                return Math.Abs(p.X) < Trap.EndcapVertex && Math.Sqrt((p.Y * p.Y) + (p.Z * p.Z)) < r0;
+                return false;
             }
+
+            if (criterion == Loss.TrappingRegion)
+            {
+                // Flown without the vertex-plane stop, a completed flight does not say
+                // whether it crossed that plane on the way.
+                if (Loss != Loss.TrappingRegion)
+                {
+                    throw new InvalidOperationException(
+                        "a flight flown without the vertex-plane stop cannot be judged by it");
+                }
+
+                return true;
+            }
+
+            var r0 = Trap.Model.Parameters["inscribedRadius"].SiValue;
+            var p = Result.FinalState.Position;
+
+            return Math.Abs(p.X) < Trap.EndcapVertex && Math.Sqrt((p.Y * p.Y) + (p.Z * p.Z)) < r0;
         }
     }
 

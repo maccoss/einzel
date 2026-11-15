@@ -5632,3 +5632,34 @@ The rule: **a correct value is not the same as a legible one, and only looking t
 apart.** Both defects are now pinned by tests — written after the window showed them, which
 is the usual order for this class and the reason a GUI change is not finished when its tests
 are green.
+
+## A bisection over a ragged edge turns one flight's last bit into a platform difference
+
+The Paul trap with holes in its endcaps ejected at 759 V on Windows and 762.5 V on Linux. The
+first explanation was the loss criterion, the second was "the last digits belong to the
+platform's arithmetic", and both were written down before the edge had been looked at. Scanned
+in 0.25 V steps it is not an edge: at 200 cycles, amplitudes are held above the first one lost
+across more than two volts. A bisection assumes one crossing. Given several it lands on whichever
+its midpoints meet, and one of its midpoints sat on the last held island - so the verdict of one
+marginal flight, which does turn on the last bit, moved the answer 3.5 V. Every step of a
+bisection is consistent with a single crossing by construction, so the result looked as
+confident as the ideal trap's, which really is one step.
+
+Two rules, and a correction to the first.
+
+**Check that an edge is a step by scanning it, not by bisecting it.** A bisection cannot see
+the thing that invalidates it. `einzel boundary` walks outward from its bracket for this reason;
+a test that calls its own bisection has to do the same, or print the scan beside the bracket.
+
+**Hold long enough that the edge is a step - and if no hold makes it one, publish the strip.**
+The first fix held 800 cycles and reported the edge as "one place". It is not: for two holes the
+strip narrows from 2.25 V to 0.75 V and stays there at 2000 cycles, and inside it the bisected
+bracket moves 1.4 V across integrator tolerances of 1e-8, 1e-9 and 1e-10 while the ideal trap's
+does not move a bit. The number that belongs to the trap is the strip, q_eff 0.917 to 0.920; a
+bracket 0.2 V wide inside it belongs to the tolerance.
+
+**And that tolerance check had been run and reported clean - through a parameter the function
+ignored.** The flight helper took `relativeTolerance` and handed the integrator a constant, so
+"1e-8 or 1e-10 moves no edge" compared each run with itself. A sensitivity check needs its own
+control: show the knob does something somewhere (here, a looser tolerance takes fewer steps over
+the same flight) before reporting that it does nothing where it matters.

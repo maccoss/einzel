@@ -24,23 +24,25 @@ namespace Einzel.Library.Tests;
 /// vertex plane strikes the endcap, and in a holed one it has entered the bore. The first
 /// version of this study asked instead where the ion was at the last instant of the hold
 /// (<see cref="Loss.FinalPosition"/>), which in a holed trap could count an ion that swung into
-/// the bore and back as held; the two are compared below and agree everywhere they were
-/// measured, so no published number moved for that reason.
+/// the bore and back as held; the two are compared below, on every flight of the 200-cycle
+/// edge scan, and agree on all of them, so no published number moved for that reason.
 /// </para>
 /// </remarks>
 public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
 {
     /// <summary>
     /// How long the edge is held for. Not 200 cycles: with holes the edge at 200 cycles is a
-    /// ragged strip - held islands above the first loss - so a bisection lands on whichever
-    /// crossing its path meets first, and a single marginal flight decides it. Measured in
-    /// <see cref="AtTwoHundredCyclesTheHoledEdgeIsARaggedStrip"/>.
+    /// ragged strip more than two volts wide - held islands above the first loss - so a
+    /// bisection lands on whichever crossing its path meets first, and a single marginal
+    /// flight decides it. Measured in <see cref="AtTwoHundredCyclesTheHoledEdgeIsARaggedStrip"/>.
+    /// At 800 the strip is narrower, under a volt at 0.25 V steps, and still not one step:
+    /// <see cref="TheHoledEdgeMovesWithTheIntegratorToleranceAndTheIdealOneDoesNot"/>.
     /// </summary>
     private const double EdgeCycles = 800.0;
 
-    private static readonly double[] OneHoleLosses = [0.79, 0.87, 0.88, 0.89];
+    private static readonly double[] OneHoleBand = [0.79];
 
-    private static readonly double[] EdgeOnly = [0.89];
+    private static readonly double[] Tolerances = [1e-8, 1e-9, 1e-10];
 
     private static readonly Dictionary<string, Solved> Traps = new(StringComparer.Ordinal);
 
@@ -160,6 +162,58 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// Every way out of the solve domain is itemised, with the endcaps solid: an ion that has
+    /// got behind an endcap or beside the ring strikes a stop or reaches the detector, and none
+    /// coasts out of the domain to be read as still confined.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The ring and each endcap are separated by a gap, and the region behind it is inside the
+    /// solve. Ions released at rest there, at the shipped amplitude: one behind the entrance
+    /// endcap strikes <c>entranceStop</c>, whose face is the domain's entrance edge; one
+    /// behind the exit endcap reaches the detector plane; and one near the outer radius leaves
+    /// through the domain's outer edge and strikes <c>outerStop</c>, a cell outside it. Before
+    /// the outer stop existed that last ion coasted for the whole hold, ending a metre away
+    /// with the outcome a held ion has. Both stops are present whether or not a hole is open.
+    /// </para>
+    /// <para>
+    /// Whether an ion from inside the trap ever takes the gap is a separate question, and at
+    /// the launches tried here it does not: released at rest in the gap itself it strikes the
+    /// endcap.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnIonLeavingTheSolveDomainIsItemisedWhicheverWayItGoes()
+    {
+        var trap = Trap("ideal");
+
+        (double Axial, double Radial, string? Struck, TrajectoryOutcome Outcome)[] cases =
+        [
+            (-3.0, 5.0, "entranceStop", TrajectoryOutcome.StruckElectrode),
+            (-6.0, 7.0, "entranceStop", TrajectoryOutcome.StruckElectrode),
+            (3.0, 5.0, null, TrajectoryOutcome.StopConditionMet),
+            (-3.0, 7.5, "outerStop", TrajectoryOutcome.StruckElectrode),
+            (3.0, 7.5, "outerStop", TrajectoryOutcome.StruckElectrode),
+            (-2.5, 3.7, "endcapEntrance", TrajectoryOutcome.StruckElectrode),
+            (2.5, 3.7, "endcapExit", TrajectoryOutcome.StruckElectrode),
+        ];
+
+        foreach (var (axial, radial, struck, outcome) in cases)
+        {
+            var flight = trap.Fly(trap.ReferenceVolts, axial, radial, 200, Loss.FinalPosition);
+            var p = flight.Result.FinalState.Position;
+
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"from z {axial,5:F1} mm, r {radial,4:F1} mm: {flight.Result.Outcome} {flight.Result.StruckSurface ?? "-"} "
+                + $"at x = {p.X * 1e3:F3} mm, r = {Math.Sqrt((p.Y * p.Y) + (p.Z * p.Z)) * 1e3:F3} mm"));
+
+            Assert.Equal(outcome, flight.Result.Outcome);
+            Assert.Equal(struck, flight.Result.StruckSurface);
+        }
+    }
+
+    /// <summary>
     /// The secular frequency at q_eff = 0.5 is Mathieu's at the effective radius in every
     /// geometry, and the ejection edge in q_eff is where the holes put it.
     /// </summary>
@@ -205,17 +259,82 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
             Assert.True(Math.Abs((betaZ / predicted) - 1.0) < 1e-3, $"{name}: beta_z / Mathieu {betaZ / predicted:F5}");
         }
 
-        // The edge in q_eff, at 800 cycles and the shipped mesh. With holes the edge there is
-        // still a strip rather than a step - both holes: first loss at q_eff 0.9178, last held
-        // amplitude at 0.9209 - and a bisection may land anywhere in it, so each window is the
-        // measured strip with 0.002 either side, which is wider than anything a change of
-        // arithmetic was seen to do (moving the launch by a micrometre moved the edge 0.0005).
-        // The windows do not overlap, so what is asserted is the ordering the holes and the
-        // stretch produce as well as where each edge is.
+        // The edge in q_eff, at 800 cycles and the shipped mesh. With holes it is a strip and
+        // not a step, and where a bisection lands in it moves with the integrator's tolerance
+        // and with a micrometre of launch: both holes 0.9176 to 0.9195 over tolerances of 1e-8,
+        // 1e-9 and 1e-10, holes plus stretch 0.9141 to 0.9162, one hole 0.9100 to 0.9105, the
+        // ideal trap 0.9056 to 0.9058 at all three. Each window is that measured spread with
+        // 0.0015 or more either side. The ideal trap, one hole, and the two-holed geometries
+        // are asserted in that order, with gaps between their windows; holes plus stretch and
+        // both holes are NOT ordered by these windows, which overlap - the 0.003 between them
+        // is the width of either strip, and the docs say so rather than claim it.
         Assert.InRange(edges["ideal"], 0.9045, 0.9065);
-        Assert.InRange(edges["exit hole only"], 0.909, 0.912);
-        Assert.InRange(edges["holes + stretch"], 0.913, 0.917);
-        Assert.InRange(edges["both holes"], 0.916, 0.923);
+        Assert.InRange(edges["exit hole only"], 0.9085, 0.9115);
+        Assert.InRange(edges["holes + stretch"], 0.9125, 0.918);
+        Assert.InRange(edges["both holes"], 0.9155, 0.922);
+    }
+
+    /// <summary>
+    /// The holed trap's edge moves with the integrator's relative tolerance, by about a part in
+    /// a thousand of q; the ideal trap's does not move at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The first write-up of these measurements said a tolerance of 1e-8 or 1e-10 moved no
+    /// edge. It had been measured through a parameter the flight ignored, so it compared each
+    /// run with itself. Measured for real, at 800 cycles and a 0.05 mm launch: the ideal trap
+    /// brackets its edge at 740.43-740.62 V at all three tolerances, to the bit, and the trap
+    /// with both holes at 759.38-759.57, 758.59-758.79 and 758.01-758.20 V - q_eff 0.9194,
+    /// 0.9184 and 0.9177. So with holes the last part in a thousand of the edge is not a
+    /// property of the trap: the motion near it is sensitive to the last digits of the
+    /// arithmetic, which is what a strip of interleaved held and lost amplitudes looks like
+    /// from inside one flight.
+    /// </para>
+    /// <para>
+    /// Asserted: the tolerance reaches the integrator, the ideal trap's three brackets are one bracket, and each of the holed
+    /// trap's lies inside the window <see cref="SecularFrequencyAndEdge"/> asserts. That the
+    /// holed brackets differ is printed and not asserted - which side of a ragged edge a
+    /// flight lands on is exactly what must not be pinned.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheHoledEdgeMovesWithTheIntegratorToleranceAndTheIdealOneDoesNot()
+    {
+        // The tolerance reaches the integrator at all: a looser one takes fewer steps over the
+        // same stable flight. Without this, every assertion below passes with the parameter
+        // ignored, which is how the first claim was made.
+        var loose = Trap("ideal").Fly(400.0, 0.05, 0.05, 50, Loss.TrappingRegion, relativeTolerance: 1e-6);
+        var tight = Trap("ideal").Fly(400.0, 0.05, 0.05, 50, Loss.TrappingRegion, relativeTolerance: 1e-10);
+
+        output.WriteLine($"50 cycles at 400 V: {loose.Result.AcceptedSteps} steps at 1e-6, {tight.Result.AcceptedSteps} at 1e-10");
+
+        Assert.True(loose.Result.AcceptedSteps < tight.Result.AcceptedSteps, "the tolerance did not reach the integrator");
+
+        foreach (var name in new[] { "ideal", "both holes" })
+        {
+            var trap = Trap(name);
+
+            var edges = Tolerances
+                .Select(tolerance => trap.Edge(0.05, 0.0, EdgeCycles, Loss.TrappingRegion, relativeTolerance: tolerance))
+                .ToArray();
+
+            for (var k = 0; k < edges.Length; k++)
+            {
+                output.WriteLine(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{name,-11} tolerance {Tolerances[k]:E0}: {edges[k].Held:F2}-{edges[k].Lost:F2} V, "
+                    + $"q_eff {trap.QPerVolt * edges[k].Held:F4}-{trap.QPerVolt * edges[k].Lost:F4}"));
+            }
+
+            if (name == "ideal")
+            {
+                Assert.Single(edges.Distinct());
+            }
+            else
+            {
+                Assert.All(edges, e => Assert.InRange(trap.QPerVolt * 0.5 * (e.Held + e.Lost), 0.9155, 0.922));
+            }
+        }
     }
 
     /// <summary>
@@ -226,12 +345,12 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
     /// <remarks>
     /// <para>
     /// Both holes, 0.25 V steps across the edge: amplitudes are held above the first one lost,
-    /// up to 3.25 V above it, so the edge is several crossings rather than one. A bisection from
-    /// 600 and 1000 V meets 762.5 V as its fifth midpoint, which sits on the last held island:
-    /// held there, the search climbs to 762.5-763.3 V; lost there, it falls to 759.4-760.2 V.
-    /// That one marginal flight is all that separated the two platforms' results, and flying the
-    /// same trap by re-weighting a solved field rather than recompiling it flips it the same way
-    /// - so the arithmetic decides it, but only because the edge offers it two places to land.
+    /// up to 2.25 V above it (759.25 and 761.50 V), so the edge is several crossings rather
+    /// than one, and a bisection lands on whichever its midpoints meet. On the bore this study
+    /// first used, 12.5 micrometres larger, the strip ran to 762.50 V, which a bisection from
+    /// 600 and 1000 V meets as its fifth midpoint: held there, the search climbed to
+    /// 762.5-763.3 V, and lost there, it fell to 759.4-760.2 V - the two results two platforms
+    /// gave, so one marginal flight was the whole difference (<c>docs/device-templates.md</c>).
     /// The ideal trap is the control: at the same hold its edge is one clean step.
     /// </para>
     /// <para>
@@ -253,10 +372,24 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
             for (var k = 0; k <= 32; k++)
             {
                 var volts = from + (0.25 * k);
-                var held = trap.Fly(volts, 0.05, 0.0, 200, Loss.TrappingRegion).Held;
+                var flight = trap.Fly(volts, 0.05, 0.0, 200, Loss.TrappingRegion);
+                var held = flight.Held;
 
-                Assert.Equal(held, trap.Fly(volts, 0.05, 0.0, 200, Loss.FinalPosition).Held);
-                Assert.Equal(held, trap.Fly(volts, 0.05, 0.0, 200.5, Loss.TrappingRegion).Held);
+                // The two criteria and the two holds, with one more flight rather than two.
+                // Held: the vertex-plane stop never fired, so this is the flight the
+                // final-position criterion would have flown and is judged by it as it stands;
+                // what is new is the half cycle after it. Lost: a longer hold flies the same
+                // path to the same crossing, so that verdict is already known; what is new is
+                // where the ion is at the end of the hold if nothing stops it at the plane.
+                if (held)
+                {
+                    Assert.True(flight.HeldUnder(Loss.FinalPosition));
+                    Assert.True(trap.Fly(volts, 0.05, 0.0, 200.5, Loss.TrappingRegion).Held);
+                }
+                else
+                {
+                    Assert.False(trap.Fly(volts, 0.05, 0.0, 200, Loss.FinalPosition).Held);
+                }
 
                 line.Append(held ? '.' : 'x');
 
@@ -290,7 +423,7 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
 
     /// <summary>
     /// The stable region scanned for loss at a 0.3 mm launch: one hole opens a band, and the
-    /// others hold every ion up to the amplitude-dependent edge, over 200 cycles.
+    /// others hold every ion below the amplitude-dependent edge, over 200 cycles.
     /// </summary>
     [Fact]
     public void ResonanceScan()
@@ -322,15 +455,20 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
                 CultureInfo.InvariantCulture,
                 $"{name,-17} q 0.60 {line} 0.89   lost at q_eff {string.Join(", ", lost.Select(q => q.ToString("F2", CultureInfo.InvariantCulture)))}"));
 
+            // What is asserted is the inside of the stable region, below q_eff 0.865. Above
+            // it is the amplitude-dependent edge of a 0.3 mm launch, which is measured as an
+            // edge elsewhere and sits within a scan step of 0.89 for the symmetric geometries:
+            // on which side of the last point it falls is printed, not pinned.
+            var inside = lost.Where(q => q < 0.865).Select(q => Math.Round(q, 2)).ToArray();
+
             if (name == "exit hole only")
             {
-                // The hexapole band at 0.79 and the early edge from 0.87, and nothing else.
-                Assert.Equal(OneHoleLosses, lost.Select(q => Math.Round(q, 2)).ToArray());
+                // The hexapole band at 0.79, and nothing else.
+                Assert.Equal(OneHoleBand, inside);
             }
             else
             {
-                // Only the amplitude-dependent edge at 0.89.
-                Assert.Equal(EdgeOnly, lost.Select(q => Math.Round(q, 2)).ToArray());
+                Assert.Empty(inside);
             }
         }
     }
@@ -473,7 +611,7 @@ public sealed class PaulTrapEndcapHoleDynamics(ITestOutputHelper output)
     /// <remarks>
     /// <para>
     /// The flat-annulus trap lost its ion in a band where <c>2 beta_z + 2 beta_r = 2</c>, the
-    /// order-four condition an octupole drives. Two holes make the octupole -2.2 percent, and
+    /// order-four condition an octupole drives. Two holes make the octupole -2.1 percent, and
     /// over 200 cycles nothing is lost; over 800 an ion launched at 0.3 mm is lost in a band
     /// narrower than 0.005 in q_eff at 0.810, at both meshes, and an ion held just below it, at
     /// 0.805, has <c>2 beta_z + 2 beta_r</c> = 1.978, approaching 2. The ideal trap, whose

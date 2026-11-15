@@ -19,7 +19,8 @@ namespace Einzel.Library.Tests;
 /// endcaps outward - the stretched trap - to offset what the holes and the truncation do.
 /// All are declared parameters of the <c>paul-trap</c> template, defaulting to zero, and at
 /// zero the template is the ideal hyperboloid trap, which the first test checks against the
-/// hyperboloids evaluated here rather than against a frozen copy of the file.
+/// hyperboloids evaluated here and against the geometry the template declared before it had
+/// holes, rebuilt from that template's own expressions.
 /// </para>
 /// <para>
 /// The multipoles are read from the on-axis potential. In the axisymmetric expansion
@@ -32,19 +33,79 @@ namespace Einzel.Library.Tests;
 public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
 {
     /// <summary>
-    /// The document with the hole and stretch machinery taken out: every bore radius and the
-    /// stretch replaced by zero, and the entrance stop removed.
+    /// The solve geometry <c>paul-trap</c> declared before it had holes, a stretch or stops:
+    /// the shipped document with every expression that work touched put back to what it was.
     /// </summary>
-    private static ModelDocument Bypassed()
+    /// <remarks>
+    /// <para>
+    /// Each pair below is the shipped expression and the one the template carried before
+    /// (commit 19486e2, <c>git show 19486e2:src/Einzel.Library/Templates/paul-trap.json</c>),
+    /// copied by hand. Every shipped expression must be found the stated number of times, so a
+    /// later edit to the template that this list does not know about fails here rather than
+    /// leaving a comparison of the template with itself; the six parameters the work added are
+    /// then removed, so an old expression that still named one would not compile; and the two
+    /// stops are dropped.
+    /// </para>
+    /// <para>
+    /// What this is not: the old file. The expressions are a transcription, checked against the
+    /// old file once when written (the shipped template at its defaults solves to the old
+    /// file's field, bit for bit) and not on every run, because the old file is not in the tree and a
+    /// frozen copy of it would fail on any later legitimate change to the template for an
+    /// unrelated reason. Nothing outside the solve - descriptions, the source, the detector -
+    /// is compared.
+    /// </para>
+    /// </remarks>
+    private static ModelDocument BeforeHoles()
     {
-        var document = Trap();
+        const string Run = "(endcapOuterRadius * k / 24)";
+        const string Face =
+            "(endcapHalfSpacing * sqrt(1 + ((endcapOuterRadius * k / 24) / inscribedRadius) * ((endcapOuterRadius * k / 24) / inscribedRadius)))";
+
+        static string NowRun(string bore) =>
+            $"({bore} + (endcapOuterRadius - {bore}) * k / 24)";
+
+        static string NowFace(string bore) =>
+            $"(endcapHalfSpacing * sqrt(1 + (({bore} + (endcapOuterRadius - {bore}) * k / 24) / inscribedRadius) * (({bore} + (endcapOuterRadius - {bore}) * k / 24) / inscribedRadius)) + endcapStretch)";
+
+        // (shipped, before, how many times the shipped one occurs). In order: an entrance
+        // expression is replaced before the exit one it contains.
+        (string Now, string Before, int Count)[] pairs =
+        [
+            ("\"-" + NowFace("endcapEntranceBoreRadius") + "\"", "\"-" + Face + "\"", 1),
+            ("\"" + NowFace("endcapExitBoreRadius") + "\"", "\"" + Face + "\"", 1),
+            ("\"" + NowRun("endcapEntranceBoreRadius") + "\"", "\"" + Run + "\"", 1),
+            ("\"" + NowRun("endcapExitBoreRadius") + "\"", "\"" + Run + "\"", 1),
+            ("\"-(endcapHalfSpacing + endcapThickness + endcapStretch)\"", "\"-(endcapHalfSpacing + endcapThickness)\"", 2),
+            ("\"(endcapHalfSpacing + endcapThickness + endcapStretch)\"", "\"endcapHalfSpacing + endcapThickness\"", 2),
+            ("\"expression\": \"endcapEntranceBoreRadius\"", "\"expression\": \"0\"", 1),
+            ("\"expression\": \"endcapExitBoreRadius\"", "\"expression\": \"0\"", 1),
+            ("\"endcapHalfSpacing + endcapThickness + inscribedRadius + endcapStretch\"", "\"endcapHalfSpacing + endcapThickness + inscribedRadius\"", 1),
+            ("(endcapOuterRadius / inscribedRadius)) + endcapStretch\"", "(endcapOuterRadius / inscribedRadius))\"", 1),
+        ];
+
+        var text = DeviceTemplates.Read("paul-trap");
+
+        foreach (var (now, before, count) in pairs)
+        {
+            var found = text.Split(now).Length - 1;
+
+            Assert.True(found == count, $"expected {count} of {now} in the template, found {found}");
+
+            text = text.Replace(now, before, StringComparison.Ordinal);
+        }
+
+        var document = Io.ModelJson.Parse(text);
 
         var parameters = new Dictionary<string, ParameterDocument>(
             document.Parameters!, StringComparer.Ordinal);
 
-        foreach (var name in new[] { "endcapEntranceBoreRadius", "endcapExitBoreRadius", "endcapStretch" })
+        foreach (var added in new[]
         {
-            parameters[name] = parameters[name] with { Expression = "0 * inscribedRadius" };
+            "endcapEntranceHoleFraction", "endcapExitHoleFraction", "endcapStretchFraction",
+            "endcapEntranceBoreRadius", "endcapExitBoreRadius", "endcapStretch",
+        })
+        {
+            Assert.True(parameters.Remove(added), $"the template no longer declares {added}");
         }
 
         var field = document.Fields![0];
@@ -59,7 +120,8 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
                 {
                     Solve = solve with
                     {
-                        Electrodes = solve.Electrodes!.Where(e => e.Name != "entranceStop").ToList(),
+                        Electrodes = solve.Electrodes!
+                            .Where(e => e.Name is not ("entranceStop" or "outerStop")).ToList(),
                     },
                 },
             ],
@@ -68,23 +130,24 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
 
     /// <summary>
     /// With no holes and no stretch the endcaps and ring are the ideal hyperboloids, and the
-    /// solved field is the field of the template with the hole and stretch machinery bypassed.
+    /// solved field is the field of the geometry the template declared before it had either.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The outlines are compared with the hyperboloids evaluated here, independently of the
     /// template's expressions: the ring <c>r = r0 sqrt(1 + (z/z0)^2)</c> and each endcap
     /// <c>z = z0 sqrt(1 + (r/r0)^2)</c>, sampled at the template's 25 points, to a part in
-    /// 1e14 of r0 - so a later change to <c>paul-trap</c> that keeps those surfaces still
-    /// passes, which a frozen copy of the whole file could not.
+    /// 1e14 of r0.
     /// </para>
     /// <para>
-    /// The field is compared bit for bit with the same document whose bore radii and stretch
-    /// are replaced by zero and whose entrance stop is removed: what the machinery adds when
-    /// everything is closed is exactly nothing. The bores are written so that a zero hole
-    /// evaluates the same floating-point operations as no hole - <c>H + (R - H) k / 24</c> is
-    /// <c>0 + (R k) / 24</c>, and adding and subtracting zero are exact - and the stop has no
-    /// width and lies a cell outside the domain.
+    /// The field is compared with <see cref="BeforeHoles"/>: the same number of fixed nodes
+    /// and cut links, the same mesh warnings, and every node's potential equal bit for bit.
+    /// So the hole and stretch expressions at zero evaluate to what the old ones did -
+    /// <c>H + (R - H) k / 24</c> is <c>0 + (R k) / 24</c>, and adding and subtracting zero are
+    /// exact - and the two stops, which are always present, fix no node and cut no link:
+    /// <c>entranceStop</c>'s face is the domain's own grounded entrance edge and
+    /// <c>outerStop</c> lies a cell outside the mesh. What that comparison is and is not is in
+    /// <see cref="BeforeHoles"/>'s remarks.
     /// </para>
     /// </remarks>
     [Fact]
@@ -101,7 +164,7 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
         var tolerance = 1e-14 * r0;
 
         Assert.Equal(
-            ["ring", "endcapEntrance", "endcapExit", "entranceStop"],
+            ["ring", "endcapEntrance", "endcapExit", "entranceStop", "outerStop"],
             solve.Electrodes.Select(e => e.Name).ToArray());
 
         var ring = solve.Electrodes[0].Vertices;
@@ -122,20 +185,23 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
             Assert.Equal(r, exit[k].Y, tolerance);
         }
 
-        // The closed endcap's bore edge is on the axis, and the stop has no width and lies
-        // outside the domain.
+        // The closed endcap's bore edge is on the axis.
         Assert.Equal(0.0, entrance[^1].Y);
         Assert.Equal(0.0, exit[^1].Y);
 
-        var stop = solve.Electrodes[3];
+        // The stops: one whose face is the domain's entrance edge, one wholly outside the mesh.
         var half = model.Parameters["domainHalfLength"].SiValue;
+        var outer = model.Parameters["ringOuterRadius"].SiValue;
 
-        Assert.Equal(stop.MinX, stop.MaxX);
-        Assert.True(stop.MaxX < -half, "a closed entrance's stop should lie outside the domain");
+        Assert.Equal(-half, solve.Electrodes[3].MaxX);
+        Assert.True(solve.Electrodes[4].MinY > outer, "the outer stop should lie outside the mesh");
 
-        // The field, against the machinery bypassed.
-        var bypassed = Compile(Bypassed());
-        var a = GeometryBuilder.SolveChannels(bypassed.Fields[0].Solve!);
+        // The field, against the geometry before the holes.
+        var before = Compile(BeforeHoles());
+
+        Assert.Equal(3, before.Fields[0].Solve!.Electrodes.Count);
+
+        var a = GeometryBuilder.SolveChannels(before.Fields[0].Solve!);
         var b = GeometryBuilder.SolveChannels(solve);
 
         Assert.Equal(a.Count, b.Count);
@@ -144,6 +210,9 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
         {
             Assert.Equal(a[c].FixedNodes, b[c].FixedNodes);
             Assert.Equal(a[c].CutLinks, b[c].CutLinks);
+            Assert.Equal(
+                a[c].Report.Warnings.Select(w => w.Code + ": " + w.Message),
+                b[c].Report.Warnings.Select(w => w.Code + ": " + w.Message));
 
             var pa = a[c].Potential.Values;
             var pb = b[c].Potential.Values;
@@ -188,86 +257,101 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
             Assert.Contains(refused.Errors, e => e.Path.Contains(name, StringComparison.Ordinal));
         }
 
-        // At the largest fraction, at the coarsest mesh the parameters allow, the bore is
-        // still inside the endcap: the offset cannot carry it to the edge.
-        var model = Compile(Trap(("endcapExitHoleFraction", 0.9), ("cellsPerRadius", 4.0)));
+        // The geometry does not depend on the mesh: the bore is the declared hole at every
+        // cell size, to the bit.
+        double[] meshes = [4.0, 20.0, 40.0];
+        var bores = meshes
+            .Select(cells => Compile(Trap(("endcapExitHoleFraction", HoleFraction), ("cellsPerRadius", cells))))
+            .Select(m => (Bore: m.Parameters["endcapExitBoreRadius"].SiValue, Edge: m.Parameters["endcapOuterRadius"].SiValue))
+            .ToArray();
 
-        Assert.True(
-            model.Parameters["endcapExitBoreRadius"].SiValue < model.Parameters["endcapOuterRadius"].SiValue);
+        Assert.All(bores, b => Assert.Equal(HoleFraction * b.Edge, b.Bore));
+        Assert.Single(bores.Select(b => b.Bore).Distinct());
     }
 
     /// <summary>
-    /// The bore faces of the hole sizes a document would write are off the mesh's node rows,
-    /// and the field is continuous as a declared hole crosses one.
+    /// The hole the measurements use has its bore face clear of the mesh's node rows at both
+    /// meshes; a hole whose face lies on a row sits on a step in the field, and nothing warns.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A conductor face lying exactly on a row of nodes is cut discontinuously
-    /// (<c>docs/numerics.md</c>, "a single conductor's face on a node plane"), and the radial
-    /// spacing is 0.125 mm as shipped, so a bore of 0.5, 1.0 or 1.5 mm would sit on one. The
-    /// template moves every bore out by <c>endcapBoreOffset</c>, a sixteenth of a cell. Checked
-    /// from the solved mesh itself: every multiple of 0.025 of the endcap radius, at 20 and 40
-    /// cells per r0, lands at least 0.02 of a radial spacing off the nearest row.
+    /// The bore is exactly what the document declares, so the geometry does not depend on the
+    /// mesh. The radial spacing is <c>ringOuterRadius</c> over a power of two, 0.125 mm as
+    /// shipped and 0.0625 mm at 40 cells per r0, and the 0.595 mm hole the measurements use
+    /// lies 0.24 and 0.48 of a spacing off the nearest row - read here from the solved mesh.
+    /// There the field is continuous in the hole: a change of a part in a million moves the
+    /// axial potential by the slope times the change.
     /// </para>
     /// <para>
-    /// And the field quantity that would show a step - the axial potential near the exit
-    /// endcap - is continuous as the declared hole is swept through 0.5 mm, exactly four
-    /// radial spacings: the change across a step of 1e-9 of the hole is the slope times the
-    /// step and no more.
+    /// <b>A hole whose face is on a row is the open single-conductor coincidence</b>
+    /// (<c>docs/numerics.md</c>, SPEC.md "What to do next" item 11), and the second half
+    /// measures it rather than claiming it away: as a declared hole crosses 0.5 mm, exactly
+    /// four spacings, the axial potential at 0.8 z0 steps by 0.215 V of 400 V on the ring, for
+    /// a change of a nanometre - what 12 micrometres of bore is worth just above the row. On
+    /// the row it holds the value from below. No warning is raised: <c>mesh.node-on-shared-face</c>
+    /// is about two conductors, or one and the grounded boundary. Asserted so that the day the
+    /// engine closes that gap this fails and the template's advice is revisited.
     /// </para>
     /// </remarks>
     [Fact]
-    public void BoreFacesAreOffTheNodeRows()
+    public void ABoreFaceOnANodeRowIsAStepNothingWarnsOf()
     {
         foreach (var cells in new[] { 20.0, 40.0 })
         {
-            var reference = Compile(Trap(("cellsPerRadius", cells)));
-            var grid = GeometryBuilder.SolveChannels(reference.Fields[0].Solve!)[0].Potential.Grid;
-            var spacing = grid.SpacingY;
-            var worst = double.MaxValue;
-
-            for (var k = 1; k <= 36; k++)
-            {
-                var fraction = 0.025 * k;
-                var model = Compile(Trap(("cellsPerRadius", cells), ("endcapExitHoleFraction", fraction)));
-                var bore = model.Parameters["endcapExitBoreRadius"].SiValue;
-                var rows = (bore - grid.OriginY) / spacing;
-                var off = Math.Abs(rows - Math.Round(rows));
-
-                worst = Math.Min(worst, off);
-            }
+            var model = Compile(Trap(("cellsPerRadius", cells), ("endcapExitHoleFraction", HoleFraction)));
+            var grid = GeometryBuilder.SolveChannels(model.Fields[0].Solve!)[0].Potential.Grid;
+            var rows = (model.Parameters["endcapExitBoreRadius"].SiValue - grid.OriginY) / grid.SpacingY;
+            var off = Math.Abs(rows - Math.Round(rows));
 
             output.WriteLine(string.Create(
                 CultureInfo.InvariantCulture,
-                $"{cells,3:F0} cells/r0: radial spacing {spacing * 1e3:F5} mm; worst bore face {worst:F4} of a spacing off a row"));
+                $"{cells,3:F0} cells/r0: radial spacing {grid.SpacingY * 1e3:F5} mm; the {HoleFraction} hole's face is at row {rows:F3}, {off:F3} of a spacing off"));
 
-            Assert.True(worst >= 0.02 - 1e-9, $"a bore face is {worst:F4} of a spacing off a row");
+            Assert.True(off >= 0.2, $"the measured hole's face is {off:F3} of a spacing off a row");
         }
 
-        // Continuity through a declared hole of exactly four radial spacings.
-        var endcapRadius = Compile(Trap()).Parameters["endcapOuterRadius"].SiValue;
-        var crossing = 0.5e-3 / endcapRadius;
-        var step = 1e-9 * crossing;
-
-        double Probe(double fraction)
+        (double Potential, string Warnings) Probe(double fraction)
         {
             var model = Compile(Trap(("endcapExitHoleFraction", fraction)));
-            var field = (ITimeVaryingField)FieldAssembly.Build(model);
+            var (built, warnings) = FieldAssembly.BuildReported(model);
             var z0 = model.Parameters["endcapHalfSpacing"].SiValue;
 
-            return field.PotentialAt(new Vec3(0.8 * z0, 0.0, 0.0), 0.0);
+            return (
+                ((ITimeVaryingField)built).PotentialAt(new Vec3(0.8 * z0, 0.0, 0.0), 0.0),
+                string.Join(" | ", warnings.Select(w => w.Code)));
         }
 
-        var below = Probe(crossing - step);
-        var at = Probe(crossing);
-        var above = Probe(crossing + step);
-        var slope = Math.Abs(Probe(crossing + (1e-3 * crossing)) - at) / (1e-3 * crossing);
+        var endcapRadius = Compile(Trap()).Parameters["endcapOuterRadius"].SiValue;
+        var solid = Probe(0.0);
 
-        output.WriteLine(string.Create(
-            CultureInfo.InvariantCulture,
-            $"axial potential at 0.8 z0 across a declared 0.5 mm hole: {below:R} / {at:R} / {above:R} V; slope {slope:E3} V per unit fraction"));
+        double Step(double fraction, string label)
+        {
+            var below = Probe(fraction * (1.0 - 1e-6));
+            var above = Probe(fraction * (1.0 + 1e-6));
+            var slope = Math.Abs(Probe(fraction * (1.0 + 1e-3)).Potential - above.Potential) / (1e-3 * fraction);
+            var expected = slope * 2e-6 * fraction;
+            var step = Math.Abs(above.Potential - below.Potential);
 
-        Assert.True(Math.Abs(above - below) <= (10.0 * slope * 2.0 * step) + 1e-12);
+            output.WriteLine(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{label}: axial potential at 0.8 z0 {below.Potential:R} / {above.Potential:R} V across 2e-6 of the hole: "
+                + $"moved {step:E3} V, the slope accounts for {expected:E3} V; warnings [{above.Warnings}]"));
+
+            // No warning the solid trap does not carry, either side.
+            Assert.Equal(solid.Warnings, below.Warnings);
+            Assert.Equal(solid.Warnings, above.Warnings);
+
+            return step / expected;
+        }
+
+        // The measured hole: continuous. Measured 1.0000 of what the slope accounts for.
+        Assert.InRange(Step(HoleFraction, "0.595 mm hole, off the rows"), 0.5, 2.0);
+
+        // A hole of exactly four spacings: a step five orders past the slope (measured 0.215 V
+        // against 1.8e-5 V).
+        Assert.True(
+            Step(0.5e-3 / endcapRadius, "0.5 mm hole, on a row") > 1000.0,
+            "a bore face crossing a node row no longer steps the field: revisit the template's advice");
     }
 
     /// <summary>The on-axis multipole weights, from a polynomial fit to the axial potential.</summary>
@@ -400,8 +484,8 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
     private static Multipoles Measure(string name, double cells, (string, double)[] overrides)
     {
         var model = Compile(Trap(overrides.Append(("cellsPerRadius", cells)).ToArray()));
-        var channels = GeometryBuilder.SolveChannels(model.Fields[0].Solve!);
-        var field = (ITimeVaryingField)FieldAssembly.Build(model);
+        var (built, warnings) = FieldAssembly.BuildReported(model);
+        var field = (ITimeVaryingField)built;
         var volts = model.Parameters["rfAmplitude"].SiValue;
 
         var (weights, residual) = AxialMultipoles(model, field);
@@ -409,7 +493,7 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
 
         return new Multipoles(
             name, cells, weights, residual, ratio, EffectiveRadius(field, volts) * 1e3,
-            string.Join(" | ", channels[0].Report.Warnings.Select(w => w.Code + ": " + w.Message)));
+            string.Join(" | ", warnings.Select(w => w.Code + ": " + w.Message)));
     }
 
     /// <summary>
@@ -472,8 +556,9 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
             // No warning a hole or its stop adds. The ideal template already carries one - the
             // ring's outer face lying in the grounded domain edge, recorded and harmless in
             // docs/numerics.md - and its node count moves only with the domain's length, which
-            // the stretch changes; a bore kept off the node rows, and a grounded stop flush with
-            // the grounded edge, add nothing.
+            // the stretch changes; a bore adds nothing (not even one whose face is on a node row,
+            // which is the gap ABoreFaceOnANodeRowIsAStepNothingWarnsOf measures), and neither do
+            // a grounded stop flush with the grounded edge and one outside the mesh.
             Assert.Contains("'ring' meets the grounded top edge", At("ideal", cells).SharedFaceWarnings, StringComparison.Ordinal);
             Assert.Equal(At("ideal", cells).SharedFaceWarnings, At("both holes", cells).SharedFaceWarnings);
             Assert.Equal(At("ideal", cells).SharedFaceWarnings, At("exit hole only", cells).SharedFaceWarnings);
@@ -481,7 +566,7 @@ public sealed class PaulTrapEndcapHoleStudy(ITestOutputHelper output)
         }
 
         // The mesh: twice as fine moves the octupole weight by much less than the holes or the
-        // stretch move it - measured at 0.02 of the change for both holes and 0.10 for holes
+        // stretch move it - measured at 0.03 of the change for both holes and 0.11 for holes
         // plus stretch, whose change is the smallest, so asserted under a fifth. A bound at
         // exactly the measured ratio would be asserting which side of it the arithmetic lands.
         foreach (var name in new[] { "both holes", "holes + stretch", "stretch only" })

@@ -1605,9 +1605,9 @@ Run on the `paul-trap` template scaled whole to r0 = 10 mm (gap, ring and endcap
   disagreement with both sides stated**; it is not tuned away, and the test asserts it stays
   visible.
 - **What a real trap would have shown**: the same run with holes of 0.175 of the endcap radius
-  in both endcaps (1.49 mm holes, 1.52 mm bores at this scale) and a 0.107 stretch gives
-  f_z = 141.32 kHz and f_r = 69.28 kHz, **12 percent below** the ideal trap's at the same volts
-  - r0_eff 10.63 mm, and both lines are Mathieu's at that radius to 0.01 kHz (asserted to 0.1). None of the three codes as run could see that;
+  in both endcaps (1.49 mm holes at this scale, 4.76 radial spacings of its mesh) and a 0.107 stretch gives
+  f_z = 141.34 kHz and f_r = 69.30 kHz, **12 percent below** the ideal trap's at the same volts
+  - r0_eff 10.63 mm, and both lines are Mathieu's at that radius to 0.02 kHz (asserted to 0.1). None of the three codes as run could see that;
   SIMION could have, had the paper reported its holed geometry's numbers.
 
 ### What is not reproduced, and what is blocked
