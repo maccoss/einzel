@@ -1586,7 +1586,8 @@ Run on the `paul-trap` template scaled whole to r0 = 10 mm (gap, ring and endcap
 | Einzel, at its own q_eff = 0.40031 (r0_eff 9.9961 mm) | | | | 161.045 predicted | 78.465 predicted |
 
 - **The secular frequencies reproduce.** Einzel's lines are Mathieu's at the q the solved field's
-  curvature implies, to 0.03 kHz; the truncation makes r0_eff 0.04 percent small, which is worth
+  curvature implies, to 0.03 kHz (asserted to 0.1 kHz; the whole millisecond is flown once and its
+  first 25 us give the excursions); the truncation makes r0_eff 0.04 percent small, which is worth
   +0.13 kHz against the nominal q. The three codes agree with each other to 0.1 kHz.
 - **The paper's own frequency claim does not add up**: it states the theoretical axial line as
   160.91142 kHz and the codes as within 0.01 percent of it, while reporting 161.1, which is
@@ -1596,15 +1597,17 @@ Run on the `paul-trap` template scaled whole to r0 = 10 mm (gap, ring and endcap
 - **The tabulated excursions do not reproduce - and neither does the ideal field.** Integrating
   the ideal quadrupole directly from table 1's starting point gives half a millimetre of axial
   excursion and 0.54 eV peak energy; all three codes report about a millimetre and 1.5 eV, and
-  1.15 mm radially against 0.91. Einzel agrees with the ideal field to under a micrometre. With
-  the drive sign flipped the ideal field gives 0.78 mm and 0.85 eV - closer, and still not the
-  table. So something in table 1 is not what the codes were given (the starting point, the
+  1.15 mm radially against 0.91. Einzel agrees with the ideal field to under a micrometre
+  (worst excursion 0.26 um; asserted under 1 um). With the drive sign flipped the ideal field
+  gives 0.78 mm and 0.85 eV - closer, and still not the table - and Einzel flown with that sign
+  agrees with it too (0.36 um, asserted). So something in table 1 is not what the codes were given (the starting point, the
   velocity units, or the phase), and the extracted text cannot say which. **Recorded as a
   disagreement with both sides stated**; it is not tuned away, and the test asserts it stays
   visible.
-- **What a real trap would have shown**: the same run with 1.5 mm holes in both endcaps and a
-  0.107 stretch gives f_z = 141.34 kHz and f_r = 69.28 kHz, **12 percent below** the ideal
-  trap's at the same volts - r0_eff 10.63 mm. None of the three codes as run could see that;
+- **What a real trap would have shown**: the same run with holes of 0.175 of the endcap radius
+  in both endcaps (1.49 mm holes, 1.52 mm bores at this scale) and a 0.107 stretch gives
+  f_z = 141.32 kHz and f_r = 69.28 kHz, **12 percent below** the ideal trap's at the same volts
+  - r0_eff 10.63 mm, and both lines are Mathieu's at that radius to 0.01 kHz (asserted to 0.1). None of the three codes as run could see that;
   SIMION could have, had the paper reported its holed geometry's numbers.
 
 ### What is not reproduced, and what is blocked

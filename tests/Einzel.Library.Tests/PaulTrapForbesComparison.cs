@@ -82,7 +82,13 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
         double ZMin, double ZMax, double RMin, double RMax, double EkMinEv, double EkMaxEv,
         double AxialKHz, double RadialKHz, double Volts, double R0EffMm);
 
-    private static Run Fly(CompiledModel model, double phaseShiftPeriods)
+    /// <summary>
+    /// Flies the paper's ion once: the extremes from its first 25 microseconds, which is what
+    /// table 2 tabulates at 10 ns output, and - when asked - the secular lines from the whole
+    /// millisecond, as the paper's figure 13 used. One integration, not two: the first 25
+    /// microseconds of the long flight are the short one.
+    /// </summary>
+    private static Run Fly(CompiledModel model, double phaseShiftPeriods, bool lines)
     {
         var drive = model.Parameters["driveFrequency"].SiValue;
         var field = (ITimeVaryingField)FieldAssembly.Build(model);
@@ -103,20 +109,22 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
         TrajectoryStopFunction detector =
             (in PhaseState state) => Vec3.Dot(state.Position - point, normal);
 
-        // The tabulated extremes are over 25 us at 10 ns output.
-        var shortRecord = new TrajectoryRecorder(10e-9);
+        const double Window = 25e-6;
+        var record = new TrajectoryRecorder(10e-9);
 
-        var shortResult = TrajectoryIntegrator.Integrate(
+        var result = TrajectoryIntegrator.Integrate(
             launch, species, shifted,
-            new IntegrationSettings { RelativeTolerance = 1e-10, MaximumFlightTime = 25e-6 },
-            detector, shortRecord);
+            new IntegrationSettings { RelativeTolerance = 1e-10, MaximumFlightTime = lines ? 1e-3 : Window },
+            detector, record);
 
-        Assert.Equal(TrajectoryOutcome.MaximumFlightTimeReached, shortResult.Outcome);
+        // The whole flight is held: an ion that left would make both the extremes and the
+        // spectrum describe something else.
+        Assert.Equal(TrajectoryOutcome.MaximumFlightTimeReached, result.Outcome);
 
         double zMin = double.MaxValue, zMax = double.MinValue, rMin = double.MaxValue, rMax = 0.0;
         double ekMin = double.MaxValue, ekMax = 0.0;
 
-        foreach (var s in shortRecord.Samples)
+        foreach (var s in record.Samples.Where(s => s.TimeSeconds <= Window * (1.0 + 1e-12)))
         {
             var p = s.Position;
             var v = s.Velocity;
@@ -131,64 +139,46 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
             ekMax = Math.Max(ekMax, ek);
         }
 
-        // The frequencies from a millisecond, as the paper's figure 13 used.
-        var longRecord = new TrajectoryRecorder(100e-9);
+        double axial = double.NaN, radial = double.NaN;
 
-        TrajectoryIntegrator.Integrate(
-            launch, species, shifted,
-            new IntegrationSettings { RelativeTolerance = 1e-10, MaximumFlightTime = 1e-3 },
-            detector, longRecord);
-
-        double LineKHz(int axis)
+        if (lines)
         {
-            var spectrum = SecularSpectrum.From(longRecord.Samples, axis, 0.02 * drive, 0.45 * drive, 20000);
-            var (value, _, _, _) = spectrum.Peak()!;
+            // Every tenth sample, 100 ns apart: the line search needs the millisecond, not the
+            // 10 ns cadence the extremes are read at.
+            var thinned = new List<TrajectorySample>();
+            var next = 0.0;
 
-            return value.In("Hz") / 1e3;
+            foreach (var s in record.Samples)
+            {
+                if (s.TimeSeconds >= next)
+                {
+                    thinned.Add(s);
+                    next = s.TimeSeconds + (100e-9 * (1.0 - 1e-6));
+                }
+            }
+
+            double LineKHz(int axis)
+            {
+                var spectrum = SecularSpectrum.From(thinned, axis, 0.02 * drive, 0.45 * drive, 20000);
+                var peak = spectrum.Peak();
+
+                Assert.NotNull(peak);
+
+                var (value, _, _, _) = peak;
+
+                return value.In("Hz") / 1e3;
+            }
+
+            axial = LineKHz(0);
+            radial = LineKHz(2);
         }
-
-        const double Delta = 0.8e-3;
-        var curvature =
-            (field.ElectricFieldAt(new Vec3(Delta, 0.0, 0.0), 0.0).X
-                - field.ElectricFieldAt(new Vec3(-Delta, 0.0, 0.0), 0.0).X)
-            / (2.0 * Delta);
 
         var volts = model.Parameters["rfAmplitude"].SiValue;
 
         return new Run(
             zMin * 1e3, zMax * 1e3, rMin * 1e3, rMax * 1e3, ekMin, ekMax,
-            LineKHz(0), LineKHz(2), volts, Math.Sqrt(2.0 * volts / curvature) * 1e3);
+            axial, radial, volts, PaulTrapHoles.EffectiveRadius(field, volts, 0.8e-3) * 1e3);
     }
-
-    /// <summary>The Mathieu characteristic exponent, from its continued fraction.</summary>
-    private static double Beta(double a, double q, int depth = 40)
-    {
-        var beta = Math.Sqrt(Math.Max(a + (q * q / 2.0), 1e-6));
-
-        for (var iteration = 0; iteration < 500; iteration++)
-        {
-            var up = 0.0;
-            var down = 0.0;
-
-            for (var n = depth; n >= 1; n--)
-            {
-                up = q * q / (((beta + (2 * n)) * (beta + (2 * n))) - a - up);
-                down = q * q / (((beta - (2 * n)) * (beta - (2 * n))) - a - down);
-            }
-
-            var next = Math.Sqrt(Math.Max(a + up + down, 1e-12));
-
-            if (Math.Abs(next - beta) < 1e-14)
-            {
-                return next;
-            }
-
-            beta = 0.5 * (beta + next);
-        }
-
-        return beta;
-    }
-
     /// <summary>
     /// The paper's conditions in the ideal quadrupole field itself, integrated here by fixed-step
     /// fourth-order Runge-Kutta: the reference all three codes were meant to reproduce.
@@ -257,16 +247,18 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
     /// </para>
     /// <para>
     /// Asserted: the secular lines against Mathieu at the q the solved field's own curvature
-    /// implies, to the record's resolution; the excursions against the ideal field to a few per
-    /// cent (the solved trap is truncated, so not exactly); and that the engine is not inside
-    /// the codes' tabulated excursion spread, so the disagreement cannot silently vanish.
+    /// implies, to 0.1 kHz (measured within 0.035); the excursions against the ideal field to
+    /// a micrometre for either sign of drive (measured 0.26 and 0.36 um); the holed, stretched
+    /// trap's lines against Mathieu at its own effective radius, and 12 percent below the ideal
+    /// trap's; and that the engine is not inside the codes' tabulated excursion spread, so the
+    /// disagreement cannot silently vanish.
     /// </para>
     /// </remarks>
     [Fact]
     public void TheSingleIonComparison()
     {
-        var betaZ = Beta(0.0, Qz);
-        var betaR = Beta(0.0, Qz / 2.0);
+        var betaZ = PaulTrapHoles.Beta(0.0, Qz);
+        var betaR = PaulTrapHoles.Beta(0.0, Qz / 2.0);
         var fz = betaZ * DriveMHz * 1e3 / 2.0;
         var fr = betaR * DriveMHz * 1e3 / 2.0;
 
@@ -275,11 +267,12 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
             $"Mathieu at q 0.400: beta_z {betaZ:F6} -> {fz:F4} kHz, beta_r {betaR:F6} -> {fr:F4} kHz"));
 
         var ideal = Model();
-        var matched = Fly(ideal, 0.5);
-        var unmatched = Fly(ideal, 0.0);
+        var matched = Fly(ideal, 0.5, lines: true);
+        var unmatched = Fly(ideal, 0.0, lines: false);
         var real = Fly(Model(
-            ("endcapEntranceHoleRadius", 1.5), ("endcapExitHoleRadius", 1.5),
-            ("endcapStretchFraction", 0.107)), 0.5);
+            ("endcapEntranceHoleFraction", PaulTrapHoles.HoleFraction),
+            ("endcapExitHoleFraction", PaulTrapHoles.HoleFraction),
+            ("endcapStretchFraction", PaulTrapHoles.Stretch)), 0.5, lines: true);
 
         var reference = Ideal(-1.0, matched.Volts);
         var referencePlus = Ideal(+1.0, matched.Volts);
@@ -307,16 +300,28 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
         }
 
         var qEff = Qz * Math.Pow(R0Mm / matched.R0EffMm, 2.0);
-        var fzEff = Beta(0.0, qEff) * DriveMHz * 1e3 / 2.0;
-        var frEff = Beta(0.0, qEff / 2.0) * DriveMHz * 1e3 / 2.0;
+        var fzEff = PaulTrapHoles.Beta(0.0, qEff) * DriveMHz * 1e3 / 2.0;
+        var frEff = PaulTrapHoles.Beta(0.0, qEff / 2.0) * DriveMHz * 1e3 / 2.0;
 
         output.WriteLine(string.Create(
             CultureInfo.InvariantCulture,
             $"ring amplitude {matched.Volts:F3} V; q at the solved r0_eff {qEff:F5}: f_z {fzEff:F3} kHz, f_r {frEff:F3} kHz"));
 
-        // The lines: Mathieu at the solved field's own q, to the record's resolution.
-        Assert.Equal(fzEff, matched.AxialKHz, 0.5);
-        Assert.Equal(frEff, matched.RadialKHz, 0.5);
+        var qReal = Qz * Math.Pow(R0Mm / real.R0EffMm, 2.0);
+        var fzReal = PaulTrapHoles.Beta(0.0, qReal) * DriveMHz * 1e3 / 2.0;
+        var frReal = PaulTrapHoles.Beta(0.0, qReal / 2.0) * DriveMHz * 1e3 / 2.0;
+
+        output.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"holes+stretch: q at r0_eff {qReal:F5}: f_z {fzReal:F3} kHz, f_r {frReal:F3} kHz; f_z / ideal {real.AxialKHz / matched.AxialKHz:F4}"));
+        output.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"worst excursion difference from the ideal field: -V cos {Worst(matched, reference) * 1e3:F3} um, +V cos {Worst(unmatched, referencePlus) * 1e3:F3} um"));
+
+        // The lines: Mathieu at the solved field's own q. Measured 0.025 and 0.035 kHz apart;
+        // a 1 ms record's own resolution is 1 kHz, and the peak is located well inside it.
+        Assert.Equal(fzEff, matched.AxialKHz, 0.1);
+        Assert.Equal(frEff, matched.RadialKHz, 0.1);
 
         // And against the three programs' own published lines (Forbes 1999, table 2), which is
         // the cross-code check: SIMION and ITSIM give 161.1 kHz axially and ISIS 161.0; radially
@@ -327,12 +332,21 @@ public sealed class PaulTrapForbesComparison(ITestOutputHelper output)
         Assert.InRange(matched.AxialKHz, 161.0 - 0.1, 161.1 + 0.1);
         Assert.InRange(matched.RadialKHz, 78.4 - 0.1, 78.7 + 0.1);
 
-        // The excursions: the ideal field, to a few per cent.
-        Assert.Equal(reference.ZMax, matched.ZMax, 0.03);
-        Assert.Equal(reference.ZMin, matched.ZMin, 0.03);
-        Assert.Equal(reference.RMax, matched.RMax, 0.03);
+        // The excursions: the ideal field, to under a micrometre either way the drive is signed.
+        Assert.True(Worst(matched, reference) < 1e-3, "the -V cos run departs from the ideal field");
+        Assert.True(Worst(unmatched, referencePlus) < 1e-3, "the +V cos run departs from the ideal field");
 
         // And the disagreement with table 2 stays visible.
         Assert.True(matched.ZMax < 0.9, "the axial excursion now matches table 2; revisit the docs");
+
+        // What a real trap would have shown: its lines are Mathieu's at its own effective radius,
+        // and they are well below the ideal trap's at the same volts.
+        Assert.Equal(fzReal, real.AxialKHz, 0.1);
+        Assert.Equal(frReal, real.RadialKHz, 0.1);
+        Assert.InRange(real.AxialKHz / matched.AxialKHz, 0.86, 0.90);
     }
+
+    /// <summary>The worst disagreement in mm between a run's extremes and the ideal field's.</summary>
+    private static double Worst(Run run, (double ZMin, double ZMax, double RMax, double EkMaxEv) ideal) =>
+        new[] { run.ZMin - ideal.ZMin, run.ZMax - ideal.ZMax, run.RMax - ideal.RMax }.Max(Math.Abs);
 }

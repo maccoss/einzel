@@ -89,9 +89,13 @@ public sealed class PaulTrapStudy(ITestOutputHelper output)
             $"convergence   {channels[0].Report.Cycles} cycles at factor "
             + $"{channels[0].Report.ConvergenceFactor:F4}");
 
-        // Three electrodes, one spatial pattern: the endcaps are grounded, so the
-        // only thing that moves is the ring and there is nothing to superpose.
-        Assert.Equal(3, solve.Electrodes.Count);
+        // Three electrodes and the entrance stop, one spatial pattern: the endcaps and the
+        // stop are grounded, so the only thing that moves is the ring and there is nothing
+        // to superpose. The stop is declared always and has no width while the entrance
+        // hole is closed (PaulTrapEndcapHoleStudy), so it is a fourth declaration and not a
+        // fourth conductor in this solve.
+        Assert.Equal(4, solve.Electrodes.Count);
+        Assert.Equal(solve.Electrodes[3].MinX, solve.Electrodes[3].MaxX);
         Assert.Single(channels);
         Assert.True(channels[0].Report.Converged);
     }
